@@ -34,7 +34,7 @@ async function writeLocalPackage(params: { packageRootAbs: string; appId: string
     path.join(params.packageRootAbs, 'bin.js'),
     [
       "'use strict';",
-      "if (!process.argv.includes('--json')) throw new Error('expected --json');",
+      "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
       'const json = {',
       '  schemaVersion: 1,',
       `  appId: ${JSON.stringify(params.appId)},`,

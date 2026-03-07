@@ -34,7 +34,7 @@ This document uses **A/B/C/D** to describe the evolution phases of this feature.
 Goal: make the kernel/app boundary and the minimal data flow runnable, so the install/resolve/boot path can be validated.
 
 - Key capabilities (at minimum):
-  - App install handshake (`<app> --json`) can be consumed by the kernel/CLI.
+  - App install handshake (`<app> --dominds-app`) can be consumed by the kernel/CLI.
   - App manifest (`.minds/app.yaml`) schema/loader is available.
   - Basic local resolution strategy (`local`) works: discover local apps under `<rtws>/dominds-apps/<appId>/`.
 
@@ -168,7 +168,7 @@ Key semantics:
   - `<rtws>/.apps/resolution.yaml` can pin an `assignedPort` as a stable resolved config; **if present it must be non-zero** (anti-jitter).
   - `assignedPort` is not the runtime “bound port”; it is the resolver’s stable config output.
 
-### Install JSON (`npx <pkg> --json`)
+### Install JSON (`npx <pkg> --dominds-app`)
 
 (Target: planned) Install JSON should avoid overlapping with the manifest (`.minds/app.yaml`).
 
@@ -178,6 +178,20 @@ Recommended principles:
 
 - Install JSON carries only the minimal fields required for locating caches and reading the manifest.
 - Capability inventory (teammates/tools/web/seed, etc.) must be **manifest-only**, to avoid drift from dual-writing.
+
+User-facing installation and the low-level handshake must stay clearly separated:
+
+- The **user-facing install entrypoint** should be `dominds install <spec>`, not `npx <pkg> --dominds-app`.
+- `--dominds-app` is a **kernel/CLI-to-app handshake flag** used by Dominds to retrieve install JSON. It is not meant to be the ordinary human-facing UX.
+- For published apps, the kernel/CLI may resolve install JSON through `npx -y <pkg> --dominds-app` during resolution.
+- For local apps under development, the kernel/CLI may call the local package bin through `dominds install <path> --local`, still passing the same `--dominds-app` handshake flag underneath.
+- `npm install` / `pnpm add` only answers “where is the package downloaded/cached”. They do **not** register an app into the current rtws by themselves. The operation that actually adds the app into the current workspace dependency graph is still `dominds install`.
+
+Recommended user mental model:
+
+- `npm` / `pnpm`: package managers responsible for publishing, downloading, and caching.
+- `npx`: one-shot execution of an npm package entrypoint; in the app system it mainly serves as the kernel's resolution/handshake backend.
+- `dominds install`: the product-level Dominds command that updates `.minds/app.yaml`, `.minds/app-lock.yaml`, `<rtws>/.apps/configuration.yaml`, and `<rtws>/.apps/resolution.yaml`, making the app actually part of the current rtws capability graph.
 
 (Current: implemented) existing anchors:
 
@@ -242,6 +256,132 @@ Key semantics:
 
 - The kernel must not implicitly write `env.md` into shell rc or environment.
 - If the kernel offers “write managed rc block” (e.g. setup flow), it must be explicit and user-confirmed.
+
+### Reference design: Web Dev App (replacing the old prototype-app narrative)
+
+Instead of continuing to discuss app semantics around an accidental prototype, this document now uses a more durable reference design: **Web Dev App**.
+
+Its goal is not to represent one specific product. Its goal is to provide a high-frequency, easy-to-validate app shape:
+
+- focused on web development and browser regression work,
+- packaging browser interaction capability as an explicit toolset,
+- shipping a minimal but complete team with at least `web_tester` and `web_developer`.
+
+Design stance:
+
+- `Web Dev App` is an **integrator-style app**. The important part is the packaging of team, toolsets, environment guidance, and workflow posture, not a demo business frontend.
+- It should reuse existing capabilities where possible instead of inventing a new browser automation protocol inside the app.
+- The current upstream capability to learn from is the repo-root `playwright-interactive/` skill. That skill is better understood as a workflow/method asset, not as a ready-to-install Dominds MCP server.
+
+So `Web Dev App` should make the `playwright-interactive` relationship explicit as two separate layers:
+
+1. **Product-semantic layer (in scope for this design)**
+   - define a stable toolset semantic such as `playwright_interactive`;
+   - define which teammates receive it, what problem it solves, and when to use it;
+   - ship the related `.minds/team.yaml`, member persona/knowledge, `.minds/env.md`, etc.
+2. **Execution-backend layer (replaceable implementation detail)**
+   - this may wrap the `playwright-interactive` skill into app-host tools;
+   - or later be replaced by an equivalent MCP server / local host module;
+   - as long as the team-facing toolset contract does not drift.
+
+It must be explicit that **an app is not the same thing as a skill**:
+
+- An **app** is a Dominds install/resolve/composition unit. It has an `id`, a manifest (`.minds/app.yaml`), team-facing assets (`.minds/team.yaml`, persona/knowledge/lessons), env docs (`.minds/env.md`), and participates in rtws-level lock/configuration/resolution.
+- A **skill** is closer to a workflow asset, method asset, or low-level execution material. A skill can be reused, wrapped, or replaced by an app, but it usually does not own rtws installation, dependency graph membership, or `team.yaml` import semantics by itself.
+- `playwright-interactive/` is currently closer to a skill: it provides browser-workflow capability that Web Dev can learn from or wrap. `Web Dev App` is the installable product unit that packages those capabilities into a stable team/toolset/env contract.
+
+So the correct story is not “install a skill as an app”. The correct story is:
+
+- the skill is absorbed as implementation material by an app,
+- the app exposes a stable team-facing contract,
+- the low-level skill / MCP / host-module backend can change later without changing the app identity or team-facing semantics.
+
+Suggested user-facing installation flow:
+
+```bash
+# Local app under development
+dominds install ./dominds-apps/web-dev --local --enable
+
+# Published npm app (target shape)
+dominds install @longrun-ai/web-dev --enable
+```
+
+After installation, the user should expect these files to change:
+
+- `.minds/app.yaml`: root dependency declaration is updated.
+- `.minds/app-lock.yaml`: app package version is frozen.
+- `<rtws>/.apps/configuration.yaml`: explicit enable/disable intent is recorded.
+- `<rtws>/.apps/resolution.yaml`: effective source, enabled state, and stable `assignedPort` are materialized.
+
+Suggested minimal asset shape:
+
+```text
+web-dev/
+├── package.json
+├── .minds/
+│   ├── app.yaml
+│   ├── team.yaml
+│   ├── env.md
+│   ├── app-lock.yaml
+│   └── team/
+│       ├── web_tester/
+│       │   ├── persona.zh.md
+│       │   ├── knowledge.zh.md
+│       │   └── lessons.zh.md
+│       └── web_developer/
+│           ├── persona.zh.md
+│           ├── knowledge.zh.md
+│           └── lessons.zh.md
+└── src/
+    └── app-host.ts
+```
+
+Suggested team shape:
+
+- `web_tester`
+  - primary responsibility: run browser interaction, perform regression walkthroughs, collect screenshot/console/network evidence;
+  - default toolsets: `playwright_interactive` plus read-only workspace tools such as `ws_read`;
+  - non-goal: does not directly edit product code or take over build/process management.
+- `web_developer`
+  - primary responsibility: implement UI/interaction fixes, consume `web_tester` findings, and close the loop;
+  - default toolsets: code-edit/search tools such as `codex_style_tools` (or equivalent) plus optional access to read tester evidence;
+  - non-goal: should not blur browser acceptance into an implicit “I also tested it” posture; when acceptance is needed, it should explicitly tell/ask `web_tester`.
+
+Suggested `team.yaml` fragment:
+
+```yaml
+members:
+  web_tester:
+    name: Web Tester
+    icon: '🧪'
+    toolsets:
+      - ws_read
+      - playwright_interactive
+
+  web_developer:
+    name: Web Developer
+    icon: '🛠️'
+    toolsets:
+      - ws_read
+      - codex_style_tools
+```
+
+Requirements for the `playwright_interactive` toolset design:
+
+- It should be treated as a **stable team-facing capability name**, not as a hard-coded implementation detail tied forever to one backend.
+- At minimum it should cover these task intents:
+  - open/reuse a browser session,
+  - navigate to a target URL,
+  - perform interaction and assertions,
+  - capture screenshots and key debugging evidence,
+  - preserve the “reusable session across multiple fix iterations” mental model.
+- If the current phase does not yet ship a directly executable backend, the docs must label it as a **target contract (planned)** instead of pretending it is already built in.
+
+Why this app shape matters:
+
+- It makes `.minds/team.yaml` collaboration semantics concrete: development and testing are two long-lived teammates, not vague temporary roles.
+- It validates whether “app provides team + toolset + env docs” is expressive enough for a real workflow.
+- It gives future skill/MCP/local-host convergence a stable semantic anchor at the app layer.
 
 ## `<rtws>/.apps/override/<app-id>/`: override layer
 

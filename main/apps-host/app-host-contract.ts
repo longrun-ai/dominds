@@ -1,4 +1,12 @@
-import type { DomindsAppFrontendJson, DomindsAppHostToolHandler } from '../apps/app-json';
+import type {
+  DomindsAppFrontendJson,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppHostToolHandler,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+  DomindsAppReminderState,
+} from '../apps/app-json';
+import type { ChatMessage } from '../llm/client';
 import type { LanguageCode } from '../shared/types/language';
 
 export type DomindsAppRunControlContext = Readonly<{
@@ -33,6 +41,34 @@ export type DomindsAppRunControlHandler = (
   ctx: DomindsAppRunControlContext,
 ) => Promise<DomindsAppRunControlResult>;
 
+export type DomindsAppReminderOwnerApplyContext = Readonly<{
+  dialogId: string;
+  ownedReminders: ReadonlyArray<DomindsAppReminderState>;
+}>;
+
+export type DomindsAppReminderOwnerUpdateContext = Readonly<{
+  dialogId: string;
+  reminder: DomindsAppReminderState;
+}>;
+
+export type DomindsAppReminderOwnerRenderContext = Readonly<{
+  dialogId: string;
+  reminder: DomindsAppReminderState;
+  reminderNo: number;
+  workLanguage: LanguageCode;
+}>;
+
+export type DomindsAppReminderOwnerHandler = Readonly<{
+  apply: (
+    request: DomindsAppReminderApplyRequest,
+    ctx: DomindsAppReminderOwnerApplyContext,
+  ) => Promise<DomindsAppReminderApplyResult>;
+  updateReminder: (
+    ctx: DomindsAppReminderOwnerUpdateContext,
+  ) => Promise<DomindsAppHostReminderUpdateResult>;
+  renderReminder: (ctx: DomindsAppReminderOwnerRenderContext) => Promise<ChatMessage>;
+}>;
+
 export type DomindsAppHostStartResult = Readonly<{
   port: number;
   baseUrl: string;
@@ -42,6 +78,7 @@ export type DomindsAppHostStartResult = Readonly<{
 export type DomindsAppHostInstance = Readonly<{
   tools: Readonly<Record<string, DomindsAppHostToolHandler>>;
   runControls?: Readonly<Record<string, DomindsAppRunControlHandler>>;
+  reminderOwners?: Readonly<Record<string, DomindsAppReminderOwnerHandler>>;
   start?: (
     params: Readonly<{ runtimePort: number | null; frontend?: DomindsAppFrontendJson }>,
   ) => Promise<DomindsAppHostStartResult>;

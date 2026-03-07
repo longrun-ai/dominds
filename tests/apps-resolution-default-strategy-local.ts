@@ -49,8 +49,8 @@ async function main(): Promise<void> {
       path.join(packageRootAbs, 'bin.js'),
       [
         "'use strict';",
-        "if (!process.argv.includes('--json')) {",
-        "  throw new Error('expected --json');",
+        "if (!process.argv.includes('--dominds-app')) {",
+        "  throw new Error('expected --dominds-app');",
         '}',
         'const appId = process.env.DOMINDS_TEST_APP_ID ?? null;',
         "if (!appId) throw new Error('missing DOMINDS_TEST_APP_ID');",
@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', `id: ${appId}`, ''].join('\n'),
     );
 
-    // The default local strategy resolves local apps by executing the package bin with `--json`.
+    // The default local strategy resolves local apps by executing the package bin with `--dominds-app`.
     // Pass required fields through environment variables to keep the file content deterministic.
     process.env.DOMINDS_TEST_APP_ID = appId;
     process.env.DOMINDS_TEST_APP_DEFAULT_PORT = String(defaultPort);

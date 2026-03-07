@@ -138,10 +138,17 @@ async function resolveLocalAppPackageRootAbs(params: {
   rtwsRootAbs: string;
   appId: string;
   localRoots: ReadonlyArray<string>;
+  previousResolutionEntry: AppsResolutionEntry | null;
 }): Promise<string | null> {
+  const candidates = new Set<string>();
+  if (params.previousResolutionEntry?.source.kind === 'local') {
+    candidates.add(params.previousResolutionEntry.source.pathAbs);
+  }
   for (const root of params.localRoots) {
     const rootAbs = path.isAbsolute(root) ? root : path.resolve(params.rtwsRootAbs, root);
-    const candidateAbs = path.resolve(rootAbs, params.appId);
+    candidates.add(path.resolve(rootAbs, params.appId));
+  }
+  for (const candidateAbs of candidates) {
     if (await dirExists(candidateAbs)) return candidateAbs;
   }
   return null;
@@ -197,6 +204,7 @@ async function probeAppByStrategy(params: {
         rtwsRootAbs: params.rtwsRootAbs,
         appId: params.appId,
         localRoots: params.strategy.localRoots,
+        previousResolutionEntry: params.previousResolutionEntry,
       });
       if (!packageRootAbs) continue;
 

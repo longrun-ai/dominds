@@ -8,8 +8,10 @@
 
 import { DialogID } from 'dominds/dialog';
 import { DialogPersistence } from 'dominds/persistence';
+import type { ReminderOwner } from 'dominds/tool';
+import { buildAppReminderOwnerRegistryName } from 'dominds/tools/app-reminders';
 import 'dominds/tools/builtins';
-import { getReminderOwner } from 'dominds/tools/registry';
+import { getReminderOwner, registerReminderOwner } from 'dominds/tools/registry';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -39,6 +41,26 @@ async function main(): Promise<void> {
     assert.ok(mcpLeaseOwner, 'Expected mcpLease ReminderOwner to be registered');
     const shellCmdOwner = getReminderOwner('shellCmd');
     assert.ok(shellCmdOwner, 'Expected shellCmd ReminderOwner to be registered');
+    const appOwnerName = buildAppReminderOwnerRegistryName(
+      'web_dev',
+      'playwright_interactive_manual',
+    );
+    const appReminderOwner: ReminderOwner = {
+      name: appOwnerName,
+      async updateReminder() {
+        return { treatment: 'keep' };
+      },
+      async renderReminder(_dlg, reminder) {
+        return {
+          type: 'transient_guide_msg',
+          role: 'assistant',
+          content: reminder.content,
+        };
+      },
+    };
+    registerReminderOwner(appReminderOwner);
+    const registeredAppOwner = getReminderOwner(appOwnerName);
+    assert.ok(registeredAppOwner, 'Expected app reminder owner to be registered');
 
     const dialogId = new DialogID('11/22/33334444');
     await DialogPersistence._saveReminderState(dialogId, [
@@ -47,6 +69,19 @@ async function main(): Promise<void> {
         content: 'Daemon reminder',
         owner: shellCmdOwner,
         meta: { type: 'daemon', pid: 123, command: 'sleep 10' },
+      },
+      {
+        content: 'App tool reminder',
+        owner: appReminderOwner,
+        meta: {
+          kind: 'app_reminder_owner',
+          appId: 'web_dev',
+          ownerRef: 'playwright_interactive_manual',
+          managedByTool: 'playwright_interactive_manual',
+          source: 'playwright_interactive_manual',
+          updateExample: 'playwright_interactive_manual({})',
+          workflow: 'playwright_interactive_manual',
+        },
       },
     ]);
 
@@ -62,7 +97,7 @@ async function main(): Promise<void> {
     assertRecord(parsed);
     const reminders = parsed['reminders'];
     assert.ok(Array.isArray(reminders));
-    assert.equal(reminders.length, 2);
+    assert.equal(reminders.length, 3);
 
     assertRecord(reminders[0]);
     assert.equal(reminders[0]['ownerName'], 'mcpLease');
@@ -73,8 +108,14 @@ async function main(): Promise<void> {
     assert.equal(reminders[1]['meta']['type'], 'daemon');
     assert.equal(reminders[1]['meta']['pid'], 123);
 
+    assertRecord(reminders[2]);
+    assert.equal(reminders[2]['ownerName'], appOwnerName);
+    assertRecord(reminders[2]['meta']);
+    assert.equal(reminders[2]['meta']['appId'], 'web_dev');
+    assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
+
     const loaded = await DialogPersistence.loadReminderState(dialogId);
-    assert.equal(loaded.length, 2);
+    assert.equal(loaded.length, 3);
     assert.ok(loaded[0].owner, 'Expected owner to be rehydrated for reminder[0]');
     assert.equal(loaded[0].owner.name, 'mcpLease');
     assert.ok(loaded[1].owner, 'Expected owner to be rehydrated for reminder[1]');
@@ -82,6 +123,11 @@ async function main(): Promise<void> {
     assertRecord(loaded[1].meta);
     assert.equal(loaded[1].meta['type'], 'daemon');
     assert.equal(loaded[1].meta['pid'], 123);
+    assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
+    assert.equal(loaded[2].owner.name, appOwnerName);
+    assertRecord(loaded[2].meta);
+    assert.equal(loaded[2].meta['appId'], 'web_dev');
+    assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.
     // This script intentionally tests only the current on-disk schema.

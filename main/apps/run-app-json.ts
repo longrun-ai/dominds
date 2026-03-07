@@ -64,7 +64,7 @@ export async function runDomindsAppJsonViaNpx(params: {
   spec: string;
   cwdAbs: string;
 }): Promise<DomindsAppInstallJsonV1> {
-  const { stdout, stderr } = await execFileAsync('npx', ['-y', params.spec, '--json'], {
+  const { stdout, stderr } = await execFileAsync('npx', ['-y', params.spec, '--dominds-app'], {
     cwd: params.cwdAbs,
     env: process.env,
     maxBuffer: 10 * 1024 * 1024,
@@ -72,25 +72,25 @@ export async function runDomindsAppJsonViaNpx(params: {
   if (stderr.trim() !== '') {
     // Loud: stderr indicates non-JSON noise that would break parsing determinism.
     throw new Error(
-      `App printed to stderr during --json handshake (spec=${params.spec}):\n${stderr}`,
+      `App printed to stderr during --dominds-app handshake (spec=${params.spec}):\n${stderr}`,
     );
   }
-  return parseAppJsonFromStdout(stdout, `npx ${params.spec} --json`);
+  return parseAppJsonFromStdout(stdout, `npx ${params.spec} --dominds-app`);
 }
 
 export async function runDomindsAppJsonViaLocalPackage(params: {
   packageRootAbs: string;
 }): Promise<DomindsAppInstallJsonV1> {
   const scriptAbs = await resolveLocalBinScriptAbs(params.packageRootAbs);
-  const { stdout, stderr } = await execFileAsync(process.execPath, [scriptAbs, '--json'], {
+  const { stdout, stderr } = await execFileAsync(process.execPath, [scriptAbs, '--dominds-app'], {
     cwd: params.packageRootAbs,
     env: process.env,
     maxBuffer: 10 * 1024 * 1024,
   });
   if (stderr.trim() !== '') {
     throw new Error(
-      `Local app printed to stderr during --json handshake (path=${params.packageRootAbs}):\n${stderr}`,
+      `Local app printed to stderr during --dominds-app handshake (path=${params.packageRootAbs}):\n${stderr}`,
     );
   }
-  return parseAppJsonFromStdout(stdout, `local ${params.packageRootAbs} --json`);
+  return parseAppJsonFromStdout(stdout, `local ${params.packageRootAbs} --dominds-app`);
 }

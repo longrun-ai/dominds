@@ -107,6 +107,30 @@ Notes:
 - `npx dominds` does **not** necessarily mean “always latest”: if your project already has `dominds` installed, or your npm cache already contains an older version, `npx` may reuse that.
 - If you want “resolve whatever `latest` points to”, use `dominds@latest` explicitly. It may still reuse the cached copy of that same version (expected).
 
+### Installing Dominds apps
+
+Installing the `dominds` CLI itself and installing a **Dominds app** into your current rtws are two different operations:
+
+- `npm install -g dominds` / `pnpm add -g dominds`: install the Dominds CLI.
+- `npx -y dominds@latest`: run the Dominds CLI without a global install.
+- `dominds install <app>`: add a Dominds app into the current rtws capability graph.
+
+Examples:
+
+```bash
+# Install a published app into the current rtws
+dominds install @longrun-ai/web-dev --enable
+
+# Install a local app under development into the current rtws
+dominds install ./dominds-apps/web-dev --local --enable
+```
+
+Important distinctions:
+
+- `npm install` / `pnpm add` only download packages; they do **not** register an app into `.minds/app.yaml` for the current rtws.
+- `npx` is used by the kernel/CLI as a package-execution backend. For app installation, the kernel may execute `npx -y <pkg> --dominds-app` under the hood.
+- `--dominds-app` is a low-level app handshake flag between the kernel/CLI and the app package. It is not the normal end-user interface.
+
 For development and any sort of open source contribution, use the in-tree dev wrapper rtws:
 
 https://github.com/longrun-ai/dominds-feat-dev

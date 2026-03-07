@@ -62,6 +62,30 @@ npx -y dominds@latest
 - 仅写 `npx dominds` **不一定**会自动跑“最新版”：如果你本地项目已安装了 `dominds`，或 npm cache 已存在旧版本，`npx` 可能会直接复用已有版本。
 - 想要“每次都按 latest 标签解析版本”，请显式写 `dominds@latest`；它仍可能复用 cache 中已下载的同版本（属于正常行为）。
 
+### 安装 Dominds app
+
+安装 `dominds` CLI 本体，和把一个 **Dominds app** 装进当前 rtws，是两件不同的事：
+
+- `npm install -g dominds` / `pnpm add -g dominds`：安装 Dominds CLI。
+- `npx -y dominds@latest`：无需全局安装，直接运行 Dominds CLI。
+- `dominds install <app>`：把一个 Dominds app 纳入当前 rtws 的能力图。
+
+示例：
+
+```bash
+# 安装已发布 app 到当前 rtws
+dominds install @longrun-ai/web-dev --enable
+
+# 安装本地开发中的 app 到当前 rtws
+dominds install ./dominds-apps/web-dev --local --enable
+```
+
+几个关键区别：
+
+- `npm install` / `pnpm add` 只负责下载包；它们**不会**自动把 app 登记到当前 rtws 的 `.minds/app.yaml`。
+- `npx` 在这里主要是 Kernel/CLI 的包执行后端。安装 app 时，Kernel 可能会在底层执行 `npx -y <pkg> --dominds-app` 来做握手。
+- `--dominds-app` 是 Kernel/CLI 与 app 包之间的底层握手参数，不是普通用户的常规操作入口。
+
 ### 开发与贡献（树内工作流 / in-tree 工作流）
 
 若你计划为 Dominds 开源项目贡献代码，建议使用树内包装器（in-tree wrapper）运行时工作区（rtws）：

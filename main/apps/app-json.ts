@@ -1,5 +1,11 @@
 import type { I18nText } from '../shared/types/i18n';
-import type { JsonSchema, ToolArguments, ToolCallOutput } from '../tool';
+import type {
+  JsonSchema,
+  JsonValue,
+  ReminderUpdateResult,
+  ToolArguments,
+  ToolCallOutput,
+} from '../tool';
 
 export type DomindsAppJsonSchemaVersion = 1;
 
@@ -21,10 +27,17 @@ export type DomindsAppDialogRunControlJson = Readonly<{
   descriptionI18n?: I18nText;
 }>;
 
+export type DomindsAppReminderOwnerJson = Readonly<{
+  ref: string;
+  managedByTool?: string;
+  updateExample?: string;
+}>;
+
 export type DomindsAppContributesJson = Readonly<{
   teammatesYamlRelPath?: string;
   toolsets?: ReadonlyArray<DomindsAppToolsetJson>;
   dialogRunControls?: ReadonlyArray<DomindsAppDialogRunControlJson>;
+  reminderOwners?: ReadonlyArray<DomindsAppReminderOwnerJson>;
 }>;
 
 export type DomindsAppHostEntryJson = Readonly<{
@@ -41,7 +54,7 @@ export type DomindsAppFrontendJson = Readonly<{
 }>;
 
 /**
- * The JSON payload printed by `npx <pkg> --json` for dominds app installation and runtime.
+ * The JSON payload printed by `npx <pkg> --dominds-app` for Dominds app installation and runtime.
  * This JSON is treated as the stable handshake between dominds kernel and a Dominds App package.
  */
 export type DomindsAppInstallJsonV1 = Readonly<{
@@ -156,10 +169,31 @@ function parseDialogRunControlJson(
   };
 }
 
+function parseReminderOwnerJson(
+  v: unknown,
+  at: string,
+): { ok: true; owner: DomindsAppReminderOwnerJson } | { ok: false; errorText: string } {
+  if (!isRecord(v)) return { ok: false, errorText: `Invalid ${at}: expected object` };
+  const ref = asString(v['ref']);
+  if (!ref || ref.trim() === '') return { ok: false, errorText: `Invalid ${at}.ref: required` };
+  const managedByTool = asString(v['managedByTool']) ?? undefined;
+  const updateExample = asString(v['updateExample']) ?? undefined;
+  return {
+    ok: true,
+    owner: {
+      ref,
+      managedByTool,
+      updateExample,
+    },
+  };
+}
+
 export function parseDomindsAppInstallJson(
   v: unknown,
 ): { ok: true; json: DomindsAppInstallJsonV1 } | { ok: false; errorText: string } {
-  if (!isRecord(v)) return { ok: false, errorText: 'Invalid app --json output: expected object' };
+  if (!isRecord(v)) {
+    return { ok: false, errorText: 'Invalid app --dominds-app output: expected object' };
+  }
   const schemaVersion = v['schemaVersion'];
   if (schemaVersion !== 1) {
     return { ok: false, errorText: `Unsupported app json schemaVersion: ${String(schemaVersion)}` };
@@ -260,7 +294,26 @@ export function parseDomindsAppInstallJson(
         dialogRunControls.push(parsed.control);
       }
     }
-    contributes = { teammatesYamlRelPath, toolsets, dialogRunControls };
+    const reminderOwnersRaw = contributesRaw['reminderOwners'];
+    let reminderOwners: DomindsAppReminderOwnerJson[] | undefined;
+    if (reminderOwnersRaw !== undefined) {
+      if (!Array.isArray(reminderOwnersRaw)) {
+        return {
+          ok: false,
+          errorText: 'Invalid app json: contributes.reminderOwners must be an array',
+        };
+      }
+      reminderOwners = [];
+      for (let i = 0; i < reminderOwnersRaw.length; i += 1) {
+        const parsed = parseReminderOwnerJson(
+          reminderOwnersRaw[i],
+          `contributes.reminderOwners[${i}]`,
+        );
+        if (!parsed.ok) return parsed;
+        reminderOwners.push(parsed.owner);
+      }
+    }
+    contributes = { teammatesYamlRelPath, toolsets, dialogRunControls, reminderOwners };
   }
 
   return {
@@ -279,10 +332,86 @@ export function parseDomindsAppInstallJson(
 
 export type DomindsAppHostToolContext = Readonly<{
   dialogId: string;
+  rootDialogId: string;
+  agentId: string;
+  sessionSlug?: string;
   callerId: string;
+}>;
+
+export type DomindsAppDialogTargetRef = Readonly<
+  | {
+      dialogId: string;
+    }
+  | {
+      rootDialogId?: string;
+      agentId: string;
+      sessionSlug?: string;
+    }
+>;
+
+export type DomindsAppDialogInfo = Readonly<{
+  dialogId: string;
+  rootDialogId: string;
+  agentId: string;
+  sessionSlug?: string;
+}>;
+
+export type DomindsAppReminderState = Readonly<{
+  content: string;
+  meta?: JsonValue;
+  echoback?: boolean;
+}>;
+
+export type DomindsAppReminderApplyRequest = Readonly<
+  | {
+      kind: 'upsert';
+      ownerRef: string;
+      content: string;
+      meta?: JsonValue;
+      position?: number;
+      echoback?: boolean;
+    }
+  | {
+      kind: 'delete';
+      ownerRef: string;
+      meta?: JsonValue;
+    }
+>;
+
+export type DomindsAppReminderApplyResult = Readonly<
+  | {
+      treatment: 'noop';
+    }
+  | {
+      treatment: 'add';
+      reminder: DomindsAppReminderState;
+      position?: number;
+    }
+  | {
+      treatment: 'update';
+      ownedIndex: number;
+      reminder: DomindsAppReminderState;
+    }
+  | {
+      treatment: 'delete';
+      ownedIndex: number;
+    }
+>;
+
+export type DomindsAppDialogReminderRequestBatch = Readonly<{
+  target: DomindsAppDialogTargetRef;
+  reminderRequests: ReadonlyArray<DomindsAppReminderApplyRequest>;
+}>;
+
+export type DomindsAppHostToolResult = Readonly<{
+  output: ToolCallOutput;
+  reminderRequests?: ReadonlyArray<DomindsAppReminderApplyRequest>;
+  dialogReminderRequests?: ReadonlyArray<DomindsAppDialogReminderRequestBatch>;
 }>;
 
 export type DomindsAppHostToolHandler = (
   args: ToolArguments,
   ctx: DomindsAppHostToolContext,
-) => Promise<ToolCallOutput>;
+) => Promise<ToolCallOutput | DomindsAppHostToolResult>;
+
+export type DomindsAppHostReminderUpdateResult = ReminderUpdateResult;

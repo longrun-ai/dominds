@@ -67,6 +67,7 @@
     "apps-resolution-assignedPort-noop": "tsx apps-resolution-assignedPort-noop.ts",
     "apps-resolution-assignedPort-reassign-on-conflict": "tsx apps-resolution-assignedPort-reassign-on-conflict.ts",
     "apps-app-lock-no-jitter-on-enable-disable": "tsx apps-app-lock-no-jitter-on-enable-disable.ts",
+    "apps-install-configure-use-flow": "tsx apps-install-configure-use-flow.ts",
     "apps-resolution-default-strategy-local": "tsx apps-resolution-default-strategy-local.ts",
     "apps-resolution-effective-enabled-writeback": "tsx apps-resolution-effective-enabled-writeback.ts",
     "apps-resolution-issues-to-problems": "tsx apps-resolution-issues-to-problems.ts",

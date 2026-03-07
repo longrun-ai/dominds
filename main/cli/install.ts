@@ -23,6 +23,11 @@ import {
   upsertManifestDependency,
   writeDomindsAppManifestIfChanged,
 } from '../apps/manifest';
+import {
+  loadAppsResolutionFile,
+  upsertResolvedApp,
+  writeAppsResolutionFileIfChanged,
+} from '../apps/resolution-file';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
 
@@ -40,7 +45,7 @@ function printHelp(): void {
 
 Options:
   --local              Treat <spec|path> as a local package directory (dev package)
-  --id <appId>         Require app id (must match app --json appId)
+  --id <appId>         Require app id (must match app --dominds-app appId)
   --enable             Remove the app from disabledApps after install
   --force              Reserved for future use; currently ignored
 
@@ -180,6 +185,26 @@ async function main(): Promise<void> {
     },
   });
   await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
+
+  if (shouldUseLocal) {
+    const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs });
+    if (loadedResolution.kind === 'error') {
+      console.error(`Error: failed to read .apps/resolution.yaml: ${loadedResolution.errorText}`);
+      process.exit(1);
+      return;
+    }
+    const nextResolution = upsertResolvedApp({
+      existing: loadedResolution.file,
+      next: {
+        id: installJson.appId,
+        enabled: true,
+        source: { kind: 'local', pathAbs: localAbs },
+        assignedPort: null,
+        installJson,
+      },
+    });
+    await writeAppsResolutionFileIfChanged({ rtwsRootAbs, file: nextResolution });
+  }
 
   await refreshAppsDerivedState({ rtwsRootAbs });
 

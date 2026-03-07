@@ -4,13 +4,29 @@ import fsSync from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
 
+import type {
+  DomindsAppDialogReminderRequestBatch,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppHostToolResult,
+  DomindsAppInstallJsonV1,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+} from '../apps/app-json';
+import type { ChatMessage } from '../llm/client';
 import { createLogger } from '../log';
-import type { ToolArguments, ToolCallOutput } from '../tool';
-import type { DomindsAppRunControlContext, DomindsAppRunControlResult } from './app-host-contract';
-
-import type { DomindsAppInstallJsonV1 } from '../apps/app-json';
+import type { ToolArguments } from '../tool';
+import type {
+  DomindsAppReminderOwnerApplyContext,
+  DomindsAppReminderOwnerRenderContext,
+  DomindsAppReminderOwnerUpdateContext,
+  DomindsAppRunControlContext,
+  DomindsAppRunControlResult,
+} from './app-host-contract';
 import type {
   AppsHostKernelInitMessage,
+  AppsHostKernelReminderApplyMessage,
+  AppsHostKernelReminderRenderMessage,
+  AppsHostKernelReminderUpdateMessage,
   AppsHostKernelRunControlApplyMessage,
   AppsHostMessageFromKernel,
   AppsHostMessageToKernel,
@@ -50,6 +66,21 @@ function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
     if (!callId) throw new Error('Invalid tool_result message: callId required');
     return v as unknown as AppsHostMessageToKernel;
   }
+  if (type === 'reminder_apply_result') {
+    const callId = asString(v['callId']);
+    if (!callId) throw new Error('Invalid reminder_apply_result message: callId required');
+    return v as unknown as AppsHostMessageToKernel;
+  }
+  if (type === 'reminder_update_result') {
+    const callId = asString(v['callId']);
+    if (!callId) throw new Error('Invalid reminder_update_result message: callId required');
+    return v as unknown as AppsHostMessageToKernel;
+  }
+  if (type === 'reminder_render_result') {
+    const callId = asString(v['callId']);
+    if (!callId) throw new Error('Invalid reminder_render_result message: callId required');
+    return v as unknown as AppsHostMessageToKernel;
+  }
   if (type === 'run_control_result') {
     const callId = asString(v['callId']);
     if (!callId) throw new Error('Invalid run_control_result message: callId required');
@@ -68,25 +99,65 @@ export type AppsHostClient = Readonly<{
   callTool: (
     toolName: string,
     args: ToolArguments,
-    ctx: Readonly<{ dialogId: string; callerId: string }>,
-  ) => Promise<ToolCallOutput>;
+    ctx: Readonly<{
+      dialogId: string;
+      rootDialogId: string;
+      agentId: string;
+      sessionSlug?: string;
+      callerId: string;
+    }>,
+  ) => Promise<DomindsAppHostToolResult>;
   applyRunControl: (
     controlId: string,
     payload: DomindsAppRunControlContext,
   ) => Promise<DomindsAppRunControlResult>;
+  applyReminder: (
+    appId: string,
+    ownerRef: string,
+    request: DomindsAppReminderApplyRequest,
+    ctx: DomindsAppReminderOwnerApplyContext,
+  ) => Promise<DomindsAppReminderApplyResult>;
+  updateReminder: (
+    appId: string,
+    ownerRef: string,
+    ctx: DomindsAppReminderOwnerUpdateContext,
+  ) => Promise<DomindsAppHostReminderUpdateResult>;
+  renderReminder: (
+    appId: string,
+    ownerRef: string,
+    ctx: DomindsAppReminderOwnerRenderContext,
+  ) => Promise<ChatMessage>;
   shutdown: () => Promise<void>;
 }>;
 
 export type AppsHostReadyMessage = Extract<AppsHostMessageToKernel, { type: 'ready' }>;
 
 type PendingCall = Readonly<{
-  resolve: (out: ToolCallOutput) => void;
+  resolve: (out: DomindsAppHostToolResult) => void;
   reject: (err: Error) => void;
   timeout: NodeJS.Timeout;
 }>;
 
 type PendingRunControlCall = Readonly<{
   resolve: (out: DomindsAppRunControlResult) => void;
+  reject: (err: Error) => void;
+  timeout: NodeJS.Timeout;
+}>;
+
+type PendingReminderApplyCall = Readonly<{
+  resolve: (out: DomindsAppReminderApplyResult) => void;
+  reject: (err: Error) => void;
+  timeout: NodeJS.Timeout;
+}>;
+
+type PendingReminderUpdateCall = Readonly<{
+  resolve: (out: DomindsAppHostReminderUpdateResult) => void;
+  reject: (err: Error) => void;
+  timeout: NodeJS.Timeout;
+}>;
+
+type PendingReminderRenderCall = Readonly<{
+  resolve: (out: ChatMessage) => void;
   reject: (err: Error) => void;
   timeout: NodeJS.Timeout;
 }>;
@@ -129,6 +200,9 @@ export async function startAppsHost(params: {
 
   const pendingTools = new Map<string, PendingCall>();
   const pendingRunControls = new Map<string, PendingRunControlCall>();
+  const pendingReminderApplies = new Map<string, PendingReminderApplyCall>();
+  const pendingReminderUpdates = new Map<string, PendingReminderUpdateCall>();
+  const pendingReminderRenders = new Map<string, PendingReminderRenderCall>();
   let ready = false;
   let readyMsg: AppsHostReadyMessage | null = null;
 
@@ -153,6 +227,21 @@ export async function startAppsHost(params: {
       p.reject(err);
     }
     pendingRunControls.clear();
+    for (const p of pendingReminderApplies.values()) {
+      clearTimeout(p.timeout);
+      p.reject(err);
+    }
+    pendingReminderApplies.clear();
+    for (const p of pendingReminderUpdates.values()) {
+      clearTimeout(p.timeout);
+      p.reject(err);
+    }
+    pendingReminderUpdates.clear();
+    for (const p of pendingReminderRenders.values()) {
+      clearTimeout(p.timeout);
+      p.reject(err);
+    }
+    pendingReminderRenders.clear();
   };
 
   child.on('exit', (code, signal) => {
@@ -187,8 +276,15 @@ export async function startAppsHost(params: {
         }
         pendingTools.delete(msg.callId);
         clearTimeout(p.timeout);
-        if (msg.ok) p.resolve(msg.output);
-        else p.reject(new Error(msg.errorText));
+        if (msg.ok) {
+          p.resolve({
+            output: msg.output,
+            reminderRequests: msg.reminderRequests,
+            dialogReminderRequests: msg.dialogReminderRequests as
+              | ReadonlyArray<DomindsAppDialogReminderRequestBatch>
+              | undefined,
+          });
+        } else p.reject(new Error(msg.errorText));
         return;
       }
       if (msg.type === 'run_control_result') {
@@ -203,6 +299,48 @@ export async function startAppsHost(params: {
           return;
         }
         p.resolve(msg.result);
+        return;
+      }
+      if (msg.type === 'reminder_apply_result') {
+        const p = pendingReminderApplies.get(msg.callId);
+        if (!p) {
+          throw new Error(`Unexpected reminder_apply_result for unknown callId: ${msg.callId}`);
+        }
+        pendingReminderApplies.delete(msg.callId);
+        clearTimeout(p.timeout);
+        if (!msg.ok) {
+          p.reject(new Error(msg.errorText));
+          return;
+        }
+        p.resolve(msg.result);
+        return;
+      }
+      if (msg.type === 'reminder_update_result') {
+        const p = pendingReminderUpdates.get(msg.callId);
+        if (!p) {
+          throw new Error(`Unexpected reminder_update_result for unknown callId: ${msg.callId}`);
+        }
+        pendingReminderUpdates.delete(msg.callId);
+        clearTimeout(p.timeout);
+        if (!msg.ok) {
+          p.reject(new Error(msg.errorText));
+          return;
+        }
+        p.resolve(msg.result);
+        return;
+      }
+      if (msg.type === 'reminder_render_result') {
+        const p = pendingReminderRenders.get(msg.callId);
+        if (!p) {
+          throw new Error(`Unexpected reminder_render_result for unknown callId: ${msg.callId}`);
+        }
+        pendingReminderRenders.delete(msg.callId);
+        clearTimeout(p.timeout);
+        if (!msg.ok) {
+          p.reject(new Error(msg.errorText));
+          return;
+        }
+        p.resolve(msg.message);
       }
     } catch (err: unknown) {
       log.error(
@@ -231,7 +369,7 @@ export async function startAppsHost(params: {
     }
     const callId = randomUUID();
     const msg: AppsHostMessageFromKernel = { type: 'tool_call', callId, toolName, args, ctx };
-    return await new Promise<ToolCallOutput>((resolve, reject) => {
+    return await new Promise<DomindsAppHostToolResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingTools.delete(callId);
         reject(new Error(`apps-host tool call timed out: tool=${toolName} callId=${callId}`));
@@ -264,6 +402,85 @@ export async function startAppsHost(params: {
     });
   };
 
+  const applyReminder: AppsHostClient['applyReminder'] = async (appId, ownerRef, request, ctx) => {
+    if (!ready) {
+      throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
+    }
+    const callId = randomUUID();
+    const msg: AppsHostKernelReminderApplyMessage = {
+      type: 'reminder_apply',
+      callId,
+      appId,
+      ownerRef,
+      request,
+      ctx,
+    };
+    return await new Promise<DomindsAppReminderApplyResult>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingReminderApplies.delete(callId);
+        reject(
+          new Error(
+            `apps-host reminder apply timed out: owner=${appId}/${ownerRef} callId=${callId}`,
+          ),
+        );
+      }, 60_000);
+      pendingReminderApplies.set(callId, { resolve, reject, timeout });
+      child.send(msg);
+    });
+  };
+
+  const updateReminder: AppsHostClient['updateReminder'] = async (appId, ownerRef, ctx) => {
+    if (!ready) {
+      throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
+    }
+    const callId = randomUUID();
+    const msg: AppsHostKernelReminderUpdateMessage = {
+      type: 'reminder_update',
+      callId,
+      appId,
+      ownerRef,
+      ctx,
+    };
+    return await new Promise<DomindsAppHostReminderUpdateResult>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingReminderUpdates.delete(callId);
+        reject(
+          new Error(
+            `apps-host reminder update timed out: owner=${appId}/${ownerRef} callId=${callId}`,
+          ),
+        );
+      }, 60_000);
+      pendingReminderUpdates.set(callId, { resolve, reject, timeout });
+      child.send(msg);
+    });
+  };
+
+  const renderReminder: AppsHostClient['renderReminder'] = async (appId, ownerRef, ctx) => {
+    if (!ready) {
+      throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
+    }
+    const callId = randomUUID();
+    const msg: AppsHostKernelReminderRenderMessage = {
+      type: 'reminder_render',
+      callId,
+      appId,
+      ownerRef,
+      ctx,
+    };
+    return await new Promise<ChatMessage>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingReminderRenders.delete(callId);
+        reject(
+          new Error(
+            `apps-host reminder render timed out: owner=${appId}/${ownerRef} callId=${callId}`,
+          ),
+        );
+      }, 60_000);
+      pendingReminderRenders.set(callId, { resolve, reject, timeout });
+      child.send(msg);
+    });
+  };
+
   const shutdown: AppsHostClient['shutdown'] = async () => {
     try {
       child.send({ type: 'shutdown' } satisfies AppsHostMessageFromKernel);
@@ -279,5 +496,8 @@ export async function startAppsHost(params: {
   if (!readyMsg) {
     throw new Error('apps-host: internal error (readyMsg missing after readyPromise resolved)');
   }
-  return { client: { callTool, applyRunControl, shutdown }, ready: readyResult };
+  return {
+    client: { callTool, applyRunControl, applyReminder, updateReminder, renderReminder, shutdown },
+    ready: readyResult,
+  };
 }

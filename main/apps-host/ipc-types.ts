@@ -1,4 +1,12 @@
-import type { DomindsAppInstallJsonV1 } from '../apps/app-json';
+import type {
+  DomindsAppDialogReminderRequestBatch,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppInstallJsonV1,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+  DomindsAppReminderState,
+} from '../apps/app-json';
+import type { ChatMessage } from '../llm/client';
 import type { LanguageCode } from '../shared/types/language';
 import type { ToolArguments, ToolCallOutput } from '../tool';
 
@@ -22,6 +30,9 @@ export type AppsHostKernelToolCallMessage = Readonly<{
   args: ToolArguments;
   ctx: Readonly<{
     dialogId: string;
+    rootDialogId: string;
+    agentId: string;
+    sessionSlug?: string;
     callerId: string;
   }>;
 }>;
@@ -52,6 +63,42 @@ export type AppsHostKernelRunControlApplyMessage = Readonly<{
   }>;
 }>;
 
+export type AppsHostKernelReminderApplyMessage = Readonly<{
+  type: 'reminder_apply';
+  callId: string;
+  appId: string;
+  ownerRef: string;
+  request: DomindsAppReminderApplyRequest;
+  ctx: Readonly<{
+    dialogId: string;
+    ownedReminders: ReadonlyArray<DomindsAppReminderState>;
+  }>;
+}>;
+
+export type AppsHostKernelReminderUpdateMessage = Readonly<{
+  type: 'reminder_update';
+  callId: string;
+  appId: string;
+  ownerRef: string;
+  ctx: Readonly<{
+    dialogId: string;
+    reminder: DomindsAppReminderState;
+  }>;
+}>;
+
+export type AppsHostKernelReminderRenderMessage = Readonly<{
+  type: 'reminder_render';
+  callId: string;
+  appId: string;
+  ownerRef: string;
+  ctx: Readonly<{
+    dialogId: string;
+    reminder: DomindsAppReminderState;
+    reminderNo: number;
+    workLanguage: LanguageCode;
+  }>;
+}>;
+
 export type AppsHostKernelShutdownMessage = Readonly<{
   type: 'shutdown';
 }>;
@@ -60,6 +107,9 @@ export type AppsHostMessageFromKernel =
   | AppsHostKernelInitMessage
   | AppsHostKernelToolCallMessage
   | AppsHostKernelRunControlApplyMessage
+  | AppsHostKernelReminderApplyMessage
+  | AppsHostKernelReminderUpdateMessage
+  | AppsHostKernelReminderRenderMessage
   | AppsHostKernelShutdownMessage;
 
 export type AppsHostReadyMessage = Readonly<{
@@ -84,7 +134,42 @@ export type AppsHostToolResultMessage = Readonly<
   {
     type: 'tool_result';
     callId: string;
-  } & (Readonly<{ ok: true; output: ToolCallOutput }> | Readonly<{ ok: false; errorText: string }>)
+  } & (
+    | Readonly<{
+        ok: true;
+        output: ToolCallOutput;
+        reminderRequests?: ReadonlyArray<DomindsAppReminderApplyRequest>;
+        dialogReminderRequests?: ReadonlyArray<DomindsAppDialogReminderRequestBatch>;
+      }>
+    | Readonly<{ ok: false; errorText: string }>
+  )
+>;
+
+export type AppsHostReminderApplyResultMessage = Readonly<
+  {
+    type: 'reminder_apply_result';
+    callId: string;
+  } & (
+    | Readonly<{ ok: true; result: DomindsAppReminderApplyResult }>
+    | Readonly<{ ok: false; errorText: string }>
+  )
+>;
+
+export type AppsHostReminderUpdateResultMessage = Readonly<
+  {
+    type: 'reminder_update_result';
+    callId: string;
+  } & (
+    | Readonly<{ ok: true; result: DomindsAppHostReminderUpdateResult }>
+    | Readonly<{ ok: false; errorText: string }>
+  )
+>;
+
+export type AppsHostReminderRenderResultMessage = Readonly<
+  {
+    type: 'reminder_render_result';
+    callId: string;
+  } & (Readonly<{ ok: true; message: ChatMessage }> | Readonly<{ ok: false; errorText: string }>)
 >;
 
 export type AppsHostRunControlResultMessage = Readonly<
@@ -108,6 +193,9 @@ export type AppsHostMessageToKernel =
   | AppsHostReadyMessage
   | AppsHostLogMessage
   | AppsHostToolResultMessage
+  | AppsHostReminderApplyResultMessage
+  | AppsHostReminderUpdateResultMessage
+  | AppsHostReminderRenderResultMessage
   | AppsHostRunControlResultMessage;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -115,11 +203,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function asString(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
-}
-
-function asNullableString(v: unknown): string | null {
-  if (v === null) return null;
   return typeof v === 'string' ? v : null;
 }
 
@@ -131,6 +214,83 @@ function asNullableNumber(v: unknown): number | null {
 
 function asLanguageCode(v: unknown): LanguageCode | null {
   return v === 'zh' || v === 'en' ? v : null;
+}
+
+function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  );
+}
+
+function isJsonValue(value: unknown): boolean {
+  if (isJsonPrimitive(value)) return true;
+  if (Array.isArray(value)) return value.every((item) => isJsonValue(item));
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((item) => isJsonValue(item));
+}
+
+function parseReminderState(v: unknown, at: string): DomindsAppReminderState {
+  if (!isRecord(v)) throw new Error(`Invalid ${at}: expected object`);
+  const content = asString(v['content']);
+  if (content === null) throw new Error(`Invalid ${at}.content: required`);
+  const metaRaw = v['meta'];
+  if (metaRaw !== undefined && !isJsonValue(metaRaw)) {
+    throw new Error(`Invalid ${at}.meta: must be JSON-serializable`);
+  }
+  const echobackRaw = v['echoback'];
+  const echoback =
+    echobackRaw === undefined ? undefined : typeof echobackRaw === 'boolean' ? echobackRaw : null;
+  if (echoback === null) throw new Error(`Invalid ${at}.echoback: must be boolean`);
+  return { content, meta: metaRaw as DomindsAppReminderState['meta'], echoback };
+}
+
+function parseReminderApplyRequest(v: unknown, at: string): DomindsAppReminderApplyRequest {
+  if (!isRecord(v)) throw new Error(`Invalid ${at}: expected object`);
+  const kind = v['kind'];
+  const ownerRef = asString(v['ownerRef']);
+  if (!ownerRef) throw new Error(`Invalid ${at}.ownerRef: required`);
+
+  if (kind === 'upsert') {
+    const content = asString(v['content']);
+    if (content === null) throw new Error(`Invalid ${at}.content: required`);
+    const metaRaw = v['meta'];
+    if (metaRaw !== undefined && !isJsonValue(metaRaw)) {
+      throw new Error(`Invalid ${at}.meta: must be JSON-serializable`);
+    }
+    const positionRaw = v['position'];
+    const position =
+      positionRaw === undefined
+        ? undefined
+        : typeof positionRaw === 'number' && Number.isFinite(positionRaw)
+          ? Math.floor(positionRaw)
+          : null;
+    if (position === null) throw new Error(`Invalid ${at}.position: must be finite number`);
+    const echobackRaw = v['echoback'];
+    const echoback =
+      echobackRaw === undefined ? undefined : typeof echobackRaw === 'boolean' ? echobackRaw : null;
+    if (echoback === null) throw new Error(`Invalid ${at}.echoback: must be boolean`);
+    return {
+      kind: 'upsert',
+      ownerRef,
+      content,
+      meta: metaRaw as DomindsAppReminderApplyRequest['meta'],
+      position,
+      echoback,
+    };
+  }
+
+  if (kind === 'delete') {
+    const metaRaw = v['meta'];
+    if (metaRaw !== undefined && !isJsonValue(metaRaw)) {
+      throw new Error(`Invalid ${at}.meta: must be JSON-serializable`);
+    }
+    return { kind: 'delete', ownerRef, meta: metaRaw as DomindsAppReminderApplyRequest['meta'] };
+  }
+
+  throw new Error(`Invalid ${at}.kind: unsupported value ${String(kind)}`);
 }
 
 export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromKernel {
@@ -150,8 +310,9 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     const port =
       typeof portRaw === 'number' && Number.isFinite(portRaw) ? Math.floor(portRaw) : null;
     if (!host) throw new Error('Invalid init message: kernel.host required');
-    if (port === null || port < 0)
+    if (port === null || port < 0) {
       throw new Error('Invalid init message: kernel.port must be non-negative number');
+    }
     if (!Array.isArray(apps)) throw new Error('Invalid init message: apps must be array');
     const parsedApps: AppsHostKernelInitMessage['apps'] = apps.map((a, idx) => {
       if (!isRecord(a)) throw new Error(`Invalid init message: apps[${idx}] must be object`);
@@ -160,7 +321,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       const runtimePort =
         runtimePortRaw === null
           ? null
-          : runtimePortRaw !== null && Number.isFinite(runtimePortRaw)
+          : Number.isFinite(runtimePortRaw)
             ? Math.floor(runtimePortRaw)
             : null;
       if (!appId) throw new Error(`Invalid init message: apps[${idx}].appId required`);
@@ -170,9 +331,10 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
         );
       }
       const installJson = a['installJson'];
-      if (!isRecord(installJson))
+      if (!isRecord(installJson)) {
         throw new Error(`Invalid init message: apps[${idx}].installJson must be object`);
-      return { appId, runtimePort, installJson: installJson as unknown as DomindsAppInstallJsonV1 };
+      }
+      return { appId, runtimePort, installJson: installJson as DomindsAppInstallJsonV1 };
     });
     return { type: 'init', rtwsRootAbs, kernel: { host, port }, apps: parsedApps };
   }
@@ -187,15 +349,119 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     if (!isRecord(args)) throw new Error('Invalid tool_call message: args must be object');
     if (!isRecord(ctx)) throw new Error('Invalid tool_call message: ctx must be object');
     const dialogId = asString(ctx['dialogId']);
+    const rootDialogId = asString(ctx['rootDialogId']);
+    const agentId = asString(ctx['agentId']);
+    const sessionSlugRaw = ctx['sessionSlug'];
+    const sessionSlug =
+      sessionSlugRaw === undefined
+        ? undefined
+        : typeof sessionSlugRaw === 'string'
+          ? sessionSlugRaw
+          : null;
     const callerId = asString(ctx['callerId']);
     if (!dialogId) throw new Error('Invalid tool_call message: ctx.dialogId required');
+    if (!rootDialogId) throw new Error('Invalid tool_call message: ctx.rootDialogId required');
+    if (!agentId) throw new Error('Invalid tool_call message: ctx.agentId required');
+    if (sessionSlugRaw !== undefined && !sessionSlug) {
+      throw new Error('Invalid tool_call message: ctx.sessionSlug must be string when present');
+    }
     if (!callerId) throw new Error('Invalid tool_call message: ctx.callerId required');
+    const normalizedSessionSlug = sessionSlug ?? undefined;
     return {
       type: 'tool_call',
       callId,
       toolName,
       args: args as ToolArguments,
-      ctx: { dialogId, callerId },
+      ctx: { dialogId, rootDialogId, agentId, sessionSlug: normalizedSessionSlug, callerId },
+    };
+  }
+
+  if (type === 'reminder_apply') {
+    const callId = asString(v['callId']);
+    const appId = asString(v['appId']);
+    const ownerRef = asString(v['ownerRef']);
+    const request = v['request'];
+    const ctx = v['ctx'];
+    if (!callId) throw new Error('Invalid reminder_apply message: callId required');
+    if (!appId) throw new Error('Invalid reminder_apply message: appId required');
+    if (!ownerRef) throw new Error('Invalid reminder_apply message: ownerRef required');
+    if (!isRecord(ctx)) throw new Error('Invalid reminder_apply message: ctx must be object');
+    const dialogId = asString(ctx['dialogId']);
+    const ownedRemindersRaw = ctx['ownedReminders'];
+    if (!dialogId) throw new Error('Invalid reminder_apply message: ctx.dialogId required');
+    if (!Array.isArray(ownedRemindersRaw)) {
+      throw new Error('Invalid reminder_apply message: ctx.ownedReminders must be array');
+    }
+    return {
+      type: 'reminder_apply',
+      callId,
+      appId,
+      ownerRef,
+      request: parseReminderApplyRequest(request, 'reminder_apply.request'),
+      ctx: {
+        dialogId,
+        ownedReminders: ownedRemindersRaw.map((item, index) =>
+          parseReminderState(item, `reminder_apply.ctx.ownedReminders[${index}]`),
+        ),
+      },
+    };
+  }
+
+  if (type === 'reminder_update') {
+    const callId = asString(v['callId']);
+    const appId = asString(v['appId']);
+    const ownerRef = asString(v['ownerRef']);
+    const ctx = v['ctx'];
+    if (!callId) throw new Error('Invalid reminder_update message: callId required');
+    if (!appId) throw new Error('Invalid reminder_update message: appId required');
+    if (!ownerRef) throw new Error('Invalid reminder_update message: ownerRef required');
+    if (!isRecord(ctx)) throw new Error('Invalid reminder_update message: ctx must be object');
+    const dialogId = asString(ctx['dialogId']);
+    if (!dialogId) throw new Error('Invalid reminder_update message: ctx.dialogId required');
+    return {
+      type: 'reminder_update',
+      callId,
+      appId,
+      ownerRef,
+      ctx: {
+        dialogId,
+        reminder: parseReminderState(ctx['reminder'], 'reminder_update.ctx.reminder'),
+      },
+    };
+  }
+
+  if (type === 'reminder_render') {
+    const callId = asString(v['callId']);
+    const appId = asString(v['appId']);
+    const ownerRef = asString(v['ownerRef']);
+    const ctx = v['ctx'];
+    if (!callId) throw new Error('Invalid reminder_render message: callId required');
+    if (!appId) throw new Error('Invalid reminder_render message: appId required');
+    if (!ownerRef) throw new Error('Invalid reminder_render message: ownerRef required');
+    if (!isRecord(ctx)) throw new Error('Invalid reminder_render message: ctx must be object');
+    const dialogId = asString(ctx['dialogId']);
+    const reminderNoRaw = ctx['reminderNo'];
+    const reminderNo =
+      typeof reminderNoRaw === 'number' && Number.isFinite(reminderNoRaw)
+        ? Math.floor(reminderNoRaw)
+        : null;
+    const workLanguage = asLanguageCode(ctx['workLanguage']);
+    if (!dialogId) throw new Error('Invalid reminder_render message: ctx.dialogId required');
+    if (reminderNo === null || reminderNo <= 0) {
+      throw new Error('Invalid reminder_render message: ctx.reminderNo must be positive integer');
+    }
+    if (!workLanguage) throw new Error('Invalid reminder_render message: ctx.workLanguage invalid');
+    return {
+      type: 'reminder_render',
+      callId,
+      appId,
+      ownerRef,
+      ctx: {
+        dialogId,
+        reminder: parseReminderState(ctx['reminder'], 'reminder_render.ctx.reminder'),
+        reminderNo,
+        workLanguage,
+      },
     };
   }
 
@@ -217,9 +483,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       typeof genIterNoRaw === 'number' && Number.isFinite(genIterNoRaw)
         ? Math.max(0, Math.floor(genIterNoRaw))
         : null;
-    if (genIterNo === null) {
+    if (genIterNo === null)
       throw new Error('Invalid run_control_apply payload: genIterNo required');
-    }
     if (source !== 'drive_dlg_by_user_msg' && source !== 'drive_dialog_by_user_answer') {
       throw new Error('Invalid run_control_apply payload: source invalid');
     }
@@ -234,9 +499,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
 
     const promptParsed = (() => {
       if (prompt === undefined) return undefined;
-      if (!isRecord(prompt)) {
+      if (!isRecord(prompt))
         throw new Error('Invalid run_control_apply payload: prompt must be object');
-      }
       const content = asString(prompt['content']);
       const msgId = asString(prompt['msgId']);
       const grammar = asString(prompt['grammar']);
@@ -254,13 +518,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       if (!userLanguageCode) {
         throw new Error('Invalid run_control_apply payload: prompt.userLanguageCode must be zh|en');
       }
-      return {
-        content,
-        msgId,
-        grammar: 'markdown' as const,
-        userLanguageCode,
-        origin,
-      };
+      return { content, msgId, grammar: 'markdown' as const, userLanguageCode, origin };
     })();
 
     const q4hRaw = payload['q4h'];
@@ -270,18 +528,20 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
         throw new Error('Invalid run_control_apply payload: q4h must be object');
       const questionId = asString(q4hRaw['questionId']);
       const continuationTypeRaw = asString(q4hRaw['continuationType']);
-      if (!questionId) {
+      if (!questionId)
         throw new Error('Invalid run_control_apply payload: q4h.questionId required');
-      }
-      if (
-        continuationTypeRaw !== 'answer' &&
-        continuationTypeRaw !== 'followup' &&
-        continuationTypeRaw !== 'retry' &&
-        continuationTypeRaw !== 'new_message'
-      ) {
+      let continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
+      if (continuationTypeRaw === 'answer') {
+        continuationType = 'answer';
+      } else if (continuationTypeRaw === 'followup') {
+        continuationType = 'followup';
+      } else if (continuationTypeRaw === 'retry') {
+        continuationType = 'retry';
+      } else if (continuationTypeRaw === 'new_message') {
+        continuationType = 'new_message';
+      } else {
         throw new Error('Invalid run_control_apply payload: q4h.continuationType invalid');
       }
-      const continuationType: 'answer' | 'followup' | 'retry' | 'new_message' = continuationTypeRaw;
       return { questionId, continuationType };
     })();
 
@@ -290,10 +550,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       callId,
       controlId,
       payload: {
-        dialog: {
-          selfId: dialogSelfId,
-          rootId: dialogRootId,
-        },
+        dialog: { selfId: dialogSelfId, rootId: dialogRootId },
         genIterNo,
         prompt: promptParsed,
         source,
