@@ -31,12 +31,33 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  resolveProviderToolResultMaxChars,
+  truncateProviderToolOutputText,
+} from './tool-output-limit';
 
 const log = createLogger('llm/openai-compatible');
 
 type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
   reasoning_content?: string;
 };
+
+function limitOpenAiCompatibleToolOutputText(
+  text: string,
+  msg: FuncResultMsg,
+  limitChars: number,
+): string {
+  const limited = truncateProviderToolOutputText(text, limitChars);
+  if (limited.truncated) {
+    log.warn('OPENAI-COMPATIBLE tool output truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalChars: limited.originalChars,
+      limitChars: limited.limitChars,
+    });
+  }
+  return limited.text;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -169,14 +190,25 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
 
 async function funcResultToChatCompletionMessages(
   msg: FuncResultMsg,
+  limitChars: number,
 ): Promise<ChatCompletionMessageParam[]> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
-    return [{ role: 'tool', tool_call_id: msg.id, content: msg.content }];
+    return [
+      {
+        role: 'tool',
+        tool_call_id: msg.id,
+        content: limitOpenAiCompatibleToolOutputText(msg.content, msg, limitChars),
+      },
+    ];
   }
 
   const out: ChatCompletionMessageParam[] = [];
-  out.push({ role: 'tool', tool_call_id: msg.id, content: msg.content });
+  out.push({
+    role: 'tool',
+    tool_call_id: msg.id,
+    content: limitOpenAiCompatibleToolOutputText(msg.content, msg, limitChars),
+  });
 
   const parts: ChatCompletionContentPart[] = [];
   let sawImageUrl = false;
@@ -249,13 +281,18 @@ async function funcResultToChatCompletionMessages(
 
 async function orphanedFuncResultToChatCompletionMessages(
   msg: FuncResultMsg,
+  limitChars: number,
 ): Promise<ChatCompletionMessageParam[]> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
     return [
       {
         role: 'user',
-        content: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+        content: limitOpenAiCompatibleToolOutputText(
+          `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+          msg,
+          limitChars,
+        ),
       },
     ];
   }
@@ -263,7 +300,11 @@ async function orphanedFuncResultToChatCompletionMessages(
   const parts: ChatCompletionContentPart[] = [
     {
       type: 'text',
-      text: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+      text: limitOpenAiCompatibleToolOutputText(
+        `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+        msg,
+        limitChars,
+      ),
     },
   ];
   let sawImageUrl = false;
@@ -320,7 +361,9 @@ async function orphanedFuncResultToChatCompletionMessages(
     return [{ role: 'user', content: text }];
   }
 
-  return [{ role: 'user', content: msg.content }];
+  return [
+    { role: 'user', content: limitOpenAiCompatibleToolOutputText(msg.content, msg, limitChars) },
+  ];
 }
 
 function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
@@ -434,11 +477,12 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
 async function buildChatCompletionMessages(
   systemPrompt: string,
   context: ChatMessage[],
-  options?: { reasoningContentMode?: boolean },
+  options?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
 ): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ChatCompletionMessageParam[] = [];
   const reasoningContentMode = options?.reasoningContentMode === true;
+  const toolResultMaxChars = resolveProviderToolResultMaxChars(options?.providerConfig);
   let pendingReasoningContent: string | undefined;
 
   const takePendingReasoningContent = (): string | undefined => {
@@ -493,10 +537,10 @@ async function buildChatCompletionMessages(
       // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
       if (lastFuncCallId === msg.id) {
         flushPendingReasoningAsAssistantMessage();
-        input.push(...(await funcResultToChatCompletionMessages(msg)));
+        input.push(...(await funcResultToChatCompletionMessages(msg, toolResultMaxChars)));
       } else {
         flushPendingReasoningAsAssistantMessage();
-        input.push(...(await orphanedFuncResultToChatCompletionMessages(msg)));
+        input.push(...(await orphanedFuncResultToChatCompletionMessages(msg, toolResultMaxChars)));
       }
       lastFuncCallId = null;
       continue;
@@ -515,7 +559,7 @@ async function buildChatCompletionMessages(
 export async function buildOpenAiCompatibleRequestMessagesWrapper(
   systemPrompt: string,
   context: ChatMessage[],
-  options?: { reasoningContentMode?: boolean },
+  options?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
 ): Promise<ChatCompletionMessageParam[]> {
   return await buildChatCompletionMessages(systemPrompt, context, options);
 }
@@ -638,6 +682,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
     const messages = await buildChatCompletionMessages(systemPrompt, context, {
       reasoningContentMode,
+      providerConfig,
     });
 
     const openAiParams = agent.model_params?.openai || {};
@@ -876,6 +921,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
     const messages = await buildChatCompletionMessages(systemPrompt, context, {
       reasoningContentMode,
+      providerConfig,
     });
 
     const openAiParams = agent.model_params?.openai || {};

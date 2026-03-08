@@ -24,6 +24,10 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  resolveProviderToolResultMaxChars,
+  truncateProviderToolOutputText,
+} from './tool-output-limit';
 
 const log = createLogger('llm/anthropic');
 const ANTHROPIC_JSON_RESPONSE_TOOL_NAME = 'dominds_json_response';
@@ -44,6 +48,68 @@ type ActiveToolUse = {
   inputJson: string;
   initialInput: unknown;
 };
+
+function limitAnthropicToolOutputText(
+  text: string,
+  msg: FuncResultMsg,
+  limitChars: number,
+): string {
+  const limited = truncateProviderToolOutputText(text, limitChars);
+  if (limited.truncated) {
+    log.warn('ANTH tool output truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalChars: limited.originalChars,
+      limitChars: limited.limitChars,
+    });
+  }
+  return limited.text;
+}
+
+function limitAnthropicToolOutputBlocks(
+  content: Array<TextBlockParam | ImageBlockParam>,
+  msg: FuncResultMsg,
+  limitChars: number,
+): Array<TextBlockParam | ImageBlockParam> {
+  let remainingChars = limitChars;
+  let truncated = false;
+  const limited: Array<TextBlockParam | ImageBlockParam> = [];
+
+  for (const block of content) {
+    if (block.type !== 'text') {
+      limited.push(block);
+      continue;
+    }
+
+    if (remainingChars <= 0) {
+      truncated = true;
+      break;
+    }
+
+    const next = truncateProviderToolOutputText(block.text, remainingChars);
+    limited.push({ type: 'text', text: next.text });
+    remainingChars -= next.text.length;
+    if (next.truncated) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (truncated) {
+    const originalChars = content.reduce(
+      (sum, block) => sum + (block.type === 'text' ? block.text.length : 0),
+      0,
+    );
+    log.warn('ANTH tool output blocks truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalTextChars: originalChars,
+      limitChars,
+    });
+  }
+
+  return limited;
+}
 
 export type AnthropicStreamConsumeResult = {
   usage: LlmUsageStats;
@@ -250,13 +316,14 @@ function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
 
 async function funcResultToAnthropicToolResultBlock(
   chatMsg: FuncResultMsg,
+  limitChars: number,
 ): Promise<Extract<AnthropicContentBlock, { type: 'tool_result' }>> {
   const items = chatMsg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
     return {
       type: 'tool_result',
       tool_use_id: chatMsg.id,
-      content: chatMsg.content,
+      content: limitAnthropicToolOutputText(chatMsg.content, chatMsg, limitChars),
     };
   }
 
@@ -305,28 +372,32 @@ async function funcResultToAnthropicToolResultBlock(
     return {
       type: 'tool_result',
       tool_use_id: chatMsg.id,
-      content: chatMsg.content,
+      content: limitAnthropicToolOutputText(chatMsg.content, chatMsg, limitChars),
     };
   }
 
   return {
     type: 'tool_result',
     tool_use_id: chatMsg.id,
-    content,
+    content: limitAnthropicToolOutputBlocks(content, chatMsg, limitChars),
   };
 }
 
 async function chatMessageToContentBlocksAsync(
   chatMsg: ChatMessage,
+  limitChars: number,
 ): Promise<AnthropicContentBlock[]> {
   if (chatMsg.type !== 'func_result_msg') {
     return chatMessageToContentBlocks(chatMsg);
   }
-  return [await funcResultToAnthropicToolResultBlock(chatMsg)];
+  return [await funcResultToAnthropicToolResultBlock(chatMsg, limitChars)];
 }
 
-async function chatMessageToAnthropicAsync(chatMsg: ChatMessage): Promise<MessageParam> {
-  const contentBlocks = await chatMessageToContentBlocksAsync(chatMsg);
+async function chatMessageToAnthropicAsync(
+  chatMsg: ChatMessage,
+  limitChars: number,
+): Promise<MessageParam> {
+  const contentBlocks = await chatMessageToContentBlocksAsync(chatMsg, limitChars);
   if (contentBlocks.length === 0) {
     throw new Error(`No content blocks generated for message: ${JSON.stringify(chatMsg)}`);
   }
@@ -341,27 +412,38 @@ async function chatMessageToAnthropicAsync(chatMsg: ChatMessage): Promise<Messag
   };
 }
 
-async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<MessageParam[]> {
+async function buildAnthropicRequestMessages(
+  context: ChatMessage[],
+  providerConfig?: ProviderConfig,
+): Promise<MessageParam[]> {
   // We keep the async path for func_result_msg because it may contain image artifacts.
   const normalized = normalizeToolCallPairs(context);
   const messages: MessageParam[] = [];
+  const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
 
   let lastToolUseId: string | null = null;
   for (const msg of normalized) {
     if (msg.type === 'func_call_msg') {
-      messages.push(await chatMessageToAnthropicAsync(msg));
+      messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
       lastToolUseId = msg.id;
       continue;
     }
 
     if (msg.type === 'func_result_msg') {
       if (lastToolUseId === msg.id) {
-        messages.push(await chatMessageToAnthropicAsync(msg));
+        messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
       } else {
         messages.push({
           role: 'user',
           content: [
-            { type: 'text', text: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}` },
+            {
+              type: 'text',
+              text: limitAnthropicToolOutputText(
+                `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+                msg,
+                toolResultMaxChars,
+              ),
+            },
           ],
         });
       }
@@ -369,11 +451,18 @@ async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<Me
       continue;
     }
 
-    messages.push(await chatMessageToAnthropicAsync(msg));
+    messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
     lastToolUseId = null;
   }
 
   return assembleAnthropicTurns(messages);
+}
+
+export async function buildAnthropicRequestMessagesWrapper(
+  context: ChatMessage[],
+  providerConfig?: ProviderConfig,
+): Promise<MessageParam[]> {
+  return await buildAnthropicRequestMessages(context, providerConfig);
 }
 
 /**
@@ -1050,7 +1139,10 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
+    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(
+      context,
+      providerConfig,
+    );
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
@@ -1125,7 +1217,10 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
+    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(
+      context,
+      providerConfig,
+    );
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);

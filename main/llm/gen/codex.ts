@@ -35,9 +35,70 @@ import type {
   LlmWebSearchCall,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  resolveProviderToolResultMaxChars,
+  truncateProviderToolOutputText,
+} from './tool-output-limit';
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
+
+function limitCodexToolOutputText(text: string, msg: FuncResultMsg, limitChars: number): string {
+  const limited = truncateProviderToolOutputText(text, limitChars);
+  if (limited.truncated) {
+    log.warn('CODEX tool output truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalChars: limited.originalChars,
+      limitChars: limited.limitChars,
+    });
+  }
+  return limited.text;
+}
+
+function limitCodexToolOutputItems(
+  output: ChatGptFunctionCallOutputContentItem[],
+  msg: FuncResultMsg,
+  limitChars: number,
+): ChatGptFunctionCallOutputContentItem[] {
+  let remainingChars = limitChars;
+  let truncated = false;
+  const limited: ChatGptFunctionCallOutputContentItem[] = [];
+
+  for (const item of output) {
+    if (item.type !== 'input_text') {
+      limited.push(item);
+      continue;
+    }
+
+    if (remainingChars <= 0) {
+      truncated = true;
+      break;
+    }
+
+    const next = truncateProviderToolOutputText(item.text, remainingChars);
+    limited.push({ type: 'input_text', text: next.text });
+    remainingChars -= next.text.length;
+    if (next.truncated) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (truncated) {
+    const originalChars = output.reduce(
+      (sum, item) => sum + (item.type === 'input_text' ? item.text.length : 0),
+      0,
+    );
+    log.warn('CODEX tool output items truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalTextChars: originalChars,
+    });
+  }
+
+  return limited;
+}
 
 type CodexPromptLoader = (model: string) => Promise<string | null>;
 
@@ -349,9 +410,12 @@ function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
 
 async function buildCodexFunctionCallOutput(
   msg: FuncResultMsg,
+  limitChars: number,
 ): Promise<string | ChatGptFunctionCallOutputContentItem[]> {
   const items = msg.contentItems;
-  if (!Array.isArray(items) || items.length === 0) return msg.content;
+  if (!Array.isArray(items) || items.length === 0) {
+    return limitCodexToolOutputText(msg.content, msg, limitChars);
+  }
 
   const out: ChatGptFunctionCallOutputContentItem[] = [];
   for (const item of items) {
@@ -389,12 +453,18 @@ async function buildCodexFunctionCallOutput(
     out.push({ type: 'input_text', text: `[unknown content item: ${String(_exhaustive)}]` });
   }
 
-  return out.length > 0 ? out : msg.content;
+  return out.length > 0
+    ? limitCodexToolOutputItems(out, msg, limitChars)
+    : limitCodexToolOutputText(msg.content, msg, limitChars);
 }
 
-async function buildCodexInput(context: ChatMessage[]): Promise<ChatGptResponseItem[]> {
+async function buildCodexInput(
+  context: ChatMessage[],
+  providerConfig?: ProviderConfig,
+): Promise<ChatGptResponseItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ChatGptResponseItem[] = [];
+  const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
 
   let lastFuncCallId: string | null = null;
   for (const msg of normalized) {
@@ -414,11 +484,18 @@ async function buildCodexInput(context: ChatMessage[]): Promise<ChatGptResponseI
         input.push({
           type: 'function_call_output',
           call_id: msg.id,
-          output: await buildCodexFunctionCallOutput(msg),
+          output: await buildCodexFunctionCallOutput(msg, toolResultMaxChars),
         });
       } else {
         input.push(
-          messageItem('user', `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`),
+          messageItem(
+            'user',
+            limitCodexToolOutputText(
+              `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+              msg,
+              toolResultMaxChars,
+            ),
+          ),
         );
       }
       lastFuncCallId = null;
@@ -436,6 +513,7 @@ async function buildCodexInput(context: ChatMessage[]): Promise<ChatGptResponseI
 }
 
 async function buildCodexRequest(
+  providerConfig: ProviderConfig,
   agent: Team.Member,
   instructions: string,
   assistantPrelude: string | null,
@@ -451,7 +529,7 @@ async function buildCodexRequest(
     // Codex backend rejects system messages; pass extra instructions as prior assistant context.
     input.push(messageItem('assistant', assistantPrelude));
   }
-  input.push(...(await buildCodexInput(context)));
+  input.push(...(await buildCodexInput(context, providerConfig)));
 
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;
@@ -522,6 +600,7 @@ export class CodexGen implements LlmGenerator {
       codexAuth.loadCodexPrompt,
     );
     const payload = await buildCodexRequest(
+      providerConfig,
       agent,
       resolvedInstructions.instructions,
       resolvedInstructions.assistantPrelude,

@@ -166,6 +166,9 @@ export type ProviderConfig = {
   apiType: ProviderApiType;
   baseUrl: string;
   apiKeyEnvVar: string;
+  // Transport-level cap for a single tool result text payload before provider projection.
+  // Different providers / gateways may enforce different per-item string limits.
+  tool_result_max_chars?: number;
   // LLM retry policy knobs for kernel dialog driving.
   // maxRetries means "extra retries after initial attempt". For example, 5 => up to 6 attempts total.
   llm_retry_max_retries?: number;

@@ -22,6 +22,11 @@ function yamlFlowStringArray(values: ReadonlyArray<string>): string {
   return `[${values.map(yamlQuote).join(', ')}]`;
 }
 
+function yamlFlowNumberArray(values: ReadonlyArray<number>): string {
+  if (values.length === 0) return '[]';
+  return `[${values.join(', ')}]`;
+}
+
 function requireNonEmptyStringArg(args: ToolArguments, key: string): string {
   const value = args[key];
   if (typeof value !== 'string' || value.trim() === '') {
@@ -259,6 +264,232 @@ type RipgrepFilesOptions = RipgrepBaseOptions & Readonly<{ maxFiles: number }>;
 type RipgrepCountOptions = RipgrepBaseOptions & Readonly<{ maxFiles: number }>;
 type RipgrepSnippetsOptions = RipgrepBaseOptions &
   Readonly<{ maxResults: number; contextBefore: number; contextAfter: number }>;
+
+const RIPGREP_SNIPPET_TEXT_CHAR_LIMIT = 400;
+const RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT = 200_000;
+const RIPGREP_SNIPPET_RESULTS_CHAR_BUDGET = RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT - 2048;
+
+type RipgrepSnippetResult = Readonly<{
+  path: string;
+  line: number;
+  col: number;
+  match: string;
+  before?: ReadonlyArray<string>;
+  after?: ReadonlyArray<string>;
+}>;
+
+type RipgrepRenderedSnippetText = Readonly<{
+  text: string;
+  truncated: boolean;
+  originalChars: number;
+}>;
+
+type RipgrepRenderedSnippetResult = Readonly<{
+  yaml: string;
+  textTruncated: boolean;
+  originalTextChars: number;
+}>;
+
+function truncateRipgrepSnippetText(
+  text: string,
+  maxChars = RIPGREP_SNIPPET_TEXT_CHAR_LIMIT,
+): RipgrepRenderedSnippetText {
+  if (text.length <= maxChars) return { text, truncated: false, originalChars: text.length };
+  const suffix = `...[truncated ${text.length - maxChars} chars]`;
+  if (suffix.length >= maxChars) {
+    return { text: suffix.slice(0, maxChars), truncated: true, originalChars: text.length };
+  }
+  const keepChars = maxChars - suffix.length;
+  return {
+    text: `${text.slice(0, keepChars)}${suffix}`,
+    truncated: true,
+    originalChars: text.length,
+  };
+}
+
+function sumNumbers(values: ReadonlyArray<number>): number {
+  let total = 0;
+  for (const value of values) total += value;
+  return total;
+}
+
+function renderRipgrepSnippetResult(result: RipgrepSnippetResult): RipgrepRenderedSnippetResult {
+  const match = truncateRipgrepSnippetText(result.match);
+  const renderedBefore = (result.before ?? []).map((line) => truncateRipgrepSnippetText(line));
+  const renderedAfter = (result.after ?? []).map((line) => truncateRipgrepSnippetText(line));
+  const beforeOriginalChars = renderedBefore.map((line) => line.originalChars);
+  const afterOriginalChars = renderedAfter.map((line) => line.originalChars);
+  const textTruncated =
+    match.truncated ||
+    renderedBefore.some((line) => line.truncated) ||
+    renderedAfter.some((line) => line.truncated);
+  const reasons = textTruncated ? ['per_text_char_limit'] : [];
+  const originalTextChars =
+    match.originalChars + sumNumbers(beforeOriginalChars) + sumNumbers(afterOriginalChars);
+
+  return {
+    yaml: [
+      `  - path: ${yamlQuote(result.path)}`,
+      `    line: ${result.line}`,
+      `    col: ${result.col}`,
+      `    text_truncated: ${textTruncated}`,
+      `    match: ${yamlQuote(match.text)}`,
+      ...(result.before
+        ? [`    before: ${yamlFlowStringArray(renderedBefore.map((line) => line.text))}`]
+        : []),
+      ...(result.after
+        ? [`    after: ${yamlFlowStringArray(renderedAfter.map((line) => line.text))}`]
+        : []),
+      `    truncation:`,
+      `      applied: ${textTruncated}`,
+      `      reasons: ${yamlFlowStringArray(reasons)}`,
+      `      match_original_chars: ${match.originalChars}`,
+      `      before_original_chars: ${yamlFlowNumberArray(beforeOriginalChars)}`,
+      `      after_original_chars: ${yamlFlowNumberArray(afterOriginalChars)}`,
+    ].join('\n'),
+    textTruncated,
+    originalTextChars,
+  };
+}
+
+function fitRipgrepSnippetResults(results: ReadonlyArray<RipgrepSnippetResult>): Readonly<{
+  rendered: readonly string[];
+  textTruncated: boolean;
+  outputCharsTruncated: boolean;
+  textTrimmedResultCount: number;
+  shownOriginalTextChars: number;
+  omittedOriginalTextChars: number;
+  omittedResultsByOutputBudget: number;
+}> {
+  const rendered: string[] = [];
+  let usedChars = 0;
+  let textTruncated = false;
+  let outputCharsTruncated = false;
+  let textTrimmedResultCount = 0;
+  let shownOriginalTextChars = 0;
+  let omittedOriginalTextChars = 0;
+  let omittedResultsByOutputBudget = 0;
+
+  for (let idx = 0; idx < results.length; idx += 1) {
+    const result = results[idx];
+    const next = renderRipgrepSnippetResult(result);
+    textTruncated = textTruncated || next.textTruncated;
+    if (next.textTruncated) textTrimmedResultCount += 1;
+    const nextChars = next.yaml.length + (rendered.length > 0 ? 1 : 0);
+    if (usedChars + nextChars > RIPGREP_SNIPPET_RESULTS_CHAR_BUDGET) {
+      outputCharsTruncated = true;
+      omittedResultsByOutputBudget = results.length - idx;
+      omittedOriginalTextChars += next.originalTextChars;
+      for (let rest = idx + 1; rest < results.length; rest += 1) {
+        omittedOriginalTextChars += renderRipgrepSnippetResult(results[rest]).originalTextChars;
+      }
+      break;
+    }
+    rendered.push(next.yaml);
+    usedChars += nextChars;
+    shownOriginalTextChars += next.originalTextChars;
+  }
+
+  if (rendered.length < results.length && !outputCharsTruncated) {
+    outputCharsTruncated = true;
+    omittedResultsByOutputBudget = results.length - rendered.length;
+  }
+
+  return {
+    rendered,
+    textTruncated,
+    outputCharsTruncated,
+    textTrimmedResultCount,
+    shownOriginalTextChars,
+    omittedOriginalTextChars,
+    omittedResultsByOutputBudget,
+  };
+}
+
+function buildRipgrepSnippetSummary(input: {
+  totalMatches: number;
+  shownResults: number;
+  maxResults: number;
+  truncatedByMatchLimit: boolean;
+  truncatedByOutputChars: boolean;
+  textTruncated: boolean;
+}): string {
+  if (input.totalMatches === 0) return 'No matches.';
+  if (input.truncatedByMatchLimit && input.truncatedByOutputChars) {
+    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within max_results/output limits (truncated=true).`;
+  }
+  if (input.truncatedByOutputChars) {
+    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within output size limit (truncated=true).`;
+  }
+  if (input.truncatedByMatchLimit) {
+    return `Showing first ${input.maxResults} of ${input.totalMatches} matches (truncated=true).`;
+  }
+  if (input.textTruncated) {
+    return `Found ${input.totalMatches} matches; long snippet lines were trimmed for readability.`;
+  }
+  return `Found ${input.totalMatches} matches.`;
+}
+
+function formatRipgrepSnippetYaml(input: {
+  pattern: string;
+  searchPath: string;
+  globs: ReadonlyArray<string>;
+  caseMode: RipgrepCase;
+  fixedStrings: boolean;
+  maxResults: number;
+  fileCount: number;
+  totalMatches: number;
+  results: ReadonlyArray<RipgrepSnippetResult>;
+}): string {
+  const fitted = fitRipgrepSnippetResults(input.results);
+  const truncatedByMatchLimit = input.totalMatches > input.maxResults;
+  const truncated = truncatedByMatchLimit || fitted.outputCharsTruncated || fitted.textTruncated;
+  const truncationReasons: string[] = [];
+  if (truncatedByMatchLimit) truncationReasons.push('max_results');
+  if (fitted.outputCharsTruncated) truncationReasons.push('output_char_budget');
+  if (fitted.textTruncated) truncationReasons.push('per_text_char_limit');
+  const summary = buildRipgrepSnippetSummary({
+    totalMatches: input.totalMatches,
+    shownResults: fitted.rendered.length,
+    maxResults: input.maxResults,
+    truncatedByMatchLimit,
+    truncatedByOutputChars: fitted.outputCharsTruncated,
+    textTruncated: fitted.textTruncated,
+  });
+
+  const yaml = [
+    `status: ok`,
+    `pattern: ${yamlQuote(input.pattern)}`,
+    `mode: snippets`,
+    `path: ${yamlQuote(input.searchPath)}`,
+    ...(input.globs.length > 0 ? [`globs: ${yamlFlowStringArray(input.globs)}`] : []),
+    `case: ${input.caseMode}`,
+    `fixed_strings: ${input.fixedStrings}`,
+    `regex: ${!input.fixedStrings}`,
+    `truncated: ${truncated}`,
+    `truncated_by_output_chars: ${fitted.outputCharsTruncated}`,
+    `snippet_text_truncated: ${fitted.textTruncated}`,
+    `limits:`,
+    `  max_results: ${input.maxResults}`,
+    `  max_output_chars: ${RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT}`,
+    `  per_text_char_limit: ${RIPGREP_SNIPPET_TEXT_CHAR_LIMIT}`,
+    `totals:`,
+    `  files_matched: ${input.fileCount}`,
+    `  matches: ${input.totalMatches}`,
+    `  shown_results: ${fitted.rendered.length}`,
+    `truncation:`,
+    `  applied: ${truncated}`,
+    `  reasons: ${yamlFlowStringArray(truncationReasons)}`,
+    `  text_trimmed_result_count: ${fitted.textTrimmedResultCount}`,
+    `  omitted_results_by_output_budget: ${fitted.omittedResultsByOutputBudget}`,
+    `  shown_original_text_chars: ${fitted.shownOriginalTextChars}`,
+    `  omitted_original_text_chars: ${fitted.omittedOriginalTextChars}`,
+    `summary: ${yamlQuote(summary)}`,
+    `results:`,
+    ...fitted.rendered,
+  ].join('\n');
+  return formatYamlCodeBlock(yaml);
+}
 
 function defaultBaseOptions(): RipgrepBaseOptions {
   return {
@@ -633,43 +864,17 @@ async function runRipgrepSnippets(
       results.push({ path: filePath, line: ln, col, match: text, before, after });
     }
 
-    const truncated = totalMatches > options.maxResults;
-    const summary =
-      totalMatches === 0
-        ? 'No matches.'
-        : truncated
-          ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
-          : `Found ${totalMatches} matches.`;
-
-    const yaml = [
-      `status: ok`,
-      `pattern: ${yamlQuote(pattern)}`,
-      `mode: snippets`,
-      `path: ${yamlQuote(searchPath)}`,
-      ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
-      `case: ${options.caseMode}`,
-      `fixed_strings: ${options.fixedStrings}`,
-      `regex: ${!options.fixedStrings}`,
-      `truncated: ${truncated}`,
-      `limits:`,
-      `  max_results: ${options.maxResults}`,
-      `totals:`,
-      `  files_matched: ${fileSet.size}`,
-      `  matches: ${totalMatches}`,
-      `summary: ${yamlQuote(summary)}`,
-      `results:`,
-      ...results.map((r) =>
-        [
-          `  - path: ${yamlQuote(r.path)}`,
-          `    line: ${r.line}`,
-          `    col: ${r.col}`,
-          `    match: ${yamlQuote(r.match)}`,
-          `    before: ${yamlFlowStringArray(r.before)}`,
-          `    after: ${yamlFlowStringArray(r.after)}`,
-        ].join('\n'),
-      ),
-    ].join('\n');
-    return formatYamlCodeBlock(yaml);
+    return formatRipgrepSnippetYaml({
+      pattern,
+      searchPath,
+      globs: options.globs,
+      caseMode: options.caseMode,
+      fixedStrings: options.fixedStrings,
+      maxResults: options.maxResults,
+      fileCount: fileSet.size,
+      totalMatches,
+      results,
+    });
   } catch (error: unknown) {
     return formatYamlCodeBlock(
       [
@@ -894,40 +1099,17 @@ async function runRipgrepSearch(
         results.push({ path: filePath, line: ln, col, match: text });
     }
 
-    const truncated = totalMatches > options.maxResults;
-    const summary =
-      totalMatches === 0
-        ? 'No matches.'
-        : truncated
-          ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
-          : `Found ${totalMatches} matches.`;
-
-    const yaml = [
-      `status: ok`,
-      `pattern: ${yamlQuote(pattern)}`,
-      `mode: snippets`,
-      `path: ${yamlQuote(searchPath)}`,
-      `case: smart`,
-      `fixed_strings: false`,
-      `regex: true`,
-      `truncated: ${truncated}`,
-      `limits:`,
-      `  max_results: ${options.maxResults}`,
-      `totals:`,
-      `  files_matched: ${fileSet.size}`,
-      `  matches: ${totalMatches}`,
-      `summary: ${yamlQuote(summary)}`,
-      `results:`,
-      ...results.map((r) =>
-        [
-          `  - path: ${yamlQuote(r.path)}`,
-          `    line: ${r.line}`,
-          `    col: ${r.col}`,
-          `    match: ${yamlQuote(r.match)}`,
-        ].join('\n'),
-      ),
-    ].join('\n');
-    return formatYamlCodeBlock(yaml);
+    return formatRipgrepSnippetYaml({
+      pattern,
+      searchPath,
+      globs: [],
+      caseMode: 'smart',
+      fixedStrings: false,
+      maxResults: options.maxResults,
+      fileCount: fileSet.size,
+      totalMatches,
+      results,
+    });
   } catch (error: unknown) {
     return formatYamlCodeBlock(
       [

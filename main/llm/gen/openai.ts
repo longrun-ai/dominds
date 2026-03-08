@@ -28,8 +28,69 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  resolveProviderToolResultMaxChars,
+  truncateProviderToolOutputText,
+} from './tool-output-limit';
 
 const log = createLogger('llm/openai');
+
+function limitOpenAiToolOutputText(text: string, msg: FuncResultMsg, limitChars: number): string {
+  const limited = truncateProviderToolOutputText(text, limitChars);
+  if (limited.truncated) {
+    log.warn('OPENAI tool output truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalChars: limited.originalChars,
+      limitChars: limited.limitChars,
+    });
+  }
+  return limited.text;
+}
+
+function limitOpenAiToolOutputItems(
+  output: ResponseFunctionCallOutputItemList,
+  msg: FuncResultMsg,
+  limitChars: number,
+): ResponseFunctionCallOutputItemList {
+  let remainingChars = limitChars;
+  let truncated = false;
+  const limited: ResponseFunctionCallOutputItemList = [];
+
+  for (const item of output) {
+    if (item.type !== 'input_text') {
+      limited.push(item);
+      continue;
+    }
+
+    if (remainingChars <= 0) {
+      truncated = true;
+      break;
+    }
+
+    const next = truncateProviderToolOutputText(item.text, remainingChars);
+    limited.push({ type: 'input_text', text: next.text });
+    remainingChars -= next.text.length;
+    if (next.truncated) {
+      truncated = true;
+      break;
+    }
+  }
+
+  if (truncated) {
+    const originalChars = output.reduce(
+      (sum, item) => sum + (item.type === 'input_text' ? item.text.length : 0),
+      0,
+    );
+    log.warn('OPENAI tool output items truncated before provider request', undefined, {
+      callId: msg.id,
+      toolName: msg.name,
+      originalTextChars: originalChars,
+    });
+  }
+
+  return limited;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -159,13 +220,16 @@ function thinkingMessageToOpenAiReasoningItem(
   return out;
 }
 
-async function funcResultToOpenAiInputItem(msg: FuncResultMsg): Promise<ResponseInputItem> {
+async function funcResultToOpenAiInputItemWithLimit(
+  msg: FuncResultMsg,
+  limitChars: number,
+): Promise<ResponseInputItem> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
     return {
       type: 'function_call_output',
       call_id: msg.id,
-      output: msg.content,
+      output: limitOpenAiToolOutputText(msg.content, msg, limitChars),
     };
   }
 
@@ -215,14 +279,14 @@ async function funcResultToOpenAiInputItem(msg: FuncResultMsg): Promise<Response
     return {
       type: 'function_call_output',
       call_id: msg.id,
-      output: msg.content,
+      output: limitOpenAiToolOutputText(msg.content, msg, limitChars),
     };
   }
 
   return {
     type: 'function_call_output',
     call_id: msg.id,
-    output,
+    output: limitOpenAiToolOutputItems(output, msg, limitChars),
   };
 }
 
@@ -329,9 +393,13 @@ function mergeAdjacentOpenAiMessages(input: ResponseInputItem[]): ResponseInputI
   return merged;
 }
 
-async function buildOpenAiRequestInput(context: ChatMessage[]): Promise<ResponseInputItem[]> {
+async function buildOpenAiRequestInput(
+  context: ChatMessage[],
+  providerConfig?: ProviderConfig,
+): Promise<ResponseInputItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ResponseInputItem[] = [];
+  const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
 
   let lastFuncCallId: string | null = null;
   for (const msg of normalized) {
@@ -345,12 +413,16 @@ async function buildOpenAiRequestInput(context: ChatMessage[]): Promise<Response
       // Many OpenAI-compatible providers require the tool result to directly follow the matching
       // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
       if (lastFuncCallId === msg.id) {
-        input.push(await funcResultToOpenAiInputItem(msg));
+        input.push(await funcResultToOpenAiInputItemWithLimit(msg, toolResultMaxChars));
       } else {
         input.push({
           type: 'message',
           role: 'user',
-          content: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+          content: limitOpenAiToolOutputText(
+            `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+            msg,
+            toolResultMaxChars,
+          ),
         });
       }
       lastFuncCallId = null;
@@ -407,8 +479,9 @@ function resolveOpenAiJsonResponseEnabled(
 
 export async function buildOpenAiRequestInputWrapper(
   context: ChatMessage[],
+  providerConfig?: ProviderConfig,
 ): Promise<ResponseInputItem[]> {
-  return await buildOpenAiRequestInput(context);
+  return await buildOpenAiRequestInput(context, providerConfig);
 }
 
 function extractOutputMessageText(item: ResponseOutputItem): string {
@@ -555,7 +628,10 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(context);
+    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(
+      context,
+      providerConfig,
+    );
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -1064,7 +1140,10 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(context);
+    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(
+      context,
+      providerConfig,
+    );
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
     const jsonResponseEnabled = resolveOpenAiJsonResponseEnabled(agent, openAiParams);
