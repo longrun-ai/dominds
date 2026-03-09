@@ -377,6 +377,17 @@ Requirements for the `playwright_interactive` toolset design:
   - preserve the “reusable session across multiple fix iterations” mental model.
 - If the current phase does not yet ship a directly executable backend, the docs must label it as a **target contract (planned)** instead of pretending it is already built in.
 
+Current prototype note (`dominds-apps/web-dev`, as of March 8, 2026):
+
+- The app is already installable and contributes `web_tester` / `web_developer` teammates plus a live `playwright_interactive` toolset registration.
+- `playwright_session_new/list/status/eval/attach/detach/close` and cross-dialog reminder sync are already implemented.
+- `kind: "web"` sessions now create a real Playwright-backed browser/context/page runtime and report live page surfaces via session status/reminders.
+- `kind: "electron"` is **not** at the same completion level yet: it still falls back to the older prototype runtime path and should be treated as unfinished.
+- Reminder UX contract: tool output may summarize reminder-sync actions, but the reminder panel is the authoritative surface for attachment state.
+- Runtime refresh contract: after enabling the app, a full Dominds instance restart should not be required just to discover the toolset; the next minds reload / tools-registry fetch should refresh enabled app tool proxies. This does **not** mean in-flight prompts are rewritten retroactively.
+- Remaining gap list for the browser capability layer: screenshot / console / network evidence are not yet exposed as first-class tool outputs, and there is not yet a production-grade browser lifecycle manager.
+- Restart boundary: if the kernel/apps-host process restarts, persisted session records remain but the in-memory browser runtime degrades and must be recreated.
+
 Why this app shape matters:
 
 - It makes `.minds/team.yaml` collaboration semantics concrete: development and testing are two long-lived teammates, not vague temporary roles.

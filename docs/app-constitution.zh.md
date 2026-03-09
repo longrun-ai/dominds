@@ -375,6 +375,17 @@ members:
   - 在多轮修复之间保持“可复用会话”的心智模型。
 - 如果当前阶段还没有可直接执行的后端实现，文档必须明确标注为“目标契约（拟实现）”，而不是宣称已经内建完成。
 
+当前 prototype 说明（`dominds-apps/web-dev`，截至 2026-03-08）：
+
+- 该 app 已可安装，并已贡献 `web_tester` / `web_developer` teammate 与可用的 `playwright_interactive` toolset 注册。
+- `playwright_session_new/list/status/eval/attach/detach/close` 与跨对话 reminder sync 已落地。
+- `kind: "web"` 会话现在会创建真实的 Playwright browser/context/page runtime，并通过 status/reminder 报告实时页面 surface。
+- `kind: "electron"` 还没有达到同等完成度：当前仍回落到旧的 prototype runtime 路径，应视为未完成能力。
+- reminder 体验契约：tool 输出可以摘要提示 reminder-sync 动作，但 attachment state 的权威可见面仍是 reminder 面板本身。
+- runtime 刷新契约：app 启用后，不应再要求为了“看见 toolset”而整实例重启；下一次 minds reload / tools-registry fetch 应刷新 enabled app tool proxies。但这 **不表示** 已经发出的 in-flight prompt 会被追写更新。
+- 浏览器能力层的剩余缺口：截图 / console / network 证据尚未作为一等 tool output 暴露，也还没有生产级浏览器生命周期管理器。
+- 重启边界：若 kernel/apps-host 进程重启，已持久化的 session record 仍在，但内存态浏览器 runtime 会退化，需要后续 tool call 重新建立。
+
 这类 app 的价值在于：
 
 - 它让 `.minds/team.yaml` 的跨成员协作语义更具体：开发与测试天然是两个长期 agent，而不是临时角色描述。

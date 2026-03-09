@@ -1,3 +1,7 @@
+import { createHash } from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
+
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
@@ -7,6 +11,7 @@ import type { Tool } from '../tool';
 import {
   applyAppReminderRequests,
   ensureAppReminderOwnersRegistered,
+  unregisterAppReminderOwnersForApps,
 } from '../tools/app-reminders';
 import {
   getTool,
@@ -14,18 +19,34 @@ import {
   registerTool,
   registerToolset,
   setToolsetMeta,
+  unregisterTool,
+  unregisterToolset,
 } from '../tools/registry';
 import type { DomindsAppDialogReminderRequestBatch, DomindsAppDialogTargetRef } from './app-json';
 
 import { startAppsHost, type AppsHostClient, type EnabledAppForHost } from '../apps-host/client';
-import { registerAppDialogRunControl } from './dialog-run-controls';
+import { registerAppDialogRunControl, unregisterAppDialogRunControl } from './dialog-run-controls';
 import { loadEnabledAppsSnapshot } from './enabled-apps';
 import { reconcileAppsResolutionIssuesToProblems } from './problems';
 
 const log = createLogger('apps-runtime');
 
 let appsHostClient: AppsHostClient | null = null;
-const proxyRegisteredAppIds = new Set<string>();
+let hostedAppsSignature: string | null = null;
+let appsRuntimeConfig: Readonly<{
+  rtwsRootAbs: string;
+  kernel: Readonly<{ host: string; port: number }>;
+}> | null = null;
+let refreshQueue: Promise<void> = Promise.resolve();
+
+type RegisteredAppArtifacts = Readonly<{
+  signature: string;
+  toolNames: ReadonlyArray<string>;
+  toolsetIds: ReadonlyArray<string>;
+  dialogRunControlIds: ReadonlyArray<string>;
+}>;
+
+const registeredAppArtifactsById = new Map<string, RegisteredAppArtifacts>();
 
 function resolveRootDialogFor(dlg: Dialog): RootDialog {
   if (dlg instanceof RootDialog) {
@@ -165,11 +186,16 @@ export function getAppsHostClient(): AppsHostClient {
   return appsHostClient;
 }
 
-export async function shutdownAppsRuntime(): Promise<void> {
+async function stopAppsHost(): Promise<void> {
   const client = appsHostClient;
   if (!client) return;
   appsHostClient = null;
+  hostedAppsSignature = null;
   await client.shutdown();
+}
+
+export async function shutdownAppsRuntime(): Promise<void> {
+  await stopAppsHost();
 }
 
 function ensureNoDuplicateTool(toolName: string, appId: string): void {
@@ -199,123 +225,252 @@ function registerAppToolset(params: {
   setToolsetMeta(params.toolsetId, { source: 'app', descriptionI18n: params.descriptionI18n });
 }
 
-function registerAppProxyToolsForEnabledApps(params: {
-  enabledApps: ReadonlyArray<EnabledAppForHost>;
-}): void {
-  for (const app of params.enabledApps) {
-    if (proxyRegisteredAppIds.has(app.appId)) continue;
-    const toolsets = app.installJson.contributes?.toolsets ?? [];
-    for (const ts of toolsets) {
-      const tools: Tool[] = ts.tools.map((t) => ({
-        type: 'func',
-        name: t.name,
-        description: t.description,
-        descriptionI18n: t.descriptionI18n,
-        parameters: t.parameters,
-        call: async (dlg, caller, args) => {
-          const host = getAppsHostClient();
-          const result = await host.callTool(t.name, args, {
-            dialogId: dlg.id.selfId,
-            rootDialogId: dlg.id.rootId,
-            agentId: dlg.agentId,
-            sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
-            callerId: caller.id,
-          });
-          if (Array.isArray(result.reminderRequests) && result.reminderRequests.length > 0) {
-            await applyAppReminderRequests(dlg, {
-              appId: app.appId,
-              reminderRequests: result.reminderRequests,
-              resolveHostClient: getAppsHostClient,
-            });
-          }
-          if (
-            Array.isArray(result.dialogReminderRequests) &&
-            result.dialogReminderRequests.length > 0
-          ) {
-            await applyDialogReminderRequestBatches(dlg, app.appId, result.dialogReminderRequests);
-          }
-          return result.output;
-        },
-      }));
-      registerAppToolset({
-        appId: app.appId,
-        toolsetId: ts.id,
-        tools,
-        descriptionI18n: ts.descriptionI18n,
-      });
-    }
-    proxyRegisteredAppIds.add(app.appId);
+function computeAppSignature(app: EnabledAppForHost): string {
+  return JSON.stringify({
+    appId: app.appId,
+    runtimePort: app.runtimePort,
+    installJson: app.installJson,
+    hostSourceVersion: app.hostSourceVersion,
+  });
+}
+
+function computeHostedAppsSignature(enabledApps: ReadonlyArray<EnabledAppForHost>): string {
+  return JSON.stringify(
+    enabledApps.map((app) => ({
+      appId: app.appId,
+      runtimePort: app.runtimePort,
+      installJson: app.installJson,
+      hostSourceVersion: app.hostSourceVersion,
+    })),
+  );
+}
+
+async function computeHostSourceVersion(params: {
+  source: Readonly<{ kind: 'local'; pathAbs: string } | { kind: 'npx'; spec: string }>;
+  installJson: EnabledAppForHost['installJson'];
+}): Promise<string | null> {
+  if (params.source.kind !== 'local') {
+    return null;
+  }
+  const host = params.installJson.host;
+  if (host.kind !== 'node_module') {
+    return null;
+  }
+  const moduleAbs = path.resolve(params.source.pathAbs, host.moduleRelPath);
+  try {
+    const content = await fs.readFile(moduleAbs);
+    const digest = createHash('sha256').update(content).digest('hex');
+    return `sha256:${digest}`;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `unreadable:${moduleAbs}:${message}`;
   }
 }
 
-function registerAppDialogRunControlsForEnabledApps(params: {
+function unregisterRegisteredAppArtifacts(appId: string): void {
+  const registered = registeredAppArtifactsById.get(appId);
+  if (!registered) {
+    unregisterAppReminderOwnersForApps({ appIds: [appId] });
+    return;
+  }
+  for (const toolName of registered.toolNames) {
+    unregisterTool(toolName);
+  }
+  for (const toolsetId of registered.toolsetIds) {
+    unregisterToolset(toolsetId);
+  }
+  for (const controlId of registered.dialogRunControlIds) {
+    unregisterAppDialogRunControl(controlId);
+  }
+  unregisterAppReminderOwnersForApps({ appIds: [appId] });
+  registeredAppArtifactsById.delete(appId);
+}
+
+async function ensureAppsHostReadyForToolCalls(): Promise<AppsHostClient> {
+  const config = appsRuntimeConfig;
+  if (!config && !appsHostClient) {
+    throw new Error(
+      'Apps host is unavailable in the current runtime; start an interactive Dominds runtime first',
+    );
+  }
+  if (config) {
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: config.rtwsRootAbs });
+  }
+  return getAppsHostClient();
+}
+
+function registerAppArtifacts(app: EnabledAppForHost): void {
+  const toolNames: string[] = [];
+  const toolsetIds: string[] = [];
+  const dialogRunControlIds: string[] = [];
+  const toolsets = app.installJson.contributes?.toolsets ?? [];
+
+  for (const ts of toolsets) {
+    const tools: Tool[] = ts.tools.map((t) => ({
+      type: 'func',
+      name: t.name,
+      description: t.description,
+      descriptionI18n: t.descriptionI18n,
+      parameters: t.parameters,
+      call: async (dlg, caller, args) => {
+        const host = await ensureAppsHostReadyForToolCalls();
+        const result = await host.callTool(t.name, args, {
+          dialogId: dlg.id.selfId,
+          rootDialogId: dlg.id.rootId,
+          agentId: dlg.agentId,
+          sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
+          callerId: caller.id,
+        });
+        if (Array.isArray(result.reminderRequests) && result.reminderRequests.length > 0) {
+          await applyAppReminderRequests(dlg, {
+            appId: app.appId,
+            reminderRequests: result.reminderRequests,
+            resolveHostClient: getAppsHostClient,
+          });
+        }
+        if (
+          Array.isArray(result.dialogReminderRequests) &&
+          result.dialogReminderRequests.length > 0
+        ) {
+          await applyDialogReminderRequestBatches(dlg, app.appId, result.dialogReminderRequests);
+        }
+        return result.output;
+      },
+    }));
+    registerAppToolset({
+      appId: app.appId,
+      toolsetId: ts.id,
+      tools,
+      descriptionI18n: ts.descriptionI18n,
+    });
+    toolsetIds.push(ts.id);
+    toolNames.push(...tools.map((tool) => tool.name));
+  }
+
+  const controls = app.installJson.contributes?.dialogRunControls ?? [];
+  for (const control of controls) {
+    registerAppDialogRunControl({
+      id: control.id,
+      appId: app.appId,
+      descriptionI18n: control.descriptionI18n,
+    });
+    dialogRunControlIds.push(control.id);
+  }
+
+  ensureAppReminderOwnersRegistered({
+    enabledApps: [app],
+    resolveHostClient: getAppsHostClient,
+  });
+
+  registeredAppArtifactsById.set(app.appId, {
+    signature: computeAppSignature(app),
+    toolNames,
+    toolsetIds,
+    dialogRunControlIds,
+  });
+}
+
+function syncRegisteredAppArtifacts(params: {
   enabledApps: ReadonlyArray<EnabledAppForHost>;
 }): void {
-  for (const app of params.enabledApps) {
-    const controls = app.installJson.contributes?.dialogRunControls ?? [];
-    for (const control of controls) {
-      registerAppDialogRunControl({
-        id: control.id,
-        appId: app.appId,
-        descriptionI18n: control.descriptionI18n,
-      });
+  const nextAppIds = new Set(params.enabledApps.map((app) => app.appId));
+  for (const appId of registeredAppArtifactsById.keys()) {
+    if (!nextAppIds.has(appId)) {
+      unregisterRegisteredAppArtifacts(appId);
     }
+  }
+  for (const app of params.enabledApps) {
+    const nextSignature = computeAppSignature(app);
+    const existing = registeredAppArtifactsById.get(app.appId);
+    if (existing?.signature === nextSignature) {
+      continue;
+    }
+    if (existing) {
+      unregisterRegisteredAppArtifacts(app.appId);
+    }
+    registerAppArtifacts(app);
+  }
+}
+
+async function syncAppsHostToEnabledApps(params: {
+  enabledApps: ReadonlyArray<EnabledAppForHost>;
+}): Promise<void> {
+  const config = appsRuntimeConfig;
+  if (!config) {
+    return;
+  }
+
+  const nextSignature = computeHostedAppsSignature(params.enabledApps);
+  if (params.enabledApps.length === 0) {
+    await stopAppsHost();
+    return;
+  }
+  if (appsHostClient && hostedAppsSignature === nextSignature) {
+    return;
+  }
+
+  await stopAppsHost();
+  log.info(`Starting apps-host (${params.enabledApps.length} enabled apps)`);
+  const { client } = await startAppsHost({
+    rtwsRootAbs: config.rtwsRootAbs,
+    kernel: config.kernel,
+    apps: params.enabledApps,
+  });
+  appsHostClient = client;
+  hostedAppsSignature = nextSignature;
+}
+
+async function refreshEnabledAppsRuntimeNow(params: {
+  rtwsRootAbs: string;
+  ensureHost: boolean;
+}): Promise<void> {
+  const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: params.rtwsRootAbs });
+  reconcileAppsResolutionIssuesToProblems({ issues: snapshot.issues });
+  const enabledApps: EnabledAppForHost[] = await Promise.all(
+    snapshot.enabledApps.map(async (app) => ({
+      appId: app.id,
+      runtimePort: app.runtimePort,
+      installJson: app.installJson,
+      hostSourceVersion: await computeHostSourceVersion({
+        source: app.source,
+        installJson: app.installJson,
+      }),
+    })),
+  );
+
+  syncRegisteredAppArtifacts({ enabledApps });
+  if (params.ensureHost) {
+    await syncAppsHostToEnabledApps({ enabledApps });
   }
 }
 
 export async function registerEnabledAppsToolProxies(params: {
   rtwsRootAbs: string;
 }): Promise<void> {
-  const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: params.rtwsRootAbs });
-  reconcileAppsResolutionIssuesToProblems({ issues: snapshot.issues });
-  const enabledApps: EnabledAppForHost[] = snapshot.enabledApps.map((a) => ({
-    appId: a.id,
-    runtimePort: a.runtimePort,
-    installJson: a.installJson,
-  }));
-  if (enabledApps.length === 0) return;
-  registerAppProxyToolsForEnabledApps({ enabledApps });
-  ensureAppReminderOwnersRegistered({
-    enabledApps,
-    resolveHostClient: getAppsHostClient,
-  });
+  const run = refreshQueue.then(() =>
+    refreshEnabledAppsRuntimeNow({
+      rtwsRootAbs: params.rtwsRootAbs,
+      ensureHost: appsRuntimeConfig !== null,
+    }),
+  );
+  refreshQueue = run.catch(() => undefined);
+  await run;
 }
 
 export async function initAppsRuntime(params: {
   rtwsRootAbs: string;
   kernel: Readonly<{ host: string; port: number }>;
 }): Promise<void> {
-  if (appsHostClient) {
-    throw new Error('Apps runtime already initialized');
-  }
-
-  const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: params.rtwsRootAbs });
-  reconcileAppsResolutionIssuesToProblems({ issues: snapshot.issues });
-  const enabledApps: EnabledAppForHost[] = snapshot.enabledApps.map((a) => ({
-    appId: a.id,
-    runtimePort: a.runtimePort,
-    installJson: a.installJson,
-  }));
-
-  if (enabledApps.length === 0) {
-    log.info('No enabled apps');
-    return;
-  }
-
-  // Register proxy tools first (fail fast on collisions) so team loading/validation can see toolsets.
-  registerAppProxyToolsForEnabledApps({ enabledApps });
-  // Register dialog run controls before websocket handlers start processing user drives.
-  registerAppDialogRunControlsForEnabledApps({ enabledApps });
-
-  log.info(`Starting apps-host (${enabledApps.length} enabled apps)`);
-  const { client } = await startAppsHost({
+  appsRuntimeConfig = {
     rtwsRootAbs: params.rtwsRootAbs,
     kernel: params.kernel,
-    apps: enabledApps,
-  });
-  appsHostClient = client;
-  ensureAppReminderOwnersRegistered({
-    enabledApps,
-    resolveHostClient: getAppsHostClient,
-  });
+  };
+  const run = refreshQueue.then(() =>
+    refreshEnabledAppsRuntimeNow({
+      rtwsRootAbs: params.rtwsRootAbs,
+      ensureHost: true,
+    }),
+  );
+  refreshQueue = run.catch(() => undefined);
+  await run;
 }

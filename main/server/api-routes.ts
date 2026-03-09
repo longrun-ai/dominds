@@ -7,6 +7,7 @@ import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
+import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { forkRootDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
@@ -1763,6 +1764,7 @@ async function handleReadWorkspaceEntry(
 
 async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
   try {
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
     const snapshot = createToolsRegistrySnapshot();
     res.writeHead(200, {
       'Content-Type': 'application/json',

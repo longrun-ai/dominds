@@ -93,6 +93,7 @@ export type EnabledAppForHost = Readonly<{
   appId: string;
   runtimePort: number | null;
   installJson: DomindsAppInstallJsonV1;
+  hostSourceVersion: string | null;
 }>;
 
 export type AppsHostClient = Readonly<{

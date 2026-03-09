@@ -32,6 +32,10 @@ export function registerAppDialogRunControl(params: {
   });
 }
 
+export function unregisterAppDialogRunControl(id: string): void {
+  runControlRegistry.delete(id);
+}
+
 export function getAppDialogRunControlMeta(id: string): AppDialogRunControlMeta | null {
   const found = runControlRegistry.get(id);
   return found ?? null;

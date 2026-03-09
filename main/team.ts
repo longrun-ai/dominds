@@ -9,6 +9,7 @@
 import fs from 'fs/promises';
 import YAML from 'yaml';
 
+import { loadEnabledAppsSnapshot } from './apps/enabled-apps';
 import { loadEnabledAppTeammates, type AppTeammatesSnippet } from './apps/teammates';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
@@ -17,7 +18,7 @@ import { reconcileProblemsByPrefix } from './problems';
 import type { WorkspaceProblem } from './shared/types/problems';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Tool } from './tool';
-import { getTool, getToolset, listToolsets } from './tools/registry';
+import { getTool, getToolset, getToolsetMeta, listToolsets } from './tools/registry';
 
 export class Team {
   readonly memberDefaults: Team.Member;
@@ -698,6 +699,21 @@ export namespace Team {
     async function validateMemberToolsetBindings(team: Team, md: Team.Member): Promise<void> {
       const registeredToolsets = new Set(Object.keys(listToolsets()));
       const mcpDeclared = await readMcpDeclaredToolsets();
+      let enabledAppToolsets = new Set<string>();
+      try {
+        const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: process.cwd() });
+        enabledAppToolsets = new Set(
+          snapshot.enabledApps.flatMap((app) =>
+            (app.installJson.contributes?.toolsets ?? []).map((toolset) => toolset.id),
+          ),
+        );
+      } catch (err: unknown) {
+        addIssue(
+          'apps/toolsets/load',
+          'Failed to load enabled app toolsets while validating .minds/team.yaml toolset bindings.',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
 
       const validateAt = (args: {
         idPrefix: string;
@@ -705,7 +721,16 @@ export namespace Team {
         toolsets: ReadonlyArray<string>;
       }) => {
         for (const toolsetName of args.toolsets) {
-          if (registeredToolsets.has(toolsetName)) continue;
+          const registeredMeta = getToolsetMeta(toolsetName);
+          if (registeredToolsets.has(toolsetName)) {
+            if (registeredMeta?.source === 'app') {
+              continue;
+            }
+            continue;
+          }
+          if (enabledAppToolsets.has(toolsetName)) {
+            continue;
+          }
 
           if (mcpDeclared.kind === 'loaded' && mcpDeclared.declaredServerIds.has(toolsetName)) {
             if (mcpDeclared.invalidServerIds.has(toolsetName)) {
@@ -740,9 +765,10 @@ export namespace Team {
             `${args.idPrefix}/toolsets/${sanitizeProblemIdSegment(toolsetName)}/missing`,
             `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an unknown toolset.`,
             [
-              `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but this toolset is neither registered nor declared in .minds/mcp.yaml.`,
-              `Fix: change ${args.atPrefix}.toolsets to a valid toolset name, or declare MCP server '${toolsetName}' in .minds/mcp.yaml.`,
-              `Tip: run team_mgmt_validate_mcp_cfg({}) to confirm MCP declarations are valid and loaded.`,
+              `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but this toolset is not currently registered in runtime registry and is not declared in .minds/mcp.yaml.`,
+              `If '${toolsetName}' is expected from an enabled app, confirm the app is installed/enabled in this rtws and that its contributes.toolsets were loaded successfully.`,
+              `Otherwise, fix ${args.atPrefix}.toolsets to a valid built-in/app toolset name, or declare MCP server '${toolsetName}' in .minds/mcp.yaml.`,
+              `Tip: run team_mgmt_validate_mcp_cfg({}) for MCP checks, and inspect / refresh enabled apps if this toolset should come from an app.`,
             ].join('\n'),
           );
         }

@@ -7,6 +7,7 @@
 import type { Dirent } from 'fs';
 import { access, readFile, readdir, stat } from 'fs/promises';
 import path from 'path';
+import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { Dialog, SubDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
@@ -163,6 +164,13 @@ export async function loadAgentMinds(
 }> {
   const workingLanguage = getWorkLanguage();
   const missingToolsetPolicy = options?.missingToolsetPolicy ?? 'warn';
+  try {
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
+  } catch (error: unknown) {
+    log.warn(
+      `Failed to refresh enabled app tool proxies before loading agent minds: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   let team = await Team.load();
   const agent = agentId === undefined ? team.getDefaultResponder() : team.getMember(agentId);
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);

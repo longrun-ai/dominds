@@ -19,7 +19,7 @@ import {
   type ReminderUpdateResult,
 } from '../tool';
 
-import { getReminderOwner, registerReminderOwner } from './registry';
+import { getReminderOwner, registerReminderOwner, unregisterReminderOwner } from './registry';
 
 type AppReminderOwnerDescriptor = Readonly<{
   appId: string;
@@ -272,6 +272,19 @@ export function ensureAppReminderOwnersRegistered(params: {
         createAppReminderOwner({ descriptor, resolveHostClient: params.resolveHostClient }),
       );
     }
+  }
+}
+
+export function unregisterAppReminderOwnersForApps(params: {
+  appIds: ReadonlyArray<string>;
+}): void {
+  const appIdSet = new Set(params.appIds);
+  for (const [registryName, descriptor] of appReminderDescriptors.entries()) {
+    if (!appIdSet.has(descriptor.appId)) {
+      continue;
+    }
+    unregisterReminderOwner(registryName);
+    appReminderDescriptors.delete(registryName);
   }
 }
 
