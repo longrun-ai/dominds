@@ -121,6 +121,147 @@ type DeepLinkIntent =
   | { kind: 'callsite'; rootId: string; selfId: string; course: number; callId: string }
   | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
 
+type DialogDeepLinkParams = {
+  rootId: string;
+  selfId: string;
+  course?: number;
+};
+
+type CallsiteDeepLinkParams = {
+  rootId: string;
+  selfId: string;
+  course: number;
+  callId: string;
+};
+
+type GenseqDeepLinkParams = {
+  rootId: string;
+  selfId: string;
+  course: number;
+  genseq: number;
+};
+
+type Q4HDeepLinkParams = {
+  questionId: string;
+  rootId: string;
+  selfId: string;
+  course?: number;
+  messageIndex?: number;
+  callId?: string;
+};
+
+type Q4HCallSiteNavigation = {
+  questionId: string;
+  dialogId: string;
+  rootId: string;
+  course: number;
+  messageIndex: number;
+  callId?: string;
+};
+
+type DialogDeepLinkEventDetail = {
+  rootId: string;
+  selfId: string;
+};
+
+type NavigateGenseqEventDetail = {
+  rootId: string;
+  selfId: string;
+  course: number;
+  genseq: number;
+};
+
+type NavigateCallsiteEventDetail = {
+  rootId: string;
+  selfId: string;
+  course: number;
+  callId: string;
+};
+
+type ScrollToCallIdDetail = {
+  course: number;
+  callId: string;
+};
+
+type ScrollToGenseqDetail = {
+  course: number;
+  genseq: number;
+};
+
+type ScrollToCallSiteDetail = {
+  course: number;
+  messageIndex: number;
+  callId?: string;
+};
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readDialogDeepLinkEventDetail(value: unknown): DialogDeepLinkEventDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
+  if (rootId === '') return null;
+  const selfRaw = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
+  return {
+    rootId,
+    selfId: selfRaw === '' ? rootId : selfRaw,
+  };
+}
+
+function readQ4HCallSiteNavigation(value: unknown): Q4HCallSiteNavigation | null {
+  if (!isObjectRecord(value)) return null;
+  const questionId = typeof value['questionId'] === 'string' ? value['questionId'].trim() : '';
+  const dialogId = typeof value['dialogId'] === 'string' ? value['dialogId'].trim() : '';
+  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
+  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
+  const messageIndex =
+    typeof value['messageIndex'] === 'number' ? value['messageIndex'] : Number.NaN;
+  const callIdRaw = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
+  if (questionId === '' || dialogId === '' || rootId === '') return null;
+  if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return null;
+  return {
+    questionId,
+    dialogId,
+    rootId,
+    course: Math.floor(course),
+    messageIndex: Math.floor(messageIndex),
+    callId: callIdRaw === '' ? undefined : callIdRaw,
+  };
+}
+
+function readNavigateGenseqEventDetail(value: unknown): NavigateGenseqEventDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
+  const selfId = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
+  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
+  const genseq = typeof value['genseq'] === 'number' ? value['genseq'] : Number.NaN;
+  if (rootId === '' || selfId === '') return null;
+  if (!Number.isFinite(course) || !Number.isFinite(genseq)) return null;
+  return {
+    rootId,
+    selfId,
+    course: Math.floor(course),
+    genseq: Math.floor(genseq),
+  };
+}
+
+function readNavigateCallsiteEventDetail(value: unknown): NavigateCallsiteEventDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
+  const selfId = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
+  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
+  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
+  if (rootId === '' || selfId === '' || callId === '') return null;
+  if (!Number.isFinite(course)) return null;
+  return {
+    rootId,
+    selfId,
+    course: Math.floor(course),
+    callId,
+  };
+}
+
 type ToastKind = 'error' | 'warning' | 'info';
 type ToastHistoryPolicy = 'default' | 'persist' | 'skip';
 type ToastOptions = {
@@ -5361,15 +5502,9 @@ export class DomindsApp extends HTMLElement {
 
     this.shadowRoot.addEventListener('dialog-open-external', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readDialogDeepLinkEventDetail(ce.detail);
       if (!detail) return;
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
-      const selfRaw = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
-      if (!rootId) return;
-      const selfId = selfRaw === '' ? rootId : selfRaw;
-
-      const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+      const url = this.buildDialogDeepLinkUrl(detail);
       const urlStr = url.toString();
       const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
       if (w) w.opener = null;
@@ -5377,70 +5512,35 @@ export class DomindsApp extends HTMLElement {
 
     this.shadowRoot.addEventListener('dialog-share-link', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readDialogDeepLinkEventDetail(ce.detail);
       if (!detail) return;
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
-      const selfRaw = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
-      if (!rootId) return;
-      const selfId = selfRaw === '' ? rootId : selfRaw;
-
-      const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+      const url = this.buildDialogDeepLinkUrl(detail);
       void this.copyLinkToClipboardWithToast(url.toString());
     });
 
     // ========== Q4H Event Handlers ==========
     // Q4H navigate to call site event - delegated to q4h-input component
     this.shadowRoot.addEventListener('q4h-navigate-call-site', (event: Event) => {
-      const ce = event as CustomEvent<{
-        questionId: string;
-        dialogId: string;
-        rootId: string;
-        course: number;
-        messageIndex: number;
-        callId?: string;
-      }>;
-      const { questionId, dialogId, rootId, course, messageIndex, callId } = ce.detail || {};
-      if (questionId && dialogId && rootId) {
-        this.navigateToQ4HCallSite(questionId, dialogId, rootId, course, messageIndex, callId);
-      }
+      const ce = event as CustomEvent<unknown>;
+      const detail = readQ4HCallSiteNavigation(ce.detail);
+      if (!detail) return;
+      this.navigateToQ4HCallSite(detail);
     });
 
     // Q4H external deep link (open in new tab/window + copy URL)
     this.shadowRoot.addEventListener('q4h-open-external', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readQ4HCallSiteNavigation(ce.detail);
       if (!detail) return;
 
-      const questionId = typeof detail['questionId'] === 'string' ? detail['questionId'] : '';
-      const dialogId = typeof detail['dialogId'] === 'string' ? detail['dialogId'] : '';
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
-      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
-      const messageIndex =
-        typeof detail['messageIndex'] === 'number' ? detail['messageIndex'] : Number.NaN;
-      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
-
-      if (!questionId || !dialogId || !rootId) return;
-      if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return;
-
-      const url = new URL(window.location.href);
-      // Preserve auth and other non-deeplink params; override only deeplink keys.
-      url.searchParams.delete('rootId');
-      url.searchParams.delete('selfId');
-      url.searchParams.delete('course');
-      url.searchParams.delete('msg');
-      url.searchParams.delete('callId');
-      url.searchParams.delete('genseq');
-      url.searchParams.delete('qid');
-      url.hash = '';
-      url.pathname = `/dl/q4h`;
-      url.searchParams.set('qid', questionId);
-      url.searchParams.set('rootId', rootId);
-      url.searchParams.set('selfId', dialogId);
-      url.searchParams.set('course', String(Math.floor(course)));
-      url.searchParams.set('msg', String(Math.floor(messageIndex)));
-      if (callId.trim() !== '') url.searchParams.set('callId', callId.trim());
+      const url = this.buildQ4HDeepLinkUrl({
+        questionId: detail.questionId,
+        rootId: detail.rootId,
+        selfId: detail.dialogId,
+        course: detail.course,
+        messageIndex: detail.messageIndex,
+        callId: detail.callId,
+      });
 
       const urlStr = url.toString();
       const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
@@ -5450,37 +5550,17 @@ export class DomindsApp extends HTMLElement {
     // Q4H share link (copy URL only)
     this.shadowRoot.addEventListener('q4h-share-link', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readQ4HCallSiteNavigation(ce.detail);
       if (!detail) return;
 
-      const questionId = typeof detail['questionId'] === 'string' ? detail['questionId'] : '';
-      const dialogId = typeof detail['dialogId'] === 'string' ? detail['dialogId'] : '';
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
-      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
-      const messageIndex =
-        typeof detail['messageIndex'] === 'number' ? detail['messageIndex'] : Number.NaN;
-      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
-
-      if (!questionId || !dialogId || !rootId) return;
-      if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return;
-
-      const url = new URL(window.location.href);
-      url.searchParams.delete('rootId');
-      url.searchParams.delete('selfId');
-      url.searchParams.delete('course');
-      url.searchParams.delete('msg');
-      url.searchParams.delete('callId');
-      url.searchParams.delete('genseq');
-      url.searchParams.delete('qid');
-      url.hash = '';
-      url.pathname = `/dl/q4h`;
-      url.searchParams.set('qid', questionId);
-      url.searchParams.set('rootId', rootId);
-      url.searchParams.set('selfId', dialogId);
-      url.searchParams.set('course', String(Math.floor(course)));
-      url.searchParams.set('msg', String(Math.floor(messageIndex)));
-      if (callId.trim() !== '') url.searchParams.set('callId', callId.trim());
+      const url = this.buildQ4HDeepLinkUrl({
+        questionId: detail.questionId,
+        rootId: detail.rootId,
+        selfId: detail.dialogId,
+        course: detail.course,
+        messageIndex: detail.messageIndex,
+        callId: detail.callId,
+      });
 
       void this.copyLinkToClipboardWithToast(url.toString());
     });
@@ -5527,22 +5607,14 @@ export class DomindsApp extends HTMLElement {
     // Call-site navigation requests from dialog bubbles (internal link icon).
     this.shadowRoot.addEventListener('navigate-genseq', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readNavigateGenseqEventDetail(ce.detail);
       if (!detail) return;
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
-      const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'] : '';
-      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
-      const genseq = typeof detail['genseq'] === 'number' ? detail['genseq'] : Number.NaN;
-      if (!rootId || !selfId) return;
-      if (!Number.isFinite(course) || !Number.isFinite(genseq)) return;
-
       this.pendingDeepLink = {
         kind: 'genseq',
-        rootId: rootId.trim(),
-        selfId: selfId.trim(),
-        course: Math.floor(course),
-        genseq: Math.floor(genseq),
+        rootId: detail.rootId,
+        selfId: detail.selfId,
+        course: detail.course,
+        genseq: detail.genseq,
       };
       void this.applyPendingDeepLink();
     });
@@ -5550,22 +5622,14 @@ export class DomindsApp extends HTMLElement {
     // Call-site navigation requests from dialog bubbles (internal link icon).
     this.shadowRoot.addEventListener('navigate-callsite', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const detail = readNavigateCallsiteEventDetail(ce.detail);
       if (!detail) return;
-      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
-      const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'] : '';
-      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
-      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
-      if (!rootId || !selfId || !callId) return;
-      if (!Number.isFinite(course)) return;
-
       this.pendingDeepLink = {
         kind: 'callsite',
-        rootId: rootId.trim(),
-        selfId: selfId.trim(),
-        course: Math.floor(course),
-        callId: callId.trim(),
+        rootId: detail.rootId,
+        selfId: detail.selfId,
+        course: detail.course,
+        callId: detail.callId,
       };
       void this.applyPendingDeepLink();
     });
@@ -6598,7 +6662,7 @@ export class DomindsApp extends HTMLElement {
     };
   }
 
-  private buildDialogDeepLinkUrl(rootId: string, selfId: string, course?: number): URL {
+  private buildDialogDeepLinkUrl(params: DialogDeepLinkParams): URL {
     const url = new URL(window.location.href);
     url.searchParams.delete('rootId');
     url.searchParams.delete('selfId');
@@ -6609,49 +6673,41 @@ export class DomindsApp extends HTMLElement {
     url.searchParams.delete('qid');
     url.hash = '';
     url.pathname = '/dl/dialog';
-    url.searchParams.set('rootId', rootId);
-    url.searchParams.set('selfId', selfId);
-    if (typeof course === 'number') {
-      url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('rootId', params.rootId);
+    url.searchParams.set('selfId', params.selfId);
+    if (typeof params.course === 'number') {
+      url.searchParams.set('course', String(Math.floor(params.course)));
     }
     return url;
   }
 
-  private buildCallsiteDeepLinkUrl(
-    rootId: string,
-    selfId: string,
-    course: number,
-    callId: string,
-  ): URL {
-    const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+  private buildCallsiteDeepLinkUrl(params: CallsiteDeepLinkParams): URL {
+    const url = this.buildDialogDeepLinkUrl({
+      rootId: params.rootId,
+      selfId: params.selfId,
+    });
     url.pathname = '/dl/callsite';
-    url.searchParams.set('course', String(Math.floor(course)));
-    url.searchParams.set('callId', callId);
+    url.searchParams.set('course', String(Math.floor(params.course)));
+    url.searchParams.set('callId', params.callId);
     return url;
   }
 
-  private buildGenseqDeepLinkUrl(
-    rootId: string,
-    selfId: string,
-    course: number,
-    genseq: number,
-  ): URL {
-    const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+  private buildGenseqDeepLinkUrl(params: GenseqDeepLinkParams): URL {
+    const url = this.buildDialogDeepLinkUrl({
+      rootId: params.rootId,
+      selfId: params.selfId,
+    });
     url.pathname = '/dl/genseq';
-    url.searchParams.set('course', String(Math.floor(course)));
-    url.searchParams.set('genseq', String(Math.floor(genseq)));
+    url.searchParams.set('course', String(Math.floor(params.course)));
+    url.searchParams.set('genseq', String(Math.floor(params.genseq)));
     return url;
   }
 
-  private buildQ4HDeepLinkUrl(params: {
-    questionId: string;
-    rootId: string;
-    selfId: string;
-    course?: number;
-    messageIndex?: number;
-    callId?: string;
-  }): URL {
-    const url = this.buildDialogDeepLinkUrl(params.rootId, params.selfId);
+  private buildQ4HDeepLinkUrl(params: Q4HDeepLinkParams): URL {
+    const url = this.buildDialogDeepLinkUrl({
+      rootId: params.rootId,
+      selfId: params.selfId,
+    });
     url.pathname = '/dl/q4h';
     url.searchParams.set('qid', params.questionId);
     if (typeof params.course === 'number') {
@@ -6677,7 +6733,7 @@ export class DomindsApp extends HTMLElement {
     const selfId = dialog.selfId.trim();
     if (!rootId || !selfId) return;
 
-    const target = this.buildDialogDeepLinkUrl(rootId, selfId);
+    const target = this.buildDialogDeepLinkUrl({ rootId, selfId });
     const current = new URL(window.location.href);
     if (
       current.pathname === target.pathname &&
@@ -6692,21 +6748,25 @@ export class DomindsApp extends HTMLElement {
   private syncAddressBarToDeepLink(intent: DeepLinkIntent): void {
     let target: URL | null = null;
     if (intent.kind === 'dialog') {
-      target = this.buildDialogDeepLinkUrl(intent.rootId, intent.selfId, intent.course);
+      target = this.buildDialogDeepLinkUrl({
+        rootId: intent.rootId,
+        selfId: intent.selfId,
+        course: intent.course,
+      });
     } else if (intent.kind === 'callsite') {
-      target = this.buildCallsiteDeepLinkUrl(
-        intent.rootId,
-        intent.selfId,
-        intent.course,
-        intent.callId,
-      );
+      target = this.buildCallsiteDeepLinkUrl({
+        rootId: intent.rootId,
+        selfId: intent.selfId,
+        course: intent.course,
+        callId: intent.callId,
+      });
     } else if (intent.kind === 'genseq') {
-      target = this.buildGenseqDeepLinkUrl(
-        intent.rootId,
-        intent.selfId,
-        intent.course,
-        intent.genseq,
-      );
+      target = this.buildGenseqDeepLinkUrl({
+        rootId: intent.rootId,
+        selfId: intent.selfId,
+        course: intent.course,
+        genseq: intent.genseq,
+      });
     } else if (intent.kind === 'q4h') {
       const rootId = intent.rootId?.trim() ?? '';
       const selfId = intent.selfId?.trim() ?? '';
@@ -6904,7 +6964,7 @@ export class DomindsApp extends HTMLElement {
         if (dialogContainer) {
           await dialogContainer.setCurrentCourse(intent.course);
           dialogContainer.dispatchEvent(
-            new CustomEvent('scroll-to-call-id', {
+            new CustomEvent<ScrollToCallIdDetail>('scroll-to-call-id', {
               detail: { course: intent.course, callId: intent.callId },
               bubbles: true,
               composed: true,
@@ -6933,7 +6993,7 @@ export class DomindsApp extends HTMLElement {
         if (dialogContainer) {
           await dialogContainer.setCurrentCourse(intent.course);
           dialogContainer.dispatchEvent(
-            new CustomEvent('scroll-to-genseq', {
+            new CustomEvent<ScrollToGenseqDetail>('scroll-to-genseq', {
               detail: { course: intent.course, genseq: intent.genseq },
               bubbles: true,
               composed: true,
@@ -6975,7 +7035,7 @@ export class DomindsApp extends HTMLElement {
         await dialogContainer.setCurrentCourse(course);
         if (typeof callId === 'string' && callId.trim() !== '') {
           dialogContainer.dispatchEvent(
-            new CustomEvent('scroll-to-call-id', {
+            new CustomEvent<ScrollToCallIdDetail>('scroll-to-call-id', {
               detail: { course, callId },
               bubbles: true,
               composed: true,
@@ -6983,7 +7043,7 @@ export class DomindsApp extends HTMLElement {
           );
         } else if (typeof messageIndex === 'number') {
           dialogContainer.dispatchEvent(
-            new CustomEvent('scroll-to-call-site', {
+            new CustomEvent<ScrollToCallSiteDetail>('scroll-to-call-site', {
               detail: { course, messageIndex },
               bubbles: true,
               composed: true,
@@ -10067,14 +10127,8 @@ export class DomindsApp extends HTMLElement {
   /**
    * Navigate to a Q4H call site in the conversation
    */
-  private navigateToQ4HCallSite(
-    questionId: string,
-    dialogId: string,
-    rootId: string,
-    course: number,
-    messageIndex: number,
-    callId?: string,
-  ): void {
+  private navigateToQ4HCallSite(args: Q4HCallSiteNavigation): void {
+    const { questionId, dialogId, rootId, course, messageIndex, callId } = args;
     // Navigate to the dialog if needed
     if (this.currentDialog?.selfId !== dialogId) {
       const dialogInfo = this.findDisplayedDialogByAnyId(dialogId);
@@ -10105,7 +10159,7 @@ export class DomindsApp extends HTMLElement {
       }
       // Scroll to call site - dispatch event for dialog container to handle
       dialogContainer.dispatchEvent(
-        new CustomEvent('scroll-to-call-site', {
+        new CustomEvent<ScrollToCallSiteDetail>('scroll-to-call-site', {
           detail: {
             course,
             messageIndex,

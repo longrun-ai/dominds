@@ -30,6 +30,14 @@ import type {
   WebSearchCallActionRecord,
   WebSearchCallRecord,
 } from './shared/types/storage';
+import {
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
+  toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
+  toCallerCourseNumber,
+  toCallingGenerationSeqNumber,
+} from './shared/types/storage';
 import type { DialogPrimingInput, DialogStatusKind } from './shared/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 
@@ -713,7 +721,9 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         result: expectStringField(raw, 'result', context, true),
         callId: expectStringField(raw, 'callId', context),
       };
-      if (callingGenseq !== undefined) record.calling_genseq = callingGenseq;
+      if (callingGenseq !== undefined) {
+        record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
+      }
       if (mentionList) record.mentionList = mentionList;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
@@ -738,10 +748,16 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         callId: expectStringField(raw, 'callId', context),
         genseq: expectIntegerField(raw, 'genseq', context),
       };
-      if (assignmentCourse !== undefined) record.assignmentCourse = assignmentCourse;
-      if (assignmentGenseq !== undefined) record.assignmentGenseq = assignmentGenseq;
+      if (assignmentCourse !== undefined) {
+        record.assignmentCourse = toAssignmentCourseNumber(assignmentCourse);
+      }
+      if (assignmentGenseq !== undefined) {
+        record.assignmentGenseq = toAssignmentGenerationSeqNumber(assignmentGenseq);
+      }
       if (callerDialogId !== undefined) record.callerDialogId = callerDialogId;
-      if (callerCourse !== undefined) record.callerCourse = callerCourse;
+      if (callerCourse !== undefined) {
+        record.callerCourse = toCallerCourseNumber(callerCourse);
+      }
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -828,10 +844,16 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
           }
         }
       })();
-      if (callingGenseq !== undefined) record.calling_genseq = callingGenseq;
+      if (callingGenseq !== undefined) {
+        record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
+      }
       if (calleeDialogId !== undefined) record.calleeDialogId = calleeDialogId;
-      if (calleeCourse !== undefined) record.calleeCourse = calleeCourse;
-      if (calleeGenseq !== undefined) record.calleeGenseq = calleeGenseq;
+      if (calleeCourse !== undefined) {
+        record.calleeCourse = toCalleeCourseNumber(calleeCourse);
+      }
+      if (calleeGenseq !== undefined) {
+        record.calleeGenseq = toCalleeGenerationSeqNumber(calleeGenseq);
+      }
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1392,12 +1414,18 @@ function remapRecordGenseq(
     case 'teammate_call_result_record':
       return {
         ...record,
-        calling_genseq: remapOptionalGenseq(record.calling_genseq),
+        calling_genseq:
+          record.calling_genseq !== undefined
+            ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
+            : undefined,
       };
     case 'teammate_response_record':
       return {
         ...record,
-        calling_genseq: remapOptionalGenseq(record.calling_genseq),
+        calling_genseq:
+          record.calling_genseq !== undefined
+            ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
+            : undefined,
       };
     default: {
       const _exhaustive: never = record;

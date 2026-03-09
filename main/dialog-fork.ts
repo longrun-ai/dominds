@@ -21,6 +21,7 @@ import type {
   SubdialogResponseStateRecord,
   SubdialogResponsesReconciledRecord,
 } from './shared/types/storage';
+import { toRootGenerationAnchor } from './shared/types/storage';
 import type { DialogStatusKind } from './shared/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Reminder } from './tool';
@@ -81,10 +82,10 @@ type IncludedSubdialog = Readonly<{
   metadata: Extract<DialogMetadataFile, { supdialogId: string }>;
 }>;
 
-const FORK_BASELINE_ANCHOR: RootGenerationAnchor = {
+const FORK_BASELINE_ANCHOR: RootGenerationAnchor = toRootGenerationAnchor({
   rootCourse: 1,
   rootGenseq: 0,
-};
+});
 
 function compareRootAnchor(left: RootGenerationAnchor, right: RootGenerationAnchor): -1 | 0 | 1 {
   if (left.rootCourse < right.rootCourse) return -1;
@@ -243,10 +244,10 @@ function getRecordRootAnchor(record: PersistedDialogRecord): RootGenerationAncho
   if (rootCourse === null || rootGenseq === null) {
     return null;
   }
-  return {
+  return toRootGenerationAnchor({
     rootCourse,
     rootGenseq,
-  };
+  });
 }
 
 function normalizeDraftUserText(
@@ -789,10 +790,10 @@ export async function forkRootDialogTreeAtGeneration(args: {
     );
   }
 
-  const cutoffAnchor: RootGenerationAnchor = {
+  const cutoffAnchor: RootGenerationAnchor = toRootGenerationAnchor({
     rootCourse: targetCourse,
     rootGenseq: targetGenseq - 1,
-  };
+  });
   const draftUserText = normalizeDraftUserText(rootEvents, targetGenseq);
   const latest = await DialogPersistence.loadDialogLatest(sourceRootDialogId, args.sourceStatus);
   const targetRootId = generateDialogID();

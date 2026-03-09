@@ -4,7 +4,16 @@ import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-i
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
+import {
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
+  toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
+  toCallerCourseNumber,
+  toRootGenerationAnchor,
+  type PendingSubdialogStateRecord,
+  type TeammateCallAnchorRecord,
+} from '../../shared/types/storage';
 import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
@@ -246,20 +255,7 @@ export async function supplyResponseToSupdialog(args: {
         parentDialog.id,
         parentDialog.status,
       );
-      let pendingRecord:
-        | {
-            subdialogId: string;
-            createdAt: string;
-            callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-            mentionList?: string[];
-            tellaskContent: string;
-            targetAgentId: string;
-            callId: string;
-            callingCourse?: number;
-            callType: 'A' | 'B' | 'C';
-            sessionSlug?: string;
-          }
-        | undefined;
+      let pendingRecord: PendingSubdialogStateRecord | undefined;
       const filteredPending: typeof pendingSubdialogs = [];
       for (const pending of pendingSubdialogs) {
         if (pending.subdialogId === subdialogId.selfId) {
@@ -328,7 +324,7 @@ export async function supplyResponseToSupdialog(args: {
       await DialogPersistence.savePendingSubdialogs(
         parentDialog.id,
         filteredPending,
-        {
+        toRootGenerationAnchor({
           rootCourse:
             parentDialog instanceof SubDialog
               ? parentDialog.rootDialog.currentCourse
@@ -337,7 +333,7 @@ export async function supplyResponseToSupdialog(args: {
             parentDialog instanceof SubDialog
               ? (parentDialog.rootDialog.activeGenSeqOrUndefined ?? 0)
               : (parentDialog.activeGenSeqOrUndefined ?? 0),
-        },
+        }),
         parentDialog.status,
       );
 
@@ -355,13 +351,7 @@ export async function supplyResponseToSupdialog(args: {
         originMemberId,
         sessionSlug,
         callId: pendingRecord?.callId,
-        callingCourse:
-          pendingRecord &&
-          typeof pendingRecord.callingCourse === 'number' &&
-          Number.isFinite(pendingRecord.callingCourse) &&
-          pendingRecord.callingCourse > 0
-            ? Math.floor(pendingRecord.callingCourse)
-            : undefined,
+        callingCourse: pendingRecord?.callingCourse,
         shouldRevive,
       };
     });
@@ -417,10 +407,17 @@ export async function supplyResponseToSupdialog(args: {
         anchorRole: 'response',
         callId: resolvedCallId,
         genseq: calleeResponseRef.genseq,
-        assignmentCourse: assignmentRef?.course,
-        assignmentGenseq: assignmentRef?.genseq,
+        assignmentCourse:
+          assignmentRef !== undefined ? toAssignmentCourseNumber(assignmentRef.course) : undefined,
+        assignmentGenseq:
+          assignmentRef !== undefined
+            ? toAssignmentGenerationSeqNumber(assignmentRef.genseq)
+            : undefined,
         callerDialogId: parentDialog.id.selfId,
-        callerCourse: result.callingCourse,
+        callerCourse:
+          result.callingCourse !== undefined
+            ? toCallerCourseNumber(result.callingCourse)
+            : undefined,
       };
       await DialogPersistence.appendEvent(
         subdialogId,
@@ -448,8 +445,14 @@ export async function supplyResponseToSupdialog(args: {
         callId: resolvedCallId,
         originMemberId: requesterId,
         sessionSlug: result.sessionSlug,
-        calleeCourse: calleeResponseRef?.course,
-        calleeGenseq: calleeResponseRef?.genseq,
+        calleeCourse:
+          calleeResponseRef !== undefined
+            ? toCalleeCourseNumber(calleeResponseRef.course)
+            : undefined,
+        calleeGenseq:
+          calleeResponseRef !== undefined
+            ? toCalleeGenerationSeqNumber(calleeResponseRef.genseq)
+            : undefined,
       },
     );
 

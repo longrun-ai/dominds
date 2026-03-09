@@ -9,7 +9,15 @@
 import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
-import type { FuncResultContentItem } from './storage';
+import type {
+  AssignmentCourseNumber,
+  AssignmentGenerationSeqNumber,
+  CalleeCourseNumber,
+  CalleeGenerationSeqNumber,
+  CallerCourseNumber,
+  CallingGenerationSeqNumber,
+  FuncResultContentItem,
+} from './storage';
 
 export interface DialogRunStateEvent {
   type: 'dlg_run_state_evt';
@@ -215,7 +223,7 @@ export type TeammateCallResponseEvent =
   | {
       type: 'teammate_call_response_evt';
       course: number;
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       callName: 'tellask' | 'tellaskSessionless';
       mentionList: string[];
@@ -227,7 +235,7 @@ export type TeammateCallResponseEvent =
   | {
       type: 'teammate_call_response_evt';
       course: number;
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
       tellaskContent: string;
@@ -243,10 +251,10 @@ export interface TeammateCallAnchorEvent {
   genseq: number;
   anchorRole: 'assignment' | 'response';
   callId: string;
-  assignmentCourse?: number;
-  assignmentGenseq?: number;
+  assignmentCourse?: AssignmentCourseNumber;
+  assignmentGenseq?: AssignmentGenerationSeqNumber;
   callerDialogId?: string;
-  callerCourse?: number;
+  callerCourse?: CallerCourseNumber;
 }
 
 export interface ReminderContent {
@@ -267,11 +275,11 @@ export type TeammateResponseEvent =
   | {
       type: 'teammate_response_evt';
       course: number;
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellask';
       sessionSlug: string;
       mentionList: string[];
@@ -285,11 +293,11 @@ export type TeammateResponseEvent =
   | {
       type: 'teammate_response_evt';
       course: number;
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellaskSessionless';
       mentionList: string[];
       tellaskContent: string;
@@ -302,11 +310,11 @@ export type TeammateResponseEvent =
   | {
       type: 'teammate_response_evt';
       course: number;
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellaskBack' | 'freshBootsReasoning';
       tellaskContent: string;
       status: 'completed' | 'failed';

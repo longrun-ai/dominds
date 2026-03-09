@@ -14,7 +14,12 @@ import {
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
-import type { HumanQuestion } from '../../shared/types/storage';
+import {
+  toCallingCourseNumber,
+  toRootGenerationAnchor,
+  type HumanQuestion,
+  type PendingSubdialogStateRecord,
+} from '../../shared/types/storage';
 import { appendDistinctPerspectiveFbrBody } from '../../shared/utils/fbr';
 import { generateShortId } from '../../shared/utils/id';
 import {
@@ -32,19 +37,6 @@ import type {
   KernelDriverDriveScheduler,
   KernelDriverHumanPrompt,
 } from './types';
-
-type PendingSubdialogRecordType = {
-  subdialogId: string;
-  createdAt: string;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  mentionList?: string[];
-  tellaskContent: string;
-  targetAgentId: string;
-  callId: string;
-  callingCourse?: number;
-  callType: 'A' | 'B' | 'C';
-  sessionSlug?: string;
-};
 
 export type TeammateTellaskParseResult =
   | {
@@ -654,7 +646,7 @@ async function executeTellaskCall(
     const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
     const callingCourse =
       Number.isFinite(rawCallingCourse) && rawCallingCourse > 0
-        ? Math.floor(rawCallingCourse)
+        ? toCallingCourseNumber(rawCallingCourse)
         : undefined;
     const firstMentionForError = options.targetForError ?? parseResult.agentId;
     if (parseResult.type !== 'A' && member === null) {
@@ -810,7 +802,7 @@ async function executeTellaskCall(
         const shouldReplyToCaller = isFinalRound;
 
         if (shouldReplyToCaller) {
-          const pendingRecord: PendingSubdialogRecordType = {
+          const pendingRecord: PendingSubdialogStateRecord = {
             subdialogId: sub.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
             callName: subdialogCallName,
@@ -822,14 +814,18 @@ async function executeTellaskCall(
             callType: 'C',
           };
           await withSubdialogTxnLock(dlg.id, async () => {
-            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
-              rootCourse:
-                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
-              rootGenseq:
-                dlg instanceof SubDialog
-                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
-                  : (dlg.activeGenSeqOrUndefined ?? 0),
-            });
+            await DialogPersistence.appendPendingSubdialog(
+              dlg.id,
+              pendingRecord,
+              toRootGenerationAnchor({
+                rootCourse:
+                  dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+                rootGenseq:
+                  dlg instanceof SubDialog
+                    ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                    : (dlg.activeGenSeqOrUndefined ?? 0),
+              }),
+            );
           });
           await syncPendingTellaskReminderBestEffort(
             dlg,
@@ -1075,7 +1071,7 @@ async function executeTellaskCall(
             collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
 
-          const pendingRecord: PendingSubdialogRecordType = {
+          const pendingRecord: PendingSubdialogStateRecord = {
             subdialogId: sub.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
             callName: subdialogCallName,
@@ -1088,14 +1084,18 @@ async function executeTellaskCall(
             sessionSlug: parseResult.sessionSlug,
           };
           await withSubdialogTxnLock(dlg.id, async () => {
-            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
-              rootCourse:
-                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
-              rootGenseq:
-                dlg instanceof SubDialog
-                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
-                  : (dlg.activeGenSeqOrUndefined ?? 0),
-            });
+            await DialogPersistence.appendPendingSubdialog(
+              dlg.id,
+              pendingRecord,
+              toRootGenerationAnchor({
+                rootCourse:
+                  dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+                rootGenseq:
+                  dlg instanceof SubDialog
+                    ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                    : (dlg.activeGenSeqOrUndefined ?? 0),
+              }),
+            );
           });
           await syncPendingTellaskReminderBestEffort(
             dlg,
@@ -1181,7 +1181,7 @@ async function executeTellaskCall(
           return { kind: 'created' as const, subdialog: created };
         });
 
-        const pendingRecord: PendingSubdialogRecordType = {
+        const pendingRecord: PendingSubdialogStateRecord = {
           subdialogId: result.subdialog.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
           callName: subdialogCallName,
@@ -1279,7 +1279,7 @@ async function executeTellaskCall(
           callId,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         });
-        const pendingRecord: PendingSubdialogRecordType = {
+        const pendingRecord: PendingSubdialogStateRecord = {
           subdialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
           callName: subdialogCallName,
@@ -1291,13 +1291,18 @@ async function executeTellaskCall(
           callType: 'C',
         };
         await withSubdialogTxnLock(dlg.id, async () => {
-          await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
-            rootCourse: dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
-            rootGenseq:
-              dlg instanceof SubDialog
-                ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
-                : (dlg.activeGenSeqOrUndefined ?? 0),
-          });
+          await DialogPersistence.appendPendingSubdialog(
+            dlg.id,
+            pendingRecord,
+            toRootGenerationAnchor({
+              rootCourse:
+                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+              rootGenseq:
+                dlg instanceof SubDialog
+                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                  : (dlg.activeGenSeqOrUndefined ?? 0),
+            }),
+          );
         });
         await syncPendingTellaskReminderBestEffort(
           dlg,

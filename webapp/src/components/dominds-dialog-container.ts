@@ -17,6 +17,17 @@ import type {
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
+import {
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
+  toCalleeCourseNumber,
+  toCallerCourseNumber,
+  type AssignmentCourseNumber,
+  type AssignmentGenerationSeqNumber,
+  type CalleeCourseNumber,
+  type CallerCourseNumber,
+  type CallingGenerationSeqNumber,
+} from '../shared/types/storage';
 import type { AssignmentFromSup, DialogIdent, DialogStatusKind } from '../shared/types/wire';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
@@ -38,11 +49,87 @@ type PendingScrollRequest =
 type TeammateCallAnchorMeta = {
   callId: string;
   anchorRole: 'assignment' | 'response';
-  assignmentCourse?: number;
-  assignmentGenseq?: number;
+  assignmentCourse?: AssignmentCourseNumber;
+  assignmentGenseq?: AssignmentGenerationSeqNumber;
   callerDialogId?: string;
-  callerCourse?: number;
+  callerCourse?: CallerCourseNumber;
 };
+
+type TeammateAssignmentTarget = {
+  course: AssignmentCourseNumber;
+  genseq: AssignmentGenerationSeqNumber;
+};
+
+type TeammateCallSiteTarget = {
+  selfId?: string;
+  course?: CallerCourseNumber | CalleeCourseNumber;
+};
+
+type ScrollToCallIdDetail = {
+  course: number;
+  callId: string;
+};
+
+type ScrollToGenseqDetail = {
+  course: number;
+  genseq: number;
+};
+
+type ScrollToCallSiteDetail =
+  | {
+      course: number;
+      callId: string;
+      messageIndex?: undefined;
+    }
+  | {
+      course: number;
+      messageIndex: number;
+      callId?: undefined;
+    };
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parsePositiveIntField(value: unknown): number | null {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
+function readScrollToCallIdDetail(value: unknown): ScrollToCallIdDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const course = parsePositiveIntField(value['course']);
+  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
+  if (course === null || callId === '') return null;
+  return { course, callId };
+}
+
+function readScrollToGenseqDetail(value: unknown): ScrollToGenseqDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const course = parsePositiveIntField(value['course']);
+  const genseq = parsePositiveIntField(value['genseq']);
+  if (course === null || genseq === null) return null;
+  return { course, genseq };
+}
+
+function readScrollToCallSiteDetail(value: unknown): ScrollToCallSiteDetail | null {
+  if (!isObjectRecord(value)) return null;
+  const course = parsePositiveIntField(value['course']);
+  if (course === null) return null;
+  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
+  if (callId !== '') {
+    return { course, callId };
+  }
+  const messageIndex = parsePositiveIntField(value['messageIndex']);
+  if (messageIndex === null) return null;
+  return { course, messageIndex };
+}
 
 const CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX = 120;
 const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
@@ -275,10 +362,10 @@ export class DomindsDialogContainer extends HTMLElement {
           );
           if (!Number.isFinite(assignmentCourseRaw) || assignmentCourseRaw <= 0) return;
           if (!Number.isFinite(assignmentGenseqRaw) || assignmentGenseqRaw <= 0) return;
-          this.navigateToGenerationBubbleInApp(
-            Math.floor(assignmentCourseRaw),
-            Math.floor(assignmentGenseqRaw),
-          );
+          this.navigateToGenerationBubbleInApp({
+            course: toAssignmentCourseNumber(assignmentCourseRaw),
+            genseq: toAssignmentGenerationSeqNumber(assignmentGenseqRaw),
+          });
           return;
         }
         const requesterCallsiteBtn = target.closest(
@@ -299,7 +386,7 @@ export class DomindsDialogContainer extends HTMLElement {
           if (!Number.isFinite(callerCourseRaw) || callerCourseRaw <= 0) return;
           this.openCallSiteDeepLinkInNewTab(callId, {
             selfId: callerDialogId,
-            course: Math.floor(callerCourseRaw),
+            course: toCallerCourseNumber(callerCourseRaw),
           });
           return;
         }
@@ -403,92 +490,46 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private onScrollToCallSite = (event: Event): void => {
     const ce = event as CustomEvent<unknown>;
-    const detail = ce.detail;
-    if (!detail || typeof detail !== 'object') return;
-    const d = detail as Record<string, unknown>;
+    const detail = readScrollToCallSiteDetail(ce.detail);
+    if (!detail) return;
 
-    const courseRaw = d['course'];
-    const course =
-      typeof courseRaw === 'number'
-        ? courseRaw
-        : typeof courseRaw === 'string'
-          ? Number.parseInt(courseRaw, 10)
-          : Number.NaN;
-    if (!Number.isFinite(course)) return;
-
-    const callIdRaw = d['callId'];
-    const callId = typeof callIdRaw === 'string' ? callIdRaw.trim() : '';
-    if (callId !== '') {
-      this.pendingScrollRequest = { kind: 'by_call_id', course: Math.floor(course), callId };
+    if (detail.callId !== undefined) {
+      this.pendingScrollRequest = {
+        kind: 'by_call_id',
+        course: detail.course,
+        callId: detail.callId,
+      };
       this.maybeApplyPendingScrollRequest();
       return;
     }
 
-    const messageIndexRaw = d['messageIndex'];
-    const messageIndex =
-      typeof messageIndexRaw === 'number'
-        ? messageIndexRaw
-        : typeof messageIndexRaw === 'string'
-          ? Number.parseInt(messageIndexRaw, 10)
-          : Number.NaN;
-    if (!Number.isFinite(messageIndex)) return;
-
     this.pendingScrollRequest = {
       kind: 'by_message_index',
-      course: Math.floor(course),
-      messageIndex: Math.floor(messageIndex),
+      course: detail.course,
+      messageIndex: detail.messageIndex,
     };
     this.maybeApplyPendingScrollRequest();
   };
 
   private onScrollToCallId = (event: Event): void => {
     const ce = event as CustomEvent<unknown>;
-    const detail = ce.detail;
-    if (!detail || typeof detail !== 'object') return;
-    const d = detail as Record<string, unknown>;
+    const detail = readScrollToCallIdDetail(ce.detail);
+    if (!detail) return;
 
-    const courseRaw = d['course'];
-    const course =
-      typeof courseRaw === 'number'
-        ? courseRaw
-        : typeof courseRaw === 'string'
-          ? Number.parseInt(courseRaw, 10)
-          : Number.NaN;
-    if (!Number.isFinite(course)) return;
-
-    const callIdRaw = d['callId'];
-    const callId = typeof callIdRaw === 'string' ? callIdRaw.trim() : '';
-    if (callId === '') return;
-
-    this.pendingScrollRequest = { kind: 'by_call_id', course: Math.floor(course), callId };
+    this.pendingScrollRequest = {
+      kind: 'by_call_id',
+      course: detail.course,
+      callId: detail.callId,
+    };
     this.maybeApplyPendingScrollRequest();
   };
 
   private onScrollToGenSeq = (event: Event): void => {
     const ce = event as CustomEvent<unknown>;
-    const detail = ce.detail;
-    if (!detail || typeof detail !== 'object') return;
-    const d = detail as Record<string, unknown>;
+    const detail = readScrollToGenseqDetail(ce.detail);
+    if (!detail) return;
 
-    const courseRaw = d['course'];
-    const course =
-      typeof courseRaw === 'number'
-        ? courseRaw
-        : typeof courseRaw === 'string'
-          ? Number.parseInt(courseRaw, 10)
-          : Number.NaN;
-    if (!Number.isFinite(course)) return;
-
-    const genseqRaw = d['genseq'];
-    const genseq =
-      typeof genseqRaw === 'number'
-        ? genseqRaw
-        : typeof genseqRaw === 'string'
-          ? Number.parseInt(genseqRaw, 10)
-          : Number.NaN;
-    if (!Number.isFinite(genseq)) return;
-
-    this.pendingScrollRequest = { kind: 'by_genseq', course: Math.floor(course), genseq };
+    this.pendingScrollRequest = { kind: 'by_genseq', course: detail.course, genseq: detail.genseq };
     this.maybeApplyPendingScrollRequest();
   };
 
@@ -2467,10 +2508,14 @@ export class DomindsDialogContainer extends HTMLElement {
     const anchorMeta: TeammateCallAnchorMeta = {
       callId: rawCallId,
       anchorRole: rawAnchorRole,
-      assignmentCourse,
-      assignmentGenseq,
+      assignmentCourse:
+        assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
+      assignmentGenseq:
+        assignmentGenseq !== undefined
+          ? toAssignmentGenerationSeqNumber(assignmentGenseq)
+          : undefined,
       callerDialogId,
-      callerCourse,
+      callerCourse: callerCourse !== undefined ? toCallerCourseNumber(callerCourse) : undefined,
     };
     const genseq = Math.floor(event.genseq);
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -2572,7 +2617,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.timestamp,
       sessionSlug,
       typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
-        ? Math.floor(event.calleeCourse)
+        ? toCalleeCourseNumber(event.calleeCourse)
         : undefined,
     );
 
@@ -2622,13 +2667,13 @@ export class DomindsDialogContainer extends HTMLElement {
     calleeDialogId: string,
     agentId: string | undefined,
     responseNarr: string,
-    callSiteId?: number,
+    callSiteId?: CallingGenerationSeqNumber,
     callId?: string,
     originMemberId?: string,
     callName?: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
     timestamp?: string,
     sessionSlug?: string,
-    calleeCourse?: number,
+    calleeCourse?: CalleeCourseNumber,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
@@ -2768,11 +2813,9 @@ export class DomindsDialogContainer extends HTMLElement {
     // navigation that requires dialog/course resolution.
   }
 
-  private navigateToGenerationBubbleInApp(course: number, genseq: number): void {
-    if (!Number.isFinite(course) || course <= 0) return;
-    if (!Number.isFinite(genseq) || genseq <= 0) return;
-    const normalizedCourse = Math.floor(course);
-    const normalizedGenseq = Math.floor(genseq);
+  private navigateToGenerationBubbleInApp(target: TeammateAssignmentTarget): void {
+    const normalizedCourse = Math.floor(target.course);
+    const normalizedGenseq = Math.floor(target.genseq);
     const dialog = this.currentDialog;
     if (!dialog) return;
 
@@ -2800,10 +2843,7 @@ export class DomindsDialogContainer extends HTMLElement {
     );
   }
 
-  private openCallSiteDeepLinkInNewTab(
-    callId: string,
-    target?: { selfId?: string; course?: number },
-  ): void {
+  private openCallSiteDeepLinkInNewTab(callId: string, target?: TeammateCallSiteTarget): void {
     const dialog = this.currentDialog;
     if (!dialog) return;
     const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
@@ -2834,7 +2874,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private async copyCallSiteDeepLinkToClipboard(
     callId: string,
-    target?: { selfId?: string; course?: number },
+    target?: TeammateCallSiteTarget,
   ): Promise<void> {
     const dialog = this.currentDialog;
     if (!dialog) return;

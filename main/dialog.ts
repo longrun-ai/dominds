@@ -29,6 +29,9 @@ import type {
 import type { DialogPrompt, DialogRunControlSpec, DriveIntent } from './shared/types/drive-intent';
 import type { LanguageCode } from './shared/types/language';
 import type {
+  CalleeCourseNumber,
+  CalleeGenerationSeqNumber,
+  CallingCourseNumber,
   DialogMetadataFile,
   HumanQuestion,
   ProviderData,
@@ -118,7 +121,7 @@ export interface PendingSubdialog {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse?: number;
+  callingCourse?: CallingCourseNumber;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -1123,8 +1126,8 @@ export abstract class Dialog {
       callId: string;
       originMemberId: string;
       sessionSlug?: string;
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
     },
   ): Promise<void> {
     return await this.dlgStore.receiveTeammateResponse(
@@ -1668,8 +1671,8 @@ export abstract class DialogStore {
       callId: string;
       originMemberId: string;
       sessionSlug?: string;
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
     },
   ): Promise<void> {}
 

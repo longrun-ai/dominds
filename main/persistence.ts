@@ -43,6 +43,8 @@ import type { LanguageCode } from './shared/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
+  CalleeCourseNumber,
+  CalleeGenerationSeqNumber,
   DialogLatestFile,
   DialogMetadataFile,
   FuncCallRecord,
@@ -56,6 +58,7 @@ import type {
   Questions4HumanFile,
   Questions4HumanReconciledRecord,
   ReasoningPayload,
+  ReconciledRecordWriteTarget,
   ReminderSnapshotItem,
   RemindersReconciledRecord,
   ReminderStateFile,
@@ -72,6 +75,11 @@ import type {
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
+} from './shared/types/storage';
+import {
+  toCallingGenerationSeqNumber,
+  toDialogCourseNumber,
+  toRootGenerationAnchor,
 } from './shared/types/storage';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import { Reminder } from './tool';
@@ -122,10 +130,32 @@ function cloneRootGenerationAnchor(anchor: RootGenerationAnchor): RootGeneration
 
 function resolveRootGenerationAnchor(dialog: Dialog): RootGenerationAnchor {
   const rootDialog = dialog instanceof SubDialog ? dialog.rootDialog : dialog;
-  return {
+  return toRootGenerationAnchor({
     rootCourse: rootDialog.currentCourse,
     rootGenseq: rootDialog.activeGenSeqOrUndefined ?? 0,
+  });
+}
+
+function resolveReconciledRecordWriteTarget(dialog: Dialog): ReconciledRecordWriteTarget {
+  return {
+    kind: 'dialog_course',
+    rootAnchor: resolveRootGenerationAnchor(dialog),
+    dialogCourse: toDialogCourseNumber(dialog.activeGenCourseOrUndefined ?? dialog.currentCourse),
   };
+}
+
+function rootAnchorWriteTarget(rootAnchor: RootGenerationAnchor): ReconciledRecordWriteTarget {
+  return {
+    kind: 'root_anchor',
+    rootAnchor,
+  };
+}
+
+function resolveTargetCourseFromWriteTarget(writeTarget: ReconciledRecordWriteTarget): number {
+  if (writeTarget.kind === 'dialog_course') {
+    return writeTarget.dialogCourse;
+  }
+  return writeTarget.rootAnchor.rootCourse;
 }
 
 function attachRootGenerationRef<T extends PersistedDialogRecord>(dialog: Dialog, record: T): T {
@@ -715,7 +745,10 @@ export class DiskFileDialogStore extends DialogStore {
     callId: string,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const calling_genseq = dialog.activeGenSeqOrUndefined;
+    const calling_genseq =
+      dialog.activeGenSeqOrUndefined !== undefined
+        ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
+        : undefined;
     // Persist record WITH callId for replay correlation
     const ev: TeammateCallResultRecord = (() => {
       switch (callName) {
@@ -817,12 +850,15 @@ export class DiskFileDialogStore extends DialogStore {
       callId: string;
       originMemberId: string;
       sessionSlug?: string;
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const calling_genseq = dialog.activeGenSeqOrUndefined;
+    const calling_genseq =
+      dialog.activeGenSeqOrUndefined !== undefined
+        ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
+        : undefined;
     const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
     const response = options.response;
     const agentId = options.agentId;
@@ -1386,7 +1422,7 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.appendRemindersReconciledRecord(
       this.dialogId,
       reminders,
-      resolveRootGenerationAnchor(dialog),
+      resolveReconciledRecordWriteTarget(dialog),
       dialog.status,
     );
   }
@@ -1522,7 +1558,7 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.appendQuestions4HumanReconciledRecord(
       this.dialogId,
       questions,
-      resolveRootGenerationAnchor(dialog),
+      resolveReconciledRecordWriteTarget(dialog),
       dialog.status,
     );
   }
@@ -1582,7 +1618,7 @@ export class DiskFileDialogStore extends DialogStore {
         agentId: entry.agentId,
         sessionSlug: entry.sessionSlug,
       })),
-      resolveRootGenerationAnchor(dialog),
+      resolveReconciledRecordWriteTarget(dialog),
       status,
     );
   }
@@ -1778,7 +1814,7 @@ export class DiskFileDialogStore extends DialogStore {
       await DialogPersistence.appendQuestions4HumanReconciledRecord(
         dialog.id,
         [],
-        resolveRootGenerationAnchor(dialog),
+        resolveReconciledRecordWriteTarget(dialog),
         dialog.status,
       );
 
@@ -2793,76 +2829,101 @@ export class DialogPersistence {
   static async appendRemindersReconciledRecord(
     dialogId: DialogID,
     reminders: readonly Reminder[],
-    anchor: RootGenerationAnchor,
+    writeTarget: ReconciledRecordWriteTarget,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const record: RemindersReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'reminders_reconciled_record',
-      ...cloneRootGenerationAnchor(anchor),
+      ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       reminders: reminders.map((reminder) => serializeReminderSnapshot(reminder)),
     };
-    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+    await this.appendEvent(
+      dialogId,
+      resolveTargetCourseFromWriteTarget(writeTarget),
+      record,
+      status,
+    );
   }
 
   static async appendQuestions4HumanReconciledRecord(
     dialogId: DialogID,
     questions: readonly HumanQuestion[],
-    anchor: RootGenerationAnchor,
+    writeTarget: ReconciledRecordWriteTarget,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const record: Questions4HumanReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'questions4human_reconciled_record',
-      ...cloneRootGenerationAnchor(anchor),
+      ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       questions: this.cloneQuestions4Human(questions),
     };
-    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+    await this.appendEvent(
+      dialogId,
+      resolveTargetCourseFromWriteTarget(writeTarget),
+      record,
+      status,
+    );
   }
 
   static async appendPendingSubdialogsReconciledRecord(
     dialogId: DialogID,
     pendingSubdialogs: readonly PendingSubdialogStateRecord[],
-    anchor: RootGenerationAnchor,
+    writeTarget: ReconciledRecordWriteTarget,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const record: PendingSubdialogsReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'pending_subdialogs_reconciled_record',
-      ...cloneRootGenerationAnchor(anchor),
+      ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       pendingSubdialogs: this.clonePendingSubdialogRecords(pendingSubdialogs),
     };
-    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+    await this.appendEvent(
+      dialogId,
+      resolveTargetCourseFromWriteTarget(writeTarget),
+      record,
+      status,
+    );
   }
 
   static async appendSubdialogRegistryReconciledRecord(
     dialogId: DialogID,
     entries: readonly SubdialogRegistryStateRecord[],
-    anchor: RootGenerationAnchor,
+    writeTarget: ReconciledRecordWriteTarget,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const record: SubdialogRegistryReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'subdialog_registry_reconciled_record',
-      ...cloneRootGenerationAnchor(anchor),
+      ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       entries: this.cloneRegistryEntries(entries),
     };
-    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+    await this.appendEvent(
+      dialogId,
+      resolveTargetCourseFromWriteTarget(writeTarget),
+      record,
+      status,
+    );
   }
 
   static async appendSubdialogResponsesReconciledRecord(
     dialogId: DialogID,
     responses: readonly SubdialogResponseStateRecord[],
-    anchor: RootGenerationAnchor,
+    writeTarget: ReconciledRecordWriteTarget,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const record: SubdialogResponsesReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'subdialog_responses_reconciled_record',
-      ...cloneRootGenerationAnchor(anchor),
+      ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       responses: this.cloneSubdialogResponses(responses),
     };
-    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+    await this.appendEvent(
+      dialogId,
+      resolveTargetCourseFromWriteTarget(writeTarget),
+      record,
+      status,
+    );
   }
 
   /**
@@ -4213,7 +4274,7 @@ export class DialogPersistence {
         await this.appendPendingSubdialogsReconciledRecord(
           rootDialogId,
           nextRecords,
-          rootAnchor,
+          rootAnchorWriteTarget(rootAnchor),
           status,
         );
       }
@@ -4432,7 +4493,7 @@ export class DialogPersistence {
         await this.appendSubdialogResponsesReconciledRecord(
           rootDialogId,
           responses,
-          rootAnchor,
+          rootAnchorWriteTarget(rootAnchor),
           status,
         );
       }

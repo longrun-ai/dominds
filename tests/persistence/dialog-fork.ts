@@ -14,6 +14,7 @@ import type {
   SubdialogCreatedRecord,
   SubdialogMetadataFile,
 } from 'dominds/shared/types/storage';
+import { toRootGenerationAnchor } from 'dominds/shared/types/storage';
 import { formatUnifiedTimestamp } from 'dominds/shared/utils/time';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
@@ -94,8 +95,7 @@ async function main(): Promise<void> {
     const subCreatedRecord: SubdialogCreatedRecord = {
       ts: createdAt,
       type: 'subdialog_created_record',
-      rootCourse: 1,
-      rootGenseq: 1,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
       subdialogId: subId.selfId,
       supdialogId: rootId.selfId,
       agentId: 'scribe',
@@ -114,8 +114,7 @@ async function main(): Promise<void> {
     const preSecondReminderRecord: RemindersReconciledRecord = {
       ts: createdAt,
       type: 'reminders_reconciled_record',
-      rootCourse: 1,
-      rootGenseq: 1,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
       reminders: [
         {
           content: 'alpha',
@@ -136,8 +135,7 @@ async function main(): Promise<void> {
       type: 'agent_words_record',
       genseq: 1,
       content: 'subdialog baseline',
-      rootCourse: 1,
-      rootGenseq: 1,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
     });
 
     const secondTs = formatUnifiedTimestamp(new Date('2026-03-09T01:01:00.000Z'));
@@ -155,8 +153,7 @@ async function main(): Promise<void> {
     const postSecondReminderRecord: RemindersReconciledRecord = {
       ts: secondTs,
       type: 'reminders_reconciled_record',
-      rootCourse: 1,
-      rootGenseq: 2,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
       reminders: [
         {
           content: 'beta',
@@ -169,8 +166,7 @@ async function main(): Promise<void> {
     const postSecondPendingRecord: PendingSubdialogsReconciledRecord = {
       ts: secondTs,
       type: 'pending_subdialogs_reconciled_record',
-      rootCourse: 1,
-      rootGenseq: 2,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
       pendingSubdialogs: [
         {
           subdialogId: subId.selfId,
@@ -195,8 +191,7 @@ async function main(): Promise<void> {
       type: 'agent_words_record',
       genseq: 2,
       content: 'subdialog future answer',
-      rootCourse: 1,
-      rootGenseq: 2,
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
     });
 
     await DialogPersistence._saveReminderState(rootId, [{ content: 'beta' }]);

@@ -224,13 +224,121 @@ export type PersistedDialogRecord =
   | SubdialogResponsesReconciledRecord;
 
 export interface RootGenerationAnchor {
-  rootCourse: number;
-  rootGenseq: number;
+  rootCourse: RootCourseNumber;
+  rootGenseq: RootGenerationSeqNumber;
 }
 
+export type RootCourseNumber = number & { readonly __rootCourseBrand: unique symbol };
+export type RootGenerationSeqNumber = number & { readonly __rootGenerationSeqBrand: unique symbol };
+export type DialogCourseNumber = number & { readonly __dialogCourseBrand: unique symbol };
+export type CallingCourseNumber = number & { readonly __callingCourseBrand: unique symbol };
+export type CallingGenerationSeqNumber = number & {
+  readonly __callingGenerationSeqBrand: unique symbol;
+};
+export type AssignmentCourseNumber = number & { readonly __assignmentCourseBrand: unique symbol };
+export type AssignmentGenerationSeqNumber = number & {
+  readonly __assignmentGenerationSeqBrand: unique symbol;
+};
+export type CallerCourseNumber = number & { readonly __callerCourseBrand: unique symbol };
+export type CalleeCourseNumber = number & { readonly __calleeCourseBrand: unique symbol };
+export type CalleeGenerationSeqNumber = number & {
+  readonly __calleeGenerationSeqBrand: unique symbol;
+};
+
+export type ReconciledRecordWriteTarget =
+  | {
+      kind: 'dialog_course';
+      rootAnchor: RootGenerationAnchor;
+      dialogCourse: DialogCourseNumber;
+    }
+  | {
+      kind: 'root_anchor';
+      rootAnchor: RootGenerationAnchor;
+    };
+
 export interface RootGenerationRef {
-  rootCourse?: number;
-  rootGenseq?: number;
+  rootCourse?: RootCourseNumber;
+  rootGenseq?: RootGenerationSeqNumber;
+}
+
+export function toRootCourseNumber(value: number): RootCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid root course number: ${String(value)}`);
+  }
+  return Math.floor(value) as RootCourseNumber;
+}
+
+export function toRootGenerationSeqNumber(value: number): RootGenerationSeqNumber {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid root generation sequence number: ${String(value)}`);
+  }
+  return Math.floor(value) as RootGenerationSeqNumber;
+}
+
+export function toDialogCourseNumber(value: number): DialogCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid dialog course number: ${String(value)}`);
+  }
+  return Math.floor(value) as DialogCourseNumber;
+}
+
+export function toCallingCourseNumber(value: number): CallingCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid calling course number: ${String(value)}`);
+  }
+  return Math.floor(value) as CallingCourseNumber;
+}
+
+export function toCallingGenerationSeqNumber(value: number): CallingGenerationSeqNumber {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid calling generation sequence number: ${String(value)}`);
+  }
+  return Math.floor(value) as CallingGenerationSeqNumber;
+}
+
+export function toAssignmentCourseNumber(value: number): AssignmentCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid assignment course number: ${String(value)}`);
+  }
+  return Math.floor(value) as AssignmentCourseNumber;
+}
+
+export function toAssignmentGenerationSeqNumber(value: number): AssignmentGenerationSeqNumber {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid assignment generation sequence number: ${String(value)}`);
+  }
+  return Math.floor(value) as AssignmentGenerationSeqNumber;
+}
+
+export function toCallerCourseNumber(value: number): CallerCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid caller course number: ${String(value)}`);
+  }
+  return Math.floor(value) as CallerCourseNumber;
+}
+
+export function toCalleeCourseNumber(value: number): CalleeCourseNumber {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid callee course number: ${String(value)}`);
+  }
+  return Math.floor(value) as CalleeCourseNumber;
+}
+
+export function toCalleeGenerationSeqNumber(value: number): CalleeGenerationSeqNumber {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid callee generation sequence number: ${String(value)}`);
+  }
+  return Math.floor(value) as CalleeGenerationSeqNumber;
+}
+
+export function toRootGenerationAnchor(args: {
+  rootCourse: number;
+  rootGenseq: number;
+}): RootGenerationAnchor {
+  return {
+    rootCourse: toRootCourseNumber(args.rootCourse),
+    rootGenseq: toRootGenerationSeqNumber(args.rootGenseq),
+  };
 }
 
 export interface ReminderSnapshotItem {
@@ -250,7 +358,7 @@ export interface PendingSubdialogStateRecord {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse?: number;
+  callingCourse?: CallingCourseNumber;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -377,7 +485,7 @@ export interface QuestForSupRecord extends RootGenerationRef {
 export interface TeammateCallResultRecord extends RootGenerationRef {
   ts: string;
   type: 'teammate_call_result_record';
-  calling_genseq?: number;
+  calling_genseq?: CallingGenerationSeqNumber;
   responderId: string;
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   mentionList?: string[];
@@ -395,26 +503,24 @@ export interface TeammateCallAnchorRecord extends RootGenerationRef {
   anchorRole: 'assignment' | 'response';
   callId: string;
   genseq: number;
-  assignmentCourse?: number;
-  assignmentGenseq?: number;
+  assignmentCourse?: AssignmentCourseNumber;
+  assignmentGenseq?: AssignmentGenerationSeqNumber;
   callerDialogId?: string;
-  callerCourse?: number;
+  callerCourse?: CallerCourseNumber;
   sourceTag?: 'priming_script';
 }
 
 // Teammate response record - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export type TeammateResponseRecord =
-  | {
-      rootCourse?: number;
-      rootGenseq?: number;
+  | (RootGenerationRef & {
       ts: string;
       type: 'teammate_response_record';
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellask';
       sessionSlug: string;
       mentionList: string[];
@@ -425,17 +531,15 @@ export type TeammateResponseRecord =
       callId: string; // For navigation from response back to call site
       originMemberId: string;
       sourceTag?: 'priming_script';
-    }
-  | {
-      rootCourse?: number;
-      rootGenseq?: number;
+    })
+  | (RootGenerationRef & {
       ts: string;
       type: 'teammate_response_record';
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellaskSessionless';
       mentionList: string[];
       tellaskContent: string;
@@ -445,17 +549,15 @@ export type TeammateResponseRecord =
       callId: string; // For navigation from response back to call site
       originMemberId: string;
       sourceTag?: 'priming_script';
-    }
-  | {
-      rootCourse?: number;
-      rootGenseq?: number;
+    })
+  | (RootGenerationRef & {
       ts: string;
       type: 'teammate_response_record';
-      calling_genseq?: number;
+      calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-      calleeCourse?: number;
-      calleeGenseq?: number;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       callName: 'tellaskBack' | 'freshBootsReasoning';
       tellaskContent: string;
       status: 'completed' | 'failed';
@@ -464,7 +566,7 @@ export type TeammateResponseRecord =
       callId: string; // For navigation from response back to call site
       originMemberId: string;
       sourceTag?: 'priming_script';
-    };
+    });
 
 export interface GenStartRecord extends RootGenerationRef {
   ts: string;
