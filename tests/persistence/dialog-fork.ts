@@ -1,0 +1,275 @@
+import assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { DialogID } from 'dominds/dialog';
+import { forkRootDialogTreeAtGeneration } from 'dominds/dialog-fork';
+import { DialogPersistence } from 'dominds/persistence';
+import type {
+  DialogLatestFile,
+  PendingSubdialogsReconciledRecord,
+  RemindersReconciledRecord,
+  RootDialogMetadataFile,
+  SubdialogCreatedRecord,
+  SubdialogMetadataFile,
+} from 'dominds/shared/types/storage';
+import { formatUnifiedTimestamp } from 'dominds/shared/utils/time';
+
+async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
+  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-dialog-fork-'));
+  const previousCwd = process.cwd();
+  process.chdir(sandboxDir);
+  try {
+    return await fn(sandboxDir);
+  } finally {
+    process.chdir(previousCwd);
+    await fs.rm(sandboxDir, { recursive: true, force: true });
+  }
+}
+
+async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<void> {
+  const latest: DialogLatestFile = {
+    currentCourse,
+    lastModified: formatUnifiedTimestamp(new Date()),
+    status: 'active',
+    runState: { kind: 'idle_waiting_user' },
+  };
+  await DialogPersistence.mutateDialogLatest(dialogId, () => ({ kind: 'replace', next: latest }));
+}
+
+async function main(): Promise<void> {
+  await withTempCwd(async () => {
+    const rootId = new DialogID('11/22/rootfork');
+    const subId = new DialogID('11/22/subfork', rootId.rootId);
+    const createdAt = formatUnifiedTimestamp(new Date('2026-03-09T01:00:00.000Z'));
+
+    const rootMeta: RootDialogMetadataFile = {
+      id: rootId.selfId,
+      agentId: 'rtws',
+      taskDocPath: 'plans/demo.tsk',
+      createdAt,
+    };
+    await DialogPersistence.saveDialogMetadata(rootId, rootMeta);
+    await writeLatest(rootId, 1);
+
+    const subMeta: SubdialogMetadataFile = {
+      id: subId.selfId,
+      agentId: 'scribe',
+      taskDocPath: 'plans/demo.tsk',
+      createdAt,
+      supdialogId: rootId.selfId,
+      assignmentFromSup: {
+        callName: 'tellaskSessionless',
+        mentionList: ['@scribe'],
+        tellaskContent: 'Investigate',
+        originMemberId: 'rtws',
+        callerDialogId: rootId.selfId,
+        callId: 'call-sub-1',
+      },
+    };
+    await DialogPersistence.saveDialogMetadata(subId, subMeta);
+    await writeLatest(subId, 1);
+
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: createdAt,
+      type: 'gen_start_record',
+      genseq: 1,
+    });
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: createdAt,
+      type: 'human_text_record',
+      genseq: 1,
+      msgId: 'msg-1',
+      content: 'first prompt',
+      grammar: 'markdown',
+      origin: 'user',
+    });
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: createdAt,
+      type: 'agent_words_record',
+      genseq: 1,
+      content: 'first answer',
+    });
+    const subCreatedRecord: SubdialogCreatedRecord = {
+      ts: createdAt,
+      type: 'subdialog_created_record',
+      rootCourse: 1,
+      rootGenseq: 1,
+      subdialogId: subId.selfId,
+      supdialogId: rootId.selfId,
+      agentId: 'scribe',
+      taskDocPath: 'plans/demo.tsk',
+      createdAt,
+      assignmentFromSup: {
+        callName: 'tellaskSessionless',
+        mentionList: ['@scribe'],
+        tellaskContent: 'Investigate',
+        originMemberId: 'rtws',
+        callerDialogId: rootId.selfId,
+        callId: 'call-sub-1',
+      },
+    };
+    await DialogPersistence.appendEvent(rootId, 1, subCreatedRecord);
+    const preSecondReminderRecord: RemindersReconciledRecord = {
+      ts: createdAt,
+      type: 'reminders_reconciled_record',
+      rootCourse: 1,
+      rootGenseq: 1,
+      reminders: [
+        {
+          content: 'alpha',
+          createdAt,
+          priority: 'medium',
+        },
+      ],
+    };
+    await DialogPersistence.appendEvent(rootId, 1, preSecondReminderRecord);
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: createdAt,
+      type: 'gen_finish_record',
+      genseq: 1,
+    });
+
+    await DialogPersistence.appendEvent(subId, 1, {
+      ts: createdAt,
+      type: 'agent_words_record',
+      genseq: 1,
+      content: 'subdialog baseline',
+      rootCourse: 1,
+      rootGenseq: 1,
+    });
+
+    const secondTs = formatUnifiedTimestamp(new Date('2026-03-09T01:01:00.000Z'));
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: secondTs,
+      type: 'gen_start_record',
+      genseq: 2,
+    });
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: secondTs,
+      type: 'agent_words_record',
+      genseq: 2,
+      content: 'second answer',
+    });
+    const postSecondReminderRecord: RemindersReconciledRecord = {
+      ts: secondTs,
+      type: 'reminders_reconciled_record',
+      rootCourse: 1,
+      rootGenseq: 2,
+      reminders: [
+        {
+          content: 'beta',
+          createdAt: secondTs,
+          priority: 'medium',
+        },
+      ],
+    };
+    await DialogPersistence.appendEvent(rootId, 1, postSecondReminderRecord);
+    const postSecondPendingRecord: PendingSubdialogsReconciledRecord = {
+      ts: secondTs,
+      type: 'pending_subdialogs_reconciled_record',
+      rootCourse: 1,
+      rootGenseq: 2,
+      pendingSubdialogs: [
+        {
+          subdialogId: subId.selfId,
+          createdAt: secondTs,
+          callName: 'tellaskSessionless',
+          mentionList: ['@scribe'],
+          tellaskContent: 'Investigate',
+          targetAgentId: 'scribe',
+          callId: 'call-sub-1',
+          callType: 'B',
+        },
+      ],
+    };
+    await DialogPersistence.appendEvent(rootId, 1, postSecondPendingRecord);
+    await DialogPersistence.appendEvent(rootId, 1, {
+      ts: secondTs,
+      type: 'gen_finish_record',
+      genseq: 2,
+    });
+    await DialogPersistence.appendEvent(subId, 1, {
+      ts: secondTs,
+      type: 'agent_words_record',
+      genseq: 2,
+      content: 'subdialog future answer',
+      rootCourse: 1,
+      rootGenseq: 2,
+    });
+
+    await DialogPersistence._saveReminderState(rootId, [{ content: 'beta' }]);
+    await DialogPersistence._saveReminderState(subId, [{ content: 'sub reminder' }]);
+
+    const forkBeforeSecond = await forkRootDialogTreeAtGeneration({
+      sourceRootId: rootId.selfId,
+      sourceStatus: 'running',
+      course: 1,
+      genseq: 2,
+    });
+    assert.equal(forkBeforeSecond.action.kind, 'auto_continue');
+
+    const forkedRootId = new DialogID(forkBeforeSecond.rootId);
+    const forkedEvents = await DialogPersistence.readCourseEvents(forkedRootId, 1, 'running');
+    assert.equal(
+      forkedEvents.some((event) => event.type === 'agent_words_record' && event.genseq === 2),
+      false,
+      'forked root must exclude selected bubble events',
+    );
+    assert.equal(
+      forkedEvents.some((event) => event.type === 'subdialog_created_record'),
+      true,
+      'forked root must include baseline subdialog-created records',
+    );
+
+    const forkedReminders = await DialogPersistence.loadReminderState(forkedRootId, 'running');
+    assert.deepEqual(
+      forkedReminders.map((item) => item.content),
+      ['alpha'],
+      'forked root reminder state should roll back to pre-target snapshot',
+    );
+
+    const forkedLatest = await DialogPersistence.loadDialogLatest(forkedRootId, 'running');
+    assert.equal(forkedLatest?.runState?.kind, 'interrupted');
+
+    const forkedSubMeta = await DialogPersistence.loadDialogMetadata(
+      new DialogID(subId.selfId, forkedRootId.selfId),
+      'running',
+    );
+    assert.ok(forkedSubMeta && forkedSubMeta.supdialogId === rootId.selfId);
+    const forkedSubEvents = await DialogPersistence.readCourseEvents(
+      new DialogID(subId.selfId, forkedRootId.selfId),
+      1,
+      'running',
+    );
+    assert.equal(
+      forkedSubEvents.some(
+        (event) =>
+          event.type === 'agent_words_record' && event.content === 'subdialog future answer',
+      ),
+      false,
+      'forked subdialog must exclude transcript after cutoff root genseq',
+    );
+
+    const forkBeforeFirst = await forkRootDialogTreeAtGeneration({
+      sourceRootId: rootId.selfId,
+      sourceStatus: 'running',
+      course: 1,
+      genseq: 1,
+    });
+    assert.deepEqual(forkBeforeFirst.action, {
+      kind: 'draft_user_text',
+      userText: 'first prompt',
+    });
+  });
+}
+
+main()
+  .then(() => {
+    console.log('OK');
+  })
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

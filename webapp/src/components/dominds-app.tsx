@@ -24,6 +24,7 @@ import {
 import { getWebSocketManager } from '../services/websocket.js';
 import { DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import type {
+  ApiForkDialogResponse,
   ApiMoveDialogsRequest,
   ApiRootDialogResponse,
   DialogInfo,
@@ -5569,6 +5570,14 @@ export class DomindsApp extends HTMLElement {
       void this.applyPendingDeepLink();
     });
 
+    this.shadowRoot.addEventListener('fork-dialog-request', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+      void this.handleForkDialogRequest(detail);
+    });
+
     // ========== Delegated Keyboard Handlers ==========
     // Note: <button> Space activates on keyup, while our run-control counts can update rapidly.
     // Capturing the count at keydown makes the subsequent click deterministic.
@@ -8073,6 +8082,59 @@ export class DomindsApp extends HTMLElement {
 
   async selectDialog(dialog: DialogInfo): Promise<void> {
     await this.applyDialogSelection(dialog, { syncAddressBar: true, showLoadedToast: true });
+  }
+
+  private async handleForkDialogRequest(detail: Record<string, unknown>): Promise<void> {
+    const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
+    const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
+    const statusRaw = detail['status'];
+    const course = typeof detail['course'] === 'number' ? Math.floor(detail['course']) : 0;
+    const genseq = typeof detail['genseq'] === 'number' ? Math.floor(detail['genseq']) : 0;
+    const status: DialogStatusKind =
+      statusRaw === 'completed' || statusRaw === 'archived' ? statusRaw : 'running';
+    const t = getUiStrings(this.uiLanguage);
+
+    if (rootId === '' || selfId === '' || rootId !== selfId || course <= 0 || genseq <= 0) {
+      this.showToast(t.forkDialogFailedToast, 'warning');
+      return;
+    }
+
+    const api = getApiClient();
+    const response = await api.forkDialog(rootId, { course, genseq, status });
+    const payload = response.data as ApiForkDialogResponse | undefined;
+    if (!response.success || !payload?.success || !payload.dialog || !payload.action) {
+      this.showToast(payload?.error || response.error || t.forkDialogFailedToast, 'warning');
+      return;
+    }
+
+    const forkedDialog = payload.dialog;
+    await this.selectDialog(forkedDialog);
+
+    const currentInput = this.q4hInput;
+    if (!currentInput) {
+      return;
+    }
+
+    if (payload.action.kind === 'draft_user_text') {
+      currentInput.setValue(payload.action.userText);
+      currentInput.focusInput();
+      return;
+    }
+
+    if (payload.action.kind === 'restore_pending') {
+      if (payload.action.pendingQ4H) {
+        currentInput.focusInput();
+      }
+      return;
+    }
+
+    this.wsManager.sendRaw({
+      type: 'resume_dialog',
+      dialog: {
+        selfId: forkedDialog.selfId,
+        rootId: forkedDialog.rootId,
+      },
+    });
   }
 
   private async restoreDialogFromDeepLink(dialog: DialogInfo): Promise<void> {

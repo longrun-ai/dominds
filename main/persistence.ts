@@ -49,13 +49,24 @@ import type {
   FuncResultRecord,
   HumanQuestion,
   HumanTextRecord,
+  PendingSubdialogsReconciledRecord,
+  PendingSubdialogStateRecord,
   PersistedDialogRecord,
   ProviderData,
   Questions4HumanFile,
+  Questions4HumanReconciledRecord,
   ReasoningPayload,
+  ReminderSnapshotItem,
+  RemindersReconciledRecord,
   ReminderStateFile,
   RootDialogMetadataFile,
+  RootGenerationAnchor,
+  SubdialogCreatedRecord,
   SubdialogMetadataFile,
+  SubdialogRegistryReconciledRecord,
+  SubdialogRegistryStateRecord,
+  SubdialogResponsesReconciledRecord,
+  SubdialogResponseStateRecord,
   TeammateCallResultRecord,
   TeammateResponseRecord,
   ToolArguments,
@@ -74,6 +85,56 @@ function getErrorCode(error: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {
+  const persistedReminder = reminder as Reminder & {
+    createdAt?: string;
+    priority?: 'high' | 'medium' | 'low';
+  };
+  return {
+    content: reminder.content,
+    ownerName: reminder.owner?.name,
+    meta: reminder.meta,
+    echoback: reminder.echoback,
+    createdAt: persistedReminder.createdAt ?? formatUnifiedTimestamp(new Date()),
+    priority: persistedReminder.priority ?? 'medium',
+  };
+}
+
+function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): ReminderSnapshotItem {
+  return {
+    content: snapshot.content,
+    ownerName: snapshot.ownerName,
+    meta: snapshot.meta,
+    echoback: snapshot.echoback,
+    createdAt: snapshot.createdAt,
+    priority: snapshot.priority,
+  };
+}
+
+function cloneRootGenerationAnchor(anchor: RootGenerationAnchor): RootGenerationAnchor {
+  return {
+    rootCourse: anchor.rootCourse,
+    rootGenseq: anchor.rootGenseq,
+  };
+}
+
+function resolveRootGenerationAnchor(dialog: Dialog): RootGenerationAnchor {
+  const rootDialog = dialog instanceof SubDialog ? dialog.rootDialog : dialog;
+  return {
+    rootCourse: rootDialog.currentCourse,
+    rootGenseq: rootDialog.activeGenSeqOrUndefined ?? 0,
+  };
+}
+
+function attachRootGenerationRef<T extends PersistedDialogRecord>(dialog: Dialog, record: T): T {
+  const anchor = resolveRootGenerationAnchor(dialog);
+  return {
+    ...record,
+    rootCourse: anchor.rootCourse,
+    rootGenseq: anchor.rootGenseq,
+  };
 }
 
 function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFile {
@@ -244,20 +305,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   };
 }
 
-function isSubdialogResponseRecord(value: unknown): value is {
-  responseId: string;
-  subdialogId: string;
-  response: string;
-  completedAt: string;
-  status?: 'completed' | 'failed';
-  callType: 'A' | 'B' | 'C';
-  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  mentionList?: string[];
-  tellaskContent: string;
-  responderId: string;
-  originMemberId: string;
-  callId: string;
-} {
+function isSubdialogResponseRecord(value: unknown): value is SubdialogResponseStateRecord {
   if (!isRecord(value)) return false;
   if (typeof value.responseId !== 'string') return false;
   if (typeof value.subdialogId !== 'string') return false;
@@ -515,6 +563,30 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
     await DialogPersistence.saveDialogMetadata(subdialogId, metadata);
 
+    const rootAnchor = resolveRootGenerationAnchor(supdialog);
+    const parentCourse = supdialog.activeGenCourseOrUndefined ?? supdialog.currentCourse;
+    const subdialogCreatedRecord: SubdialogCreatedRecord = {
+      ts: nowTs,
+      type: 'subdialog_created_record',
+      ...cloneRootGenerationAnchor(rootAnchor),
+      subdialogId: subdialogId.selfId,
+      supdialogId: supdialog.id.selfId,
+      agentId: targetAgentId,
+      taskDocPath: supdialog.taskDocPath,
+      createdAt: nowTs,
+      sessionSlug: options.sessionSlug,
+      assignmentFromSup: {
+        callName: options.callName,
+        mentionList,
+        tellaskContent,
+        originMemberId: options.originMemberId,
+        callerDialogId: options.callerDialogId,
+        callId: options.callId,
+        collectiveTargets: options.collectiveTargets,
+      },
+    };
+    await this.appendEvent(supdialog, parentCourse, subdialogCreatedRecord);
+
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
       kind: 'replace',
@@ -532,7 +604,6 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
 
-    const parentCourse = await DialogPersistence.getCurrentCourseNumber(supdialog.id);
     const subdialogCreatedEvt: SubdialogEvent = {
       type: 'subdialog_created_evt',
       dialog: {
@@ -597,7 +668,7 @@ export class DiskFileDialogStore extends DialogStore {
       contentItems: funcResult.contentItems,
       genseq: dialog.activeGenSeq,
     };
-    await this.appendEvent(course, funcResultRecord);
+    await this.appendEvent(dialog, course, funcResultRecord);
 
     // Send event to frontend
     const funcResultEvt: FunctionResultEvent = {
@@ -678,7 +749,7 @@ export class DiskFileDialogStore extends DialogStore {
           };
       }
     })();
-    await this.appendEvent(course, ev);
+    await this.appendEvent(dialog, course, ev);
 
     // Emit TeammateCallResponseEvent WITH callId for UI correlation
     const toolResponseEvt: TeammateCallResponseEvent = (() => {
@@ -829,7 +900,7 @@ export class DiskFileDialogStore extends DialogStore {
           };
       }
     })();
-    await this.appendEvent(course, ev);
+    await this.appendEvent(dialog, course, ev);
 
     const teammateResponseEvt: TeammateResponseEvent = (() => {
       switch (callName) {
@@ -909,8 +980,16 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Append event to course JSONL file (delegate to DialogPersistence)
    */
-  private async appendEvent(course: number, event: PersistedDialogRecord): Promise<void> {
-    await DialogPersistence.appendEvent(this.dialogId, course, event);
+  private async appendEvent(
+    dialog: Dialog,
+    course: number,
+    event: PersistedDialogRecord,
+  ): Promise<void> {
+    await DialogPersistence.appendEvent(
+      this.dialogId,
+      course,
+      attachRootGenerationRef(dialog, event),
+    );
   }
 
   /**
@@ -927,7 +1006,7 @@ export class DiskFileDialogStore extends DialogStore {
         type: 'gen_start_record',
         genseq: genseq,
       };
-      await this.appendEvent(course, ev);
+      await this.appendEvent(dialog, course, ev);
 
       // Emit generating_start_evt event
       // This event MUST be emitted and processed before any substream events
@@ -972,7 +1051,7 @@ export class DiskFileDialogStore extends DialogStore {
         contextHealth,
         llmGenModel,
       };
-      await this.appendEvent(course, ev);
+      await this.appendEvent(dialog, course, ev);
 
       // Emit generating_finish_evt event (this was missing, causing double triggering issue)
       const genFinishEvt: GeneratingFinishEvent = {
@@ -1043,7 +1122,7 @@ export class DiskFileDialogStore extends DialogStore {
         genseq: dialog.activeGenSeq,
         content: sayingContent,
       };
-      await this.appendEvent(course, sayingMessageEvent);
+      await this.appendEvent(dialog, course, sayingMessageEvent);
     }
     const evt: MarkdownFinishEvent = {
       type: 'markdown_finish_evt',
@@ -1090,7 +1169,7 @@ export class DiskFileDialogStore extends DialogStore {
         content: thinkingContent,
         reasoning: this.thinkingReasoning,
       };
-      await this.appendEvent(course, thinkingMessageEvent);
+      await this.appendEvent(dialog, course, thinkingMessageEvent);
     }
     const thinkingFinishEvt: ThinkingFinishEvent = {
       type: 'thinking_finish_evt',
@@ -1238,7 +1317,7 @@ export class DiskFileDialogStore extends DialogStore {
       status: payload.status,
       action: payload.action,
     };
-    await this.appendEvent(course, record);
+    await this.appendEvent(dialog, course, record);
 
     const evt: WebSearchCallEvent = {
       type: 'web_search_call_evt',
@@ -1304,6 +1383,12 @@ export class DiskFileDialogStore extends DialogStore {
    */
   public async persistReminders(dialog: Dialog, reminders: Reminder[]): Promise<void> {
     await DialogPersistence._saveReminderState(this.dialogId, reminders);
+    await DialogPersistence.appendRemindersReconciledRecord(
+      this.dialogId,
+      reminders,
+      resolveRootGenerationAnchor(dialog),
+      dialog.status,
+    );
   }
 
   /**
@@ -1349,7 +1434,7 @@ export class DiskFileDialogStore extends DialogStore {
       userLanguageCode,
       q4hAnswerCallIds: normalizedQ4HAnswerCallIds,
     };
-    await this.appendEvent(course, humanEv);
+    await this.appendEvent(dialog, course, humanEv);
 
     // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after tellask calls complete
   }
@@ -1384,7 +1469,7 @@ export class DiskFileDialogStore extends DialogStore {
             content: content || '',
           };
 
-    await this.appendEvent(course, event);
+    await this.appendEvent(dialog, course, event);
   }
 
   public async persistUiOnlyMarkdown(
@@ -1399,7 +1484,7 @@ export class DiskFileDialogStore extends DialogStore {
       genseq,
       content: content || '',
     };
-    await this.appendEvent(course, ev);
+    await this.appendEvent(dialog, course, ev);
   }
 
   /**
@@ -1423,7 +1508,7 @@ export class DiskFileDialogStore extends DialogStore {
       arguments: arguments_,
     };
 
-    await this.appendEvent(course, funcCallEvent);
+    await this.appendEvent(dialog, course, funcCallEvent);
 
     // NOTE: func_call_evt REMOVED - persistence uses FuncCallRecord directly
     // UI display uses func_call_requested_evt instead
@@ -1434,6 +1519,12 @@ export class DiskFileDialogStore extends DialogStore {
    */
   public async updateQuestions4Human(dialog: Dialog, questions: HumanQuestion[]): Promise<void> {
     await DialogPersistence._saveQuestions4HumanState(this.dialogId, questions);
+    await DialogPersistence.appendQuestions4HumanReconciledRecord(
+      this.dialogId,
+      questions,
+      resolveRootGenerationAnchor(dialog),
+      dialog.status,
+    );
   }
 
   /**
@@ -1472,6 +1563,7 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   public async saveSubdialogRegistry(
+    dialog: RootDialog,
     rootDialogId: DialogID,
     entries: Array<{
       key: string;
@@ -1482,6 +1574,17 @@ export class DiskFileDialogStore extends DialogStore {
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     await DialogPersistence.saveSubdialogRegistry(rootDialogId, entries, status);
+    await DialogPersistence.appendSubdialogRegistryReconciledRecord(
+      rootDialogId,
+      entries.map((entry) => ({
+        key: entry.key,
+        subdialogId: entry.subdialogId.selfId,
+        agentId: entry.agentId,
+        sessionSlug: entry.sessionSlug,
+      })),
+      resolveRootGenerationAnchor(dialog),
+      status,
+    );
   }
 
   public async loadSubdialogRegistry(
@@ -1672,6 +1775,12 @@ export class DiskFileDialogStore extends DialogStore {
 
     if (previousCount > 0) {
       await DialogPersistence.clearQuestions4HumanState(dialog.id);
+      await DialogPersistence.appendQuestions4HumanReconciledRecord(
+        dialog.id,
+        [],
+        resolveRootGenerationAnchor(dialog),
+        dialog.status,
+      );
 
       // Emit q4h_answered events for each removed question
       for (const q of previousQuestions) {
@@ -2323,6 +2432,14 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
+      case 'subdialog_created_record':
+      case 'reminders_reconciled_record':
+      case 'questions4human_reconciled_record':
+      case 'pending_subdialogs_reconciled_record':
+      case 'subdialog_registry_reconciled_record':
+      case 'subdialog_responses_reconciled_record':
+        break;
+
       case 'teammate_response_record': {
         // Handle teammate response events (separate bubble for @teammate tellasks)
         const mentionList = (() => {
@@ -2492,7 +2609,7 @@ type Q4HWriteBackEntry =
     };
 
 type PendingSubdialogsWriteBackState =
-  | { kind: 'file'; records: PendingSubdialogRecord[] }
+  | { kind: 'file'; records: PendingSubdialogStateRecord[] }
   | { kind: 'deleted' };
 
 type PendingSubdialogsWriteBackEntry =
@@ -2525,31 +2642,18 @@ type Q4HMutateOutcome = {
   removedQuestion?: HumanQuestion;
 };
 
-type PendingSubdialogRecord = {
-  subdialogId: string;
-  createdAt: string;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  mentionList?: string[];
-  tellaskContent: string;
-  targetAgentId: string;
-  callId: string;
-  callingCourse?: number;
-  callType: 'A' | 'B' | 'C';
-  sessionSlug?: string;
-};
-
 type PendingSubdialogsMutation =
   | { kind: 'noop' }
-  | { kind: 'append'; record: PendingSubdialogRecord }
+  | { kind: 'append'; record: PendingSubdialogStateRecord }
   | { kind: 'removeBySubdialogId'; subdialogId: string }
   | { kind: 'removeBySubdialogIds'; subdialogIds: string[] }
-  | { kind: 'replace'; records: PendingSubdialogRecord[] }
+  | { kind: 'replace'; records: PendingSubdialogStateRecord[] }
   | { kind: 'clear' };
 
 type PendingSubdialogsMutateOutcome = {
-  previousRecords: PendingSubdialogRecord[];
-  records: PendingSubdialogRecord[];
-  removedRecords: PendingSubdialogRecord[];
+  previousRecords: PendingSubdialogStateRecord[];
+  records: PendingSubdialogStateRecord[];
+  removedRecords: PendingSubdialogStateRecord[];
 };
 
 type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
@@ -2650,6 +2754,115 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived',
   ): string {
     return `${this.getDialogsRootDir()}|${status}|${rootDialogId.valueOf()}|pending-subdialogs`;
+  }
+
+  private static clonePendingSubdialogRecords(
+    records: readonly PendingSubdialogStateRecord[],
+  ): PendingSubdialogStateRecord[] {
+    return records.map((record) => ({
+      ...record,
+      mentionList: record.mentionList ? [...record.mentionList] : undefined,
+    }));
+  }
+
+  private static cloneQuestions4Human(questions: readonly HumanQuestion[]): HumanQuestion[] {
+    return questions.map((question) => ({
+      ...question,
+      remainingCallIds: question.remainingCallIds ? [...question.remainingCallIds] : undefined,
+      callSiteRef: { ...question.callSiteRef },
+    }));
+  }
+
+  private static cloneRegistryEntries(
+    entries: readonly SubdialogRegistryStateRecord[],
+  ): SubdialogRegistryStateRecord[] {
+    return entries.map((entry) => ({
+      ...entry,
+    }));
+  }
+
+  private static cloneSubdialogResponses(
+    responses: readonly SubdialogResponseStateRecord[],
+  ): SubdialogResponseStateRecord[] {
+    return responses.map((response) => ({
+      ...response,
+      mentionList: response.mentionList ? [...response.mentionList] : undefined,
+    }));
+  }
+
+  static async appendRemindersReconciledRecord(
+    dialogId: DialogID,
+    reminders: readonly Reminder[],
+    anchor: RootGenerationAnchor,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const record: RemindersReconciledRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'reminders_reconciled_record',
+      ...cloneRootGenerationAnchor(anchor),
+      reminders: reminders.map((reminder) => serializeReminderSnapshot(reminder)),
+    };
+    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+  }
+
+  static async appendQuestions4HumanReconciledRecord(
+    dialogId: DialogID,
+    questions: readonly HumanQuestion[],
+    anchor: RootGenerationAnchor,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const record: Questions4HumanReconciledRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'questions4human_reconciled_record',
+      ...cloneRootGenerationAnchor(anchor),
+      questions: this.cloneQuestions4Human(questions),
+    };
+    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+  }
+
+  static async appendPendingSubdialogsReconciledRecord(
+    dialogId: DialogID,
+    pendingSubdialogs: readonly PendingSubdialogStateRecord[],
+    anchor: RootGenerationAnchor,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const record: PendingSubdialogsReconciledRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'pending_subdialogs_reconciled_record',
+      ...cloneRootGenerationAnchor(anchor),
+      pendingSubdialogs: this.clonePendingSubdialogRecords(pendingSubdialogs),
+    };
+    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+  }
+
+  static async appendSubdialogRegistryReconciledRecord(
+    dialogId: DialogID,
+    entries: readonly SubdialogRegistryStateRecord[],
+    anchor: RootGenerationAnchor,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const record: SubdialogRegistryReconciledRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'subdialog_registry_reconciled_record',
+      ...cloneRootGenerationAnchor(anchor),
+      entries: this.cloneRegistryEntries(entries),
+    };
+    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
+  }
+
+  static async appendSubdialogResponsesReconciledRecord(
+    dialogId: DialogID,
+    responses: readonly SubdialogResponseStateRecord[],
+    anchor: RootGenerationAnchor,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const record: SubdialogResponsesReconciledRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'subdialog_responses_reconciled_record',
+      ...cloneRootGenerationAnchor(anchor),
+      responses: this.cloneSubdialogResponses(responses),
+    };
+    await this.appendEvent(dialogId, anchor.rootCourse, record, status);
   }
 
   /**
@@ -3835,13 +4048,15 @@ export class DialogPersistence {
    */
   static async savePendingSubdialogs(
     rootDialogId: DialogID,
-    pendingSubdialogs: PendingSubdialogRecord[],
+    pendingSubdialogs: PendingSubdialogStateRecord[],
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     const next = pendingSubdialogs.map((r) => ({ ...r }));
     await this.mutatePendingSubdialogs(
       rootDialogId,
       () => ({ kind: 'replace', records: next }),
+      rootAnchor,
       status,
     );
   }
@@ -3852,7 +4067,7 @@ export class DialogPersistence {
   static async loadPendingSubdialogs(
     rootDialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<PendingSubdialogRecord[]> {
+  ): Promise<PendingSubdialogStateRecord[]> {
     const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
     const staged = this.pendingSubdialogsWriteBack.get(key);
     if (staged) {
@@ -3867,7 +4082,7 @@ export class DialogPersistence {
     }
   }
 
-  private static isPendingSubdialogRecord(value: unknown): value is PendingSubdialogRecord {
+  private static isPendingSubdialogRecord(value: unknown): value is PendingSubdialogStateRecord {
     if (!isRecord(value)) return false;
     if (typeof value.subdialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
@@ -3911,7 +4126,7 @@ export class DialogPersistence {
   private static async loadPendingSubdialogsFromDisk(
     rootDialogId: DialogID,
     status: 'running' | 'completed' | 'archived',
-  ): Promise<PendingSubdialogRecord[]> {
+  ): Promise<PendingSubdialogStateRecord[]> {
     const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
     const filePath = path.join(dialogPath, 'pending-subdialogs.json');
     try {
@@ -3927,7 +4142,8 @@ export class DialogPersistence {
 
   static async mutatePendingSubdialogs(
     rootDialogId: DialogID,
-    mutator: (previous: PendingSubdialogRecord[]) => PendingSubdialogsMutation,
+    mutator: (previous: PendingSubdialogStateRecord[]) => PendingSubdialogsMutation,
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<PendingSubdialogsMutateOutcome> {
     const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
@@ -3944,8 +4160,8 @@ export class DialogPersistence {
             : await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
 
       const mutation = mutator(previousRecords);
-      let nextRecords: PendingSubdialogRecord[] = previousRecords;
-      const removedRecords: PendingSubdialogRecord[] = [];
+      let nextRecords: PendingSubdialogStateRecord[] = previousRecords;
+      const removedRecords: PendingSubdialogStateRecord[] = [];
 
       if (mutation.kind === 'noop') {
         return { previousRecords, records: previousRecords, removedRecords: [] };
@@ -3993,6 +4209,15 @@ export class DialogPersistence {
         if (pending.kind === 'flushing') pending.dirty = true;
       }
 
+      if (rootAnchor) {
+        await this.appendPendingSubdialogsReconciledRecord(
+          rootDialogId,
+          nextRecords,
+          rootAnchor,
+          status,
+        );
+      }
+
       return { previousRecords, records: nextRecords, removedRecords };
     } finally {
       release();
@@ -4001,29 +4226,38 @@ export class DialogPersistence {
 
   static async appendPendingSubdialog(
     rootDialogId: DialogID,
-    record: PendingSubdialogRecord,
+    record: PendingSubdialogStateRecord,
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'append', record }), status);
+    await this.mutatePendingSubdialogs(
+      rootDialogId,
+      () => ({ kind: 'append', record }),
+      rootAnchor,
+      status,
+    );
   }
 
   static async removePendingSubdialog(
     rootDialogId: DialogID,
     subdialogId: string,
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     await this.mutatePendingSubdialogs(
       rootDialogId,
       () => ({ kind: 'removeBySubdialogId', subdialogId }),
+      rootAnchor,
       status,
     );
   }
 
   static async clearPendingSubdialogs(
     rootDialogId: DialogID,
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'clear' }), status);
+    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'clear' }), rootAnchor, status);
   }
 
   private static async flushPendingSubdialogsWriteBack(key: string): Promise<void> {
@@ -4177,19 +4411,8 @@ export class DialogPersistence {
    */
   static async saveSubdialogResponses(
     rootDialogId: DialogID,
-    responses: Array<{
-      responseId: string;
-      subdialogId: string;
-      response: string;
-      completedAt: string;
-      callType: 'A' | 'B' | 'C';
-      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-      mentionList?: string[];
-      tellaskContent: string;
-      responderId: string;
-      originMemberId: string;
-      callId: string;
-    }>,
+    responses: SubdialogResponseStateRecord[],
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
@@ -4205,6 +4428,14 @@ export class DialogPersistence {
       );
       await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
       await this.renameWithRetry(tempFile, filePath, jsonContent);
+      if (rootAnchor) {
+        await this.appendSubdialogResponsesReconciledRecord(
+          rootDialogId,
+          responses,
+          rootAnchor,
+          status,
+        );
+      }
     } catch (error) {
       log.error(`Failed to save subdialog responses for dialog ${rootDialogId}:`, error);
       throw error;
@@ -4217,42 +4448,14 @@ export class DialogPersistence {
   static async loadSubdialogResponses(
     rootDialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<
-    Array<{
-      responseId: string;
-      subdialogId: string;
-      response: string;
-      completedAt: string;
-      status?: 'completed' | 'failed';
-      callType: 'A' | 'B' | 'C';
-      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-      mentionList?: string[];
-      tellaskContent: string;
-      responderId: string;
-      originMemberId: string;
-      callId: string;
-    }>
-  > {
+  ): Promise<SubdialogResponseStateRecord[]> {
     try {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
       const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
 
       try {
-        const results: Array<{
-          responseId: string;
-          subdialogId: string;
-          response: string;
-          completedAt: string;
-          status?: 'completed' | 'failed';
-          callType: 'A' | 'B' | 'C';
-          callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-          mentionList?: string[];
-          tellaskContent: string;
-          responderId: string;
-          originMemberId: string;
-          callId: string;
-        }> = [];
+        const results: SubdialogResponseStateRecord[] = [];
 
         const tryReadArray = async (p: string): Promise<unknown[]> => {
           try {
@@ -4296,22 +4499,7 @@ export class DialogPersistence {
   static async loadSubdialogResponsesQueue(
     dialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<
-    Array<{
-      responseId: string;
-      subdialogId: string;
-      response: string;
-      completedAt: string;
-      status?: 'completed' | 'failed';
-      callType: 'A' | 'B' | 'C';
-      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-      mentionList?: string[];
-      tellaskContent: string;
-      responderId: string;
-      originMemberId: string;
-      callId: string;
-    }>
-  > {
+  ): Promise<SubdialogResponseStateRecord[]> {
     try {
       const dialogPath = this.getDialogResponsesPath(dialogId, status);
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
@@ -4331,25 +4519,13 @@ export class DialogPersistence {
 
   static async appendSubdialogResponse(
     dialogId: DialogID,
-    response: {
-      responseId: string;
-      subdialogId: string;
-      response: string;
-      completedAt: string;
-      status?: 'completed' | 'failed';
-      callType: 'A' | 'B' | 'C';
-      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-      mentionList?: string[];
-      tellaskContent: string;
-      responderId: string;
-      originMemberId: string;
-      callId: string;
-    },
+    response: SubdialogResponseStateRecord,
+    rootAnchor?: RootGenerationAnchor,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     const existing = await this.loadSubdialogResponsesQueue(dialogId, status);
     existing.push(response);
-    await this.saveSubdialogResponses(dialogId, existing, status);
+    await this.saveSubdialogResponses(dialogId, existing, rootAnchor, status);
   }
 
   static async takeSubdialogResponses(
@@ -5298,6 +5474,13 @@ export class DialogPersistence {
         case 'teammate_call_anchor_record':
           // This record is UI navigation metadata for deep links in callee dialogs.
           // It does not contribute to model context or chat transcript reconstruction.
+          break;
+        case 'subdialog_created_record':
+        case 'reminders_reconciled_record':
+        case 'questions4human_reconciled_record':
+        case 'pending_subdialogs_reconciled_record':
+        case 'subdialog_registry_reconciled_record':
+        case 'subdialog_responses_reconciled_record':
           break;
 
         default:

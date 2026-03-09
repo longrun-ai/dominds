@@ -328,6 +328,16 @@ export async function supplyResponseToSupdialog(args: {
       await DialogPersistence.savePendingSubdialogs(
         parentDialog.id,
         filteredPending,
+        {
+          rootCourse:
+            parentDialog instanceof SubDialog
+              ? parentDialog.rootDialog.currentCourse
+              : parentDialog.currentCourse,
+          rootGenseq:
+            parentDialog instanceof SubDialog
+              ? (parentDialog.rootDialog.activeGenSeqOrUndefined ?? 0)
+              : (parentDialog.activeGenSeqOrUndefined ?? 0),
+        },
         parentDialog.status,
       );
 

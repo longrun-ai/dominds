@@ -215,9 +215,69 @@ export type PersistedDialogRecord =
   | TeammateCallAnchorRecord
   | TeammateResponseRecord
   | GenStartRecord
-  | GenFinishRecord;
+  | GenFinishRecord
+  | SubdialogCreatedRecord
+  | RemindersReconciledRecord
+  | Questions4HumanReconciledRecord
+  | PendingSubdialogsReconciledRecord
+  | SubdialogRegistryReconciledRecord
+  | SubdialogResponsesReconciledRecord;
 
-export interface AgentThoughtRecord {
+export interface RootGenerationAnchor {
+  rootCourse: number;
+  rootGenseq: number;
+}
+
+export interface RootGenerationRef {
+  rootCourse?: number;
+  rootGenseq?: number;
+}
+
+export interface ReminderSnapshotItem {
+  content: string;
+  ownerName?: string;
+  meta?: JsonValue;
+  echoback?: boolean;
+  createdAt: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface PendingSubdialogStateRecord {
+  subdialogId: string;
+  createdAt: string;
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
+  tellaskContent: string;
+  targetAgentId: string;
+  callId: string;
+  callingCourse?: number;
+  callType: 'A' | 'B' | 'C';
+  sessionSlug?: string;
+}
+
+export interface SubdialogRegistryStateRecord {
+  key: string;
+  subdialogId: string;
+  agentId: string;
+  sessionSlug?: string;
+}
+
+export interface SubdialogResponseStateRecord {
+  responseId: string;
+  subdialogId: string;
+  response: string;
+  completedAt: string;
+  status?: 'completed' | 'failed';
+  callType: 'A' | 'B' | 'C';
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
+  tellaskContent: string;
+  responderId: string;
+  originMemberId: string;
+  callId: string;
+}
+
+export interface AgentThoughtRecord extends RootGenerationRef {
   ts: string;
   type: 'agent_thought_record';
   genseq: number;
@@ -227,7 +287,7 @@ export interface AgentThoughtRecord {
   sourceTag?: 'priming_script';
 }
 
-export interface AgentWordsRecord {
+export interface AgentWordsRecord extends RootGenerationRef {
   ts: string;
   type: 'agent_words_record';
   genseq: number;
@@ -242,7 +302,7 @@ export interface AgentWordsRecord {
  * - Must NOT be injected into LLM context.
  * - Replayed as markdown-only (no tellask parsing).
  */
-export interface UiOnlyMarkdownRecord {
+export interface UiOnlyMarkdownRecord extends RootGenerationRef {
   ts: string;
   type: 'ui_only_markdown_record';
   genseq: number;
@@ -250,7 +310,7 @@ export interface UiOnlyMarkdownRecord {
   sourceTag?: 'priming_script';
 }
 
-export interface FuncCallRecord {
+export interface FuncCallRecord extends RootGenerationRef {
   ts: string;
   type: 'func_call_record';
   genseq: number;
@@ -265,7 +325,7 @@ export type WebSearchCallActionRecord =
   | { type: 'open_page'; url?: string }
   | { type: 'find_in_page'; url?: string; pattern?: string };
 
-export interface WebSearchCallRecord {
+export interface WebSearchCallRecord extends RootGenerationRef {
   ts: string;
   type: 'web_search_call_record';
   genseq: number;
@@ -276,7 +336,7 @@ export interface WebSearchCallRecord {
   sourceTag?: 'priming_script';
 }
 
-export interface HumanTextRecord {
+export interface HumanTextRecord extends RootGenerationRef {
   ts: string;
   type: 'human_text_record';
   genseq: number;
@@ -293,7 +353,7 @@ export interface HumanTextRecord {
   q4hAnswerCallIds?: string[];
 }
 
-export interface FuncResultRecord {
+export interface FuncResultRecord extends RootGenerationRef {
   ts: string;
   type: 'func_result_record';
   genseq: number; // matching FuncCallRecord's genseq
@@ -304,7 +364,7 @@ export interface FuncResultRecord {
   sourceTag?: 'priming_script';
 }
 
-export interface QuestForSupRecord {
+export interface QuestForSupRecord extends RootGenerationRef {
   ts: string;
   type: 'quest_for_sup_record';
   genseq: number;
@@ -314,7 +374,7 @@ export interface QuestForSupRecord {
   sourceTag?: 'priming_script';
 }
 
-export interface TeammateCallResultRecord {
+export interface TeammateCallResultRecord extends RootGenerationRef {
   ts: string;
   type: 'teammate_call_result_record';
   calling_genseq?: number;
@@ -329,7 +389,7 @@ export interface TeammateCallResultRecord {
 }
 
 // Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
-export interface TeammateCallAnchorRecord {
+export interface TeammateCallAnchorRecord extends RootGenerationRef {
   ts: string;
   type: 'teammate_call_anchor_record';
   anchorRole: 'assignment' | 'response';
@@ -346,6 +406,8 @@ export interface TeammateCallAnchorRecord {
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export type TeammateResponseRecord =
   | {
+      rootCourse?: number;
+      rootGenseq?: number;
       ts: string;
       type: 'teammate_response_record';
       calling_genseq?: number;
@@ -365,6 +427,8 @@ export type TeammateResponseRecord =
       sourceTag?: 'priming_script';
     }
   | {
+      rootCourse?: number;
+      rootGenseq?: number;
       ts: string;
       type: 'teammate_response_record';
       calling_genseq?: number;
@@ -383,6 +447,8 @@ export type TeammateResponseRecord =
       sourceTag?: 'priming_script';
     }
   | {
+      rootCourse?: number;
+      rootGenseq?: number;
       ts: string;
       type: 'teammate_response_record';
       calling_genseq?: number;
@@ -400,20 +466,70 @@ export type TeammateResponseRecord =
       sourceTag?: 'priming_script';
     };
 
-export interface GenStartRecord {
+export interface GenStartRecord extends RootGenerationRef {
   ts: string;
   type: 'gen_start_record';
   genseq: number;
   sourceTag?: 'priming_script';
 }
 
-export interface GenFinishRecord {
+export interface GenFinishRecord extends RootGenerationRef {
   ts: string;
   type: 'gen_finish_record';
   genseq: number;
   contextHealth?: ContextHealthSnapshot;
   llmGenModel?: string;
   sourceTag?: 'priming_script';
+}
+
+export interface SubdialogCreatedRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'subdialog_created_record';
+  subdialogId: string;
+  supdialogId: string;
+  agentId: string;
+  taskDocPath: string;
+  createdAt: string;
+  sessionSlug?: string;
+  assignmentFromSup: {
+    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+    mentionList?: string[];
+    tellaskContent: string;
+    originMemberId: string;
+    callerDialogId: string;
+    callId: string;
+    collectiveTargets?: string[];
+  };
+}
+
+export interface RemindersReconciledRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'reminders_reconciled_record';
+  reminders: ReminderSnapshotItem[];
+}
+
+export interface Questions4HumanReconciledRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'questions4human_reconciled_record';
+  questions: HumanQuestion[];
+}
+
+export interface PendingSubdialogsReconciledRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'pending_subdialogs_reconciled_record';
+  pendingSubdialogs: PendingSubdialogStateRecord[];
+}
+
+export interface SubdialogRegistryReconciledRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'subdialog_registry_reconciled_record';
+  entries: SubdialogRegistryStateRecord[];
+}
+
+export interface SubdialogResponsesReconciledRecord extends RootGenerationAnchor {
+  ts: string;
+  type: 'subdialog_responses_reconciled_record';
+  responses: SubdialogResponseStateRecord[];
 }
 
 // === REMINDER AND QUESTIONS STORAGE ===

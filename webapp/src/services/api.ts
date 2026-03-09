@@ -5,6 +5,8 @@
 
 import {
   ApiDialogHierarchyResponse,
+  ApiForkDialogRequest,
+  ApiForkDialogResponse,
   ApiMoveDialogsRequest,
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
@@ -403,6 +405,16 @@ export class ApiClient {
    */
   async createDialog(request: CreateDialogInput): Promise<ApiResponse<CreateDialogResult>> {
     return this.request('/api/dialogs', {
+      method: 'POST',
+      body: request,
+    });
+  }
+
+  async forkDialog(
+    rootDialogId: string,
+    request: ApiForkDialogRequest,
+  ): Promise<ApiResponse<ApiForkDialogResponse>> {
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}/fork`, {
       method: 'POST',
       body: request,
     });

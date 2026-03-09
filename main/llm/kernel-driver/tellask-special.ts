@@ -822,7 +822,14 @@ async function executeTellaskCall(
             callType: 'C',
           };
           await withSubdialogTxnLock(dlg.id, async () => {
-            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
+            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
+              rootCourse:
+                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+              rootGenseq:
+                dlg instanceof SubDialog
+                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                  : (dlg.activeGenSeqOrUndefined ?? 0),
+            });
           });
           await syncPendingTellaskReminderBestEffort(
             dlg,
@@ -1081,7 +1088,14 @@ async function executeTellaskCall(
             sessionSlug: parseResult.sessionSlug,
           };
           await withSubdialogTxnLock(dlg.id, async () => {
-            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
+            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
+              rootCourse:
+                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+              rootGenseq:
+                dlg instanceof SubDialog
+                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                  : (dlg.activeGenSeqOrUndefined ?? 0),
+            });
           });
           await syncPendingTellaskReminderBestEffort(
             dlg,
@@ -1277,7 +1291,13 @@ async function executeTellaskCall(
           callType: 'C',
         };
         await withSubdialogTxnLock(dlg.id, async () => {
-          await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
+          await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord, {
+            rootCourse: dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+            rootGenseq:
+              dlg instanceof SubDialog
+                ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                : (dlg.activeGenSeqOrUndefined ?? 0),
+          });
         });
         await syncPendingTellaskReminderBestEffort(
           dlg,

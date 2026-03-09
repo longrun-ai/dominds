@@ -8,6 +8,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
+import { forkRootDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { createLogger } from '../log';
@@ -22,7 +23,7 @@ import {
 } from '../priming';
 import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { ApiMoveDialogsRequest } from '../shared/types';
+import type { ApiForkDialogResponse, ApiMoveDialogsRequest } from '../shared/types';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type {
   ListPrimingScriptsResponse,
@@ -1093,10 +1094,25 @@ export async function handleApiRoute(
       return await handleMoveDialogs(req, res, context);
     }
 
+    if (
+      pathname.startsWith('/api/dialogs/') &&
+      pathname.endsWith('/fork') &&
+      req.method === 'POST'
+    ) {
+      const parts = pathname.split('/');
+      const rawRoot = parts[3];
+      if (!rawRoot) {
+        respondJson(res, 400, { success: false, error: 'Missing root dialog id' });
+        return true;
+      }
+      return await handleForkDialog(req, res, context, rawRoot.replace(/%2F/g, '/'));
+    }
+
     // Delete a dialog (root dialogs only for now)
     if (
       pathname.startsWith('/api/dialogs/') &&
       !pathname.endsWith('/hierarchy') &&
+      !pathname.endsWith('/fork') &&
       req.method === 'DELETE'
     ) {
       const parts = pathname.split('/');
@@ -2177,6 +2193,84 @@ async function handleCreateDialog(
     log.error('Error creating dialog:', error);
     const message = error instanceof Error ? error.message : 'Failed to create dialog';
     const payload = makeCreateDialogFailure('unknown', 'CREATE_FAILED', message);
+    respondJson(res, 500, payload);
+    return true;
+  }
+}
+
+async function handleForkDialog(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: ApiRouteContext,
+  rootIdRaw: string,
+): Promise<boolean> {
+  try {
+    const body = await readRequestBody(req);
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed)) {
+      const payload: ApiForkDialogResponse = { success: false, error: 'Invalid JSON body' };
+      respondJson(res, 400, payload);
+      return true;
+    }
+
+    const courseRaw = parsed['course'];
+    const genseqRaw = parsed['genseq'];
+    const statusRaw = parsed['status'];
+    const rootId = rootIdRaw.trim();
+    const course =
+      typeof courseRaw === 'number' && Number.isFinite(courseRaw) ? Math.floor(courseRaw) : 0;
+    const genseq =
+      typeof genseqRaw === 'number' && Number.isFinite(genseqRaw) ? Math.floor(genseqRaw) : 0;
+    const status = parseDialogStatusKind(statusRaw) ?? 'running';
+
+    if (rootId === '') {
+      const payload: ApiForkDialogResponse = { success: false, error: 'rootId is required' };
+      respondJson(res, 400, payload);
+      return true;
+    }
+    if (course <= 0 || genseq <= 0) {
+      const payload: ApiForkDialogResponse = {
+        success: false,
+        error: 'course and genseq must be positive integers',
+      };
+      respondJson(res, 400, payload);
+      return true;
+    }
+
+    const result = await forkRootDialogTreeAtGeneration({
+      sourceRootId: rootId,
+      sourceStatus: status,
+      course,
+      genseq,
+    });
+
+    const payload: ApiForkDialogResponse = {
+      success: true,
+      dialog: {
+        rootId: result.rootId,
+        selfId: result.selfId,
+        agentId: result.agentId,
+        agentName: result.agentId,
+        taskDocPath: result.taskDocPath,
+        status: 'running',
+      },
+      action: result.action,
+    };
+    respondJson(res, 201, payload);
+    broadcastDialogCreates(context.clients, {
+      type: 'dialogs_created',
+      scope: { kind: 'root', rootId: result.rootId },
+      status: 'running',
+      createdRootIds: [result.rootId],
+      timestamp: formatUnifiedTimestamp(new Date()),
+    });
+    return true;
+  } catch (error: unknown) {
+    log.error('Error forking dialog:', error);
+    const payload: ApiForkDialogResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fork dialog',
+    };
     respondJson(res, 500, payload);
     return true;
   }

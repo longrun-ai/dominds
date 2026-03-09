@@ -1537,7 +1537,7 @@ export class RootDialog extends Dialog {
       agentId: subdialog.agentId,
       sessionSlug: subdialog.sessionSlug,
     }));
-    await this.dlgStore.saveSubdialogRegistry(this.id, entries, this.status);
+    await this.dlgStore.saveSubdialogRegistry(this, this.id, entries, this.status);
   }
 
   /**
@@ -1700,6 +1700,7 @@ export abstract class DialogStore {
   }
 
   public async saveSubdialogRegistry(
+    _dialog: RootDialog,
     _rootDialogId: DialogID,
     _entries: Array<{
       key: string;

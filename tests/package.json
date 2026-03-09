@@ -12,6 +12,7 @@
     "minds-memory-system-reminder-contract": "tsx minds/memory-system-reminder-contract.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
     "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
+    "persistence-dialog-fork": "tsx persistence/dialog-fork.ts",
     "persistence-jsonl-tail-truncation": "tsx persistence/jsonl-tail-truncation.ts",
     "interruption-resumption": "tsx interruption-resumption.ts",
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-subdialog-dedupe.ts",

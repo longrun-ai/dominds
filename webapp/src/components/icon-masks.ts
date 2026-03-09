@@ -37,6 +37,9 @@ export const ICON_MASK_URLS = {
   copy: asMaskUrl(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
   ),
+  fork: asMaskUrl(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M7 3a3 3 0 1 0 2.83 4h2.67c2.58 0 4.5 1.92 4.5 4.5V13h-2.17A3 3 0 1 0 15 15h2v1.5c0 2.58-1.92 4.5-4.5 4.5H9.83A3 3 0 1 0 7 21a3 3 0 0 0 2.83-2h2.67c3.69 0 6.5-2.81 6.5-6.5V11.5C19 7.81 16.19 5 12.5 5H9.83A3 3 0 0 0 7 3zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm8 9a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM7 19a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>',
+  ),
   play: asMaskUrl(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M4.5 3v18l15.5-9z"/></svg>',
   ),

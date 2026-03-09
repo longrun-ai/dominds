@@ -134,6 +134,7 @@ export type UiStrings = {
   q4hAnswerCallSitesLabel: string;
   q4hOpenInNewTabTitle: string;
   q4hCopyLinkTitle: string;
+  forkDialogTitle: string;
   q4hInvalidDialogToast: string;
   q4hDeclareDeadOnlySidelineToast: string;
   q4hDeclareDeadOnlyInterruptedToast: string;
@@ -167,6 +168,7 @@ export type UiStrings = {
   invalidMessageFormatToast: string;
   linkCopiedToast: string;
   linkCopyFailedToast: string;
+  forkDialogFailedToast: string;
   toastDefaultNotice: string;
   dialogCreatedToastPrefix: string;
   dialogLoadedToast: string;
@@ -481,6 +483,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hAnswerCallSitesLabel: '本次回答对应提问点：',
       q4hOpenInNewTabTitle: '新标签打开',
       q4hCopyLinkTitle: '复制链接',
+      forkDialogTitle: 'Fork 对话',
       q4hInvalidDialogToast: '对话标识无效：selfId/rootId 必须是字符串。',
       q4hDeclareDeadOnlySidelineToast: '只有支线对话支持“宣布卡死”。',
       q4hDeclareDeadOnlyInterruptedToast: '只有已中断的对话支持“宣布卡死”。',
@@ -516,6 +519,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
       linkCopiedToast: '链接已复制。',
       linkCopyFailedToast: '复制链接失败。',
+      forkDialogFailedToast: 'Fork 对话失败。',
       toastDefaultNotice: '通知',
       dialogCreatedToastPrefix: '已创建对话：',
       dialogLoadedToast: '对话加载成功。',
@@ -836,6 +840,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hAnswerCallSitesLabel: 'Answer applies to call sites:',
     q4hOpenInNewTabTitle: 'Open in new tab',
     q4hCopyLinkTitle: 'Copy link',
+    forkDialogTitle: 'Fork dialog',
     q4hInvalidDialogToast: 'Invalid dialog id: selfId/rootId must be strings.',
     q4hDeclareDeadOnlySidelineToast: 'Declare dead is available only for sideline dialogs.',
     q4hDeclareDeadOnlyInterruptedToast:
@@ -874,6 +879,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
     linkCopiedToast: 'Link copied.',
     linkCopyFailedToast: 'Failed to copy link.',
+    forkDialogFailedToast: 'Failed to fork dialog.',
     toastDefaultNotice: 'Notice',
     dialogCreatedToastPrefix: 'Dialog created:',
     dialogLoadedToast: 'Dialog loaded successfully.',

@@ -101,3 +101,30 @@ export interface ApiMoveDialogsResponse {
   movedRootIds?: string[];
   error?: string;
 }
+
+export interface ApiForkDialogRequest {
+  course: number;
+  genseq: number;
+  status?: DialogStatusKind;
+}
+
+export type ApiForkDialogAction =
+  | {
+      kind: 'draft_user_text';
+      userText: string;
+    }
+  | {
+      kind: 'restore_pending';
+      pendingQ4H: boolean;
+      pendingSubdialogs: boolean;
+    }
+  | {
+      kind: 'auto_continue';
+    };
+
+export interface ApiForkDialogResponse {
+  success: boolean;
+  dialog?: DialogInfo;
+  action?: ApiForkDialogAction;
+  error?: string;
+}

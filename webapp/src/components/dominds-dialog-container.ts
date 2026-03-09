@@ -325,6 +325,32 @@ export class DomindsDialogContainer extends HTMLElement {
           await this.copyGenerationBubbleDeepLinkToClipboard(seq);
           return;
         }
+        const forkBtn = target.closest('.bubble-fork-btn') as HTMLButtonElement | null;
+        if (forkBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const bubble = forkBtn.closest('.generation-bubble') as HTMLElement | null;
+          const dialog = this.currentDialog;
+          if (!bubble || !dialog) return;
+          const courseRaw = Number.parseInt(bubble.getAttribute('data-course') ?? '', 10);
+          const seqRaw = Number.parseInt(bubble.getAttribute('data-seq') ?? '', 10);
+          if (!Number.isFinite(courseRaw) || courseRaw <= 0) return;
+          if (!Number.isFinite(seqRaw) || seqRaw <= 0) return;
+          this.dispatchEvent(
+            new CustomEvent('fork-dialog-request', {
+              detail: {
+                rootId: dialog.rootId,
+                selfId: dialog.selfId,
+                status: dialog.status ?? 'running',
+                course: Math.floor(courseRaw),
+                genseq: Math.floor(seqRaw),
+              },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+          return;
+        }
         const btn = target.closest('.codeblock-action') as HTMLButtonElement | null;
         if (btn) {
           const section = btn.closest('.codeblock-section') as HTMLElement | null;
@@ -1202,6 +1228,9 @@ export class DomindsDialogContainer extends HTMLElement {
         timestamp,
         queuedMsgId,
       );
+      if (typeof this.currentCourse === 'number') {
+        bubble.setAttribute('data-course', String(this.currentCourse));
+      }
       applyPendingCallAnchor(bubble);
       this.generationBubble = bubble;
       this.startAutoScrollObservation(bubble);
@@ -1217,6 +1246,9 @@ export class DomindsDialogContainer extends HTMLElement {
         existingBubble.classList.add('generating');
         existingBubble.setAttribute('data-finalized', 'false');
         this.setBubbleTimestamp(existingBubble, timestamp);
+        if (typeof this.currentCourse === 'number') {
+          existingBubble.setAttribute('data-course', String(this.currentCourse));
+        }
         this.activeGenSeq = seq;
         applyPendingCallAnchor(existingBubble);
         this.startAutoScrollObservation(existingBubble);
@@ -1234,6 +1266,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
 
     const bubble = this.createGenerationBubble(timestamp);
+    if (typeof this.currentCourse === 'number') {
+      bubble.setAttribute('data-course', String(this.currentCourse));
+    }
     bubble.setAttribute('data-seq', String(seq));
     applyPendingCallAnchor(bubble);
     bubble.classList.add('generating'); // Start breathing glow animation
@@ -1370,6 +1405,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const queuedRawContent = queuedContentEl?.textContent ?? '';
 
     const bubble = this.createGenerationBubble(timestamp);
+    if (typeof this.currentCourse === 'number') {
+      bubble.setAttribute('data-course', String(this.currentCourse));
+    }
     bubble.setAttribute('data-seq', String(seq));
     bubble.classList.add('generating');
     bubble.setAttribute('data-finalized', 'false');
@@ -2908,6 +2946,12 @@ export class DomindsDialogContainer extends HTMLElement {
     return 'Assistant';
   }
 
+  private canForkCurrentDialog(): boolean {
+    const dialog = this.currentDialog;
+    if (!dialog) return false;
+    return dialog.selfId === dialog.rootId;
+  }
+
   private upsertGenerationBubbleAnchorActions(bubble: HTMLElement): void {
     const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
     if (!headerRight) {
@@ -2982,6 +3026,13 @@ export class DomindsDialogContainer extends HTMLElement {
     const authorLabel = this.getAuthorLabel('assistant');
     const safeAuthorLabel = this.escapeHtml(authorLabel);
     const safeTimestamp = this.escapeHtml(timestamp);
+    const forkButton = this.canForkCurrentDialog()
+      ? `
+          <button type="button" class="bubble-fork-btn" aria-label="${this.escapeHtml(t.forkDialogTitle)}" title="${this.escapeHtml(t.forkDialogTitle)}">
+            <span class="icon-mask dc-icon-fork" aria-hidden="true"></span>
+          </button>
+        `
+      : '';
     return `
       <div class="bubble-header">
         <div class="bubble-title">
@@ -2992,6 +3043,7 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
         <div class="bubble-header-right">
           <div class="bubble-anchor-actions"></div>
+          ${forkButton}
           <button type="button" class="bubble-share-link-btn" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
             <span class="icon-mask dc-icon-link" aria-hidden="true"></span>
           </button>
@@ -3960,7 +4012,8 @@ export class DomindsDialogContainer extends HTMLElement {
         display: none;
       }
 
-      .bubble-share-link-btn {
+      .bubble-share-link-btn,
+      .bubble-fork-btn {
         width: 22px;
         height: 22px;
         padding: 0;
@@ -3975,13 +4028,15 @@ export class DomindsDialogContainer extends HTMLElement {
         transition: all 0.15s ease;
       }
 
-      .bubble-share-link-btn:hover {
+      .bubble-share-link-btn:hover,
+      .bubble-fork-btn:hover {
         background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
         border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-primary, #333));
       }
 
-      .bubble-share-link-btn:focus-visible {
+      .bubble-share-link-btn:focus-visible,
+      .bubble-fork-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         outline-offset: 2px;
       }
@@ -4100,6 +4155,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-share-link-btn .icon-mask,
+      .bubble-fork-btn .icon-mask,
       .bubble-anchor-assignment-btn .icon-mask,
       .bubble-anchor-caller-callsite-btn .icon-mask,
       .callsite-icon-btn .icon-mask {
@@ -4631,6 +4687,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .dc-icon-copy {
         --icon-mask: ${ICON_MASK_URLS.copy};
+      }
+
+      .dc-icon-fork {
+        --icon-mask: ${ICON_MASK_URLS.fork};
       }
 
       .dc-icon-check-circle {

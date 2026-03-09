@@ -40,8 +40,20 @@ const RECENT_PRIMING_DIR = path.resolve(process.cwd(), '.dialogs', 'recent-primi
 const RECENT_PRIMING_MAX = 20;
 
 type StripTs<T> = T extends { ts: string } ? Omit<T, 'ts'> : never;
-type PrimingReplayRecord = StripTs<PersistedDialogRecord>;
-type PrimingRecordType = PersistedDialogRecord['type'];
+type PrimingUnsupportedRecord = Extract<
+  PersistedDialogRecord,
+  {
+    type:
+      | 'subdialog_created_record'
+      | 'reminders_reconciled_record'
+      | 'questions4human_reconciled_record'
+      | 'pending_subdialogs_reconciled_record'
+      | 'subdialog_registry_reconciled_record'
+      | 'subdialog_responses_reconciled_record';
+  }
+>;
+type PrimingReplayRecord = StripTs<Exclude<PersistedDialogRecord, PrimingUnsupportedRecord>>;
+type PrimingRecordType = PrimingReplayRecord['type'];
 type PrimingMarkdownTextField = 'content' | 'tellaskContent' | 'result' | 'response';
 
 type ParsedPrimingHeading = { kind: 'record'; type: PrimingRecordType };
@@ -1821,6 +1833,13 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
       const { ts: _unusedTs, ...withoutTs } = event;
       return withoutTs;
     }
+    case 'subdialog_created_record':
+    case 'reminders_reconciled_record':
+    case 'questions4human_reconciled_record':
+    case 'pending_subdialogs_reconciled_record':
+    case 'subdialog_registry_reconciled_record':
+    case 'subdialog_responses_reconciled_record':
+      throw new Error(`Record type ${event.type} is not supported in priming scripts`);
     default: {
       const _exhaustive: never = event;
       throw new Error(`Unhandled persisted record type: ${String(_exhaustive)}`);
@@ -1829,7 +1848,19 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
 }
 
 function extractPrimingRecordsFromEvents(events: PersistedDialogRecord[]): PrimingReplayRecord[] {
-  return events.map((event) => stripTimestampFromRecord(event));
+  return events.flatMap((event) => {
+    switch (event.type) {
+      case 'subdialog_created_record':
+      case 'reminders_reconciled_record':
+      case 'questions4human_reconciled_record':
+      case 'pending_subdialogs_reconciled_record':
+      case 'subdialog_registry_reconciled_record':
+      case 'subdialog_responses_reconciled_record':
+        return [];
+      default:
+        return [stripTimestampFromRecord(event)];
+    }
+  });
 }
 
 export async function saveDialogCourseAsIndividualPrimingScript(args: {
