@@ -11,6 +11,23 @@ Priming is unified as an editable, versionable, replayable Markdown startup-scri
 - Explicit selection: users choose scripts at dialog creation time.
 - Visibility control: script-origin bubbles can be shown or hidden in UI.
 
+## Semantic Boundary
+
+`priming` is currently not a full dialog checkpoint. It is a combination of dialog history plus a
+reminder snapshot.
+
+- Preserved:
+  - transcript / tool / tellask history records
+  - current reminder snapshot
+- Explicitly dropped:
+  - pending subdialogs
+  - questions4human
+  - subdialog registry / subdialog responses
+  - other runtime-only waiting / blocking / orchestration state
+
+This is an intentional semantic downgrade relative to a full runtime snapshot: a new dialog inherits
+history and reminders, but it does not inherit in-flight workflow state.
+
 ## Storage Layout
 
 All scripts live under `.minds/priming/` in rtws:
@@ -39,8 +56,24 @@ version: 3
 title: Environment Probe Startup
 applicableMemberIds:
   - ux
+reminders:
+  - content: Record the key result of each environment probe
+    meta:
+      source: priming
+      sticky: true
+    echoback: false
 ---
 ```
+
+`reminders` is an optional top-level snapshot field and may be edited manually. Each reminder item
+supports:
+
+- `content`: required reminder text
+- `ownerName`: optional registered ReminderOwner name; replay fails loudly if it is unknown
+- `meta`: optional JSON-compatible data
+- `echoback`: optional numbering/echo-back flag
+- `createdAt`: optional timestamp string
+- `priority`: optional `high | medium | low`
 
 ### Record blocks (required)
 
@@ -121,9 +154,11 @@ Request contract:
 Runtime behavior:
 
 - On root dialog creation, selected scripts are replayed into `course-1`.
+- If top-level frontmatter contains `reminders`, the current reminder snapshot is restored first.
 - Replayed events are tagged with `sourceTag: priming_script`.
 - Replay is injected into `dialog.msgs` for downstream model context.
 - `showInUi=false` only affects rendering; persistence/context remain unchanged.
+- `pending/q4h/subdialog-*` runtime state is not restored.
 
 ## Save Startup Script (WebUI)
 
@@ -135,8 +170,11 @@ Runtime behavior:
 Export rules:
 
 - Export full course record history.
+- Export the current reminder snapshot into top-level frontmatter.
 - Empty course export is rejected.
 - Frontmatter stores source dialog metadata (`rootId/selfId/course/status`).
+- `pending/q4h/subdialog-*` runtime state is not exported; this is an explicit semantic downgrade in
+  the current priming design.
 
 ## Recent Usage Storage
 

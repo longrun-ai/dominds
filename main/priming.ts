@@ -17,6 +17,7 @@ import type {
   GenFinishRecord,
   GenStartRecord,
   HumanTextRecord,
+  JsonValue,
   PersistedDialogRecord,
   QuestForSupRecord,
   ReasoningContentItem,
@@ -37,9 +38,12 @@ import {
   toCalleeGenerationSeqNumber,
   toCallerCourseNumber,
   toCallingGenerationSeqNumber,
+  toRootGenerationAnchor,
 } from './shared/types/storage';
 import type { DialogPrimingInput, DialogStatusKind } from './shared/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
+import type { Reminder } from './tool';
+import { getReminderOwner } from './tools/registry';
 
 const PRIMING_ROOT_DIR = path.resolve(process.cwd(), '.minds', 'priming');
 const PRIMING_INDIVIDUAL_DIR = path.resolve(PRIMING_ROOT_DIR, 'individual');
@@ -69,7 +73,19 @@ type ParsedPrimingHeading = { kind: 'record'; type: PrimingRecordType };
 type ParsedPrimingScript = {
   title?: string;
   applicableMemberIds?: string[];
+  reminders?: PrimingReminderSnapshot[];
   records: PrimingReplayRecord[];
+};
+
+type PrimingReminderPriority = 'high' | 'medium' | 'low';
+
+type PrimingReminderSnapshot = {
+  content: string;
+  ownerName?: string;
+  meta?: JsonValue;
+  echoback?: boolean;
+  createdAt?: string;
+  priority?: PrimingReminderPriority;
 };
 
 type PrimingRecentScriptEntry = {
@@ -100,6 +116,24 @@ export type PrimingScriptLoadIssue = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((item) => isJsonValue(item));
 }
 
 function ensureInside(basePath: string, candidatePath: string): boolean {
@@ -201,6 +235,110 @@ function parseApplicableMemberIds(frontmatter: Record<string, unknown>): string[
     deduped.push(value);
   }
   return deduped.length > 0 ? deduped : undefined;
+}
+
+function parseReminderPriority(
+  value: unknown,
+  context: string,
+): PrimingReminderPriority | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'high' || value === 'medium' || value === 'low') return value;
+  throw new Error(`${context}.priority must be high | medium | low when provided`);
+}
+
+function parseReminderSnapshots(
+  frontmatter: Record<string, unknown>,
+): PrimingReminderSnapshot[] | undefined {
+  const raw = frontmatter['reminders'];
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    throw new Error('top-level frontmatter.reminders must be an array when provided');
+  }
+
+  const reminders: PrimingReminderSnapshot[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const item = raw[index];
+    const context = `frontmatter.reminders[${String(index)}]`;
+    if (!isRecord(item)) {
+      throw new Error(`${context} must be an object`);
+    }
+    const content =
+      typeof item['content'] === 'string'
+        ? item['content']
+        : (() => {
+            throw new Error(`${context}.content must be a string`);
+          })();
+    if (content.trim() === '') {
+      throw new Error(`${context}.content must be a non-empty string`);
+    }
+    const ownerName = item['ownerName'];
+    if (ownerName !== undefined && (typeof ownerName !== 'string' || ownerName.trim() === '')) {
+      throw new Error(`${context}.ownerName must be a non-empty string when provided`);
+    }
+    const meta = item['meta'];
+    if (meta !== undefined && !isJsonValue(meta)) {
+      throw new Error(`${context}.meta must be valid JSON-compatible data when provided`);
+    }
+    const echoback = item['echoback'];
+    if (echoback !== undefined && typeof echoback !== 'boolean') {
+      throw new Error(`${context}.echoback must be a boolean when provided`);
+    }
+    const createdAt = item['createdAt'];
+    if (createdAt !== undefined && typeof createdAt !== 'string') {
+      throw new Error(`${context}.createdAt must be a string when provided`);
+    }
+    const priority = parseReminderPriority(item['priority'], context);
+    reminders.push({
+      content,
+      ownerName: typeof ownerName === 'string' ? ownerName.trim() : undefined,
+      meta,
+      echoback,
+      createdAt: typeof createdAt === 'string' ? createdAt : undefined,
+      priority,
+    });
+  }
+
+  return reminders;
+}
+
+function reminderToSnapshot(reminder: Reminder): PrimingReminderSnapshot {
+  const persistedReminder = reminder as Reminder & {
+    createdAt?: string;
+    priority?: PrimingReminderPriority;
+  };
+  return {
+    content: reminder.content,
+    ownerName: reminder.owner?.name,
+    meta: reminder.meta,
+    echoback: reminder.echoback,
+    createdAt: persistedReminder.createdAt,
+    priority: persistedReminder.priority,
+  };
+}
+
+function materializeReminderSnapshot(snapshot: PrimingReminderSnapshot, context: string): Reminder {
+  const owner =
+    snapshot.ownerName === undefined
+      ? undefined
+      : (() => {
+          const resolved = getReminderOwner(snapshot.ownerName);
+          if (!resolved) {
+            throw new Error(`${context}.ownerName '${snapshot.ownerName}' is not registered`);
+          }
+          return resolved;
+        })();
+  const reminder: Reminder & {
+    createdAt?: string;
+    priority?: PrimingReminderPriority;
+  } = {
+    content: snapshot.content,
+    owner,
+    meta: snapshot.meta,
+    echoback: snapshot.echoback,
+  };
+  if (snapshot.createdAt !== undefined) reminder.createdAt = snapshot.createdAt;
+  if (snapshot.priority !== undefined) reminder.priority = snapshot.priority;
+  return reminder;
 }
 
 function isPrimingRecordType(raw: string): raw is PrimingRecordType {
@@ -993,8 +1131,9 @@ function parsePrimingScript(raw: string): ParsedPrimingScript {
   const title =
     typeof titleRaw === 'string' && titleRaw.trim() !== '' ? titleRaw.trim() : undefined;
   const applicableMemberIds = parseApplicableMemberIds(frontmatter);
+  const reminders = parseReminderSnapshots(frontmatter);
   const records = parseRecordsFromBody(body);
-  return { title, applicableMemberIds, records };
+  return { title, applicableMemberIds, reminders, records };
 }
 
 async function listMarkdownFilesRecursively(dirPath: string): Promise<string[]> {
@@ -1365,7 +1504,11 @@ export async function searchApplicablePrimingScripts(args: {
 export async function loadPrimingScriptByRef(
   scriptRefRaw: string,
   agentIdRaw: string,
-): Promise<{ summary: PrimingScriptSummary; records: PrimingReplayRecord[] }> {
+): Promise<{
+  summary: PrimingScriptSummary;
+  reminders: Reminder[];
+  records: PrimingReplayRecord[];
+}> {
   const agentId = agentIdRaw.trim();
   if (agentId === '') {
     throw new Error('agentId is required');
@@ -1385,6 +1528,12 @@ export async function loadPrimingScriptByRef(
   }
   return {
     summary: loaded.summary,
+    reminders: (loaded.parsed.reminders ?? []).map((item, index) =>
+      materializeReminderSnapshot(
+        item,
+        `priming script '${scriptRef}' frontmatter.reminders[${String(index)}]`,
+      ),
+    ),
     records: loaded.parsed.records,
   };
 }
@@ -1640,15 +1789,35 @@ export async function applyPrimingScriptsToDialog(args: {
   }
 
   const allRecords: PrimingReplayRecord[] = [];
+  const allReminders: Reminder[] = [];
   let nextGenseq = getNextDialogGenseq(args.dialog);
   for (const scriptRef of normalizedRefs) {
     const loaded = await loadPrimingScriptByRef(scriptRef, agentId);
     const remapped = remapScriptRecordsForReplay(loaded.records, nextGenseq);
     nextGenseq = remapped.nextGenseq;
+    allReminders.push(...loaded.reminders);
     allRecords.push(...remapped.records);
   }
   if (allRecords.length === 0) {
     return { appliedScriptRefs: normalizedRefs, appendedMessageCount: 0 };
+  }
+
+  if (allReminders.length > 0) {
+    args.dialog.reminders.splice(0, args.dialog.reminders.length, ...allReminders);
+    await DialogPersistence._saveReminderState(
+      args.dialog.id,
+      [...args.dialog.reminders],
+      args.status,
+    );
+    await DialogPersistence.appendRemindersReconciledRecord(
+      args.dialog.id,
+      args.dialog.reminders,
+      {
+        kind: 'root_anchor',
+        rootAnchor: toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 0 }),
+      },
+      args.status,
+    );
   }
 
   for (const record of allRecords) {
@@ -1935,6 +2104,7 @@ export async function saveDialogCourseAsIndividualPrimingScript(args: {
   }
 
   const now = formatUnifiedTimestamp(new Date());
+  const reminders = await DialogPersistence.loadReminderState(args.dialogId, args.status);
   const frontmatter: Record<string, unknown> = {
     kind: 'agent_priming_script',
     version: 3,
@@ -1948,6 +2118,9 @@ export async function saveDialogCourseAsIndividualPrimingScript(args: {
       status: args.status,
     },
   };
+  if (reminders.length > 0) {
+    frontmatter['reminders'] = reminders.map((item) => reminderToSnapshot(item));
+  }
   const markdown = formatScriptMarkdown({ frontmatter, records });
 
   await fs.mkdir(parentDir, { recursive: true });

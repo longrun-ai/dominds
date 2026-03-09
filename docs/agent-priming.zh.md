@@ -11,6 +11,21 @@
 - 显式选择：创建对话时由用户明确选择，不做隐式注入。
 - 可见性可控：可选择是否在 UI 展示由脚本注入的历史气泡。
 
+## 语义边界（重要）
+
+`priming` 目前不是“完整对话 checkpoint”，而是“对话历史 + reminder 快照”。
+
+- 会保留：
+  - transcript / tool / tellask 等历史 record
+  - 当前 reminder 快照
+- 会明确丢弃：
+  - pending subdialogs
+  - questions4human
+  - subdialog registry / subdialog responses
+  - 其它依赖运行中协程、阻塞关系、等待关系的 runtime state
+
+这意味着把某个对话“保存为启动脚本”时，语义上相对完整运行时状态是有降级的：新对话会继承历史和 reminder，但不会继承“仍在等待中的工作流状态”。
+
 ## 存储布局
 
 脚本统一放在 rtws 的 `.minds/priming/` 下：
@@ -39,8 +54,23 @@ version: 3
 title: 环境探针启动
 applicableMemberIds:
   - ux
+reminders:
+  - content: 记录每次环境探针的关键结论
+    meta:
+      source: priming
+      sticky: true
+    echoback: false
 ---
 ```
+
+其中 `reminders` 是可选的顶层快照字段，支持手工编辑。每项字段为：
+
+- `content`: 必填，提醒正文
+- `ownerName`: 可选，ReminderOwner 注册名；若填写但运行时未注册，将报错
+- `meta`: 可选，JSON 兼容数据
+- `echoback`: 可选，是否参与编号/回显
+- `createdAt`: 可选，时间戳字符串
+- `priority`: 可选，`high | medium | low`
 
 ### record 块（必填）
 
@@ -119,9 +149,11 @@ Darwin ...
 运行时行为：
 
 - 创建 root dialog 后，按 `scriptRefs` 回放脚本。
+- 若脚本顶层 frontmatter 含 `reminders`，会先恢复当前 reminder 快照。
 - 回放事件写入 `course-1`，并统一标记 `sourceTag: priming_script`。
 - 同步注入 `dialog.msgs`，确保后续 LLM 上下文可见。
 - `showInUi=false` 时仅隐藏展示，不影响持久化与上下文。
+- `pending/q4h/subdialog-*` 等 runtime state 不会被恢复。
 
 ## 保存启动脚本（WebUI）
 
@@ -133,8 +165,10 @@ Darwin ...
 导出规则：
 
 - 从当前 course 导出完整 record 历史。
+- 同时导出“当前 reminder 快照”到顶层 frontmatter。
 - 空历史禁止导出。
 - frontmatter 记录来源对话（rootId/selfId/course/status）。
+- `pending/q4h/subdialog-*` 等 runtime state 不导出；这是当前设计下的显式语义降级。
 
 ## recent 使用记录
 

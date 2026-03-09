@@ -51,6 +51,7 @@ Path aliases in `tests/tsconfig.json`:
 | mindset-i18n                     | `minds/mindset-i18n.ts` (mindset i18n checks)             |
 | persistence-latest-writeback     | `persistence/latest-writeback.ts`                         |
 | persistence-reminders-owner-meta | `persistence/reminders-owner-meta.ts`                     |
+| persistence-priming-reminders    | `persistence/priming-reminders.ts`                        |
 | tellask:parsing                  | `tellask/parsing.ts` (tellask parser)                     |
 | tellask:realtime                 | `tellask/realtime.ts` (streaming boundaries)              |
 | task-package                     | `task-package.ts`                                         |
