@@ -222,6 +222,20 @@ async function main(): Promise<void> {
       true,
       'forked root must include baseline subdialog-created records',
     );
+    const forkedCreatedRecord = forkedEvents.find(
+      (event): event is SubdialogCreatedRecord => event.type === 'subdialog_created_record',
+    );
+    assert.ok(forkedCreatedRecord, 'forked root must persist baseline subdialog-created record');
+    assert.equal(
+      forkedCreatedRecord.supdialogId,
+      forkedRootId.selfId,
+      'forked baseline record must point to the new root as supdialog',
+    );
+    assert.equal(
+      forkedCreatedRecord.assignmentFromSup.callerDialogId,
+      forkedRootId.selfId,
+      'forked baseline record must point to the new root as caller dialog',
+    );
 
     const forkedReminders = await DialogPersistence.loadReminderState(forkedRootId, 'running');
     assert.deepEqual(
@@ -237,7 +251,17 @@ async function main(): Promise<void> {
       new DialogID(subId.selfId, forkedRootId.selfId),
       'running',
     );
-    assert.ok(forkedSubMeta && forkedSubMeta.supdialogId === rootId.selfId);
+    assert.ok(forkedSubMeta, 'forked subdialog metadata must exist');
+    assert.equal(
+      forkedSubMeta.supdialogId,
+      forkedRootId.selfId,
+      'forked subdialog metadata must point to the new root as supdialog',
+    );
+    assert.equal(
+      forkedSubMeta.assignmentFromSup.callerDialogId,
+      forkedRootId.selfId,
+      'forked subdialog assignment must point to the new root as caller dialog',
+    );
     const forkedSubEvents = await DialogPersistence.readCourseEvents(
       new DialogID(subId.selfId, forkedRootId.selfId),
       1,

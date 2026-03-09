@@ -139,6 +139,49 @@ function cloneSubdialogResponses(
   }));
 }
 
+function rewriteForkTreeDialogSelfId(
+  sourceDialogSelfId: string,
+  sourceRootId: string,
+  targetRootId: string,
+): string {
+  return sourceDialogSelfId === sourceRootId ? targetRootId : sourceDialogSelfId;
+}
+
+function rewriteAssignmentFromSupForFork(
+  assignmentFromSup: Extract<DialogMetadataFile, { supdialogId: string }>['assignmentFromSup'],
+  sourceRootId: string,
+  targetRootId: string,
+): Extract<DialogMetadataFile, { supdialogId: string }>['assignmentFromSup'] {
+  return {
+    ...assignmentFromSup,
+    callerDialogId: rewriteForkTreeDialogSelfId(
+      assignmentFromSup.callerDialogId,
+      sourceRootId,
+      targetRootId,
+    ),
+    mentionList: assignmentFromSup.mentionList ? [...assignmentFromSup.mentionList] : undefined,
+    collectiveTargets: assignmentFromSup.collectiveTargets
+      ? [...assignmentFromSup.collectiveTargets]
+      : undefined,
+  };
+}
+
+function rewriteSubdialogMetadataForFork(
+  metadata: Extract<DialogMetadataFile, { supdialogId: string }>,
+  sourceRootId: string,
+  targetRootId: string,
+): Extract<DialogMetadataFile, { supdialogId: string }> {
+  return {
+    ...metadata,
+    supdialogId: rewriteForkTreeDialogSelfId(metadata.supdialogId, sourceRootId, targetRootId),
+    assignmentFromSup: rewriteAssignmentFromSupForFork(
+      metadata.assignmentFromSup,
+      sourceRootId,
+      targetRootId,
+    ),
+  };
+}
+
 function isForkStateRecord(
   record: PersistedDialogRecord,
 ):
@@ -598,14 +641,23 @@ async function persistForkPlan(args: {
   latestDiligencePushRemainingBudget: number | undefined;
 }): Promise<void> {
   const { plan } = args;
-  const rewrittenMetadata: DialogMetadataFile =
-    plan.targetId.selfId === plan.targetId.rootId
-      ? {
-          ...plan.metadata,
-          id: plan.targetId.selfId,
-          createdAt: args.now,
-        }
-      : plan.metadata;
+  let rewrittenMetadata: DialogMetadataFile;
+  if (plan.targetId.selfId === plan.targetId.rootId) {
+    rewrittenMetadata = {
+      ...plan.metadata,
+      id: plan.targetId.selfId,
+      createdAt: args.now,
+    };
+  } else {
+    if (plan.metadata.supdialogId === undefined) {
+      throw new Error(`fork subdialog plan missing supdialog metadata: ${plan.targetId.valueOf()}`);
+    }
+    rewrittenMetadata = rewriteSubdialogMetadataForFork(
+      plan.metadata,
+      plan.sourceId.rootId,
+      plan.targetId.rootId,
+    );
+  }
 
   await DialogPersistence.saveDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
 
@@ -801,20 +853,20 @@ export async function forkRootDialogTreeAtGeneration(args: {
     type: 'subdialog_created_record',
     ...FORK_BASELINE_ANCHOR,
     subdialogId: subdialog.targetId.selfId,
-    supdialogId: subdialog.metadata.supdialogId,
+    supdialogId: rewriteForkTreeDialogSelfId(
+      subdialog.metadata.supdialogId,
+      sourceRootId,
+      targetRootId,
+    ),
     agentId: subdialog.metadata.agentId,
     taskDocPath: subdialog.metadata.taskDocPath,
     createdAt: subdialog.metadata.createdAt,
     sessionSlug: subdialog.metadata.sessionSlug,
-    assignmentFromSup: {
-      ...subdialog.metadata.assignmentFromSup,
-      mentionList: subdialog.metadata.assignmentFromSup.mentionList
-        ? [...subdialog.metadata.assignmentFromSup.mentionList]
-        : undefined,
-      collectiveTargets: subdialog.metadata.assignmentFromSup.collectiveTargets
-        ? [...subdialog.metadata.assignmentFromSup.collectiveTargets]
-        : undefined,
-    },
+    assignmentFromSup: rewriteAssignmentFromSupForFork(
+      subdialog.metadata.assignmentFromSup,
+      sourceRootId,
+      targetRootId,
+    ),
   }));
 
   const allPlans = [rootPlan, ...subdialogPlans];

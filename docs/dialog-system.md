@@ -979,6 +979,35 @@ Frontend twin must stay in sync: `dominds/webapp/src/shared/utils/inter-dialog-f
 
 **Registry**: Registered subdialogs (TYPE B Tellasks) are tracked in the root dialog's registry and persist across restarts.
 
+### Root dialog fork
+
+An entire root dialog tree can be forked at the start of a chosen root generation into a brand-new root dialog. This is used to preserve prior context while re-running the later mainline/sideline path from a historical branch point.
+
+**Entry points**:
+
+- UI shows `Fork dialog` only on generation bubbles of a root dialog (`selfId === rootId`)
+- Backend API: `POST /api/dialogs/:rootId/fork`
+- Request body: `{ course, genseq, status? }`
+
+**Semantics (required)**:
+
+- The selected generation bubble is **not** copied into the forked root; the fork point means "branch immediately before this generation starts"
+- The copy scope is the **entire root dialog tree**, not just one dialog
+- A subdialog is included only if the root had already persisted it as created before the cutoff
+- Subdialog transcript retention is bounded by the root-generation anchor, not by the subdialog's local `genseq`
+
+**Post-fork actions** (returned by backend to UI):
+
+- `draft_user_text`: if the target generation is a user message, prefill that text into the new dialog input and wait for user confirmation
+- `restore_pending`: if there were pending Q4H or pending subdialogs before the cutoff, restore those blocking states in the new root
+- `auto_continue`: if there is no pending blocker before the cutoff, initialize the new root as `interrupted(system_stop: fork_dialog_continue)` and have UI immediately send `resume_dialog`
+
+**Consistency requirements**:
+
+- Fork must preserve the same Taskdoc reference
+- The forked root and all forked subdialogs are persisted under `running/` with a new rootId
+- Frontend must not expose this entry for sideline dialogs; current implementation supports root dialogs only
+
 ### Lifecycle Management
 
 **Active State**: Dialogs remain active while agents are working on tasks.

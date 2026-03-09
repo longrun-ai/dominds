@@ -300,6 +300,37 @@ Simple text file containing the current course number:
 }
 ```
 
+### Root-generation anchors and reconciliation records
+
+To support root dialog fork, persistence now records which root-generation viewpoint a piece of dialog state belongs to.
+
+**Root-generation anchor**:
+
+- `rootCourse`
+- `rootGenseq`
+
+**Purpose**:
+
+- Any state snapshot that must stay aligned across the entire root dialog tree must be anchored to the root generation rather than each subdialog's local course/genseq
+- When forking at `(course, genseq)`, the retained state is the latest consistent snapshot at or before `(rootCourse=course, rootGenseq=genseq-1)`
+
+**New / strengthened persisted records**:
+
+- `subdialog_created_record`
+  - persisted in the root transcript
+  - marks when a subdialog already exists on the root timeline, so fork can decide whether to include it
+- `reminders_reconciled_record`
+- `questions4human_reconciled_record`
+- `pending_subdialogs_reconciled_record`
+- `subdialog_registry_reconciled_record`
+- `subdialog_responses_reconciled_record`
+
+**Required behavior**:
+
+- These reconciliation records are state snapshots, not LLM transcript content; message reconstruction must skip them
+- Any subdialog transcript record that participates in root-fork cutoff trimming must carry `rootCourse/rootGenseq`
+- When writing a forked root, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending subdialogs / registry / responses are restored to the pre-cutoff state
+
 ---
 
 ## Memory Persistence

@@ -297,6 +297,37 @@ status: 'active' # 当前对话状态
 }
 ```
 
+### Root generation 锚点与状态对账记录
+
+为支持 root dialog fork，持久化层现在显式记录“某条数据对应的是哪一个 root generation 视角”。
+
+**Root generation 锚点**：
+
+- `rootCourse`
+- `rootGenseq`
+
+**用途**：
+
+- 所有需要跨整棵 root tree 对齐的状态快照，都必须绑定到 root generation，而不是各自子对话的本地 course/genseq
+- root fork 在切点 `(course, genseq)` 时，实际保留的是**不晚于** `(rootCourse=course, rootGenseq=genseq-1)` 的最后一个一致快照
+
+**新增/强化的持久化记录**：
+
+- `subdialog_created_record`
+  - 持久化在 root transcript 中
+  - 记录某个子对话何时在 root 时间线上已“存在”，供 fork 时判断是否应纳入新树
+- `reminders_reconciled_record`
+- `questions4human_reconciled_record`
+- `pending_subdialogs_reconciled_record`
+- `subdialog_registry_reconciled_record`
+- `subdialog_responses_reconciled_record`
+
+**规范要求**：
+
+- 这些对账记录是状态快照，不属于 LLM transcript 内容；重建消息上下文时应跳过
+- 子对话 transcript 中凡是需要参与 root fork 边界裁剪的记录，都必须带 `rootCourse/rootGenseq`
+- fork 写入新 root 时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending subdialogs / registry / responses 恢复到切点前状态
+
 ---
 
 ## 记忆持久化

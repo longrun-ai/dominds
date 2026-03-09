@@ -949,6 +949,35 @@ interface RegistryMethods {
 
 **注册表**：已注册的子对话（TYPE B Tellask）在根对话的注册表中跟踪，并在重启后持久化；若子对话被宣布卡死，其条目会被裁剪，不再参与后续同 slug 复用。
 
+### Root dialog fork（根对话分叉）
+
+运行中的一个完整 root dialog tree 可以在某个 root generation 起点处被 fork 成新的 root dialog。该能力用于“保留此前上下文，但从某个历史分叉点重新走后续主线/支线”。
+
+**入口**：
+
+- UI 仅对 root dialog（`selfId === rootId`）的 generation bubble 显示 `Fork 对话`
+- 后端 API：`POST /api/dialogs/:rootId/fork`
+- 请求体：`{ course, genseq, status? }`
+
+**语义（强制）**：
+
+- 选中的 generation bubble **不会**被复制到 fork 后的新 root；fork 切点语义是“从该 generation 开始前分叉”
+- 复制范围不是单个对话，而是**整棵 root dialog tree**
+- 子对话是否纳入 fork，取决于它是否已经在切点之前被根对话显式记录为已创建
+- 子对话 transcript 的保留边界由 root generation anchor 决定，而不是子对话自身的本地 `genseq`
+
+**fork 后动作**（由后端返回给 UI）：
+
+- `draft_user_text`：若目标 generation 是一条用户输入，则把该文本回填到新对话输入框中，等待用户决定是否发送
+- `restore_pending`：若切点之前存在待处理 Q4H 或待处理子对话，则恢复这些阻塞态，让新 root 继续处于阻塞状态
+- `auto_continue`：若切点之前没有待处理阻塞，则新 root 以 `interrupted(system_stop: fork_dialog_continue)` 初始化，UI 随后立即发送 `resume_dialog`
+
+**一致性要求**：
+
+- fork 必须保留同一 Taskdoc 引用
+- fork 后的 root/subdialog 都落到 `running/`，并拥有新的 rootId
+- 前端不得对 sideline dialog 暴露该入口；当前实现仅支持 fork root dialog
+
 ### 子对话课程头（强制）
 
 每次子对话 course 开始时，运行时必须在 assignment prompt 前插入角色头：
