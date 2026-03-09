@@ -700,6 +700,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       messages,
       stream: true,
       stream_options: { include_usage: true },
+      ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...(openAiParams.stop !== undefined && { stop: openAiParams.stop }),

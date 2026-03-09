@@ -36,7 +36,12 @@ export type ResolvedProxyConfig =
   | { kind: 'bypassed'; reason: 'no_proxy'; host: string; noProxy: string }
   | { kind: 'unset'; reason: 'proxy_unset' }
   | { kind: 'proxy'; source: 'options.proxyUrl' | ProxyEnvVarName; proxyUrl: string }
-  | { kind: 'invalid'; source: 'options.proxyUrl' | ProxyEnvVarName; proxyUrl: string; error: string };
+  | {
+      kind: 'invalid';
+      source: 'options.proxyUrl' | ProxyEnvVarName;
+      proxyUrl: string;
+      error: string;
+    };
 
 export function resolveProxyForBaseUrl(
   baseUrl: string,
@@ -68,7 +73,8 @@ export function resolveProxyForBaseUrl(
 
   const httpsProxy = getEnvProxyWithSource('HTTPS_PROXY', 'https_proxy');
   const httpProxy = getEnvProxyWithSource('HTTP_PROXY', 'http_proxy');
-  const selected = url.protocol === 'https:' ? (httpsProxy ?? httpProxy) : (httpProxy ?? httpsProxy);
+  const selected =
+    url.protocol === 'https:' ? (httpsProxy ?? httpProxy) : (httpProxy ?? httpsProxy);
 
   if (!selected) {
     return { kind: 'unset', reason: 'proxy_unset' };
@@ -76,7 +82,12 @@ export function resolveProxyForBaseUrl(
 
   const parsed = tryParseUrl(selected.value);
   if (parsed.kind === 'invalid') {
-    return { kind: 'invalid', source: selected.source, proxyUrl: selected.value, error: parsed.error };
+    return {
+      kind: 'invalid',
+      source: selected.source,
+      proxyUrl: selected.value,
+      error: parsed.error,
+    };
   }
 
   return { kind: 'proxy', source: selected.source, proxyUrl: selected.value };
@@ -330,6 +341,7 @@ export interface ChatGptResponsesRequest {
   tool_choice: ChatGptToolChoice;
   parallel_tool_calls: boolean;
   reasoning: ChatGptReasoning | null;
+  service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null;
   store: boolean;
   stream: true;
   include: ChatGptInclude[];
@@ -345,6 +357,7 @@ export interface ChatGptConversationConfig {
   tools?: ChatGptTool[];
   parallel_tool_calls?: boolean;
   reasoning?: ChatGptReasoning | null;
+  service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null;
   store?: boolean;
   include?: ChatGptInclude[];
   prompt_cache_key?: string;
@@ -412,6 +425,7 @@ function buildChatGptRequest(
     tool_choice: 'auto',
     parallel_tool_calls: options.parallel_tool_calls ?? true,
     reasoning,
+    service_tier: options.service_tier,
     store: options.store ?? false,
     stream: true,
     include,
@@ -675,7 +689,6 @@ async function emitChatGptEvents(
         dataLines.push(line.slice('data:'.length).trimStart());
       }
     }
-
   }
 
   buffer += decoder.decode();
@@ -868,7 +881,11 @@ function isRetriableRequestError(err: unknown): boolean {
     return false;
   }
   const lower = err.message.toLowerCase();
-  return lower.includes('fetch failed') || lower.includes('socket hang up') || lower.includes('terminated');
+  return (
+    lower.includes('fetch failed') ||
+    lower.includes('socket hang up') ||
+    lower.includes('terminated')
+  );
 }
 
 function delay(ms: number): Promise<void> {

@@ -68,6 +68,7 @@ export namespace Team {
   type OpenAiStyleModelParams = {
     temperature?: number; // 0-2, controls randomness
     max_tokens?: number; // Maximum tokens to generate
+    service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
     frequency_penalty?: number; // -2 to 2, penalize frequent tokens
     presence_penalty?: number; // -2 to 2, penalize present tokens
@@ -1165,6 +1166,7 @@ export namespace Team {
   export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
     'max_tokens',
+    'service_tier',
     'top_p',
     'frequency_penalty',
     'presence_penalty',
@@ -1255,6 +1257,7 @@ export namespace Team {
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
         web_search: `Did you mean \`${modelParamsAt}.codex.web_search\` (preferred for provider: codex) or \`${modelParamsAt}.openai.web_search\`?`,
+        service_tier: `Did you mean \`${modelParamsAt}.codex.service_tier\` (preferred for provider: codex) or \`${modelParamsAt}.openai.service_tier\`?`,
         temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
         top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
         max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` / \`${modelParamsAt}.general.max_tokens\` (provider-agnostic), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
@@ -2123,6 +2126,21 @@ export namespace Team {
       asOptionalString(params.user, `${at2}.user`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
       asOptionalBoolean(params.json_response, `${at2}.json_response`);
+      const serviceTier = params.service_tier;
+      if (
+        serviceTier !== undefined &&
+        serviceTier !== 'auto' &&
+        serviceTier !== 'default' &&
+        serviceTier !== 'flex' &&
+        serviceTier !== 'scale' &&
+        serviceTier !== 'priority'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.service_tier: expected auto|default|flex|scale|priority (got ${describeValueType(
+            serviceTier,
+          )})`,
+        );
+      }
 
       const reasoningEffort = params.reasoning_effort;
       if (

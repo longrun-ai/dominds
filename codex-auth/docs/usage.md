@@ -7,7 +7,10 @@ request schema and `ResponseItem` shape. The helpers below provide an idiomatic
 way to start or continue a conversation.
 
 ```ts
-import { createChatGptContinuationRequest, createChatGptStartRequest } from '@longrun-ai/codex-auth';
+import {
+  createChatGptContinuationRequest,
+  createChatGptStartRequest,
+} from '@longrun-ai/codex-auth';
 
 const payload = createChatGptStartRequest({
   model: 'gpt-5.4',
@@ -23,6 +26,11 @@ const payload = createChatGptStartRequest({
   // Allow the model to emit multiple tool calls in the same turn.
   // (Default: true)
   parallel_tool_calls: true,
+  // Optional processing tier / latency class.
+  // Typical public values are:
+  // - default: standard processing
+  // - priority: faster processing (Codex product `/fast` equivalent)
+  service_tier: 'priority',
   userText: 'hello',
 });
 
@@ -47,6 +55,10 @@ const event = JSON.parse(data) as ChatGptResponsesStreamEvent;
 `parallel_tool_calls` defaults to `true` in `createChatGptStartRequest` /
 `createChatGptContinuationRequest`. Set it to `false` if your runtime cannot
 handle multiple in-flight tool calls safely.
+
+`service_tier` is optional. For most callers, `default` and `priority` are the
+useful user-facing choices. `priority` corresponds to faster processing without
+changing reasoning effort.
 
 Idiomatic event handling uses a discriminated-union switch so TypeScript can
 verify exhaustive handling:

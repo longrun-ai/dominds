@@ -149,6 +149,7 @@ export type ModelParamOption =
   | (ModelParamOptionBase & {
       type: 'enum';
       values: string[];
+      value_labels?: Record<string, string>;
       default?: string;
     });
 

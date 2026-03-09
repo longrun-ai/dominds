@@ -159,6 +159,9 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 - The CLI uses the same file schema as Codex Rust.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
+- `service_tier` is supported on responses requests. In typical user-facing UX, `default`
+  and `priority` are the practical choices; `priority` is the API-side equivalent of Codex
+  product fast mode.
 - Built-in tool payloads are supported, including native `web_search` / `local_shell` and
   function/custom tools via the `tools` field.
 - Proxy env vars are detected via `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`

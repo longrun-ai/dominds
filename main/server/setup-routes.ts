@@ -435,6 +435,7 @@ function extractProminentEnumModelParams(
         prominent?: unknown;
         description?: unknown;
         values?: unknown;
+        value_labels?: unknown;
         default?: unknown;
       };
       if (opt.type !== 'enum') continue;
@@ -446,12 +447,24 @@ function extractProminentEnumModelParams(
         typeof opt.default === 'string' && (opt.values as string[]).includes(opt.default)
           ? opt.default
           : undefined;
+      const rawValueLabels = opt.value_labels;
+      let valueLabels: Record<string, string> | undefined;
+      if (rawValueLabels && typeof rawValueLabels === 'object' && !Array.isArray(rawValueLabels)) {
+        const next: Record<string, string> = {};
+        for (const [rawKey, rawLabel] of Object.entries(rawValueLabels)) {
+          if (!(opt.values as string[]).includes(rawKey)) continue;
+          if (typeof rawLabel !== 'string' || rawLabel.length === 0) continue;
+          next[rawKey] = rawLabel;
+        }
+        if (Object.keys(next).length > 0) valueLabels = next;
+      }
 
       out.push({
         namespace,
         key,
         description: opt.description,
         values: opt.values as string[],
+        ...(valueLabels ? { valueLabels } : {}),
         ...(defaultValue ? { defaultValue } : {}),
       });
     }

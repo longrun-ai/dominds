@@ -56,6 +56,7 @@ export type SetupProminentEnumModelParam = {
   key: string;
   description: string;
   values: string[];
+  valueLabels?: Record<string, string>;
   defaultValue?: string;
 };
 

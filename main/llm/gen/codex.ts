@@ -556,6 +556,7 @@ async function buildCodexRequest(
     tool_choice: 'auto',
     parallel_tool_calls: parallelToolCalls,
     reasoning,
+    ...(codexParams?.service_tier !== undefined ? { service_tier: codexParams.service_tier } : {}),
     store: false,
     stream: true,
     include,

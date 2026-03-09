@@ -22,9 +22,9 @@ import {
   createChatGptStartRequest,
   resolveChatGptResponsesUrl,
   resolveProxyForBaseUrl,
-  type ChatGptHttpResponse,
   type ChatGptFunctionCallItem,
   type ChatGptFunctionCallOutputItem,
+  type ChatGptHttpResponse,
   type ChatGptMessageItem,
   type ChatGptResponseItem,
   type ChatGptResponsesRequest,
@@ -698,7 +698,6 @@ async function emitChatGptEvents(
         dataLines.push(line.slice('data:'.length).trimStart());
       }
     }
-
   }
 
   buffer += decoder.decode();
@@ -870,7 +869,10 @@ function resolveChatGptModelsProbeUrl(baseUrl: string, clientVersion: string): s
   return modelsUrl.toString();
 }
 
-function parseModelsProbeResponse(raw: string): { models: ModelsProbeModel[]; parseError?: string } {
+function parseModelsProbeResponse(raw: string): {
+  models: ModelsProbeModel[];
+  parseError?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

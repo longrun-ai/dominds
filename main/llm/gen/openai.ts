@@ -651,6 +651,7 @@ export class OpenAiGen implements LlmGenerator {
       parallel_tool_calls: parallelToolCalls,
       store: false,
       stream: true,
+      ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...(openAiParams.reasoning_effort !== undefined && {
@@ -1162,6 +1163,7 @@ export class OpenAiGen implements LlmGenerator {
       parallel_tool_calls: parallelToolCalls,
       store: false,
       stream: false,
+      ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...(openAiParams.reasoning_effort !== undefined && {

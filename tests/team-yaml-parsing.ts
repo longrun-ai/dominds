@@ -238,6 +238,42 @@ async function main(): Promise<void> {
       'no team yaml errors expected for valid model_params.json_response root usage',
     );
 
+    // model_params.codex.service_tier should be accepted independently of reasoning_effort.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.4',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      codex:',
+        '        service_tier: priority',
+        '        reasoning_effort: high',
+        '',
+      ].join('\n'),
+    );
+
+    const teamServiceTier = await Team.load();
+    assert.equal(
+      teamServiceTier.getMember('alice')?.model_params?.codex?.service_tier,
+      'priority',
+      'model_params.codex.service_tier should be parsed',
+    );
+    assert.equal(
+      teamServiceTier.getMember('alice')?.model_params?.codex?.reasoning_effort,
+      'high',
+      'service_tier should coexist with reasoning_effort',
+    );
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for valid model_params.codex.service_tier usage',
+    );
+
     // shell_specialists policy:
     // - must list the only members allowed to have shell tools
     // - should surface misconfig as Problems (fail-open runtime)

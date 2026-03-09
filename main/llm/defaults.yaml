@@ -34,6 +34,19 @@ providers:
           type: enum
           values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
+        service_tier:
+          prominent: true
+          default: default
+          type: enum
+          # Keep setup/bootstrap aligned with codex-rs current user-facing handling:
+          # expose only Standard/Fast here (default/priority), even though the upstream SDK enum
+          # also mentions other tiers such as auto/flex/scale. If codex-rs expands its UX to
+          # surface additional tiers later, extend this list in lockstep.
+          values: [default, priority]
+          value_labels:
+            default: Standard
+            priority: Fast
+          description: Processing tier. Set `priority` to emulate Codex `/fast` without changing reasoning effort.
         verbosity:
           prominent: true
           default: medium

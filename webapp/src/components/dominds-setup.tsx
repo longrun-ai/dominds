@@ -1105,7 +1105,8 @@ export class DomindsSetup extends HTMLElement {
             const options = p.values
               .map((v) => {
                 const sel = selected === v ? 'selected' : '';
-                return `<option value="${escapeHtmlAttr(v)}" ${sel}>${escapeHtml(v)}</option>`;
+                const label = p.valueLabels?.[v] ?? v;
+                return `<option value="${escapeHtmlAttr(v)}" ${sel}>${escapeHtml(label)}</option>`;
               })
               .join('');
 
