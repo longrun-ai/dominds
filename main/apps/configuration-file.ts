@@ -15,6 +15,11 @@ export const DEFAULT_APPS_RESOLUTION_STRATEGY: AppsResolutionStrategy = {
   localRoots: ['dominds-apps'],
 };
 
+export type NormalizedAppsResolutionStrategy = Readonly<{
+  order: ReadonlyArray<AppsResolutionStrategyOrderItem>;
+  localRoots: ReadonlyArray<string>;
+}>;
+
 export type AppsConfigurationSchemaVersion = 1;
 
 export type AppsConfigurationFile = Readonly<{
@@ -101,6 +106,40 @@ export function parseResolutionStrategy(
       localRoots: localRoots ? localRoots.value : undefined,
     },
   };
+}
+
+export function normalizeAppsResolutionStrategy(
+  raw: AppsResolutionStrategy | undefined,
+): NormalizedAppsResolutionStrategy {
+  const order =
+    raw?.order ??
+    DEFAULT_APPS_RESOLUTION_STRATEGY.order ??
+    (['local'] satisfies ReadonlyArray<'local'>);
+  const localRoots = raw?.localRoots ??
+    DEFAULT_APPS_RESOLUTION_STRATEGY.localRoots ?? ['dominds-apps'];
+
+  if (order.length === 0) {
+    throw new Error(
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order must not be empty`,
+    );
+  }
+  if (localRoots.length === 0) {
+    throw new Error(
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots must not be empty`,
+    );
+  }
+  if (new Set(order).size !== order.length) {
+    throw new Error(
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order has duplicates`,
+    );
+  }
+  if (new Set(localRoots).size !== localRoots.length) {
+    throw new Error(
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots has duplicates`,
+    );
+  }
+
+  return { order, localRoots };
 }
 
 function canonicalizeConfigurationFile(file: AppsConfigurationFile): AppsConfigurationFile {

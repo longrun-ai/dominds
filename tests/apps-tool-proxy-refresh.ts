@@ -33,7 +33,7 @@ async function main(): Promise<void> {
         'kind: DomindsApp',
         'id: rtws_root',
         'dependencies:',
-        '  - id: web_dev',
+        '  - id: web-dev',
         '',
       ].join('\n'),
     );
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
         schemaVersion: 1,
         apps: [
           {
-            id: 'web_dev',
+            id: 'web-dev',
             enabled: true,
             assignedPort: 43123,
             source: { kind: 'local', pathAbs: webDevRootAbs },

@@ -1,15 +1,14 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { loadAppLockFile, type AppLockEntry } from './app-lock-file';
 import { resolveStableAssignedPortWithReason } from './assigned-port';
 import {
   APPS_CONFIGURATION_REL_PATH,
-  DEFAULT_APPS_RESOLUTION_STRATEGY,
   loadAppsConfigurationFile,
-  type AppsResolutionStrategy,
-  type AppsResolutionStrategyOrderItem,
+  normalizeAppsResolutionStrategy,
+  type NormalizedAppsResolutionStrategy,
 } from './configuration-file';
+import { resolveLocalAppPackageRootAbs } from './local-package-root';
 import {
   loadDomindsAppManifest,
   loadRtwsDeclaredAppDependencies,
@@ -56,11 +55,6 @@ function getRuntimePort(entry: AppsResolutionEntry): number | null {
   return typeof defaultPort === 'number' && defaultPort > 0 ? defaultPort : null;
 }
 
-type NormalizedAppsResolutionStrategy = Readonly<{
-  order: ReadonlyArray<AppsResolutionStrategyOrderItem>;
-  localRoots: ReadonlyArray<string>;
-}>;
-
 type ResolvedAppProbe = Readonly<{
   source: AppsResolutionSource;
   installJson: AppsResolutionEntry['installJson'];
@@ -71,60 +65,6 @@ type ResolvedGraphState = Readonly<{
   issues: ReadonlyArray<AppsResolutionIssue>;
 }>;
 
-type LockedAppHint = Readonly<{
-  packageName: string;
-  version: string | null;
-}>;
-
-async function dirExists(dirPathAbs: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(dirPathAbs);
-    return stat.isDirectory();
-  } catch (err: unknown) {
-    const isEnoent =
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: unknown }).code === 'ENOENT';
-    if (isEnoent) return false;
-    throw err;
-  }
-}
-
-function normalizeStrategy(
-  raw: AppsResolutionStrategy | undefined,
-): NormalizedAppsResolutionStrategy {
-  const order =
-    raw?.order ??
-    DEFAULT_APPS_RESOLUTION_STRATEGY.order ??
-    (['local'] satisfies ReadonlyArray<'local'>);
-  const localRoots = raw?.localRoots ??
-    DEFAULT_APPS_RESOLUTION_STRATEGY.localRoots ?? ['dominds-apps'];
-
-  if (order.length === 0) {
-    throw new Error(
-      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order must not be empty`,
-    );
-  }
-  if (localRoots.length === 0) {
-    throw new Error(
-      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots must not be empty`,
-    );
-  }
-  if (new Set(order).size !== order.length) {
-    throw new Error(
-      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order has duplicates`,
-    );
-  }
-  if (new Set(localRoots).size !== localRoots.length) {
-    throw new Error(
-      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots has duplicates`,
-    );
-  }
-
-  return { order, localRoots };
-}
-
 function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: boolean }): string {
   const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_CONFIGURATION_REL_PATH);
   const action = params.hasConfigurationFile ? 'Edit' : 'Create';
@@ -134,25 +74,10 @@ function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: 
   );
 }
 
-async function resolveLocalAppPackageRootAbs(params: {
-  rtwsRootAbs: string;
-  appId: string;
-  localRoots: ReadonlyArray<string>;
-  previousResolutionEntry: AppsResolutionEntry | null;
-}): Promise<string | null> {
-  const candidates = new Set<string>();
-  if (params.previousResolutionEntry?.source.kind === 'local') {
-    candidates.add(params.previousResolutionEntry.source.pathAbs);
-  }
-  for (const root of params.localRoots) {
-    const rootAbs = path.isAbsolute(root) ? root : path.resolve(params.rtwsRootAbs, root);
-    candidates.add(path.resolve(rootAbs, params.appId));
-  }
-  for (const candidateAbs of candidates) {
-    if (await dirExists(candidateAbs)) return candidateAbs;
-  }
-  return null;
-}
+type LockedAppHint = Readonly<{
+  packageName: string;
+  version: string | null;
+}>;
 
 async function loadManifestDepsFromResolvedApp(params: {
   appId: string;
@@ -572,7 +497,7 @@ export async function materializeAppsResolution(params: {
 
   const resolved = await resolveGraph({
     rtwsRootAbs: params.rtwsRootAbs,
-    strategy: normalizeStrategy(loadedConfig.file.resolutionStrategy),
+    strategy: normalizeAppsResolutionStrategy(loadedConfig.file.resolutionStrategy),
     configurationDisabledApps: new Set(loadedConfig.file.disabledApps ?? []),
     previousResolutionById,
     lockedHintsById,

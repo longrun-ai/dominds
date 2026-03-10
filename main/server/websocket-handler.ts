@@ -72,7 +72,12 @@ import {
 } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
+import {
+  clearTeamConfigBroadcaster,
+  setTeamConfigBroadcaster,
+  startTeamConfigWatcher,
+  stopTeamConfigWatcher,
+} from '../team-config-updates';
 import { syncPendingTellaskReminderState } from '../tools/pending-tellask-reminder';
 import { generateDialogID } from '../utils/id';
 import type { AuthConfig } from './auth';
@@ -1754,6 +1759,12 @@ export function setupWebSocketServer(
     }
   });
   startTeamConfigWatcher();
+
+  httpServer.once('close', () => {
+    stopTeamConfigWatcher();
+    clearTeamConfigBroadcaster();
+    void wss.close();
+  });
 
   wss.on('connection', (ws: WebSocket, req) => {
     const authCheck = getWebSocketAuthCheck(req, auth);

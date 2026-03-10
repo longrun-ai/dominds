@@ -483,6 +483,45 @@ export async function startAppsHost(params: {
   };
 
   const shutdown: AppsHostClient['shutdown'] = async () => {
+    const awaitChildExit = (): Promise<void> => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return Promise.resolve();
+      }
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        const cleanup = (): void => {
+          child.off('exit', onExit);
+          child.off('error', onError);
+          clearTimeout(timeout);
+        };
+        const finish = (): void => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+        const onExit = (): void => {
+          finish();
+        };
+        const onError = (): void => {
+          finish();
+        };
+        const timeout = setTimeout(() => {
+          try {
+            child.kill('SIGTERM');
+          } catch (err: unknown) {
+            log.warn(
+              'Failed to SIGTERM timed-out apps-host during shutdown',
+              err instanceof Error ? err : new Error(String(err)),
+            );
+          }
+          finish();
+        }, 5_000);
+        child.once('exit', onExit);
+        child.once('error', onError);
+      });
+    };
+
     try {
       child.send({ type: 'shutdown' } satisfies AppsHostMessageFromKernel);
     } catch (err: unknown) {
@@ -490,8 +529,17 @@ export async function startAppsHost(params: {
         'Failed to send shutdown to apps-host',
         err instanceof Error ? err : new Error(String(err)),
       );
+      try {
+        child.kill('SIGTERM');
+      } catch (killErr: unknown) {
+        log.warn(
+          'Failed to SIGTERM apps-host after shutdown send failure',
+          killErr instanceof Error ? killErr : new Error(String(killErr)),
+        );
+      }
     }
     failAllPending(new Error('apps-host shutdown'));
+    await awaitChildExit();
   };
 
   if (!readyMsg) {

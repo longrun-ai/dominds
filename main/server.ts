@@ -78,6 +78,7 @@ export type ServerOptions = {
   port?: number;
   host?: string;
   mode?: 'dev' | 'prod';
+  startBackendDriver?: boolean;
 };
 
 export type StartedServer = {
@@ -96,6 +97,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   const mode = opts.mode || 'prod';
   const port = opts.port ?? 5666;
   const host = opts.host || '127.0.0.1';
+  const startBackendDriver = opts.startBackendDriver ?? true;
 
   log.info(
     `Starting server in ${mode} mode on ${host}:${port} (working language: ${getWorkLanguage()} from ${source})`,
@@ -138,8 +140,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
   await reconcileRunStatesAfterRestart();
 
-  // Start backend driver loop (non-blocking)
-  void runBackendDriver();
+  // Tests may opt out so the process can shut down cleanly without a driver stop API.
+  if (startBackendDriver) {
+    void runBackendDriver();
+  }
 
   // Start listening
   await httpServer.start();

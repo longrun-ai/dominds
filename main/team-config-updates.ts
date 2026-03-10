@@ -55,6 +55,10 @@ export function setTeamConfigBroadcaster(fn: (msg: WebSocketMessage) => void): v
   broadcastToClients = fn;
 }
 
+export function clearTeamConfigBroadcaster(): void {
+  broadcastToClients = undefined;
+}
+
 function broadcast(msg: TeamConfigUpdatedMessage): void {
   const fn = broadcastToClients;
   if (!fn) return;
@@ -168,6 +172,28 @@ export function startTeamConfigWatcher(): void {
     void ensureMindsDirWatcher('poll');
     scheduleCheck('poll');
   }, 1500);
+  pollTimer.unref();
+}
+
+export function stopTeamConfigWatcher(): void {
+  if (mindsDirWatcher) {
+    mindsDirWatcher.close();
+    mindsDirWatcher = undefined;
+  }
+  if (workspaceWatcher) {
+    workspaceWatcher.close();
+    workspaceWatcher = undefined;
+  }
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = undefined;
+  }
+  watcherStarted = false;
+  lastSeenSig = undefined;
 }
 
 /**

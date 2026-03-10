@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     const shellCmdOwner = getReminderOwner('shellCmd');
     assert.ok(shellCmdOwner, 'Expected shellCmd ReminderOwner to be registered');
     const appOwnerName = buildAppReminderOwnerRegistryName(
-      'web_dev',
+      'web-dev',
       'playwright_interactive_manual',
     );
     const appReminderOwner: ReminderOwner = {
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
         owner: appReminderOwner,
         meta: {
           kind: 'app_reminder_owner',
-          appId: 'web_dev',
+          appId: 'web-dev',
           ownerRef: 'playwright_interactive_manual',
           managedByTool: 'playwright_interactive_manual',
           source: 'playwright_interactive_manual',
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     assertRecord(reminders[2]);
     assert.equal(reminders[2]['ownerName'], appOwnerName);
     assertRecord(reminders[2]['meta']);
-    assert.equal(reminders[2]['meta']['appId'], 'web_dev');
+    assert.equal(reminders[2]['meta']['appId'], 'web-dev');
     assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
 
     const loaded = await DialogPersistence.loadReminderState(dialogId);
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
     assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
     assert.equal(loaded[2].owner.name, appOwnerName);
     assertRecord(loaded[2].meta);
-    assert.equal(loaded[2].meta['appId'], 'web_dev');
+    assert.equal(loaded[2].meta['appId'], 'web-dev');
     assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.

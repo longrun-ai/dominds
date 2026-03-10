@@ -121,6 +121,11 @@ async function writeLocalAppPackage(params: {
       '    toolsets: [ws_read]',
       '    gofor:',
       '      - capture browser evidence',
+      '  web_developer:',
+      '    name: Web Developer From App',
+      '    toolsets: [ws_read, playwright_interactive, codex_style_tools]',
+      '    gofor:',
+      '      - attach to existing browser sessions with a provided sessionId before asking others for status relays',
       '',
     ].join('\n'),
   );
@@ -129,10 +134,10 @@ async function writeLocalAppPackage(params: {
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-install-configure-use-'));
-  const appId = 'web_dev';
+  const appId = 'web-dev';
   const packageName = '@longrun-ai/web-dev';
   const packageVersion = '0.1.0';
-  const localAppRel = 'local-web-dev';
+  const localAppRel = path.join('dominds-apps', 'web-dev');
   const localAppAbs = path.join(tmpRoot, localAppRel);
 
   const mainTsconfigAbs = path.resolve(__dirname, '..', 'main', 'tsconfig.json');
@@ -150,7 +155,7 @@ async function main(): Promise<void> {
     const installRes = await runTsCli({
       tsconfigAbs: mainTsconfigAbs,
       scriptAbs: installCliAbs,
-      args: [localAppRel, '--local', '--enable'],
+      args: [appId, '--enable'],
       cwdAbs: tmpRoot,
     });
     assert.equal(
@@ -158,8 +163,8 @@ async function main(): Promise<void> {
       0,
       `install failed\nstdout=${installRes.stdout}\nstderr=${installRes.stderr}`,
     );
-    assert.match(installRes.stdout, /Installed app 'web_dev' from local package:/);
-    assert.match(installRes.stdout, /Enabled app 'web_dev'/);
+    assert.match(installRes.stdout, /Installed app 'web-dev' from local package:/);
+    assert.match(installRes.stdout, /Enabled app 'web-dev'/);
 
     const manifestLoaded = await loadDomindsAppManifest({
       packageRootAbs: tmpRoot,
@@ -244,6 +249,10 @@ async function main(): Promise<void> {
         `    from: ${appId}`,
         '    use: web_tester',
         '    name: QA Override',
+        '  dev_from_app:',
+        `    from: ${appId}`,
+        '    use: web_developer',
+        '    name: Dev Override',
         '',
       ].join('\n'),
     );
@@ -254,6 +263,18 @@ async function main(): Promise<void> {
     assert.equal(importedMember?.name, 'QA Override');
     assert.deepEqual(importedMember?.toolsets, ['ws_read']);
     assert.deepEqual(importedMember?.gofor, ['capture browser evidence']);
+
+    const importedDeveloper = team.getMember('dev_from_app');
+    assert.ok(importedDeveloper, 'expected developer import from installed app');
+    assert.equal(importedDeveloper?.name, 'Dev Override');
+    assert.deepEqual(importedDeveloper?.toolsets, [
+      'ws_read',
+      'playwright_interactive',
+      'codex_style_tools',
+    ]);
+    assert.deepEqual(importedDeveloper?.gofor, [
+      'attach to existing browser sessions with a provided sessionId before asking others for status relays',
+    ]);
 
     const resolutionYamlText = await fs.readFile(
       path.join(tmpRoot, '.apps', 'resolution.yaml'),

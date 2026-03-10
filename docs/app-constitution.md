@@ -206,6 +206,19 @@ Recommended user mental model:
 - If `configuration.yaml` is missing, strategy falls back to defaults (`order=['local']`, `localRoots=['dominds-apps']`) and no explicit disables apply.
 - If `resolution.yaml` is missing, the snapshot starts empty and the kernel re-materializes it from the declared dependency graph.
 
+(Current: implemented) self-heal behavior for common entrypoints is:
+
+- `dominds webui`: the server startup path initializes apps runtime and re-materializes `<rtws>/.apps/resolution.yaml`.
+- `dominds tui` / `dominds run`: before entering interactive runtime, Dominds refreshes enabled-app runtime/tool proxies and re-materializes `resolution.yaml`.
+- `dominds read` / `dominds manual`: Dominds refreshes enabled app tool proxies first; if the root manifest still declares dependencies, this also re-materializes `resolution.yaml`.
+
+Self-heal only works when both prerequisites hold:
+
+- root `.minds/app.yaml` still declares the correct app id (for example `web-dev`), and
+- the current resolution strategy can actually resolve that app (for example, default `localRoots=['dominds-apps']` contains `dominds-apps/web-dev/`, and that package's install handshake / manifest also declares the same app id).
+
+If the root manifest / team config uses the wrong app id (for example, still declaring the legacy id `web_dev` inside `dependencies[].id` or `members.<id>.from` while the app now installs as `web-dev`), refresh will still re-materialize `resolution.yaml` as empty. That means self-heal did run; it just correctly recomputed an empty result from incorrect source declarations.
+
 So even without `<rtws>/.apps/configuration.yaml` or `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
 
 ## App-provided `.minds/**` assets
@@ -306,6 +319,14 @@ dominds install ./dominds-apps/web-dev --local --enable
 dominds install @longrun-ai/web-dev --enable
 ```
 
+Web Dev App needs three names kept distinct to avoid drift:
+
+- installable app id: `web-dev`
+- local development directory: `dominds-apps/web-dev/`
+- npm package name: `@longrun-ai/web-dev`
+
+That means workspace `.minds/app.yaml` `dependencies[].id`, `.minds/team.yaml` `members.<id>.from`, and `<rtws>/.apps/resolution.yaml` `apps[].id` must all use `web-dev`; the directory and package naming surfaces also stay `web-dev` so the app no longer carries two spellings.
+
 After installation, the user should expect these files to change:
 
 - `.minds/app.yaml`: root dependency declaration is updated.
@@ -380,6 +401,7 @@ Requirements for the `playwright_interactive` toolset design:
 Current prototype note (`dominds-apps/web-dev`, as of March 8, 2026):
 
 - The app is already installable and contributes `web_tester` / `web_developer` teammates plus a live `playwright_interactive` toolset registration.
+- The installable app id remains `web-dev`; the directory name and npm package also keep the same `web-dev` spelling so the app no longer carries split naming.
 - `playwright_session_new/list/status/eval/attach/detach/close` and cross-dialog reminder sync are already implemented.
 - `kind: "web"` sessions now create a real Playwright-backed browser/context/page runtime and report live page surfaces via session status/reminders.
 - `kind: "electron"` is **not** at the same completion level yet: it still falls back to the older prototype runtime path and should be treated as unfinished.

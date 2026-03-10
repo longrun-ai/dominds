@@ -13,9 +13,11 @@ import path from 'node:path';
 import { loadAppLockFile, upsertLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
 import {
   loadAppsConfigurationFile,
+  normalizeAppsResolutionStrategy,
   setAppDisabledInConfiguration,
   writeAppsConfigurationFileIfChanged,
 } from '../apps/configuration-file';
+import { resolveLocalAppPackageRootAbs } from '../apps/local-package-root';
 import {
   DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
   loadDomindsAppManifest,
@@ -104,6 +106,44 @@ async function pathIsDirectory(pathAbs: string): Promise<boolean> {
   }
 }
 
+type InstallSource =
+  | Readonly<{ kind: 'local'; packageRootAbs: string }>
+  | Readonly<{ kind: 'npx'; spec: string }>;
+
+async function resolveInstallSource(params: {
+  rtwsRootAbs: string;
+  specOrPath: string;
+  treatAsExplicitLocalPath: boolean;
+}): Promise<InstallSource> {
+  if (params.treatAsExplicitLocalPath) {
+    return { kind: 'local', packageRootAbs: path.resolve(params.rtwsRootAbs, params.specOrPath) };
+  }
+
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs: params.rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    throw new Error(`failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
+  }
+  const strategy = normalizeAppsResolutionStrategy(loadedConfig.file.resolutionStrategy);
+
+  for (const item of strategy.order) {
+    if (item === 'local') {
+      const packageRootAbs = await resolveLocalAppPackageRootAbs({
+        rtwsRootAbs: params.rtwsRootAbs,
+        appId: params.specOrPath,
+        localRoots: strategy.localRoots,
+        previousResolutionEntry: null,
+      });
+      if (packageRootAbs !== null) return { kind: 'local', packageRootAbs };
+      continue;
+    }
+    if (item === 'npx') return { kind: 'npx', spec: params.specOrPath };
+    const exhaustive: never = item;
+    throw new Error(`Unreachable install resolution strategy item: ${String(exhaustive)}`);
+  }
+
+  return { kind: 'npx', spec: params.specOrPath };
+}
+
 async function main(): Promise<void> {
   const rtwsRootAbs = process.cwd();
 
@@ -125,10 +165,15 @@ async function main(): Promise<void> {
   }
 
   const localAbs = path.resolve(rtwsRootAbs, specOrPath);
-  const shouldUseLocal = args.local || (await pathIsDirectory(localAbs));
-  const installJson = shouldUseLocal
-    ? await runDomindsAppJsonViaLocalPackage({ packageRootAbs: localAbs })
-    : await runDomindsAppJsonViaNpx({ spec: specOrPath, cwdAbs: rtwsRootAbs });
+  const installSource = await resolveInstallSource({
+    rtwsRootAbs,
+    specOrPath,
+    treatAsExplicitLocalPath: args.local || (await pathIsDirectory(localAbs)),
+  });
+  const installJson =
+    installSource.kind === 'local'
+      ? await runDomindsAppJsonViaLocalPackage({ packageRootAbs: installSource.packageRootAbs })
+      : await runDomindsAppJsonViaNpx({ spec: installSource.spec, cwdAbs: rtwsRootAbs });
 
   if (args.idOverride && args.idOverride !== installJson.appId) {
     console.error(`Error: --id '${args.idOverride}' does not match appId '${installJson.appId}'`);
@@ -186,7 +231,7 @@ async function main(): Promise<void> {
   });
   await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
 
-  if (shouldUseLocal) {
+  if (installSource.kind === 'local') {
     const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs });
     if (loadedResolution.kind === 'error') {
       console.error(`Error: failed to read .apps/resolution.yaml: ${loadedResolution.errorText}`);
@@ -198,7 +243,7 @@ async function main(): Promise<void> {
       next: {
         id: installJson.appId,
         enabled: true,
-        source: { kind: 'local', pathAbs: localAbs },
+        source: { kind: 'local', pathAbs: installSource.packageRootAbs },
         assignedPort: null,
         installJson,
       },
@@ -210,8 +255,8 @@ async function main(): Promise<void> {
 
   void args.force;
   console.log(
-    shouldUseLocal
-      ? `Installed app '${installJson.appId}' from local package: ${localAbs}`
+    installSource.kind === 'local'
+      ? `Installed app '${installJson.appId}' from local package: ${installSource.packageRootAbs}`
       : `Installed app '${installJson.appId}' via resolver strategy seed: ${specOrPath}`,
   );
   if (args.enable) {
