@@ -140,6 +140,21 @@ const AUTO_SCROLL_WHEEL_SETTLE_POLL_MS = 96;
 const AUTO_SCROLL_WHEEL_MAX_RESISTANCE = 1.8;
 const AUTO_SCROLL_WHEEL_IDLE_EPSILON = 0.03;
 
+type LlmRetryEvent = Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>;
+
+type RetryPanelState =
+  | { kind: 'hidden' }
+  | {
+      kind: 'retrying';
+      genseq: number;
+      attempt: number;
+      totalAttempts: number;
+      provider: string;
+      failureLabel: string;
+      error: string;
+      nextRetryAtMs: number;
+    };
+
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
@@ -199,6 +214,8 @@ export class DomindsDialogContainer extends HTMLElement {
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
+  private retryPanelState: RetryPanelState = { kind: 'hidden' };
+  private retryPanelTicker: number | null = null;
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -330,6 +347,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const parsed = normalizeLanguageCode(newValue || '');
     this.uiLanguage = parsed ?? 'en';
     this.updateResumePanel();
+    this.updateRetryPanel();
   }
 
   async connectedCallback(): Promise<void> {
@@ -867,6 +885,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
     this.stopAutoScrollWheelSettleTimer();
+    this.clearRetryPanel();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -893,6 +912,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
     this.stopAutoScrollWheelSettleTimer();
+    this.clearRetryPanel();
     this.previousDialog = undefined;
     this.runState = null;
     this.generationBubble = undefined;
@@ -1020,6 +1040,9 @@ export class DomindsDialogContainer extends HTMLElement {
           break;
         }
         this.runState = event.runState;
+        if (event.runState.kind === 'interrupted' || event.runState.kind === 'dead') {
+          this.clearRetryPanel();
+        }
         this.updateResumePanel();
         break;
 
@@ -1036,6 +1059,7 @@ export class DomindsDialogContainer extends HTMLElement {
             kind: 'interrupted',
             reason: event.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
           };
+          this.clearRetryPanel();
         } else if (this.runState !== null && this.runState.kind === 'interrupted') {
           this.runState = { kind: 'proceeding' };
         }
@@ -1237,6 +1261,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
   private handleGeneratingStart(seq: number, timestamp: string, msgId?: string): void {
+    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq !== seq) {
+      this.clearRetryPanel();
+    }
+
     const applyPendingCallAnchor = (bubble: HTMLElement): void => {
       const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
       if (!pendingAnchor) return;
@@ -1530,6 +1558,9 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.classList.remove('generating');
     bubble.classList.add('completed');
     bubble.setAttribute('data-finalized', 'true');
+    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq === seq) {
+      this.clearRetryPanel();
+    }
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
@@ -1539,6 +1570,10 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleGenerationDiscard(seq: number): void {
+    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq === seq) {
+      this.clearRetryPanel();
+    }
+
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     const activeBubble = this.generationBubble;
     const targetBubble =
@@ -3510,89 +3545,119 @@ export class DomindsDialogContainer extends HTMLElement {
     return `${trimmed.slice(0, 240)}...`;
   }
 
-  private buildRetryToastMessage(
-    event: Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>,
-  ): string {
-    const isZh = this.uiLanguage === 'zh';
-    if (event.phase === 'retrying') {
-      const waitText =
-        typeof event.backoffMs === 'number'
-          ? isZh
-            ? `，${event.backoffMs}ms 后重试`
-            : `, retrying in ${event.backoffMs}ms`
-          : '';
-      return isZh
-        ? `LLM 重试 ${event.attempt}/${event.totalAttempts}${waitText}`
-        : `LLM retry ${event.attempt}/${event.totalAttempts}${waitText}`;
+  private describeRetryFailure(event: LlmRetryEvent): string {
+    if (typeof event.status === 'number') {
+      return `HTTP ${event.status}`;
     }
-    return isZh
-      ? `LLM 重试已耗尽（${event.attempt}/${event.totalAttempts}）`
-      : `LLM retries exhausted (${event.attempt}/${event.totalAttempts})`;
+    if (typeof event.code === 'string' && event.code.trim() !== '') {
+      return event.code.trim();
+    }
+    if (event.failureKind === 'retriable') {
+      return this.uiLanguage === 'zh' ? '可重试错误' : 'Retriable error';
+    }
+    if (event.failureKind === 'rejected') {
+      return this.uiLanguage === 'zh' ? '请求被拒绝' : 'Request rejected';
+    }
+    return this.uiLanguage === 'zh' ? '致命错误' : 'Fatal error';
   }
 
-  private handleLlmRetry(event: Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>): void {
-    const toastKind = event.phase === 'retrying' ? 'info' : 'warning';
-    this.emitToast(this.buildRetryToastMessage(event), toastKind);
-
-    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
-    const activeBubble = this.generationBubble;
-    const targetBubble =
-      activeBubble && activeBubble.getAttribute('data-seq') === String(event.genseq)
-        ? activeBubble
-        : container
-          ? (container.querySelector(
-              `.generation-bubble[data-seq="${String(event.genseq)}"]`,
-            ) as HTMLElement | null)
-          : null;
-    if (!targetBubble) return;
-
-    let section = targetBubble.querySelector('.retry-section') as HTMLElement | null;
-    if (!section) {
-      section = document.createElement('div');
-      section.className = 'retry-section';
-      section.innerHTML = `
-        <div class="section-header">
-          <span class="section-icon icon-mask dc-icon-refresh" aria-hidden="true"></span>
-          <span class="section-title">${this.uiLanguage === 'zh' ? '重试中' : 'Retrying'}</span>
-        </div>
-        <div class="retry-items"></div>
-      `;
-      const body = targetBubble.querySelector('.bubble-body');
-      (body || targetBubble).appendChild(section);
+  private handleLlmRetry(event: LlmRetryEvent): void {
+    if (event.phase === 'exhausted') {
+      this.clearRetryPanel();
+      return;
     }
 
-    const items = section.querySelector('.retry-items') as HTMLElement | null;
-    if (!items) return;
-    const item = document.createElement('div');
-    item.className = `retry-item ${event.phase === 'exhausted' ? 'retry-item-final' : ''}`;
-    const statusText =
-      typeof event.status === 'number'
-        ? `HTTP ${event.status}`
-        : typeof event.code === 'string' && event.code !== ''
-          ? event.code
-          : event.failureKind;
-    const metaText =
-      event.phase === 'retrying'
-        ? this.uiLanguage === 'zh'
-          ? `第 ${event.attempt}/${event.totalAttempts} 次，等待 ${event.backoffMs ?? 0}ms，${statusText}`
-          : `Attempt ${event.attempt}/${event.totalAttempts}, wait ${event.backoffMs ?? 0}ms, ${statusText}`
-        : this.uiLanguage === 'zh'
-          ? `已耗尽重试 ${event.attempt}/${event.totalAttempts}，${statusText}`
-          : `Retries exhausted ${event.attempt}/${event.totalAttempts}, ${statusText}`;
+    const failureLabel = this.describeRetryFailure(event);
     const errorText = this.summarizeRetryError(event.error);
-    const suggestionText =
-      event.phase === 'exhausted' &&
-      typeof event.suggestion === 'string' &&
-      event.suggestion.trim() !== ''
-        ? `<div class="retry-suggestion">${this.escapeHtml(event.suggestion)}</div>`
-        : '';
-    item.innerHTML = `
-      <div class="retry-meta">${this.escapeHtml(metaText)}</div>
-      <div class="retry-error">${this.escapeHtml(errorText)}</div>
-      ${suggestionText}
-    `;
-    items.appendChild(item);
+    const backoffMs = Math.max(0, Math.floor(event.backoffMs ?? 0));
+    this.retryPanelState = {
+      kind: 'retrying',
+      genseq: event.genseq,
+      attempt: event.attempt,
+      totalAttempts: event.totalAttempts,
+      provider: event.provider,
+      failureLabel,
+      error: errorText,
+      nextRetryAtMs: Date.now() + backoffMs,
+    };
+    this.ensureRetryPanelTicker();
+    this.updateRetryPanel();
     this.scrollToBottom();
+  }
+
+  private ensureRetryPanelTicker(): void {
+    if (this.retryPanelState.kind !== 'retrying') {
+      this.stopRetryPanelTicker();
+      return;
+    }
+    if (this.retryPanelTicker !== null) return;
+    this.retryPanelTicker = window.setInterval(() => {
+      if (this.retryPanelState.kind !== 'retrying') {
+        this.stopRetryPanelTicker();
+        return;
+      }
+      this.updateRetryPanel();
+    }, 200);
+  }
+
+  private stopRetryPanelTicker(): void {
+    if (this.retryPanelTicker === null) return;
+    window.clearInterval(this.retryPanelTicker);
+    this.retryPanelTicker = null;
+  }
+
+  private clearRetryPanel(): void {
+    this.stopRetryPanelTicker();
+    this.retryPanelState = { kind: 'hidden' };
+    this.updateRetryPanel();
+  }
+
+  private formatRetryCountdown(remainingMs: number): string {
+    const safeMs = Math.max(0, remainingMs);
+    if (safeMs >= 10_000) {
+      const seconds = Math.ceil(safeMs / 1000);
+      return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
+    }
+    const seconds = (safeMs / 1000).toFixed(1);
+    return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
+  }
+
+  private buildRetryPanelSummary(state: RetryPanelState & { kind: 'retrying' }): string {
+    const t = getUiStrings(this.uiLanguage);
+    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${state.totalAttempts}${t.retryPanelAttemptSuffix}`;
+    const providerText = state.provider.trim();
+    const failureText =
+      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
+    const remainingMs = Math.max(0, state.nextRetryAtMs - Date.now());
+    const countdown = this.formatRetryCountdown(remainingMs);
+    return `${attemptText} · ${t.retryPanelCountdownPrefix}${countdown} · ${failureText}`;
+  }
+
+  private updateRetryPanel(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const panel = root.querySelector('#retry-panel') as HTMLElement | null;
+    const titleEl = root.querySelector('#retry-panel-title') as HTMLElement | null;
+    const summaryEl = root.querySelector('#retry-panel-summary') as HTMLElement | null;
+    const errorEl = root.querySelector('#retry-panel-error') as HTMLElement | null;
+    if (!panel || !titleEl || !summaryEl || !errorEl) return;
+
+    const t = getUiStrings(this.uiLanguage);
+    const state = this.retryPanelState;
+    const isVisible = state.kind !== 'hidden';
+    panel.classList.toggle('hidden', !isVisible);
+    panel.setAttribute('data-state', state.kind);
+
+    if (!isVisible) {
+      titleEl.textContent = '';
+      summaryEl.textContent = '';
+      errorEl.textContent = '';
+      return;
+    }
+
+    titleEl.textContent = t.retryPanelTitleRetrying;
+    summaryEl.textContent = this.buildRetryPanelSummary(state);
+    errorEl.textContent = state.error;
   }
 
   private handleProtocolError(err: unknown): void {
@@ -3731,6 +3796,16 @@ export class DomindsDialogContainer extends HTMLElement {
       <style>${this.getStyles()}</style>
       <div class="container">
         <div class="messages"></div>
+        <div id="retry-panel" class="retry-panel hidden" data-state="hidden">
+          <div class="retry-panel-header">
+            <span class="section-icon icon-mask dc-icon-refresh" aria-hidden="true"></span>
+            <div class="retry-panel-text">
+              <div id="retry-panel-title" class="retry-panel-title"></div>
+              <div id="retry-panel-summary" class="retry-panel-summary"></div>
+            </div>
+          </div>
+          <div id="retry-panel-error" class="retry-panel-error"></div>
+        </div>
         <div id="resume-panel" class="resume-panel hidden">
           <div class="resume-text">
             <div class="resume-title">${t.continueLabel}</div>
@@ -3771,6 +3846,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.scrollToBottom({ force: true });
       };
     }
+    this.updateRetryPanel();
     this.updateResumePanel();
     this.updateScrollToBottomButton();
   }
@@ -3939,6 +4015,7 @@ export class DomindsDialogContainer extends HTMLElement {
         height: 18px;
       }
 
+      .retry-panel,
       .resume-panel {
         margin: 0 12px 12px 12px;
         padding: 9px 10px;
@@ -3954,20 +4031,69 @@ export class DomindsDialogContainer extends HTMLElement {
         gap: 8px;
       }
 
+      .retry-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        border-color: color-mix(
+          in srgb,
+          var(--dominds-warning, var(--color-warning, #f59e0b)) 40%,
+          var(--dominds-border, var(--color-border-primary, #e2e8f0))
+        );
+        background: color-mix(
+          in srgb,
+          var(--dominds-warning, #f59e0b) 10%,
+          var(--dominds-sidebar-bg, var(--dominds-bg, #ffffff))
+        );
+        gap: 4px;
+      }
+
+      .retry-panel.hidden,
       .resume-panel.hidden {
         display: none;
       }
 
+      .retry-panel-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .retry-panel-header .section-icon {
+        width: 16px;
+        height: 16px;
+        color: var(--dominds-warning, var(--color-warning, #f59e0b));
+        flex: 0 0 auto;
+        margin-top: 1px;
+      }
+
+      .retry-panel-text {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .retry-panel-title,
       .resume-title {
         font-weight: 600;
         font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
       }
 
+      .retry-panel-summary,
       .resume-reason {
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         margin-top: 1px;
+      }
+
+      .retry-panel-error {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        white-space: pre-wrap;
+        word-break: break-word;
       }
 
       .resume-btn {
@@ -4485,58 +4611,6 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-bottom: 0;
       }
 
-      .retry-section {
-        margin: 4px 0;
-        padding: 4px 6px;
-        border-radius: 6px;
-        border-left: 3px solid var(--dominds-warning, var(--color-warning, #f59e0b));
-        background: color-mix(
-          in srgb,
-          var(--dominds-warning, #f59e0b) 10%,
-          var(--dominds-bg, var(--color-bg-primary, #ffffff))
-        );
-      }
-
-      .retry-items {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-
-      .retry-item {
-        padding: 2px 0;
-      }
-
-      .retry-item-final {
-        border-top: 1px dashed
-          color-mix(
-            in srgb,
-            var(--dominds-warning, #f59e0b) 45%,
-            transparent
-          );
-        margin-top: 2px;
-        padding-top: 6px;
-      }
-
-      .retry-meta {
-        font-size: var(--dominds-font-size-sm, 12px);
-        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        opacity: 0.92;
-      }
-
-      .retry-error {
-        font-size: var(--dominds-font-size-sm, 12px);
-        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .retry-suggestion {
-        margin-top: 2px;
-        font-size: var(--dominds-font-size-sm, 12px);
-        color: var(--dominds-fg-muted, var(--color-fg-muted, #64748b));
-      }
-      
       /* Calling section styles (nested inside markdown) */
 	      .calling-section { 
 	        margin: 4px 0; 

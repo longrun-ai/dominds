@@ -10,6 +10,7 @@ import { DILIGENCE_FALLBACK_TEXT } from '../../shared/diligence';
 import { formatQ4HDiligencePushBudgetExhausted } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
+import type { LanguageCode } from '../../shared/types/language';
 import type { HumanQuestion } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
@@ -485,6 +486,7 @@ export async function runLlmRequestWithRetry<T>(params: {
   const retryInitialDelayMs = normalizeRetryInitialDelayMs(params.retryInitialDelayMs);
   const retryBackoffMultiplier = normalizeRetryBackoffMultiplier(params.retryBackoffMultiplier);
   const retryMaxDelayMs = normalizeRetryMaxDelayMs(params.retryMaxDelayMs, retryInitialDelayMs);
+  const retryFlowStartedAtMs = Date.now();
 
   for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
     try {
@@ -585,11 +587,21 @@ export async function runLlmRequestWithRetry<T>(params: {
         } catch {
           // best-effort
         }
-        throw new Error(
-          canRetry
-            ? `LLM failed after retries: ${failure.message}`
-            : `LLM failed: ${failure.message}`,
-        );
+        if (canRetry) {
+          const interruptionDetail = formatLlmRetryExhaustedInterruptionDetail({
+            language: params.dlg.getLastUserLanguageCode(),
+            provider: params.provider,
+            totalAttempts,
+            maxRetries: params.maxRetries,
+            elapsedMs: Date.now() - retryFlowStartedAtMs,
+            retryInitialDelayMs,
+            retryBackoffMultiplier,
+            retryMaxDelayMs,
+            errorText: detail,
+          });
+          throw new Error(interruptionDetail);
+        }
+        throw new Error(`LLM failed: ${failure.message}`);
       }
 
       const backoffMs = Math.min(
@@ -626,4 +638,72 @@ export async function runLlmRequestWithRetry<T>(params: {
   }
 
   throw new Error('LLM failed.');
+}
+
+function formatRetryElapsedDuration(language: LanguageCode, elapsedMsRaw: number): string {
+  const elapsedMs = Math.max(0, Math.floor(elapsedMsRaw));
+  if (elapsedMs < 1000) {
+    return `${elapsedMs}ms`;
+  }
+
+  const totalSeconds = elapsedMs / 1000;
+  if (totalSeconds < 60) {
+    const text = totalSeconds >= 10 ? totalSeconds.toFixed(1) : totalSeconds.toFixed(2);
+    return language === 'zh' ? `${text} 秒` : `${text}s`;
+  }
+
+  const wholeSeconds = Math.round(totalSeconds);
+  const minutes = Math.floor(wholeSeconds / 60);
+  const seconds = wholeSeconds % 60;
+  if (language === 'zh') {
+    return seconds === 0 ? `${minutes} 分钟` : `${minutes} 分 ${seconds} 秒`;
+  }
+  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+}
+
+function formatLlmRetryExhaustedInterruptionDetail(args: {
+  language: LanguageCode;
+  provider: string;
+  totalAttempts: number;
+  maxRetries: number;
+  elapsedMs: number;
+  retryInitialDelayMs: number;
+  retryBackoffMultiplier: number;
+  retryMaxDelayMs: number;
+  errorText: string;
+}): string {
+  const providerPath = `providers.${args.provider}`;
+  const durationText = formatRetryElapsedDuration(args.language, args.elapsedMs);
+  const trimmedError = args.errorText.trim();
+  if (args.language === 'zh') {
+    return (
+      `LLM 自动重试已耗尽：provider=${args.provider}，共尝试 ${args.totalAttempts} 次` +
+      `（初始请求 1 次 + 重试 ${args.maxRetries} 次），总耗时 ${durationText}。` +
+      `当前重试配置：llm_retry_max_retries=${args.maxRetries}，` +
+      `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}，` +
+      `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}，` +
+      `llm_retry_max_delay_ms=${args.retryMaxDelayMs}。` +
+      `若想增加重试次数或拉长重试间隔，请编辑 \`.minds/llm.yaml\` 中的 ` +
+      `\`${providerPath}.llm_retry_max_retries\`、` +
+      `\`${providerPath}.llm_retry_initial_delay_ms\`、` +
+      `\`${providerPath}.llm_retry_backoff_multiplier\`、` +
+      `\`${providerPath}.llm_retry_max_delay_ms\`，并检查 provider / network 稳定性。` +
+      `最后错误：${trimmedError}`
+    );
+  }
+
+  return (
+    `LLM automatic retries exhausted: provider=${args.provider}, ${args.totalAttempts} attempts total ` +
+    `(1 initial request + ${args.maxRetries} retries), elapsed ${durationText}. ` +
+    `Current retry config: llm_retry_max_retries=${args.maxRetries}, ` +
+    `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}, ` +
+    `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}, ` +
+    `llm_retry_max_delay_ms=${args.retryMaxDelayMs}. ` +
+    `If you want more retries or longer retry intervals, edit ` +
+    `\`.minds/llm.yaml\`: \`${providerPath}.llm_retry_max_retries\`, ` +
+    `\`${providerPath}.llm_retry_initial_delay_ms\`, ` +
+    `\`${providerPath}.llm_retry_backoff_multiplier\`, ` +
+    `\`${providerPath}.llm_retry_max_delay_ms\`, and verify provider/network stability. ` +
+    `Last error: ${trimmedError}`
+  );
 }

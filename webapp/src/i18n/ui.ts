@@ -214,6 +214,11 @@ export type UiStrings = {
   emergencyStop: string;
   resumeAll: string;
   continueLabel: string;
+  retryPanelTitleRetrying: string;
+  retryPanelAttemptPrefix: string;
+  retryPanelAttemptConnector: string;
+  retryPanelAttemptSuffix: string;
+  retryPanelCountdownPrefix: string;
 
   stoppedByYou: string;
   stoppedByEmergencyStop: string;
@@ -566,6 +571,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       emergencyStop: '紧急停止',
       resumeAll: '全部继续',
       continueLabel: '继续',
+      retryPanelTitleRetrying: '正在重试',
+      retryPanelAttemptPrefix: '已重试 ',
+      retryPanelAttemptConnector: ' / ',
+      retryPanelAttemptSuffix: ' 次',
+      retryPanelCountdownPrefix: '下次重试倒计时 ',
 
       stoppedByYou: '已由你停止',
       stoppedByEmergencyStop: '已被紧急停止终止',
@@ -928,6 +938,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     emergencyStop: 'Emergency stop',
     resumeAll: 'Resume all',
     continueLabel: 'Continue',
+    retryPanelTitleRetrying: 'Retrying',
+    retryPanelAttemptPrefix: 'Attempt ',
+    retryPanelAttemptConnector: ' / ',
+    retryPanelAttemptSuffix: '',
+    retryPanelCountdownPrefix: 'Next retry in ',
 
     stoppedByYou: 'Stopped by you',
     stoppedByEmergencyStop: 'Stopped by emergency stop',
