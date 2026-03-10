@@ -8,6 +8,7 @@
     "rtws": "tsx cli.ts",
     "auth": "tsx auth.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
+    "skills-i18n": "tsx minds/skills-i18n.ts",
     "mindset-collab-marker-scope": "tsx minds/system-prompt-collab-marker-scope.ts",
     "minds-memory-system-reminder-contract": "tsx minds/memory-system-reminder-contract.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
@@ -88,6 +89,7 @@
     "access-control-file-ext-names": "tsx access-control/file-ext-names.ts",
     "team_mgmt-manual-no-toolsets-glob": "tsx team_mgmt-manual/no-toolsets-glob.ts",
     "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts",
+    "team_mgmt-manual-skills-manual": "tsx team_mgmt-manual/skills-manual.ts",
     "team_mgmt-manual-minds-manual-mindset-headings": "tsx team_mgmt-manual/minds-manual-mindset-headings.ts",
     "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
   },

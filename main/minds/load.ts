@@ -13,6 +13,7 @@ import { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { loadWorkspaceSkills, renderWorkspaceSkillsPrompt } from '../skills/load';
 import { Team } from '../team';
 import type { FuncTool, Tool } from '../tool';
 import {
@@ -200,6 +201,15 @@ export async function loadAgentMinds(
   const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : none;
   const lessons = lessonsRaw && lessonsRaw.trim() !== '' ? lessonsRaw : none;
   const envIntro = envIntroRaw && envIntroRaw.trim() !== '' ? envIntroRaw : '';
+  const workspaceSkills = await loadWorkspaceSkills({
+    rtwsRootAbs: process.cwd(),
+    memberId: agent.id,
+    language: workingLanguage,
+  });
+  const skillsText = renderWorkspaceSkillsPrompt({
+    language: workingLanguage,
+    skills: workspaceSkills,
+  });
 
   // Introduction of all team members (mark "(self)" for the current agent)
   const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
@@ -330,6 +340,7 @@ export async function loadAgentMinds(
     persona,
     knowledge,
     lessons,
+    skillsText,
     envIntro,
     teamIntro,
     funcToolRulesText,

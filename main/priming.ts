@@ -6,6 +6,7 @@ import type { Dialog } from './dialog';
 import { DialogID } from './dialog';
 import type { ChatMessage } from './llm/client';
 import { DialogPersistence } from './persistence';
+import { parseMarkdownFrontmatter } from './shared/markdown-frontmatter';
 import type { LanguageCode } from './shared/types/language';
 import type { PrimingScriptSummary } from './shared/types/priming';
 import type {
@@ -190,36 +191,8 @@ function scriptRefToAbsolutePath(scriptRef: string): string {
   return absPath;
 }
 
-function stripOptionalBom(text: string): string {
-  if (text.charCodeAt(0) === 0xfeff) {
-    return text.slice(1);
-  }
-  return text;
-}
-
 function parseFrontmatter(raw: string): { body: string; frontmatter: Record<string, unknown> } {
-  const normalized = stripOptionalBom(raw).replace(/\r\n/g, '\n');
-  if (!normalized.startsWith('---\n')) {
-    return { body: normalized, frontmatter: {} };
-  }
-  const endWithBody = normalized.indexOf('\n---\n', 4);
-  const endAtEof = normalized.endsWith('\n---') ? normalized.length - '\n---'.length : -1;
-  const end = endWithBody >= 0 ? endWithBody : endAtEof;
-  if (end < 0) return { body: normalized, frontmatter: {} };
-
-  const frontmatterText = normalized.slice(4, end);
-  const body =
-    endWithBody >= 0
-      ? normalized.slice(end + '\n---\n'.length)
-      : normalized.slice(end + '\n---'.length);
-  try {
-    const parsed = YAML.parse(frontmatterText);
-    return { body, frontmatter: isRecord(parsed) ? parsed : {} };
-  } catch (error) {
-    throw new Error(
-      `Invalid priming frontmatter: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  return parseMarkdownFrontmatter(raw, 'priming');
 }
 
 function parseApplicableMemberIds(frontmatter: Record<string, unknown>): string[] | undefined {

@@ -3441,6 +3441,143 @@ function renderMindsManual(language: LanguageCode): string {
   );
 }
 
+function renderSkillsManual(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      fmtHeader('.minds/skills/*（技能）') +
+      fmtList([
+        '推荐目录：团队共享技能放在 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`（英文对齐文件用 `SKILL.en.md`）；个人技能放在 `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`。',
+        '语言选择：Dominds 当前工作语言是 `zh|en`，但 skill 文件后缀采用更通行的 `cn|en`。当工作语言为 `zh` 时优先读取 `SKILL.cn.md`，当工作语言为 `en` 时优先读取 `SKILL.en.md`，两者都可回退到无语言标识的 `SKILL.md`；不会跨语言兜底到另一种语言文件。',
+        '可移植优先格式：遵循当前主流 Agent Skills 生态公共子集，使用 `SKILL.md + YAML frontmatter`。最小必备字段是 `name` 与 `description`，正文 markdown 即真正的技能提示词/工作流说明。',
+        'Dominds 当前实现会把匹配到的 skill 内容直接注入 agent system prompt；因此这里的技能更接近“工作流知识包”。这与部分平台的“先只加载 name/description、命中后再延迟加载正文”不同，请控制体量，把长参考资料拆到同目录其它文件并在正文里按需引用。',
+        '为兼容公开来源，可保留 `allowed-tools` / `user-invocable` / `disable-model-invocation` 字段；但在 Dominds 中：这些字段目前只用于迁移/文档语义，不会自动授予工具权限，也不会改变运行时调度逻辑。',
+        '最重要的边界：skill 不是权限系统。真正的工具能力仍由 `.minds/team.yaml` 的 `toolsets` / `tools` 与已安装 Dominds apps 决定。',
+        '团队管理职责的智能体可以联网搜索公开 skill 定义（优先官方文档/官方仓库/官方 marketplace 条目），也可以直接基于团队真实工作流自行总结编写。迁移前必须核对 license、适用场景、是否依赖脚本/外部工具、是否夹带与本团队冲突的人设/权限假设。',
+        '对于网络公开来源、并且带脚本/工具调用约束的 skills：默认不要只把文案抄进 `.minds/skills/**` 就上线。推荐路径是把执行能力封装成 Dominds app（app-host tools / toolsets / teammates contract），再由 skill 只保留工作流提示与对 app/toolset 的引用说明。',
+      ]) +
+      fmtHeader('建议采用的 SKILL 文件格式') +
+      fmtCodeBlock('markdown', [
+        '---',
+        'name: repo-debugger',
+        'description: >',
+        '  调试仓库级构建/测试失败的工作流。适用于 CI 失败、依赖漂移、环境不一致等场景。',
+        'allowed-tools:',
+        '  - read_file',
+        '  - readonly_shell',
+        'user-invocable: true',
+        'disable-model-invocation: false',
+        '---',
+        '',
+        '# Repo Debugger',
+        '',
+        '## 入口',
+        '- 先确认失败信号与复现入口。',
+        '- 若需要 shell，必须使用当前团队已授权的 Dominds 工具/专员，不得把 `allowed-tools` 视为自动授权。',
+        '',
+        '## 工作流',
+        '1. 收集报错与最近变更。',
+        '2. 最小化复现。',
+        '3. 定位根因并给出验证方案。',
+      ]) +
+      fmtHeader('公开来源迁移到 Dominds 的字段映射') +
+      fmtList([
+        '`name` → 直接保留。建议继续使用短 hyphen-case 标识，并与目录名 `<skill-id>` 保持一致。',
+        '`description` → 直接保留，但要补足“何时触发/何时不该触发”。这在 GitHub/Codex/skills.sh 生态中本来就是关键触发字段。',
+        'SKILL 正文 → 直接作为 Dominds skill 正文；如果正文包含平台专有命令（如 `/skill-name`、`Bash(git add:*)`、Claude 的 `!command` 注入等），迁移时必须改写为 Dominds 可执行语义。',
+        '`allowed-tools` → 仅保留为迁移提示。然后把真正需要的能力映射到 Dominds app/toolset 或 `.minds/team.yaml members.<id>.toolsets|tools`。不要把它当运行时授权。',
+        '`user-invocable` / `disable-model-invocation` → 目前仅保留为兼容元数据，Dominds 尚未把这两个字段做成调度开关。',
+        'Anthropic subagent 的 `tools` / `model` / 子代理身份字段 → 不应直接塞进 Dominds skill。可复用的“工作流正文”抽出来做 skill；工具能力改走 Dominds app / toolset；人设与职责边界改写到 `.minds/team/<id>/persona.*.md`。',
+        'GitHub `copilot-instructions.md` / `*.instructions.md` / `AGENTS.md` / `.prompt.md` 这类“纯 markdown 指令文件” → 通常没有完整 skill frontmatter。迁移时要补写 `name` 与 `description`，再把正文整理成真正可复用的工作流说明；如果它本质是仓库全局约束而不是技能，应优先放回 persona/knowledge/env/AGENTS，而不是硬转 skill。',
+      ]) +
+      fmtHeader('团队管理智能体的落地操作步骤') +
+      fmtList([
+        '1. 联网搜索：优先找官方文档、官方仓库、官方 marketplace/listing（例如 GitHub Copilot Agent Skills、Claude Code skills/subagents、skills.sh 条目）。',
+        '2. 识别类型：判断来源到底是标准 SKILL、slash command、subagent、仓库级 custom instructions，还是脚本集合。不是所有 prompt 文件都适合落到 Dominds skills。',
+        '3. 提取可移植公共子集：至少提炼出 `name`、`description`、正文工作流；删掉平台专有 shell 注入、命令占位符、隐式工具假设。',
+        '4. 判断是否需要 app 化：只要来源 skill 依赖脚本、外部二进制、MCP、专有工具权限、或希望供多个 app/team 复用，优先走 Dominds app 开发与安装流程，再在 skill 里引用该 app/toolset。',
+        '5. 写入 rtws：把纯提示型技能放到 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` 或个人目录；若团队工作语言需要英文对齐，再补 `SKILL.en.md`。',
+        '6. 配置权限：根据 skill 真实需要，更新 `.minds/team.yaml` 的成员 `toolsets` / `tools`，必要时安装/启用对应 Dominds app；不要只写 `allowed-tools` 就结束。',
+        '7. 本地化：`cn` 文件作为中文语义基准；`en` 追随 `cn`。若公开来源只有英文，先提炼成符合本团队语义的中文基准，再回写英文对齐版。',
+        '8. 验收：用 `dominds read <member-id> --only-prompt` 检查 skill 是否已注入 system prompt，并确认没有把不该暴露的工具/脚本假设写进正文。',
+      ]) +
+      fmtHeader('从常见官方格式迁移时的判断口诀') +
+      fmtList([
+        '“只有 `name/description/body` 的标准 SKILL” → 最容易迁移，优先原样改写后落盘。',
+        '“带 `allowed-tools` 但无脚本” → 可先作为纯提示 skill 引入，再人工配置 Dominds toolsets。',
+        '“带脚本 / Bash allowlist / MCP / 动态注入命令” → 默认走 Dominds app 封装路径，不要只复制 markdown。',
+        '“其实是全局仓库约束” → 更可能属于 persona / knowledge / env / AGENTS，不一定应该做成 skill。',
+      ])
+    );
+  }
+
+  return (
+    fmtHeader('.minds/skills/* (skills)') +
+    fmtList([
+      'Recommended layout: team-shared skills live at `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` (with `SKILL.en.md` as the English counterpart); personal skills live at `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`.',
+      'Language selection: Dominds work language is currently `zh|en`, but skill filenames use the more portable `cn|en` suffixes. When work language is `zh`, Dominds prefers `SKILL.cn.md`; when it is `en`, Dominds prefers `SKILL.en.md`; both may fall back to `SKILL.md`. There is no cross-language fallback.',
+      'Portable-first format: follow the common Agent Skills subset used by GitHub/Codex/Claude/skills.sh style ecosystems: `SKILL.md + YAML frontmatter`. The minimum required fields are `name` and `description`; the Markdown body is the actual skill prompt/workflow.',
+      'Current Dominds behavior eagerly injects matched skills into the agent system prompt. That makes a Dominds skill closer to a workflow knowledge pack than to a lazily loaded marketplace artifact. Keep bodies tight, and move long references into sibling files that the body points to.',
+      'For compatibility with public skill sources, Dominds accepts `allowed-tools`, `user-invocable`, and `disable-model-invocation`; however, in Dominds these fields are currently informational only. They do not grant tools and do not change runtime dispatch yet.',
+      'The hard boundary: a skill is not a permission system. Real tool access still comes from `.minds/team.yaml` (`toolsets` / `tools`) and installed Dominds apps.',
+      'A team-management agent may browse the web for public skill definitions (prefer official docs/repos/marketplace listings), or write skills directly by summarizing the team’s own repeatable workflows. Before importing, verify license, applicability, script/tool dependencies, and any hidden persona/permission assumptions.',
+      'For public-network skills that rely on scripts or explicit tool contracts: do not ship them by copying Markdown alone. Preferred path: wrap execution capability into a Dominds app (app-host tools / toolsets / teammate contract), then keep the skill focused on workflow guidance and app/toolset references.',
+    ]) +
+    fmtHeader('Recommended SKILL File Format') +
+    fmtCodeBlock('markdown', [
+      '---',
+      'name: repo-debugger',
+      'description: >',
+      '  Workflow for debugging repository-level build/test failures. Use for CI failures,',
+      '  dependency drift, or environment inconsistencies.',
+      'allowed-tools:',
+      '  - read_file',
+      '  - readonly_shell',
+      'user-invocable: true',
+      'disable-model-invocation: false',
+      '---',
+      '',
+      '# Repo Debugger',
+      '',
+      '## Entry',
+      '- Confirm the failure signal and reproduction path first.',
+      '- If shell is required, use only the Dominds tools/specialists actually granted by the team; never treat `allowed-tools` as auto-authorization.',
+      '',
+      '## Workflow',
+      '1. Gather the error signal and recent changes.',
+      '2. Minimize reproduction.',
+      '3. Isolate root cause and propose verification.',
+    ]) +
+    fmtHeader('Field Mapping from Public Skill Formats into Dominds') +
+    fmtList([
+      '`name` -> keep as-is. Continue using a short hyphen-case identifier and keep it aligned with the directory name `<skill-id>`.',
+      '`description` -> keep as-is, but strengthen the “when to use / when not to use” trigger guidance. This is already the critical discovery field in GitHub/Codex/skills.sh ecosystems.',
+      'SKILL body -> keep as the Dominds skill body. If it contains platform-specific commands (`/skill-name`, `Bash(git add:*)`, Claude `!command` injection, etc.), rewrite those parts into Dominds-executable semantics.',
+      '`allowed-tools` -> informational only in Dominds. Map actual capability needs into a Dominds app/toolset and/or `.minds/team.yaml members.<id>.toolsets|tools`.',
+      '`user-invocable` / `disable-model-invocation` -> preserved only as compatibility metadata for now; Dominds does not yet use them as dispatch switches.',
+      'Anthropic subagent fields such as `tools`, `model`, or subagent identity -> do not import directly into a Dominds skill. Extract the reusable workflow body into a skill; move tool capability into a Dominds app/toolset; move persona/responsibility boundaries into `.minds/team/<id>/persona.*.md`.',
+      'GitHub `copilot-instructions.md`, `*.instructions.md`, `AGENTS.md`, and `.prompt.md` files are usually plain Markdown instructions, not complete skills. When converting them, add `name` and `description`, then turn the body into a reusable workflow. If the content is actually repo-wide policy rather than a skill, keep it in persona/knowledge/env/AGENTS instead of forcing it into `skills`.',
+    ]) +
+    fmtHeader('Operational Steps for a Team-Management Agent') +
+    fmtList([
+      '1. Search official sources first: GitHub Copilot Agent Skills docs, Claude Code skills/subagents docs, official repos, and marketplace/listing entries such as skills.sh.',
+      '2. Classify the source: is it a standard SKILL, slash command, subagent, repo-wide custom instructions file, or a script bundle? Not every prompt file should become a Dominds skill.',
+      '3. Extract the portable core: at minimum keep `name`, `description`, and the workflow body. Remove platform-specific shell injection, command placeholders, and hidden tool assumptions.',
+      '4. Decide whether it must become an app: if the source relies on scripts, external binaries, MCP, privileged tools, or should be reused across multiple apps/teams, prefer the Dominds app path first.',
+      '5. Write into the rtws: store pure prompt skills under `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` or the personal directory; add `SKILL.en.md` when an English counterpart is needed.',
+      '6. Configure permissions explicitly: update `.minds/team.yaml` member `toolsets` / `tools`, and install/enable the supporting Dominds app when required. Do not stop at `allowed-tools` metadata.',
+      '7. Localize deliberately: use the `cn` file as the Chinese semantic baseline, then align `en` to it. If the public source is English-only, distill it into your team’s Chinese baseline first.',
+      '8. Verify with `dominds read <member-id> --only-prompt` to confirm the skill is injected and does not claim tools/scripts the member does not actually have.',
+    ]) +
+    fmtHeader('Fast Triage Rules When Importing Official Formats') +
+    fmtList([
+      '“Standard SKILL with `name/description/body` only” -> easiest path; usually port directly with light rewriting.',
+      '“Has `allowed-tools` but no scripts” -> may enter as a pure prompt skill first, then map real Dominds toolsets manually.',
+      '“Has scripts / Bash allowlists / MCP / dynamic command injection” -> default to the Dominds app packaging path; do not just copy the Markdown.',
+      '“Actually repo-global policy” -> more likely belongs in persona / knowledge / env / AGENTS than in a skill.',
+    ])
+  );
+}
+
 function renderPrimingManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
@@ -5031,6 +5168,7 @@ export const teamMgmtManualTool: FuncTool = {
             '',
             `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
             `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
+            `\`team_mgmt_manual({ topics: ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、app 化边界）`,
             `\`team_mgmt_manual({ topics: ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
             '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
             `\`team_mgmt_manual({ topics: ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
@@ -5055,6 +5193,7 @@ export const teamMgmtManualTool: FuncTool = {
           '',
           `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
           `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
+          `\`team_mgmt_manual({ topics: ["skills"] })\`: ${topicTitle('skills')} — .minds/skills/* (public skill migration, field mapping, app boundary)`,
           `\`team_mgmt_manual({ topics: ["priming"] })\`: ${topicTitle('priming')} — .minds/priming/* (how to author, maintain, and reuse startup scripts)`,
           'After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.',
           `\`team_mgmt_manual({ topics: ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
@@ -5133,6 +5272,10 @@ export const teamMgmtManualTool: FuncTool = {
       }
       if (want('minds')) {
         const content = renderMindsManual(language);
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (want('skills')) {
+        const content = renderSkillsManual(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (want('priming')) {

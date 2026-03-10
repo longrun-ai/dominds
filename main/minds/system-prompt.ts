@@ -41,6 +41,7 @@ export type BuildSystemPromptInput = {
   persona: string;
   knowledge: string;
   lessons: string;
+  skillsText: string;
   envIntro: string;
   teamIntro: string;
   funcToolRulesText: string;
@@ -335,6 +336,8 @@ ${input.knowledge}
 
 ${input.lessons}
 
+${input.skillsText}
+
 ## 运行环境
 
 ${input.envIntro}
@@ -426,6 +429,8 @@ ${input.knowledge}
 ## Lessons
 
 ${input.lessons}
+
+${input.skillsText}
 
 ## Runtime Environment
 

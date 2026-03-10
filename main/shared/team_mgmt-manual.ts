@@ -19,6 +19,7 @@ export const TEAM_MGMT_MANUAL_TOPIC_KEYS = [
   'team',
   'member-properties',
   'minds',
+  'skills',
   'priming',
   'env',
   'permissions',
@@ -52,6 +53,9 @@ export const TEAM_MGMT_MANUAL_TOPIC_META: Readonly<
   mcp: { titleI18n: { zh: 'MCP（mcp.yaml）', en: 'MCP (mcp.yaml)' } },
   minds: {
     titleI18n: { zh: '角色资产（.minds/team/<id>/*）', en: 'Minds Assets (.minds/team/<id>/*)' },
+  },
+  skills: {
+    titleI18n: { zh: '技能（.minds/skills/*）', en: 'Skills (.minds/skills/*)' },
   },
   priming: {
     titleI18n: {
@@ -92,6 +96,7 @@ export const TEAM_MGMT_MANUAL_UI_TOPIC_ORDER: readonly TeamMgmtManualTopicKey[] 
   'builtin-defaults',
   'mcp',
   'minds',
+  'skills',
   'priming',
   'env',
   'troubleshooting',
@@ -115,6 +120,7 @@ export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
   // Other
   mcp: ['mcp'],
   minds: ['minds'],
+  skills: ['skills'],
   priming: ['priming'],
   env: ['env'],
   troubleshooting: ['troubleshooting'],
@@ -122,13 +128,14 @@ export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
 
 // --- WebUI topic buttons (DomindsTeamManualPanel) ---
 
-export type TeamMgmtManualPanelTopicKey = 'index' | 'permissions' | 'team' | 'toolsets';
+export type TeamMgmtManualPanelTopicKey = 'index' | 'permissions' | 'team' | 'toolsets' | 'skills';
 
 export const TEAM_MGMT_MANUAL_PANEL_TOPIC_ORDER: readonly TeamMgmtManualPanelTopicKey[] = [
   'index',
   'permissions',
   'team',
   'toolsets',
+  'skills',
 ];
 
 const EMPTY_TOOL_TOPICS: readonly TeamMgmtManualTopicKey[] = [];
@@ -140,6 +147,7 @@ export const TEAM_MGMT_MANUAL_PANEL_TOOL_TOPICS_BY_KEY: Readonly<
   permissions: ['permissions'],
   team: ['team'],
   toolsets: ['toolsets'],
+  skills: ['skills'],
 };
 
 export function isTeamMgmtManualPanelTopicKey(value: string): value is TeamMgmtManualPanelTopicKey {
@@ -153,6 +161,7 @@ export const TEAM_MGMT_MANUAL_PANEL_TOPIC_META: Readonly<
   permissions: TEAM_MGMT_MANUAL_TOPIC_META.permissions,
   team: TEAM_MGMT_MANUAL_TOPIC_META.team,
   toolsets: TEAM_MGMT_MANUAL_TOPIC_META.toolsets,
+  skills: TEAM_MGMT_MANUAL_TOPIC_META.skills,
 };
 
 export function getTeamMgmtManualPanelTopicTitle(
