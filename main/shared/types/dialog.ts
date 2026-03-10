@@ -91,7 +91,7 @@ export interface StreamErrorEvent {
 
 export type LlmRetryEvent = LlmGenDlgEvent & {
   type: 'llm_retry_evt';
-  phase: 'retrying' | 'exhausted';
+  phase: 'waiting' | 'running' | 'exhausted';
   provider: string;
   attempt: number;
   totalAttempts: number;

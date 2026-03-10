@@ -145,7 +145,7 @@ type LlmRetryEvent = Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>;
 type RetryPanelState =
   | { kind: 'hidden' }
   | {
-      kind: 'retrying';
+      kind: 'retry-waiting';
       genseq: number;
       attempt: number;
       totalAttempts: number;
@@ -153,7 +153,18 @@ type RetryPanelState =
       failureLabel: string;
       error: string;
       nextRetryAtMs: number;
+    }
+  | {
+      kind: 'retry-running';
+      genseq: number;
+      attempt: number;
+      totalAttempts: number;
+      provider: string;
+      failureLabel: string;
+      error: string;
     };
+
+export type DialogViewportRetryPanelState = RetryPanelState;
 
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
@@ -215,7 +226,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
   private retryPanelState: RetryPanelState = { kind: 'hidden' };
-  private retryPanelTicker: number | null = null;
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -346,8 +356,6 @@ export class DomindsDialogContainer extends HTMLElement {
     if (name !== 'ui-language') return;
     const parsed = normalizeLanguageCode(newValue || '');
     this.uiLanguage = parsed ?? 'en';
-    this.updateResumePanel();
-    this.updateRetryPanel();
   }
 
   async connectedCallback(): Promise<void> {
@@ -1043,7 +1051,6 @@ export class DomindsDialogContainer extends HTMLElement {
         if (event.runState.kind === 'interrupted' || event.runState.kind === 'dead') {
           this.clearRetryPanel();
         }
-        this.updateResumePanel();
         break;
 
       case 'dlg_run_state_marker_evt': {
@@ -1063,7 +1070,6 @@ export class DomindsDialogContainer extends HTMLElement {
         } else if (this.runState !== null && this.runState.kind === 'interrupted') {
           this.runState = { kind: 'proceeding' };
         }
-        this.updateResumePanel();
         let reasonText: string | undefined;
         const reason = event.reason;
         if (reason) {
@@ -1570,10 +1576,6 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleGenerationDiscard(seq: number): void {
-    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq === seq) {
-      this.clearRetryPanel();
-    }
-
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     const activeBubble = this.generationBubble;
     const targetBubble =
@@ -1586,11 +1588,8 @@ export class DomindsDialogContainer extends HTMLElement {
           : null;
 
     if (targetBubble) {
-      targetBubble.remove();
-    }
-
-    if (this.generationBubble && this.generationBubble.getAttribute('data-seq') === String(seq)) {
-      this.generationBubble = undefined;
+      this.resetGenerationBubbleForRetry(targetBubble);
+      this.generationBubble = targetBubble;
       this.thinkingSection = undefined;
       this.markdownSection = undefined;
       this.callingSection = undefined;
@@ -1809,6 +1808,32 @@ export class DomindsDialogContainer extends HTMLElement {
       default: {
         const _exhaustive: never = action;
         throw new Error(`Unhandled web search action: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  private resetGenerationBubbleForRetry(bubble: HTMLElement): void {
+    bubble.classList.remove('completed');
+    bubble.classList.add('generating');
+    bubble.setAttribute('data-finalized', 'false');
+
+    const modelEl = bubble.querySelector('.bubble-author-model') as HTMLElement | null;
+    if (modelEl) {
+      modelEl.textContent = '';
+    }
+
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
+    if (!body) return;
+
+    let sawDivider = false;
+    for (const child of Array.from(body.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child.classList.contains('user-response-divider')) {
+        sawDivider = true;
+        continue;
+      }
+      if (sawDivider) {
+        child.remove();
       }
     }
   }
@@ -3569,95 +3594,45 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const failureLabel = this.describeRetryFailure(event);
     const errorText = this.summarizeRetryError(event.error);
-    const backoffMs = Math.max(0, Math.floor(event.backoffMs ?? 0));
-    this.retryPanelState = {
-      kind: 'retrying',
-      genseq: event.genseq,
-      attempt: event.attempt,
-      totalAttempts: event.totalAttempts,
-      provider: event.provider,
-      failureLabel,
-      error: errorText,
-      nextRetryAtMs: Date.now() + backoffMs,
-    };
-    this.ensureRetryPanelTicker();
-    this.updateRetryPanel();
-    this.scrollToBottom();
-  }
-
-  private ensureRetryPanelTicker(): void {
-    if (this.retryPanelState.kind !== 'retrying') {
-      this.stopRetryPanelTicker();
-      return;
+    if (event.phase === 'waiting') {
+      const backoffMs = Math.max(0, Math.floor(event.backoffMs ?? 0));
+      this.retryPanelState = {
+        kind: 'retry-waiting',
+        genseq: event.genseq,
+        attempt: event.attempt,
+        totalAttempts: event.totalAttempts,
+        provider: event.provider,
+        failureLabel,
+        error: errorText,
+        nextRetryAtMs: Date.now() + backoffMs,
+      };
+    } else {
+      this.retryPanelState = {
+        kind: 'retry-running',
+        genseq: event.genseq,
+        attempt: event.attempt,
+        totalAttempts: event.totalAttempts,
+        provider: event.provider,
+        failureLabel,
+        error: errorText,
+      };
     }
-    if (this.retryPanelTicker !== null) return;
-    this.retryPanelTicker = window.setInterval(() => {
-      if (this.retryPanelState.kind !== 'retrying') {
-        this.stopRetryPanelTicker();
-        return;
-      }
-      this.updateRetryPanel();
-    }, 200);
-  }
-
-  private stopRetryPanelTicker(): void {
-    if (this.retryPanelTicker === null) return;
-    window.clearInterval(this.retryPanelTicker);
-    this.retryPanelTicker = null;
+    this.emitRetryPanelStateChanged();
   }
 
   private clearRetryPanel(): void {
-    this.stopRetryPanelTicker();
     this.retryPanelState = { kind: 'hidden' };
-    this.updateRetryPanel();
+    this.emitRetryPanelStateChanged();
   }
 
-  private formatRetryCountdown(remainingMs: number): string {
-    const safeMs = Math.max(0, remainingMs);
-    if (safeMs >= 10_000) {
-      const seconds = Math.ceil(safeMs / 1000);
-      return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
-    }
-    const seconds = (safeMs / 1000).toFixed(1);
-    return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
-  }
-
-  private buildRetryPanelSummary(state: RetryPanelState & { kind: 'retrying' }): string {
-    const t = getUiStrings(this.uiLanguage);
-    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${state.totalAttempts}${t.retryPanelAttemptSuffix}`;
-    const providerText = state.provider.trim();
-    const failureText =
-      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
-    const remainingMs = Math.max(0, state.nextRetryAtMs - Date.now());
-    const countdown = this.formatRetryCountdown(remainingMs);
-    return `${attemptText} · ${t.retryPanelCountdownPrefix}${countdown} · ${failureText}`;
-  }
-
-  private updateRetryPanel(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const panel = root.querySelector('#retry-panel') as HTMLElement | null;
-    const titleEl = root.querySelector('#retry-panel-title') as HTMLElement | null;
-    const summaryEl = root.querySelector('#retry-panel-summary') as HTMLElement | null;
-    const errorEl = root.querySelector('#retry-panel-error') as HTMLElement | null;
-    if (!panel || !titleEl || !summaryEl || !errorEl) return;
-
-    const t = getUiStrings(this.uiLanguage);
-    const state = this.retryPanelState;
-    const isVisible = state.kind !== 'hidden';
-    panel.classList.toggle('hidden', !isVisible);
-    panel.setAttribute('data-state', state.kind);
-
-    if (!isVisible) {
-      titleEl.textContent = '';
-      summaryEl.textContent = '';
-      errorEl.textContent = '';
-      return;
-    }
-
-    titleEl.textContent = t.retryPanelTitleRetrying;
-    summaryEl.textContent = this.buildRetryPanelSummary(state);
-    errorEl.textContent = state.error;
+  private emitRetryPanelStateChanged(): void {
+    this.dispatchEvent(
+      new CustomEvent<{ state: DialogViewportRetryPanelState }>('dialog-retry-panel-state', {
+        detail: { state: this.retryPanelState },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private handleProtocolError(err: unknown): void {
@@ -3796,25 +3771,6 @@ export class DomindsDialogContainer extends HTMLElement {
       <style>${this.getStyles()}</style>
       <div class="container">
         <div class="messages"></div>
-        <div id="retry-panel" class="retry-panel hidden" data-state="hidden">
-          <div class="retry-panel-header">
-            <span class="section-icon icon-mask dc-icon-refresh" aria-hidden="true"></span>
-            <div class="retry-panel-text">
-              <div id="retry-panel-title" class="retry-panel-title"></div>
-              <div id="retry-panel-summary" class="retry-panel-summary"></div>
-            </div>
-          </div>
-          <div id="retry-panel-error" class="retry-panel-error"></div>
-        </div>
-        <div id="resume-panel" class="resume-panel hidden">
-          <div class="resume-text">
-            <div class="resume-title">${t.continueLabel}</div>
-            <div id="resume-reason" class="resume-reason"></div>
-          </div>
-          <div class="resume-actions">
-            <button id="resume-btn" class="resume-btn" type="button">${t.continueLabel}</button>
-          </div>
-        </div>
         <div id="scroll-to-bottom-wrap" class="scroll-to-bottom-wrap hidden">
           <button
             id="scroll-to-bottom-btn"
@@ -3828,15 +3784,6 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
       </div>
     `;
-
-    const btn = this.shadowRoot.querySelector('#resume-btn') as HTMLButtonElement | null;
-    if (btn) {
-      btn.onclick = () => {
-        const dialog = this.currentDialog;
-        if (!dialog) return;
-        this.wsManager.sendRaw({ type: 'resume_dialog', dialog });
-      };
-    }
     const scrollBtn = this.shadowRoot.querySelector(
       '#scroll-to-bottom-btn',
     ) as HTMLButtonElement | null;
@@ -3846,8 +3793,6 @@ export class DomindsDialogContainer extends HTMLElement {
         this.scrollToBottom({ force: true });
       };
     }
-    this.updateRetryPanel();
-    this.updateResumePanel();
     this.updateScrollToBottomButton();
   }
 
@@ -3858,52 +3803,6 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!wrap) return;
     const shouldShow = this.scrollContainer !== null && !this.autoScrollEnabled;
     wrap.classList.toggle('hidden', !shouldShow);
-  }
-
-  private updateResumePanel(): void {
-    const root = this.shadowRoot;
-    if (!root) return;
-    const panel = root.querySelector('#resume-panel') as HTMLElement | null;
-    const reasonEl = root.querySelector('#resume-reason') as HTMLElement | null;
-    const btn = root.querySelector('#resume-btn') as HTMLButtonElement | null;
-    const titleEl = root.querySelector('.resume-title') as HTMLElement | null;
-    if (!panel || !reasonEl || !btn) return;
-
-    const t = getUiStrings(this.uiLanguage);
-    if (titleEl) titleEl.textContent = t.continueLabel;
-    btn.textContent = t.continueLabel;
-
-    const state = this.runState;
-    const canShow = !!this.currentDialog && state !== null && state.kind === 'interrupted';
-    panel.classList.toggle('hidden', !canShow);
-
-    if (!canShow) {
-      reasonEl.textContent = '';
-      btn.disabled = true;
-      return;
-    }
-
-    btn.disabled = false;
-
-    const reason = state.reason;
-    switch (reason.kind) {
-      case 'user_stop':
-        reasonEl.textContent = t.stoppedByYou;
-        break;
-      case 'emergency_stop':
-        reasonEl.textContent = t.stoppedByEmergencyStop;
-        break;
-      case 'server_restart':
-        reasonEl.textContent = t.interruptedByServerRestart;
-        break;
-      case 'system_stop':
-        reasonEl.textContent = reason.detail;
-        break;
-      default: {
-        const _exhaustive: never = reason;
-        reasonEl.textContent = String(_exhaustive);
-      }
-    }
   }
 
   private formatInterruptionReason(reason: DialogInterruptionReason): string {
@@ -4013,102 +3912,6 @@ export class DomindsDialogContainer extends HTMLElement {
       .scroll-to-bottom-btn .icon-mask {
         width: 18px;
         height: 18px;
-      }
-
-      .retry-panel,
-      .resume-panel {
-        margin: 0 12px 12px 12px;
-        padding: 9px 10px;
-        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        border-radius: 8px;
-        background: var(
-          --dominds-sidebar-bg,
-          var(--dominds-bg, var(--color-bg-secondary, #ffffff))
-        );
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .retry-panel {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        justify-content: flex-start;
-        border-color: color-mix(
-          in srgb,
-          var(--dominds-warning, var(--color-warning, #f59e0b)) 40%,
-          var(--dominds-border, var(--color-border-primary, #e2e8f0))
-        );
-        background: color-mix(
-          in srgb,
-          var(--dominds-warning, #f59e0b) 10%,
-          var(--dominds-sidebar-bg, var(--dominds-bg, #ffffff))
-        );
-        gap: 4px;
-      }
-
-      .retry-panel.hidden,
-      .resume-panel.hidden {
-        display: none;
-      }
-
-      .retry-panel-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-      }
-
-      .retry-panel-header .section-icon {
-        width: 16px;
-        height: 16px;
-        color: var(--dominds-warning, var(--color-warning, #f59e0b));
-        flex: 0 0 auto;
-        margin-top: 1px;
-      }
-
-      .retry-panel-text {
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-      }
-
-      .retry-panel-title,
-      .resume-title {
-        font-weight: 600;
-        font-size: var(--dominds-font-size-md, 13px);
-        color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
-      }
-
-      .retry-panel-summary,
-      .resume-reason {
-        font-size: var(--dominds-font-size-sm, 12px);
-        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        margin-top: 1px;
-      }
-
-      .retry-panel-error {
-        font-size: var(--dominds-font-size-sm, 12px);
-        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .resume-btn {
-        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        background: var(--dominds-primary, var(--color-accent-primary, #007acc));
-        color: white;
-        padding: 6px 8px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: 600;
-      }
-
-      .resume-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
       }
 
       .run-marker {

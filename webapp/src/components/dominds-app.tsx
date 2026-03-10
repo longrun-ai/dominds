@@ -51,7 +51,7 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
-import type { DialogRunState } from '../shared/types/run-state';
+import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type {
   ClearResolvedProblemsResultMessage,
   DialogReadyMessage,
@@ -76,7 +76,10 @@ import {
   type DialogCreateAction,
 } from './create-dialog-flow';
 import './dominds-dialog-container.js';
-import { DomindsDialogContainer } from './dominds-dialog-container.js';
+import {
+  DomindsDialogContainer,
+  type DialogViewportRetryPanelState,
+} from './dominds-dialog-container.js';
 import './dominds-docs-panel';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import './dominds-q4h-input';
@@ -315,6 +318,8 @@ export class DomindsApp extends HTMLElement {
   private generatingDialogKeys = new Set<string>();
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
+  private retryPanelState: DialogViewportRetryPanelState = { kind: 'hidden' };
+  private retryPanelTicker: number | null = null;
   private teamMembers: FrontendTeamMember[] = [];
   private defaultResponder: string | null = null;
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
@@ -1185,6 +1190,7 @@ export class DomindsApp extends HTMLElement {
     this.updateToolsRegistryUi();
     this.updateContextHealthUi();
     this.updateToastHistoryUi();
+    this.updateDialogViewportPanels();
   }
 
   private applyUiLanguageSelectDecorations(t: ReturnType<typeof getUiStrings>): void {
@@ -1613,6 +1619,7 @@ export class DomindsApp extends HTMLElement {
 
   disconnectedCallback(): void {
     this.wsManager.disconnect();
+    this.stopRetryPanelTicker();
 
     for (const t of this.runControlRefreshTimers) {
       clearTimeout(t);
@@ -1699,6 +1706,7 @@ export class DomindsApp extends HTMLElement {
     this.applyUiLanguageToDom();
     this.updateProblemsUi();
     this.updateToolsRegistryUi();
+    this.updateDialogViewportPanels();
   }
 
   /**
@@ -3642,14 +3650,130 @@ export class DomindsApp extends HTMLElement {
           background: var(--dominds-sidebar-bg, #f8f9fa);
 	      }
 
+      .conversation-viewport {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+      }
+
       /* Conversation area scrolls independently */
-	      .conversation-scroll-area {
-	        flex: 1;
-	        min-height: 0;
-	        overflow-y: auto;
-	        contain: content;
-          background: var(--dominds-sidebar-bg, #f8f9fa);
-	      }
+      .conversation-scroll-area {
+        flex: 1;
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        contain: content;
+        background: var(--dominds-sidebar-bg, #f8f9fa);
+      }
+
+      .dialog-viewport-panels {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex-shrink: 0;
+        padding: 0 12px 12px 12px;
+        background: var(--dominds-sidebar-bg, #f8f9fa);
+      }
+
+      .dialog-viewport-panels.hidden,
+      .dialog-viewport-panel.hidden {
+        display: none;
+      }
+
+      .dialog-viewport-panel {
+        padding: 9px 10px;
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        border-radius: 8px;
+        background: var(
+          --dominds-sidebar-bg,
+          var(--dominds-bg, var(--color-bg-secondary, #ffffff))
+        );
+      }
+
+      .dialog-viewport-panel-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .dialog-viewport-panel-header .icon-mask {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        margin-top: 1px;
+      }
+
+      .dialog-viewport-panel-text {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .dialog-viewport-panel-title {
+        font-weight: 600;
+        font-size: var(--dominds-font-size-md, 13px);
+        color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
+      }
+
+      .dialog-viewport-panel-summary {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        margin-top: 1px;
+      }
+
+      .dialog-viewport-panel-error {
+        margin-top: 4px;
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .retry-panel {
+        border-color: color-mix(
+          in srgb,
+          var(--dominds-warning, var(--color-warning, #f59e0b)) 40%,
+          var(--dominds-border, var(--color-border-primary, #e2e8f0))
+        );
+        background: color-mix(
+          in srgb,
+          var(--dominds-warning, #f59e0b) 14%,
+          var(--dominds-sidebar-bg, var(--dominds-bg, #ffffff))
+        );
+      }
+
+      .retry-panel .icon-mask {
+        color: var(--dominds-warning, var(--color-warning, #f59e0b));
+      }
+
+      .resume-panel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .dialog-viewport-panel-actions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+
+      .dialog-resume-btn {
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        background: var(--dominds-primary, var(--color-accent-primary, #007acc));
+        color: white;
+        padding: 6px 8px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .dialog-resume-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
 
 	      .q4h-input-wrap {
 	        flex-shrink: 0;
@@ -5243,9 +5367,32 @@ export class DomindsApp extends HTMLElement {
             }
 
 	            <div class="dialog-section">
-	              <div class="conversation-scroll-area">
-	                <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
-	              </div>
+                <div class="conversation-viewport">
+	                <div class="conversation-scroll-area">
+	                  <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
+	                </div>
+                </div>
+                <div id="dialog-viewport-panels" class="dialog-viewport-panels hidden">
+                  <div id="dialog-retry-panel" class="dialog-viewport-panel retry-panel hidden" data-state="hidden">
+                    <div class="dialog-viewport-panel-header">
+                      <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
+                      <div class="dialog-viewport-panel-text">
+                        <div id="dialog-retry-title" class="dialog-viewport-panel-title"></div>
+                        <div id="dialog-retry-summary" class="dialog-viewport-panel-summary"></div>
+                      </div>
+                    </div>
+                    <div id="dialog-retry-error" class="dialog-viewport-panel-error"></div>
+                  </div>
+                  <div id="dialog-resume-panel" class="dialog-viewport-panel resume-panel hidden">
+                    <div class="dialog-viewport-panel-text">
+                      <div id="dialog-resume-title" class="dialog-viewport-panel-title">${t.continueLabel}</div>
+                      <div id="dialog-resume-reason" class="dialog-viewport-panel-summary"></div>
+                    </div>
+                    <div class="dialog-viewport-panel-actions">
+                      <button id="dialog-resume-btn" class="dialog-resume-btn" type="button">${t.continueLabel}</button>
+                    </div>
+                  </div>
+                </div>
 		              <div class="bottom-panel ${this.bottomPanelExpanded ? 'expanded' : 'collapsed'}" id="bottom-panel">
 		                <div class="bottom-panel-resize-handle ${this.bottomPanelExpanded ? '' : 'hidden'}" id="bottom-panel-resize-handle" role="separator" aria-orientation="horizontal">
 		                  <div class="bp-resize-grip left" data-role="resize" aria-hidden="true"></div>
@@ -5671,6 +5818,12 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
+      const resumeBtn = target.closest('#dialog-resume-btn') as HTMLButtonElement | null;
+      if (resumeBtn) {
+        this.resumeCurrentDialog();
+        return;
+      }
+
       const savePrimingBtn = target.closest('#navibar-save-priming') as HTMLButtonElement | null;
       if (savePrimingBtn) {
         await this.saveCurrentCourseAsPrimingScript();
@@ -5942,6 +6095,20 @@ export class DomindsApp extends HTMLElement {
         if (input && typeof input.setDisabled === 'function') {
           input.setDisabled(course !== latest);
         }
+      });
+      dialogContainerEl.addEventListener('dialog-retry-panel-state', (e: Event) => {
+        const ce = e as CustomEvent<unknown>;
+        const detail =
+          ce.detail && typeof ce.detail === 'object'
+            ? (ce.detail as { state?: DialogViewportRetryPanelState })
+            : null;
+        const state = detail?.state;
+        if (!state || typeof state !== 'object' || !('kind' in state)) {
+          console.warn('Invalid dialog-retry-panel-state payload', ce.detail);
+          return;
+        }
+        this.retryPanelState = state;
+        this.updateDialogViewportPanels();
       });
     }
 
@@ -7358,6 +7525,7 @@ export class DomindsApp extends HTMLElement {
   private clearCurrentDialogSelection(): void {
     this.currentDialog = null;
     this.currentDialogStatus = null;
+    this.retryPanelState = { kind: 'hidden' };
     this.updateBrowserTitle(null);
 
     const root = this.shadowRoot;
@@ -7378,6 +7546,8 @@ export class DomindsApp extends HTMLElement {
       this.q4hInput.clearDialog();
       this.q4hInput.setRunState(null);
     }
+
+    this.updateDialogViewportPanels();
   }
 
   private updateBrowserTitle(dialog: Pick<DialogInfo, 'agentId' | 'taskDocPath'> | null): void {
@@ -7913,6 +8083,166 @@ export class DomindsApp extends HTMLElement {
     return rootMatch ? rootMatch.status : null;
   }
 
+  private ensureRetryPanelTicker(): void {
+    if (this.retryPanelState.kind !== 'retry-waiting') {
+      this.stopRetryPanelTicker();
+      return;
+    }
+    if (this.retryPanelTicker !== null) return;
+    this.retryPanelTicker = window.setInterval(() => {
+      if (this.retryPanelState.kind !== 'retry-waiting') {
+        this.stopRetryPanelTicker();
+        return;
+      }
+      this.updateDialogViewportPanels();
+    }, 200);
+  }
+
+  private stopRetryPanelTicker(): void {
+    if (this.retryPanelTicker === null) return;
+    window.clearInterval(this.retryPanelTicker);
+    this.retryPanelTicker = null;
+  }
+
+  private formatRetryCountdown(remainingMs: number): string {
+    const safeMs = Math.max(0, remainingMs);
+    if (safeMs >= 10_000) {
+      const seconds = Math.ceil(safeMs / 1000);
+      return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
+    }
+    const seconds = (safeMs / 1000).toFixed(1);
+    return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
+  }
+
+  private buildRetryWaitingSummary(
+    state: DialogViewportRetryPanelState & { kind: 'retry-waiting' },
+  ): string {
+    const t = getUiStrings(this.uiLanguage);
+    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${state.totalAttempts}${t.retryPanelAttemptSuffix}`;
+    const providerText = state.provider.trim();
+    const failureText =
+      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
+    const remainingMs = Math.max(0, state.nextRetryAtMs - Date.now());
+    const countdown = this.formatRetryCountdown(remainingMs);
+    return `${attemptText} · ${t.retryPanelCountdownPrefix}${countdown} · ${failureText}`;
+  }
+
+  private buildRetryRunningSummary(
+    state: DialogViewportRetryPanelState & { kind: 'retry-running' },
+  ): string {
+    const t = getUiStrings(this.uiLanguage);
+    const attemptText = `${t.retryPanelRunningAttemptPrefix}${state.attempt}${t.retryPanelRunningAttemptSuffix}`;
+    const providerText = state.provider.trim();
+    const failureText =
+      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
+    return `${attemptText} · ${failureText}`;
+  }
+
+  private getCurrentDialogRunState(): DialogRunState | null {
+    const current = this.currentDialog;
+    if (!current) return null;
+    return this.dialogRunStatesByKey.get(this.dialogKey(current.rootId, current.selfId)) ?? null;
+  }
+
+  private formatInterruptionReason(reason: DialogInterruptionReason): string {
+    const t = getUiStrings(this.uiLanguage);
+    switch (reason.kind) {
+      case 'user_stop':
+        return t.stoppedByYou;
+      case 'emergency_stop':
+        return t.stoppedByEmergencyStop;
+      case 'server_restart':
+        return t.interruptedByServerRestart;
+      case 'system_stop':
+        return reason.detail;
+      default: {
+        const _exhaustive: never = reason;
+        return String(_exhaustive);
+      }
+    }
+  }
+
+  private updateDialogViewportPanels(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const wrap = root.querySelector('#dialog-viewport-panels') as HTMLElement | null;
+    const retryPanel = root.querySelector('#dialog-retry-panel') as HTMLElement | null;
+    const retryTitle = root.querySelector('#dialog-retry-title') as HTMLElement | null;
+    const retrySummary = root.querySelector('#dialog-retry-summary') as HTMLElement | null;
+    const retryError = root.querySelector('#dialog-retry-error') as HTMLElement | null;
+    const resumePanel = root.querySelector('#dialog-resume-panel') as HTMLElement | null;
+    const resumeTitle = root.querySelector('#dialog-resume-title') as HTMLElement | null;
+    const resumeReason = root.querySelector('#dialog-resume-reason') as HTMLElement | null;
+    const resumeBtn = root.querySelector('#dialog-resume-btn') as HTMLButtonElement | null;
+    if (
+      !wrap ||
+      !retryPanel ||
+      !retryTitle ||
+      !retrySummary ||
+      !retryError ||
+      !resumePanel ||
+      !resumeTitle ||
+      !resumeReason ||
+      !resumeBtn
+    ) {
+      return;
+    }
+
+    const t = getUiStrings(this.uiLanguage);
+    const retryState = this.retryPanelState;
+    const retryVisible = this.currentDialog !== null && retryState.kind !== 'hidden';
+    retryPanel.classList.toggle('hidden', !retryVisible);
+    if (!retryVisible) {
+      retryTitle.textContent = '';
+      retrySummary.textContent = '';
+      retryError.textContent = '';
+      this.stopRetryPanelTicker();
+    } else {
+      retryTitle.textContent = t.retryPanelTitleRetrying;
+      retrySummary.textContent =
+        retryState.kind === 'retry-waiting'
+          ? this.buildRetryWaitingSummary(retryState)
+          : this.buildRetryRunningSummary(retryState);
+      retryError.textContent = retryState.error;
+      if (retryState.kind === 'retry-waiting') {
+        this.ensureRetryPanelTicker();
+      } else {
+        this.stopRetryPanelTicker();
+      }
+    }
+
+    const runState = this.getCurrentDialogRunState();
+    const interruptedRunState =
+      this.currentDialog !== null && runState !== null && runState.kind === 'interrupted'
+        ? runState
+        : null;
+    const resumeVisible = interruptedRunState !== null;
+    resumePanel.classList.toggle('hidden', !resumeVisible);
+    resumeTitle.textContent = t.continueLabel;
+    resumeBtn.textContent = t.continueLabel;
+    resumeBtn.disabled = !resumeVisible;
+    if (!resumeVisible) {
+      resumeReason.textContent = '';
+    } else {
+      resumeReason.textContent = this.formatInterruptionReason(interruptedRunState.reason);
+    }
+
+    const hasVisiblePanels = retryVisible || resumeVisible;
+    wrap.classList.toggle('hidden', !hasVisiblePanels);
+  }
+
+  private resumeCurrentDialog(): void {
+    if (!this.currentDialog) return;
+    this.wsManager.sendRaw({
+      type: 'resume_dialog',
+      dialog: {
+        selfId: this.currentDialog.selfId,
+        rootId: this.currentDialog.rootId,
+      },
+    });
+  }
+
   private updateInputPanelVisibility(): void {
     const t = getUiStrings(this.uiLanguage);
     const readOnly =
@@ -7943,6 +8273,8 @@ export class DomindsApp extends HTMLElement {
     if (this.q4hInput) {
       this.q4hInput.setDisabled(disabled);
     }
+
+    this.updateDialogViewportPanels();
   }
 
   private async applyDialogSelection(
@@ -7985,6 +8317,7 @@ export class DomindsApp extends HTMLElement {
     this.currentDialog = normalizedDialog;
     this.currentDialogStatus =
       normalizedDialog.status ?? this.resolveDialogStatus(normalizedDialog);
+    this.retryPanelState = { kind: 'hidden' };
     this.updateInputPanelVisibility();
     // Clear stale badge from previous dialog until dialog_ready arrives.
     this.applyDiligenceState({

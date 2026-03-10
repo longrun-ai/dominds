@@ -433,7 +433,7 @@ function normalizeRetryMaxDelayMs(value: number, fallbackMin: number): number {
 
 function emitLlmRetryEventBestEffort(args: {
   dlg: Dialog;
-  phase: 'retrying' | 'exhausted';
+  phase: 'waiting' | 'running' | 'exhausted';
   provider: string;
   attempt: number;
   totalAttempts: number;
@@ -487,9 +487,28 @@ export async function runLlmRequestWithRetry<T>(params: {
   const retryBackoffMultiplier = normalizeRetryBackoffMultiplier(params.retryBackoffMultiplier);
   const retryMaxDelayMs = normalizeRetryMaxDelayMs(params.retryMaxDelayMs, retryInitialDelayMs);
   const retryFlowStartedAtMs = Date.now();
+  let activeRetryContext:
+    | {
+        failure: ClassifiedLlmFailure;
+        errorText: string;
+      }
+    | undefined;
 
   for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
     try {
+      if (attempt > 0 && activeRetryContext) {
+        emitLlmRetryEventBestEffort({
+          dlg: params.dlg,
+          phase: 'running',
+          provider: params.provider,
+          attempt: attempt + 1,
+          totalAttempts,
+          maxRetries: params.maxRetries,
+          retriesRemaining: Math.max(0, params.maxRetries - attempt),
+          failure: activeRetryContext.failure,
+          errorText: activeRetryContext.errorText,
+        });
+      }
       const res = await params.doRequest();
       removeProblem(providerProblemId);
       return res;
@@ -610,7 +629,7 @@ export async function runLlmRequestWithRetry<T>(params: {
       );
       emitLlmRetryEventBestEffort({
         dlg: params.dlg,
-        phase: 'retrying',
+        phase: 'waiting',
         provider: params.provider,
         attempt: attemptNo,
         totalAttempts,
@@ -620,6 +639,10 @@ export async function runLlmRequestWithRetry<T>(params: {
         failure,
         errorText: detail,
       });
+      activeRetryContext = {
+        failure,
+        errorText: detail,
+      };
       log.warn(`Retrying LLM request after retriable error`, undefined, {
         provider: params.provider,
         attempt: attemptNo,
