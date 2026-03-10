@@ -318,6 +318,7 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
           dialogId: dlg.id.selfId,
           rootDialogId: dlg.id.rootId,
           agentId: dlg.agentId,
+          taskDocPath: dlg.taskDocPath,
           sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
           callerId: caller.id,
         });
@@ -455,6 +456,19 @@ export async function registerEnabledAppsToolProxies(params: {
   );
   refreshQueue = run.catch(() => undefined);
   await run;
+}
+
+export async function listDynamicAppToolsetsForMember(_params: {
+  rtwsRootAbs: string;
+  taskDocPath: string;
+  memberId: string;
+}): Promise<readonly string[]> {
+  await registerEnabledAppsToolProxies({ rtwsRootAbs: _params.rtwsRootAbs });
+  const host = await ensureAppsHostReadyForToolCalls();
+  return await host.listDynamicToolsets({
+    memberId: _params.memberId,
+    taskDocPath: _params.taskDocPath,
+  });
 }
 
 export async function initAppsRuntime(params: {

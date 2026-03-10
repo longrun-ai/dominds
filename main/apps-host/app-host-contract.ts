@@ -58,6 +58,15 @@ export type DomindsAppReminderOwnerRenderContext = Readonly<{
   workLanguage: LanguageCode;
 }>;
 
+export type DomindsAppDynamicToolsetsContext = Readonly<{
+  memberId: string;
+  taskDocPath: string;
+  dialogId?: string;
+  rootDialogId?: string;
+  agentId?: string;
+  sessionSlug?: string;
+}>;
+
 export type DomindsAppReminderOwnerHandler = Readonly<{
   apply: (
     request: DomindsAppReminderApplyRequest,
@@ -69,6 +78,10 @@ export type DomindsAppReminderOwnerHandler = Readonly<{
   renderReminder: (ctx: DomindsAppReminderOwnerRenderContext) => Promise<ChatMessage>;
 }>;
 
+export type DomindsAppDynamicToolsetsHandler = (
+  ctx: DomindsAppDynamicToolsetsContext,
+) => Promise<readonly string[]>;
+
 export type DomindsAppHostStartResult = Readonly<{
   port: number;
   baseUrl: string;
@@ -79,6 +92,7 @@ export type DomindsAppHostInstance = Readonly<{
   tools: Readonly<Record<string, DomindsAppHostToolHandler>>;
   runControls?: Readonly<Record<string, DomindsAppRunControlHandler>>;
   reminderOwners?: Readonly<Record<string, DomindsAppReminderOwnerHandler>>;
+  dynamicToolsets?: DomindsAppDynamicToolsetsHandler;
   start?: (
     params: Readonly<{ runtimePort: number | null; frontend?: DomindsAppFrontendJson }>,
   ) => Promise<DomindsAppHostStartResult>;

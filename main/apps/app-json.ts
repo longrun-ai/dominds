@@ -334,6 +334,7 @@ export type DomindsAppHostToolContext = Readonly<{
   dialogId: string;
   rootDialogId: string;
   agentId: string;
+  taskDocPath: string;
   sessionSlug?: string;
   callerId: string;
 }>;

@@ -1,7 +1,7 @@
 import type { Dialog } from '../dialog';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
-import type { Team } from '../team';
+import { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
 import { renderToolsetManual } from './manual/render';
 import { MANUAL_TOPICS } from './manual/spec';
@@ -70,18 +70,22 @@ function buildManTool(): FuncTool {
     argsValidation: 'dominds',
     async call(_dlg: Dialog, _caller: Team.Member, args: JsonObject): Promise<string> {
       const language = getWorkLanguage();
+      const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
+        member: _caller,
+        taskDocPath: _dlg.taskDocPath,
+      });
 
       // Get toolsetId from args
       const toolsetId = args?.toolsetId as string | undefined;
       if (!toolsetId) {
         // When no toolsetId is provided, show all available toolsets
-        const availableToolsetNames = _caller.listResolvedToolsetNames();
+        const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
         const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
         return language === 'zh' ? `可用的工具集：${list}` : `Available toolsets: ${list}`;
       }
 
       // Step 1: Get available toolsets for this caller (dynamic availability)
-      const availableToolsetNames = _caller.listResolvedToolsetNames();
+      const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
 
       // Find closest match for fuzzy matching
       const allToolsets = Object.keys(listToolsets());
@@ -105,7 +109,11 @@ function buildManTool(): FuncTool {
 
       const availableToolNames = new Set(
         _caller
-          .listTools({ onMissingToolset: 'silent', onMissingTool: 'silent' })
+          .listTools({
+            onMissingToolset: 'silent',
+            onMissingTool: 'silent',
+            dynamicToolsetNames,
+          })
           .map((tool) => tool.name),
       );
 

@@ -56,6 +56,10 @@ function isJsonValue(value: unknown): value is JsonValue {
   return Object.values(value).every((item) => isJsonValue(item));
 }
 
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
 function isToolCallOutput(value: unknown): value is DomindsAppHostToolResult['output'] {
   if (typeof value === 'string') return true;
   if (!isRecord(value)) return false;
@@ -265,6 +269,10 @@ const reminderOwnerHandlers = new Map<
   string,
   Readonly<{ appId: string; ownerRef: string; fn: DomindsAppReminderOwnerHandler }>
 >();
+const dynamicToolsetHandlers = new Map<
+  string,
+  NonNullable<DomindsAppHostInstance['dynamicToolsets']>
+>();
 
 function buildReminderOwnerHandlerKey(appId: string, ownerRef: string): string {
   return `${appId}::${ownerRef}`;
@@ -308,6 +316,10 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
   const reminderOwners = host['reminderOwners'];
   if (reminderOwners !== undefined && !isRecord(reminderOwners)) {
     throw new Error(`Invalid app host instance for '${appId}': reminderOwners must be an object`);
+  }
+  const dynamicToolsets = host['dynamicToolsets'];
+  if (dynamicToolsets !== undefined && typeof dynamicToolsets !== 'function') {
+    throw new Error(`Invalid app host instance for '${appId}': dynamicToolsets must be a function`);
   }
   const toolFns: Record<string, unknown> = tools;
   for (const [name, fn] of Object.entries(toolFns)) {
@@ -420,6 +432,9 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
         reminderOwnerHandlers.set(handlerKey, { appId, ownerRef, fn });
       }
     }
+    if (host.dynamicToolsets) {
+      dynamicToolsetHandlers.set(appId, host.dynamicToolsets);
+    }
 
     let frontend: DomindsAppHostStartResult | null = null;
     if (app.installJson.frontend) {
@@ -505,6 +520,46 @@ process.on('message', (raw: unknown) => {
         } catch (err: unknown) {
           send({
             type: 'tool_result',
+            callId: msg.callId,
+            ok: false,
+            errorText: err instanceof Error ? err.message : String(err),
+          });
+        }
+        return;
+      }
+      case 'dynamic_toolsets': {
+        try {
+          const collected = new Set<string>();
+          for (const [appId, handler] of dynamicToolsetHandlers.entries()) {
+            try {
+              const toolsetIds = await handler(msg.ctx);
+              if (!isStringArray(toolsetIds)) {
+                throw new Error('dynamicToolsets() must return string[]');
+              }
+              for (const toolsetId of toolsetIds) {
+                if (toolsetId.trim() !== '') {
+                  collected.add(toolsetId);
+                }
+              }
+            } catch (err: unknown) {
+              send({
+                type: 'log',
+                level: 'error',
+                msg: `dynamic_toolsets failed: ${err instanceof Error ? err.message : String(err)}`,
+                appId,
+              });
+              throw err;
+            }
+          }
+          send({
+            type: 'dynamic_toolsets_result',
+            callId: msg.callId,
+            ok: true,
+            toolsetIds: [...collected],
+          });
+        } catch (err: unknown) {
+          send({
+            type: 'dynamic_toolsets_result',
             callId: msg.callId,
             ok: false,
             errorText: err instanceof Error ? err.message : String(err),

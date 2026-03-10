@@ -32,8 +32,22 @@ export type AppsHostKernelToolCallMessage = Readonly<{
     dialogId: string;
     rootDialogId: string;
     agentId: string;
+    taskDocPath: string;
     sessionSlug?: string;
     callerId: string;
+  }>;
+}>;
+
+export type AppsHostKernelDynamicToolsetsMessage = Readonly<{
+  type: 'dynamic_toolsets';
+  callId: string;
+  ctx: Readonly<{
+    memberId: string;
+    taskDocPath: string;
+    dialogId?: string;
+    rootDialogId?: string;
+    agentId?: string;
+    sessionSlug?: string;
   }>;
 }>;
 
@@ -106,6 +120,7 @@ export type AppsHostKernelShutdownMessage = Readonly<{
 export type AppsHostMessageFromKernel =
   | AppsHostKernelInitMessage
   | AppsHostKernelToolCallMessage
+  | AppsHostKernelDynamicToolsetsMessage
   | AppsHostKernelRunControlApplyMessage
   | AppsHostKernelReminderApplyMessage
   | AppsHostKernelReminderUpdateMessage
@@ -140,6 +155,19 @@ export type AppsHostToolResultMessage = Readonly<
         output: ToolCallOutput;
         reminderRequests?: ReadonlyArray<DomindsAppReminderApplyRequest>;
         dialogReminderRequests?: ReadonlyArray<DomindsAppDialogReminderRequestBatch>;
+      }>
+    | Readonly<{ ok: false; errorText: string }>
+  )
+>;
+
+export type AppsHostDynamicToolsetsResultMessage = Readonly<
+  {
+    type: 'dynamic_toolsets_result';
+    callId: string;
+  } & (
+    | Readonly<{
+        ok: true;
+        toolsetIds: ReadonlyArray<string>;
       }>
     | Readonly<{ ok: false; errorText: string }>
   )
@@ -193,6 +221,7 @@ export type AppsHostMessageToKernel =
   | AppsHostReadyMessage
   | AppsHostLogMessage
   | AppsHostToolResultMessage
+  | AppsHostDynamicToolsetsResultMessage
   | AppsHostReminderApplyResultMessage
   | AppsHostReminderUpdateResultMessage
   | AppsHostReminderRenderResultMessage
@@ -351,6 +380,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     const dialogId = asString(ctx['dialogId']);
     const rootDialogId = asString(ctx['rootDialogId']);
     const agentId = asString(ctx['agentId']);
+    const taskDocPath = asString(ctx['taskDocPath']);
     const sessionSlugRaw = ctx['sessionSlug'];
     const sessionSlug =
       sessionSlugRaw === undefined
@@ -362,6 +392,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     if (!dialogId) throw new Error('Invalid tool_call message: ctx.dialogId required');
     if (!rootDialogId) throw new Error('Invalid tool_call message: ctx.rootDialogId required');
     if (!agentId) throw new Error('Invalid tool_call message: ctx.agentId required');
+    if (!taskDocPath) throw new Error('Invalid tool_call message: ctx.taskDocPath required');
     if (sessionSlugRaw !== undefined && !sessionSlug) {
       throw new Error('Invalid tool_call message: ctx.sessionSlug must be string when present');
     }
@@ -372,7 +403,65 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       callId,
       toolName,
       args: args as ToolArguments,
-      ctx: { dialogId, rootDialogId, agentId, sessionSlug: normalizedSessionSlug, callerId },
+      ctx: {
+        dialogId,
+        rootDialogId,
+        agentId,
+        taskDocPath,
+        sessionSlug: normalizedSessionSlug,
+        callerId,
+      },
+    };
+  }
+
+  if (type === 'dynamic_toolsets') {
+    const callId = asString(v['callId']);
+    const ctx = v['ctx'];
+    if (!callId) throw new Error('Invalid dynamic_toolsets message: callId required');
+    if (!isRecord(ctx)) throw new Error('Invalid dynamic_toolsets message: ctx must be object');
+    const memberId = asString(ctx['memberId']);
+    const taskDocPath = asString(ctx['taskDocPath']);
+    const dialogIdRaw = ctx['dialogId'];
+    const dialogId = dialogIdRaw === undefined ? undefined : asString(dialogIdRaw);
+    const rootDialogIdRaw = ctx['rootDialogId'];
+    const rootDialogId = rootDialogIdRaw === undefined ? undefined : asString(rootDialogIdRaw);
+    const agentIdRaw = ctx['agentId'];
+    const agentId = agentIdRaw === undefined ? undefined : asString(agentIdRaw);
+    const sessionSlugRaw = ctx['sessionSlug'];
+    const sessionSlug = sessionSlugRaw === undefined ? undefined : asString(sessionSlugRaw);
+    if (!memberId) throw new Error('Invalid dynamic_toolsets message: ctx.memberId required');
+    if (!taskDocPath) throw new Error('Invalid dynamic_toolsets message: ctx.taskDocPath required');
+    if (dialogIdRaw !== undefined && dialogId === null) {
+      throw new Error('Invalid dynamic_toolsets message: ctx.dialogId must be string when present');
+    }
+    if (rootDialogIdRaw !== undefined && rootDialogId === null) {
+      throw new Error(
+        'Invalid dynamic_toolsets message: ctx.rootDialogId must be string when present',
+      );
+    }
+    if (agentIdRaw !== undefined && agentId === null) {
+      throw new Error('Invalid dynamic_toolsets message: ctx.agentId must be string when present');
+    }
+    if (sessionSlugRaw !== undefined && sessionSlug === null) {
+      throw new Error(
+        'Invalid dynamic_toolsets message: ctx.sessionSlug must be string when present',
+      );
+    }
+    const normalizedDialogId = dialogId ?? undefined;
+    const normalizedRootDialogId = rootDialogId ?? undefined;
+    const normalizedAgentId = agentId ?? undefined;
+    const normalizedSessionSlug = sessionSlug ?? undefined;
+    return {
+      type: 'dynamic_toolsets',
+      callId,
+      ctx: {
+        memberId,
+        taskDocPath,
+        dialogId: normalizedDialogId,
+        rootDialogId: normalizedRootDialogId,
+        agentId: normalizedAgentId,
+        sessionSlug: normalizedSessionSlug,
+      },
     };
   }
 
