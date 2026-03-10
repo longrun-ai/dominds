@@ -298,6 +298,36 @@ function isRetriableLlmErrorCode(code: string | undefined): boolean {
   return RETRIABLE_LLM_ERROR_CODES.has(code);
 }
 
+function isOpenAiRetriableProcessingFailureMessage(lowerMessage: string): boolean {
+  if (!lowerMessage.includes('processing your request')) {
+    return false;
+  }
+  if (
+    lowerMessage.includes('you can retry your request') ||
+    lowerMessage.includes('please retry your request')
+  ) {
+    return true;
+  }
+  return lowerMessage.includes('help.openai.com') && lowerMessage.includes('request id');
+}
+
+function isRetriableLlmMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
+    return true;
+  }
+  if (lower.includes('terminated')) {
+    return true;
+  }
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
+    return true;
+  }
+  if (isOpenAiRetriableProcessingFailureMessage(lower)) {
+    return true;
+  }
+  return false;
+}
+
 function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
   const fallbackMessage =
     err instanceof Error
@@ -330,18 +360,7 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
           ? err
           : undefined;
     if (typeof msg === 'string' && msg.length > 0) {
-      const lower = msg.toLowerCase();
-      if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
-        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
-      }
-      if (lower.includes('terminated')) {
-        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
-      }
-      if (
-        lower.includes('timeout') ||
-        lower.includes('timed out') ||
-        lower.includes('rate limit')
-      ) {
+      if (isRetriableLlmMessage(msg)) {
         return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
       }
     }
@@ -375,14 +394,7 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
       return { kind: 'retriable', code, message: msg };
     }
 
-    const lower = msg.toLowerCase();
-    if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
-      return { kind: 'retriable', code: code ?? causeCode, message: msg };
-    }
-    if (lower.includes('terminated')) {
-      return { kind: 'retriable', code: code ?? causeCode, message: msg };
-    }
-    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
+    if (isRetriableLlmMessage(msg)) {
       return { kind: 'retriable', code: code ?? causeCode, message: msg };
     }
   }
