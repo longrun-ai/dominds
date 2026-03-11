@@ -14,6 +14,8 @@ export type DomindsAppRunControlContext = Readonly<{
     selfId: string;
     rootId: string;
   }>;
+  agentId: string;
+  taskDocPath: string;
   genIterNo: number;
   prompt?: Readonly<{
     content: string;

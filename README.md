@@ -122,7 +122,7 @@ Examples:
 dominds install @longrun-ai/web-dev --enable
 
 # Install a local app under development into the current rtws
-dominds install ./dominds-apps/web-dev --local --enable
+dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 ```
 
 Important distinctions:

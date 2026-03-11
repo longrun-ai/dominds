@@ -27,8 +27,8 @@ async function canonicalPath(pathAbs: string): Promise<string> {
 async function main(): Promise<void> {
   const previousCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-webui-self-heal-'));
-  const appId = 'web-dev';
-  const localAppRel = path.join('dominds-apps', 'web-dev');
+  const appId = '@longrun-ai/web-dev';
+  const localAppRel = path.join('dominds-apps', '@longrun-ai', 'web-dev');
   const localAppAbs = path.join(tmpRoot, localAppRel);
 
   try {
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
         'kind: DomindsApp',
         'id: rtws_root',
         'dependencies:',
-        `  - id: ${appId}`,
+        `  - id: ${JSON.stringify(appId)}`,
         '',
       ].join('\n'),
     );
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
         'default_responder: web_tester_from_app',
         'members:',
         '  web_tester_from_app:',
-        `    from: ${appId}`,
+        `    from: ${JSON.stringify(appId)}`,
         '    use: web_tester',
         '',
       ].join('\n'),
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
       [
         'apiVersion: dominds.io/v1alpha1',
         'kind: DomindsApp',
-        `id: ${appId}`,
+        `id: ${JSON.stringify(appId)}`,
         'contributes:',
         '  teammates:',
         '    teamYaml: .minds/team.yaml',

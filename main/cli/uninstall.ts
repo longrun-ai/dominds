@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
+import { formatDomindsAppRtwsDirRel, resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import { loadAppLockFile, removeLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
 import {
   loadAppsConfigurationFile,
@@ -25,7 +25,7 @@ function printHelp(): void {
   dominds uninstall <appId> [--purge]
 
 Options:
-  --purge   Also delete rtws app state directory: .apps/<appId>/
+  --purge   Also delete rtws app state directory: .apps/<appId path segments>/
 `);
 }
 
@@ -107,11 +107,14 @@ async function main(): Promise<void> {
   await refreshAppsDerivedState({ rtwsRootAbs });
 
   if (args.purge) {
-    const appDirAbs = path.resolve(rtwsRootAbs, '.apps', args.appId);
+    const rtwsDirRel = formatDomindsAppRtwsDirRel(args.appId);
+    const appDirAbs = resolveDomindsAppRtwsDirAbs(rtwsRootAbs, args.appId);
     await fs.rm(appDirAbs, { recursive: true, force: true });
-    console.log(`Uninstalled app '${args.appId}' (purged rtws state: .apps/${args.appId}/)`);
+    console.log(`Uninstalled app '${args.appId}' (purged rtws state: ${rtwsDirRel}/)`);
   } else {
-    console.log(`Uninstalled app '${args.appId}' (rtws data preserved under .apps/${args.appId}/)`);
+    console.log(
+      `Uninstalled app '${args.appId}' (rtws data preserved under ${formatDomindsAppRtwsDirRel(args.appId)}/)`,
+    );
   }
 }
 

@@ -20,7 +20,15 @@ async function writeText(filePathAbs: string, content: string): Promise<void> {
 async function main(): Promise<void> {
   const previousCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-app-tool-proxy-refresh-'));
-  const webDevRootAbs = path.resolve(__dirname, '..', '..', 'dominds-apps', 'web-dev');
+  const appId = '@longrun-ai/web-dev';
+  const webDevRootAbs = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'dominds-apps',
+    '@longrun-ai',
+    'web-dev',
+  );
 
   try {
     process.chdir(tmpRoot);
@@ -33,7 +41,7 @@ async function main(): Promise<void> {
         'kind: DomindsApp',
         'id: rtws_root',
         'dependencies:',
-        '  - id: web-dev',
+        `  - id: ${JSON.stringify(appId)}`,
         '',
       ].join('\n'),
     );
@@ -72,7 +80,7 @@ async function main(): Promise<void> {
         schemaVersion: 1,
         apps: [
           {
-            id: 'web-dev',
+            id: appId,
             enabled: true,
             assignedPort: 43123,
             source: { kind: 'local', pathAbs: webDevRootAbs },

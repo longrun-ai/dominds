@@ -2,7 +2,7 @@ import type {
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
 } from '../apps-host/app-host-contract';
-import { getAppDialogRunControlMeta } from './dialog-run-controls';
+import { getAppDialogRunControlMeta, listAppDialogRunControls } from './dialog-run-controls';
 import { waitForAppsHostClient } from './runtime';
 
 export async function applyAppDialogRunControl(params: {
@@ -19,4 +19,19 @@ export async function applyAppDialogRunControl(params: {
   }
   const hostClient = await waitForAppsHostClient();
   return await hostClient.applyRunControl(controlId, params.payload);
+}
+
+export async function applyRegisteredAppDialogRunControls(
+  payload: DomindsAppRunControlContext,
+): Promise<DomindsAppRunControlResult> {
+  for (const control of listAppDialogRunControls()) {
+    const result = await applyAppDialogRunControl({
+      controlId: control.id,
+      payload,
+    });
+    if (result.kind === 'reject') {
+      return result;
+    }
+  }
+  return { kind: 'continue' };
 }

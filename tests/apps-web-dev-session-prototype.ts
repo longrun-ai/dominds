@@ -468,12 +468,20 @@ function createFakePlaywrightEnvironment() {
 
 async function main(): Promise<void> {
   const repoRootAbs = path.resolve(__dirname, '..', '..');
-  const packageRootAbs = path.join(repoRootAbs, 'dominds-apps', 'web-dev');
+  const appId = '@longrun-ai/web-dev';
+  const appIdPathParts = ['@longrun-ai', 'web-dev'];
+  const packageRootAbs = path.join(repoRootAbs, 'dominds-apps', ...appIdPathParts);
   const hostModuleAbs = path.join(packageRootAbs, 'src', 'app-host.js');
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-web-dev-session-prototype-'));
-  const rtwsAppDirAbs = path.join(tempRoot, '.apps', 'web-dev');
-  const sessionsCacheDirAbs = path.join(tempRoot, '.cache', 'web-dev', 'js-repl', 'sessions');
-  const artifactsDirAbs = path.join(tempRoot, '.cache', 'web-dev', 'js-repl', 'artifacts');
+  const rtwsAppDirAbs = path.join(tempRoot, '.apps', ...appIdPathParts);
+  const sessionsCacheDirAbs = path.join(
+    tempRoot,
+    '.cache',
+    ...appIdPathParts,
+    'js-repl',
+    'sessions',
+  );
+  const artifactsDirAbs = path.join(tempRoot, '.cache', ...appIdPathParts, 'js-repl', 'artifacts');
   const legacySessionsDirAbs = path.join(rtwsAppDirAbs, 'state', 'js-repl', 'sessions');
 
   try {
@@ -482,7 +490,7 @@ async function main(): Promise<void> {
     const fakeEnv = createFakePlaywrightEnvironment();
 
     const host = await hostModule.createDomindsAppHost({
-      appId: 'web-dev',
+      appId,
       rtwsRootAbs: tempRoot,
       rtwsAppDirAbs,
       packageRootAbs,

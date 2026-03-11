@@ -37,14 +37,12 @@ function assertRecord(value: unknown): asserts value is Record<string, unknown> 
 
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
+    const appId = '@longrun-ai/web-dev';
     const mcpLeaseOwner = getReminderOwner('mcpLease');
     assert.ok(mcpLeaseOwner, 'Expected mcpLease ReminderOwner to be registered');
     const shellCmdOwner = getReminderOwner('shellCmd');
     assert.ok(shellCmdOwner, 'Expected shellCmd ReminderOwner to be registered');
-    const appOwnerName = buildAppReminderOwnerRegistryName(
-      'web-dev',
-      'playwright_interactive_manual',
-    );
+    const appOwnerName = buildAppReminderOwnerRegistryName(appId, 'playwright_interactive_manual');
     const appReminderOwner: ReminderOwner = {
       name: appOwnerName,
       async updateReminder() {
@@ -75,7 +73,7 @@ async function main(): Promise<void> {
         owner: appReminderOwner,
         meta: {
           kind: 'app_reminder_owner',
-          appId: 'web-dev',
+          appId,
           ownerRef: 'playwright_interactive_manual',
           managedByTool: 'playwright_interactive_manual',
           source: 'playwright_interactive_manual',
@@ -111,7 +109,7 @@ async function main(): Promise<void> {
     assertRecord(reminders[2]);
     assert.equal(reminders[2]['ownerName'], appOwnerName);
     assertRecord(reminders[2]['meta']);
-    assert.equal(reminders[2]['meta']['appId'], 'web-dev');
+    assert.equal(reminders[2]['meta']['appId'], appId);
     assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
 
     const loaded = await DialogPersistence.loadReminderState(dialogId);
@@ -126,7 +124,7 @@ async function main(): Promise<void> {
     assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
     assert.equal(loaded[2].owner.name, appOwnerName);
     assertRecord(loaded[2].meta);
-    assert.equal(loaded[2].meta['appId'], 'web-dev');
+    assert.equal(loaded[2].meta['appId'], appId);
     assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.

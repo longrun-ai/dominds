@@ -16,6 +16,7 @@ import type { ChatMessage } from '../llm/client';
 import { createLogger } from '../log';
 import type { JsonValue } from '../tool';
 
+import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import type {
   CreateDomindsAppHostFn,
   DomindsAppHostInstance,
@@ -388,7 +389,7 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
     const mod = await dynamicImport(pathToFileURL(moduleAbs).href);
     const factory = pickExportedFactory(mod, app.installJson.host.exportName, moduleAbs);
     const appId = app.appId;
-    const rtwsAppDirAbs = path.resolve(msg.rtwsRootAbs, '.apps', appId);
+    const rtwsAppDirAbs = resolveDomindsAppRtwsDirAbs(msg.rtwsRootAbs, appId);
     const host = validateHostInstance(
       await factory({
         appId,

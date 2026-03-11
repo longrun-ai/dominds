@@ -1,3 +1,4 @@
+import { applyRegisteredAppDialogRunControls } from '../../apps/run-control';
 import { DialogID, SubDialog } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import {
@@ -127,6 +128,77 @@ function resolveDriveRequestSource(
   return 'unspecified';
 }
 
+function resolveAppRunControlSource(args: {
+  humanPrompt: KernelDriverHumanPrompt | undefined;
+  effectivePrompt: KernelDriverHumanPrompt | undefined;
+  driveSource: KernelDriverDriveSource;
+}): 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer' | null {
+  if (args.driveSource === 'ws_user_message') {
+    return 'drive_dlg_by_user_msg';
+  }
+  if (args.driveSource === 'ws_user_answer') {
+    return 'drive_dialog_by_user_answer';
+  }
+  const prompt =
+    args.humanPrompt?.origin === 'user'
+      ? args.humanPrompt
+      : args.effectivePrompt?.origin === 'user'
+        ? args.effectivePrompt
+        : undefined;
+  if (!prompt) {
+    return null;
+  }
+  return Array.isArray(prompt.q4hAnswerCallIds) && prompt.q4hAnswerCallIds.length > 0
+    ? 'drive_dialog_by_user_answer'
+    : 'drive_dlg_by_user_msg';
+}
+
+async function applyRegisteredDialogRunControlsBeforeDrive(args: {
+  dialog: KernelDriverDriveArgs[0];
+  humanPrompt: KernelDriverHumanPrompt | undefined;
+  effectivePrompt: KernelDriverHumanPrompt | undefined;
+  driveSource: KernelDriverDriveSource;
+  genIterNo: number;
+}): Promise<void> {
+  const source = resolveAppRunControlSource({
+    humanPrompt: args.humanPrompt,
+    effectivePrompt: args.effectivePrompt,
+    driveSource: args.driveSource,
+  });
+  if (!source) {
+    return;
+  }
+  const prompt =
+    args.humanPrompt?.origin === 'user'
+      ? args.humanPrompt
+      : args.effectivePrompt?.origin === 'user'
+        ? args.effectivePrompt
+        : undefined;
+  const result = await applyRegisteredAppDialogRunControls({
+    dialog: {
+      selfId: args.dialog.id.selfId,
+      rootId: args.dialog.id.rootId,
+    },
+    agentId: args.dialog.agentId,
+    taskDocPath: args.dialog.taskDocPath,
+    genIterNo: args.genIterNo,
+    prompt: prompt
+      ? {
+          content: prompt.content,
+          msgId: prompt.msgId,
+          grammar: prompt.grammar,
+          userLanguageCode: prompt.userLanguageCode ?? getWorkLanguage(),
+          origin: prompt.origin,
+        }
+      : undefined,
+    source,
+    input: {},
+  });
+  if (result.kind === 'reject') {
+    throw new Error(result.errorText);
+  }
+}
+
 async function inspectNoPromptSubdialogDrive(args: {
   dialog: SubDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
@@ -215,25 +287,31 @@ async function inspectNoPromptSubdialogDrive(args: {
 function resolveEffectivePrompt(
   dialog: KernelDriverDriveArgs[0],
   humanPrompt?: KernelDriverHumanPrompt,
-): KernelDriverHumanPrompt | undefined {
+): Readonly<{
+  prompt: KernelDriverHumanPrompt | undefined;
+  fromUpNext: boolean;
+}> {
   if (humanPrompt) {
-    return humanPrompt;
+    return { prompt: humanPrompt, fromUpNext: false };
   }
-  const upNext = dialog.takeUpNext() as UpNextPrompt | undefined;
+  const upNext = dialog.peekUpNext() as UpNextPrompt | undefined;
   if (!upNext) {
-    return undefined;
+    return { prompt: undefined, fromUpNext: false };
   }
   return {
-    content: upNext.prompt,
-    msgId: upNext.msgId,
-    grammar: upNext.grammar ?? 'markdown',
-    origin: upNext.origin,
-    userLanguageCode:
-      upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
-        ? upNext.userLanguageCode
-        : undefined,
-    q4hAnswerCallIds: upNext.q4hAnswerCallIds,
-    runControl: upNext.runControl,
+    fromUpNext: true,
+    prompt: {
+      content: upNext.prompt,
+      msgId: upNext.msgId,
+      grammar: upNext.grammar ?? 'markdown',
+      origin: upNext.origin,
+      userLanguageCode:
+        upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
+          ? upNext.userLanguageCode
+          : undefined,
+      q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+      runControl: upNext.runControl,
+    },
   };
 }
 
@@ -460,7 +538,23 @@ export async function executeDriveRound(args: {
       healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
         ? undefined
         : (healthPrompt ?? humanPrompt);
-    const effectivePrompt = resolveEffectivePrompt(dialog, promptForCore);
+    const resolvedPrompt = resolveEffectivePrompt(dialog, promptForCore);
+    const effectivePrompt = resolvedPrompt.prompt;
+    await applyRegisteredDialogRunControlsBeforeDrive({
+      dialog,
+      humanPrompt,
+      effectivePrompt,
+      driveSource,
+      genIterNo: args.runtime.totalGenIterations,
+    });
+    if (resolvedPrompt.fromUpNext) {
+      const consumed = dialog.takeUpNext() as UpNextPrompt | undefined;
+      if (!consumed || consumed.msgId !== effectivePrompt?.msgId) {
+        throw new Error(
+          `kernel-driver upNext invariant violation: expected queued prompt ${effectivePrompt?.msgId ?? 'unknown'} before drive`,
+        );
+      }
+    }
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);

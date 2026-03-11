@@ -70,7 +70,7 @@ function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: 
   const action = params.hasConfigurationFile ? 'Edit' : 'Create';
   return (
     `${action} ${filePathAbs} to configure 'resolutionStrategy'. ` +
-    `Default local root is 'dominds-apps' (rtws-relative) and expects local apps at '<root>/<appId>/'.`
+    `Default local root is 'dominds-apps' (rtws-relative) and resolves app ids under '<root>/<appId path segments>/'.`
   );
 }
 

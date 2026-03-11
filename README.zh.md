@@ -77,7 +77,7 @@ npx -y dominds@latest
 dominds install @longrun-ai/web-dev --enable
 
 # 安装本地开发中的 app 到当前 rtws
-dominds install ./dominds-apps/web-dev --local --enable
+dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 ```
 
 几个关键区别：

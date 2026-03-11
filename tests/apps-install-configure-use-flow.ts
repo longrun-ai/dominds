@@ -28,6 +28,10 @@ async function canonicalPath(pathAbs: string): Promise<string> {
   }
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function runTsCli(params: {
   tsconfigAbs: string;
   scriptAbs: string;
@@ -81,6 +85,7 @@ async function writeLocalAppPackage(params: {
       {
         name: params.packageName,
         version: params.packageVersion,
+        type: 'module',
         bin: 'bin.js',
       },
       null,
@@ -100,9 +105,9 @@ async function writeLocalAppPackage(params: {
       `    version: ${JSON.stringify(params.packageVersion)},`,
       '    rootAbs: process.cwd(),',
       '  },',
-      "  host: { kind: 'node_module', moduleRelPath: 'src/app-host.js', exportName: 'domindsApp' },",
+      "  host: { kind: 'node_module', moduleRelPath: './src/app-host.js', exportName: 'createDomindsAppHost' },",
       "  frontend: { kind: 'http', defaultPort: 0 },",
-      "  contributes: { teammatesYamlRelPath: 'team.yaml' },",
+      "  contributes: { teammatesYamlRelPath: '.minds/team.yaml' },",
       '};',
       'process.stdout.write(JSON.stringify(json));',
       '',
@@ -110,10 +115,20 @@ async function writeLocalAppPackage(params: {
   );
   await writeText(
     path.join(params.packageRootAbs, '.minds', 'app.yaml'),
-    ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', `id: ${params.appId}`, ''].join('\n'),
+    [
+      'apiVersion: dominds.io/v1alpha1',
+      'kind: DomindsApp',
+      `id: ${JSON.stringify(params.appId)}`,
+      'contributes:',
+      '  teammates:',
+      '    teamYaml: .minds/team.yaml',
+      '  tools:',
+      '    module: ./src/app-host.js',
+      '',
+    ].join('\n'),
   );
   await writeText(
-    path.join(params.packageRootAbs, 'team.yaml'),
+    path.join(params.packageRootAbs, '.minds', 'team.yaml'),
     [
       'members:',
       '  web_tester:',
@@ -129,15 +144,21 @@ async function writeLocalAppPackage(params: {
       '',
     ].join('\n'),
   );
+  await writeText(
+    path.join(params.packageRootAbs, 'src', 'app-host.js'),
+    ['export async function createDomindsAppHost() {', '  return { tools: {} };', '}', ''].join(
+      '\n',
+    ),
+  );
 }
 
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-install-configure-use-'));
-  const appId = 'web-dev';
+  const appId = '@longrun-ai/web-dev';
   const packageName = '@longrun-ai/web-dev';
   const packageVersion = '0.1.0';
-  const localAppRel = path.join('dominds-apps', 'web-dev');
+  const localAppRel = path.join('dominds-apps', '@longrun-ai', 'web-dev');
   const localAppAbs = path.join(tmpRoot, localAppRel);
 
   const mainTsconfigAbs = path.resolve(__dirname, '..', 'main', 'tsconfig.json');
@@ -163,8 +184,11 @@ async function main(): Promise<void> {
       0,
       `install failed\nstdout=${installRes.stdout}\nstderr=${installRes.stderr}`,
     );
-    assert.match(installRes.stdout, /Installed app 'web-dev' from local package:/);
-    assert.match(installRes.stdout, /Enabled app 'web-dev'/);
+    assert.match(
+      installRes.stdout,
+      new RegExp(`Installed app '${escapeRegExp(appId)}' from local package:`),
+    );
+    assert.match(installRes.stdout, new RegExp(`Enabled app '${escapeRegExp(appId)}'`));
 
     const manifestLoaded = await loadDomindsAppManifest({
       packageRootAbs: tmpRoot,
@@ -246,11 +270,11 @@ async function main(): Promise<void> {
         '    name: Builder',
         '    toolsets: []',
         '  qa_from_app:',
-        `    from: ${appId}`,
+        `    from: ${JSON.stringify(appId)}`,
         '    use: web_tester',
         '    name: QA Override',
         '  dev_from_app:',
-        `    from: ${appId}`,
+        `    from: ${JSON.stringify(appId)}`,
         '    use: web_developer',
         '    name: Dev Override',
         '',

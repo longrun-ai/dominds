@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+import { resolveDomindsAppRtwsDirAbs } from './app-id';
 import type { DomindsAppManifest } from './manifest';
 
 function ensureRelNoTraversal(rel: string): string {
@@ -30,7 +31,7 @@ export async function applyRtwsSeed(params: {
   manifest: DomindsAppManifest;
   overwrite: boolean;
 }): Promise<void> {
-  const rtwsAppDirAbs = path.resolve(params.rtwsRootAbs, '.apps', params.appId);
+  const rtwsAppDirAbs = resolveDomindsAppRtwsDirAbs(params.rtwsRootAbs, params.appId);
   await fs.mkdir(rtwsAppDirAbs, { recursive: true });
 
   const taskdocs = params.manifest.contributes?.rtwsSeed?.taskdocs ?? [];

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { resolveDomindsAppLocalPackageRootAbs } from './app-id';
 import type { AppsResolutionEntry } from './resolution-file';
 
 async function dirExists(dirPathAbs: string): Promise<boolean> {
@@ -33,7 +34,7 @@ export async function resolveLocalAppPackageRootAbs(params: {
   }
   for (const root of params.localRoots) {
     const rootAbs = path.isAbsolute(root) ? root : path.resolve(params.rtwsRootAbs, root);
-    candidates.add(path.resolve(rootAbs, trimmedAppId));
+    candidates.add(resolveDomindsAppLocalPackageRootAbs(rootAbs, trimmedAppId));
   }
   for (const candidateAbs of candidates) {
     if (await dirExists(candidateAbs)) return candidateAbs;

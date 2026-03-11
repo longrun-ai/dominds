@@ -838,6 +838,20 @@ export abstract class Dialog {
     return this._upNext !== undefined;
   }
 
+  public peekUpNext():
+    | {
+        prompt: string;
+        msgId: string;
+        grammar?: 'markdown';
+        userLanguageCode?: LanguageCode;
+        origin: 'user' | 'diligence_push' | 'runtime';
+        q4hAnswerCallIds?: string[];
+        runControl?: DialogRunControlSpec;
+      }
+    | undefined {
+    return this._upNext;
+  }
+
   public takeUpNext():
     | {
         prompt: string;

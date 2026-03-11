@@ -214,10 +214,10 @@ Recommended user mental model:
 
 Self-heal only works when both prerequisites hold:
 
-- root `.minds/app.yaml` still declares the correct app id (for example `web-dev`), and
-- the current resolution strategy can actually resolve that app (for example, default `localRoots=['dominds-apps']` contains `dominds-apps/web-dev/`, and that package's install handshake / manifest also declares the same app id).
+- root `.minds/app.yaml` still declares the correct app id (for example `@longrun-ai/web-dev`), and
+- the current resolution strategy can actually resolve that app (for example, default `localRoots=['dominds-apps']` contains `dominds-apps/@longrun-ai/web-dev/`, and that package's install handshake / manifest also declares the same app id).
 
-If the root manifest / team config uses the wrong app id (for example, still declaring the legacy id `web_dev` inside `dependencies[].id` or `members.<id>.from` while the app now installs as `web-dev`), refresh will still re-materialize `resolution.yaml` as empty. That means self-heal did run; it just correctly recomputed an empty result from incorrect source declarations.
+If the root manifest / team config uses the wrong app id (for example, still declaring the legacy id `web_dev` or the old unscoped id `web-dev` inside `dependencies[].id` or `members.<id>.from` while the app now installs as `@longrun-ai/web-dev`), refresh will still re-materialize `resolution.yaml` as empty. That means self-heal did run; it just correctly recomputed an empty result from incorrect source declarations.
 
 So even without `<rtws>/.apps/configuration.yaml` or `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
 
@@ -313,7 +313,7 @@ Suggested user-facing installation flow:
 
 ```bash
 # Local app under development
-dominds install ./dominds-apps/web-dev --local --enable
+dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 
 # Published npm app (target shape)
 dominds install @longrun-ai/web-dev --enable
@@ -321,11 +321,11 @@ dominds install @longrun-ai/web-dev --enable
 
 Web Dev App needs three names kept distinct to avoid drift:
 
-- installable app id: `web-dev`
-- local development directory: `dominds-apps/web-dev/`
+- installable app id: `@longrun-ai/web-dev`
+- local development directory: `dominds-apps/@longrun-ai/web-dev/`
 - npm package name: `@longrun-ai/web-dev`
 
-That means workspace `.minds/app.yaml` `dependencies[].id`, `.minds/team.yaml` `members.<id>.from`, and `<rtws>/.apps/resolution.yaml` `apps[].id` must all use `web-dev`; the directory and package naming surfaces also stay `web-dev` so the app no longer carries two spellings.
+That means workspace `.minds/app.yaml` `dependencies[].id`, `.minds/team.yaml` `members.<id>.from`, and `<rtws>/.apps/resolution.yaml` `apps[].id` must all use `@longrun-ai/web-dev`; the local development directory and npm package should stay aligned to that same scoped identity so the app no longer carries split naming.
 
 After installation, the user should expect these files to change:
 
@@ -337,7 +337,7 @@ After installation, the user should expect these files to change:
 Suggested minimal asset shape:
 
 ```text
-web-dev/
+@longrun-ai/web-dev/
 ├── package.json
 ├── .minds/
 │   ├── app.yaml
@@ -398,10 +398,10 @@ Requirements for the `playwright_interactive` toolset design:
   - preserve the “reusable session across multiple fix iterations” mental model.
 - If the current phase does not yet ship a directly executable backend, the docs must label it as a **target contract (planned)** instead of pretending it is already built in.
 
-Current prototype note (`dominds-apps/web-dev`, as of March 8, 2026):
+Current prototype note (`dominds-apps/@longrun-ai/web-dev`, as of March 8, 2026):
 
 - The app is already installable and contributes `web_tester` / `web_developer` teammates plus a live `playwright_interactive` toolset registration.
-- The installable app id remains `web-dev`; the directory name and npm package also keep the same `web-dev` spelling so the app no longer carries split naming.
+- The installable app id remains `@longrun-ai/web-dev`; the local development directory and npm package also keep the same scoped identity so the app no longer carries split naming.
 - `playwright_session_new/list/status/eval/attach/detach/close` and cross-dialog reminder sync are already implemented.
 - `kind: "web"` sessions now create a real Playwright-backed browser/context/page runtime and report live page surfaces via session status/reminders.
 - `kind: "electron"` is **not** at the same completion level yet: it still falls back to the older prototype runtime path and should be treated as unfinished.

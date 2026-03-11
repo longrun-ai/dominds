@@ -60,6 +60,8 @@ export type AppsHostKernelRunControlApplyMessage = Readonly<{
       selfId: string;
       rootId: string;
     }>;
+    agentId: string;
+    taskDocPath: string;
     genIterNo: number;
     prompt?: Readonly<{
       content: string;
@@ -564,6 +566,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       throw new Error('Invalid run_control_apply message: payload must be object');
     const dialog = payload['dialog'];
     const prompt = payload['prompt'];
+    const agentId = asString(payload['agentId']);
+    const taskDocPath = asString(payload['taskDocPath']);
     const genIterNoRaw = payload['genIterNo'];
     const source = asString(payload['source']);
     const input = payload['input'];
@@ -584,6 +588,12 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     const dialogRootId = asString(dialog['rootId']);
     if (!dialogSelfId || !dialogRootId) {
       throw new Error('Invalid run_control_apply payload: dialog.selfId/rootId required');
+    }
+    if (!agentId) {
+      throw new Error('Invalid run_control_apply payload: agentId required');
+    }
+    if (!taskDocPath) {
+      throw new Error('Invalid run_control_apply payload: taskDocPath required');
     }
 
     const promptParsed = (() => {
@@ -640,6 +650,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       controlId,
       payload: {
         dialog: { selfId: dialogSelfId, rootId: dialogRootId },
+        agentId,
+        taskDocPath,
         genIterNo,
         prompt: promptParsed,
         source,

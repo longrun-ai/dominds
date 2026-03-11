@@ -13,10 +13,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
+import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/client';
 import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
+import { createLogger } from '../log';
 import { parseMcpYaml } from '../mcp/config';
 import { requestMcpConfigReload } from '../mcp/supervisor';
 import { validateAllPrimingScriptsInRtws } from '../priming';
@@ -27,6 +29,7 @@ import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
+import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { getToolsetMeta, listToolsets } from './registry';
@@ -51,10 +54,13 @@ import {
 const MINDS_ALLOW = ['.minds/**'] as const;
 const MINDS_DIR = '.minds';
 const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
+const RTWS_APP_YAML_REL = `${MINDS_DIR}/app.yaml`;
+const APP_LOCK_YAML_REL = `${MINDS_DIR}/app-lock.yaml`;
 const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 const MCP_YAML_REL = `${MINDS_DIR}/mcp.yaml`;
 const MCP_WORKSPACE_PROBLEM_PREFIX = 'mcp/workspace_config_error';
 const MCP_SERVER_PROBLEM_PREFIX = 'mcp/server/';
+const log = createLogger('tools/team_mgmt');
 
 function ok(result: string, messages?: ChatMessage[]): string {
   void messages;
@@ -140,30 +146,36 @@ function lintTeamYamlStyle(raw: string): string[] {
 }
 
 async function lintTeamYamlStyleProblems(): Promise<void> {
+  const stylePrefix = TEAM_YAML_PROBLEM_PREFIX + 'style/';
   const cwd = path.resolve(process.cwd());
   const teamYamlAbs = path.resolve(cwd, TEAM_YAML_REL);
   try {
     const st = await fs.stat(teamYamlAbs);
-    if (!st.isFile()) return;
+    if (!st.isFile()) {
+      reconcileProblemsByPrefix(stylePrefix, []);
+      return;
+    }
   } catch (err: unknown) {
-    if (isFsErrWithCode(err) && err.code === 'ENOENT') return;
+    if (isFsErrWithCode(err) && err.code === 'ENOENT') {
+      reconcileProblemsByPrefix(stylePrefix, []);
+      return;
+    }
     throw err;
   }
 
   const raw = await fs.readFile(teamYamlAbs, 'utf8');
   const warnings = lintTeamYamlStyle(raw);
-  const STYLE_PREFIX = TEAM_YAML_PROBLEM_PREFIX + 'style/';
   if (warnings.length === 0) {
-    reconcileProblemsByPrefix(STYLE_PREFIX, []);
+    reconcileProblemsByPrefix(stylePrefix, []);
     return;
   }
 
   const now = formatUnifiedTimestamp(new Date());
-  reconcileProblemsByPrefix(STYLE_PREFIX, [
+  reconcileProblemsByPrefix(stylePrefix, [
     {
       kind: 'team_workspace_config_error',
       source: 'team',
-      id: STYLE_PREFIX + 'formatting',
+      id: stylePrefix + 'formatting',
       severity: 'warning',
       timestamp: now,
       message: `Style warnings in ${TEAM_YAML_REL}.`,
@@ -222,6 +234,79 @@ function makeMindsOnlyAccessMember(caller: Team.Member): Team.Member {
     write_dirs: [...MINDS_ALLOW],
     internal_allow_minds: true,
   });
+}
+
+function isSuccessfulYamlToolResult(output: string, mode: string): boolean {
+  return output.includes('status: ok') && output.includes(`mode: ${mode}`);
+}
+
+function decodeYamlSingleQuoted(value: string): string {
+  return value.replace(/''/g, "'");
+}
+
+function extractPathFromYamlToolOutput(output: string): string | null {
+  const match = output.match(/(?:^|\n)path: '((?:[^']|'')+)'/);
+  if (!match || typeof match[1] !== 'string') return null;
+  return decodeYamlSingleQuoted(match[1]);
+}
+
+async function refreshDerivedStateAfterTeamMgmtWrite(params: {
+  relPaths: ReadonlyArray<string>;
+  trigger: string;
+}): Promise<void> {
+  const affected = params.relPaths.map((relPath) => toMindsRelativePath(relPath));
+  if (affected.length === 0) return;
+
+  const touchesTarget = (targetRel: string): boolean =>
+    affected.some(
+      (relPath) =>
+        relPath === targetRel ||
+        relPath === MINDS_DIR ||
+        targetRel.startsWith(`${relPath}/`) ||
+        relPath.startsWith(`${targetRel}/`),
+    );
+
+  const touchesTeam = touchesTarget(TEAM_YAML_REL);
+  const touchesApps = touchesTarget(RTWS_APP_YAML_REL) || touchesTarget(APP_LOCK_YAML_REL);
+  const touchesMcp = touchesTarget(MCP_YAML_REL);
+  if (!touchesTeam && !touchesApps && !touchesMcp) return;
+
+  const rtwsRootAbs = process.cwd();
+  if (touchesApps) {
+    try {
+      await registerEnabledAppsToolProxies({ rtwsRootAbs });
+    } catch (err: unknown) {
+      log.warn('Failed to refresh enabled apps after team_mgmt write', err);
+    }
+  }
+
+  if (touchesMcp) {
+    try {
+      const reloadRes = await requestMcpConfigReload(`team_mgmt/${params.trigger}`);
+      if (!reloadRes.ok) {
+        log.warn(`Failed to reload MCP after team_mgmt write: ${reloadRes.errorText}`);
+      }
+    } catch (err: unknown) {
+      log.warn('Failed to request MCP reload after team_mgmt write', err);
+    }
+  }
+
+  if (touchesTeam || touchesApps || touchesMcp) {
+    try {
+      await Team.load();
+    } catch (err: unknown) {
+      log.warn('Failed to refresh team problems after team_mgmt write', err);
+    }
+  }
+
+  if (touchesTeam) {
+    try {
+      await lintTeamYamlStyleProblems();
+    } catch (err: unknown) {
+      log.warn('Failed to refresh team.yaml style problems after team_mgmt write', err);
+    }
+    notifyTeamConfigUpdated(`team_mgmt/${params.trigger}`);
+  }
 }
 
 export function splitCommandArgs(raw: string): string[] {
@@ -1493,6 +1578,10 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
           `summary: ${yamlQuote(summary)}`,
         ].join('\n'),
       );
+      await refreshDerivedStateAfterTeamMgmtWrite({
+        relPaths: [rel],
+        trigger: 'create_new_file',
+      });
       return ok(out, [{ type: 'environment_msg', role: 'user', content: out }]);
     } catch (err: unknown) {
       const msg =
@@ -1590,6 +1679,12 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
         ...(contentFormat ? { content_format: contentFormat } : {}),
       });
       const result = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(result, 'overwrite_entire_file')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'overwrite_entire_file',
+        });
+      }
       return ok(result, [{ type: 'environment_msg', role: 'user', content: result }]);
     } catch (err: unknown) {
       const msg =
@@ -2051,6 +2146,15 @@ export const teamMgmtApplyFileModificationTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await applyFileModificationTool.call(dlg, proxyCaller, { hunk_id: id });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'apply_file_modification')) {
+        const relPath = extractPathFromYamlToolOutput(content);
+        if (relPath) {
+          await refreshDerivedStateAfterTeamMgmtWrite({
+            relPaths: [relPath],
+            trigger: 'apply_file_modification',
+          });
+        }
+      }
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2151,6 +2255,12 @@ export const teamMgmtMoveFileTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await moveFileTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'move_file')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [fromRel, toRel],
+          trigger: 'move_file',
+        });
+      }
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2201,6 +2311,12 @@ export const teamMgmtMoveDirTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await moveDirTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'move_dir')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [fromRel, toRel],
+          trigger: 'move_dir',
+        });
+      }
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2743,6 +2859,12 @@ export const teamMgmtRmFileTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await rmFileTool.call(dlg, proxyCaller, { path: rel });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'rm_file')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'rm_file',
+        });
+      }
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2797,6 +2919,12 @@ export const teamMgmtRmDirTool: FuncTool = {
         recursive === undefined ? { path: rel } : { path: rel, recursive };
       const output = await rmDirTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'rm_dir')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'rm_dir',
+        });
+      }
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
