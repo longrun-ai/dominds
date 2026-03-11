@@ -65,6 +65,15 @@ async function main(): Promise<void> {
       finalAnswer,
       'driver should auto-start the new course and continue generation',
     );
+    assert.equal(
+      dlg.reminders.length,
+      1,
+      'clear_mind reminder should be preserved into the new course',
+    );
+    assert.deepEqual(dlg.reminders[0]?.meta, {
+      kind: 'continuation_package',
+      createdBy: 'clear_mind',
+    });
 
     const promptingContents = dlg.msgs
       .filter((msg) => msg.type === 'prompting_msg' && msg.role === 'user')

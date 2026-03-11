@@ -32,6 +32,8 @@ export function formatReminderItemGuide(
   // `options.meta` is persisted JSON coming from tools. Runtime shape checks are unavoidable here
   // to keep reminder ownership/management loosely coupled and extensible.
   const metaValue = options && 'meta' in options ? options.meta : undefined;
+  const isContinuationPackageReminder =
+    isRecord(metaValue) && metaValue['kind'] === 'continuation_package';
   const managedByToolRaw =
     isRecord(metaValue) && typeof metaValue['managedByTool'] === 'string'
       ? metaValue['managedByTool'].trim()
@@ -69,28 +71,43 @@ export function formatReminderItemGuide(
     if (managementTool) {
       const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
       return [
-        `提醒项 #${index}（高优先级工作集）`,
+        `提醒项 #${index}（工具状态）`,
         '',
-        '原则：提醒项要短、要新、要能直接指导下一步行动。默认保持精简；若这是换程前的接续包，能清楚整理时优先结构化压缩；若上下文已吃紧到头脑发乱，先保留多条粗略提醒项也可以，但新一程要尽快收敛。',
+        '说明：这是由工具维护的提醒展示，可视为当前状态参考；它不自动等于你现在必须立刻执行的指令。',
         '',
-        `提示：该提醒项由工具 ${managementTool} 管理；请使用 ${managementTool} 更新（不要用 update_reminder）。`,
+        `提示：该提醒项由工具 ${managementTool} 管理；如需调整，请使用 ${managementTool}（不要用 update_reminder）。`,
         '',
-        '快捷操作：',
-        `- 更新：${updateExampleSafe}`,
-        `- 删除：delete_reminder({ "reminder_no": ${index} })`,
+        `如需更新此提醒项，可执行：${updateExampleSafe}`,
+        `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+        '',
+        '---',
+        content,
+      ].join('\n');
+    }
+    if (isContinuationPackageReminder) {
+      return [
+        `提醒项 #${index}（换程接续信息）`,
+        '',
+        '说明：这是用于换程后快速恢复工作的接续包，不自动等于当前必须立刻执行的指令。',
+        '',
+        '建议：优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，尽快以清醒头脑重新审视、整理更新。若目前只是粗略过桥笔记，进入新一程后尽快收敛。',
+        '',
+        `如需更新此接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+        `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
         '',
         '---',
         content,
       ].join('\n');
     }
     return [
-      `提醒项 #${index}（高优先级工作集）`,
+      `提醒项 #${index}`,
       '',
-      '原则：提醒项要短、要新、要能直接指导下一步行动。默认保持精简；若这是换程前的接续包，能清楚整理时优先结构化压缩；若上下文已吃紧到头脑发乱，先保留多条粗略提醒项也可以，但新一程要尽快收敛。',
+      '说明：这是你给自己的显眼提示，用于保留当前对话里容易丢的工作信息；它不自动等于系统下发的下一步动作。',
       '',
-      '快捷操作：',
-      `- 更新：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
-      `- 删除：delete_reminder({ "reminder_no": ${index} })`,
+      '建议：保持简洁、及时更新；不再需要时删除。若后续准备换程，也可以把它整理成接续包。',
+      '',
+      `如需更新此提醒项，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+      `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
       '',
       '---',
       content,
@@ -99,29 +116,37 @@ export function formatReminderItemGuide(
 
   if (managementTool) {
     const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
-    return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
+    return `REMINDER ITEM #${index} (TOOL STATE)
 
-Principle: reminders should be concise, fresh, and directly actionable. Keep the working set compact; if this is a pre-clear continuation package, prefer a structured reminder when you are still clear-headed. If context is already degraded, multiple rough reminders are acceptable as a bridge, but reconcile them quickly in the new course.
+Note: this is a tool-maintained reminder display. Treat it as state reference, not as an automatic must-do command.
 
-Note: this reminder is managed by tool ${managementTool}; update it via ${managementTool} (not update_reminder).
+This reminder is managed by tool ${managementTool}; if you need to change it, use ${managementTool} instead of update_reminder.
 
-Quick actions:
-- Update: ${updateExampleSafe}
-- Delete: delete_reminder({ "reminder_no": ${index} })
+If you need to update this reminder, run: ${updateExampleSafe}
+If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
   }
-  return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
+  if (isContinuationPackageReminder) {
+    return `REMINDER ITEM #${index} (CONTINUATION PACKAGE)
 
-Principle: reminders should be concise, fresh, and directly actionable; prefer update_reminder (curate) over creating many items.
-- If this is a pre-clear continuation package, prefer one structured reminder when you are clear-headed.
-- If context is already degraded, multiple rough reminders are acceptable as a bridge; reconcile them quickly in the new course.
-- Still needed: compress and update_reminder (do not grow without bound).
-- Not needed: delete_reminder.
+Note: this is resume information for the next course, not an automatic must-do command.
 
-Quick actions:
-- Update: update_reminder({ "reminder_no": ${index}, "content": "..." })
-- Delete: delete_reminder({ "reminder_no": ${index} })
+Guidance: keep the next step, key pointers, run/verify info, and easy-to-lose volatile details. Do not duplicate Taskdoc content. In the new course, review this again with a clear head and reorganize it promptly. If this is only a rough bridge note, reconcile it early in the new course.
+
+If you need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+---
+${content}`;
+  }
+  return `REMINDER ITEM #${index}
+
+Note: this is a conspicuous reminder to yourself for easy-to-lose work details in the current dialog. It is not an automatically assigned next action.
+
+Guidance: keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.
+
+If you need to update this reminder, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
 }

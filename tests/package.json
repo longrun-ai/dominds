@@ -62,6 +62,7 @@
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",
+    "reminder-context-health-continuation": "tsx reminders/context-health-continuation.ts",
     "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",
     "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",

@@ -32,6 +32,7 @@ import type { Dialog } from '../dialog';
 import { SubDialog } from '../dialog';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
+import type { ContextHealthLevel, ContextHealthSnapshot } from '../shared/types/context-health';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import { reminderIsNumbered, type FuncTool, type Reminder, type ToolArguments } from '../tool';
@@ -99,7 +100,72 @@ type ReminderRoundSnapshot = Readonly<{
   numberedReminders: readonly Reminder[];
 }>;
 
+type ContinuationPackageReminderMeta = Readonly<{
+  kind: 'continuation_package';
+  createdBy: 'clear_mind' | 'context_health';
+  contextHealthLevel?: 'caution' | 'critical';
+}>;
+
 const reminderRoundSnapshots = new WeakMap<Dialog, ReminderRoundSnapshot>();
+
+function getContinuationPackageContextHealthLevel(
+  snapshot: ContextHealthSnapshot | undefined,
+): ContextHealthLevel | undefined {
+  if (snapshot?.kind !== 'available') {
+    return undefined;
+  }
+  if (snapshot.level === 'caution' || snapshot.level === 'critical') {
+    return snapshot.level;
+  }
+  return undefined;
+}
+
+function buildContinuationPackageReminderMeta(args: {
+  existingMeta?: unknown;
+  createdBy: 'clear_mind' | 'context_health';
+  contextHealthLevel?: 'caution' | 'critical';
+}): ContinuationPackageReminderMeta | Record<string, unknown> {
+  const baseMeta: ContinuationPackageReminderMeta = {
+    kind: 'continuation_package',
+    createdBy: args.createdBy,
+    ...(args.contextHealthLevel === undefined
+      ? {}
+      : { contextHealthLevel: args.contextHealthLevel }),
+  };
+  if (!isRecord(args.existingMeta)) {
+    return baseMeta;
+  }
+  if (args.existingMeta['kind'] === 'continuation_package') {
+    const preservedCreatedBy =
+      args.existingMeta['createdBy'] === 'clear_mind' ||
+      args.existingMeta['createdBy'] === 'context_health'
+        ? args.existingMeta['createdBy']
+        : args.createdBy;
+    return {
+      ...args.existingMeta,
+      kind: 'continuation_package',
+      createdBy: preservedCreatedBy,
+      contextHealthLevel: args.contextHealthLevel ?? baseMeta.contextHealthLevel,
+    };
+  }
+  return { ...args.existingMeta, ...baseMeta };
+}
+
+function removeContinuationPackageReminderMeta(existingMeta: unknown): {
+  changed: boolean;
+  nextMeta?: Record<string, unknown> | null;
+} {
+  if (!isRecord(existingMeta) || existingMeta['kind'] !== 'continuation_package') {
+    return { changed: false };
+  }
+  const nextEntries = Object.entries(existingMeta).filter(
+    ([key]) => key !== 'kind' && key !== 'createdBy' && key !== 'contextHealthLevel',
+  );
+  if (nextEntries.length === 0) {
+    return { changed: true, nextMeta: null };
+  }
+  return { changed: true, nextMeta: Object.fromEntries(nextEntries) };
+}
 
 function getNumberedRemindersForLookup(dlg: Dialog): readonly Reminder[] {
   const genseq = dlg.activeGenSeqOrUndefined;
@@ -310,7 +376,15 @@ export const addReminderTool: FuncTool = {
       }
     }
 
-    dlg.addReminder(reminderContent, undefined, undefined, insertIndex);
+    const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
+    const reminderMeta =
+      contextHealthLevel === undefined
+        ? undefined
+        : buildContinuationPackageReminderMeta({
+            createdBy: 'context_health',
+            contextHealthLevel,
+          });
+    dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex);
     return formatToolActionResult(language, 'added');
   },
 };
@@ -374,7 +448,24 @@ export const updateReminderTool: FuncTool = {
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return t.reminderContentEmpty;
 
-    dlg.updateReminder(targetIndex, reminderContent);
+    const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
+    if (contextHealthLevel === undefined) {
+      const stripResult = removeContinuationPackageReminderMeta(reminder?.meta);
+      if (stripResult.changed) {
+        dlg.updateReminder(targetIndex, reminderContent, stripResult.nextMeta);
+        return formatToolActionResult(language, 'updated');
+      }
+      dlg.updateReminder(targetIndex, reminderContent);
+      return formatToolActionResult(language, 'updated');
+    }
+
+    const reminderMeta = buildContinuationPackageReminderMeta({
+      existingMeta: reminder?.meta,
+      createdBy: 'context_health',
+      contextHealthLevel,
+    });
+
+    dlg.updateReminder(targetIndex, reminderContent, reminderMeta);
     return formatToolActionResult(language, 'updated');
   },
 };
@@ -405,7 +496,14 @@ export const clearMindTool: FuncTool = {
     const reminderValue = args['reminder_content'];
     const reminderContent = typeof reminderValue === 'string' ? reminderValue.trim() : '';
     if (reminderContent) {
-      dlg.addReminder(reminderContent);
+      const contextHealthLevel = getContinuationPackageContextHealthLevel(
+        dlg.getLastContextHealth(),
+      );
+      const continuationMeta = buildContinuationPackageReminderMeta({
+        createdBy: 'clear_mind',
+        contextHealthLevel,
+      });
+      dlg.addReminder(reminderContent, undefined, continuationMeta);
     }
     await dlg.startNewCourse(t.clearedCoursePrompt(dlg.currentCourse + 1));
 
