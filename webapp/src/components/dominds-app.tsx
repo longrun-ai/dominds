@@ -688,6 +688,7 @@ export class DomindsApp extends HTMLElement {
   // Tools Registry (snapshot)
   private toolsRegistryTimestamp: string = '';
   private toolsRegistryToolsets: ToolsetInfo[] = [];
+  private toolsRegistryRequestSeq: number = 0;
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -5857,21 +5858,14 @@ export class DomindsApp extends HTMLElement {
           case 'tools':
             this.activityView = { kind: 'tools' };
             this.updateActivityView();
-            // Clear cached view so we don't show stale tools while fetching.
-            this.toolsRegistryToolsets = [];
-            this.toolsRegistryTimestamp = '';
-            this.updateToolsRegistryUi();
-            void this.loadToolsRegistry();
+            this.refreshToolsRegistryView();
             return;
         }
       }
 
       const toolsRefresh = target.closest('#tools-registry-refresh') as HTMLButtonElement | null;
       if (toolsRefresh) {
-        this.toolsRegistryToolsets = [];
-        this.toolsRegistryTimestamp = '';
-        this.updateToolsRegistryUi();
-        void this.loadToolsRegistry();
+        this.refreshToolsRegistryView();
         return;
       }
 
@@ -8326,6 +8320,9 @@ export class DomindsApp extends HTMLElement {
       remaining: null,
     });
     this.updateBottomPanelFooterUi();
+    if (this.activityView.kind === 'tools') {
+      this.refreshToolsRegistryView();
+    }
 
     try {
       // IMPORTANT: set the dialog container context BEFORE requesting the backend to stream
@@ -9175,8 +9172,56 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
+  private refreshToolsRegistryView(): void {
+    this.toolsRegistryToolsets = [];
+    this.toolsRegistryTimestamp = '';
+    this.updateToolsRegistryUi();
+    void this.loadToolsRegistry();
+  }
+
+  private getToolsRegistryRequestOptions(): {
+    agentId?: string;
+    taskDocPath?: string;
+    rootId?: string;
+    selfId?: string;
+    status?: DialogStatusKind;
+  } {
+    const currentDialog = this.currentDialog;
+    if (!currentDialog) {
+      return {};
+    }
+
+    const rootDialog = this.getRootDialog(currentDialog.rootId) ?? undefined;
+    const agentId =
+      typeof currentDialog.agentId === 'string' && currentDialog.agentId.trim() !== ''
+        ? currentDialog.agentId.trim()
+        : typeof rootDialog?.agentId === 'string' && rootDialog.agentId.trim() !== ''
+          ? rootDialog.agentId.trim()
+          : undefined;
+    const taskDocPath =
+      typeof currentDialog.taskDocPath === 'string' && currentDialog.taskDocPath.trim() !== ''
+        ? currentDialog.taskDocPath.trim()
+        : typeof rootDialog?.taskDocPath === 'string' && rootDialog.taskDocPath.trim() !== ''
+          ? rootDialog.taskDocPath.trim()
+          : undefined;
+    const status =
+      currentDialog.status ?? rootDialog?.status ?? this.currentDialogStatus ?? undefined;
+
+    return {
+      agentId,
+      taskDocPath,
+      rootId: currentDialog.rootId,
+      selfId: currentDialog.selfId,
+      status,
+    };
+  }
+
   private async loadToolsRegistry(): Promise<void> {
-    const res = await this.apiClient.getToolsRegistry();
+    const requestSeq = ++this.toolsRegistryRequestSeq;
+    const res = await this.apiClient.getToolsRegistry(this.getToolsRegistryRequestOptions());
+    if (requestSeq !== this.toolsRegistryRequestSeq) {
+      return;
+    }
     if (!res.success || !res.data) {
       const t = getUiStrings(this.uiLanguage);
       const message = res.error || t.toolsRegistryLoadFailedToast;

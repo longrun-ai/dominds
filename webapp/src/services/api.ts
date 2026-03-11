@@ -591,14 +591,40 @@ export class ApiClient {
     return this.request('/api/task-documents');
   }
 
-  async getToolsRegistry(): Promise<
+  async getToolsRegistry(options?: {
+    agentId?: string;
+    taskDocPath?: string;
+    rootId?: string;
+    selfId?: string;
+    status?: DialogStatusKind;
+  }): Promise<
     ApiResponse<{
       toolsets: ToolsetInfo[];
       timestamp: string;
     }>
   > {
     // Cache-bust to avoid stale registry results across rapid UI toggles.
-    return this.request(`/api/tools-registry?ts=${Date.now()}`);
+    const params = new URLSearchParams({ ts: String(Date.now()) });
+    if (typeof options?.agentId === 'string' && options.agentId.trim() !== '') {
+      params.set('agentId', options.agentId.trim());
+    }
+    if (typeof options?.taskDocPath === 'string' && options.taskDocPath.trim() !== '') {
+      params.set('taskDocPath', options.taskDocPath.trim());
+    }
+    if (typeof options?.rootId === 'string' && options.rootId.trim() !== '') {
+      params.set('rootId', options.rootId.trim());
+    }
+    if (typeof options?.selfId === 'string' && options.selfId.trim() !== '') {
+      params.set('selfId', options.selfId.trim());
+    }
+    if (
+      options?.status === 'running' ||
+      options?.status === 'completed' ||
+      options?.status === 'archived'
+    ) {
+      params.set('status', options.status);
+    }
+    return this.request(`/api/tools-registry?${params.toString()}`);
   }
 
   async getRtwsDiligence(lang: LanguageCode): Promise<ApiResponse<DiligenceFileResponse>> {

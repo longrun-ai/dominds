@@ -3,9 +3,16 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool } from '../tool';
 import { getToolsetMeta, toolsetsRegistry } from './registry';
 
-export function createToolsRegistrySnapshot(): ToolsRegistrySnapshot {
+export function createToolsRegistrySnapshot(options?: {
+  includeToolsetNames?: readonly string[];
+}): ToolsRegistrySnapshot {
   const toolsets: ToolsetInfo[] = [];
+  const includedToolsets =
+    options?.includeToolsetNames !== undefined ? new Set(options.includeToolsetNames) : null;
   for (const [toolsetName, tools] of toolsetsRegistry.entries()) {
+    if (includedToolsets !== null && !includedToolsets.has(toolsetName)) {
+      continue;
+    }
     const meta = getToolsetMeta(toolsetName);
     const descriptionI18n = meta ? meta.descriptionI18n : undefined;
     const source = meta?.source ?? 'dominds';

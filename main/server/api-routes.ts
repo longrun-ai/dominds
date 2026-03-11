@@ -1210,7 +1210,7 @@ export async function handleApiRoute(
 
     // Tools registry endpoint (snapshot)
     if (pathname === '/api/tools-registry' && req.method === 'GET') {
-      return await handleGetToolsRegistry(res);
+      return await handleGetToolsRegistry(req, res);
     }
 
     // Read rtws diligence prompt (rtws file).
@@ -1762,10 +1762,76 @@ async function handleReadWorkspaceEntry(
   }
 }
 
-async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
+async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   try {
     await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
-    const snapshot = createToolsRegistrySnapshot();
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const rootIdRaw = urlObj.searchParams.get('rootId');
+    const selfIdRaw = urlObj.searchParams.get('selfId');
+    const agentIdRaw = urlObj.searchParams.get('agentId');
+    const taskDocPathRaw = urlObj.searchParams.get('taskDocPath');
+    const rootId = typeof rootIdRaw === 'string' ? rootIdRaw.trim() : '';
+    const selfId = typeof selfIdRaw === 'string' ? selfIdRaw.trim() : '';
+    const requestedAgentId = typeof agentIdRaw === 'string' ? agentIdRaw.trim() : '';
+    const requestedTaskDocPath = typeof taskDocPathRaw === 'string' ? taskDocPathRaw.trim() : '';
+
+    const resolveDialogMetadata = async (): Promise<DialogMetadataFile | null> => {
+      if (rootId === '' || selfId === '') {
+        return null;
+      }
+
+      const requestedStatus = parseDialogStatusFromUrl(urlObj);
+      const statusOrder = [
+        'running',
+        'completed',
+        'archived',
+      ] as const satisfies readonly DialogStatusKind[];
+      const candidateStatuses =
+        requestedStatus === null
+          ? statusOrder
+          : ([
+              requestedStatus,
+              ...statusOrder.filter((status) => status !== requestedStatus),
+            ] as const);
+
+      for (const status of candidateStatuses) {
+        const dialogId = new DialogID(selfId, rootId);
+        const metadata = await DialogPersistence.loadDialogMetadata(dialogId, status);
+        if (metadata) {
+          return metadata;
+        }
+      }
+      return null;
+    };
+
+    const dialogMetadata = await resolveDialogMetadata();
+    const agentId = dialogMetadata?.agentId ?? requestedAgentId;
+    const taskDocPath = dialogMetadata?.taskDocPath ?? requestedTaskDocPath;
+
+    let snapshot = createToolsRegistrySnapshot();
+    if (agentId !== '') {
+      const team = await Team.load();
+      const member = team.getMember(agentId);
+      if (!member) {
+        respondJson(res, 404, {
+          success: false,
+          error: `Unknown team member: ${agentId}`,
+        });
+        return true;
+      }
+
+      const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
+        member,
+        taskDocPath,
+        rtwsRootAbs: process.cwd(),
+      });
+      const includeToolsetNames = member.listResolvedToolsetNames({
+        onMissing: 'silent',
+        dynamicToolsetNames,
+      });
+      snapshot = createToolsRegistrySnapshot({ includeToolsetNames });
+    }
+
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',

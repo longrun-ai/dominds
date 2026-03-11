@@ -33,6 +33,16 @@ export function formatToolsetManualIntro(language: LanguageCode, toolNames: stri
     : `Manuals: ${names} (call: ${calls})`;
 }
 
+function formatToolsetListForUnavailable(
+  language: LanguageCode,
+  toolsetIds: readonly string[],
+): string {
+  if (toolsetIds.length === 0) {
+    return language === 'zh' ? '（当前无可用工具集）' : '(no toolsets currently available)';
+  }
+  return toolsetIds.map((toolsetId) => `\`${toolsetId}\``).join(', ');
+}
+
 function buildManTool(): FuncTool {
   const topicEnums = [...MANUAL_TOPICS, 'all'];
   return {
@@ -80,7 +90,7 @@ function buildManTool(): FuncTool {
       if (!toolsetId) {
         // When no toolsetId is provided, show all available toolsets
         const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
-        const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
+        const list = formatToolsetListForUnavailable(language, availableToolsetNames);
         return language === 'zh' ? `可用的工具集：${list}` : `Available toolsets: ${list}`;
       }
 
@@ -101,7 +111,7 @@ function buildManTool(): FuncTool {
             : `Toolset '${toolsetId}' is not available to you. Did you mean: '${suggestion}'?`;
         }
         // No suggestion available, just report unavailability and list available toolsets
-        const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
+        const list = formatToolsetListForUnavailable(language, availableToolsetNames);
         return language === 'zh'
           ? `工具集 '${toolsetId}' 暂未配置给您使用。可用工具集：${list}`
           : `Toolset '${toolsetId}' is not available to you. Available toolsets: ${list}`;
