@@ -497,6 +497,12 @@ export async function listDynamicAppToolsetsForMember(_params: {
   memberId: string;
 }): Promise<readonly string[]> {
   await registerEnabledAppsToolProxies({ rtwsRootAbs: _params.rtwsRootAbs });
+  if (!appsRuntimeConfig && !appsHostClient && !appsHostTransition) {
+    return [];
+  }
+  if (!appsHostClient && !appsHostTransition) {
+    return [];
+  }
   const host = await ensureAppsHostReadyForToolCalls();
   return await host.listDynamicToolsets({
     memberId: _params.memberId,

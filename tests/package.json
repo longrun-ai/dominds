@@ -74,6 +74,7 @@
     "apps-app-lock-no-jitter-on-enable-disable": "tsx apps-app-lock-no-jitter-on-enable-disable.ts",
     "apps-install-configure-use-flow": "tsx apps-install-configure-use-flow.ts",
     "apps-host-restart-on-local-host-change": "tsx apps-host-restart-on-local-host-change.ts",
+    "apps-dynamic-toolsets-no-host": "tsx apps-dynamic-toolsets-no-host.ts",
     "apps-tool-proxy-refresh": "tsx apps-tool-proxy-refresh.ts",
     "apps-webui-self-heal-empty-resolution": "tsx apps-webui-self-heal-empty-resolution.ts",
     "apps-web-dev-session-prototype": "tsx apps-web-dev-session-prototype.ts",
