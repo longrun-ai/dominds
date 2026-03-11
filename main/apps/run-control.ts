@@ -3,7 +3,7 @@ import type {
   DomindsAppRunControlResult,
 } from '../apps-host/app-host-contract';
 import { getAppDialogRunControlMeta } from './dialog-run-controls';
-import { getAppsHostClient } from './runtime';
+import { waitForAppsHostClient } from './runtime';
 
 export async function applyAppDialogRunControl(params: {
   controlId: string;
@@ -17,6 +17,6 @@ export async function applyAppDialogRunControl(params: {
   if (!meta) {
     throw new Error(`Unknown dialog run control: ${controlId}`);
   }
-  const hostClient = getAppsHostClient();
+  const hostClient = await waitForAppsHostClient();
   return await hostClient.applyRunControl(controlId, params.payload);
 }

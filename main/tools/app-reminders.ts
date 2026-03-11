@@ -195,7 +195,7 @@ async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
 
 function createAppReminderOwner(params: {
   descriptor: AppReminderOwnerDescriptor;
-  resolveHostClient: () => AppsHostClient;
+  resolveHostClient: () => Promise<AppsHostClient>;
 }): ReminderOwner {
   const { descriptor, resolveHostClient } = params;
 
@@ -206,7 +206,7 @@ function createAppReminderOwner(params: {
         return { treatment: 'keep' };
       }
       try {
-        const client = resolveHostClient();
+        const client = await resolveHostClient();
         const result = await client.updateReminder(descriptor.appId, descriptor.ownerRef, {
           dialogId: dlg.id.selfId,
           reminder: toReminderState(reminder),
@@ -231,7 +231,7 @@ function createAppReminderOwner(params: {
         return fallbackRenderedReminder(reminder, index + 1);
       }
       try {
-        const client = resolveHostClient();
+        const client = await resolveHostClient();
         return await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
           dialogId: dlg.id.selfId,
           reminder: toReminderState(reminder),
@@ -253,7 +253,7 @@ export function buildAppReminderOwnerRegistryName(appId: string, ownerRef: strin
 
 export function ensureAppReminderOwnersRegistered(params: {
   enabledApps: ReadonlyArray<EnabledAppForHost>;
-  resolveHostClient: () => AppsHostClient;
+  resolveHostClient: () => Promise<AppsHostClient>;
 }): void {
   for (const app of params.enabledApps) {
     const reminderOwners = app.installJson.contributes?.reminderOwners ?? [];
@@ -293,10 +293,10 @@ export async function applyAppReminderRequests(
   params: {
     appId: string;
     reminderRequests: ReadonlyArray<DomindsAppReminderApplyRequest>;
-    resolveHostClient: () => AppsHostClient;
+    resolveHostClient: () => Promise<AppsHostClient>;
   },
 ): Promise<void> {
-  const client = params.resolveHostClient();
+  const client = await params.resolveHostClient();
   let changed = false;
 
   for (const request of params.reminderRequests) {

@@ -32,6 +32,7 @@ import { reconcileAppsResolutionIssuesToProblems } from './problems';
 const log = createLogger('apps-runtime');
 
 let appsHostClient: AppsHostClient | null = null;
+let appsHostTransition: Promise<AppsHostClient> | null = null;
 let hostedAppsSignature: string | null = null;
 let appsRuntimeConfig: Readonly<{
   rtwsRootAbs: string;
@@ -174,7 +175,7 @@ async function applyDialogReminderRequestBatches(
     await applyAppReminderRequests(targetDlg, {
       appId,
       reminderRequests: batch.reminderRequests,
-      resolveHostClient: getAppsHostClient,
+      resolveHostClient: waitForAppsHostClient,
     });
   }
 }
@@ -184,6 +185,16 @@ export function getAppsHostClient(): AppsHostClient {
     throw new Error('Apps host is not initialized');
   }
   return appsHostClient;
+}
+
+export async function waitForAppsHostClient(): Promise<AppsHostClient> {
+  if (appsHostClient) {
+    return appsHostClient;
+  }
+  if (appsHostTransition) {
+    return await appsHostTransition;
+  }
+  throw new Error('Apps host is not initialized');
 }
 
 async function stopAppsHost(): Promise<void> {
@@ -196,6 +207,17 @@ async function stopAppsHost(): Promise<void> {
 
 export async function shutdownAppsRuntime(): Promise<void> {
   await stopAppsHost();
+  const transition = appsHostTransition;
+  if (!transition) {
+    return;
+  }
+  const client = await transition;
+  if (appsHostClient !== client) {
+    return;
+  }
+  appsHostClient = null;
+  hostedAppsSignature = null;
+  await client.shutdown();
 }
 
 function ensureNoDuplicateTool(toolName: string, appId: string): void {
@@ -296,7 +318,7 @@ async function ensureAppsHostReadyForToolCalls(): Promise<AppsHostClient> {
   if (config) {
     await registerEnabledAppsToolProxies({ rtwsRootAbs: config.rtwsRootAbs });
   }
-  return getAppsHostClient();
+  return await waitForAppsHostClient();
 }
 
 function registerAppArtifacts(app: EnabledAppForHost): void {
@@ -326,7 +348,7 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
           await applyAppReminderRequests(dlg, {
             appId: app.appId,
             reminderRequests: result.reminderRequests,
-            resolveHostClient: getAppsHostClient,
+            resolveHostClient: waitForAppsHostClient,
           });
         }
         if (
@@ -360,7 +382,7 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
 
   ensureAppReminderOwnersRegistered({
     enabledApps: [app],
-    resolveHostClient: getAppsHostClient,
+    resolveHostClient: waitForAppsHostClient,
   });
 
   registeredAppArtifactsById.set(app.appId, {
@@ -410,15 +432,26 @@ async function syncAppsHostToEnabledApps(params: {
     return;
   }
 
-  await stopAppsHost();
   log.info(`Starting apps-host (${params.enabledApps.length} enabled apps)`);
-  const { client } = await startAppsHost({
-    rtwsRootAbs: config.rtwsRootAbs,
-    kernel: config.kernel,
-    apps: params.enabledApps,
-  });
-  appsHostClient = client;
-  hostedAppsSignature = nextSignature;
+  const transition = (async (): Promise<AppsHostClient> => {
+    await stopAppsHost();
+    const { client } = await startAppsHost({
+      rtwsRootAbs: config.rtwsRootAbs,
+      kernel: config.kernel,
+      apps: params.enabledApps,
+    });
+    return client;
+  })();
+  appsHostTransition = transition;
+  try {
+    const client = await transition;
+    appsHostClient = client;
+    hostedAppsSignature = nextSignature;
+  } finally {
+    if (appsHostTransition === transition) {
+      appsHostTransition = null;
+    }
+  }
 }
 
 async function refreshEnabledAppsRuntimeNow(params: {

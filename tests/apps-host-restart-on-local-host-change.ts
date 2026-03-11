@@ -11,6 +11,7 @@ import {
   initAppsRuntime,
   registerEnabledAppsToolProxies,
   shutdownAppsRuntime,
+  waitForAppsHostClient,
 } from '../main/apps/runtime';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
@@ -18,17 +19,46 @@ async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.writeFile(filePathAbs, content, 'utf-8');
 }
 
-function buildHostSource(version: string): string {
+function buildHostSource(params: {
+  version: string;
+  initDelayMs?: number;
+  initMarkerAbs?: string;
+}): string {
+  const initDelayMs = params.initDelayMs ?? 0;
+  const initMarkerAbs = params.initMarkerAbs ?? null;
   return [
+    "import fs from 'node:fs/promises';",
+    '',
+    'async function delay(ms) {',
+    '  if (ms <= 0) return;',
+    '  await new Promise((resolve) => setTimeout(resolve, ms));',
+    '}',
+    '',
     'export async function createDomindsAppHost() {',
+    initMarkerAbs
+      ? `  await fs.writeFile(${JSON.stringify(initMarkerAbs)}, 'initializing', 'utf-8');`
+      : '  await Promise.resolve();',
+    `  await delay(${initDelayMs});`,
     '  return {',
     '    tools: {',
-    '      probe_tool: async () => ({ output: ' + JSON.stringify(version) + ' }),',
+    '      probe_tool: async () => ({ output: ' + JSON.stringify(params.version) + ' }),',
     '    },',
     '  };',
     '}',
     '',
   ].join('\n');
+}
+
+async function waitForFile(filePathAbs: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(filePathAbs);
+      return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for file: ${filePathAbs}`);
 }
 
 async function main(): Promise<void> {
@@ -108,7 +138,10 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
 
-    await writeText(path.join(appRootAbs, 'src', 'app-host.js'), buildHostSource('v1'));
+    await writeText(
+      path.join(appRootAbs, 'src', 'app-host.js'),
+      buildHostSource({ version: 'v1' }),
+    );
 
     const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs: appRootAbs });
 
@@ -148,13 +181,34 @@ async function main(): Promise<void> {
         dialogId: 'dlg_1',
         rootDialogId: 'root_1',
         agentId: 'tester',
+        taskDocPath: 'task.md',
         callerId: 'tester',
       },
     );
     assert.equal(first.output, 'v1');
 
-    await writeText(path.join(appRootAbs, 'src', 'app-host.js'), buildHostSource('v2'));
-    await registerEnabledAppsToolProxies({ rtwsRootAbs: tmpRoot });
+    const initMarkerAbs = path.join(tmpRoot, '.apps', 'probe-host-init.marker');
+    await writeText(
+      path.join(appRootAbs, 'src', 'app-host.js'),
+      buildHostSource({ version: 'v2', initDelayMs: 250, initMarkerAbs }),
+    );
+    const refreshPromise = registerEnabledAppsToolProxies({ rtwsRootAbs: tmpRoot });
+    await waitForFile(initMarkerAbs, 5_000);
+    const duringRefresh = await (
+      await waitForAppsHostClient()
+    ).callTool(
+      'probe_tool',
+      {},
+      {
+        dialogId: 'dlg_1',
+        rootDialogId: 'root_1',
+        agentId: 'tester',
+        taskDocPath: 'task.md',
+        callerId: 'tester',
+      },
+    );
+    assert.equal(duringRefresh.output, 'v2');
+    await refreshPromise;
 
     const second = await getAppsHostClient().callTool(
       'probe_tool',
@@ -163,6 +217,7 @@ async function main(): Promise<void> {
         dialogId: 'dlg_1',
         rootDialogId: 'root_1',
         agentId: 'tester',
+        taskDocPath: 'task.md',
         callerId: 'tester',
       },
     );
