@@ -2007,6 +2007,37 @@ export class DomindsDialogContainer extends HTMLElement {
         : `Mentions: ${joined}${sessionPart}`;
   }
 
+  private renderSpecialCallingHeadline(
+    section: HTMLElement,
+    callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning',
+  ): void {
+    const headlineEl = section.querySelector('.calling-headline') as HTMLElement | null;
+    if (!headlineEl) return;
+
+    switch (callName) {
+      case 'tellaskBack': {
+        const assignment = this.currentDialog?.assignmentFromSup;
+        const requesterLabel =
+          assignment && assignment.originMemberId.trim() !== ''
+            ? this.formatCallerLabel(assignment)
+            : undefined;
+        headlineEl.textContent =
+          this.uiLanguage === 'zh'
+            ? `回问对象: 上游诉请者${requesterLabel ? ` ${requesterLabel}` : ''}`
+            : `Ask-back target: upstream requester${requesterLabel ? ` ${requesterLabel}` : ''}`;
+        return;
+      }
+      case 'askHuman':
+        headlineEl.textContent =
+          this.uiLanguage === 'zh' ? '诉请对象: 人类用户' : 'Target: human user';
+        return;
+      case 'freshBootsReasoning':
+        headlineEl.textContent =
+          this.uiLanguage === 'zh' ? '支线类型: 扪心自问（FBR）' : 'Sideline type: FBR';
+        return;
+    }
+  }
+
   private renderCallTiming(
     section: HTMLElement,
     state: 'pending' | 'completed' | 'failed',
@@ -2259,6 +2290,7 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'tellaskBack':
       case 'askHuman':
       case 'freshBootsReasoning':
+        this.renderSpecialCallingHeadline(callingSection, event.callName);
         break;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement | null;
