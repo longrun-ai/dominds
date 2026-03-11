@@ -315,7 +315,6 @@ export class DomindsApp extends HTMLElement {
   private dialogRunStatesByKey = new Map<string, DialogRunState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
-  private generatingDialogKeys = new Set<string>();
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
   private retryPanelState: DialogViewportRetryPanelState = { kind: 'hidden' };
@@ -5605,31 +5604,6 @@ export class DomindsApp extends HTMLElement {
       input.focusInput();
     });
 
-    // Highlight dialogs under active LLM generation (streaming) in the running list.
-    this.shadowRoot.addEventListener('dlg-generation-state', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = ce.detail as { rootId?: unknown; selfId?: unknown; active?: unknown } | null;
-
-      const rootId = detail && typeof detail.rootId === 'string' ? detail.rootId : '';
-      const selfId = detail && typeof detail.selfId === 'string' ? detail.selfId : '';
-      const active = detail && typeof detail.active === 'boolean' ? detail.active : false;
-      if (!rootId || !selfId) return;
-
-      const key = this.dialogKey(rootId, selfId);
-      if (active) {
-        this.generatingDialogKeys.add(key);
-      } else {
-        this.generatingDialogKeys.delete(key);
-      }
-
-      const sr = this.shadowRoot;
-      if (!sr) return;
-      const runningList = sr.querySelector('#running-dialog-list');
-      if (runningList instanceof RunningDialogList) {
-        runningList.setGeneratingKeys(this.generatingDialogKeys);
-      }
-    });
-
     // Dialog status actions (mark done/archive/revive) across all list views
     this.shadowRoot.addEventListener('dialog-status-action', ((event: Event) => {
       const ce = event as CustomEvent<unknown>;
@@ -7975,7 +7949,6 @@ export class DomindsApp extends HTMLElement {
         if (runningList instanceof RunningDialogList) {
           runningList.setProps({ loading });
           runningList.applySnapshot(dialogs);
-          runningList.setGeneratingKeys(this.generatingDialogKeys);
           if (this.currentDialog) runningList.setCurrentDialog(this.currentDialog);
         }
         break;

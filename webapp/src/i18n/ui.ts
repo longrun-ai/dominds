@@ -228,10 +228,9 @@ export type UiStrings = {
   runMarkerResumed: string;
   runMarkerInterrupted: string;
   runBadgeInterruptedTitle: string;
+  runBadgeRunningTitle: string;
   runBadgeWaitingHumanTitle: string;
   runBadgeWaitingSubdialogsTitle: string;
-  runBadgeWaitingBothTitle: string;
-  runBadgeGeneratingTitle: string;
 
   connectionConnected: string;
   connectionConnecting: string;
@@ -587,10 +586,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       runMarkerResumed: '已继续',
       runMarkerInterrupted: '已中断',
       runBadgeInterruptedTitle: '对话已中断（可继续）',
+      runBadgeRunningTitle: '正在运行',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
       runBadgeWaitingSubdialogsTitle: '等待支线对话完成',
-      runBadgeWaitingBothTitle: '等待你的输入和支线对话',
-      runBadgeGeneratingTitle: '生成中…',
 
       connectionConnected: '已连接',
       connectionConnecting: '连接中',
@@ -956,10 +954,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runMarkerResumed: 'Resumed',
     runMarkerInterrupted: 'Interrupted',
     runBadgeInterruptedTitle: 'Interrupted (resumable)',
+    runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
     runBadgeWaitingSubdialogsTitle: 'Waiting for sideline dialogs',
-    runBadgeWaitingBothTitle: 'Waiting for human + sideline dialogs',
-    runBadgeGeneratingTitle: 'Generating…',
 
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting',

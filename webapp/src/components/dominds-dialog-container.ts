@@ -173,7 +173,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private uiLanguage: LanguageCode = 'en';
   private serverWorkLanguage: LanguageCode = 'en';
   private runState: DialogRunState | null = null;
-  private activeGeneratingDialog?: DialogIdent;
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -1087,7 +1086,6 @@ export class DomindsDialogContainer extends HTMLElement {
    * it relies on live events that follow the course_update event.
    */
   public resetForCourse(course: number): void {
-    this.clearGenerationGlow();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearRetryPanel();
@@ -1114,7 +1112,6 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Clean up current state and DOM content
   private cleanup(): void {
-    this.clearGenerationGlow();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearRetryPanel();
@@ -1170,33 +1167,6 @@ export class DomindsDialogContainer extends HTMLElement {
       });
     });
     this.autoScrollResizeObserver.observe(el);
-  }
-
-  private clearGenerationGlow(): void {
-    const active = this.activeGeneratingDialog;
-    if (!active) return;
-    this.dispatchEvent(
-      new CustomEvent('dlg-generation-state', {
-        detail: { rootId: active.rootId, selfId: active.selfId, active: false },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-    this.activeGeneratingDialog = undefined;
-  }
-
-  private setGenerationGlowActive(active: boolean): void {
-    const dialog = this.currentDialog;
-    if (!dialog) return;
-    const ident: DialogIdent = { rootId: dialog.rootId, selfId: dialog.selfId };
-    this.activeGeneratingDialog = active ? ident : undefined;
-    this.dispatchEvent(
-      new CustomEvent('dlg-generation-state', {
-        detail: { rootId: ident.rootId, selfId: ident.selfId, active },
-        bubbles: true,
-        composed: true,
-      }),
-    );
   }
 
   public async handleDialogEvent(event: TypedDialogEvent): Promise<void> {
@@ -1316,7 +1286,6 @@ export class DomindsDialogContainer extends HTMLElement {
         }
         this.currentCourse = event.course;
         this.activeGenSeq = event.genseq;
-        this.setGenerationGlowActive(true);
         // Mark generation as started - this ensures substreams arrive in correct order
         this.handleGeneratingStart(event.genseq, event.timestamp, event.msgId);
         break;
@@ -1333,7 +1302,6 @@ export class DomindsDialogContainer extends HTMLElement {
           // - valid case: completes the bubble
           this.handleGeneratingFinish(event.genseq, llmGenModel);
           this.activeGenSeq = undefined;
-          this.clearGenerationGlow();
         }
         break;
       case 'genseq_discard_evt':

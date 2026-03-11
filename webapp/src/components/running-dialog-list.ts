@@ -68,7 +68,6 @@ export class RunningDialogList extends HTMLElement {
   private snapshotGroups: TaskGroup[] = [];
   private visibleRootCountByTask: Map<string, number> = new Map();
   private visibleSubdialogCountByRoot: Map<string, number> = new Map();
-  private generatingKeys: Set<string> = new Set();
   private static readonly SHOW_MORE_STEP = 5;
   private static readonly RUN_STATE_CLASSES = [
     'state-proceeding',
@@ -235,9 +234,12 @@ export class RunningDialogList extends HTMLElement {
     return this.dialogKey(rootId, selfId);
   }
 
-  private isGenerating(dialog: ApiRootDialogResponse): boolean {
-    const key = this.getDialogKey(dialog);
-    return this.generatingKeys.has(key);
+  private renderRunBadge(
+    className: string,
+    title: string,
+    iconClass: string = 'run-badge-icon',
+  ): string {
+    return `<span class="run-badge ${className}" title="${title}" aria-label="${title}"><span class="icon-mask ${iconClass}" aria-hidden="true"></span></span>`;
   }
 
   private renderRunBadges(dialog: ApiRootDialogResponse): string {
@@ -247,39 +249,33 @@ export class RunningDialogList extends HTMLElement {
 
     switch (visualState.kind) {
       case 'none':
+        break;
       case 'proceeding':
+        badges.push(this.renderRunBadge('proceeding', t.runBadgeRunningTitle));
+        break;
       case 'proceeding_stop_requested':
         break;
       case 'interrupted':
-        badges.push(
-          `<span class="run-badge interrupted" title="${t.runBadgeInterruptedTitle}">INT</span>`,
-        );
+        badges.push(this.renderRunBadge('interrupted', t.runBadgeInterruptedTitle));
         break;
       case 'blocked_q4h':
-        badges.push(
-          `<span class="run-badge blocked blocked-q4h" title="${t.runBadgeWaitingHumanTitle}">Q4H</span>`,
-        );
+        badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         break;
       case 'blocked_subdialogs':
         badges.push(
-          `<span class="run-badge blocked blocked-subdialogs" title="${t.runBadgeWaitingSubdialogsTitle}">SUB</span>`,
+          this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
         );
         break;
       case 'blocked_both':
+        badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         badges.push(
-          `<span class="run-badge blocked blocked-both" title="${t.runBadgeWaitingBothTitle}">Q4H+SUB</span>`,
+          this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
         );
         break;
       default: {
         const _exhaustive: never = visualState;
         throw new Error(`Unhandled RunControlVisualState: ${String(_exhaustive)}`);
       }
-    }
-
-    if (this.isGenerating(dialog)) {
-      badges.push(
-        `<span class="run-badge generating" title="${t.runBadgeGeneratingTitle}">GEN</span>`,
-      );
     }
 
     if (badges.length === 0) return '';
@@ -299,8 +295,6 @@ export class RunningDialogList extends HTMLElement {
     if (suffix) {
       el.classList.add(suffix);
     }
-    el.classList.toggle('gen-active', this.isGenerating(dialog));
-
     const badgesHtml = this.renderRunBadges(dialog);
     const meta = el.querySelector('.dialog-meta-right');
     if (!(meta instanceof HTMLElement)) return;
@@ -553,108 +547,8 @@ export class RunningDialogList extends HTMLElement {
       this.refreshFromDom();
       return;
     }
-
-    const html = groups
-      .map((group) => {
-        const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
-        const taskToggle = this.renderToggleIcon(taskCollapsed);
-        const visibleRootCount =
-          this.visibleRootCountByTask.get(group.taskDocPath) ?? RunningDialogList.SHOW_MORE_STEP;
-        const visibleRoots = group.roots.slice(0, visibleRootCount);
-        const hiddenRootCount = Math.max(group.roots.length - visibleRoots.length, 0);
-        const rootNodes = visibleRoots
-          .map((rootGroup) => {
-            const rootDialog = rootGroup.root;
-            const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
-            const rootToggle = this.renderToggleIcon(rootCollapsed);
-            const rootRow = rootDialog
-              ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
-              : `
-                <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
-                  <div class="dialog-row">
-                    <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
-                    <span class="dialog-title">${t.missingRoot}</span>
-                    <span class="dialog-meta-right">
-                      <span class="dialog-count">${rootGroup.subdialogs.length}</span>
-                      <span class="dialog-id">${rootGroup.rootId}</span>
-                    </span>
-                  </div>
-                </div>
-              `;
-            const visibleSubdialogCount =
-              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ??
-              RunningDialogList.SHOW_MORE_STEP;
-            const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
-            const hiddenSubdialogCount = Math.max(
-              rootGroup.subdialogs.length - visibleSubdialogs.length,
-              0,
-            );
-            const subNodes = visibleSubdialogs
-              .map((subdialog) => this.renderDialogRow(subdialog, 'sub'))
-              .join('');
-            const subShowMore =
-              hiddenSubdialogCount > 0
-                ? this.renderShowMoreButton({
-                    action: 'show-more-subdialogs',
-                    rootId: rootGroup.rootId,
-                    hiddenCount: hiddenSubdialogCount,
-                  })
-                : '';
-            const subCollapsed = taskCollapsed || rootCollapsed;
-            return `
-              <div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}">
-                ${rootRow}
-                <div class="sdlg-children ${subCollapsed ? 'collapsed' : ''}">
-                  ${subNodes}
-                  ${subShowMore}
-                </div>
-              </div>
-            `;
-          })
-          .join('');
-        const rootShowMore =
-          hiddenRootCount > 0
-            ? this.renderShowMoreButton({
-                action: 'show-more-roots',
-                taskDocPath: group.taskDocPath,
-                hiddenCount: hiddenRootCount,
-              })
-            : '';
-        return `
-          <div class="task-group task-node">
-            <div class="task-title" data-task-path="${group.taskDocPath}">
-              <div class="task-title-left">
-                <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button" aria-label="${this.formatToggleAriaLabel(taskCollapsed)}">${taskToggle}</button>
-                <span>${group.taskDocPath}</span>
-              </div>
-              <div class="task-title-right">
-                <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
-                  ${this.renderCreateIcon()}
-                </button>
-                <button class="action icon-button" data-action="task-mark-done" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionMarkAllDone}" aria-label="${t.dialogActionMarkAllDone}">
-                  ${this.renderDoneIcon()}
-                </button>
-                <button class="action icon-button" data-action="task-archive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionArchiveAll}" aria-label="${t.dialogActionArchiveAll}">
-                  ${this.renderArchiveIcon()}
-                </button>
-                <span class="dialog-count">${group.roots.length}</span>
-              </div>
-            </div>
-            <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">
-              ${rootNodes}
-              ${rootShowMore}
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-    this.listEl.innerHTML = html;
+    this.reconcileTaskGroups(groups);
     this.refreshFromDom();
-  }
-
-  public setGeneratingKeys(keys: ReadonlySet<string>): void {
-    this.generatingKeys = new Set(keys);
-    this.refreshGeneratingBadges();
   }
 
   private renderLoading(): void {
@@ -668,6 +562,276 @@ export class RunningDialogList extends HTMLElement {
 
   private encodeDialogDataset(dialog: ApiRootDialogResponse): string {
     return encodeURIComponent(JSON.stringify(dialog));
+  }
+
+  private createElementFromHtml(html: string): HTMLElement {
+    const template = document.createElement('template');
+    template.innerHTML = html.trim();
+    const first = template.content.firstElementChild;
+    if (!(first instanceof HTMLElement)) {
+      throw new Error('Expected HTML template to produce a single HTMLElement.');
+    }
+    return first;
+  }
+
+  private syncElement(target: HTMLElement, next: HTMLElement): void {
+    if (target.outerHTML === next.outerHTML) return;
+
+    for (const name of target.getAttributeNames()) {
+      if (!next.hasAttribute(name)) {
+        target.removeAttribute(name);
+      }
+    }
+    for (const name of next.getAttributeNames()) {
+      const value = next.getAttribute(name);
+      if (value === null) continue;
+      if (target.getAttribute(name) !== value) {
+        target.setAttribute(name, value);
+      }
+    }
+    if (target.innerHTML !== next.innerHTML) {
+      target.innerHTML = next.innerHTML;
+    }
+  }
+
+  private renderTaskTitleRow(group: TaskGroup, taskCollapsed: boolean): string {
+    const t = getUiStrings(this.props.uiLanguage);
+    const taskToggle = this.renderToggleIcon(taskCollapsed);
+    return `
+      <div class="task-title" data-task-path="${group.taskDocPath}">
+        <div class="task-title-left">
+          <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button" aria-label="${this.formatToggleAriaLabel(taskCollapsed)}">${taskToggle}</button>
+          <span>${group.taskDocPath}</span>
+        </div>
+        <div class="task-title-right">
+          <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
+            ${this.renderCreateIcon()}
+          </button>
+          <button class="action icon-button" data-action="task-mark-done" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionMarkAllDone}" aria-label="${t.dialogActionMarkAllDone}">
+            ${this.renderDoneIcon()}
+          </button>
+          <button class="action icon-button" data-action="task-archive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionArchiveAll}" aria-label="${t.dialogActionArchiveAll}">
+            ${this.renderArchiveIcon()}
+          </button>
+          <span class="dialog-count">${group.roots.length}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderMissingRootRow(rootGroup: RootGroup, rootCollapsed: boolean): string {
+    const t = getUiStrings(this.props.uiLanguage);
+    const rootToggle = this.renderToggleIcon(rootCollapsed);
+    return `
+      <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
+        <div class="dialog-row">
+          <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
+          <span class="dialog-title">${t.missingRoot}</span>
+          <span class="dialog-meta-right">
+            <span class="dialog-count">${rootGroup.subdialogs.length}</span>
+            <span class="dialog-id">${rootGroup.rootId}</span>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  private reconcileShowMoreRow(container: HTMLElement, html: string | null): void {
+    const existing = container.querySelector<HTMLElement>(':scope > .show-more-row');
+    if (html === null) {
+      existing?.remove();
+      return;
+    }
+    const next = this.createElementFromHtml(html);
+    if (existing) {
+      this.syncElement(existing, next);
+      container.appendChild(existing);
+      return;
+    }
+    container.appendChild(next);
+  }
+
+  private reconcileSubdialogRows(rootChildren: HTMLElement, rootGroup: RootGroup): void {
+    const existingRows = new Map<string, HTMLElement>();
+    rootChildren
+      .querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog[data-dialog-key]')
+      .forEach((row) => {
+        const key = (row.getAttribute('data-dialog-key') ?? '').trim();
+        if (key !== '') {
+          existingRows.set(key, row);
+        }
+      });
+
+    const visibleSubdialogCount =
+      this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+    const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
+    const hiddenSubdialogCount = Math.max(
+      rootGroup.subdialogs.length - visibleSubdialogs.length,
+      0,
+    );
+
+    for (const subdialog of visibleSubdialogs) {
+      const key = this.getDialogKey(subdialog);
+      const next = this.createElementFromHtml(this.renderDialogRow(subdialog, 'sub'));
+      const existing = existingRows.get(key);
+      if (existing) {
+        this.syncElement(existing, next);
+        rootChildren.appendChild(existing);
+        existingRows.delete(key);
+      } else {
+        rootChildren.appendChild(next);
+      }
+    }
+
+    for (const stale of existingRows.values()) {
+      stale.remove();
+    }
+
+    const showMoreHtml =
+      hiddenSubdialogCount > 0
+        ? this.renderShowMoreButton({
+            action: 'show-more-subdialogs',
+            rootId: rootGroup.rootId,
+            hiddenCount: hiddenSubdialogCount,
+          })
+        : null;
+    this.reconcileShowMoreRow(rootChildren, showMoreHtml);
+  }
+
+  private reconcileRootNode(
+    rootNode: HTMLElement,
+    rootGroup: RootGroup,
+    taskCollapsed: boolean,
+  ): void {
+    rootNode.setAttribute('data-rdlg-root-id', rootGroup.rootId);
+
+    const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
+    const rootRowHtml = rootGroup.root
+      ? this.renderRootRow(
+          rootGroup.root,
+          this.renderToggleIcon(rootCollapsed),
+          rootGroup.subdialogs.length,
+        )
+      : this.renderMissingRootRow(rootGroup, rootCollapsed);
+
+    const existingRootRow = rootNode.querySelector<HTMLElement>(
+      ':scope > .dialog-item.root-dialog',
+    );
+    if (existingRootRow) {
+      this.syncElement(existingRootRow, this.createElementFromHtml(rootRowHtml));
+      if (rootNode.firstElementChild !== existingRootRow) {
+        rootNode.insertBefore(existingRootRow, rootNode.firstElementChild);
+      }
+    } else {
+      rootNode.insertBefore(this.createElementFromHtml(rootRowHtml), rootNode.firstElementChild);
+    }
+
+    let rootChildren = rootNode.querySelector<HTMLElement>(':scope > .sdlg-children');
+    if (!rootChildren) {
+      rootChildren = this.createElementFromHtml('<div class="sdlg-children"></div>');
+      rootNode.appendChild(rootChildren);
+    }
+    rootChildren.classList.toggle('collapsed', taskCollapsed || rootCollapsed);
+    this.reconcileSubdialogRows(rootChildren, rootGroup);
+  }
+
+  private reconcileRootNodes(
+    taskRows: HTMLElement,
+    group: TaskGroup,
+    taskCollapsed: boolean,
+  ): void {
+    const existingRoots = new Map<string, HTMLElement>();
+    taskRows
+      .querySelectorAll<HTMLElement>(':scope > .rdlg-node[data-rdlg-root-id]')
+      .forEach((node) => {
+        const rootId = (node.getAttribute('data-rdlg-root-id') ?? '').trim();
+        if (rootId !== '') {
+          existingRoots.set(rootId, node);
+        }
+      });
+
+    const visibleRootCount =
+      this.visibleRootCountByTask.get(group.taskDocPath) ?? RunningDialogList.SHOW_MORE_STEP;
+    const visibleRoots = group.roots.slice(0, visibleRootCount);
+    const hiddenRootCount = Math.max(group.roots.length - visibleRoots.length, 0);
+
+    for (const rootGroup of visibleRoots) {
+      const existing = existingRoots.get(rootGroup.rootId);
+      const rootNode =
+        existing ??
+        this.createElementFromHtml(
+          `<div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}"></div>`,
+        );
+      this.reconcileRootNode(rootNode, rootGroup, taskCollapsed);
+      taskRows.appendChild(rootNode);
+      existingRoots.delete(rootGroup.rootId);
+    }
+
+    for (const stale of existingRoots.values()) {
+      stale.remove();
+    }
+
+    const showMoreHtml =
+      hiddenRootCount > 0
+        ? this.renderShowMoreButton({
+            action: 'show-more-roots',
+            taskDocPath: group.taskDocPath,
+            hiddenCount: hiddenRootCount,
+          })
+        : null;
+    this.reconcileShowMoreRow(taskRows, showMoreHtml);
+  }
+
+  private reconcileTaskGroups(groups: TaskGroup[]): void {
+    if (!this.listEl) return;
+
+    this.listEl.querySelectorAll<HTMLElement>(':scope > .empty').forEach((node) => node.remove());
+
+    const existingGroups = new Map<string, HTMLElement>();
+    this.listEl
+      .querySelectorAll<HTMLElement>(':scope > .task-group.task-node')
+      .forEach((groupEl) => {
+        const taskPath = (
+          groupEl
+            .querySelector<HTMLElement>(':scope > .task-title')
+            ?.getAttribute('data-task-path') ?? ''
+        ).trim();
+        if (taskPath !== '') {
+          existingGroups.set(taskPath, groupEl);
+        }
+      });
+
+    for (const group of groups) {
+      const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
+      const taskGroup =
+        existingGroups.get(group.taskDocPath) ??
+        this.createElementFromHtml(
+          '<div class="task-group task-node"><div class="task-title"></div><div class="task-rows"></div></div>',
+        );
+
+      const nextTitle = this.createElementFromHtml(this.renderTaskTitleRow(group, taskCollapsed));
+      const currentTitle = taskGroup.querySelector<HTMLElement>(':scope > .task-title');
+      if (currentTitle) {
+        this.syncElement(currentTitle, nextTitle);
+      } else {
+        taskGroup.insertBefore(nextTitle, taskGroup.firstElementChild);
+      }
+
+      let taskRows = taskGroup.querySelector<HTMLElement>(':scope > .task-rows');
+      if (!taskRows) {
+        taskRows = this.createElementFromHtml('<div class="task-rows"></div>');
+        taskGroup.appendChild(taskRows);
+      }
+      taskRows.classList.toggle('collapsed', taskCollapsed);
+      this.reconcileRootNodes(taskRows, group, taskCollapsed);
+
+      this.listEl.appendChild(taskGroup);
+      existingGroups.delete(group.taskDocPath);
+    }
+
+    for (const stale of existingGroups.values()) {
+      stale.remove();
+    }
   }
 
   private decodeDialogDataset(el: HTMLElement): ApiRootDialogResponse | null {
@@ -714,18 +878,6 @@ export class RunningDialogList extends HTMLElement {
     } else if (this.selectedKey) {
       this.clearSelection();
     }
-
-    const selectedRootId =
-      this.selectionState.kind === 'selected' ? this.selectionState.rootId : undefined;
-    this.applyIntensityDim(selectedRootId);
-    this.refreshGeneratingBadges();
-  }
-
-  private applyIntensityDim(selectedRootId?: string): void {
-    this.dialogIndex.forEach((entry) => {
-      const shouldDim = !!selectedRootId && entry.rootId !== selectedRootId;
-      entry.el.classList.toggle('other-root-glow', shouldDim);
-    });
   }
 
   private getDialogUpdatedAtMsFromElement(el: HTMLElement): number {
@@ -820,37 +972,6 @@ export class RunningDialogList extends HTMLElement {
     return max;
   }
 
-  private refreshGeneratingBadges(): void {
-    const t = getUiStrings(this.props.uiLanguage);
-    this.dialogIndex.forEach((entry) => {
-      const isGenerating = this.generatingKeys.has(entry.key);
-      entry.el.classList.toggle('gen-active', isGenerating);
-      const badges = entry.el.querySelector('.run-badges') as HTMLElement | null;
-      const existing = badges?.querySelector('.run-badge.generating');
-      if (isGenerating) {
-        if (!existing) {
-          const badgeHtml = `<span class="run-badge generating" title="${t.runBadgeGeneratingTitle}">GEN</span>`;
-          if (badges) {
-            badges.insertAdjacentHTML('beforeend', badgeHtml);
-          } else {
-            const meta = entry.el.querySelector('.dialog-meta-right');
-            if (meta) {
-              meta.insertAdjacentHTML('afterbegin', `<span class="run-badges">${badgeHtml}</span>`);
-            }
-          }
-        }
-      } else if (existing) {
-        existing.remove();
-        const parent = badges ?? existing.parentElement;
-        if (parent instanceof HTMLElement && parent.classList.contains('run-badges')) {
-          if (parent.querySelector('.run-badge') === null) {
-            parent.remove();
-          }
-        }
-      }
-    });
-  }
-
   private clearSelection(): void {
     if (this.listEl) {
       const selected = this.listEl.querySelector('.dialog-item.selected');
@@ -858,7 +979,6 @@ export class RunningDialogList extends HTMLElement {
     }
     this.selectionState = { kind: 'none' };
     this.selectedKey = null;
-    this.applyIntensityDim(undefined);
   }
 
   private formatToggleAriaLabel(collapsed: boolean): string {
@@ -938,7 +1058,6 @@ export class RunningDialogList extends HTMLElement {
   ): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const isGenerating = this.isGenerating(dialog);
     const runStateClass = this.getRunStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId = dialog.rootId;
@@ -948,7 +1067,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
+        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${runStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
         data-dialog-key="${dialogKey}"
@@ -990,7 +1109,6 @@ export class RunningDialogList extends HTMLElement {
   private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const isGenerating = this.isGenerating(dialog);
     const runStateClass = this.getRunStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId =
@@ -1005,7 +1123,7 @@ export class RunningDialogList extends HTMLElement {
       const callsign = this.getDialogDisplayCallsign(dialog);
       return `
         <div
-          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
+          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${runStateClass}"
           data-root-id="${dialog.rootId}"
           data-self-id="${dialog.selfId ?? ''}"
           data-dialog-key="${dialogKey}"
@@ -1035,7 +1153,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="${rowClass}${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
+        class="${rowClass}${isSelected ? ' selected' : ''}${runStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
         data-dialog-key="${dialogKey}"
@@ -1243,7 +1361,6 @@ export class RunningDialogList extends HTMLElement {
         }),
       );
     }
-    this.applyIntensityDim(dialog.rootId);
   }
 
   private findDialogByIds(
@@ -1558,8 +1675,12 @@ export class RunningDialogList extends HTMLElement {
         flex-direction: column;
         gap: 3px;
         padding: 2px 8px;
+        margin: 0;
         cursor: pointer;
-        border-left: 3px solid transparent;
+        border-right: 3px solid transparent;
+        border-radius: 0;
+        position: relative;
+        box-sizing: border-box;
       }
 
       .root-dialog {
@@ -1590,44 +1711,62 @@ export class RunningDialogList extends HTMLElement {
       }
 
       .dialog-item.selected {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 13%, transparent);
+        margin: 2px 0;
+        border-radius: 10px 0 0 10px;
+        box-shadow:
+          inset 1px 0 0 color-mix(in srgb, white 55%, transparent),
+          inset 0 1px 0 color-mix(in srgb, white 55%, transparent),
+          inset 0 -1px 0 color-mix(in srgb, white 55%, transparent),
+          inset 2px 0 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
+          inset 0 2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
+          inset 0 -2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent);
+        z-index: var(--dominds-z-local-raised, 1);
       }
 
       .dialog-item.state-interrupted {
-        border-left-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 55%, transparent);
+        border-right-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 55%, transparent);
         background: color-mix(in srgb, var(--dominds-danger, #dc3545) 10%, transparent);
       }
 
       .dialog-item.state-blocked-q4h {
-        border-left-color: color-mix(in srgb, #7c3aed 60%, transparent);
+        border-right-color: color-mix(in srgb, #7c3aed 60%, transparent);
         background: color-mix(in srgb, #7c3aed 9%, transparent);
       }
 
       .dialog-item.state-blocked-subdialogs {
-        border-left-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        border-right-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         background: color-mix(in srgb, var(--dominds-primary, #007acc) 7%, transparent);
       }
 
       .dialog-item.state-blocked-both {
-        border-left-color: color-mix(in srgb, #7c3aed 40%, var(--dominds-primary, #007acc) 40%);
+        border-right-color: color-mix(in srgb, #7c3aed 40%, var(--dominds-primary, #007acc) 40%);
         background: color-mix(in srgb, #7c3aed 6%, var(--dominds-primary, #007acc) 5%);
       }
 
       .dialog-item.state-proceeding {
         --dialog-glow-color: var(--dominds-primary, #007acc);
-        border-left-color: color-mix(in srgb, var(--dialog-glow-color) 55%, transparent);
+        border-right-color: color-mix(in srgb, var(--dialog-glow-color) 55%, transparent);
         background: color-mix(in srgb, var(--dialog-glow-color) 5%, transparent);
         position: relative;
         overflow: hidden;
       }
 
       .dialog-item.state-proceeding-stop {
-        border-left-color: color-mix(in srgb, #f59e0b 60%, transparent);
+        border-right-color: color-mix(in srgb, #f59e0b 60%, transparent);
         background: color-mix(in srgb, #f59e0b 8%, transparent);
       }
 
-      .dialog-item.state-proceeding::before,
-      .dialog-item.gen-active::before {
+      .dialog-item.selected.state-proceeding,
+      .dialog-item.selected.state-proceeding-stop,
+      .dialog-item.selected.state-interrupted,
+      .dialog-item.selected.state-blocked-q4h,
+      .dialog-item.selected.state-blocked-subdialogs,
+      .dialog-item.selected.state-blocked-both {
+        border-right-color: transparent;
+      }
+
+      .dialog-item.state-proceeding::before {
         content: '';
         position: absolute;
         inset: -28px;
@@ -1647,8 +1786,7 @@ export class RunningDialogList extends HTMLElement {
         filter: blur(12px);
       }
 
-      .dialog-item.state-proceeding::after,
-      .dialog-item.gen-active::after {
+      .dialog-item.state-proceeding::after {
         content: '';
         position: absolute;
         top: 0;
@@ -1675,37 +1813,7 @@ export class RunningDialogList extends HTMLElement {
         animation: dialogScanlineSweep 1.05s ease-in-out infinite;
       }
 
-      .dialog-item.other-root-glow.state-proceeding::after,
-      .dialog-item.other-root-glow.gen-active::after {
-        opacity: 0;
-        animation: none;
-      }
-
-      .dialog-item.other-root-glow.state-proceeding::before,
-      .dialog-item.other-root-glow.gen-active::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        z-index: var(--dominds-z-local-base, 0);
-        pointer-events: none;
-        border-radius: 8px;
-        background:
-          radial-gradient(
-            ellipse at 50% 40%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 35%, transparent)
-              0%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 18%, transparent)
-              45%,
-            transparent 75%
-          );
-        opacity: 0;
-        filter: blur(6px);
-        transform: scale(0.96);
-        animation: dialogNodeGlowPulse 2.7s ease-in-out infinite;
-      }
-
-      .dialog-item.state-proceeding > .dialog-row,
-      .dialog-item.gen-active > .dialog-row {
+      .dialog-item.state-proceeding > .dialog-row {
         position: relative;
         z-index: var(--dominds-z-local-raised, 1);
       }
@@ -1724,73 +1832,55 @@ export class RunningDialogList extends HTMLElement {
         }
       }
 
-      @keyframes dialogNodeGlowPulse {
-        0% {
-          opacity: 0;
-          transform: scale(0.96);
-        }
-        50% {
-          opacity: 0.8;
-          transform: scale(1.06);
-        }
-        100% {
-          opacity: 0;
-          transform: scale(0.96);
-        }
-      }
-
-      .dialog-item.gen-active {
-        --dialog-glow-color: var(--dominds-primary, #007acc);
-        position: relative;
-        overflow: hidden;
-      }
-
       @media (prefers-reduced-motion: reduce) {
         .dialog-item.state-proceeding::before,
-        .dialog-item.gen-active::before,
-        .dialog-item.state-proceeding::after,
-        .dialog-item.gen-active::after {
+        .dialog-item.state-proceeding::after {
           animation: none;
         }
 
-        .dialog-item.state-proceeding::after,
-        .dialog-item.gen-active::after {
+        .dialog-item.state-proceeding::after {
           opacity: 0.2;
         }
 
-        .dialog-item.other-root-glow.state-proceeding::before,
-        .dialog-item.other-root-glow.gen-active::before {
-          animation: none;
-          opacity: 0.2;
-        }
       }
 
       .run-badges {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 3px;
       }
 
       .run-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        height: 16px;
-        padding: 0 5px;
+        width: 22px;
+        height: 14px;
+        padding: 0;
         border-radius: 999px;
-        font-size: var(--dominds-font-size-xs, 11px);
-        font-weight: 700;
-        letter-spacing: 0.02em;
         border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-muted, #666666);
         user-select: none;
+        box-sizing: border-box;
+      }
+
+      .run-badge-icon {
+        width: 12px;
+        height: 12px;
+        flex: 0 0 auto;
       }
 
       .run-badge.interrupted {
         background: color-mix(in srgb, var(--dominds-danger-bg, #f8d7da) 70%, white 30%);
         border-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 30%, transparent);
         color: var(--dominds-danger, #721c24);
+      }
+
+      .run-badge.proceeding {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, white 88%);
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 42%, transparent);
+        color: var(--dominds-primary, #007acc);
       }
 
       .run-badge.blocked-q4h {
@@ -1805,16 +1895,20 @@ export class RunningDialogList extends HTMLElement {
         color: var(--dominds-primary, #007acc);
       }
 
-      .run-badge.blocked-both {
-        background: color-mix(in srgb, #ede9fe 45%, var(--dominds-primary, #007acc) 9%, white 46%);
-        border-color: color-mix(in srgb, #7c3aed 25%, var(--dominds-primary, #007acc) 25%);
-        color: #5b21b6;
+      .run-badge.proceeding .run-badge-icon {
+        --icon-mask: ${ICON_MASK_URLS.play};
       }
 
-      .run-badge.generating {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 14%, white 86%);
-        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
-        color: var(--dominds-primary, #007acc);
+      .run-badge.interrupted .run-badge-icon {
+        --icon-mask: ${ICON_MASK_URLS.error};
+      }
+
+      .run-badge.blocked-q4h .run-badge-icon {
+        --icon-mask: ${ICON_MASK_URLS.helpCircle};
+      }
+
+      .run-badge.blocked-subdialogs .run-badge-icon {
+        --icon-mask: ${ICON_MASK_URLS.call};
       }
 
       .toggle {
