@@ -32,10 +32,17 @@ import type { Dialog } from '../dialog';
 import { SubDialog } from '../dialog';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { ContextHealthLevel, ContextHealthSnapshot } from '../shared/types/context-health';
+import type { ContextHealthSnapshot } from '../shared/types/context-health';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
-import { reminderIsNumbered, type FuncTool, type Reminder, type ToolArguments } from '../tool';
+import {
+  reminderIsNumbered,
+  type FuncTool,
+  type JsonObject,
+  type JsonValue,
+  type Reminder,
+  type ToolArguments,
+} from '../tool';
 import {
   bearInMindFilenameForSection,
   isTaskPackagePath,
@@ -72,6 +79,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return isRecord(value) && Object.values(value).every((item) => isJsonValue(item));
+}
+
 function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
   const indices: number[] = [];
   for (let index = 0; index < reminders.length; index += 1) {
@@ -106,11 +135,13 @@ type ContinuationPackageReminderMeta = Readonly<{
   contextHealthLevel?: 'caution' | 'critical';
 }>;
 
+type ContinuationPackageContextHealthLevel = 'caution' | 'critical';
+
 const reminderRoundSnapshots = new WeakMap<Dialog, ReminderRoundSnapshot>();
 
 function getContinuationPackageContextHealthLevel(
   snapshot: ContextHealthSnapshot | undefined,
-): ContextHealthLevel | undefined {
+): ContinuationPackageContextHealthLevel | undefined {
   if (snapshot?.kind !== 'available') {
     return undefined;
   }
@@ -124,7 +155,7 @@ function buildContinuationPackageReminderMeta(args: {
   existingMeta?: unknown;
   createdBy: 'clear_mind' | 'context_health';
   contextHealthLevel?: 'caution' | 'critical';
-}): ContinuationPackageReminderMeta | Record<string, unknown> {
+}): ContinuationPackageReminderMeta | JsonObject {
   const baseMeta: ContinuationPackageReminderMeta = {
     kind: 'continuation_package',
     createdBy: args.createdBy,
@@ -132,7 +163,7 @@ function buildContinuationPackageReminderMeta(args: {
       ? {}
       : { contextHealthLevel: args.contextHealthLevel }),
   };
-  if (!isRecord(args.existingMeta)) {
+  if (!isJsonObject(args.existingMeta)) {
     return baseMeta;
   }
   if (args.existingMeta['kind'] === 'continuation_package') {
@@ -141,30 +172,38 @@ function buildContinuationPackageReminderMeta(args: {
       args.existingMeta['createdBy'] === 'context_health'
         ? args.existingMeta['createdBy']
         : args.createdBy;
-    return {
+    const nextMeta: JsonObject = {
       ...args.existingMeta,
       kind: 'continuation_package',
       createdBy: preservedCreatedBy,
-      contextHealthLevel: args.contextHealthLevel ?? baseMeta.contextHealthLevel,
+      ...(args.contextHealthLevel === undefined
+        ? {}
+        : { contextHealthLevel: args.contextHealthLevel }),
     };
+    return nextMeta;
   }
-  return { ...args.existingMeta, ...baseMeta };
+  const nextMeta: JsonObject = { ...args.existingMeta, ...baseMeta };
+  return nextMeta;
 }
 
 function removeContinuationPackageReminderMeta(existingMeta: unknown): {
   changed: boolean;
-  nextMeta?: Record<string, unknown> | null;
+  nextMeta?: JsonObject | null;
 } {
-  if (!isRecord(existingMeta) || existingMeta['kind'] !== 'continuation_package') {
+  if (!isJsonObject(existingMeta) || existingMeta['kind'] !== 'continuation_package') {
     return { changed: false };
   }
-  const nextEntries = Object.entries(existingMeta).filter(
-    ([key]) => key !== 'kind' && key !== 'createdBy' && key !== 'contextHealthLevel',
-  );
-  if (nextEntries.length === 0) {
+  const nextMeta: JsonObject = {};
+  for (const [key, value] of Object.entries(existingMeta)) {
+    if (key === 'kind' || key === 'createdBy' || key === 'contextHealthLevel') {
+      continue;
+    }
+    nextMeta[key] = value;
+  }
+  if (Object.keys(nextMeta).length === 0) {
     return { changed: true, nextMeta: null };
   }
-  return { changed: true, nextMeta: Object.fromEntries(nextEntries) };
+  return { changed: true, nextMeta };
 }
 
 function getNumberedRemindersForLookup(dlg: Dialog): readonly Reminder[] {
