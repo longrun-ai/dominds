@@ -1,4 +1,4 @@
-# App Constitution（Kernel–App 分离：App 概念与机制，草案）
+# App 建制（Kernel–App 分离：App 概念与机制，草案）
 
 英文版：[English](./app-constitution.md)
 
