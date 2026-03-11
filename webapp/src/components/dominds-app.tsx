@@ -8160,6 +8160,9 @@ export class DomindsApp extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
 
+    const dialogContainer = root.querySelector(
+      '#dialog-container',
+    ) as DomindsDialogContainer | null;
     const wrap = root.querySelector('#dialog-viewport-panels') as HTMLElement | null;
     const retryPanel = root.querySelector('#dialog-retry-panel') as HTMLElement | null;
     const retryTitle = root.querySelector('#dialog-retry-title') as HTMLElement | null;
@@ -8183,6 +8186,9 @@ export class DomindsApp extends HTMLElement {
       return;
     }
 
+    const wrapWasHidden = wrap.classList.contains('hidden');
+    const retryWasHidden = retryPanel.classList.contains('hidden');
+    const resumeWasHidden = resumePanel.classList.contains('hidden');
     const t = getUiStrings(this.uiLanguage);
     const retryState = this.retryPanelState;
     const retryVisible = this.currentDialog !== null && retryState.kind !== 'hidden';
@@ -8224,6 +8230,14 @@ export class DomindsApp extends HTMLElement {
 
     const hasVisiblePanels = retryVisible || resumeVisible;
     wrap.classList.toggle('hidden', !hasVisiblePanels);
+    if (
+      dialogContainer &&
+      (wrapWasHidden !== !hasVisiblePanels ||
+        retryWasHidden !== !retryVisible ||
+        resumeWasHidden !== !resumeVisible)
+    ) {
+      dialogContainer.stabilizeAutoFollowAfterViewportChange();
+    }
   }
 
   private resumeCurrentDialog(): void {

@@ -86,6 +86,8 @@ type ScrollToCallSiteDetail =
       messageIndex: number;
       callId?: undefined;
     };
+type AutoScrollMode = 'following' | 'paused';
+type AutoScrollKeyboardIntent = 'none' | 'toward_latest';
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -136,7 +138,6 @@ const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
 const AUTO_SCROLL_FOLLOW_THRESHOLD_PX = 32;
 const AUTO_SCROLL_WHEEL_RESISTANCE_PX = 56;
 const AUTO_SCROLL_WHEEL_DECAY_MS = 520;
-const AUTO_SCROLL_WHEEL_SETTLE_POLL_MS = 96;
 const AUTO_SCROLL_WHEEL_MAX_RESISTANCE = 1.8;
 const AUTO_SCROLL_WHEEL_IDLE_EPSILON = 0.03;
 
@@ -195,22 +196,35 @@ export class DomindsDialogContainer extends HTMLElement {
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
 
-  // Smart auto-scroll:
-  // - Auto-scroll only when user is already at (or near) the bottom.
-  // - If user scrolls up to read history, stop auto-scrolling until they return to bottom.
-  private autoScrollEnabled = true;
+  // Smart auto-scroll state machine.
+  // UX contract:
+  // - Programmatic layout changes must never disable follow. Retry/resume panels and streaming
+  //   growth can change viewport geometry while the user still expects follow to stay on.
+  // - "Move away from latest" disables follow; "move toward latest" does not.
+  // - Reverse wheel/trackpad input is intentionally NOT judged by current viewport position.
+  //   We previously mixed "where the viewport ended up" with "did the user mean to cancel
+  //   follow", which created a race against ongoing follow-to-bottom scrolls and made canceling
+  //   follow unreliable. Wheel now uses resistance only; explicit pointer dragging still uses
+  //   position delta because that input is high-confidence.
+  private autoScrollMode: AutoScrollMode = 'following';
   private autoScrollPinnedToBottom = true;
-  private autoScrollLastUserRemainingPx = 0;
+  private autoScrollLastRemainingPx = 0;
   private scrollContainer: HTMLElement | null = null;
   private boundOnScrollContainerScroll: (() => void) | null = null;
   private boundOnScrollContainerWheel: ((event: WheelEvent) => void) | null = null;
+  private boundOnScrollContainerPointerDown: (() => void) | null = null;
+  private boundOnWindowPointerUp: (() => void) | null = null;
+  private boundOnWindowKeyDown: ((event: KeyboardEvent) => void) | null = null;
   private autoScrollResizeObserver: ResizeObserver | null = null;
   private autoScrollResizeScrollRaf: number | null = null;
   private autoScrollResizeObservedEl: HTMLElement | null = null;
+  private autoScrollRealignRaf: number | null = null;
   private autoScrollWheelResistance = 0;
   private autoScrollWheelLastDecayAtMs = 0;
   private autoScrollWheelLastUpEventAtMs = 0;
-  private autoScrollWheelSettleTimer: number | null = null;
+  private autoScrollPointerActive = false;
+  private autoScrollKeyboardIntent: AutoScrollKeyboardIntent = 'none';
+  private autoScrollKeyboardIntentRaf: number | null = null;
 
   // Best-effort cache to recover teammate-call streaming sections by genseq.
   // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
@@ -363,6 +377,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.uiLanguage = parsed ?? 'en';
     this.render();
     this.ensureScrollContainerListener();
+    this.ensureAutoScrollWindowListeners();
     this.installCallSiteScrollListeners();
     await this.loadTeamConfiguration();
     const sr = this.shadowRoot;
@@ -502,6 +517,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   disconnectedCallback(): void {
     this.detachScrollContainerListener();
+    this.detachAutoScrollWindowListeners();
     this.cleanup();
   }
 
@@ -660,10 +676,45 @@ export class DomindsDialogContainer extends HTMLElement {
     if (container && wheelListener) {
       container.removeEventListener('wheel', wheelListener);
     }
+    const pointerDownListener = this.boundOnScrollContainerPointerDown;
+    if (container && pointerDownListener) {
+      container.removeEventListener('pointerdown', pointerDownListener);
+    }
     this.scrollContainer = null;
     this.boundOnScrollContainerScroll = null;
     this.boundOnScrollContainerWheel = null;
-    this.stopAutoScrollWheelSettleTimer();
+    this.boundOnScrollContainerPointerDown = null;
+    this.resetAutoScrollTransientState();
+  }
+
+  private ensureAutoScrollWindowListeners(): void {
+    if (this.boundOnWindowPointerUp === null) {
+      this.boundOnWindowPointerUp = () => {
+        this.autoScrollPointerActive = false;
+      };
+      window.addEventListener('pointerup', this.boundOnWindowPointerUp, { passive: true });
+      window.addEventListener('pointercancel', this.boundOnWindowPointerUp, { passive: true });
+    }
+    if (this.boundOnWindowKeyDown === null) {
+      this.boundOnWindowKeyDown = (event: KeyboardEvent) => {
+        this.handleAutoScrollKeyDown(event);
+      };
+      window.addEventListener('keydown', this.boundOnWindowKeyDown, { passive: true });
+    }
+  }
+
+  private detachAutoScrollWindowListeners(): void {
+    if (this.boundOnWindowPointerUp !== null) {
+      window.removeEventListener('pointerup', this.boundOnWindowPointerUp);
+      window.removeEventListener('pointercancel', this.boundOnWindowPointerUp);
+      this.boundOnWindowPointerUp = null;
+    }
+    if (this.boundOnWindowKeyDown !== null) {
+      window.removeEventListener('keydown', this.boundOnWindowKeyDown);
+      this.boundOnWindowKeyDown = null;
+    }
+    this.autoScrollPointerActive = false;
+    this.clearAutoScrollKeyboardIntent();
   }
 
   private ensureScrollContainerListener(): void {
@@ -681,8 +732,14 @@ export class DomindsDialogContainer extends HTMLElement {
     this.boundOnScrollContainerWheel = (event: WheelEvent) => {
       this.handleAutoScrollWheel(event);
     };
+    this.boundOnScrollContainerPointerDown = () => {
+      this.autoScrollPointerActive = true;
+    };
     container.addEventListener('scroll', this.boundOnScrollContainerScroll, { passive: true });
     container.addEventListener('wheel', this.boundOnScrollContainerWheel, { passive: true });
+    container.addEventListener('pointerdown', this.boundOnScrollContainerPointerDown, {
+      passive: true,
+    });
 
     // Initialize based on current scroll position.
     this.refreshAutoScrollStateFromScroll(container);
@@ -696,10 +753,19 @@ export class DomindsDialogContainer extends HTMLElement {
     return this.getScrollContainerRemainingPx(container) <= AUTO_SCROLL_FOLLOW_THRESHOLD_PX;
   }
 
-  private stopAutoScrollWheelSettleTimer(): void {
-    if (this.autoScrollWheelSettleTimer === null) return;
-    window.clearTimeout(this.autoScrollWheelSettleTimer);
-    this.autoScrollWheelSettleTimer = null;
+  private isAutoScrollFollowing(): boolean {
+    return this.autoScrollMode === 'following';
+  }
+
+  private resetAutoScrollWheelResistance(): void {
+    this.autoScrollWheelResistance = 0;
+    this.autoScrollWheelLastDecayAtMs = 0;
+    this.autoScrollWheelLastUpEventAtMs = 0;
+  }
+
+  private resetAutoScrollTransientState(): void {
+    this.resetAutoScrollWheelResistance();
+    this.clearAutoScrollKeyboardIntent();
   }
 
   private decayAutoScrollWheelResistance(nowMs: number): number {
@@ -722,51 +788,178 @@ export class DomindsDialogContainer extends HTMLElement {
     return this.decayAutoScrollWheelResistance(nowMs) * AUTO_SCROLL_WHEEL_RESISTANCE_PX;
   }
 
-  private recomputeAutoScrollEnabled(nowMs: number): void {
-    const effectiveRemainingPx =
-      this.autoScrollLastUserRemainingPx +
-      (this.autoScrollPinnedToBottom ? this.getAutoScrollWheelResistancePx(nowMs) : 0);
-    this.autoScrollEnabled = effectiveRemainingPx <= AUTO_SCROLL_FOLLOW_THRESHOLD_PX;
+  private clearAutoScrollKeyboardIntent(): void {
+    if (this.autoScrollKeyboardIntentRaf !== null) {
+      cancelAnimationFrame(this.autoScrollKeyboardIntentRaf);
+      this.autoScrollKeyboardIntentRaf = null;
+    }
+    this.autoScrollKeyboardIntent = 'none';
+  }
+
+  private scheduleAutoScrollKeyboardIntentClear(): void {
+    if (this.autoScrollKeyboardIntentRaf !== null) return;
+    this.autoScrollKeyboardIntentRaf = requestAnimationFrame(() => {
+      this.autoScrollKeyboardIntentRaf = null;
+      this.autoScrollKeyboardIntent = 'none';
+    });
+  }
+
+  private pauseAutoScroll(): void {
+    this.autoScrollMode = 'paused';
+    this.resetAutoScrollWheelResistance();
     this.updateScrollToBottomButton();
+  }
+
+  private resumeAutoScroll(): void {
+    this.autoScrollMode = 'following';
+    this.autoScrollPinnedToBottom = true;
+    this.autoScrollLastRemainingPx = 0;
+    this.autoScrollPointerActive = false;
+    this.clearAutoScrollKeyboardIntent();
+    this.resetAutoScrollWheelResistance();
+    this.updateScrollToBottomButton();
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    const tagName = target.tagName;
+    return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+  }
+
+  private isAutoScrollNavigationKey(key: string): boolean {
+    return (
+      key === 'Home' ||
+      key === 'End' ||
+      key === 'PageUp' ||
+      key === 'PageDown' ||
+      key === 'ArrowUp' ||
+      key === 'ArrowDown' ||
+      key === ' ' ||
+      key === 'Spacebar'
+    );
+  }
+
+  private isTowardLatestNavigationKey(event: KeyboardEvent): boolean {
+    if (event.key === 'End' || event.key === 'PageDown' || event.key === 'ArrowDown') {
+      return true;
+    }
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      return event.shiftKey !== true;
+    }
+    return false;
+  }
+
+  private didUserMoveTowardLatest(nextRemainingPx: number): boolean {
+    return nextRemainingPx <= this.autoScrollLastRemainingPx + 0.5;
+  }
+
+  private tryResumeAutoScrollFromBottom(): boolean {
+    const container = this.scrollContainer;
+    if (!container) return false;
+    if (this.isAutoScrollFollowing()) return false;
+    if (!this.isScrollContainerAtBottom(container)) return false;
+    this.resumeAutoScroll();
+    this.scrollToBottom({ force: true });
+    return true;
+  }
+
+  private handleAutoScrollKeyDown(event: KeyboardEvent): void {
+    if (!this.isAutoScrollNavigationKey(event.key)) return;
+    if (event.defaultPrevented) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (this.isEditableTarget(event.target)) return;
+    if (this.isTowardLatestNavigationKey(event) && this.tryResumeAutoScrollFromBottom()) {
+      return;
+    }
+    if (this.isTowardLatestNavigationKey(event)) {
+      this.autoScrollKeyboardIntent = 'toward_latest';
+      this.scheduleAutoScrollKeyboardIntentClear();
+      return;
+    }
+    this.pauseAutoScroll();
+  }
+
+  private scheduleAutoScrollRealign(): void {
+    if (this.autoScrollRealignRaf !== null) return;
+    this.autoScrollRealignRaf = requestAnimationFrame(() => {
+      this.autoScrollRealignRaf = null;
+      if (!this.isAutoScrollFollowing()) return;
+      this.scrollToBottom({ force: true });
+    });
   }
 
   private refreshAutoScrollStateFromScroll(container: HTMLElement): void {
     const remainingPx = this.getScrollContainerRemainingPx(container);
-    this.autoScrollPinnedToBottom = this.isScrollContainerAtBottom(container);
-    this.autoScrollLastUserRemainingPx = remainingPx;
-    this.recomputeAutoScrollEnabled(performance.now());
-  }
+    const atBottom = this.isScrollContainerAtBottom(container);
+    const movedTowardLatest = this.didUserMoveTowardLatest(remainingPx);
+    this.autoScrollPinnedToBottom = atBottom;
 
-  private resetAutoScrollState(enabled: boolean): void {
-    this.autoScrollPinnedToBottom = enabled;
-    this.autoScrollLastUserRemainingPx = enabled ? 0 : AUTO_SCROLL_FOLLOW_THRESHOLD_PX + 1;
-    this.autoScrollEnabled = enabled;
-    this.autoScrollWheelResistance = 0;
-    this.autoScrollWheelLastDecayAtMs = 0;
-    this.autoScrollWheelLastUpEventAtMs = 0;
-    this.stopAutoScrollWheelSettleTimer();
+    if (this.autoScrollPointerActive) {
+      // Pointer-driven scrolling is explicit and high-confidence: use scroll position delta to
+      // decide whether the user moved toward latest or away from it.
+      if (this.isAutoScrollFollowing()) {
+        if (!movedTowardLatest) {
+          this.pauseAutoScroll();
+        } else if (!atBottom) {
+          this.scheduleAutoScrollRealign();
+        }
+      }
+      this.autoScrollLastRemainingPx = remainingPx;
+      return;
+    }
+
+    if (this.autoScrollKeyboardIntent === 'toward_latest') {
+      // Toward-latest keyboard actions (for example PageDown/End) must never disable follow.
+      // They either keep follow active or help the user rejoin latest before resuming follow.
+      if (this.isAutoScrollFollowing() && !atBottom) {
+        this.scheduleAutoScrollRealign();
+      }
+      this.autoScrollLastRemainingPx = remainingPx;
+      this.clearAutoScrollKeyboardIntent();
+      return;
+    }
+
+    if (this.isAutoScrollFollowing()) {
+      if (!atBottom) {
+        this.scheduleAutoScrollRealign();
+      }
+      this.autoScrollLastRemainingPx = 0;
+      this.updateScrollToBottomButton();
+      return;
+    }
+
+    this.autoScrollLastRemainingPx = remainingPx;
     this.updateScrollToBottomButton();
   }
 
-  private scheduleAutoScrollWheelSettle(): void {
-    if (!this.autoScrollPinnedToBottom) return;
-    if (this.autoScrollWheelSettleTimer !== null) return;
-    this.autoScrollWheelSettleTimer = window.setTimeout(() => {
-      this.autoScrollWheelSettleTimer = null;
-      this.recomputeAutoScrollEnabled(performance.now());
-      if (this.autoScrollWheelResistance >= AUTO_SCROLL_WHEEL_IDLE_EPSILON) {
-        this.scheduleAutoScrollWheelSettle();
-      }
-    }, AUTO_SCROLL_WHEEL_SETTLE_POLL_MS);
+  private resetAutoScrollState(enabled: boolean): void {
+    if (enabled) {
+      this.resumeAutoScroll();
+      return;
+    }
+    this.autoScrollMode = 'paused';
+    this.autoScrollPinnedToBottom = false;
+    this.autoScrollLastRemainingPx = AUTO_SCROLL_FOLLOW_THRESHOLD_PX + 1;
+    this.autoScrollPointerActive = false;
+    this.clearAutoScrollKeyboardIntent();
+    this.resetAutoScrollWheelResistance();
+    this.updateScrollToBottomButton();
   }
 
   private handleAutoScrollWheel(event: WheelEvent): void {
     if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+    if (event.deltaY > 0 && this.tryResumeAutoScrollFromBottom()) {
+      return;
+    }
     const nowMs = performance.now();
     const currentResistance = this.decayAutoScrollWheelResistance(nowMs);
     const intensity = Math.min(1.25, Math.abs(event.deltaY) / 90);
 
     if (event.deltaY < 0) {
+      // Reverse wheel/trackpad input uses accumulated resistance instead of instantaneous viewport
+      // position. This avoids a race where follow keeps pulling downward while tiny reverse deltas
+      // try to move upward; judging by resulting scroll position made "stop follow" too hard.
       const gapMs =
         this.autoScrollWheelLastUpEventAtMs === 0
           ? Number.POSITIVE_INFINITY
@@ -777,13 +970,17 @@ export class DomindsDialogContainer extends HTMLElement {
         currentResistance + 0.18 + intensity * 0.32 + continuityBoost,
       );
       this.autoScrollWheelLastUpEventAtMs = nowMs;
+      if (
+        this.isAutoScrollFollowing() &&
+        this.getAutoScrollWheelResistancePx(nowMs) > AUTO_SCROLL_FOLLOW_THRESHOLD_PX
+      ) {
+        this.pauseAutoScroll();
+      }
     } else {
       this.autoScrollWheelResistance = Math.max(0, currentResistance - (0.1 + intensity * 0.2));
     }
 
     this.autoScrollWheelLastDecayAtMs = nowMs;
-    this.recomputeAutoScrollEnabled(nowMs);
-    this.scheduleAutoScrollWheelSettle();
   }
 
   private async loadTeamConfiguration(): Promise<void> {
@@ -892,7 +1089,7 @@ export class DomindsDialogContainer extends HTMLElement {
   public resetForCourse(course: number): void {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
-    this.stopAutoScrollWheelSettleTimer();
+    this.resetAutoScrollTransientState();
     this.clearRetryPanel();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
@@ -919,7 +1116,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private cleanup(): void {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
-    this.stopAutoScrollWheelSettleTimer();
+    this.resetAutoScrollTransientState();
     this.clearRetryPanel();
     this.previousDialog = undefined;
     this.runState = null;
@@ -945,6 +1142,10 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private stopAutoScrollObservation(): void {
+    if (this.autoScrollRealignRaf !== null) {
+      cancelAnimationFrame(this.autoScrollRealignRaf);
+      this.autoScrollRealignRaf = null;
+    }
     if (this.autoScrollResizeScrollRaf !== null) {
       cancelAnimationFrame(this.autoScrollResizeScrollRaf);
       this.autoScrollResizeScrollRaf = null;
@@ -961,7 +1162,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     this.autoScrollResizeObservedEl = el;
     this.autoScrollResizeObserver = new ResizeObserver(() => {
-      if (!this.autoScrollEnabled) return;
+      if (!this.isAutoScrollFollowing()) return;
       if (this.autoScrollResizeScrollRaf !== null) return;
       this.autoScrollResizeScrollRaf = requestAnimationFrame(() => {
         this.autoScrollResizeScrollRaf = null;
@@ -3833,8 +4034,13 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!root) return;
     const wrap = root.querySelector('#scroll-to-bottom-wrap') as HTMLElement | null;
     if (!wrap) return;
-    const shouldShow = this.scrollContainer !== null && !this.autoScrollEnabled;
+    const shouldShow = this.scrollContainer !== null && !this.isAutoScrollFollowing();
     wrap.classList.toggle('hidden', !shouldShow);
+  }
+
+  public stabilizeAutoFollowAfterViewportChange(): void {
+    if (!this.isAutoScrollFollowing()) return;
+    this.scheduleAutoScrollRealign();
   }
 
   private formatInterruptionReason(reason: DialogInterruptionReason): string {
@@ -5100,8 +5306,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // When the user explicitly clicks the jump button, we force the scroll.
     const forceScroll = options !== undefined && options.force === true;
     if (!forceScroll) {
-      this.recomputeAutoScrollEnabled(performance.now());
-      if (!this.autoScrollEnabled) return;
+      if (!this.isAutoScrollFollowing()) return;
     }
 
     const doScroll = () => {
