@@ -249,7 +249,6 @@ It describes:
 - default toolsets/tools for those members;
 - how those members see each other and collaborate within the app.
 
-> Current prototype behavior: the kernel loads enabled app teammates YAML and **additively merges `members` into workspace `.minds/team.yaml`**.
 > Current (v0): the kernel loads enabled app teammates YAML but does **not** flatten-merge their `members` into workspace `.minds/team.yaml`.
 > You must explicitly reference a dependency app teammate via `members.<id>.from + (use|import)` in workspace `.minds/team.yaml`.
 > Loader: `dominds/main/apps/teammates.ts`; resolver/execution: `dominds/main/team.ts`.
@@ -282,32 +281,40 @@ Its goal is not to represent one specific product. Its goal is to provide a high
 
 Design stance:
 
-- `Web Dev App` is an **integrator-style app**. The important part is the packaging of team, toolsets, environment guidance, and workflow posture, not a demo business frontend.
+- `Web Dev App` is an **integrator-style app**. The important part is the packaging of team, toolsets, environment guidance, and collaboration posture, not a demo business frontend.
 - It should reuse existing capabilities where possible instead of inventing a new browser automation protocol inside the app.
-- The current upstream capability to learn from is the repo-root `playwright-interactive/` skill. That skill is better understood as a workflow/method asset, not as a ready-to-install Dominds MCP server.
+- The current upstream capability to learn from is OpenAI's `playwright-interactive` entry in the `skills` repo. It appears as a `SKILL.md` largely because the upstream product treats `js_repl` as a built-in capability and uses the skill layer to explain how to operate it. Dominds should not inherit that split directly. A more self-consistent Dominds packaging boundary is to ship **dedicated tools + toolset manual + recommended teammate definitions** as one app-level capability. In that sense, `Web Dev App` is not “wrapping a pure skill”; it is re-packaging the same capability family with a cleaner product boundary.
 
 So `Web Dev App` should make the `playwright-interactive` relationship explicit as two separate layers:
 
 1. **Product-semantic layer (in scope for this design)**
-   - define a stable toolset semantic such as `playwright_interactive`;
+   - define a stable toolset name such as `playwright_interactive`;
    - define which teammates receive it, what problem it solves, and when to use it;
-   - ship the related `.minds/team.yaml`, member persona/knowledge, `.minds/env.md`, etc.
+   - ship the related `.minds/team.yaml`, member persona/knowledge/lessons, `.minds/env.md`, toolset manual, etc.
 2. **Execution-backend layer (replaceable implementation detail)**
-   - this may wrap the `playwright-interactive` skill into app-host tools;
-   - or later be replaced by an equivalent MCP server / local host module;
+   - the app may provide its own dedicated tools and productize a browser-interaction capability in the same family as `playwright-interactive`;
+   - or later be replaced by an equivalent MCP server / local App Host module;
    - as long as the team-facing toolset contract does not drift.
 
-It must be explicit that **an app is not the same thing as a skill**:
+It must be explicit that **an app is not the same thing as a skill**, and that both are now first-class mechanisms in the current implementation:
 
 - An **app** is a Dominds install/resolve/composition unit. It has an `id`, a manifest (`.minds/app.yaml`), team-facing assets (`.minds/team.yaml`, persona/knowledge/lessons), env docs (`.minds/env.md`), and participates in rtws-level lock/configuration/resolution.
-- A **skill** is closer to a workflow asset, method asset, or low-level execution material. A skill can be reused, wrapped, or replaced by an app, but it usually does not own rtws installation, dependency graph membership, or `team.yaml` import semantics by itself.
-- `playwright-interactive/` is currently closer to a skill: it provides browser-workflow capability that Web Dev can learn from or wrap. `Web Dev App` is the installable product unit that packages those capabilities into a stable team/toolset/env contract.
+- A **skill** is a pure-Markdown capability asset inside the rtws. It is currently loaded from `.minds/skills/team_shared/**` and `.minds/skills/individual/**`, selects `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md` by work language preference, and injects the body directly into the agent system prompt. It is best suited for soft guidance, checklists, decision heuristics, and team-specific methods, not for distributable product capability that depends on a stable tool contract.
+- Skill frontmatter currently supports `name`, `description`, `allowed-tools`, `user-invocable`, and `disable-model-invocation`; the last three are currently compatibility/migration metadata only. They do not automatically grant tool permissions and do not replace team/toolset runtime policy.
+- A **toolset manual / app-bundled manual** is a better place for guidance that is shipped together with tools: it is skill-like in tone, but distributed together with dedicated tools, toolsets, and app identity. That is a better fit for something like `web-dev`.
+- `playwright-interactive/` should not be classified as that pure-Markdown rtws skill category. More precisely, it represents a guidance layer on top of built-in browser execution capability. In Dominds, the cleaner move is to package dedicated tools, toolset manual, recommended teammate definitions, and runtime state together as an app such as `@longrun-ai/web-dev`.
+- In Dominds terminology, **workflow** should preferably be reserved for hard process mechanisms such as `phase-gate`, which carry phase/gate/quorum/rollback/auto-advance semantics. Skills and toolset manuals are closer to guidance layers or operating manuals than to a workflow engine.
 
-So the correct story is not “install a skill as an app”. The correct story is:
+So the correct story is not “install a pure skill as an app”. The correct story is:
 
-- the skill is absorbed as implementation material by an app,
-- the app exposes a stable team-facing contract,
-- the low-level skill / MCP / host-module backend can change later without changing the app identity or team-facing semantics.
+- if the content is **pure prompt/pure Markdown and needs no extra tool capability**, keep it directly as an rtws skill,
+- once a capability package needs dedicated tools, external binaries, MCP, App-provided tools, stable toolset naming, teammate assembly, or dependency resolution, package **tools + toolset manual + recommended teammate definitions + team-facing contract** as an app,
+- when other apps depend on that capability, they should depend on the packaged app rather than expecting each workspace to copy the skill and hand-wire tools,
+- the app exposes the stable team/toolset/env contract, while the low-level skill / MCP / local App Host backend may change later without changing the app identity or team-facing semantics.
+
+The shortest rule of thumb is:
+
+- **skills own soft guidance, toolset manuals own tool-coupled operating guidance, and apps own tool capability, dependency relationships, and the team-facing contract.**
 
 Suggested user-facing installation flow:
 
@@ -413,7 +420,7 @@ Current prototype note (`dominds-apps/@longrun-ai/web-dev`, as of March 8, 2026)
 Why this app shape matters:
 
 - It makes `.minds/team.yaml` collaboration semantics concrete: development and testing are two long-lived teammates, not vague temporary roles.
-- It validates whether “app provides team + toolset + env docs” is expressive enough for a real workflow.
+- It validates whether “app provides team + toolset + env docs” is expressive enough for a real collaborative capability package.
 - It gives future skill/MCP/local-host convergence a stable semantic anchor at the app layer.
 
 ## `<rtws>/.apps/override/<app-id>/`: override layer

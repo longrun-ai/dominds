@@ -248,15 +248,68 @@ Example / 示例（概念）:
 - EN: Wording rule: when the meaning is **rtws**, prefer writing “rtws (runtime workspace)” (or just “rtws” after the first mention) rather than the ambiguous generic “workspace”.
 - ZH: 用词规则：当语义指向 **rtws** 时，优先写“rtws（运行时工作区）”（或在已定义后只写“rtws”），避免在对外提示/文档中只写“工作区”从而与其他语境的 workspace/workdir 混淆。
 
+### App（应用包）
+
+- EN: An **App** is a Dominds install/resolve/composition unit. It owns an app id, manifest, team-facing assets, env docs, and may contribute tools, web surfaces, seeds, and related runtime state.
+- ZH: **App（应用包）**是 Dominds 的安装/解析/组合单元。它拥有 app id、manifest、面向团队的资产、环境文档，并可贡献工具、Web 能力、seed 与相关运行态。
+
+- EN: Use **App** for this product/package concept. Do NOT use it as a synonym for “skill”, “workflow”, or “App Host”.
+- ZH: “App” 只用于指代这一产品/能力包概念；不要把它当成“skill”“流程定义”或“App 宿主”的同义词。
+
+### Skill（技能文档）
+
+- EN: A **Skill** is a pure-Markdown capability asset under `.minds/skills/**` that is injected into prompts as guidance. Skills are best for soft guidance, checklists, heuristics, and team-specific methods.
+- ZH: **Skill（技能文档）**是 `.minds/skills/**` 下的纯 Markdown 能力资产，会作为指导性内容注入提示词。Skill 适合承载软性指导、检查清单、判断口诀与团队特定方法学。
+
+- EN: A Skill is **not** an installable App and is **not** the right term for a tool-coupled product capability. Frontmatter such as `allowed-tools` is compatibility metadata, not automatic authorization.
+- ZH: Skill **不是**可安装的 App，也**不是**带稳定工具契约的产品能力包的正确叫法。诸如 `allowed-tools` 的 frontmatter 只是兼容/迁移元数据，不代表自动授权。
+
+### Toolset（工具集）
+
+- EN: A **toolset** is a stable team-facing capability bundle name used for exposure, assignment, and policy (for example `playwright_interactive`).
+- ZH: **工具集（toolset）**是面向团队暴露、授予与调度的稳定能力名（例如 `playwright_interactive`）。
+
+- EN: Use “toolset” when you mean the capability surface or grant boundary. Do not call that concept a “workflow” or a “manual”.
+- ZH: 当语义指向能力面或授予边界时，应使用“工具集”；不要把这个概念写成“流程”或“手册”。
+
+### Toolset Operating Manual（工具集操作手册）
+
+- EN: A **Toolset Operating Manual** is guidance bundled with a toolset or app that explains how to operate a capability. It is guidance, not the capability itself.
+- ZH: **工具集操作手册（Toolset Operating Manual）**是与工具集或 App 一起分发的操作指导，用于说明如何使用某项能力。它是指导层，不是能力本身。
+
+- EN: Use this as the formal glossary term. In ordinary prose, the shorter `toolset manual` is acceptable; avoid vaguer labels such as `playbook`.
+- ZH: 在术语表与正式定义中，优先使用“工具集操作手册（Toolset Operating Manual）”这一全称；在一般英文正文中，可简写为 `toolset manual`。避免使用更模糊的 `playbook` 等说法。
+
+### App Host（App 宿主）
+
+- EN: The **App Host** is the runtime-side component that executes an app's contributed handlers/tools and speaks the kernel↔app IPC contract.
+- ZH: **App 宿主（App Host）**是运行时侧组件，负责执行 app 贡献的处理器/工具，并承载 kernel ↔ app 之间的 IPC 契约。
+
+- EN: Use “App Host” when you mean the runtime component. When you mean the capability surface exposed by an app, prefer “app-provided tools” rather than “app-host tools”.
+- ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向 app 暴露出来的能力面时，优先写“由 App 提供的工具”，不要写“app-host tools”。
+
+### Workflow（流程定义）
+
+- EN: In Dominds terminology, **workflow** should be reserved for hard process mechanisms with explicit state/transition semantics (for example `phase-gate`).
+- ZH: 在 Dominds 术语体系中，**workflow** 应优先保留给带显式状态/转移语义的硬流程机制（例如 `phase-gate`）。
+
+- EN: Do not use “workflow” for ordinary guidance, checklists, toolset operating manuals, or soft operating suggestions. In Chinese docs, prefer “流程定义” for the hard-mechanism sense and “操作流程” only for loose human guidance when needed.
+- ZH: 不要把普通指导、检查清单、工具集操作手册或软性的操作建议称为“workflow”。中文文档中，硬机制语义优先写“流程定义”；若只是松散的人类操作指导，必要时才写“操作流程”。
+
+### Contract Field Names（契约字段名）
+
+- EN: When a doc refers to a concrete contract field, keep the exact code identifier in backticks (for example `dialogId`, `sessionSlug`, `holderDialogId`). Do not respell it as prose like “dialog id”.
+- ZH: 当文档指向具体契约字段时，应保留精确的代码字段名并使用反引号（例如 `dialogId`、`sessionSlug`、`holderDialogId`）。不要把它改写成“dialog id”这类散文化写法。
+
 ### Tellask（诉请）
 
 - EN: A Dominds-specific interaction unit: a structured request addressed to a dialog participant. **Always use "Tellask" (noun) or "tellask" (verb); never use "ask", "request", "query", or "invocation".**
 - ZH: Dominds 的专有交互单元：一个对对话参与方发出的结构化请求。**统一使用"Tellask"（名词）或"tellask"（动词）；避免使用"询问"、"请求"、"查询"、"调用"等变体。**
 
-### Teammate / 队友
+### Teammate / 智能体队友
 
 - EN: An agent participant in the Dominds dialog system. **Always use "teammate" when referring to agent participants; avoid "member", "agent peer", or "collaborator" in this context.**
-- ZH: Dominds 对话系统中的智能体参与者。**统一使用"队友"（teammate）指代智能体参与者；避免使用"成员"、"智能体同伴"、"协作者"等变体。**
+- ZH: Dominds 对话系统中的智能体参与者。**正式表述统一使用"智能体队友"（teammate）；在上下文清晰时可简写为"队友"。避免使用"成员"、"智能体同伴"、"协作者"等变体。**
 
 - EN: Contrast with "team member" which refers to organizational structure topics.
 - ZH: 与"团队成员"（team member）形成对比；后者用于谈论组织结构架设话题。
