@@ -41,6 +41,7 @@ import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
+import { isTextLikeMimeType, sniffMimeType } from './mime-types';
 import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
@@ -351,6 +352,37 @@ export async function handleWorkspaceFilePreviewPage(
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET' });
     res.end('Method Not Allowed');
     return true;
+  }
+
+  const pathRel = parseWorkspacePreviewPathname(pathname);
+  if (pathRel !== null) {
+    try {
+      const resolved = await resolveWorkspacePreviewPath(pathRel);
+      const stat = await fsPromises.stat(resolved.candidateAbsPath);
+      if (stat.isFile()) {
+        const headBytes = await readFileHead(resolved.candidateAbsPath, 512);
+        const mimeType = sniffMimeType(pathRel, headBytes);
+        if (!isTextLikeMimeType(mimeType)) {
+          const data = await fsPromises.readFile(resolved.candidateAbsPath);
+          res.writeHead(200, {
+            'Content-Type': mimeType,
+            'Content-Length': stat.size,
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+          });
+          res.end(data);
+          return true;
+        }
+      }
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code !== 'ENOENT' && code !== 'OUTSIDE_RTWS') {
+        log.error('Failed to inspect workspace preview path before rendering /f', error, {
+          path: pathRel,
+        });
+      }
+    }
   }
 
   const html = `<!doctype html>
@@ -1546,6 +1578,35 @@ function normalizeRtwsRelativePath(
   return normalized;
 }
 
+function parseWorkspacePreviewPathname(pathname: string): string | null {
+  if (pathname === '/f' || pathname === '/f/') return '';
+  if (!pathname.startsWith('/f/')) return null;
+
+  const tail = pathname.slice('/f/'.length);
+  if (tail.length < 1) return '';
+
+  const rawParts = tail.split('/');
+  const decodedParts: string[] = [];
+  for (const rawPart of rawParts) {
+    if (rawPart.length < 1) continue;
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(rawPart);
+    } catch {
+      return null;
+    }
+
+    if (decoded.length < 1) continue;
+    if (decoded.includes('/') || decoded.includes('\\') || decoded.includes('\0')) {
+      return null;
+    }
+    decodedParts.push(decoded);
+  }
+
+  return normalizeRtwsRelativePath(decodedParts.join('/'), { allowRoot: true });
+}
+
 async function getWorkspaceRootRealAbs(): Promise<string> {
   const workspaceRootAbs = path.resolve(process.cwd());
   try {
@@ -1680,6 +1741,17 @@ async function listWorkspaceDirectoryEntries(params: {
   });
 
   return entries;
+}
+
+async function readFileHead(fileAbsPath: string, maxBytes: number): Promise<Buffer> {
+  const file = await fsPromises.open(fileAbsPath, 'r');
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    const { bytesRead } = await file.read(buffer, 0, maxBytes, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await file.close();
+  }
 }
 
 async function handleReadWorkspaceEntry(
