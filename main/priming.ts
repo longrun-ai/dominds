@@ -937,10 +937,10 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         switch (callName) {
           case 'tellask': {
             if (!Array.isArray(mentionList) || mentionList.length < 1) {
-              throw new Error(`${context}.mentionList is required for tellask teammate response`);
+              throw new Error(`${context}.mentionList is required for tellask response`);
             }
             if (typeof sessionSlug !== 'string' || sessionSlug.trim() === '') {
-              throw new Error(`${context}.sessionSlug is required for tellask teammate response`);
+              throw new Error(`${context}.sessionSlug is required for tellask response`);
             }
             return {
               ...base,
@@ -951,13 +951,11 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
           }
           case 'tellaskSessionless': {
             if (!Array.isArray(mentionList) || mentionList.length < 1) {
-              throw new Error(
-                `${context}.mentionList is required for tellaskSessionless teammate response`,
-              );
+              throw new Error(`${context}.mentionList is required for tellaskSessionless response`);
             }
             if (sessionSlug !== undefined) {
               throw new Error(
-                `${context}.sessionSlug must be undefined for tellaskSessionless teammate response`,
+                `${context}.sessionSlug must be undefined for tellaskSessionless response`,
               );
             }
             return {

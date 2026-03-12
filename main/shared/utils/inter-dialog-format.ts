@@ -8,7 +8,7 @@
  *
  * Transfer payload contract:
  * - Assignment/call payloads are generated from mention list + tellask content.
- * - Teammate-response payloads include runtime markers + response body + call-site summary.
+ * - Tellask-response payloads include runtime markers + response body + call-site summary.
  * - The same transfer payload should be used for both model context and UI rendering.
  */
 
@@ -243,7 +243,7 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
     input.callName !== 'tellaskSessionless' &&
     input.callName !== 'tellaskBack'
   ) {
-    throw new Error(`Unsupported callName for teammate response formatting: ${input.callName}`);
+    throw new Error(`Unsupported callName for tellask response formatting: ${input.callName}`);
   }
 
   const mentionLine = (() => {

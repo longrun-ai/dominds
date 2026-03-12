@@ -247,10 +247,10 @@ export abstract class Dialog {
   private readonly _mutex: AsyncFifoMutex;
 
   // Current callId for tellask call correlation
-  // - Set during teammate_call_finish_evt (from tellask-special function calls)
+  // - Set when tellask-special call results are finalized
   // - Retrieved during inline call-result emission (for receiveTellaskCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
-  // - NOT used for teammate tellasks (which use calleeDialogId instead)
+  // - NOT used for sideline-response bubbles (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
 
   constructor(
@@ -332,7 +332,7 @@ export abstract class Dialog {
    * Get the current callId for tellask call correlation
    *
    * Call Types:
-   * - tellask-special function call: callId is set during teammate_call_finish_evt and used for inline result correlation
+   * - tellask-special function call: callId is set when call results are finalized and used for inline result correlation
    * - Subdialog response bubbles: use calleeDialogId instead of callId
    *
    * @returns The current callId for call correlation, or null if no active call
@@ -342,7 +342,7 @@ export abstract class Dialog {
   }
 
   /**
-   * Set the current callId (called during teammate_call_finish_evt for tellask-special calls)
+   * Set the current callId for tellask-special inline result correlation
    *
    * @param callId - The function-call correlation ID
    */
@@ -1128,7 +1128,7 @@ export abstract class Dialog {
   }
 
   /**
-   * Receive teammate response (separate bubble for @teammate tellasks)
+   * Receive tellask response (separate bubble for tellask sideline replies)
    */
   public async receiveTellaskResponse(
     responderId: string,
@@ -1344,7 +1344,7 @@ export abstract class Dialog {
 }
 
 /**
- * SubDialog - A subdialog created by a RootDialog for autonomous teammate tellasks.
+ * SubDialog - A subdialog created by a RootDialog for autonomous tellask sideline work.
  * Stores the root dialog for registry and lookup, and resolves its effective supdialog dynamically.
  */
 export class SubDialog extends Dialog {
@@ -1525,7 +1525,7 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Create a new subdialog for autonomous teammate tellasks.
+   * Create a new subdialog for autonomous tellask sideline work.
    */
   async createSubDialog(
     targetAgentId: string,
@@ -1674,7 +1674,7 @@ export abstract class DialogStore {
   ): Promise<void> {}
 
   /**
-   * Receive teammate response (separate bubble for @teammate tellasks)
+   * Receive tellask response (separate bubble for tellask sideline replies)
    */
   public async receiveTellaskResponse(
     _dialog: Dialog,

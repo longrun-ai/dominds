@@ -522,7 +522,7 @@ export interface TellaskCallAnchorRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-// Teammate response record - separate bubble for @teammate tellasks
+// Tellask response record - separate bubble for tellask sideline replies
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export type TellaskResponseRecord =
   | (RootGenerationRef & {
@@ -538,7 +538,7 @@ export type TellaskResponseRecord =
       mentionList: string[];
       tellaskContent: string;
       status: 'completed' | 'failed';
-      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      response: string; // canonical tellask transfer payload (shared by target-agent context and UI)
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;
@@ -556,7 +556,7 @@ export type TellaskResponseRecord =
       mentionList: string[];
       tellaskContent: string;
       status: 'completed' | 'failed';
-      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      response: string; // canonical tellask transfer payload (shared by target-agent context and UI)
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;
@@ -573,7 +573,7 @@ export type TellaskResponseRecord =
       callName: 'tellaskBack' | 'freshBootsReasoning';
       tellaskContent: string;
       status: 'completed' | 'failed';
-      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      response: string; // canonical tellask transfer payload (shared by target-agent context and UI)
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;

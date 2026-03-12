@@ -726,7 +726,7 @@ export class DiskFileDialogStore extends DialogStore {
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveTellaskCallResult() + callId parameter
    *
-   * - Teammate Tellask (subdialog response bubble)
+   * - Tellask sideline response (subdialog response bubble)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
    *   - Uses receiveTellaskResponse() instead
@@ -826,18 +826,18 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Receive and handle TEAMMATE TELLASK responses (separate bubble for subdialog/supdialog replies)
+   * Receive and handle tellask responses (separate bubble for subdialog/supdialog replies)
    *
    * Call Types:
-   * - Teammate Tellask response
+   * - Tellask sideline response
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
    *   - Uses this method (receiveTellaskResponse)
    *
    * @param dialog - The dialog receiving the response
-   * @param responderId - ID of the teammate agent (e.g., "coder")
-   * @param mentionList - Mention list of the original teammate tellask
-   * @param tellaskContent - Tellask content of the original teammate tellask
+   * @param responderId - ID of the responder agent (e.g., "coder")
+   * @param mentionList - Mention list of the original tellask
+   * @param tellaskContent - Tellask content of the original tellask
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
@@ -2590,7 +2590,7 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'tellask_call_result_record': {
-        // Handle teammate-call inline results
+        // Handle tellask-call inline results
         const responseEvent = (() => {
           switch (event.callName) {
             case 'tellask':
@@ -2775,7 +2775,7 @@ export class DiskFileDialogStore extends DialogStore {
         break;
 
       case 'tellask_response_record': {
-        // Handle teammate response events (separate bubble for @teammate tellasks)
+        // Handle tellask response events (separate bubble for tellask sideline replies)
         const mentionList = (() => {
           switch (event.callName) {
             case 'tellask':
@@ -5766,7 +5766,7 @@ export class DialogPersistence {
         }
 
         case 'tellask_call_result_record': {
-          // Convert teammate-call inline result to ChatMessage
+          // Convert tellask-call inline result to ChatMessage
           const mentionList = (() => {
             switch (event.callName) {
               case 'tellask':
@@ -5795,8 +5795,8 @@ export class DialogPersistence {
           break;
 
         case 'tellask_response_record': {
-          // Convert teammate response to ChatMessage (teammate - separate bubble)
-          // Note: Teammate responses are stored as separate records but use same message type
+          // Convert tellask response to ChatMessage (separate bubble)
+          // Note: Tellask responses are stored as separate records but use same message type
           const mentionList = (() => {
             switch (event.callName) {
               case 'tellask':

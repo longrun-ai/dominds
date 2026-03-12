@@ -2480,7 +2480,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const bubble = this.ensureGenerationBubbleForSeq(genseq, event.timestamp);
     if (!bubble) {
-      console.warn('[TeammateCallStart] No generation bubble, skipping');
+      console.warn('[TellaskCallStart] No generation bubble, skipping');
       return;
     }
     const body = bubble.querySelector('.bubble-body');

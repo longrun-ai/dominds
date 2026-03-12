@@ -197,7 +197,7 @@ export type GenerationDiscardEvent = LlmGenDlgEvent & {
   reason: 'retry';
 };
 
-// Teammate-call lifecycle events (function-call based tellask-special channel)
+// Tellask-call lifecycle events (function-call based tellask-special channel)
 export type TellaskCallStartEvent =
   | (LlmGenDlgEvent & {
       type: 'tellask_call_start_evt';
@@ -280,7 +280,7 @@ export interface FullRemindersEvent {
   reminders: ReminderContent[];
 }
 
-// Teammate response event - separate bubble for @teammate tellasks
+// Tellask response event - separate bubble for tellask sideline replies
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export type TellaskResponseEvent =
   | {

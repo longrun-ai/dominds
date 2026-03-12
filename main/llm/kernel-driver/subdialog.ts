@@ -411,7 +411,7 @@ export async function supplyResponseToSupdialog(args: {
         status: parentDialog.status,
       });
       if (!assignmentRef) {
-        log.error('Missing assignment anchor for teammate response anchor', undefined, {
+        log.error('Missing assignment anchor for tellask response anchor', undefined, {
           parentId: parentDialog.id.selfId,
           subdialogId: subdialogId.selfId,
           callId: resolvedCallId,
