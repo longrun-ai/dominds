@@ -24,9 +24,11 @@ import type {
   ReasoningContentItem,
   ReasoningPayload,
   ReasoningSummaryItem,
-  TeammateCallAnchorRecord,
-  TeammateCallResultRecord,
-  TeammateResponseRecord,
+  TellaskCallAnchorRecord,
+  TellaskCallCarryoverRecord,
+  TellaskCallResultRecord,
+  TellaskCarryoverResultRecord,
+  TellaskResponseRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallActionRecord,
@@ -38,7 +40,9 @@ import {
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toCallerCourseNumber,
+  toCallingCourseNumber,
   toCallingGenerationSeqNumber,
+  toDialogCourseNumber,
   toRootGenerationAnchor,
 } from './shared/types/storage';
 import type { DialogPrimingInput, DialogStatusKind } from './shared/types/wire';
@@ -324,9 +328,11 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'human_text_record' ||
     raw === 'func_result_record' ||
     raw === 'quest_for_sup_record' ||
-    raw === 'teammate_call_result_record' ||
-    raw === 'teammate_call_anchor_record' ||
-    raw === 'teammate_response_record' ||
+    raw === 'tellask_call_result_record' ||
+    raw === 'tellask_call_carryover_record' ||
+    raw === 'tellask_call_anchor_record' ||
+    raw === 'tellask_response_record' ||
+    raw === 'tellask_carryover_result_record' ||
     raw === 'gen_start_record' ||
     raw === 'gen_finish_record'
   );
@@ -342,13 +348,16 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
       return 'content';
     case 'quest_for_sup_record':
       return 'tellaskContent';
-    case 'teammate_call_result_record':
+    case 'tellask_call_result_record':
       return 'result';
-    case 'teammate_response_record':
+    case 'tellask_call_carryover_record':
+      return null;
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
       return 'response';
     case 'func_call_record':
     case 'web_search_call_record':
-    case 'teammate_call_anchor_record':
+    case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return null;
@@ -805,7 +814,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'teammate_call_result_record': {
+    case 'tellask_call_result_record': {
       const callName = raw['callName'];
       if (
         callName !== 'tellaskBack' &&
@@ -822,7 +831,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       }
       const callingGenseq = parseOptionalIntegerField(raw, 'calling_genseq', context);
       const mentionList = parseOptionalStringArray(raw, 'mentionList', context);
-      const record: TeammateCallResultRecord = {
+      const record: TellaskCallResultRecord = {
         ts: '',
         type,
         responderId: expectStringField(raw, 'responderId', context),
@@ -840,7 +849,24 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'teammate_call_anchor_record': {
+    case 'tellask_call_carryover_record': {
+      const status = raw['status'];
+      if (status !== 'completed' && status !== 'failed') {
+        throw new Error(`${context}.status must be completed | failed`);
+      }
+      const record: TellaskCallCarryoverRecord = {
+        ts: '',
+        type,
+        responderId: expectStringField(raw, 'responderId', context),
+        status,
+        callId: expectStringField(raw, 'callId', context),
+        carryoverCourse: toDialogCourseNumber(expectIntegerField(raw, 'carryoverCourse', context)),
+      };
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'tellask_call_anchor_record': {
       const anchorRole = raw['anchorRole'];
       if (anchorRole !== 'assignment' && anchorRole !== 'response') {
         throw new Error(`${context}.anchorRole must be assignment | response`);
@@ -852,7 +878,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (callerDialogId !== undefined && typeof callerDialogId !== 'string') {
         throw new Error(`${context}.callerDialogId must be a string when provided`);
       }
-      const record: TeammateCallAnchorRecord = {
+      const record: TellaskCallAnchorRecord = {
         ts: '',
         type,
         anchorRole,
@@ -873,7 +899,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'teammate_response_record': {
+    case 'tellask_response_record': {
       const callName = raw['callName'];
       if (
         callName !== 'tellaskBack' &&
@@ -907,7 +933,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         callId: expectStringField(raw, 'callId', context),
         originMemberId: expectStringField(raw, 'originMemberId', context),
       } as const;
-      const record: TeammateResponseRecord = (() => {
+      const record: TellaskResponseRecord = (() => {
         switch (callName) {
           case 'tellask': {
             if (!Array.isArray(mentionList) || mentionList.length < 1) {
@@ -958,6 +984,98 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (callingGenseq !== undefined) {
         record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
       }
+      if (calleeDialogId !== undefined) record.calleeDialogId = calleeDialogId;
+      if (calleeCourse !== undefined) {
+        record.calleeCourse = toCalleeCourseNumber(calleeCourse);
+      }
+      if (calleeGenseq !== undefined) {
+        record.calleeGenseq = toCalleeGenerationSeqNumber(calleeGenseq);
+      }
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'tellask_carryover_result_record': {
+      const callName = raw['callName'];
+      if (
+        callName !== 'tellask' &&
+        callName !== 'tellaskSessionless' &&
+        callName !== 'freshBootsReasoning'
+      ) {
+        throw new Error(`${context}.callName is invalid`);
+      }
+      const status = raw['status'];
+      if (status !== 'completed' && status !== 'failed') {
+        throw new Error(`${context}.status must be completed | failed`);
+      }
+      const originCourse = expectIntegerField(raw, 'originCourse', context);
+      const mentionList = parseOptionalStringArray(raw, 'mentionList', context);
+      const sessionSlug = raw['sessionSlug'];
+      const calleeCourse = parseOptionalIntegerField(raw, 'calleeCourse', context);
+      const calleeGenseq = parseOptionalIntegerField(raw, 'calleeGenseq', context);
+      const calleeDialogId = raw['calleeDialogId'];
+      if (calleeDialogId !== undefined && typeof calleeDialogId !== 'string') {
+        throw new Error(`${context}.calleeDialogId must be a string when provided`);
+      }
+      const base = {
+        ts: '',
+        type,
+        originCourse: toCallingCourseNumber(originCourse),
+        responderId: expectStringField(raw, 'responderId', context),
+        tellaskContent: expectStringField(raw, 'tellaskContent', context, true),
+        status,
+        response: expectStringField(raw, 'response', context, true),
+        content: expectStringField(raw, 'content', context, true),
+        agentId: expectStringField(raw, 'agentId', context),
+        callId: expectStringField(raw, 'callId', context),
+        originMemberId: expectStringField(raw, 'originMemberId', context),
+      } as const;
+      const record: TellaskCarryoverResultRecord = (() => {
+        switch (callName) {
+          case 'tellask': {
+            if (!Array.isArray(mentionList) || mentionList.length < 1) {
+              throw new Error(`${context}.mentionList is required for tellask carryover`);
+            }
+            if (typeof sessionSlug !== 'string' || sessionSlug.trim() === '') {
+              throw new Error(`${context}.sessionSlug is required for tellask carryover`);
+            }
+            return {
+              ...base,
+              callName,
+              sessionSlug: sessionSlug.trim(),
+              mentionList,
+            };
+          }
+          case 'tellaskSessionless': {
+            if (!Array.isArray(mentionList) || mentionList.length < 1) {
+              throw new Error(
+                `${context}.mentionList is required for tellaskSessionless carryover`,
+              );
+            }
+            if (sessionSlug !== undefined) {
+              throw new Error(
+                `${context}.sessionSlug must be undefined for tellaskSessionless carryover`,
+              );
+            }
+            return {
+              ...base,
+              callName,
+              mentionList,
+            };
+          }
+          case 'freshBootsReasoning':
+            if (mentionList !== undefined) {
+              throw new Error(`${context}.mentionList must be undefined for FBR carryover`);
+            }
+            if (sessionSlug !== undefined) {
+              throw new Error(`${context}.sessionSlug must be undefined for FBR carryover`);
+            }
+            return {
+              ...base,
+              callName,
+            };
+        }
+      })();
       if (calleeDialogId !== undefined) record.calleeDialogId = calleeDialogId;
       if (calleeCourse !== undefined) {
         record.calleeCourse = toCalleeCourseNumber(calleeCourse);
@@ -1529,11 +1647,11 @@ function remapRecordGenseq(
     case 'human_text_record':
     case 'func_result_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_anchor_record':
+    case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ...record, genseq: mapGenseq(record.genseq) };
-    case 'teammate_call_result_record':
+    case 'tellask_call_result_record':
       return {
         ...record,
         calling_genseq:
@@ -1541,7 +1659,9 @@ function remapRecordGenseq(
             ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
             : undefined,
       };
-    case 'teammate_response_record':
+    case 'tellask_call_carryover_record':
+      return record;
+    case 'tellask_response_record':
       return {
         ...record,
         calling_genseq:
@@ -1549,6 +1669,8 @@ function remapRecordGenseq(
             ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
             : undefined,
       };
+    case 'tellask_carryover_result_record':
+      return record;
     default: {
       const _exhaustive: never = record;
       throw new Error(`Unhandled priming record in remapRecordGenseq: ${String(_exhaustive)}`);
@@ -1596,9 +1718,11 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'human_text_record':
     case 'func_result_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_result_record':
-    case 'teammate_call_anchor_record':
-    case 'teammate_response_record':
+    case 'tellask_call_result_record':
+    case 'tellask_call_carryover_record':
+    case 'tellask_call_anchor_record':
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ...record, sourceTag: 'priming_script' };
@@ -1619,9 +1743,11 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'human_text_record':
     case 'func_result_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_result_record':
-    case 'teammate_call_anchor_record':
-    case 'teammate_response_record':
+    case 'tellask_call_result_record':
+    case 'tellask_call_carryover_record':
+    case 'tellask_call_anchor_record':
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ts, ...record };
@@ -1685,7 +1811,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         content: record.content,
         contentItems: record.contentItems,
       };
-    case 'teammate_call_result_record': {
+    case 'tellask_call_result_record': {
       const mentionList =
         record.callName === 'tellask' || record.callName === 'tellaskSessionless'
           ? record.mentionList
@@ -1701,7 +1827,9 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         content: record.result,
       };
     }
-    case 'teammate_response_record': {
+    case 'tellask_call_carryover_record':
+      return null;
+    case 'tellask_response_record': {
       const mentionList =
         record.callName === 'tellask' || record.callName === 'tellaskSessionless'
           ? record.mentionList
@@ -1717,9 +1845,21 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         content: record.response,
       };
     }
+    case 'tellask_carryover_result_record':
+      return {
+        type: 'tellask_carryover_result_msg',
+        role: 'user',
+        content: record.content,
+        originCourse: record.originCourse,
+        responderId: record.responderId,
+        callName: record.callName,
+        tellaskContent: record.tellaskContent,
+        status: record.status,
+        callId: record.callId,
+      };
     case 'web_search_call_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_anchor_record':
+    case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return null;
@@ -1896,7 +2036,7 @@ function formatScriptMarkdown(args: {
         blockBody = record.tellaskContent;
         break;
       }
-      case 'teammate_call_result_record': {
+      case 'tellask_call_result_record': {
         blockMeta['responderId'] = record.responderId;
         blockMeta['callName'] = record.callName;
         if (record.mentionList !== undefined) blockMeta['mentionList'] = record.mentionList;
@@ -1909,7 +2049,15 @@ function formatScriptMarkdown(args: {
         blockBody = record.result;
         break;
       }
-      case 'teammate_call_anchor_record': {
+      case 'tellask_call_carryover_record': {
+        blockMeta['responderId'] = record.responderId;
+        blockMeta['status'] = record.status;
+        blockMeta['callId'] = record.callId;
+        blockMeta['carryoverCourse'] = record.carryoverCourse;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        break;
+      }
+      case 'tellask_call_anchor_record': {
         blockMeta['anchorRole'] = record.anchorRole;
         blockMeta['callId'] = record.callId;
         blockMeta['genseq'] = record.genseq;
@@ -1923,7 +2071,7 @@ function formatScriptMarkdown(args: {
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
-      case 'teammate_response_record': {
+      case 'tellask_response_record': {
         blockMeta['responderId'] = record.responderId;
         blockMeta['callName'] = record.callName;
         switch (record.callName) {
@@ -1945,6 +2093,35 @@ function formatScriptMarkdown(args: {
         blockMeta['originMemberId'] = record.originMemberId;
         if (record.calling_genseq !== undefined)
           blockMeta['calling_genseq'] = record.calling_genseq;
+        if (record.calleeDialogId !== undefined)
+          blockMeta['calleeDialogId'] = record.calleeDialogId;
+        if (record.calleeCourse !== undefined) blockMeta['calleeCourse'] = record.calleeCourse;
+        if (record.calleeGenseq !== undefined) blockMeta['calleeGenseq'] = record.calleeGenseq;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        blockBody = record.response;
+        break;
+      }
+      case 'tellask_carryover_result_record': {
+        blockMeta['originCourse'] = record.originCourse;
+        blockMeta['responderId'] = record.responderId;
+        blockMeta['callName'] = record.callName;
+        switch (record.callName) {
+          case 'tellask':
+            blockMeta['sessionSlug'] = record.sessionSlug;
+            blockMeta['mentionList'] = record.mentionList;
+            break;
+          case 'tellaskSessionless':
+            blockMeta['mentionList'] = record.mentionList;
+            break;
+          case 'freshBootsReasoning':
+            break;
+        }
+        blockMeta['tellaskContent'] = record.tellaskContent;
+        blockMeta['status'] = record.status;
+        blockMeta['agentId'] = record.agentId;
+        blockMeta['callId'] = record.callId;
+        blockMeta['originMemberId'] = record.originMemberId;
+        blockMeta['content'] = record.content;
         if (record.calleeDialogId !== undefined)
           blockMeta['calleeDialogId'] = record.calleeDialogId;
         if (record.calleeCourse !== undefined) blockMeta['calleeCourse'] = record.calleeCourse;
@@ -1995,9 +2172,11 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'human_text_record':
     case 'func_result_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_result_record':
-    case 'teammate_call_anchor_record':
-    case 'teammate_response_record':
+    case 'tellask_call_result_record':
+    case 'tellask_call_carryover_record':
+    case 'tellask_call_anchor_record':
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
     case 'gen_start_record':
     case 'gen_finish_record': {
       const { ts: _unusedTs, ...withoutTs } = event;

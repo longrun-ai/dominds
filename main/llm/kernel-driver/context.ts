@@ -22,7 +22,9 @@ function findLastUserPromptLikeIndex(msgs: readonly ChatMessage[]): number {
     const msg = msgs[i];
     if (
       msg &&
-      (msg.type === 'prompting_msg' || msg.type === 'environment_msg') &&
+      (msg.type === 'prompting_msg' ||
+        msg.type === 'environment_msg' ||
+        msg.type === 'tellask_carryover_result_msg') &&
       msg.role === 'user'
     ) {
       return i;
@@ -73,7 +75,12 @@ export function appendDriveEphemeralContext(
 function hasUserPromptLikeAnchor(source: readonly ChatMessage[]): boolean {
   for (const msg of source) {
     if (!msg) continue;
-    if ((msg.type === 'prompting_msg' || msg.type === 'environment_msg') && msg.role === 'user') {
+    if (
+      (msg.type === 'prompting_msg' ||
+        msg.type === 'environment_msg' ||
+        msg.type === 'tellask_carryover_result_msg') &&
+      msg.role === 'user'
+    ) {
       return true;
     }
   }

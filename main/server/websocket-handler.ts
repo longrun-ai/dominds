@@ -1617,7 +1617,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       ),
     );
     for (const callId of askHumanCallIds) {
-      await dialog.receiveTeammateCallResult(
+      await dialog.receiveTellaskCallResult(
         'human',
         'askHuman',
         undefined,

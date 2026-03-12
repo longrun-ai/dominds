@@ -211,9 +211,11 @@ export type PersistedDialogRecord =
   | HumanTextRecord
   | FuncResultRecord
   | QuestForSupRecord
-  | TeammateCallResultRecord
-  | TeammateCallAnchorRecord
-  | TeammateResponseRecord
+  | TellaskCallResultRecord
+  | TellaskCallCarryoverRecord
+  | TellaskCallAnchorRecord
+  | TellaskResponseRecord
+  | TellaskCarryoverResultRecord
   | GenStartRecord
   | GenFinishRecord
   | SubdialogCreatedRecord
@@ -482,9 +484,9 @@ export interface QuestForSupRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-export interface TeammateCallResultRecord extends RootGenerationRef {
+export interface TellaskCallResultRecord extends RootGenerationRef {
   ts: string;
-  type: 'teammate_call_result_record';
+  type: 'tellask_call_result_record';
   calling_genseq?: CallingGenerationSeqNumber;
   responderId: string;
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -496,10 +498,20 @@ export interface TeammateCallResultRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-// Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
-export interface TeammateCallAnchorRecord extends RootGenerationRef {
+export interface TellaskCallCarryoverRecord extends RootGenerationRef {
   ts: string;
-  type: 'teammate_call_anchor_record';
+  type: 'tellask_call_carryover_record';
+  responderId: string;
+  status: 'completed' | 'failed';
+  callId: string;
+  carryoverCourse: DialogCourseNumber;
+  sourceTag?: 'priming_script';
+}
+
+// Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
+export interface TellaskCallAnchorRecord extends RootGenerationRef {
+  ts: string;
+  type: 'tellask_call_anchor_record';
   anchorRole: 'assignment' | 'response';
   callId: string;
   genseq: number;
@@ -512,10 +524,10 @@ export interface TeammateCallAnchorRecord extends RootGenerationRef {
 
 // Teammate response record - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
-export type TeammateResponseRecord =
+export type TellaskResponseRecord =
   | (RootGenerationRef & {
       ts: string;
-      type: 'teammate_response_record';
+      type: 'tellask_response_record';
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
@@ -534,7 +546,7 @@ export type TeammateResponseRecord =
     })
   | (RootGenerationRef & {
       ts: string;
-      type: 'teammate_response_record';
+      type: 'tellask_response_record';
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
@@ -552,7 +564,7 @@ export type TeammateResponseRecord =
     })
   | (RootGenerationRef & {
       ts: string;
-      type: 'teammate_response_record';
+      type: 'tellask_response_record';
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
@@ -565,6 +577,65 @@ export type TeammateResponseRecord =
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;
+      sourceTag?: 'priming_script';
+    });
+
+export type TellaskCarryoverResultRecord =
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_carryover_result_record';
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'tellask';
+      sessionSlug: string;
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_carryover_result_record';
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_carryover_result_record';
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'freshBootsReasoning';
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
       sourceTag?: 'priming_script';
     });
 

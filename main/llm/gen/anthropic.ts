@@ -618,7 +618,7 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
   }
 
   // Handle tellask call results (NOT LLM-native tool use; represented as role='user' text)
-  if (chatMsg.type === 'tellask_result_msg') {
+  if (chatMsg.type === 'tellask_result_msg' || chatMsg.type === 'tellask_carryover_result_msg') {
     const msg: AnthropicContentBlock = {
       type: 'text',
       text: chatMsg.content,

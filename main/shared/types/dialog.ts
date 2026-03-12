@@ -15,7 +15,9 @@ import type {
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallerCourseNumber,
+  CallingCourseNumber,
   CallingGenerationSeqNumber,
+  DialogCourseNumber,
   FuncResultContentItem,
 } from './storage';
 
@@ -196,9 +198,9 @@ export type GenerationDiscardEvent = LlmGenDlgEvent & {
 };
 
 // Teammate-call lifecycle events (function-call based tellask-special channel)
-export type TeammateCallStartEvent =
+export type TellaskCallStartEvent =
   | (LlmGenDlgEvent & {
-      type: 'teammate_call_start_evt';
+      type: 'tellask_call_start_evt';
       callName: 'tellask';
       callId: string;
       mentionList: string[];
@@ -206,22 +208,22 @@ export type TeammateCallStartEvent =
       tellaskContent: string;
     })
   | (LlmGenDlgEvent & {
-      type: 'teammate_call_start_evt';
+      type: 'tellask_call_start_evt';
       callName: 'tellaskSessionless';
       callId: string;
       mentionList: string[];
       tellaskContent: string;
     })
   | (LlmGenDlgEvent & {
-      type: 'teammate_call_start_evt';
+      type: 'tellask_call_start_evt';
       callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
       callId: string;
       tellaskContent: string;
     });
 
-export type TeammateCallResponseEvent =
+export type TellaskCallResultEvent =
   | {
-      type: 'teammate_call_response_evt';
+      type: 'tellask_call_result_evt';
       course: number;
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
@@ -233,7 +235,7 @@ export type TeammateCallResponseEvent =
       callId: string;
     }
   | {
-      type: 'teammate_call_response_evt';
+      type: 'tellask_call_result_evt';
       course: number;
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
@@ -244,9 +246,18 @@ export type TeammateCallResponseEvent =
       callId: string;
     };
 
+export interface TellaskCallCarryoverEvent {
+  type: 'tellask_call_carryover_evt';
+  course: number;
+  responderId: string;
+  status: 'completed' | 'failed';
+  callId: string;
+  carryoverCourse: DialogCourseNumber;
+}
+
 // Anchor event in callee dialog for locating assignment/response bubbles by tellask callId.
-export interface TeammateCallAnchorEvent {
-  type: 'teammate_call_anchor_evt';
+export interface TellaskCallAnchorEvent {
+  type: 'tellask_call_anchor_evt';
   course: number;
   genseq: number;
   anchorRole: 'assignment' | 'response';
@@ -271,9 +282,9 @@ export interface FullRemindersEvent {
 
 // Teammate response event - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
-export type TeammateResponseEvent =
+export type TellaskResponseEvent =
   | {
-      type: 'teammate_response_evt';
+      type: 'tellask_response_evt';
       course: number;
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
@@ -291,7 +302,7 @@ export type TeammateResponseEvent =
       originMemberId: string;
     }
   | {
-      type: 'teammate_response_evt';
+      type: 'tellask_response_evt';
       course: number;
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
@@ -308,7 +319,7 @@ export type TeammateResponseEvent =
       originMemberId: string;
     }
   | {
-      type: 'teammate_response_evt';
+      type: 'tellask_response_evt';
       course: number;
       calling_genseq?: CallingGenerationSeqNumber;
       responderId: string;
@@ -322,6 +333,62 @@ export type TeammateResponseEvent =
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;
+    };
+
+export type TellaskCarryoverResultEvent =
+  | {
+      type: 'tellask_carryover_result_evt';
+      course: number;
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'tellask';
+      sessionSlug: string;
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+    }
+  | {
+      type: 'tellask_carryover_result_evt';
+      course: number;
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+    }
+  | {
+      type: 'tellask_carryover_result_evt';
+      course: number;
+      originCourse: CallingCourseNumber;
+      responderId: string;
+      callName: 'freshBootsReasoning';
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
     };
 
 // End of user saying event - emitted after user content is rendered/executed.
@@ -432,10 +499,12 @@ export type DialogEvent =
   | WebSearchCallEvent
   | GenerationDiscardEvent
   // Tellask-special call lifecycle
-  | TeammateCallStartEvent
-  | TeammateCallResponseEvent
-  | TeammateCallAnchorEvent
-  | TeammateResponseEvent
+  | TellaskCallStartEvent
+  | TellaskCallResultEvent
+  | TellaskCallCarryoverEvent
+  | TellaskCallAnchorEvent
+  | TellaskResponseEvent
+  | TellaskCarryoverResultEvent
   // Subdialog events
   | SubdialogEvent
   // User events

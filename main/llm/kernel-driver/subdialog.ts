@@ -12,9 +12,12 @@ import {
   toCallerCourseNumber,
   toRootGenerationAnchor,
   type PendingSubdialogStateRecord,
-  type TeammateCallAnchorRecord,
+  type TellaskCallAnchorRecord,
 } from '../../shared/types/storage';
-import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
+import {
+  formatTellaskCarryoverResultContent,
+  formatTellaskResponseContent,
+} from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
@@ -208,7 +211,7 @@ async function resolveLatestAssignmentAnchorRef(args: {
     );
     for (let i = courseEvents.length - 1; i >= 0; i -= 1) {
       const event = courseEvents[i];
-      if (event.type !== 'teammate_call_anchor_record') {
+      if (event.type !== 'tellask_call_anchor_record') {
         continue;
       }
       if (event.anchorRole !== 'assignment') {
@@ -375,7 +378,7 @@ export async function supplyResponseToSupdialog(args: {
       ? buildFbrRelayPayload(resolvedSubdialog, responseText)
       : responseText;
     const requesterId = result.originMemberId ?? parentDialog.agentId;
-    const upstreamResponseText = formatTeammateResponseContent({
+    const upstreamResponseText = formatTellaskResponseContent({
       callName: result.callName,
       responderId: result.responderId,
       requesterId,
@@ -386,6 +389,21 @@ export async function supplyResponseToSupdialog(args: {
       status,
       language: getWorkLanguage(),
     });
+    const carryoverOriginCourse = result.callingCourse;
+    const carryoverContent =
+      carryoverOriginCourse !== undefined && carryoverOriginCourse !== parentDialog.currentCourse
+        ? formatTellaskCarryoverResultContent({
+            originCourse: carryoverOriginCourse,
+            callName: result.callName,
+            responderId: result.responderId,
+            mentionList: result.mentionList,
+            sessionSlug: result.sessionSlug,
+            tellaskContent: result.tellaskContent,
+            responseBody: upstreamResponseBody,
+            status,
+            language: getWorkLanguage(),
+          })
+        : undefined;
     if (resolvedCallId !== '' && calleeResponseRef) {
       const assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
@@ -401,9 +419,9 @@ export async function supplyResponseToSupdialog(args: {
           responseGenseq: calleeResponseRef.genseq,
         });
       }
-      const anchorRecord: TeammateCallAnchorRecord = {
+      const anchorRecord: TellaskCallAnchorRecord = {
         ts: formatUnifiedTimestamp(new Date()),
-        type: 'teammate_call_anchor_record',
+        type: 'tellask_call_anchor_record',
         anchorRole: 'response',
         callId: resolvedCallId,
         genseq: calleeResponseRef.genseq,
@@ -432,7 +450,7 @@ export async function supplyResponseToSupdialog(args: {
       'kernel-driver:supplyResponseToSupdialog',
     );
 
-    await parentDialog.receiveTeammateResponse(
+    await parentDialog.receiveTellaskResponse(
       result.responderId,
       result.callName,
       result.mentionList,
@@ -444,6 +462,8 @@ export async function supplyResponseToSupdialog(args: {
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
         originMemberId: requesterId,
+        originCourse: carryoverOriginCourse,
+        carryoverContent,
         sessionSlug: result.sessionSlug,
         calleeCourse:
           calleeResponseRef !== undefined
@@ -456,16 +476,29 @@ export async function supplyResponseToSupdialog(args: {
       },
     );
 
-    const immediateMirror: ChatMessage = {
-      type: 'tellask_result_msg',
-      role: 'tool',
-      responderId: result.responderId,
-      mentionList: result.mentionList,
-      tellaskContent: result.tellaskContent,
-      status,
-      callId: resolvedCallId,
-      content: upstreamResponseText,
-    };
+    const immediateMirror: ChatMessage =
+      carryoverContent !== undefined
+        ? {
+            type: 'tellask_carryover_result_msg',
+            role: 'user',
+            content: carryoverContent,
+            originCourse: carryoverOriginCourse!,
+            responderId: result.responderId,
+            callName: result.callName,
+            tellaskContent: result.tellaskContent,
+            status,
+            callId: resolvedCallId,
+          }
+        : {
+            type: 'tellask_result_msg',
+            role: 'tool',
+            responderId: result.responderId,
+            mentionList: result.mentionList,
+            tellaskContent: result.tellaskContent,
+            status,
+            callId: resolvedCallId,
+            content: upstreamResponseText,
+          };
     await parentDialog.addChatMessages(immediateMirror);
 
     if (result.shouldRevive) {

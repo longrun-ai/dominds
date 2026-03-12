@@ -21,7 +21,7 @@ import {
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
-import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
+import type { TellaskCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { Team } from '../../team';
@@ -1430,9 +1430,9 @@ export async function driveDialogStreamCore(
                 `kernel-driver assignment anchor invariant violation: empty callId (dialog=${dlg.id.valueOf()})`,
               );
             }
-            const record: TeammateCallAnchorRecord = {
+            const record: TellaskCallAnchorRecord = {
               ts: formatUnifiedTimestamp(new Date()),
-              type: 'teammate_call_anchor_record',
+              type: 'tellask_call_anchor_record',
               anchorRole: 'assignment',
               callId: normalizedCallId,
               genseq: dlg.activeGenSeq,

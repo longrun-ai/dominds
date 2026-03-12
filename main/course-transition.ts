@@ -8,7 +8,10 @@ import { DialogPersistence } from './persistence';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { LanguageCode } from './shared/types/language';
 import type { PendingSubdialogStateRecord } from './shared/types/storage';
-import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
+import {
+  formatTellaskCarryoverResultContent,
+  formatTellaskResponseContent,
+} from './shared/utils/inter-dialog-format';
 import { syncPendingTellaskReminderState } from './tools/pending-tellask-reminder';
 
 type WaitingOwnerRecord = Readonly<{
@@ -153,7 +156,7 @@ export async function notifyWaitingDialogsOfClearedMind(dialog: Dialog): Promise
 
     for (const pendingRecord of owner.pendingRecords) {
       const requesterId = ownerDialog.agentId;
-      const response = formatTeammateResponseContent({
+      const response = formatTellaskResponseContent({
         callName: pendingRecord.callName,
         responderId: dialog.agentId,
         requesterId,
@@ -164,8 +167,23 @@ export async function notifyWaitingDialogsOfClearedMind(dialog: Dialog): Promise
         status: 'failed',
         language,
       });
+      const carryoverOriginCourse = pendingRecord.callingCourse;
+      const carryoverContent =
+        carryoverOriginCourse !== undefined && carryoverOriginCourse !== ownerDialog.currentCourse
+          ? formatTellaskCarryoverResultContent({
+              originCourse: carryoverOriginCourse,
+              callName: pendingRecord.callName,
+              responderId: dialog.agentId,
+              mentionList: pendingRecord.mentionList,
+              sessionSlug: pendingRecord.sessionSlug,
+              tellaskContent: pendingRecord.tellaskContent,
+              responseBody,
+              status: 'failed',
+              language,
+            })
+          : undefined;
 
-      await ownerDialog.receiveTeammateResponse(
+      await ownerDialog.receiveTellaskResponse(
         dialog.agentId,
         pendingRecord.callName,
         pendingRecord.mentionList,
@@ -177,20 +195,35 @@ export async function notifyWaitingDialogsOfClearedMind(dialog: Dialog): Promise
           agentId: dialog.agentId,
           callId: pendingRecord.callId,
           originMemberId: requesterId,
+          originCourse: carryoverOriginCourse,
+          carryoverContent,
           sessionSlug: pendingRecord.sessionSlug,
         },
       );
 
-      const immediateMirror: ChatMessage = {
-        type: 'tellask_result_msg',
-        role: 'tool',
-        responderId: dialog.agentId,
-        mentionList: pendingRecord.mentionList,
-        tellaskContent: pendingRecord.tellaskContent,
-        status: 'failed',
-        callId: pendingRecord.callId,
-        content: response,
-      };
+      const immediateMirror: ChatMessage =
+        carryoverContent !== undefined
+          ? {
+              type: 'tellask_carryover_result_msg',
+              role: 'user',
+              content: carryoverContent,
+              originCourse: carryoverOriginCourse!,
+              responderId: dialog.agentId,
+              callName: pendingRecord.callName,
+              tellaskContent: pendingRecord.tellaskContent,
+              status: 'failed',
+              callId: pendingRecord.callId,
+            }
+          : {
+              type: 'tellask_result_msg',
+              role: 'tool',
+              responderId: dialog.agentId,
+              mentionList: pendingRecord.mentionList,
+              tellaskContent: pendingRecord.tellaskContent,
+              status: 'failed',
+              callId: pendingRecord.callId,
+              content: response,
+            };
       await ownerDialog.addChatMessages(immediateMirror);
       totalInvalidated += 1;
     }

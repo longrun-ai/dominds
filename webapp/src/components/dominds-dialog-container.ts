@@ -46,7 +46,7 @@ type PendingScrollRequest =
   | { kind: 'by_message_index'; course: number; messageIndex: number }
   | { kind: 'by_genseq'; course: number; genseq: number };
 
-type TeammateCallAnchorMeta = {
+type TellaskCallAnchorMeta = {
   callId: string;
   anchorRole: 'assignment' | 'response';
   assignmentCourse?: AssignmentCourseNumber;
@@ -55,12 +55,12 @@ type TeammateCallAnchorMeta = {
   callerCourse?: CallerCourseNumber;
 };
 
-type TeammateAssignmentTarget = {
+type TellaskAssignmentTarget = {
   course: AssignmentCourseNumber;
   genseq: AssignmentGenerationSeqNumber;
 };
 
-type TeammateCallSiteTarget = {
+type TellaskCallSiteTarget = {
   selfId?: string;
   course?: CallerCourseNumber | CalleeCourseNumber;
 };
@@ -227,7 +227,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Best-effort cache to recover teammate-call streaming sections by genseq.
   // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
-  private teammateCallingSectionBySeq = new Map<number, HTMLElement>();
+  private tellaskCallingSectionBySeq = new Map<number, HTMLElement>();
 
   // Track calling sections by callId for direct lookup (teammate-call blocks only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
@@ -236,7 +236,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
-  private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
+  private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
   private retryPanelState: RetryPanelState = { kind: 'hidden' };
 
@@ -1102,7 +1102,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.queuedUserBubbleByMsgId.clear();
-    this.pendingTeammateCallAnchorByGenseq.clear();
+    this.pendingTellaskCallAnchorByGenseq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -1129,7 +1129,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.queuedUserBubbleByMsgId.clear();
-    this.pendingTeammateCallAnchorByGenseq.clear();
+    this.pendingTellaskCallAnchorByGenseq.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -1345,7 +1345,7 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       // === TELLASK CALL EVENTS (function-tool channel) ===
-      case 'teammate_call_start_evt':
+      case 'tellask_call_start_evt':
         this.handleToolCallStart(event);
         break;
 
@@ -1374,16 +1374,22 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       // Teammate-call lifecycle updates (call site timing + status)
-      case 'teammate_call_response_evt':
+      case 'tellask_call_result_evt':
         this.handleToolCallResponse(event);
         break;
-      case 'teammate_call_anchor_evt':
-        this.handleTeammateCallAnchor(event);
+      case 'tellask_call_carryover_evt':
+        this.handleTellaskCallCarryover(event);
+        break;
+      case 'tellask_call_anchor_evt':
+        this.handleTellaskCallAnchor(event);
         break;
 
       // Teammate responses (separate bubble)
-      case 'teammate_response_evt':
-        this.handleTeammateResponse(event);
+      case 'tellask_response_evt':
+        this.handleTellaskResponse(event);
+        break;
+      case 'tellask_carryover_result_evt':
+        this.handleTellaskCarryoverResult(event);
         break;
 
       // Subdialog events
@@ -1441,10 +1447,10 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const applyPendingCallAnchor = (bubble: HTMLElement): void => {
-      const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
+      const pendingAnchor = this.pendingTellaskCallAnchorByGenseq.get(seq);
       if (!pendingAnchor) return;
-      this.applyTeammateCallAnchorToBubble(bubble, pendingAnchor);
-      this.pendingTeammateCallAnchorByGenseq.delete(seq);
+      this.applyTellaskCallAnchorToBubble(bubble, pendingAnchor);
+      this.pendingTellaskCallAnchorByGenseq.delete(seq);
     };
 
     const finalizeExistingBubble = (existingBubble: HTMLElement): void => {
@@ -1526,10 +1532,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private ensureGenerationBubbleForSeq(seq: number, timestamp: string): HTMLElement | null {
     const applyPendingCallAnchor = (bubble: HTMLElement): void => {
-      const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
+      const pendingAnchor = this.pendingTellaskCallAnchorByGenseq.get(seq);
       if (!pendingAnchor) return;
-      this.applyTeammateCallAnchorToBubble(bubble, pendingAnchor);
-      this.pendingTeammateCallAnchorByGenseq.delete(seq);
+      this.applyTellaskCallAnchorToBubble(bubble, pendingAnchor);
+      this.pendingTellaskCallAnchorByGenseq.delete(seq);
     };
 
     const currentBubble = this.generationBubble;
@@ -1764,9 +1770,9 @@ export class DomindsDialogContainer extends HTMLElement {
       this.callingSection = undefined;
     }
 
-    this.teammateCallingSectionBySeq.delete(seq);
+    this.tellaskCallingSectionBySeq.delete(seq);
     this.webSearchSectionBySeq.delete(seq);
-    this.pendingTeammateCallAnchorByGenseq.delete(seq);
+    this.pendingTellaskCallAnchorByGenseq.delete(seq);
 
     for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
       const sectionSeq = section.getAttribute('data-genseq');
@@ -2085,7 +2091,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.callingSection = recovered;
       return recovered;
     }
-    const cached = this.teammateCallingSectionBySeq.get(genseq);
+    const cached = this.tellaskCallingSectionBySeq.get(genseq);
     if (cached && cached.isConnected) {
       this.callingSection = cached;
       return cached;
@@ -2212,6 +2218,7 @@ export class DomindsDialogContainer extends HTMLElement {
     state: 'pending' | 'completed' | 'failed',
     startedAtMs: number,
     endedAtMs?: number,
+    extraNote?: string,
   ): void {
     const timingEl = section.querySelector('.calling-timing') as HTMLElement | null;
     if (!timingEl) return;
@@ -2228,10 +2235,14 @@ export class DomindsDialogContainer extends HTMLElement {
     const endText = this.formatAbsoluteTime(finishedAt);
     const total = this.formatDuration(finishedAt - startedAtMs);
     const statusMark = state === 'failed' ? (this.uiLanguage === 'zh' ? '失败' : 'failed') : '';
-    timingEl.textContent =
+    const baseText =
       this.uiLanguage === 'zh'
         ? `${statusMark ? `状态: ${statusMark} · ` : ''}结束: ${endText} · 总用时: ${total}`
         : `${statusMark ? `Status: ${statusMark} · ` : ''}Ended: ${endText} · Total: ${total}`;
+    timingEl.textContent =
+      typeof extraNote === 'string' && extraNote.trim() !== ''
+        ? `${baseText} · ${extraNote}`
+        : baseText;
   }
 
   private refreshPendingCallTimingDisplay(): void {
@@ -2284,10 +2295,39 @@ export class DomindsDialogContainer extends HTMLElement {
     const startedAtMsParsed = startedRaw ? Number.parseInt(startedRaw, 10) : Number.NaN;
     const startedAtMs = Number.isFinite(startedAtMsParsed) ? startedAtMsParsed : endedAtMs;
     section.classList.remove('pending');
+    section.classList.remove('carried-over');
     section.classList.add('completed');
     section.classList.toggle('failed', status === 'failed');
+    section.removeAttribute('data-carryover-course');
     this.pendingCallTimingById.delete(callId);
     this.renderCallTiming(section, status, startedAtMs, endedAtMs);
+    if (this.pendingCallTimingById.size === 0) {
+      this.stopCallTimingTicker();
+    }
+  }
+
+  private markCallSiteCarriedOver(
+    callId: string,
+    status: 'completed' | 'failed',
+    carryoverCourse: number,
+    endedAtMs: number,
+  ): void {
+    const section = this.callingSectionByCallId.get(callId);
+    if (!section) return;
+    const startedRaw = section.getAttribute('data-call-start-ms');
+    const startedAtMsParsed = startedRaw ? Number.parseInt(startedRaw, 10) : Number.NaN;
+    const startedAtMs = Number.isFinite(startedAtMsParsed) ? startedAtMsParsed : endedAtMs;
+    section.classList.remove('pending');
+    section.classList.add('completed');
+    section.classList.add('carried-over');
+    section.classList.toggle('failed', status === 'failed');
+    section.setAttribute('data-carryover-course', String(carryoverCourse));
+    this.pendingCallTimingById.delete(callId);
+    const extraNote =
+      this.uiLanguage === 'zh'
+        ? `结果在 C${String(carryoverCourse)} 补入，本程未见此反馈`
+        : `Result carried into C${String(carryoverCourse)}; this course never saw the feedback`;
+    this.renderCallTiming(section, status, startedAtMs, endedAtMs, extraNote);
     if (this.pendingCallTimingById.size === 0) {
       this.stopCallTimingTicker();
     }
@@ -2397,7 +2437,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.setupProgressiveExpand({ target, footer, button });
   }
 
-  private setupTeammateResponseProgressiveExpand(section: HTMLElement): void {
+  private setupTellaskResponseProgressiveExpand(section: HTMLElement): void {
     const target = section.querySelector('.teammate-content') as HTMLElement | null;
     const footer = section.querySelector('.teammate-expand-footer') as HTMLElement | null;
     const button = section.querySelector('.teammate-expand-btn') as HTMLButtonElement | null;
@@ -2406,7 +2446,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleToolCallStart(
-    event: Extract<TypedDialogEvent, { type: 'teammate_call_start_evt' }>,
+    event: Extract<TypedDialogEvent, { type: 'tellask_call_start_evt' }>,
   ): void {
     const genseq = event.genseq;
     const mentionList = (() => {
@@ -2477,7 +2517,7 @@ export class DomindsDialogContainer extends HTMLElement {
     (body || bubble).appendChild(callingSection);
     this.setupCallingProgressiveExpand(callingSection);
     this.callingSection = undefined;
-    this.teammateCallingSectionBySeq.set(genseq, callingSection);
+    this.tellaskCallingSectionBySeq.set(genseq, callingSection);
     this.callingSectionByCallId.set(event.callId, callingSection);
     this.markCallSitePending(event.callId, callingSection, startedAtMs);
 
@@ -2601,7 +2641,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
       container.appendChild(messageEl);
-      this.setupTeammateResponseProgressiveExpand(messageEl);
+      this.setupTellaskResponseProgressiveExpand(messageEl);
       this.scrollToBottom();
     }
   }
@@ -2612,11 +2652,11 @@ export class DomindsDialogContainer extends HTMLElement {
   //
   // Call Type Distinction:
   private handleToolCallResponse(
-    event: Extract<TypedDialogEvent, { type: 'teammate_call_response_evt' }>,
+    event: Extract<TypedDialogEvent, { type: 'tellask_call_result_evt' }>,
   ): void {
     if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
       this.handleProtocolError(
-        `teammate_call_response_evt course mismatch ${JSON.stringify({
+        `tellask_call_result_evt course mismatch ${JSON.stringify({
           eventCourse: event.course,
           currentCourse: this.currentCourse,
           callId: event.callId,
@@ -2632,7 +2672,7 @@ export class DomindsDialogContainer extends HTMLElement {
           ? event.mentionList
           : undefined;
       this.handleProtocolError(
-        `teammate_call_response_evt missing callId ${JSON.stringify({
+        `tellask_call_result_evt missing callId ${JSON.stringify({
           responderId: event.responderId,
           mentionList: mentionListForLog,
           tellaskContent: event.tellaskContent,
@@ -2645,7 +2685,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callingSection = this.callingSectionByCallId.get(callId);
     if (!callingSection) {
       this.handleProtocolError(
-        `teammate_call_response_evt received before teammate_call_start_evt ${JSON.stringify({
+        `tellask_call_result_evt received before tellask_call_start_evt ${JSON.stringify({
           callId,
           course: event.course,
           calling_genseq: event.calling_genseq,
@@ -2673,6 +2713,50 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  private handleTellaskCallCarryover(
+    event: Extract<TypedDialogEvent, { type: 'tellask_call_carryover_evt' }>,
+  ): void {
+    if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
+      this.handleProtocolError(
+        `tellask_call_carryover_evt course mismatch ${JSON.stringify({
+          eventCourse: event.course,
+          currentCourse: this.currentCourse,
+          callId: event.callId,
+          carryoverCourse: event.carryoverCourse,
+        })}`,
+      );
+      return;
+    }
+
+    const callId = String(event.callId || '').trim();
+    if (!callId) {
+      this.handleProtocolError(
+        `tellask_call_carryover_evt missing callId ${JSON.stringify({
+          responderId: event.responderId,
+          course: event.course,
+          carryoverCourse: event.carryoverCourse,
+        })}`,
+      );
+      return;
+    }
+
+    const callingSection = this.callingSectionByCallId.get(callId);
+    if (!callingSection) {
+      this.handleProtocolError(
+        `tellask_call_carryover_evt received before tellask_call_start_evt ${JSON.stringify({
+          callId,
+          course: event.course,
+          responderId: event.responderId,
+          carryoverCourse: event.carryoverCourse,
+        })}`,
+      );
+      return;
+    }
+
+    const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
+    this.markCallSiteCarriedOver(callId, event.status, event.carryoverCourse, endedAtMs);
+  }
+
   private parseOptionalPositiveInt(value: unknown): number | undefined {
     if (typeof value !== 'number') {
       return undefined;
@@ -2683,10 +2767,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return Math.floor(value);
   }
 
-  private applyTeammateCallAnchorToBubble(
-    bubble: HTMLElement,
-    anchor: TeammateCallAnchorMeta,
-  ): void {
+  private applyTellaskCallAnchorToBubble(bubble: HTMLElement, anchor: TellaskCallAnchorMeta): void {
     bubble.setAttribute('data-call-id', anchor.callId);
     bubble.setAttribute('data-teammate-call-anchor-role', anchor.anchorRole);
 
@@ -2729,17 +2810,17 @@ export class DomindsDialogContainer extends HTMLElement {
     this.upsertGenerationBubbleAnchorActions(bubble);
   }
 
-  private handleTeammateCallAnchor(
-    event: Extract<TypedDialogEvent, { type: 'teammate_call_anchor_evt' }>,
+  private handleTellaskCallAnchor(
+    event: Extract<TypedDialogEvent, { type: 'tellask_call_anchor_evt' }>,
   ): void {
     const rawCallId = typeof event.callId === 'string' ? event.callId.trim() : '';
     if (rawCallId === '') {
-      this.handleProtocolError('teammate_call_anchor_evt missing callId');
+      this.handleProtocolError('tellask_call_anchor_evt missing callId');
       return;
     }
     if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
       this.handleProtocolError(
-        `teammate_call_anchor_evt invalid genseq ${JSON.stringify({
+        `tellask_call_anchor_evt invalid genseq ${JSON.stringify({
           genseq: event.genseq,
           callId: rawCallId,
         })}`,
@@ -2752,7 +2833,7 @@ export class DomindsDialogContainer extends HTMLElement {
         : '';
     if (rawAnchorRole !== 'assignment' && rawAnchorRole !== 'response') {
       this.handleProtocolError(
-        `teammate_call_anchor_evt invalid anchorRole ${JSON.stringify({
+        `tellask_call_anchor_evt invalid anchorRole ${JSON.stringify({
           anchorRole: rawAnchorRole,
           callId: rawCallId,
           genseq: event.genseq,
@@ -2766,7 +2847,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callerCourse = this.parseOptionalPositiveInt(event.callerCourse);
     const callerDialogId =
       typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
-    const anchorMeta: TeammateCallAnchorMeta = {
+    const anchorMeta: TellaskCallAnchorMeta = {
       callId: rawCallId,
       anchorRole: rawAnchorRole,
       assignmentCourse:
@@ -2786,11 +2867,11 @@ export class DomindsDialogContainer extends HTMLElement {
         ) as HTMLElement | null)
       : null;
     if (bubble) {
-      this.applyTeammateCallAnchorToBubble(bubble, anchorMeta);
-      this.pendingTeammateCallAnchorByGenseq.delete(genseq);
+      this.applyTellaskCallAnchorToBubble(bubble, anchorMeta);
+      this.pendingTellaskCallAnchorByGenseq.delete(genseq);
       return;
     }
-    this.pendingTeammateCallAnchorByGenseq.set(genseq, anchorMeta);
+    this.pendingTellaskCallAnchorByGenseq.set(genseq, anchorMeta);
   }
 
   // === TEAMMATE RESPONSE HANDLER ===
@@ -2801,14 +2882,14 @@ export class DomindsDialogContainer extends HTMLElement {
   // - Teammate tellask function calls (tellask/tellaskSessionless)
   //   - Result displays in SEPARATE bubble (subdialog or supdialog response)
   //   - Uses calleeDialogId for correlation (event.calleeDialogId)
-  //   - Uses this handler (handleTeammateResponse)
+  //   - Uses this handler (handleTellaskResponse)
   //
   // - Parent Call: subdialog responding to @parentAgentId from within
   //   - Result displays INLINE in parent's bubble
   //   - Uses callId for correlation
   //   - Uses handleToolCallResponse() instead
-  private handleTeammateResponse(
-    event: Extract<TypedDialogEvent, { type: 'teammate_response_evt' }>,
+  private handleTellaskResponse(
+    event: Extract<TypedDialogEvent, { type: 'tellask_response_evt' }>,
   ): void {
     const normalizedCallId = String(event.callId || '').trim();
     if (normalizedCallId !== '') {
@@ -2816,7 +2897,7 @@ export class DomindsDialogContainer extends HTMLElement {
       const hasCallSite = this.callingSectionByCallId.has(normalizedCallId);
       if (!hasCallSite) {
         this.handleProtocolError(
-          `teammate_response_evt received before teammate_call_start_evt ${JSON.stringify({
+          `tellask_response_evt received before tellask_call_start_evt ${JSON.stringify({
             callId: normalizedCallId,
             course: event.course,
             calling_genseq: event.calling_genseq,
@@ -2830,7 +2911,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     // Validate calleeDialogId is present
     if (!event.calleeDialogId) {
-      console.error('handleTeammateResponse: Missing calleeDialogId', {
+      console.error('handleTellaskResponse: Missing calleeDialogId', {
         responderId: event.responderId,
         response: event.response?.substring(0, 100),
       });
@@ -2846,10 +2927,10 @@ export class DomindsDialogContainer extends HTMLElement {
     const agentId = event.agentId || event.responderId;
     const requesterId = event.originMemberId;
     if (!requesterId || requesterId.trim() === '') {
-      throw new Error('handleTeammateResponse: Missing originMemberId (requesterId)');
+      throw new Error('handleTellaskResponse: Missing originMemberId (requesterId)');
     }
     if (typeof event.response !== 'string') {
-      throw new Error('handleTeammateResponse: Missing response payload');
+      throw new Error('handleTellaskResponse: Missing response payload');
     }
 
     const responseNarr = event.response;
@@ -2867,7 +2948,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // callId is used for navigation between call site ↔ response bubble.
 
     // Create teammate bubble with the response
-    const messageEl = this.createTeammateBubble(
+    const messageEl = this.createTellaskResponseBubble(
       event.calleeDialogId,
       agentId,
       responseNarr,
@@ -2887,6 +2968,19 @@ export class DomindsDialogContainer extends HTMLElement {
       container.appendChild(messageEl);
       this.scrollToBottom();
     }
+  }
+
+  private handleTellaskCarryoverResult(
+    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_result_evt' }>,
+  ): void {
+    const container = this.shadowRoot?.querySelector('.messages');
+    if (!container) {
+      return;
+    }
+    const messageEl = this.createTellaskCarryoverBubble(event);
+    container.appendChild(messageEl);
+    this.setupTellaskResponseProgressiveExpand(messageEl);
+    this.scrollToBottom();
   }
 
   // === SUBDIALOG EVENTS ===
@@ -2924,7 +3018,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Create teammate bubble for subagent responses
   // calleeDialogId: ID of the callee dialog (subdialog OR supdialog)
-  private createTeammateBubble(
+  private createTellaskResponseBubble(
     calleeDialogId: string,
     agentId: string | undefined,
     responseNarr: string,
@@ -3057,16 +3151,129 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
-  private navigateToCallSiteInApp(callId: string): void {
+  private createTellaskCarryoverBubble(
+    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_result_evt' }>,
+  ): HTMLElement {
+    const t = getUiStrings(this.uiLanguage);
+    const el = document.createElement('div');
+    el.className = 'message teammate tellask-carryover';
+    el.setAttribute('data-call-id', event.callId);
+    el.setAttribute('data-origin-course', String(Math.floor(event.originCourse)));
+    const safeTimestamp = this.escapeHtml(event.timestamp ?? '');
+    const originCourse = Math.floor(event.originCourse);
+    const titleText =
+      this.uiLanguage === 'zh'
+        ? `旧程诉请结果补入 · C ${String(originCourse)}`
+        : `Carry-over tellask result · C ${String(originCourse)}`;
+    el.innerHTML = `
+      <div class="bubble-content">
+        <div class="bubble-header">
+          <div class="bubble-title">
+            <div class="title-row">
+              <div class="title-left">
+                <span class="author-name">${this.escapeHtml(titleText)}</span>
+              </div>
+              <div class="title-right">
+                <div class="bubble-title-actions" data-call-id="${this.escapeHtml(event.callId)}">
+                  <button type="button" class="callsite-icon-btn internal" aria-label="${this.escapeHtml(t.q4hGoToCallSiteTitle)}" title="${this.escapeHtml(t.q4hGoToCallSiteTitle)}">
+                    <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="callsite-icon-btn external" aria-label="${this.escapeHtml(t.q4hOpenInNewTabTitle)}" title="${this.escapeHtml(t.q4hOpenInNewTabTitle)}">
+                    <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="callsite-icon-btn share" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
+                    <span class="icon-mask dc-icon-link" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <div class="timestamp">${safeTimestamp}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bubble-body">
+          <div class="teammate-content"></div>
+          <div class="teammate-expand-footer progressive-expand-footer is-hidden">
+            <button type="button" class="teammate-expand-btn progressive-expand-btn"></button>
+          </div>
+        </div>
+      </div>
+    `;
+    const contentEl = el.querySelector('.teammate-content');
+    if (contentEl) {
+      const md = this.createMarkdownSection();
+      md.setRawMarkdown(event.content);
+      contentEl.appendChild(md);
+    }
+
+    const internalBtn = el.querySelector(
+      'button.callsite-icon-btn.internal',
+    ) as HTMLButtonElement | null;
+    if (internalBtn) {
+      internalBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.navigateToCallSiteInApp(event.callId, originCourse);
+      });
+    }
+
+    const externalBtn = el.querySelector(
+      'button.callsite-icon-btn.external',
+    ) as HTMLButtonElement | null;
+    if (externalBtn) {
+      externalBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openCallSiteDeepLinkInNewTab(event.callId, {
+          course: toCallerCourseNumber(originCourse),
+        });
+      });
+    }
+
+    const shareBtn = el.querySelector('button.callsite-icon-btn.share') as HTMLButtonElement | null;
+    if (shareBtn) {
+      shareBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.copyCallSiteDeepLinkToClipboard(event.callId, {
+          course: toCallerCourseNumber(originCourse),
+        });
+      });
+    }
+
+    return el;
+  }
+
+  private navigateToCallSiteInApp(callId: string, courseOverride?: number): void {
     const rawCallId = callId.trim();
     if (!rawCallId) return;
 
-    const course = this.currentCourse;
+    const course =
+      typeof courseOverride === 'number' && Number.isFinite(courseOverride)
+        ? Math.floor(courseOverride)
+        : this.currentCourse;
     if (typeof course === 'number') {
-      // Prefer local navigation: avoid re-selecting dialogs/courses in the parent app, which can
-      // trigger a re-render/replay and create duplicate feedback bubbles.
-      this.pendingScrollRequest = { kind: 'by_call_id', course, callId: rawCallId };
-      this.maybeApplyPendingScrollRequest();
+      if (this.currentCourse === course) {
+        // Prefer local navigation: avoid re-selecting dialogs/courses in the parent app, which can
+        // trigger a re-render/replay and create duplicate feedback bubbles.
+        this.pendingScrollRequest = { kind: 'by_call_id', course, callId: rawCallId };
+        this.maybeApplyPendingScrollRequest();
+        return;
+      }
+
+      const dialog = this.currentDialog;
+      if (!dialog) return;
+      this.dispatchEvent(
+        new CustomEvent('navigate-callsite', {
+          detail: {
+            rootId: dialog.rootId,
+            selfId: dialog.selfId,
+            course,
+            callId: rawCallId,
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
       return;
     }
 
@@ -3074,7 +3281,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // navigation that requires dialog/course resolution.
   }
 
-  private navigateToGenerationBubbleInApp(target: TeammateAssignmentTarget): void {
+  private navigateToGenerationBubbleInApp(target: TellaskAssignmentTarget): void {
     const normalizedCourse = Math.floor(target.course);
     const normalizedGenseq = Math.floor(target.genseq);
     const dialog = this.currentDialog;
@@ -3104,7 +3311,7 @@ export class DomindsDialogContainer extends HTMLElement {
     );
   }
 
-  private openCallSiteDeepLinkInNewTab(callId: string, target?: TeammateCallSiteTarget): void {
+  private openCallSiteDeepLinkInNewTab(callId: string, target?: TellaskCallSiteTarget): void {
     const dialog = this.currentDialog;
     if (!dialog) return;
     const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
@@ -3135,7 +3342,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private async copyCallSiteDeepLinkToClipboard(
     callId: string,
-    target?: TeammateCallSiteTarget,
+    target?: TellaskCallSiteTarget,
   ): Promise<void> {
     const dialog = this.currentDialog;
     if (!dialog) return;
@@ -4856,6 +5063,24 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-section.failed {
         border-left-color: var(--color-danger, #ef4444);
         background: rgba(239, 68, 68, 0.08);
+      }
+
+      .calling-section.carried-over {
+        border-left-color: var(--color-warning, #f59e0b);
+        background: color-mix(
+          in srgb,
+          var(--color-warning, #f59e0b) 10%,
+          var(--color-bg-tertiary, #f1f5f9)
+        );
+      }
+
+      .calling-section.carried-over.failed {
+        border-left-color: var(--color-danger, #ef4444);
+        background: color-mix(
+          in srgb,
+          var(--color-danger, #ef4444) 10%,
+          var(--color-bg-tertiary, #f1f5f9)
+        );
       }
 
       /* Function call section styles (nested inside markdown) - non-streaming mode */

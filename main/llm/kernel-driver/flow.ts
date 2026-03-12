@@ -243,7 +243,7 @@ async function inspectNoPromptSubdialogDrive(args: {
   );
   const rawLastEvent = courseEvents[courseEvents.length - 1];
   const lastEvent =
-    rawLastEvent?.type === 'teammate_call_anchor_record'
+    rawLastEvent?.type === 'tellask_call_anchor_record'
       ? { type: rawLastEvent.type, anchorRole: rawLastEvent.anchorRole }
       : rawLastEvent
         ? { type: rawLastEvent.type }
@@ -255,7 +255,7 @@ async function inspectNoPromptSubdialogDrive(args: {
     source === 'kernel_driver_supply_response_parent_revive' &&
     runState?.kind === 'blocked' &&
     runState.reason.kind === 'waiting_for_subdialogs';
-  if (lastEvent?.type === 'teammate_call_anchor_record' && lastEvent.anchorRole === 'response') {
+  if (lastEvent?.type === 'tellask_call_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
       source,

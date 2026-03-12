@@ -30,9 +30,11 @@ import type {
   Q4HAnsweredEvent,
   StreamErrorEvent,
   SubdialogEvent,
-  TeammateCallResponseEvent,
-  TeammateCallStartEvent,
-  TeammateResponseEvent,
+  TellaskCallCarryoverEvent,
+  TellaskCallResultEvent,
+  TellaskCallStartEvent,
+  TellaskCarryoverResultEvent,
+  TellaskResponseEvent,
   ThinkingChunkEvent,
   ThinkingFinishEvent,
   ThinkingStartEvent,
@@ -45,6 +47,7 @@ import type {
   AgentWordsRecord,
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
+  CallingCourseNumber,
   DialogLatestFile,
   DialogMetadataFile,
   FuncCallRecord,
@@ -70,8 +73,10 @@ import type {
   SubdialogRegistryStateRecord,
   SubdialogResponsesReconciledRecord,
   SubdialogResponseStateRecord,
-  TeammateCallResultRecord,
-  TeammateResponseRecord,
+  TellaskCallCarryoverRecord,
+  TellaskCallResultRecord,
+  TellaskCarryoverResultRecord,
+  TellaskResponseRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
@@ -719,12 +724,12 @@ export class DiskFileDialogStore extends DialogStore {
    * - tellask-special function call (inline bubble)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
-   *   - Uses receiveTeammateCallResult() + callId parameter
+   *   - Uses receiveTellaskCallResult() + callId parameter
    *
    * - Teammate Tellask (subdialog response bubble)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
-   *   - Uses receiveTeammateResponse() instead
+   *   - Uses receiveTellaskResponse() instead
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the tool/agent that responded (e.g., "add_reminder")
@@ -734,7 +739,7 @@ export class DiskFileDialogStore extends DialogStore {
    * @param status - Response status ('completed' | 'failed')
    * @param callId - Correlation ID from call_start_evt (REQUIRED for inline display)
    */
-  public async receiveTeammateCallResult(
+  public async receiveTellaskCallResult(
     dialog: Dialog,
     responderId: string,
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
@@ -750,13 +755,13 @@ export class DiskFileDialogStore extends DialogStore {
         ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
         : undefined;
     // Persist record WITH callId for replay correlation
-    const ev: TeammateCallResultRecord = (() => {
+    const ev: TellaskCallResultRecord = (() => {
       switch (callName) {
         case 'tellask':
         case 'tellaskSessionless':
           return {
             ts: formatUnifiedTimestamp(new Date()),
-            type: 'teammate_call_result_record',
+            type: 'tellask_call_result_record',
             responderId,
             callName,
             mentionList: mentionList ?? [],
@@ -771,7 +776,7 @@ export class DiskFileDialogStore extends DialogStore {
         case 'freshBootsReasoning':
           return {
             ts: formatUnifiedTimestamp(new Date()),
-            type: 'teammate_call_result_record',
+            type: 'tellask_call_result_record',
             responderId,
             callName,
             tellaskContent,
@@ -784,13 +789,13 @@ export class DiskFileDialogStore extends DialogStore {
     })();
     await this.appendEvent(dialog, course, ev);
 
-    // Emit TeammateCallResponseEvent WITH callId for UI correlation
-    const toolResponseEvt: TeammateCallResponseEvent = (() => {
+    // Emit TellaskCallResultEvent WITH callId for UI correlation
+    const toolResponseEvt: TellaskCallResultEvent = (() => {
       switch (callName) {
         case 'tellask':
         case 'tellaskSessionless':
           return {
-            type: 'teammate_call_response_evt',
+            type: 'tellask_call_result_evt',
             responderId,
             callName,
             mentionList: mentionList ?? [],
@@ -805,7 +810,7 @@ export class DiskFileDialogStore extends DialogStore {
         case 'askHuman':
         case 'freshBootsReasoning':
           return {
-            type: 'teammate_call_response_evt',
+            type: 'tellask_call_result_evt',
             responderId,
             callName,
             tellaskContent,
@@ -827,7 +832,7 @@ export class DiskFileDialogStore extends DialogStore {
    * - Teammate Tellask response
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
-   *   - Uses this method (receiveTeammateResponse)
+   *   - Uses this method (receiveTellaskResponse)
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the teammate agent (e.g., "coder")
@@ -836,7 +841,7 @@ export class DiskFileDialogStore extends DialogStore {
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
-  public async receiveTeammateResponse(
+  public async receiveTellaskResponse(
     dialog: Dialog,
     responderId: string,
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
@@ -849,12 +854,14 @@ export class DiskFileDialogStore extends DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      originCourse?: CallingCourseNumber;
+      carryoverContent?: string;
       sessionSlug?: string;
       calleeCourse?: CalleeCourseNumber;
       calleeGenseq?: CalleeGenerationSeqNumber;
     },
   ): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const currentCourse = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const calling_genseq =
       dialog.activeGenSeqOrUndefined !== undefined
         ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
@@ -864,6 +871,12 @@ export class DiskFileDialogStore extends DialogStore {
     const agentId = options.agentId;
     const callId = options.callId;
     const originMemberId = options.originMemberId;
+    const originCourse = options.originCourse;
+    const carryoverContent = options.carryoverContent;
+    const carryoverText =
+      typeof carryoverContent === 'string' && carryoverContent.trim() !== ''
+        ? carryoverContent
+        : undefined;
     const sessionSlug =
       typeof options.sessionSlug === 'string' && options.sessionSlug.trim() !== ''
         ? options.sessionSlug.trim()
@@ -871,139 +884,321 @@ export class DiskFileDialogStore extends DialogStore {
     const calleeCourse = options.calleeCourse;
     const calleeGenseq = options.calleeGenseq;
     const normalizedMentionList = mentionList ?? [];
-    const ev: TeammateResponseRecord = (() => {
-      switch (callName) {
-        case 'tellask':
-          if (!sessionSlug) {
-            throw new Error(
-              `receiveTeammateResponse invariant violation: missing sessionSlug for tellask ` +
-                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
-            );
-          }
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'teammate_response_record',
-            responderId,
-            callName,
-            sessionSlug,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            calling_genseq,
-            response,
-            agentId,
-            callId,
-            originMemberId,
-          };
-        case 'tellaskSessionless':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'teammate_response_record',
-            responderId,
-            callName,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            calling_genseq,
-            response,
-            agentId,
-            callId,
-            originMemberId,
-          };
-        case 'tellaskBack':
-        case 'freshBootsReasoning':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'teammate_response_record',
-            responderId,
-            callName,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-            tellaskContent,
-            status,
-            calling_genseq,
-            response,
-            agentId,
-            callId,
-            originMemberId,
-          };
-      }
-    })();
-    await this.appendEvent(dialog, course, ev);
+    const isCrossCourseCarryover = originCourse !== undefined && originCourse !== currentCourse;
 
-    const teammateResponseEvt: TeammateResponseEvent = (() => {
+    if (!isCrossCourseCarryover) {
+      const responseCourse = originCourse ?? currentCourse;
+      const ev: TellaskResponseRecord = (() => {
+        switch (callName) {
+          case 'tellask':
+            if (!sessionSlug) {
+              throw new Error(
+                `receiveTellaskResponse invariant violation: missing sessionSlug for tellask ` +
+                  `(dialogId=${dialog.id.selfId}, callId=${callId})`,
+              );
+            }
+            return {
+              ts: formatUnifiedTimestamp(new Date()),
+              type: 'tellask_response_record',
+              responderId,
+              callName,
+              sessionSlug,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              mentionList: normalizedMentionList,
+              tellaskContent,
+              status,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+          case 'tellaskSessionless':
+            return {
+              ts: formatUnifiedTimestamp(new Date()),
+              type: 'tellask_response_record',
+              responderId,
+              callName,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              mentionList: normalizedMentionList,
+              tellaskContent,
+              status,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+          case 'tellaskBack':
+          case 'freshBootsReasoning':
+            return {
+              ts: formatUnifiedTimestamp(new Date()),
+              type: 'tellask_response_record',
+              responderId,
+              callName,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              tellaskContent,
+              status,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+        }
+      })();
+      await this.appendEvent(dialog, responseCourse, ev);
+
+      const tellaskResponseEvt: TellaskResponseEvent = (() => {
+        switch (callName) {
+          case 'tellask':
+            if (!sessionSlug) {
+              throw new Error(
+                `receiveTellaskResponse invariant violation: missing sessionSlug for tellask ` +
+                  `(dialogId=${dialog.id.selfId}, callId=${callId})`,
+              );
+            }
+            return {
+              type: 'tellask_response_evt',
+              responderId,
+              callName,
+              sessionSlug,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              mentionList: normalizedMentionList,
+              tellaskContent,
+              status,
+              course: responseCourse,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+          case 'tellaskSessionless':
+            return {
+              type: 'tellask_response_evt',
+              responderId,
+              callName,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              mentionList: normalizedMentionList,
+              tellaskContent,
+              status,
+              course: responseCourse,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+          case 'tellaskBack':
+          case 'freshBootsReasoning':
+            return {
+              type: 'tellask_response_evt',
+              responderId,
+              callName,
+              calleeDialogId: calleeDialogSelfId,
+              calleeCourse,
+              calleeGenseq,
+              tellaskContent,
+              status,
+              course: responseCourse,
+              calling_genseq,
+              response,
+              agentId,
+              callId,
+              originMemberId,
+            };
+        }
+      })();
+      postDialogEvent(dialog, tellaskResponseEvt);
+      return;
+    }
+
+    if (!originCourse) {
+      throw new Error(
+        `receiveTellaskResponse invariant violation: missing originCourse for cross-course carryover ` +
+          `(dialogId=${dialog.id.selfId}, callId=${callId}, currentCourse=${currentCourse})`,
+      );
+    }
+    if (callName === 'tellaskBack') {
+      throw new Error(
+        `tellask carryover does not support tellaskBack (dialogId=${dialog.id.selfId}, callId=${callId})`,
+      );
+    }
+    if (carryoverText === undefined) {
+      throw new Error(
+        `receiveTellaskResponse invariant violation: missing carryoverContent for cross-course tellask ` +
+          `(dialogId=${dialog.id.selfId}, callId=${callId}, originCourse=${originCourse}, currentCourse=${currentCourse})`,
+      );
+    }
+
+    const carryoverCallRecord: TellaskCallCarryoverRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'tellask_call_carryover_record',
+      responderId,
+      status,
+      callId,
+      carryoverCourse: toDialogCourseNumber(currentCourse),
+    };
+    await this.appendEvent(dialog, originCourse, carryoverCallRecord);
+
+    const carryoverCallEvent: TellaskCallCarryoverEvent = {
+      type: 'tellask_call_carryover_evt',
+      course: originCourse,
+      responderId,
+      status,
+      callId,
+      carryoverCourse: toDialogCourseNumber(currentCourse),
+    };
+    postDialogEvent(dialog, carryoverCallEvent);
+
+    const carryoverRecord: TellaskCarryoverResultRecord = (() => {
       switch (callName) {
         case 'tellask':
           if (!sessionSlug) {
             throw new Error(
-              `receiveTeammateResponse invariant violation: missing sessionSlug for tellask ` +
+              `receiveTellaskResponse invariant violation: missing sessionSlug for tellask carryover ` +
                 `(dialogId=${dialog.id.selfId}, callId=${callId})`,
             );
           }
           return {
-            type: 'teammate_response_evt',
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'tellask_carryover_result_record',
+            originCourse,
             responderId,
             callName,
             sessionSlug,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
             mentionList: normalizedMentionList,
             tellaskContent,
             status,
-            course,
-            calling_genseq,
             response,
+            content: carryoverText,
             agentId,
             callId,
             originMemberId,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
           };
         case 'tellaskSessionless':
           return {
-            type: 'teammate_response_evt',
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'tellask_carryover_result_record',
+            originCourse,
             responderId,
             callName,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
             mentionList: normalizedMentionList,
             tellaskContent,
             status,
-            course,
-            calling_genseq,
             response,
+            content: carryoverText,
             agentId,
             callId,
             originMemberId,
-          };
-        case 'tellaskBack':
-        case 'freshBootsReasoning':
-          return {
-            type: 'teammate_response_evt',
-            responderId,
-            callName,
             calleeDialogId: calleeDialogSelfId,
             calleeCourse,
             calleeGenseq,
+          };
+        case 'freshBootsReasoning':
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'tellask_carryover_result_record',
+            originCourse,
+            responderId,
+            callName,
             tellaskContent,
             status,
-            course,
-            calling_genseq,
             response,
+            content: carryoverText,
             agentId,
             callId,
             originMemberId,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
           };
       }
     })();
-    postDialogEvent(dialog, teammateResponseEvt);
+    await this.appendEvent(dialog, currentCourse, carryoverRecord);
+
+    const carryoverEvent: TellaskCarryoverResultEvent = (() => {
+      switch (callName) {
+        case 'tellask':
+          if (!sessionSlug) {
+            throw new Error(
+              `receiveTellaskResponse invariant violation: missing sessionSlug for tellask carryover evt ` +
+                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
+            );
+          }
+          return {
+            type: 'tellask_carryover_result_evt',
+            course: currentCourse,
+            originCourse,
+            responderId,
+            callName,
+            sessionSlug,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            response,
+            content: carryoverText,
+            agentId,
+            callId,
+            originMemberId,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+          };
+        case 'tellaskSessionless':
+          return {
+            type: 'tellask_carryover_result_evt',
+            course: currentCourse,
+            originCourse,
+            responderId,
+            callName,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            response,
+            content: carryoverText,
+            agentId,
+            callId,
+            originMemberId,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+          };
+        case 'freshBootsReasoning':
+          return {
+            type: 'tellask_carryover_result_evt',
+            course: currentCourse,
+            originCourse,
+            responderId,
+            callName,
+            tellaskContent,
+            status,
+            response,
+            content: carryoverText,
+            agentId,
+            callId,
+            originMemberId,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+          };
+      }
+    })();
+    postDialogEvent(dialog, carryoverEvent);
   }
 
   /**
@@ -1261,7 +1456,7 @@ export class DiskFileDialogStore extends DialogStore {
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallStartEvent = (() => {
+    const evt: TellaskCallStartEvent = (() => {
       switch (payload.callName) {
         case 'tellask':
           if (!payload.sessionSlug || payload.sessionSlug.trim() === '') {
@@ -1270,7 +1465,7 @@ export class DiskFileDialogStore extends DialogStore {
             );
           }
           return {
-            type: 'teammate_call_start_evt',
+            type: 'tellask_call_start_evt',
             callName: payload.callName,
             callId: payload.callId,
             mentionList: payload.mentionList ?? [],
@@ -1281,7 +1476,7 @@ export class DiskFileDialogStore extends DialogStore {
           };
         case 'tellaskSessionless':
           return {
-            type: 'teammate_call_start_evt',
+            type: 'tellask_call_start_evt',
             callName: payload.callName,
             callId: payload.callId,
             mentionList: payload.mentionList ?? [],
@@ -1293,7 +1488,7 @@ export class DiskFileDialogStore extends DialogStore {
         case 'askHuman':
         case 'freshBootsReasoning':
           return {
-            type: 'teammate_call_start_evt',
+            type: 'tellask_call_start_evt',
             callName: payload.callName,
             callId: payload.callId,
             tellaskContent: payload.tellaskContent,
@@ -2214,7 +2409,7 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
                 return {
-                  type: 'teammate_call_start_evt',
+                  type: 'tellask_call_start_evt',
                   callName: specialCall.callName,
                   callId: specialCall.callId,
                   mentionList: specialCall.mentionList,
@@ -2227,7 +2422,7 @@ export class DiskFileDialogStore extends DialogStore {
                 };
               case 'tellaskSessionless':
                 return {
-                  type: 'teammate_call_start_evt',
+                  type: 'tellask_call_start_evt',
                   callName: specialCall.callName,
                   callId: specialCall.callId,
                   mentionList: specialCall.mentionList,
@@ -2241,7 +2436,7 @@ export class DiskFileDialogStore extends DialogStore {
               case 'askHuman':
               case 'freshBootsReasoning':
                 return {
-                  type: 'teammate_call_start_evt',
+                  type: 'tellask_call_start_evt',
                   callName: specialCall.callName,
                   callId: specialCall.callId,
                   tellaskContent: specialCall.tellaskContent,
@@ -2394,14 +2589,14 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'teammate_call_result_record': {
+      case 'tellask_call_result_record': {
         // Handle teammate-call inline results
         const responseEvent = (() => {
           switch (event.callName) {
             case 'tellask':
             case 'tellaskSessionless':
               return {
-                type: 'teammate_call_response_evt',
+                type: 'tellask_call_result_evt',
                 responderId: event.responderId,
                 callName: event.callName,
                 mentionList: event.mentionList,
@@ -2421,7 +2616,7 @@ export class DiskFileDialogStore extends DialogStore {
             case 'askHuman':
             case 'freshBootsReasoning':
               return {
-                type: 'teammate_call_response_evt',
+                type: 'tellask_call_result_evt',
                 responderId: event.responderId,
                 callName: event.callName,
                 tellaskContent: event.tellaskContent,
@@ -2445,9 +2640,9 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'teammate_call_anchor_record': {
+      case 'tellask_call_anchor_record': {
         const anchorEvent = {
-          type: 'teammate_call_anchor_evt',
+          type: 'tellask_call_anchor_evt',
           course,
           genseq: event.genseq,
           anchorRole: event.anchorRole ?? 'response',
@@ -2468,6 +2663,109 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
+      case 'tellask_call_carryover_record': {
+        const carryoverEvent = {
+          type: 'tellask_call_carryover_evt',
+          course,
+          responderId: event.responderId,
+          status: event.status,
+          callId: event.callId,
+          carryoverCourse: event.carryoverCourse,
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(carryoverEvent));
+        }
+        break;
+      }
+
+      case 'tellask_carryover_result_record': {
+        const carryoverEvent = (() => {
+          switch (event.callName) {
+            case 'tellask':
+              return {
+                type: 'tellask_carryover_result_evt',
+                course,
+                originCourse: event.originCourse,
+                responderId: event.responderId,
+                callName: event.callName,
+                sessionSlug: event.sessionSlug,
+                mentionList: event.mentionList,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                response: event.response,
+                content: event.content,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+            case 'tellaskSessionless':
+              return {
+                type: 'tellask_carryover_result_evt',
+                course,
+                originCourse: event.originCourse,
+                responderId: event.responderId,
+                callName: event.callName,
+                mentionList: event.mentionList,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                response: event.response,
+                content: event.content,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+            case 'freshBootsReasoning':
+              return {
+                type: 'tellask_carryover_result_evt',
+                course,
+                originCourse: event.originCourse,
+                responderId: event.responderId,
+                callName: event.callName,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                response: event.response,
+                content: event.content,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+          }
+        })();
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(carryoverEvent));
+        }
+        break;
+      }
+
       case 'subdialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
@@ -2476,7 +2774,7 @@ export class DiskFileDialogStore extends DialogStore {
       case 'subdialog_responses_reconciled_record':
         break;
 
-      case 'teammate_response_record': {
+      case 'tellask_response_record': {
         // Handle teammate response events (separate bubble for @teammate tellasks)
         const mentionList = (() => {
           switch (event.callName) {
@@ -2488,7 +2786,7 @@ export class DiskFileDialogStore extends DialogStore {
               return undefined;
           }
         })();
-        const teammateResponseEvent = (() => {
+        const tellaskResponseEvent = (() => {
           switch (event.callName) {
             case 'tellask': {
               const sessionSlug =
@@ -2497,12 +2795,12 @@ export class DiskFileDialogStore extends DialogStore {
                   : undefined;
               if (!sessionSlug) {
                 throw new Error(
-                  `Replay teammate_response_record invariant violation: missing sessionSlug for tellask ` +
+                  `Replay tellask_response_record invariant violation: missing sessionSlug for tellask ` +
                     `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, course=${course}, callId=${event.callId})`,
                 );
               }
               return {
-                type: 'teammate_response_evt',
+                type: 'tellask_response_evt',
                 responderId: event.responderId,
                 callName: event.callName,
                 sessionSlug,
@@ -2527,7 +2825,7 @@ export class DiskFileDialogStore extends DialogStore {
             }
             case 'tellaskSessionless':
               return {
-                type: 'teammate_response_evt',
+                type: 'tellask_response_evt',
                 responderId: event.responderId,
                 callName: event.callName,
                 calleeDialogId: event.calleeDialogId,
@@ -2551,7 +2849,7 @@ export class DiskFileDialogStore extends DialogStore {
             case 'tellaskBack':
             case 'freshBootsReasoning':
               return {
-                type: 'teammate_response_evt',
+                type: 'tellask_response_evt',
                 responderId: event.responderId,
                 callName: event.callName,
                 calleeDialogId: event.calleeDialogId,
@@ -2575,7 +2873,7 @@ export class DiskFileDialogStore extends DialogStore {
         })();
 
         if (ws.readyState === 1) {
-          ws.send(JSON.stringify(teammateResponseEvent));
+          ws.send(JSON.stringify(tellaskResponseEvent));
         }
         break;
       }
@@ -5467,7 +5765,7 @@ export class DialogPersistence {
           break;
         }
 
-        case 'teammate_call_result_record': {
+        case 'tellask_call_result_record': {
           // Convert teammate-call inline result to ChatMessage
           const mentionList = (() => {
             switch (event.callName) {
@@ -5493,7 +5791,10 @@ export class DialogPersistence {
           break;
         }
 
-        case 'teammate_response_record': {
+        case 'tellask_call_carryover_record':
+          break;
+
+        case 'tellask_response_record': {
           // Convert teammate response to ChatMessage (teammate - separate bubble)
           // Note: Teammate responses are stored as separate records but use same message type
           const mentionList = (() => {
@@ -5519,6 +5820,21 @@ export class DialogPersistence {
           break;
         }
 
+        case 'tellask_carryover_result_record': {
+          messages.push({
+            type: 'tellask_carryover_result_msg',
+            role: 'user',
+            content: event.content,
+            originCourse: event.originCourse,
+            responderId: event.responderId,
+            callName: event.callName,
+            tellaskContent: event.tellaskContent,
+            status: event.status,
+            callId: event.callId,
+          });
+          break;
+        }
+
         // gen_start_record and gen_finish_record are control events, not message content
         // They don't need to be converted to ChatMessage objects
         case 'gen_start_record':
@@ -5532,7 +5848,7 @@ export class DialogPersistence {
           // These events are handled separately in dialog restoration
           // Skip them for message reconstruction
           break;
-        case 'teammate_call_anchor_record':
+        case 'tellask_call_anchor_record':
           // This record is UI navigation metadata for deep links in callee dialogs.
           // It does not contribute to model context or chat transcript reconstruction.
           break;

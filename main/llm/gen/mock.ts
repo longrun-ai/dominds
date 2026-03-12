@@ -191,6 +191,7 @@ export class MockGen implements LlmGenerator {
         case 'prompting_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
+        case 'tellask_carryover_result_msg':
           return { content: msg.content, role: msg.role };
         case 'environment_msg':
         case 'transient_guide_msg':
@@ -221,6 +222,7 @@ export class MockGen implements LlmGenerator {
         case 'thinking_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
+        case 'tellask_carryover_result_msg':
           return lastMsg.content;
         case 'func_call_msg':
           return '';
@@ -316,6 +318,7 @@ export class MockGen implements LlmGenerator {
         case 'thinking_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
+        case 'tellask_carryover_result_msg':
           availableContents.push(msg.content);
           break;
         case 'func_call_msg':
@@ -460,6 +463,7 @@ responses:
             case 'thinking_msg':
             case 'func_result_msg':
             case 'tellask_result_msg':
+            case 'tellask_carryover_result_msg':
               return acc + msg.content.length;
             case 'func_call_msg':
               return acc + msg.name.length + msg.arguments.length;
@@ -581,6 +585,7 @@ responses:
               case 'thinking_msg':
               case 'func_result_msg':
               case 'tellask_result_msg':
+              case 'tellask_carryover_result_msg':
                 return acc + msg.content.length;
               case 'func_call_msg':
                 return acc + msg.name.length + msg.arguments.length;

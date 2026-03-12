@@ -87,6 +87,18 @@ export type TellaskCallResultMsg = {
   callId?: string;
 };
 
+export type TellaskCarryoverResultMsg = {
+  type: 'tellask_carryover_result_msg';
+  role: 'user';
+  content: string;
+  originCourse: number;
+  responderId: string;
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  tellaskContent: string;
+  status: 'completed' | 'failed';
+  callId: string;
+};
+
 export type ChatMessage =
   | EnvironmentMsg
   | TransientGuideMsg
@@ -96,7 +108,8 @@ export type ChatMessage =
   | ThinkingMsg
   | FuncCallMsg
   | FuncResultMsg
-  | TellaskCallResultMsg;
+  | TellaskCallResultMsg
+  | TellaskCarryoverResultMsg;
 
 export interface ModelInfo {
   name?: string; // Optional, defaults to model key if not specified

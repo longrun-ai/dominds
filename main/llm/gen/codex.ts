@@ -318,6 +318,7 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
     case 'thinking_msg':
       return [thinkingMessageToCodexReasoningItem(msg)];
     case 'tellask_result_msg':
+    case 'tellask_carryover_result_msg':
       return [messageItem('user', msg.content)];
     case 'func_call_msg':
       return [

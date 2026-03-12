@@ -155,6 +155,7 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
     case 'thinking_msg':
       return thinkingMessageToOpenAiReasoningItem(msg);
     case 'tellask_result_msg':
+    case 'tellask_carryover_result_msg':
       return {
         type: 'message',
         role: 'user',

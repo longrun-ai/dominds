@@ -45,7 +45,7 @@ export type SupdialogCallPromptInput = {
   language?: LanguageCode;
 };
 
-export type TeammateResponseFormatInput = {
+export type TellaskResponseFormatInput = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   responderId: string;
   requesterId: string;
@@ -57,7 +57,19 @@ export type TeammateResponseFormatInput = {
   language?: LanguageCode;
 };
 
-function getRuntimeTransferMarker(input: TeammateResponseFormatInput): string | undefined {
+export type TellaskCarryoverResultFormatInput = {
+  originCourse: number;
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  responderId: string;
+  mentionList?: string[];
+  sessionSlug?: string;
+  tellaskContent: string;
+  responseBody: string;
+  status: 'completed' | 'failed';
+  language?: LanguageCode;
+};
+
+function getRuntimeTransferMarker(input: TellaskResponseFormatInput): string | undefined {
   if (input.status === undefined) return undefined;
   if (input.callName === 'tellaskBack') return '【tellaskBack】';
   if (input.callName === 'freshBootsReasoning') return '【FBR-仅推理】';
@@ -214,7 +226,7 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
   return `${hello}\n\n${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${subMention ? `${subMention}\n` : ''}${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
 }
 
-export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
+export function formatTellaskResponseContent(input: TellaskResponseFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
   const isFbr = input.callName === 'freshBootsReasoning';
@@ -259,4 +271,88 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
         : `regarding the original tellask: ${mentionLine} • ${sessionSlug}`;
 
   return `${markerPrefix}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
+}
+
+export function formatTellaskCarryoverResultContent(
+  input: TellaskCarryoverResultFormatInput,
+): string {
+  const language: LanguageCode = input.language ?? 'en';
+  const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
+  const responseBody = requireNonEmpty(input.responseBody, 'responseBody');
+  const isFbr = input.callName === 'freshBootsReasoning';
+  const mentionLine = (() => {
+    if (isFbr) {
+      return '';
+    }
+    const mentionIds = (input.mentionList ?? [])
+      .map((item) => stripMentionPrefix(item))
+      .filter((item) => item !== '');
+    return mentionIds.map((mentionId) => `@${mentionId}`).join(' ');
+  })();
+  const statusLabel =
+    language === 'zh'
+      ? input.status === 'completed'
+        ? '已完成'
+        : '失败'
+      : input.status === 'completed'
+        ? 'completed'
+        : 'failed';
+  const sessionLine =
+    input.callName === 'tellask' && input.sessionSlug && input.sessionSlug.trim() !== ''
+      ? language === 'zh'
+        ? `- 会话: ${input.sessionSlug.trim()}`
+        : `- Session: ${input.sessionSlug.trim()}`
+      : '';
+  const targetLine =
+    isFbr || mentionLine === ''
+      ? ''
+      : language === 'zh'
+        ? `- 对象: ${mentionLine}`
+        : `- Target: ${mentionLine}`;
+
+  if (language === 'zh') {
+    const lines = [
+      '### 旧程诉请结果补入',
+      '',
+      `- 来源程: C${String(Math.floor(input.originCourse))}`,
+      `- 响应者: @${requireNonEmpty(input.responderId, 'responderId')}`,
+      `- 状态: ${statusLabel}`,
+      targetLine,
+      sessionLine,
+      '',
+      '原诉请：',
+      '',
+      markdownQuote(tellaskContent),
+      '',
+      '反馈结果：',
+      '',
+      markdownQuote(responseBody),
+      '',
+      '注意：这不是新的用户请求，也不是当前程新发起的函数调用，而是旧 pending tellask 的异步完成结果。',
+      '',
+    ];
+    return lines.join('\n');
+  }
+
+  const lines = [
+    '### Carry-over tellask result',
+    '',
+    `- Origin course: C${String(Math.floor(input.originCourse))}`,
+    `- Responder: @${requireNonEmpty(input.responderId, 'responderId')}`,
+    `- Status: ${statusLabel}`,
+    targetLine,
+    sessionLine,
+    '',
+    'Original tellask:',
+    '',
+    markdownQuote(tellaskContent),
+    '',
+    'Result:',
+    '',
+    markdownQuote(responseBody),
+    '',
+    'Note: this is not a new user request or a newly initiated function call in the current course; it is the asynchronous completion of an older pending tellask.',
+    '',
+  ];
+  return lines.join('\n');
 }

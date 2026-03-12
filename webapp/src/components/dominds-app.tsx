@@ -10125,12 +10125,12 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'teammate_call_response_evt': {
+        case 'tellask_call_result_evt': {
           const dialogContainer = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
           if (!dialogContainer) {
-            console.warn('Dialog container not found; dropping teammate_call_response_evt');
+            console.warn('Dialog container not found; dropping tellask_call_result_evt');
             break;
           }
 

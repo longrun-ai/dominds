@@ -25,7 +25,7 @@ import { generateShortId } from '../../shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
-  formatTeammateResponseContent,
+  formatTellaskResponseContent,
 } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
@@ -38,7 +38,7 @@ import type {
   KernelDriverHumanPrompt,
 } from './types';
 
-export type TeammateTellaskParseResult =
+export type TellaskRoutingParseResult =
   | {
       type: 'A';
       agentId: string;
@@ -522,7 +522,7 @@ async function executeTellaskCall(
   callbacks: ExecuteCallbacks,
   options: {
     callName: TellaskSpecialCall['callName'];
-    parseResult: TeammateTellaskParseResult | null;
+    parseResult: TellaskRoutingParseResult | null;
     targetForError?: string;
     collectiveTargets?: string[];
     q4hRemainingCallIds?: string[];
@@ -621,7 +621,7 @@ async function executeTellaskCall(
         callId,
         content: msg,
       });
-      await dlg.receiveTeammateCallResult(
+      await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
         mentionList,
@@ -664,7 +664,7 @@ async function executeTellaskCall(
         callId,
         content: msg,
       });
-      await dlg.receiveTeammateCallResult(
+      await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
         mentionList,
@@ -692,7 +692,7 @@ async function executeTellaskCall(
           callId,
           content: msg,
         });
-        await dlg.receiveTeammateCallResult(
+        await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
           mentionList,
@@ -730,7 +730,7 @@ async function executeTellaskCall(
           callId,
           content: msg,
         });
-        await dlg.receiveTeammateCallResult(
+        await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
           mentionList,
@@ -763,7 +763,7 @@ async function executeTellaskCall(
           callId,
           content: msg,
         });
-        await dlg.receiveTeammateCallResult(
+        await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
           mentionList,
@@ -917,7 +917,7 @@ async function executeTellaskCall(
         callId,
         content: msg,
       });
-      await dlg.receiveTeammateCallResult(
+      await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
         mentionList,
@@ -967,7 +967,7 @@ async function executeTellaskCall(
           });
 
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = formatTeammateResponseContent({
+          const responseContent = formatTellaskResponseContent({
             callName,
             responderId: parseResult.agentId,
             requesterId: dlg.agentId,
@@ -990,7 +990,7 @@ async function executeTellaskCall(
             callId,
             content: responseContent,
           });
-          await dlg.receiveTeammateResponse(
+          await dlg.receiveTellaskResponse(
             parseResult.agentId,
             callName,
             mentionList,
@@ -1008,7 +1008,7 @@ async function executeTellaskCall(
           log.warn('Type A supdialog processing error:', err);
           dlg.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
-          const errorContent = formatTeammateResponseContent({
+          const errorContent = formatTellaskResponseContent({
             callName,
             responderId: parseResult.agentId,
             requesterId: dlg.agentId,
@@ -1028,7 +1028,7 @@ async function executeTellaskCall(
             callId,
             content: errorContent,
           });
-          await dlg.receiveTeammateResponse(
+          await dlg.receiveTellaskResponse(
             parseResult.agentId,
             callName,
             mentionList,
@@ -1357,7 +1357,7 @@ async function executeTellaskCall(
       callId,
       content: msg,
     });
-    await dlg.receiveTeammateCallResult(
+    await dlg.receiveTellaskCallResult(
       'dominds',
       callName,
       mentionList,
@@ -1567,7 +1567,7 @@ async function executeValidTellaskCalls(args: {
       });
     }
     let targetForError: string | undefined;
-    let parseResult: TeammateTellaskParseResult | null;
+    let parseResult: TellaskRoutingParseResult | null;
     switch (call.callName) {
       case 'tellaskBack': {
         targetForError = args.dlg instanceof SubDialog ? args.dlg.supdialog.agentId : undefined;

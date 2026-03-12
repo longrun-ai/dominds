@@ -23,7 +23,7 @@ import type {
   DialogEvent,
   FullRemindersEvent,
   ReminderContent,
-  TeammateResponseEvent,
+  TellaskResponseEvent,
   WebSearchCallAction,
 } from './shared/types/dialog';
 import type { DialogPrompt, DialogRunControlSpec, DriveIntent } from './shared/types/drive-intent';
@@ -248,7 +248,7 @@ export abstract class Dialog {
 
   // Current callId for tellask call correlation
   // - Set during teammate_call_finish_evt (from tellask-special function calls)
-  // - Retrieved during inline call-result emission (for receiveTeammateCallResult callId parameter)
+  // - Retrieved during inline call-result emission (for receiveTellaskCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
   // - NOT used for teammate tellasks (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
@@ -1106,7 +1106,7 @@ export abstract class Dialog {
   /**
    * Receive call result with callId for inline correlation
    */
-  public async receiveTeammateCallResult(
+  public async receiveTellaskCallResult(
     responderId: string,
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
     mentionList: string[] | undefined,
@@ -1115,7 +1115,7 @@ export abstract class Dialog {
     status: 'completed' | 'failed',
     callId: string,
   ): Promise<void> {
-    return await this.dlgStore.receiveTeammateCallResult(
+    return await this.dlgStore.receiveTellaskCallResult(
       this,
       responderId,
       callName,
@@ -1130,7 +1130,7 @@ export abstract class Dialog {
   /**
    * Receive teammate response (separate bubble for @teammate tellasks)
    */
-  public async receiveTeammateResponse(
+  public async receiveTellaskResponse(
     responderId: string,
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
     mentionList: string[] | undefined,
@@ -1142,12 +1142,14 @@ export abstract class Dialog {
       agentId: string;
       callId: string;
       originMemberId: string;
+      originCourse?: CallingCourseNumber;
+      carryoverContent?: string;
       sessionSlug?: string;
       calleeCourse?: CalleeCourseNumber;
       calleeGenseq?: CalleeGenerationSeqNumber;
     },
   ): Promise<void> {
-    return await this.dlgStore.receiveTeammateResponse(
+    return await this.dlgStore.receiveTellaskResponse(
       this,
       responderId,
       callName,
@@ -1272,8 +1274,8 @@ export abstract class Dialog {
 
       const rawResponse = response;
 
-      // Emit TeammateResponseEvent
-      const evt: TeammateResponseEvent = (() => {
+      // Emit TellaskResponseEvent
+      const evt: TellaskResponseEvent = (() => {
         switch (callName) {
           case 'tellask':
             if (!sessionSlug) {
@@ -1283,7 +1285,7 @@ export abstract class Dialog {
               );
             }
             return {
-              type: 'teammate_response_evt',
+              type: 'tellask_response_evt',
               responderId,
               calleeDialogId: subdialogId.selfId,
               callName,
@@ -1299,7 +1301,7 @@ export abstract class Dialog {
             };
           case 'tellaskSessionless':
             return {
-              type: 'teammate_response_evt',
+              type: 'tellask_response_evt',
               responderId,
               calleeDialogId: subdialogId.selfId,
               callName,
@@ -1314,7 +1316,7 @@ export abstract class Dialog {
             };
           case 'freshBootsReasoning':
             return {
-              type: 'teammate_response_evt',
+              type: 'tellask_response_evt',
               responderId,
               calleeDialogId: subdialogId.selfId,
               callName,
@@ -1333,7 +1335,7 @@ export abstract class Dialog {
       // Emit virtual generating_finish_evt
       await this.notifyGeneratingFinish();
     } catch (err) {
-      log.warn('Failed to post teammate_response_evt event', undefined, {
+      log.warn('Failed to post tellask_response_evt event', undefined, {
         error: err,
         message: err instanceof Error ? err.message : String(err),
       });
@@ -1655,7 +1657,7 @@ export abstract class DialogStore {
   /**
    * Receive call result with callId for inline correlation
    */
-  public async receiveTeammateCallResult(
+  public async receiveTellaskCallResult(
     _dialog: Dialog,
     _responderId: string,
     _callName:
@@ -1674,7 +1676,7 @@ export abstract class DialogStore {
   /**
    * Receive teammate response (separate bubble for @teammate tellasks)
    */
-  public async receiveTeammateResponse(
+  public async receiveTellaskResponse(
     _dialog: Dialog,
     _responderId: string,
     _callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
@@ -1687,6 +1689,8 @@ export abstract class DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      originCourse?: CallingCourseNumber;
+      carryoverContent?: string;
       sessionSlug?: string;
       calleeCourse?: CalleeCourseNumber;
       calleeGenseq?: CalleeGenerationSeqNumber;

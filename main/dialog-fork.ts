@@ -214,12 +214,14 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'human_text_record':
     case 'func_call_record':
     case 'func_result_record':
-    case 'teammate_call_result_record':
-    case 'teammate_response_record':
+    case 'tellask_call_result_record':
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
       return true;
     case 'web_search_call_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_anchor_record':
+    case 'tellask_call_carryover_record':
+    case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
     case 'subdialog_created_record':
@@ -302,9 +304,11 @@ function rewriteRecordForFork(
     case 'web_search_call_record':
     case 'human_text_record':
     case 'quest_for_sup_record':
-    case 'teammate_call_result_record':
-    case 'teammate_call_anchor_record':
-    case 'teammate_response_record':
+    case 'tellask_call_result_record':
+    case 'tellask_call_carryover_record':
+    case 'tellask_call_anchor_record':
+    case 'tellask_response_record':
+    case 'tellask_carryover_result_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return record;
