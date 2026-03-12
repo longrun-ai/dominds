@@ -120,14 +120,18 @@ function buildSidelineUpstreamReplyMarkerRules(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
       '- 本规则仅用于当前支线向上游诉请者回贴，不适用于你发起新的 tellask。',
-      '- 当当前支线完成全部目标并回贴上游时，运行时会在传递正文中添加【最终完成】并投递给上游。',
-      '- 当前支线未完成/不确定/阻塞时，不得发普通文本中间汇报；必须发起 \\`tellaskBack({ tellaskContent: "..." })\\`，并在 \\`tellaskContent\\` 中给出具体问题。',
+      '- 当前支线未完成/不确定/阻塞/需要澄清时：必须发起 \\`tellaskBack({ tellaskContent: "..." })\\`，并在 \\`tellaskContent\\` 中给出具体问题。',
+      '- 当前支线已完成并可交付最终结果时：必须直接回复正文；禁止调用 \\`tellaskBack\\` 发送最终结果。',
+      '- 运行时会自动把这条直接回复作为完成结果投递给上游，并在传递正文中添加【最终完成】。',
+      '- “不得发普通文本中间汇报”只针对未完成态；若你已经完成任务并能给出最终交付，就应直接回复正文，不要使用 \\`tellaskBack\\`。',
       '- 例外：FBR 支线为工具禁用模式（不得调用 \\`tellaskBack\\`）；其回贴标记也由运行时在传递正文中注入。',
     ],
     en: [
       '- This rule applies only when posting upstream from the current sideline, not when initiating a new tellask.',
-      '- When the current sideline has fully completed its objectives and posts upstream, runtime injects 【最终完成】 into the transfer payload sent upstream.',
-      '- If the current sideline is unfinished/uncertain/blocked, do not post a plain-text progress update upstream; emit \\`tellaskBack({ tellaskContent: "..." })\\` and put concrete questions in \\`tellaskContent\\`.',
+      '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must emit \\`tellaskBack({ tellaskContent: "..." })\\` and put concrete questions in \\`tellaskContent\\`.',
+      '- If the current sideline is complete and ready to deliver a final result: you must reply with the response body directly; do not use \\`tellaskBack\\` to send final delivery.',
+      '- Runtime will deliver that direct reply upstream as the completion result and inject 【最终完成】 into the transfer payload.',
+      '- “Do not post a plain-text progress update” only applies to unfinished states; if the task is done and you can deliver the final result, reply directly instead of using \\`tellaskBack\\`.',
       '- Exception: FBR sideline is tool-less (no \\`tellaskBack\\`); its reply marker is also injected by runtime into the transfer payload.',
     ],
   });
@@ -144,14 +148,18 @@ function buildTellaskReplyMarkerScopePolicy(
         zh: [
           '- 回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】）；该正文直接进入上游上下文，且 UI 展示与其一致。你无需、也不应手写标记。',
           '- 若你在正文中给下游写“回贴格式”，必须写明“Dominds 自动注入标记，禁止手写”；不得要求下游手写任何标记。',
-          '- 当前支线未完成/不确定/阻塞时：必须调用 \\`tellaskBack({ tellaskContent: "..." })\\`，不得发普通文本中间汇报。',
-          '- 仅当确认当前支线已完成全部目标并回贴上游时，运行时才会在传递正文中标注【最终完成】。',
+          '- `tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 \\`tellaskBack\\` 发送最终结果。',
+          '- 当前支线未完成/不确定/阻塞/需要澄清时：必须调用 \\`tellaskBack({ tellaskContent: "..." })\\`，不得发普通文本中间汇报。',
+          '- 当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 \\`tellaskBack\\`。',
+          '- 仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注【最终完成】。',
         ],
         en: [
           '- Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = 【最终完成】; FBR = 【FBR-直接回复】 or 【FBR-仅推理】); this payload is delivered to upstream context and shown identically in UI. Do not hand-write markers.',
           '- If you define a reply format for downstream, you must state “Dominds auto-injects markers; do not hand-write them”; do not require downstream to hand-write any marker.',
-          '- If the current sideline is unfinished/uncertain/blocked: you must call \\`tellaskBack({ tellaskContent: "..." })\\` instead of posting a plain-text progress update.',
-          '- Runtime marks 【最终完成】 inside the transfer payload only when the current sideline has fully completed its objectives and posts upstream.',
+          '- \\`tellaskBack\\` is allowed only for ask-back / clarification / blocked-state reporting; do not use \\`tellaskBack\\` to send final results.',
+          '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call \\`tellaskBack({ tellaskContent: "..." })\\` instead of posting a plain-text progress update.',
+          '- If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not \\`tellaskBack\\`.',
+          '- Runtime marks 【最终完成】 and delivers upstream only when the current sideline has fully completed its objectives and directly replies.',
         ],
       }),
     ];

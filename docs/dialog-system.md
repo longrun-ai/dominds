@@ -184,8 +184,9 @@ flowchart TD
 
 **Sideline delivery rule (normative)**:
 
-- A sideline dialog may reply directly to the tellasker dialog **only when all assigned goals are complete**.
-- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
+- If a sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects `【最终完成】` into the transfer payload automatically.
+- If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
 - **FBR exception**: FBR sideline dialogs are tellask-free (no `tellaskBack`); they must list missing context and return.
 
 **Inter-dialog transfer and markers (normative)**:
@@ -200,7 +201,8 @@ flowchart TD
 
 **Protocol clarification**:
 
-- Ask-back must be emitted via `tellaskBack({ tellaskContent: "..." })`; do not post plain-text intermediate status updates.
+- Ask-back must be emitted via `tellaskBack({ tellaskContent: "..." })`; do not post plain-text intermediate status updates while unfinished.
+- A direct plain-text reply is correct when the sideline is already complete and is delivering the final result upstream.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 

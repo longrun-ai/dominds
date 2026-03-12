@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { buildSystemPrompt } from '../../main/minds/system-prompt';
 import type { LanguageCode } from '../../main/shared/types/language';
+import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
 import { Team } from '../../main/team';
 
 function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCode): string {
@@ -18,6 +19,18 @@ function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCod
     policyText: 'policy',
     intrinsicToolUsageText: 'intrinsic',
     toolsetManualIntro: 'manual',
+  });
+}
+
+function buildAssignmentPrompt(language: LanguageCode): string {
+  return formatAssignmentFromSupdialog({
+    callName: 'tellask',
+    toAgentId: 'tester',
+    fromAgentId: 'caller',
+    tellaskContent: '请验收当前实现并给出结论。',
+    mentionList: ['@tester'],
+    sessionSlug: 'acceptance-check',
+    language,
   });
 }
 
@@ -72,7 +85,22 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '当前支线未完成/不确定/阻塞时：必须调用 \\`tellaskBack({ tellaskContent: "..." })\\`，不得发普通文本中间汇报。',
+      '当前支线未完成/不确定/阻塞/需要澄清时：必须调用 \\`tellaskBack({ tellaskContent: "..." })\\`，不得发普通文本中间汇报。',
+    ),
+  );
+  assert.ok(
+    zhSideline.includes(
+      '`tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 \\`tellaskBack\\` 发送最终结果。',
+    ),
+  );
+  assert.ok(
+    zhSideline.includes(
+      '当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 \\`tellaskBack\\`。',
+    ),
+  );
+  assert.ok(
+    zhSideline.includes(
+      '仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注【最终完成】。',
     ),
   );
 
@@ -94,7 +122,36 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'If the current sideline is unfinished/uncertain/blocked: you must call \\`tellaskBack({ tellaskContent: "..." })\\` instead of posting a plain-text progress update.',
+      'If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call \\`tellaskBack({ tellaskContent: "..." })\\` instead of posting a plain-text progress update.',
+    ),
+  );
+  assert.ok(
+    enSideline.includes(
+      '\\`tellaskBack\\` is allowed only for ask-back / clarification / blocked-state reporting; do not use \\`tellaskBack\\` to send final results.',
+    ),
+  );
+  assert.ok(
+    enSideline.includes(
+      'If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not \\`tellaskBack\\`.',
+    ),
+  );
+  assert.ok(
+    enSideline.includes(
+      'Runtime marks 【最终完成】 and delivers upstream only when the current sideline has fully completed its objectives and directly replies.',
+    ),
+  );
+
+  const zhAssignment = buildAssignmentPrompt('zh');
+  assert.ok(
+    zhAssignment.includes(
+      '你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @caller（当前发起本次诉请）。完成任务时直接回复即可；只有在需要回问上游时才调用 `tellaskBack`。',
+    ),
+  );
+
+  const enAssignment = buildAssignmentPrompt('en');
+  assert.ok(
+    enAssignment.includes(
+      'You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @caller (the current caller). When the task is complete, reply directly; call `tellaskBack` only when you need to ask back upstream.',
     ),
   );
 

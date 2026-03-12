@@ -89,8 +89,8 @@ function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
   }
   const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   return input.language === 'zh'
-    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。`
-    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller).`;
+    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。完成任务时直接回复即可；只有在需要回问上游时才调用 \`tellaskBack\`。`
+    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). When the task is complete, reply directly; call \`tellaskBack\` only when you need to ask back upstream.`;
 }
 
 function requireMentionLine(mentionList: string[]): string {

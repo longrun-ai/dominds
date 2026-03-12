@@ -107,8 +107,9 @@ That is a workflow break. The model should send the Tellask directly.
 
 **Sideline delivery rule**:
 
-- A sideline dialog may reply directly to the tellasker dialog **only when all goals are complete**.
-- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding; do not post plain-text intermediate status updates.
+- If a sideline dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects `【最终完成】` automatically.
+- If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellasks (including `tellaskBack` / `askHuman`); list missing context + reasoning and return.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
