@@ -21,7 +21,6 @@ export type UiStrings = {
   activityArchived: string;
   activitySearch: string;
   activityTeamMembers: string;
-  activityTools: string;
 
   placeholderDoneTitle: string;
   placeholderDoneText: string;
@@ -31,8 +30,6 @@ export type UiStrings = {
   placeholderSearchText: string;
   placeholderTeamMembersTitle: string;
   placeholderTeamMembersText: string;
-  placeholderToolsTitle: string;
-  placeholderToolsText: string;
 
   newDialogTitle: string;
   currentDialogPlaceholder: string;
@@ -176,7 +173,6 @@ export type UiStrings = {
   dialogDeleteFailedToast: string;
   moveDialogsFailedToast: string;
   movedDialogsToastPrefix: string;
-  toolsRegistryLoadFailedToast: string;
   reminderConnectionIssueToast: string;
   reminderSyncIssueToast: string;
   unknownStreamErrorToast: string;
@@ -374,7 +370,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       activityArchived: '已归档',
       activitySearch: '搜索',
       activityTeamMembers: '团队成员',
-      activityTools: '工具',
 
       placeholderDoneTitle: '已完成',
       placeholderDoneText: '已完成对话的占位视图。',
@@ -384,8 +379,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       placeholderSearchText: '搜索面板占位视图。',
       placeholderTeamMembersTitle: '团队成员',
       placeholderTeamMembersText: '团队成员控制的占位视图。',
-      placeholderToolsTitle: '工具',
-      placeholderToolsText: '按 toolset 分组展示当前已注册工具。',
 
       newDialogTitle: '新建对话',
       currentDialogPlaceholder: '👈 从选择或创建一个对话开始',
@@ -533,7 +526,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       dialogDeleteFailedToast: '删除对话失败',
       moveDialogsFailedToast: '移动对话失败',
       movedDialogsToastPrefix: '已移动对话数量：',
-      toolsRegistryLoadFailedToast: '加载工具注册表失败',
       reminderConnectionIssueToast: '检测到连接问题，提醒数据可能暂时不可用。',
       reminderSyncIssueToast: '提醒同步出现问题。如问题持续，请刷新页面。',
       unknownStreamErrorToast: '未知流错误',
@@ -733,7 +725,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     activityArchived: 'Archived',
     activitySearch: 'Search',
     activityTeamMembers: 'Team Members',
-    activityTools: 'Tools',
 
     placeholderDoneTitle: 'Done',
     placeholderDoneText: 'Placeholder view for completed dialogs.',
@@ -743,8 +734,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     placeholderSearchText: 'Search panel placeholder.',
     placeholderTeamMembersTitle: 'Team Members',
     placeholderTeamMembersText: 'Placeholder view for team member controls.',
-    placeholderToolsTitle: 'Tools',
-    placeholderToolsText: 'Currently registered tools, grouped by toolset.',
 
     newDialogTitle: 'New Dialog',
     currentDialogPlaceholder: '👈 Select or create a dialog to start',
@@ -899,7 +888,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     dialogDeleteFailedToast: 'Failed to delete dialog',
     moveDialogsFailedToast: 'Failed to move dialogs',
     movedDialogsToastPrefix: 'Moved dialog(s): ',
-    toolsRegistryLoadFailedToast: 'Failed to load tools registry',
     reminderConnectionIssueToast:
       'Connection issue detected. Reminder data may be temporarily unavailable.',
     reminderSyncIssueToast:

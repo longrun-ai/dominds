@@ -101,8 +101,20 @@ type ActivityView =
   | { kind: 'done' }
   | { kind: 'archived' }
   | { kind: 'search' }
-  | { kind: 'team-members' }
-  | { kind: 'tools' };
+  | { kind: 'team-members' };
+
+type ToolsWidgetRequestOptions = {
+  agentId?: string;
+  taskDocPath?: string;
+  rootId?: string;
+  selfId?: string;
+  status?: DialogStatusKind;
+};
+
+type ToolsWidgetSnapshot = {
+  toolsets: ToolsetInfo[];
+  timestamp: string;
+};
 
 type AuthState =
   | { kind: 'uninitialized' }
@@ -684,10 +696,19 @@ export class DomindsApp extends HTMLElement {
 
   private runControlRefreshTimers: Array<ReturnType<typeof setTimeout>> = [];
 
-  // Tools Registry (snapshot)
-  private toolsRegistryTimestamp: string = '';
-  private toolsRegistryToolsets: ToolsetInfo[] = [];
-  private toolsRegistryRequestSeq: number = 0;
+  private toolsWidgetVisible: boolean = false;
+  private toolsWidgetLoading: boolean = false;
+  private toolsWidgetTimestamp: string = '';
+  private toolsWidgetToolsets: ToolsetInfo[] = [];
+  private toolsWidgetError: string | null = null;
+  private toolsWidgetRequestSeq: number = 0;
+  private toolsWidgetContextKey: string | null = null;
+  private toolsWidgetSnapshotByContext = new Map<string, ToolsWidgetSnapshot>();
+  private toolsWidgetGeometryInitialized: boolean = false;
+  private toolsWidgetX: number = 12;
+  private toolsWidgetY: number = 120;
+  private toolsWidgetWidthPx: number = 380;
+  private toolsWidgetHeightPx: number = 320;
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -1016,9 +1037,6 @@ export class DomindsApp extends HTMLElement {
       } else if (kind === 'team-members') {
         btn.setAttribute('aria-label', t.activityTeamMembers);
         btn.title = t.activityTeamMembers;
-      } else if (kind === 'tools') {
-        btn.setAttribute('aria-label', t.activityTools);
-        btn.title = t.activityTools;
       }
     });
 
@@ -1071,10 +1089,22 @@ export class DomindsApp extends HTMLElement {
       savePriming.setAttribute('aria-label', t.primingSaveButtonTitle);
     }
 
+    const toolsToggle = this.shadowRoot.querySelector(
+      '#navibar-tools-toggle',
+    ) as HTMLButtonElement | null;
+    if (toolsToggle) {
+      toolsToggle.title = t.toolsTitle;
+      toolsToggle.setAttribute('aria-label', t.toolsTitle);
+      toolsToggle.setAttribute('aria-pressed', this.toolsWidgetVisible ? 'true' : 'false');
+    }
+
     const remToggle = this.shadowRoot.querySelector(
       '#navibar-reminders-toggle',
     ) as HTMLButtonElement | null;
-    if (remToggle) remToggle.setAttribute('aria-label', t.reminders);
+    if (remToggle) {
+      remToggle.setAttribute('aria-label', t.reminders);
+      remToggle.setAttribute('aria-pressed', this.remindersWidgetVisible ? 'true' : 'false');
+    }
     const remRefresh = this.shadowRoot.querySelector(
       '#navibar-reminders-refresh',
     ) as HTMLButtonElement | null;
@@ -1084,11 +1114,19 @@ export class DomindsApp extends HTMLElement {
     }
 
     const toolsRefresh = this.shadowRoot.querySelector(
-      '#tools-registry-refresh',
+      '#tools-widget-refresh',
     ) as HTMLButtonElement | null;
     if (toolsRefresh) {
       toolsRefresh.setAttribute('aria-label', t.toolsRefresh);
       toolsRefresh.title = t.toolsRefresh;
+    }
+
+    const toolsClose = this.shadowRoot.querySelector(
+      '#tools-widget-close',
+    ) as HTMLButtonElement | null;
+    if (toolsClose) {
+      toolsClose.setAttribute('aria-label', t.close);
+      toolsClose.title = t.close;
     }
 
     // Propagate to child components
@@ -1187,7 +1225,7 @@ export class DomindsApp extends HTMLElement {
     }
     this.updateCreateDialogModalText();
     this.updateAuthModalText();
-    this.updateToolsRegistryUi();
+    this.updateToolsWidgetUi();
     this.updateContextHealthUi();
     this.updateToastHistoryUi();
     this.updateDialogViewportPanels();
@@ -1485,6 +1523,13 @@ export class DomindsApp extends HTMLElement {
     widget.style.setProperty('--reminders-widget-height', `${this.remindersWidgetHeightPx}px`);
   }
 
+  private applyToolsWidgetGeometryStyle(widget: HTMLElement): void {
+    widget.style.setProperty('--tools-widget-left', `${this.toolsWidgetX}px`);
+    widget.style.setProperty('--tools-widget-top', `${this.toolsWidgetY}px`);
+    widget.style.setProperty('--tools-widget-width', `${this.toolsWidgetWidthPx}px`);
+    widget.style.setProperty('--tools-widget-height', `${this.toolsWidgetHeightPx}px`);
+  }
+
   private setupRemindersWidgetDrag(): void {
     const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     const header = this.shadowRoot?.querySelector('#reminders-widget-header') as HTMLElement | null;
@@ -1586,9 +1631,107 @@ export class DomindsApp extends HTMLElement {
     if (closeBtn) {
       closeBtn.onclick = (e: MouseEvent) => {
         e.stopPropagation();
-        this.remindersWidgetVisible = false;
-        const existing = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
-        if (existing) existing.remove();
+        this.closeRemindersWidget();
+      };
+    }
+  }
+
+  private setupToolsWidgetDrag(): void {
+    const widget = this.shadowRoot?.querySelector('#tools-widget') as HTMLElement | null;
+    const header = this.shadowRoot?.querySelector('#tools-widget-header') as HTMLElement | null;
+    const resizeHandle = this.shadowRoot?.querySelector(
+      '#tools-widget-resize-handle',
+    ) as HTMLElement | null;
+    if (!widget || !header) return;
+
+    const margin = 12;
+    const minWidth = 260;
+    const minHeight = 180;
+    const clamp = (value: number, min: number, max: number): number => {
+      return Math.max(min, Math.min(max, value));
+    };
+    const syncWidgetRect = (): void => {
+      const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+      const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
+      this.toolsWidgetWidthPx = clamp(this.toolsWidgetWidthPx, minWidth, maxWidth);
+      this.toolsWidgetHeightPx = clamp(this.toolsWidgetHeightPx, minHeight, maxHeight);
+      const maxX = Math.max(margin, window.innerWidth - this.toolsWidgetWidthPx - margin);
+      const maxY = Math.max(margin, window.innerHeight - this.toolsWidgetHeightPx - margin);
+      this.toolsWidgetX = clamp(this.toolsWidgetX, margin, maxX);
+      this.toolsWidgetY = clamp(this.toolsWidgetY, margin, maxY);
+      this.applyToolsWidgetGeometryStyle(widget);
+    };
+    const initialRect = widget.getBoundingClientRect();
+    if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
+      this.toolsWidgetWidthPx = Math.floor(initialRect.width);
+    }
+    if (Number.isFinite(initialRect.height) && initialRect.height > 0) {
+      this.toolsWidgetHeightPx = Math.floor(initialRect.height);
+    }
+    syncWidgetRect();
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+    const onMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      this.toolsWidgetX = e.clientX - offsetX;
+      this.toolsWidgetY = e.clientY - offsetY;
+      syncWidgetRect();
+    };
+    const onUp = () => {
+      dragging = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    header.onmousedown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement | null)?.closest('.tools-widget-actions')) {
+        return;
+      }
+      e.preventDefault();
+      dragging = true;
+      const rect = widget.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+
+    if (resizeHandle) {
+      let resizing = false;
+      let startTop = 0;
+      let startRight = 0;
+      const onResizeMove = (e: MouseEvent) => {
+        if (!resizing) return;
+        const maxWidthByViewport = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+        const maxHeightByViewport = Math.max(
+          minHeight,
+          Math.floor(window.innerHeight - margin * 2),
+        );
+        const maxLeft = Math.max(margin, startRight - minWidth);
+        const nextLeft = clamp(e.clientX, margin, maxLeft);
+        const nextWidth = clamp(startRight - nextLeft, minWidth, maxWidthByViewport);
+        const nextHeight = clamp(e.clientY - startTop, minHeight, maxHeightByViewport);
+        this.toolsWidgetX = Math.floor(startRight - nextWidth);
+        this.toolsWidgetY = Math.floor(startTop);
+        this.toolsWidgetWidthPx = Math.floor(nextWidth);
+        this.toolsWidgetHeightPx = Math.floor(nextHeight);
+        syncWidgetRect();
+      };
+      const onResizeUp = () => {
+        resizing = false;
+        window.removeEventListener('mousemove', onResizeMove);
+        window.removeEventListener('mouseup', onResizeUp);
+      };
+      resizeHandle.onmousedown = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizing = true;
+        const rect = widget.getBoundingClientRect();
+        startTop = rect.top;
+        startRight = rect.right;
+        window.addEventListener('mousemove', onResizeMove);
+        window.addEventListener('mouseup', onResizeUp);
       };
     }
   }
@@ -1705,7 +1848,7 @@ export class DomindsApp extends HTMLElement {
     this.syncAllDialogLists();
     this.applyUiLanguageToDom();
     this.updateProblemsUi();
-    this.updateToolsRegistryUi();
+    this.updateToolsWidgetUi();
     this.updateDialogViewportPanels();
   }
 
@@ -1795,6 +1938,12 @@ export class DomindsApp extends HTMLElement {
     const savePrimingBtn = this.shadowRoot?.querySelector(
       '#navibar-save-priming',
     ) as HTMLButtonElement | null;
+    const remToggle = this.shadowRoot?.querySelector(
+      '#navibar-reminders-toggle',
+    ) as HTMLButtonElement | null;
+    const toolsToggle = this.shadowRoot?.querySelector(
+      '#navibar-tools-toggle',
+    ) as HTMLButtonElement | null;
     const remBtnCount = this.shadowRoot?.querySelector(
       '#navibar-reminders-toggle .reminders-count',
     ) as HTMLElement | null;
@@ -1842,6 +1991,19 @@ export class DomindsApp extends HTMLElement {
     if (prevBtn) prevBtn.disabled = this.toolbarCurrentCourse <= 1;
     if (nextBtn) nextBtn.disabled = this.toolbarCurrentCourse >= this.toolbarTotalCourses;
     if (savePrimingBtn) savePrimingBtn.disabled = this.currentDialog === null;
+    if (remToggle) {
+      remToggle.disabled = this.currentDialog === null;
+      remToggle.setAttribute('aria-pressed', this.remindersWidgetVisible ? 'true' : 'false');
+    }
+    if (toolsToggle) {
+      const toolsDisabled = this.currentDialog === null;
+      toolsToggle.disabled = toolsDisabled;
+      toolsToggle.setAttribute('aria-pressed', this.toolsWidgetVisible ? 'true' : 'false');
+      toolsToggle.title = getUiStrings(this.uiLanguage).toolsTitle;
+      if (toolsDisabled && this.toolsWidgetVisible) {
+        this.closeToolsWidget();
+      }
+    }
     if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
     if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
     if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
@@ -3115,32 +3277,56 @@ export class DomindsApp extends HTMLElement {
         margin-top: 4px;
       }
 
-      .tools-registry {
-        padding: 0;
+      #tools-widget {
+        position: fixed;
+        left: var(--tools-widget-left, 12px);
+        top: var(--tools-widget-top, 56px);
+        width: var(--tools-widget-width, 380px);
+        height: var(--tools-widget-height, 320px);
+        min-width: 260px;
+        min-height: 180px;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        overflow: hidden;
         display: flex;
         flex-direction: column;
-        gap: 0;
-        min-height: 0;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 12px;
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-tools, 94%),
+          transparent
+        );
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+        backdrop-filter: blur(14px);
+        z-index: var(--dominds-z-overlay-tools, 920);
       }
 
-      .tools-registry-header {
+      .tools-widget-header {
         display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 8px;
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        background: var(--dominds-bg, #ffffff);
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 78%, transparent);
+        cursor: grab;
       }
 
-      .tools-registry-title {
+      .tools-widget-header-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1 1 auto;
         font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
       }
 
-      .tools-registry-timestamp {
+      .tools-widget-timestamp {
         flex: 1;
-        text-align: center;
+        min-width: 0;
+        text-align: right;
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         font-family: var(
@@ -3159,25 +3345,70 @@ export class DomindsApp extends HTMLElement {
         text-overflow: ellipsis;
       }
 
-      .tools-registry-actions button {
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        background: var(--dominds-bg, #ffffff);
-        color: var(--dominds-fg, #333333);
-        border-radius: 6px;
-        padding: 3px 6px;
-        font-size: var(--dominds-font-size-sm, 12px);
-        cursor: pointer;
+      .tools-widget-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
       }
 
-      .tools-registry-actions button:hover {
+      .tools-widget-actions .icon-button {
+        width: 26px;
+        height: 26px;
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 82%, transparent);
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 84%, transparent);
+      }
+
+      .tools-widget-actions .icon-button:hover {
         border-color: var(--dominds-primary, #007acc);
       }
 
-      .tools-registry-list {
-        overflow: auto;
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        background: var(--dominds-bg, #ffffff);
-        padding: 6px;
+      .tools-widget-content {
+        overflow-x: hidden;
+        overflow-y: auto;
+        display: block;
+        flex: 1 1 0;
+        height: 0;
+        padding: 8px 10px 30px;
+        min-height: 0;
+      }
+
+      .tools-widget-content > * + * {
+        margin-top: 8px;
+      }
+
+      #tools-widget-resize-handle {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        width: 14px;
+        height: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: nesw-resize;
+        opacity: 0.65;
+      }
+
+      #tools-widget-resize-handle:hover {
+        opacity: 1;
+      }
+
+      #tools-widget-resize-handle .icon-mask {
+        width: 12px;
+        height: 12px;
+      }
+
+      .tools-widget-status {
+        padding: 6px 8px;
+        border-radius: 8px;
+        color: var(--dominds-muted, #666666);
+        background: color-mix(in srgb, var(--dominds-fg, #333333) 4%, transparent);
+        font-size: var(--dominds-font-size-sm, 12px);
+      }
+
+      .tools-widget-status-error {
+        color: var(--dominds-error, #b3261e);
+        background: color-mix(in srgb, var(--dominds-error, #b3261e) 10%, transparent);
       }
 
       .tools-section {
@@ -3437,6 +3668,12 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-hover, #f0f0f0);
       }
 
+      .icon-button[aria-pressed="true"] {
+        background: var(--dominds-hover, #f0f0f0);
+        box-shadow: inset 0 0 0 1px var(--dominds-border, #e0e0e0);
+        color: var(--dominds-primary, #007acc);
+      }
+
       .header-run-pill-icon .icon-mask,
       .header-pill-button .icon-mask,
       #toast-history-btn .icon-mask {
@@ -3465,7 +3702,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .badge-button .icon-mask,
-      .tools-registry-actions .icon-mask,
+      .tools-widget-actions .icon-mask,
       .problems-panel-actions .icon-mask,
       .toast-history-actions .icon-mask,
       .icon-button .icon-mask {
@@ -3476,6 +3713,11 @@ export class DomindsApp extends HTMLElement {
       .navibar .icon-button .icon-mask {
         width: 18px;
         height: 18px;
+      }
+
+      #navibar-tools-toggle .icon-mask {
+        width: 16px;
+        height: 16px;
       }
 
       .activity-button .icon-mask {
@@ -3622,6 +3864,21 @@ export class DomindsApp extends HTMLElement {
         transition: all 0.2s ease;
       }
 
+      .badge-button .reminders-count {
+        display: inline-block;
+        min-width: 0;
+        height: auto;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        transition: all 0.2s ease;
+      }
+
       .badge-button:disabled {
         opacity: 0.6;
         cursor: not-allowed;
@@ -3634,6 +3891,29 @@ export class DomindsApp extends HTMLElement {
       .badge-button:hover:not(:disabled) {
         background: var(--dominds-hover, #f0f0f0);
         border-color: var(--dominds-primary, #007acc);
+      }
+
+      #navibar-reminders-toggle[aria-pressed="true"] {
+        background: var(--dominds-bg, #ffffff);
+        border-color: var(--dominds-border, #e0e0e0);
+        box-shadow: none;
+        color: #005c9a;
+      }
+
+      #navibar-reminders-toggle[aria-pressed="true"]:hover:not(:disabled) {
+        background: var(--dominds-hover, #f0f0f0);
+        border-color: var(--dominds-border, #e0e0e0);
+      }
+
+      #navibar-reminders-toggle[aria-pressed="true"] .icon-mask {
+        background-color: #005c9a;
+        color: #005c9a;
+      }
+
+      #navibar-reminders-toggle[aria-pressed="true"] .reminders-count {
+        background: transparent;
+        color: #005c9a;
+        box-shadow: none;
       }
 
       .badge-button.danger:hover:not(:disabled) {
@@ -5265,9 +5545,6 @@ export class DomindsApp extends HTMLElement {
               <button class="activity-button icon-button" data-activity="team-members" aria-label="${t.activityTeamMembers}" aria-pressed="false" title="${t.activityTeamMembers}">
                 <span class="icon-mask app-icon-users" aria-hidden="true"></span>
               </button>
-              <button class="activity-button icon-button" data-activity="tools" aria-label="${t.activityTools}" aria-pressed="false" title="${t.activityTools}">
-                <span class="icon-mask app-icon-tools" aria-hidden="true"></span>
-              </button>
             </div>
             <div class="sidebar-content">
               <div class="activity-view" data-activity-view="running">
@@ -5288,18 +5565,6 @@ export class DomindsApp extends HTMLElement {
               <div class="activity-view hidden" data-activity-view="team-members">
                 <dominds-team-members id="team-members"></dominds-team-members>
               </div>
-              <div class="activity-view hidden" data-activity-view="tools">
-                <div class="tools-registry">
-                  <div class="tools-registry-header">
-                    <div class="tools-registry-title">${t.toolsTitle}</div>
-                    <span id="tools-registry-timestamp" class="tools-registry-timestamp"></span>
-                    <div class="tools-registry-actions">
-                      <button type="button" id="tools-registry-refresh" title="${t.toolsRefresh}" aria-label="${t.toolsRefresh}"><span class="icon-mask app-icon-refresh" aria-hidden="true"></span></button>
-                    </div>
-                  </div>
-                  <div id="tools-registry-list" class="tools-registry-list"></div>
-                </div>
-              </div>
             </div>
           </aside>
 
@@ -5312,6 +5577,11 @@ export class DomindsApp extends HTMLElement {
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div class="navibar-spacer"></div>
+              <div id="tools-callout" class="navibar-gap-left">
+                <button class="icon-button" id="navibar-tools-toggle" aria-label="${t.toolsTitle}" aria-pressed="${this.toolsWidgetVisible ? 'true' : 'false'}" ${this.currentDialog ? '' : 'disabled'}>
+                  <span class="icon-mask app-icon-tools" aria-hidden="true"></span>
+                </button>
+              </div>
               <button class="icon-button" id="navibar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
                 <span class="icon-mask app-icon-save" aria-hidden="true"></span>
               </button>
@@ -5329,7 +5599,7 @@ export class DomindsApp extends HTMLElement {
                   <div class="navibar-tooltip" id="navibar-context-health-tooltip">${contextUsageTooltipText}</div>
                 </div>
 		          <div id="reminders-callout" class="navibar-gap-left">
-		            <button class="badge-button" id="navibar-reminders-toggle" aria-label="${t.reminders}">
+              <button class="badge-button" id="navibar-reminders-toggle" aria-label="${t.reminders}" aria-pressed="${this.remindersWidgetVisible ? 'true' : 'false'}">
 		              <span class="icon-mask app-icon-bookmark" aria-hidden="true"></span>
 		              <span class="reminders-count">${String(this.toolbarReminders.length)}</span>
 		            </button>
@@ -5829,17 +6099,24 @@ export class DomindsApp extends HTMLElement {
             this.activityView = { kind: 'team-members' };
             this.updateActivityView();
             return;
-          case 'tools':
-            this.activityView = { kind: 'tools' };
-            this.updateActivityView();
-            this.refreshToolsRegistryView();
-            return;
         }
       }
 
-      const toolsRefresh = target.closest('#tools-registry-refresh') as HTMLButtonElement | null;
+      const toolsToggle = target.closest('#navibar-tools-toggle') as HTMLButtonElement | null;
+      if (toolsToggle) {
+        this.toggleToolsWidget();
+        return;
+      }
+
+      const toolsRefresh = target.closest('#tools-widget-refresh') as HTMLButtonElement | null;
       if (toolsRefresh) {
-        this.refreshToolsRegistryView();
+        this.refreshToolsWidget();
+        return;
+      }
+
+      const toolsClose = target.closest('#tools-widget-close') as HTMLButtonElement | null;
+      if (toolsClose) {
+        this.closeToolsWidget();
         return;
       }
 
@@ -8307,8 +8584,8 @@ export class DomindsApp extends HTMLElement {
       remaining: null,
     });
     this.updateBottomPanelFooterUi();
-    if (this.activityView.kind === 'tools') {
-      this.refreshToolsRegistryView();
+    if (this.toolsWidgetVisible) {
+      this.refreshToolsWidget();
     }
 
     try {
@@ -9073,13 +9350,19 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private renderToolsRegistryListHtml(): string {
+  private renderToolsWidgetListHtml(): string {
     const t = getUiStrings(this.uiLanguage);
-    if (!this.toolsRegistryToolsets || this.toolsRegistryToolsets.length === 0) {
+    if (this.toolsWidgetError && this.toolsWidgetToolsets.length === 0) {
+      return `<div class="tools-empty">${this.escapeHtml(this.toolsWidgetError)}</div>`;
+    }
+    if (this.toolsWidgetLoading && this.toolsWidgetToolsets.length === 0) {
+      return `<div class="tools-empty">${this.escapeHtml(t.loading)}</div>`;
+    }
+    if (this.toolsWidgetToolsets.length === 0) {
       return `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
     }
 
-    const toolsets = this.toolsRegistryToolsets;
+    const toolsets = this.toolsWidgetToolsets;
 
     const renderToolsetHtml = (
       ts: ToolsetInfo,
@@ -9143,36 +9426,156 @@ export class DomindsApp extends HTMLElement {
     const domindsSection = renderSectionHtml(t.toolsGroupDominds, 'ƒ', domindsToolsets);
     const mcpSection = renderSectionHtml(t.toolsGroupMcp, 'ƒ', mcpToolsets);
 
-    return `${domindsSection}${mcpSection}`;
+    const statusHtml = this.toolsWidgetLoading
+      ? `<div class="tools-widget-status">${this.escapeHtml(t.loading)}</div>`
+      : this.toolsWidgetError
+        ? `<div class="tools-widget-status tools-widget-status-error">${this.escapeHtml(this.toolsWidgetError)}</div>`
+        : '';
+
+    return `${statusHtml}${domindsSection}${mcpSection}`;
   }
 
-  private updateToolsRegistryUi(): void {
+  private initializeToolsWidgetGeometry(): void {
+    const toggle = this.shadowRoot?.querySelector('#navibar-tools-toggle') as HTMLElement | null;
+    const marginPx = 12;
+    const defaultLeft = Math.max(marginPx, window.innerWidth - this.toolsWidgetWidthPx - marginPx);
+    const defaultTop = 56;
+    const toggleRect = toggle?.getBoundingClientRect();
+    const rawLeft = toggleRect
+      ? Math.floor(toggleRect.right - this.toolsWidgetWidthPx)
+      : defaultLeft;
+    const maxLeft = Math.max(marginPx, window.innerWidth - this.toolsWidgetWidthPx - marginPx);
+    const maxTop = Math.max(marginPx, window.innerHeight - this.toolsWidgetHeightPx - marginPx);
+    const top = toggleRect ? Math.floor(toggleRect.bottom + 8) : defaultTop;
+
+    this.toolsWidgetX = Math.max(marginPx, Math.min(maxLeft, rawLeft));
+    this.toolsWidgetY = Math.max(marginPx, Math.min(maxTop, top));
+    this.toolsWidgetGeometryInitialized = true;
+  }
+
+  private ensureToolsWidget(): HTMLElement | null {
+    const sr = this.shadowRoot;
+    if (!sr) return null;
+    let widget = sr.querySelector('#tools-widget') as HTMLElement | null;
+    if (!this.toolsWidgetVisible) {
+      if (widget) widget.remove();
+      return null;
+    }
+    if (!widget) {
+      const t = getUiStrings(this.uiLanguage);
+      widget = document.createElement('div');
+      widget.id = 'tools-widget';
+      widget.setAttribute('role', 'dialog');
+      widget.innerHTML = `
+        <div id="tools-widget-header" class="tools-widget-header">
+          <div class="tools-widget-header-main">
+            <span class="icon-mask app-icon-tools app-icon-16" aria-hidden="true"></span>
+            <span id="tools-widget-title"></span>
+          </div>
+          <span id="tools-widget-timestamp" class="tools-widget-timestamp"></span>
+          <div class="tools-widget-actions">
+            <button type="button" id="tools-widget-refresh" class="icon-button" aria-label="${this.escapeHtml(t.toolsRefresh)}">
+              <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="tools-widget-close" class="icon-button" aria-label="${this.escapeHtml(t.close)}">
+              <span class="icon-mask app-icon-close" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        <div id="tools-widget-content" class="tools-widget-content"></div>
+        <div id="tools-widget-resize-handle" aria-hidden="true">
+          <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
+        </div>
+      `;
+      sr.appendChild(widget);
+    }
+    this.applyToolsWidgetGeometryStyle(widget);
+    return widget;
+  }
+
+  private updateToolsWidgetUi(): void {
     const sr = this.shadowRoot;
     if (!sr) return;
-    const list = sr.querySelector('#tools-registry-list') as HTMLElement | null;
-    if (list) {
-      list.innerHTML = this.renderToolsRegistryListHtml();
+
+    const toggle = sr.querySelector('#navibar-tools-toggle') as HTMLButtonElement | null;
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', this.toolsWidgetVisible ? 'true' : 'false');
     }
-    const ts = sr.querySelector('#tools-registry-timestamp') as HTMLElement | null;
-    if (ts) {
-      ts.textContent = this.toolsRegistryTimestamp ? this.toolsRegistryTimestamp : '';
+
+    const widget = this.ensureToolsWidget();
+    if (!widget) return;
+
+    const t = getUiStrings(this.uiLanguage);
+    widget.setAttribute('aria-label', t.toolsTitle);
+
+    const title = widget.querySelector('#tools-widget-title') as HTMLElement | null;
+    if (title) title.textContent = t.toolsTitle;
+
+    const timestamp = widget.querySelector('#tools-widget-timestamp') as HTMLElement | null;
+    if (timestamp) {
+      timestamp.textContent = this.toolsWidgetTimestamp;
     }
+
+    const refresh = widget.querySelector('#tools-widget-refresh') as HTMLButtonElement | null;
+    if (refresh) {
+      refresh.disabled = this.toolsWidgetLoading;
+      refresh.title = t.toolsRefresh;
+      refresh.setAttribute('aria-label', t.toolsRefresh);
+    }
+
+    const close = widget.querySelector('#tools-widget-close') as HTMLButtonElement | null;
+    if (close) {
+      close.title = t.close;
+      close.setAttribute('aria-label', t.close);
+    }
+
+    const content = widget.querySelector('#tools-widget-content') as HTMLElement | null;
+    if (content) {
+      content.innerHTML = this.renderToolsWidgetListHtml();
+    }
+
+    this.applyToolsWidgetGeometryStyle(widget);
+    this.setupToolsWidgetDrag();
   }
 
-  private refreshToolsRegistryView(): void {
-    this.toolsRegistryToolsets = [];
-    this.toolsRegistryTimestamp = '';
-    this.updateToolsRegistryUi();
-    void this.loadToolsRegistry();
+  private closeToolsWidget(): void {
+    this.toolsWidgetVisible = false;
+    const widget = this.shadowRoot?.querySelector('#tools-widget') as HTMLElement | null;
+    if (widget) widget.remove();
+    this.updateToolsWidgetUi();
   }
 
-  private getToolsRegistryRequestOptions(): {
-    agentId?: string;
-    taskDocPath?: string;
-    rootId?: string;
-    selfId?: string;
-    status?: DialogStatusKind;
-  } {
+  private toggleToolsWidget(): void {
+    if (!this.currentDialog) {
+      return;
+    }
+    this.toolsWidgetVisible = !this.toolsWidgetVisible;
+    if (!this.toolsWidgetVisible) {
+      this.closeToolsWidget();
+      return;
+    }
+    if (!this.toolsWidgetGeometryInitialized) {
+      this.initializeToolsWidgetGeometry();
+    }
+    this.updateToolsWidgetUi();
+    void this.loadToolsWidget();
+  }
+
+  private refreshToolsWidget(): void {
+    if (!this.currentDialog) {
+      return;
+    }
+    void this.loadToolsWidget();
+  }
+
+  private closeRemindersWidget(): void {
+    this.remindersWidgetVisible = false;
+    const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
+    if (widget) widget.remove();
+    this.updateToolbarDisplay();
+  }
+
+  private getToolsWidgetRequestOptions(): ToolsWidgetRequestOptions {
     const currentDialog = this.currentDialog;
     if (!currentDialog) {
       return {};
@@ -9203,21 +9606,96 @@ export class DomindsApp extends HTMLElement {
     };
   }
 
-  private async loadToolsRegistry(): Promise<void> {
-    const requestSeq = ++this.toolsRegistryRequestSeq;
-    const res = await this.apiClient.getToolsRegistry(this.getToolsRegistryRequestOptions());
-    if (requestSeq !== this.toolsRegistryRequestSeq) {
+  private getToolsWidgetContextKey(options: ToolsWidgetRequestOptions): string | null {
+    if (
+      typeof options.rootId !== 'string' ||
+      options.rootId.trim() === '' ||
+      typeof options.selfId !== 'string' ||
+      options.selfId.trim() === ''
+    ) {
+      return null;
+    }
+    const status =
+      options.status === 'running' ||
+      options.status === 'completed' ||
+      options.status === 'archived'
+        ? options.status
+        : 'unknown';
+    return `${options.rootId.trim()}::${options.selfId.trim()}::${status}`;
+  }
+
+  private toolsWidgetSnapshotHasTools(snapshot: ToolsWidgetSnapshot | null): boolean {
+    if (!snapshot) {
+      return false;
+    }
+    return snapshot.toolsets.some((toolset) => toolset.tools.length > 0);
+  }
+
+  private applyToolsWidgetSnapshot(snapshot: ToolsWidgetSnapshot | null): void {
+    if (!snapshot) {
+      this.toolsWidgetToolsets = [];
+      this.toolsWidgetTimestamp = '';
       return;
     }
+    this.toolsWidgetToolsets = snapshot.toolsets;
+    this.toolsWidgetTimestamp = snapshot.timestamp;
+  }
+
+  private async loadToolsWidget(): Promise<void> {
+    const requestSeq = ++this.toolsWidgetRequestSeq;
+    const requestOptions = this.getToolsWidgetRequestOptions();
+    const previousContextKey = this.toolsWidgetContextKey;
+    const contextKey = this.getToolsWidgetContextKey(requestOptions);
+    const cachedSnapshot =
+      contextKey !== null ? (this.toolsWidgetSnapshotByContext.get(contextKey) ?? null) : null;
+
+    this.toolsWidgetContextKey = contextKey;
+    if (cachedSnapshot) {
+      this.applyToolsWidgetSnapshot(cachedSnapshot);
+    } else if (contextKey !== previousContextKey) {
+      this.applyToolsWidgetSnapshot(null);
+    }
+
+    this.toolsWidgetLoading = true;
+    this.toolsWidgetError = null;
+    this.updateToolsWidgetUi();
+
+    const res = await this.apiClient.getToolsRegistry(requestOptions);
+    if (requestSeq !== this.toolsWidgetRequestSeq) {
+      return;
+    }
+
+    this.toolsWidgetLoading = false;
     if (!res.success || !res.data) {
       const t = getUiStrings(this.uiLanguage);
-      const message = res.error || t.toolsRegistryLoadFailedToast;
+      const message = res.error || t.unknownError;
+      if (!cachedSnapshot) {
+        this.applyToolsWidgetSnapshot(null);
+      }
+      this.toolsWidgetError = message;
+      this.updateToolsWidgetUi();
       this.showToast(message, 'warning');
       return;
     }
-    this.toolsRegistryToolsets = res.data.toolsets;
-    this.toolsRegistryTimestamp = res.data.timestamp;
-    this.updateToolsRegistryUi();
+
+    const nextSnapshot: ToolsWidgetSnapshot = {
+      toolsets: res.data.toolsets,
+      timestamp: res.data.timestamp,
+    };
+    const shouldPreserveCachedSnapshot =
+      !this.toolsWidgetSnapshotHasTools(nextSnapshot) &&
+      this.toolsWidgetSnapshotHasTools(cachedSnapshot);
+
+    if (shouldPreserveCachedSnapshot && cachedSnapshot) {
+      this.applyToolsWidgetSnapshot(cachedSnapshot);
+    } else {
+      if (contextKey !== null) {
+        this.toolsWidgetSnapshotByContext.set(contextKey, nextSnapshot);
+      }
+      this.applyToolsWidgetSnapshot(nextSnapshot);
+    }
+    this.toolsWidgetError = null;
+    this.updateToolsWidgetUi();
   }
 
   private setupWebSocketEventHandlers(): void {
@@ -9972,6 +10450,11 @@ export class DomindsApp extends HTMLElement {
     }
 
     this.remindersWidgetVisible = !this.remindersWidgetVisible;
+    if (!this.remindersWidgetVisible) {
+      this.closeRemindersWidget();
+      return;
+    }
+    this.updateToolbarDisplay();
     const existing = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     if (this.remindersWidgetVisible) {
       const tb = this.shadowRoot?.querySelector('.navibar') as HTMLElement;
@@ -10012,8 +10495,6 @@ export class DomindsApp extends HTMLElement {
       // Render reminder content after widget is visible
       this.renderRemindersWidget();
       this.setupRemindersWidgetDrag();
-    } else if (existing) {
-      existing.remove();
     }
   }
 
