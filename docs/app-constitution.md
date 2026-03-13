@@ -185,6 +185,12 @@ Recommended principles:
 - Published apps and local/dev apps share the same handshake contract. The only difference is who executes the app bin and obtains install JSON, not how the entry is resolved.
 - `resolution.yaml.installJson` is a **derived snapshot** from the last successful resolution. It is useful for observation and reuse, but it is not a truth source above a fresh handshake probe.
 
+#### Public import surface (first-round guardrail)
+
+- The current work only validates a **narrow public kernel import surface** inside the repo so representative consumers stop depending on private deep paths. This is **not yet** a full `kernel / shell` package split.
+- Only explicitly re-exported entrypoints count as consumer contracts. Outside those entrypoints, `main/**`, `main/shared/**`, and `main/apps-host/**` remain private implementation paths by default.
+- B-track currently fixes the dependency direction as `shell -> kernel`. Shell/webapp/app consumers should gradually depend on the narrow public entry instead of guessing or reaching into private implementation directories.
+
 Keep the responsibilities split cleanly:
 
 - Install JSON / handshake: answers “how to load the app entry module and app factory export”.

@@ -4,7 +4,7 @@ import {
   type TeamMgmtManualTopicKey,
   getTeamMgmtManualTopicTitle,
   isTeamMgmtManualTopicKey,
-} from '../../../main/shared/team_mgmt-manual';
+} from '../../../main/index';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import type { LanguageCode } from '../shared/types/language';
@@ -95,7 +95,7 @@ export class DomindsTeamManualPanel extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
 
     const topicButtons: Array<{ key: TopicKey; label: string }> =
-      TEAM_MGMT_MANUAL_UI_TOPIC_ORDER.map((key) => ({
+      TEAM_MGMT_MANUAL_UI_TOPIC_ORDER.map((key: TopicKey) => ({
         key,
         label: getTeamMgmtManualTopicTitle(this.uiLanguage, key),
       }));
