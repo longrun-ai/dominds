@@ -425,6 +425,16 @@ export async function supplyResponseToSupdialog(args: {
         anchorRole: 'response',
         callId: resolvedCallId,
         genseq: calleeResponseRef.genseq,
+        ...toRootGenerationAnchor({
+          rootCourse:
+            parentDialog instanceof SubDialog
+              ? parentDialog.rootDialog.currentCourse
+              : parentDialog.currentCourse,
+          rootGenseq:
+            parentDialog instanceof SubDialog
+              ? (parentDialog.rootDialog.activeGenSeqOrUndefined ?? 0)
+              : (parentDialog.activeGenSeqOrUndefined ?? 0),
+        }),
         assignmentCourse:
           assignmentRef !== undefined ? toAssignmentCourseNumber(assignmentRef.course) : undefined,
         assignmentGenseq:

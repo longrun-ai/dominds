@@ -509,9 +509,11 @@ export interface TellaskCallCarryoverRecord extends RootGenerationRef {
 }
 
 // Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
-export interface TellaskCallAnchorRecord extends RootGenerationRef {
+export interface TellaskCallAnchorRecord {
   ts: string;
   type: 'tellask_call_anchor_record';
+  rootCourse: RootCourseNumber;
+  rootGenseq: RootGenerationSeqNumber;
   anchorRole: 'assignment' | 'response';
   callId: string;
   genseq: number;

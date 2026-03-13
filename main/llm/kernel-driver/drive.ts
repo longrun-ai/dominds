@@ -1,4 +1,4 @@
-import { Dialog, RootDialog } from '../../dialog';
+import { Dialog, RootDialog, SubDialog } from '../../dialog';
 import {
   broadcastRunStateMarker,
   computeIdleRunState,
@@ -21,7 +21,7 @@ import {
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
-import type { TellaskCallAnchorRecord } from '../../shared/types/storage';
+import { toRootGenerationAnchor, type TellaskCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { Team } from '../../team';
@@ -1436,6 +1436,12 @@ export async function driveDialogStreamCore(
               anchorRole: 'assignment',
               callId: normalizedCallId,
               genseq: dlg.activeGenSeq,
+              ...toRootGenerationAnchor({
+                rootCourse:
+                  (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
+                rootGenseq:
+                  (dlg instanceof SubDialog ? dlg.rootDialog : dlg).activeGenSeqOrUndefined ?? 0,
+              }),
             };
             const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
             await DialogPersistence.appendEvent(dlg.id, course, record, dlg.status);

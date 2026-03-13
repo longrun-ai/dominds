@@ -881,6 +881,10 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const record: TellaskCallAnchorRecord = {
         ts: '',
         type,
+        ...toRootGenerationAnchor({
+          rootCourse: expectIntegerField(raw, 'rootCourse', context),
+          rootGenseq: expectIntegerField(raw, 'rootGenseq', context),
+        }),
         anchorRole,
         callId: expectStringField(raw, 'callId', context),
         genseq: expectIntegerField(raw, 'genseq', context),
