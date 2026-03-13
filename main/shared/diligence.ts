@@ -30,7 +30,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     '当该提醒项明确写出“当前没有任何执行中的诉请、没有其祂智能体在后台工作”时，任何“继续等待”的想法和行为都是错误的；如果你已经明确知晓这点，可手动删除该提醒项以免碍眼。',
     '',
-    '同理，若不存在“⏳ 进行中诉请（自动添加，手动删除）”提醒项，或某条历史诉请未出现在该提醒项中，都表示当前没有可等待的进行中诉请（通常代表该轮已回贴或已结束）；“继续等待”是错误动作，必须立即执行下一步：本地动作，或使用同一个 `sessionSlug` 再次调用 `tellask` 向对应队友发起下一轮诉请。',
+    '同理，若不存在“⏳ 进行中诉请（共 N 路，自动添加，手动删除）”这类提醒项，或某条历史诉请未出现在该提醒项中，都表示当前没有可等待的进行中诉请（通常代表该轮已回贴或已结束）；“继续等待”是错误动作，必须立即执行下一步：本地动作，或使用同一个 `sessionSlug` 再次调用 `tellask` 向对应队友发起下一轮诉请。',
   ].join('\n'),
   en: [
     'Do a self-check (run one FBR): does the Taskdoc already contain a sufficiently clear goal definition?',
@@ -59,6 +59,6 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     'When this reminder explicitly says there are no in-flight Tellasks and no agents working in the background, any “keep waiting” thought or behavior is wrong; if you clearly know this, manually delete the reminder to reduce noise.',
     '',
-    'Likewise, if the “⏳ In-flight Tellasks (auto-added, manually deleted)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight Tellask for it at the moment (usually the previous round has replied or ended). “Keep waiting” is a wrong action; execute the next step immediately: local action, or launch a new Tellask round to the same teammate via `tellask` with the same `sessionSlug`.',
+    'Likewise, if a “⏳ In-flight Tellasks (N total, auto-added, manually deleted)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight Tellask for it at the moment (usually the previous round has replied or ended). “Keep waiting” is a wrong action; execute the next step immediately: local action, or launch a new Tellask round to the same teammate via `tellask` with the same `sessionSlug`.',
   ].join('\n'),
 };

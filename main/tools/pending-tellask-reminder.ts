@@ -85,8 +85,8 @@ function buildReminderContent(
 ): string {
   const heading =
     language === 'zh'
-      ? '⏳ 进行中诉请（自动添加，手动删除）'
-      : '⏳ In-flight Tellasks (auto-added, manually deleted)';
+      ? `⏳ 进行中诉请（共 ${pending.length} 路，自动添加，手动删除）`
+      : `⏳ In-flight Tellasks (${pending.length} total, auto-added, manually deleted)`;
 
   if (pending.length === 0) {
     const noneRunningText =
