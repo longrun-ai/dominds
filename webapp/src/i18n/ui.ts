@@ -426,7 +426,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       primingInvalidScriptsSkippedToastPrefix: '已跳过不可解析启动脚本（',
       primingInvalidScriptsSkippedToastMiddle: '个）：',
       primingSaveButtonLabel: '保存启动脚本',
-      primingSaveButtonTitle: '将当前 course 历史保存为启动脚本',
+      primingSaveButtonTitle: '将当前一程对话的历史保存为启动脚本',
       primingSavePrompt: '输入 slug（将保存到 .minds/priming/individual/<agent-id>/<slug>.md）：',
       primingSaveNoDialogToast: '当前没有可保存的对话。',
       primingSaveSlugRequiredToast: 'slug 不能为空。',
@@ -781,7 +781,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     primingInvalidScriptsSkippedToastPrefix: 'Skipped invalid startup scripts (',
     primingInvalidScriptsSkippedToastMiddle: '): ',
     primingSaveButtonLabel: 'Save startup script',
-    primingSaveButtonTitle: 'Save current course history as a startup script',
+    primingSaveButtonTitle: 'Save current dialog course history as a startup script',
     primingSavePrompt:
       'Enter slug (it will be saved to .minds/priming/individual/<agent-id>/<slug>.md):',
     primingSaveNoDialogToast: 'No active dialog to save.',

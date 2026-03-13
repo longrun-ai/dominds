@@ -88,11 +88,11 @@ export function formatNewCourseStartPrompt(
 
   const prefix =
     args.source === 'clear_mind'
-      ? `This is course #${args.nextCourse} of the dialog. You just cleared your mind.`
-      : `System auto-started course #${args.nextCourse} of the dialog because context health is critical.`;
+      ? `This is dialog course #${args.nextCourse}. You just cleared your mind.`
+      : `System auto-started dialog course #${args.nextCourse} because context health is critical.`;
   return (
     `${prefix} ` +
-    'You are now in a new course: your first step is to review and rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, compress them into high-quality reminders, and then continue the task.'
+    'You are now in a new dialog course: your first step is to review and rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, compress them into high-quality reminders, and then continue the task.'
   );
 }
 
