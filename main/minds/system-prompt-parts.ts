@@ -3,6 +3,8 @@ import { getRuntimeTransferMarkers } from '../shared/utils/inter-dialog-format';
 import type { FuncTool } from '../tool';
 import { funcToolUsageLabels, noneRequiredFieldsText } from './minds-i18n';
 
+export type ContextHealthPromptMode = 'normal' | 'caution' | 'critical';
+
 export type PromptdocContext = {
   language: LanguageCode;
   agentId: string;
@@ -14,6 +16,7 @@ export type PromptdocContext = {
   agentHasShellTools: boolean;
   agentHasReadonlyShell: boolean;
   shellSpecialistMemberIds: string[];
+  contextHealthPromptMode: ContextHealthPromptMode;
 };
 
 export function buildNoToolsNotice(language: LanguageCode): string {
@@ -234,6 +237,30 @@ type MemoryPromptCopy = Readonly<{
 
 function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
   const runtimeMarkers = getRuntimeTransferMarkers(ctx.language);
+  const contextHealthLineZh =
+    ctx.contextHealthPromptMode === 'critical'
+      ? '当前上下文处于系统告急处置态：立即停止继续大实现/大阅读。本程只做保信息、提醒项提炼与 `clear_mind`。'
+      : ctx.contextHealthPromptMode === 'caution'
+        ? '当前上下文处于系统吃紧处置态：不要继续扩张上下文。本程优先提炼提醒项并尽快 `clear_mind`，不要继续大实现/大阅读。'
+        : '当前没有生效中的上下文健康处置指令，按正常工作流推进。';
+  const taskdocLogLineZh =
+    ctx.contextHealthPromptMode === 'critical'
+      ? '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。当前是告急处置态：本程允许先保留多条粗略提醒项求稳，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
+      : ctx.contextHealthPromptMode === 'caution'
+        ? '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。当前是吃紧处置态：本程优先压缩/提炼提醒项并尽快 `clear_mind`；若一时来不及，可先保留多条粗略提醒项过桥，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
+        : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。接续包提醒项默认应保持结构化、便于快速恢复。';
+  const contextHealthLineEn =
+    ctx.contextHealthPromptMode === 'critical'
+      ? 'Current context is under system critical remediation: stop large implementations/reads immediately. In this course, do only preserve-info work, reminder distillation, and `clear_mind`.'
+      : ctx.contextHealthPromptMode === 'caution'
+        ? 'Current context is under system caution remediation: do not keep expanding context. In this course, prioritize reminder distillation and `clear_mind`; do not continue large implementations/reads.'
+        : 'There is no active context-health remediation instruction in effect right now; proceed with the normal workflow.';
+  const taskdocLogLineEn =
+    ctx.contextHealthPromptMode === 'critical'
+      ? 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. Current mode is critical remediation: in this course, rough multi-reminder bridge notes are acceptable, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
+      : ctx.contextHealthPromptMode === 'caution'
+        ? 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. Current mode is caution remediation: in this course, prioritize compressing/distilling reminders and clearing soon; if needed, rough multi-reminder bridge notes are acceptable, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
+        : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. Keep continuation-package reminders structured and fast to resume from by default.';
   if (ctx.language === 'zh') {
     return {
       title: '### 记忆系统（重要）',
@@ -251,7 +278,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       constraintsLine:
         '- 约定：`constraints` 只写任务特有的硬要求，不得写入系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）。一经发现重复，必须删除并告知用户。',
       remindersLine:
-        '- 提醒项（即编号提醒，工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。准备 `clear_mind` 开启新一程对话时，最好整理成“结构化接续包提醒项”；其中只保留差遣牒未覆盖、但恢复工作容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。但若你已进入吃紧/告急、头脑不够清楚，允许先保留多条粗略提醒项把信息带过桥；新一程开始后的第一步，必须以清醒头脑复核并整理这些接续包/粗略提醒项：删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项。',
+        '- 提醒项（即编号提醒，工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。准备 `clear_mind` 开启新一程对话时，默认整理成“结构化接续包提醒项”；其中只保留差遣牒未覆盖、但恢复工作容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。若系统已把当前程切到吃紧/告急处置态，则允许先保留多条粗略提醒项把信息带过桥；当前程只做保信息 + clear_mind；只有系统实际开启新一程后，第一步才是以清醒头脑复核并整理这些接续包/粗略提醒项：删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项。',
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
@@ -265,11 +292,8 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       subdialogWorkflowLine: `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`,
       mainlineWorkflowLine:
         '工作流：先做事 → 再提炼（`update_reminder` + `change_mind(progress)`）→ 然后 `clear_mind` 清空噪音。',
-
-      contextHealthLine:
-        '系统会自动监控并提示上下文健康度：进入"吃紧"或"告急"状态时会插入用户可见提示。当收到此类提示时，立刻停止继续大实现/大阅读；先提炼，再 clear。',
-      taskdocLogLine:
-        '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。若头脑清楚，接续包提醒项应尽量结构化、便于快速恢复；若已吃紧/告急，允许先保留多条粗略提醒项求稳，但进入新一程后必须先复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。',
+      contextHealthLine: contextHealthLineZh,
+      taskdocLogLine: taskdocLogLineZh,
     };
   }
 
@@ -289,7 +313,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     constraintsLine:
       '- Convention: Taskdoc `constraints` must contain task-specific requirements only; do not include global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools). If duplication is found, you MUST remove it and notify the user.',
     remindersLine:
-      '- Reminders (i.e. numbered reminders, working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. When preparing `clear_mind` to start a new course, prefer a structured continuation-package reminder that keeps only details not already covered by Taskdoc but easy to lose during resume (first step, key pointers, run/verify info, volatile ids/paths). But if you are already in caution/critical and not clear-headed enough, you may carry multiple rough reminders across the course boundary first; at the start of the new course, your first step must be to review and rewrite those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.',
+      '- Reminders (i.e. numbered reminders, working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. When preparing `clear_mind` to start a new course, default to a structured continuation-package reminder that keeps only details not already covered by Taskdoc but easy to lose during resume (first step, key pointers, run/verify info, volatile ids/paths). If the system has already put the current course into caution/critical remediation, rough multi-reminder bridge notes are acceptable; in the current course, only preserve volatile information and clear_mind. Only after the system actually starts the new course does the mandatory first step become reviewing and rewriting those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.',
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
@@ -303,11 +327,8 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     subdialogWorkflowLine: `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft a merged replacement and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`,
     mainlineWorkflowLine:
       'Workflow: do work → distill (`update_reminder` + `change_mind(progress)`) → then `clear_mind` to drop noise.',
-
-    contextHealthLine:
-      'System will automatically monitor and alert on context health: yellow (caution/"Caution") or red (critical/"Critical") will insert a user-visible prompt. When you receive such alerts, immediately stop large implementations/reads; distill first, then clear.',
-    taskdocLogLine:
-      'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. When clear-headed, keep continuation-package reminders structured and fast to resume from; when already in caution/critical, multiple rough reminders are acceptable as a bridge, but in the new course you must first review and rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.',
+    contextHealthLine: contextHealthLineEn,
+    taskdocLogLine: taskdocLogLineEn,
   };
 }
 

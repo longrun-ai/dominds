@@ -1,6 +1,7 @@
 import type { LanguageCode } from '../shared/types/language';
 import { getRuntimeTransferMarkers } from '../shared/utils/inter-dialog-format';
 import type { Team } from '../team';
+import type { ContextHealthPromptMode } from './system-prompt-parts';
 
 export function formatTeamIntro(team: Team, selfAgentId: string, language: LanguageCode): string {
   const callSignLabel = language === 'zh' ? '呼号' : 'Call Sign';
@@ -38,6 +39,7 @@ export function formatTeamIntro(team: Team, selfAgentId: string, language: Langu
 export type BuildSystemPromptInput = {
   language: LanguageCode;
   dialogScope: 'mainline' | 'sideline';
+  contextHealthPromptMode: ContextHealthPromptMode;
   agent: Team.Member;
   persona: string;
   knowledge: string;
@@ -62,16 +64,46 @@ function pickLocalized<T>(language: LanguageCode, localized: LocalizedValue<T>):
   return language === 'zh' ? localized.zh : localized.en;
 }
 
-function buildFbrContextHealthScopeRule(scope: DialogScope, language: LanguageCode): string {
+function buildFbrContextHealthScopeRule(
+  scope: DialogScope,
+  language: LanguageCode,
+  contextHealthPromptMode: ContextHealthPromptMode,
+): string {
+  if (contextHealthPromptMode === 'critical') {
+    return pickLocalized(language, {
+      zh:
+        scope === 'mainline'
+          ? '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求保信息、维护提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR 与差遣牒更新。'
+          : '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求保信息、维护提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+      en:
+        scope === 'mainline'
+          ? '- Current context is under system critical remediation: do not start FBR in this course. Preserve volatile information, maintain reminders, and clear immediately; resume FBR and Taskdoc updates only after the system starts the new course and the continuation package has been reviewed.'
+          : '- Current context is under system critical remediation: do not start FBR in this course. Preserve volatile information, maintain reminders, and clear immediately; resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+    });
+  }
+
+  if (contextHealthPromptMode === 'caution') {
+    return pickLocalized(language, {
+      zh:
+        scope === 'mainline'
+          ? '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR 与差遣牒更新。'
+          : '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+      en:
+        scope === 'mainline'
+          ? '- Current context is under system caution remediation: do not start FBR in this course. Distill reminders and clear soon; resume FBR and Taskdoc updates only after the system starts the new course and the continuation package has been reviewed.'
+          : '- Current context is under system caution remediation: do not start FBR in this course. Distill reminders and clear soon; resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+    });
+  }
+
   if (scope === 'mainline') {
     return pickLocalized(language, {
-      zh: '- 系统会持续自动监控上下文健康度：没有吃紧/告急提示时，可以安全进行 FBR。如果有吃紧/告急提示，系统会提醒你，应先处理（提炼 + clear_mind）。随后基于当前可观测事实调用 \\`change_mind\\` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
-      en: '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first (distill + clear_mind). Then call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress; do not redundantly include information already present in the Taskdoc in the FBR FBR body.',
+      zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。完成 FBR 后，基于当前可观测事实调用 \\`change_mind\\` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
+      en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. After FBR, call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest progress; do not redundantly include information already present in the Taskdoc in the FBR body.',
     });
   }
   return pickLocalized(language, {
-    zh: '- 系统会持续自动监控上下文健康度：没有吃紧/告急提示时，可以安全进行 FBR。如果有吃紧/告急提示，系统会提醒你，应先处理。随后基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 FBR 自诉请正文中。',
-    en: '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the FBR FBR body.',
+    zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。随后基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 FBR 自诉请正文中。',
+    en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the FBR body.',
   });
 }
 
@@ -220,8 +252,16 @@ function buildTellaskCollaborationProtocol(
   return lines.join('\n');
 }
 
-function buildFbrGuidelines(language: LanguageCode, dialogScope: DialogScope): string {
-  const fbrContextHealthRule = buildFbrContextHealthScopeRule(dialogScope, language);
+function buildFbrGuidelines(
+  language: LanguageCode,
+  dialogScope: DialogScope,
+  contextHealthPromptMode: ContextHealthPromptMode,
+): string {
+  const fbrContextHealthRule = buildFbrContextHealthScopeRule(
+    dialogScope,
+    language,
+    contextHealthPromptMode,
+  );
   const fbrPhaseContract = buildFbrPhaseContract(language);
   const lines = pickLocalized(language, {
     zh: [
@@ -303,7 +343,11 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     input.language,
     input.dialogScope,
   );
-  const fbrGuidelines = buildFbrGuidelines(input.language, input.dialogScope);
+  const fbrGuidelines = buildFbrGuidelines(
+    input.language,
+    input.dialogScope,
+    input.contextHealthPromptMode,
+  );
   const tellaskInteractionRules = buildTellaskInteractionRules(input.language);
   const functionToolRules = buildFunctionToolRules(input.language, input.funcToolRulesText);
 

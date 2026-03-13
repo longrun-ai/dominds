@@ -515,8 +515,8 @@ export const clearMindTool: FuncTool = {
   name: 'clear_mind',
   description: 'Clear dialog mind and start a new course, optionally adding a reminder.',
   descriptionI18n: {
-    en: 'Clear dialog mind and start a new course. If needed, pass reminder_content so you can resume quickly. Prefer a structured "Continuation Package" when still clear-headed; if context is already degraded, rough bridge notes are acceptable and can be reorganized in the new course.',
-    zh: '清理头脑并开启新一程对话。若需要，可传入 reminder_content 以便快速接续。头脑还清楚时，优先整理成结构化"接续包"；若上下文已吃紧到发乱，粗略过桥笔记也可以，进入新一程后再重新整理。',
+    en: 'Clear dialog mind and start a new course. If needed, pass reminder_content so you can resume quickly. Default to a structured "Continuation Package"; if the current course is already under system caution/critical remediation, rough bridge notes are acceptable and can be reorganized in the new course.',
+    zh: '清理头脑并开启新一程对话。若需要，可传入 reminder_content 以便快速接续。默认整理成结构化"接续包"；若当前程已被系统置于吃紧/告急处置态，粗略过桥笔记也可以，进入新一程后再重新整理。',
   },
   parameters: {
     type: 'object',

@@ -13,11 +13,23 @@ async function main(): Promise<void> {
     agentHasShellTools: false,
     agentHasReadonlyShell: false,
     shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'normal',
   });
-  assert.ok(zh.includes('多条粗略提醒项'), 'zh prompt should allow rough multi-reminder bridge');
+  assert.ok(
+    zh.includes('当前没有生效中的上下文健康处置指令'),
+    'zh normal prompt should contain the normal context-health directive',
+  );
   assert.ok(
     zh.includes('差遣牒未覆盖'),
     'zh prompt should distinguish Taskdoc-covered vs volatile details',
+  );
+  assert.ok(
+    zh.includes('只有系统实际开启新一程后，第一步才是以清醒头脑复核并整理'),
+    'zh prompt should pin clear-headed review to the system-started new course',
+  );
+  assert.ok(
+    !zh.includes('若已吃紧/告急'),
+    'zh prompt should avoid self-judged caution/critical wording',
   );
 
   const en = buildMemorySystemPrompt({
@@ -31,14 +43,25 @@ async function main(): Promise<void> {
     agentHasShellTools: false,
     agentHasReadonlyShell: false,
     shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'critical',
   });
   assert.ok(
-    en.includes('multiple rough reminders'),
-    'en prompt should allow rough multi-reminder bridge',
+    en.includes('Current context is under system critical remediation'),
+    'en critical prompt should contain the critical context-health directive',
   );
   assert.ok(
     en.includes('not already covered by Taskdoc'),
     'en prompt should distinguish Taskdoc-covered vs volatile details',
+  );
+  assert.ok(
+    en.includes('rough multi-reminder bridge notes are acceptable'),
+    'en critical prompt should allow rough bridge reminders during remediation',
+  );
+  assert.ok(
+    en.includes(
+      'Once the system actually starts the new course, the first step is to review/rewrite them',
+    ),
+    'en prompt should pin clear-headed review to the system-started new course',
   );
 
   console.log('OK');

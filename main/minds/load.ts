@@ -47,6 +47,7 @@ import {
   buildIntrinsicToolUsageText,
   buildMemorySystemPrompt,
   buildShellPolicyPrompt,
+  type ContextHealthPromptMode,
 } from './system-prompt-parts';
 
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
@@ -308,6 +309,17 @@ export async function loadAgentMinds(
   const isSubdialog = dialog !== undefined && dialog.supdialog !== undefined;
   const taskdocMaintainerId =
     dialog && dialog instanceof SubDialog ? dialog.rootDialog.agentId : agent.id;
+  const contextHealthSnapshot = dialog?.getLastContextHealth();
+  const contextHealthPromptMode: ContextHealthPromptMode =
+    contextHealthSnapshot &&
+    contextHealthSnapshot.kind === 'available' &&
+    contextHealthSnapshot.level === 'critical'
+      ? 'critical'
+      : contextHealthSnapshot &&
+          contextHealthSnapshot.kind === 'available' &&
+          contextHealthSnapshot.level === 'caution'
+        ? 'caution'
+        : 'normal';
   const promptdocContext = {
     language: workingLanguage,
     agentId: agent.id,
@@ -319,6 +331,7 @@ export async function loadAgentMinds(
     agentHasShellTools,
     agentHasReadonlyShell,
     shellSpecialistMemberIds,
+    contextHealthPromptMode,
   };
 
   const policyText = [
@@ -336,6 +349,7 @@ export async function loadAgentMinds(
   const systemPrompt = buildSystemPrompt({
     language: workingLanguage,
     dialogScope: isSubdialog ? 'sideline' : 'mainline',
+    contextHealthPromptMode,
     agent,
     persona,
     knowledge,

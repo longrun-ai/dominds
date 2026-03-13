@@ -13,10 +13,12 @@ function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCod
   return buildSystemPrompt({
     language,
     dialogScope,
+    contextHealthPromptMode: 'normal',
     agent,
     persona: 'persona',
     knowledge: 'knowledge',
     lessons: 'lessons',
+    skillsText: 'skills',
     envIntro: 'env',
     teamIntro: 'team',
     funcToolRulesText: '',

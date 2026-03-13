@@ -27,9 +27,14 @@ async function main(): Promise<void> {
     zh.includes('多条粗略提醒项'),
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
+  assert.ok(!zh.includes('已经发乱'), 'zh guide should avoid subjective self-assessment wording');
   assert.ok(
     zh.includes('纠正偏激/失真思路'),
     'zh guide should require correcting distorted bridge notes in the new course',
+  );
+  assert.ok(
+    zh.includes('不要提前做“新一程清醒复核”'),
+    'zh guide should explicitly forbid early new-course cleanup during critical remediation',
   );
   assert.ok(
     zh.includes('最多再提醒你 4 次'),
@@ -49,8 +54,16 @@ async function main(): Promise<void> {
     'en guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
+    !en.includes('if you can still think clearly'),
+    'en guide should avoid subjective self-assessment wording',
+  );
+  assert.ok(
     en.includes('correcting biased or distorted bridge notes'),
     'en guide should require correcting distorted bridge notes in the new course',
+  );
+  assert.ok(
+    en.includes('do not start the new-course cleanup early'),
+    'en guide should explicitly forbid early new-course cleanup during critical remediation',
   );
   assert.ok(
     en.includes('remind you 0 more time'),
@@ -62,8 +75,16 @@ async function main(): Promise<void> {
     source: 'critical_auto_clear',
   });
   assert.ok(
+    zhNewCoursePrompt.includes('现在已经进入新一程'),
+    'zh critical new-course prompt should explicitly mark the new course boundary',
+  );
+  assert.ok(
     zhNewCoursePrompt.includes('第一步先复核并整理接续包提醒项'),
-    'zh new-course prompt should require reviewing continuation-package reminders first',
+    'zh critical new-course prompt should require reviewing continuation-package reminders first',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('以清醒头脑删除冗余'),
+    'zh critical new-course prompt should require clear-headed cleanup wording',
   );
 
   const enNewCoursePrompt = formatNewCourseStartPrompt('en', {
@@ -71,10 +92,18 @@ async function main(): Promise<void> {
     source: 'critical_auto_clear',
   });
   assert.ok(
+    enNewCoursePrompt.includes('You are now in a new course'),
+    'en critical new-course prompt should explicitly mark the new course boundary',
+  );
+  assert.ok(
     enNewCoursePrompt.includes(
-      'Your first step is to review and rewrite any continuation-package reminders',
+      'your first step is to review and rewrite any continuation-package reminders',
     ),
-    'en new-course prompt should require reviewing continuation-package reminders first',
+    'en critical new-course prompt should require reviewing continuation-package reminders first',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('with a clear head'),
+    'en critical new-course prompt should require clear-headed cleanup wording',
   );
 
   console.log('OK');

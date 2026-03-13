@@ -35,7 +35,7 @@ Reminders are **session-level** temporary working-set information for tracking p
 - Automatically cleared after dialog ends
 - Can be added, modified, or deleted at any time
 - Should stay compact, scannable, and directly actionable by default
-- Before `clear_mind`, prefer a structured continuation-package reminder when still clear-headed; if already degraded, rough multi-reminder carry-over is acceptable
+- Before `clear_mind`, default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable
 
 **Difference from memory:**
 | Feature | reminder | memory |
@@ -88,7 +88,7 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
 - Separate carriers: shared decisions/status belong in Taskdoc; reminders keep local resume details
-- Collapse before clearing: if you are still clear-headed, rewrite into a structured continuation-package reminder; if already degraded, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
+- Collapse before clearing: default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
 
 ## Limitations and Notes

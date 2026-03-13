@@ -21,6 +21,10 @@ async function main(): Promise<void> {
     zhSoft.includes('多条粗略提醒项'),
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
+  assert.ok(
+    !zhSoft.includes('头脑还清楚'),
+    'zh guide should avoid subjective self-assessment wording',
+  );
 
   const enSoft = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'caution',
@@ -30,12 +34,20 @@ async function main(): Promise<void> {
   assert.ok(enSoft.includes('update_reminder'), 'en guide should mention update_reminder');
   assert.ok(enSoft.includes('clear_mind'), 'en guide should mention clear_mind');
   assert.ok(
-    enSoft.includes('multiple rough reminders'),
-    'en guide should allow rough multi-reminder bridge when muddled',
+    enSoft.includes('rough multi-reminder carry-over is acceptable'),
+    'en guide should allow rough multi-reminder bridge during remediation',
   );
   assert.ok(
-    enSoft.includes('correct biased or distorted bridge notes'),
-    'en guide should require rewriting rough bridge notes in the new course',
+    !enSoft.includes('still clear-headed'),
+    'en guide should avoid subjective self-assessment wording',
+  );
+  assert.ok(
+    enSoft.includes('do not switch early into “clear-headed continuation-package review” mode'),
+    'en guide should explicitly forbid early new-course review while still in the current course',
+  );
+  assert.ok(
+    enSoft.includes('that is the first step only after the system actually starts the new course'),
+    'en guide should pin the mandatory review step to the system-started new course',
   );
 
   console.log('OK');

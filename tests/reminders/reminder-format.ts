@@ -71,8 +71,8 @@ async function main() {
     'Expected continuation reminder to clarify it is not an immediate command (zh)',
   );
   assert(
-    zhContinuation.includes('尽快以清醒头脑重新审视、整理更新'),
-    'Expected continuation reminder to ask for prompt review with a clear head (zh)',
+    zhContinuation.includes('进入新一程后，第一步就要以清醒头脑重新审视并整理更新'),
+    'Expected continuation reminder to require new-course first-step cleanup (zh)',
   );
 
   const en = formatReminderItemGuide('en', 2, 'Keep indentation:\n  - A\n  - B\n');
@@ -131,8 +131,8 @@ async function main() {
     'Expected continuation reminder to clarify it is not an immediate command (en)',
   );
   assert(
-    enContinuation.includes('review this again with a clear head'),
-    'Expected continuation reminder to ask for prompt review with a clear head (en)',
+    enContinuation.includes('your first step is to review and rewrite this with a clear head'),
+    'Expected continuation reminder to require new-course first-step cleanup (en)',
   );
 
   console.log('✓ Reminder formatting test passed');

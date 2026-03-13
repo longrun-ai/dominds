@@ -199,7 +199,7 @@ message: <error message>
 ## Reminder Content Guidance
 
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
-- For a continuation package, prefer structured notes when clear-headed: next step, key pointers, run/verify, easy-to-lose volatile details
-- If already in caution/critical and muddled, rough multi-reminder bridge notes are acceptable; reconcile them first in the new course
+- For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
+- If the current course is already under caution/critical remediation, rough multi-reminder bridge notes are acceptable; in the current course only preserve info + `clear_mind`, and reconcile them as the first step only after the system actually starts the new course
 - Keep only details not already covered by Taskdoc; do not repeat team-shared status
 - Do not paste long logs, large tool outputs, or raw material into reminders
