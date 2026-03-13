@@ -32,6 +32,7 @@ import {
 } from '../apps/resolution-file';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type InstallArgs = Readonly<{
   specOrPath: string;
@@ -54,6 +55,13 @@ Options:
 Notes:
   - install adds the app to .minds/app.yaml dependencies.
   - app resolution source is determined dynamically via .apps/configuration.yaml resolutionStrategy.
+  - install may also refresh .minds/app-lock.yaml, .apps/configuration.yaml, and
+    .apps/resolution.yaml for the installed app, but it is not a health check.
+  - ${formatMutationBoundaryNote({
+    commandName: 'install',
+    layerDescription:
+      '.minds/app.yaml plus derived lock/configuration/resolution state for the installed app',
+  })}
 `);
 }
 
@@ -177,6 +185,7 @@ async function main(): Promise<void> {
 
   if (args.idOverride && args.idOverride !== installJson.appId) {
     console.error(`Error: --id '${args.idOverride}' does not match appId '${installJson.appId}'`);
+    console.error(formatDoctorGuidance({ appId: installJson.appId }));
     process.exit(1);
     return;
   }
@@ -200,6 +209,7 @@ async function main(): Promise<void> {
   const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
   if (loadedConfig.kind === 'error') {
     console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
+    console.error(formatDoctorGuidance({ appId: installJson.appId }));
     process.exit(1);
     return;
   }
@@ -216,6 +226,7 @@ async function main(): Promise<void> {
   const loadedLock = await loadAppLockFile({ rtwsRootAbs });
   if (loadedLock.kind === 'error') {
     console.error(`Error: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+    console.error(formatDoctorGuidance({ appId: installJson.appId }));
     process.exit(1);
     return;
   }
@@ -235,6 +246,7 @@ async function main(): Promise<void> {
     const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs });
     if (loadedResolution.kind === 'error') {
       console.error(`Error: failed to read .apps/resolution.yaml: ${loadedResolution.errorText}`);
+      console.error(formatDoctorGuidance({ appId: installJson.appId }));
       process.exit(1);
       return;
     }
@@ -259,8 +271,18 @@ async function main(): Promise<void> {
       ? `Installed app '${installJson.appId}' from local package: ${installSource.packageRootAbs}`
       : `Installed app '${installJson.appId}' via resolver strategy seed: ${specOrPath}`,
   );
+  console.log(
+    formatMutationBoundaryNote({
+      commandName: 'install',
+      layerDescription:
+        '.minds/app.yaml plus derived lock/configuration/resolution state for the installed app',
+      appId: installJson.appId,
+    }),
+  );
   if (args.enable) {
-    console.log(`Enabled app '${installJson.appId}'`);
+    console.log(
+      `Enabled app '${installJson.appId}' in .apps/configuration.yaml and refreshed derived state.`,
+    );
   }
 }
 

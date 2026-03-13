@@ -170,14 +170,26 @@ Key semantics:
 
 ### Install JSON (`npx <pkg> --dominds-app`)
 
-(Target: planned) Install JSON should avoid overlapping with the manifest (`.minds/app.yaml`).
-
-Its responsibility is: provide **minimum “cache / location pointers”** (e.g. cache directory, manifest path, and necessary verification data). The kernel must then read the manifest (`.minds/app.yaml`) from that location to obtain full app information.
+Install JSON is the app-to-kernel/CLI **install-and-runtime handshake payload**. It may contain resolution snapshots, but its most important job is to declare the app runtime entry and provide a consistent source of truth for later resolution.
 
 Recommended principles:
 
-- Install JSON carries only the minimal fields required for locating caches and reading the manifest.
-- Capability inventory (teammates/tools/web/seed, etc.) must be **manifest-only**, to avoid drift from dual-writing.
+- Install JSON must carry the runtime entry handshake fields: `host.moduleRelPath` and `host.exportName`.
+- Install JSON may carry resolution snapshots consumed at runtime, but should avoid long-lived dual-writing where the same semantic source is split across manifest and handshake with no clear precedence.
+- The manifest (`.minds/app.yaml`) still owns app capability/asset semantics; Install JSON answers “how should this app package be loaded right now”.
+
+#### App entry handshake contract
+
+- For any external app, the **only valid runtime entry source** is `host.moduleRelPath` plus `host.exportName` from the `--dominds-app` handshake JSON.
+- The kernel, CLI, tests, doctor/diagnostics, and any other consumers **must not** guess, fall back to, or hard-code default entry paths or export names such as `src/app.js`, `src/app-host.js`, `dist/app.js`, `createDomindsApp`, or `createDomindsAppHost`.
+- Published apps and local/dev apps share the same handshake contract. The only difference is who executes the app bin and obtains install JSON, not how the entry is resolved.
+- `resolution.yaml.installJson` is a **derived snapshot** from the last successful resolution. It is useful for observation and reuse, but it is not a truth source above a fresh handshake probe.
+
+Keep the responsibilities split cleanly:
+
+- Install JSON / handshake: answers “how to load the app entry module and app factory export”.
+- manifest: answers “what capabilities, assets, dependencies, and defaults the app provides”.
+- `.minds/app-lock.yaml`, `.apps/configuration.yaml`, `.apps/resolution.yaml`: answer “what this rtws locked, explicitly configured, and derived as resolved state”.
 
 User-facing installation and the low-level handshake must stay clearly separated:
 
@@ -186,6 +198,7 @@ User-facing installation and the low-level handshake must stay clearly separated
 - For published apps, the kernel/CLI may resolve install JSON through `npx -y <pkg> --dominds-app` during resolution.
 - For local apps under development, the kernel/CLI may call the local package bin through `dominds install <path> --local`, still passing the same `--dominds-app` handshake flag underneath.
 - `npm install` / `pnpm add` only answers “where is the package downloaded/cached”. They do **not** register an app into the current rtws by themselves. The operation that actually adds the app into the current workspace dependency graph is still `dominds install`.
+- File layouts such as `src/app.js`, `src/app-host.js`, or `dist/app.js` remain implementation choices made by the app author. Consumers must not depend on those names as part of the contract.
 
 Recommended user mental model:
 

@@ -65,6 +65,11 @@ type ResolvedGraphState = Readonly<{
   issues: ReadonlyArray<AppsResolutionIssue>;
 }>;
 
+export type AppsResolutionMaterializationResult = Readonly<{
+  resolved: ResolvedGraphState;
+  wroteResolutionFile: boolean;
+}>;
+
 function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: boolean }): string {
   const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_CONFIGURATION_REL_PATH);
   const action = params.hasConfigurationFile ? 'Edit' : 'Create';
@@ -463,7 +468,7 @@ async function resolveGraph(params: {
   };
 }
 
-export async function materializeAppsResolution(params: {
+export async function resolveAppsGraphState(params: {
   rtwsRootAbs: string;
 }): Promise<ResolvedGraphState> {
   const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs: params.rtwsRootAbs });
@@ -504,20 +509,36 @@ export async function materializeAppsResolution(params: {
     hasConfigurationFile: loadedConfig.exists,
   });
 
+  return resolved;
+}
+
+export async function materializeAppsResolution(params: {
+  rtwsRootAbs: string;
+}): Promise<AppsResolutionMaterializationResult> {
+  const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs: params.rtwsRootAbs });
+  if (loadedResolution.kind === 'error') {
+    throw new Error(
+      `Failed to load apps resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
+    );
+  }
+
+  const resolved = await resolveAppsGraphState({ rtwsRootAbs: params.rtwsRootAbs });
+
   if (JSON.stringify(loadedResolution.file) !== JSON.stringify(resolved.resolutionFile)) {
     await writeAppsResolutionFileIfChanged({
       rtwsRootAbs: params.rtwsRootAbs,
       file: resolved.resolutionFile,
     });
+    return { resolved, wroteResolutionFile: true };
   }
 
-  return resolved;
+  return { resolved, wroteResolutionFile: false };
 }
 
 export async function loadEnabledAppsSnapshot(params: {
   rtwsRootAbs: string;
 }): Promise<EnabledAppsSnapshot> {
-  const resolved = await materializeAppsResolution({ rtwsRootAbs: params.rtwsRootAbs });
+  const { resolved } = await materializeAppsResolution({ rtwsRootAbs: params.rtwsRootAbs });
   return {
     enabledApps: resolved.resolutionFile.apps
       .filter((app) => app.enabled)

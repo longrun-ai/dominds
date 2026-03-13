@@ -14,6 +14,7 @@
  *   manual   - Render toolset manual to stdout
  *   create   - Create a new runtime workspace (rtws) from a template
  *   install  - Install a Dominds App into this rtws
+ *   doctor   - Diagnose Dominds App state in this rtws
  *   enable   - Enable an installed Dominds App in this rtws
  *   disable  - Disable an installed Dominds App in this rtws
  *   uninstall- Uninstall a Dominds App from this rtws
@@ -32,6 +33,7 @@ import * as path from 'path';
 import { initAppsRuntime, registerEnabledAppsToolProxies } from './apps/runtime';
 import { main as createMain } from './cli/create';
 import { main as disableMain } from './cli/disable';
+import { main as doctorMain } from './cli/doctor';
 import { main as enableMain } from './cli/enable';
 import { main as installMain } from './cli/install';
 import { main as manualMain } from './cli/manual';
@@ -62,6 +64,7 @@ Subcommands:
   manual [options]   Render toolset manual to stdout
   create [options]   Create a new runtime workspace (rtws) from a template
   install [options]  Install a Dominds App into this rtws
+  doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
   enable [options]   Enable an installed Dominds App in this rtws
   disable [options]  Disable an installed Dominds App in this rtws
   uninstall [options] Uninstall a Dominds App from this rtws
@@ -78,6 +81,7 @@ Examples:
   dominds read               # Read team configuration
   dominds manual ws_read --lang zh --all
   dominds create web-scaffold my-project   # Create rtws from a template
+  dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
 
 Installation:
   pnpm add -g dominds
@@ -151,6 +155,8 @@ async function main(): Promise<void> {
     ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h')) ||
     (subcommand === 'install' &&
       (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
+    (subcommand === 'doctor' &&
+      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
     (subcommand === 'enable' &&
       (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
     (subcommand === 'disable' &&
@@ -184,6 +190,7 @@ async function main(): Promise<void> {
     subcommand !== 'create' &&
     subcommand !== 'new' &&
     subcommand !== 'install' &&
+    subcommand !== 'doctor' &&
     subcommand !== 'enable' &&
     subcommand !== 'disable' &&
     subcommand !== 'uninstall' &&
@@ -233,6 +240,9 @@ async function main(): Promise<void> {
     case 'install':
       await runSubcommand('install', subcommandArgs);
       break;
+    case 'doctor':
+      await runSubcommand('doctor', subcommandArgs);
+      break;
     case 'enable':
       await runSubcommand('enable', subcommandArgs);
       break;
@@ -272,6 +282,8 @@ async function runSubcommand(subcommand: string, args: string[]): Promise<void> 
       await createMain();
     } else if (subcommand === 'install') {
       await installMain();
+    } else if (subcommand === 'doctor') {
+      await doctorMain();
     } else if (subcommand === 'enable') {
       await enableMain();
     } else if (subcommand === 'disable') {

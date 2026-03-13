@@ -21,9 +21,7 @@ export type AppFactoryContext = Readonly<{
   ) => void;
 }>;
 
-export async function loadLocalAppEntry(params: {
-  packageRootAbs: string;
-}): Promise<
+export async function loadLocalAppEntry(params: { packageRootAbs: string }): Promise<
   Readonly<{
     installJson: DomindsAppInstallJsonV1;
     appFactory: (ctx: AppFactoryContext) => unknown;

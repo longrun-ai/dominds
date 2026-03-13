@@ -17,6 +17,7 @@ import {
   writeDomindsAppManifestIfChanged,
 } from '../apps/manifest';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type UninstallArgs = Readonly<{ appId: string; purge: boolean }>;
 
@@ -26,6 +27,15 @@ function printHelp(): void {
 
 Options:
   --purge   Also delete rtws app state directory: .apps/<appId path segments>/
+
+Notes:
+  - uninstall removes the app from .minds/app.yaml dependencies, clears its lock/config disabled state,
+    and refreshes derived state.
+  - ${formatMutationBoundaryNote({
+    commandName: 'uninstall',
+    layerDescription:
+      '.minds/app.yaml plus app-specific lock/configuration entries and derived resolution state',
+  })}
 `);
 }
 
@@ -72,6 +82,7 @@ async function main(): Promise<void> {
   });
   if (nextManifest === manifest) {
     console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
+    console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
   }
@@ -85,6 +96,7 @@ async function main(): Promise<void> {
   const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
   if (loadedConfig.kind === 'error') {
     console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
+    console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
   }
@@ -98,6 +110,7 @@ async function main(): Promise<void> {
   const loadedLock = await loadAppLockFile({ rtwsRootAbs });
   if (loadedLock.kind === 'error') {
     console.error(`Error: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+    console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
   }
@@ -110,12 +123,20 @@ async function main(): Promise<void> {
     const rtwsDirRel = formatDomindsAppRtwsDirRel(args.appId);
     const appDirAbs = resolveDomindsAppRtwsDirAbs(rtwsRootAbs, args.appId);
     await fs.rm(appDirAbs, { recursive: true, force: true });
-    console.log(`Uninstalled app '${args.appId}' (purged rtws state: ${rtwsDirRel}/)`);
+    console.log(`Uninstalled app '${args.appId}' and purged rtws state directory ${rtwsDirRel}/.`);
   } else {
     console.log(
-      `Uninstalled app '${args.appId}' (rtws data preserved under ${formatDomindsAppRtwsDirRel(args.appId)}/)`,
+      `Uninstalled app '${args.appId}' while preserving rtws data under ${formatDomindsAppRtwsDirRel(args.appId)}/.`,
     );
   }
+  console.log(
+    formatMutationBoundaryNote({
+      commandName: 'uninstall',
+      layerDescription:
+        '.minds/app.yaml plus app-specific lock/configuration entries and derived resolution state',
+      appId: args.appId,
+    }),
+  );
 }
 
 export { main };

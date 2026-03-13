@@ -7,12 +7,20 @@ import {
 } from '../apps/configuration-file';
 import { hasRtwsDeclaredAppDependency } from '../apps/manifest';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type DisableArgs = Readonly<{ appId: string }>;
 
 function printHelp(): void {
   console.log(`Usage:
   dominds disable <appId>
+
+Notes:
+  - disable only adds the app to .apps/configuration.yaml.disabledApps and refreshes derived state.
+  - ${formatMutationBoundaryNote({
+    commandName: 'disable',
+    layerDescription: '.apps/configuration.yaml.disabledApps',
+  })}
 `);
 }
 
@@ -44,6 +52,7 @@ async function main(): Promise<void> {
   const rtwsRootAbs = process.cwd();
   if (!(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))) {
     console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
+    console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
   }
@@ -51,6 +60,7 @@ async function main(): Promise<void> {
   const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
   if (loadedConfig.kind === 'error') {
     console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
+    console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
   }
@@ -62,7 +72,16 @@ async function main(): Promise<void> {
   });
   await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
   await refreshAppsDerivedState({ rtwsRootAbs });
-  console.log(`Disabled app '${args.appId}'`);
+  console.log(
+    `Disabled app '${args.appId}' in .apps/configuration.yaml and refreshed derived state.`,
+  );
+  console.log(
+    formatMutationBoundaryNote({
+      commandName: 'disable',
+      layerDescription: '.apps/configuration.yaml.disabledApps',
+      appId: args.appId,
+    }),
+  );
 }
 
 export { main };
