@@ -360,8 +360,10 @@ Suggested minimal asset shape:
 │           ├── persona.zh.md
 │           ├── knowledge.zh.md
 │           └── lessons.zh.md
+├── bin/
+│   └── <app>.js
 └── src/
-    └── app-host.ts
+    └── app.js
 ```
 
 Suggested team shape:

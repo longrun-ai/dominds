@@ -105,7 +105,7 @@ async function writeLocalAppPackage(params: {
       `    version: ${JSON.stringify(params.packageVersion)},`,
       '    rootAbs: process.cwd(),',
       '  },',
-      "  host: { kind: 'node_module', moduleRelPath: './src/app-host.js', exportName: 'createDomindsAppHost' },",
+      "  host: { kind: 'node_module', moduleRelPath: './src/app.js', exportName: 'createDomindsApp' },",
       "  frontend: { kind: 'http', defaultPort: 0 },",
       "  contributes: { teammatesYamlRelPath: '.minds/team.yaml' },",
       '};',
@@ -123,7 +123,7 @@ async function writeLocalAppPackage(params: {
       '  teammates:',
       '    teamYaml: .minds/team.yaml',
       '  tools:',
-      '    module: ./src/app-host.js',
+      '    module: ./src/app.js',
       '',
     ].join('\n'),
   );
@@ -145,8 +145,8 @@ async function writeLocalAppPackage(params: {
     ].join('\n'),
   );
   await writeText(
-    path.join(params.packageRootAbs, 'src', 'app-host.js'),
-    ['export async function createDomindsAppHost() {', '  return { tools: {} };', '}', ''].join(
+    path.join(params.packageRootAbs, 'src', 'app.js'),
+    ['export async function createDomindsApp() {', '  return { tools: {} };', '}', ''].join(
       '\n',
     ),
   );

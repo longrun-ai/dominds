@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+
+import { loadLocalAppEntry } from './helpers/app-entry';
 
 type ToolCtx = Readonly<{
   dialogId: string;
@@ -170,9 +171,9 @@ type HostFactoryContext = Readonly<{
   playwrightLoader?: () => Promise<FakePlaywrightModule>;
 }>;
 
-type HostModule = Readonly<{
-  createDomindsAppHost: (ctx: HostFactoryContext) => Promise<AppHost>;
-}>;
+type AppModule = Readonly<{
+  createDomindsApp: (ctx: HostFactoryContext) => Promise<AppHost>;
+}>; 
 
 async function pathExists(absPath: string): Promise<boolean> {
   try {
@@ -471,7 +472,6 @@ async function main(): Promise<void> {
   const appId = '@longrun-ai/web-dev';
   const appIdPathParts = ['@longrun-ai', 'web-dev'];
   const packageRootAbs = path.join(repoRootAbs, 'dominds-apps', ...appIdPathParts);
-  const hostModuleAbs = path.join(packageRootAbs, 'src', 'app-host.js');
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-web-dev-session-prototype-'));
   const rtwsAppDirAbs = path.join(tempRoot, '.apps', ...appIdPathParts);
   const sessionsCacheDirAbs = path.join(
@@ -485,11 +485,10 @@ async function main(): Promise<void> {
   const legacySessionsDirAbs = path.join(rtwsAppDirAbs, 'state', 'js-repl', 'sessions');
 
   try {
-    const hostModuleUnknown = await import(pathToFileURL(hostModuleAbs).href);
-    const hostModule = hostModuleUnknown as HostModule;
+    const { appFactory } = await loadLocalAppEntry({ packageRootAbs });
     const fakeEnv = createFakePlaywrightEnvironment();
 
-    const host = await hostModule.createDomindsAppHost({
+    const host = (await appFactory({
       appId,
       rtwsRootAbs: tempRoot,
       rtwsAppDirAbs,
@@ -497,7 +496,7 @@ async function main(): Promise<void> {
       kernel: { host: '127.0.0.1', port: 0 },
       log: () => undefined,
       playwrightLoader: async () => fakeEnv.playwright,
-    });
+    })) as AppHost;
 
     const reminderOwner = host.reminderOwners?.['js_repl_session'];
     assert.ok(reminderOwner, 'expected js_repl_session reminder owner');

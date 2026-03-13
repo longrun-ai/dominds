@@ -34,7 +34,7 @@ function buildHostSource(params: {
     '  await new Promise((resolve) => setTimeout(resolve, ms));',
     '}',
     '',
-    'export async function createDomindsAppHost() {',
+    'export async function createDomindsApp() {',
     initMarkerAbs
       ? `  await fs.writeFile(${JSON.stringify(initMarkerAbs)}, 'initializing', 'utf-8');`
       : '  await Promise.resolve();',
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
         "    version: '0.0.1',",
         '    rootAbs: process.cwd(),',
         '  },',
-        "  host: { kind: 'node_module', moduleRelPath: './src/app-host.js', exportName: 'createDomindsAppHost' },",
+        "  host: { kind: 'node_module', moduleRelPath: './src/app.js', exportName: 'createDomindsApp' },",
         '  contributes: {',
         '    toolsets: [',
         '      {',
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
     );
 
     await writeText(
-      path.join(appRootAbs, 'src', 'app-host.js'),
+      path.join(appRootAbs, 'src', 'app.js'),
       buildHostSource({ version: 'v1' }),
     );
 
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
 
     const initMarkerAbs = path.join(tmpRoot, '.apps', 'probe-host-init.marker');
     await writeText(
-      path.join(appRootAbs, 'src', 'app-host.js'),
+      path.join(appRootAbs, 'src', 'app.js'),
       buildHostSource({ version: 'v2', initDelayMs: 250, initMarkerAbs }),
     );
     const refreshPromise = registerEnabledAppsToolProxies({ rtwsRootAbs: tmpRoot });

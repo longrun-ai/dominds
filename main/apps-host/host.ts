@@ -18,7 +18,7 @@ import type { JsonValue } from '../tool';
 
 import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import type {
-  CreateDomindsAppHostFn,
+  CreateDomindsAppFn,
   DomindsAppHostInstance,
   DomindsAppHostStartResult,
   DomindsAppReminderOwnerHandler,
@@ -283,16 +283,16 @@ function pickExportedFactory(
   mod: unknown,
   exportName: string,
   moduleAbs: string,
-): CreateDomindsAppHostFn {
+): CreateDomindsAppFn {
   if (isRecord(mod) && typeof mod[exportName] === 'function') {
-    return mod[exportName] as unknown as CreateDomindsAppHostFn;
+    return mod[exportName] as unknown as CreateDomindsAppFn;
   }
   if (
     isRecord(mod) &&
     isRecord(mod['default']) &&
     typeof mod['default'][exportName] === 'function'
   ) {
-    return mod['default'][exportName] as unknown as CreateDomindsAppHostFn;
+    return mod['default'][exportName] as unknown as CreateDomindsAppFn;
   }
   throw new Error(`Invalid app host module exports (${moduleAbs}): missing export '${exportName}'`);
 }

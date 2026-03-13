@@ -49,8 +49,8 @@ async function main(): Promise<void> {
               },
               host: {
                 kind: 'node_module',
-                moduleRelPath: './src/app-host.js',
-                exportName: 'createDomindsAppHost',
+                moduleRelPath: './src/app.js',
+                exportName: 'createDomindsApp',
               },
               contributes: {},
             },

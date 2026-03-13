@@ -103,7 +103,7 @@ async function main(): Promise<void> {
         '  teammates:',
         '    teamYaml: .minds/team.yaml',
         '  tools:',
-        '    module: ./src/app-host.js',
+        '    module: ./src/app.js',
         '',
       ].join('\n'),
     );
@@ -132,16 +132,16 @@ async function main(): Promise<void> {
         "    version: '0.1.0',",
         '    rootAbs: process.cwd(),',
         '  },',
-        "  host: { kind: 'node_module', moduleRelPath: './src/app-host.js', exportName: 'createDomindsAppHost' },",
+        "  host: { kind: 'node_module', moduleRelPath: './src/app.js', exportName: 'createDomindsApp' },",
         "  contributes: { teammatesYamlRelPath: '.minds/team.yaml' }",
         '}));',
         '',
       ].join('\n'),
     );
     await writeText(
-      path.join(localAppAbs, 'src', 'app-host.js'),
+      path.join(localAppAbs, 'src', 'app.js'),
       [
-        'export async function createDomindsAppHost() {',
+        'export async function createDomindsApp() {',
         '  return {',
         '    tools: {},',
         '  };',

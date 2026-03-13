@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+
+import { loadLocalAppEntry } from './helpers/app-entry';
 
 type ToolCtx = Readonly<{
   dialogId: string;
@@ -20,8 +21,8 @@ type AppHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
 }>;
 
-type HostModule = Readonly<{
-  createDomindsAppHost: (ctx: {
+type AppModule = Readonly<{
+  createDomindsApp: (ctx: {
     appId: string;
     rtwsRootAbs: string;
     rtwsAppDirAbs: string;
@@ -83,7 +84,6 @@ async function main(): Promise<void> {
     '@longrun-ai',
     'phase-gate',
   );
-  const hostModuleAbs = path.join(packageRootAbs, 'src', 'app-host.js');
   const rtwsAppDirAbs = path.join(tmpRoot, '.apps', '@longrun-ai', 'phase-gate');
 
   const flowMarkdown = `# Phase Gate Flow
@@ -484,16 +484,15 @@ flowchart LR
     );
     await writeText(path.join(manualTaskDocAbs, 'phasegate', 'state.md'), manualStateMarkdown);
 
-    const hostModuleUnknown = await import(pathToFileURL(hostModuleAbs).href);
-    const hostModule = hostModuleUnknown as HostModule;
-    const host = await hostModule.createDomindsAppHost({
+    const { appFactory } = await loadLocalAppEntry({ packageRootAbs });
+    const host = (await appFactory({
       appId: '@longrun-ai/phase-gate',
       rtwsRootAbs: tmpRoot,
       rtwsAppDirAbs,
       packageRootAbs,
       kernel: { host: '127.0.0.1', port: 0 },
       log: () => undefined,
-    });
+    })) as AppHost;
 
     const toolCtx: ToolCtx = {
       dialogId: 'dlg-owner',

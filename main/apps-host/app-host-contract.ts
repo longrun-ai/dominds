@@ -101,7 +101,7 @@ export type DomindsAppHostInstance = Readonly<{
   shutdown?: () => Promise<void>;
 }>;
 
-export type CreateDomindsAppHostFn = (
+export type CreateDomindsAppFn = (
   ctx: Readonly<{
     appId: string;
     rtwsRootAbs: string;

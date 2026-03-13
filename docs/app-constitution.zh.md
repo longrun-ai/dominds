@@ -359,8 +359,10 @@ Web Dev App 需要明确区分三套命名，避免再次漂移：
 │           ├── persona.zh.md
 │           ├── knowledge.zh.md
 │           └── lessons.zh.md
+├── bin/
+│   └── <app>.js
 └── src/
-    └── app-host.ts
+    └── app.js
 ```
 
 建议的团队形态：
