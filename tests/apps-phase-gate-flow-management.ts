@@ -133,6 +133,18 @@ async function main(): Promise<void> {
     "toolsets": ["phase_gate_status", "phase_gate_manage"]
   },
   "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "builder",
+      "title": "Builder",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
   "phases": [
     {
       "id": "alignment",
@@ -140,13 +152,18 @@ async function main(): Promise<void> {
       "gate": {
         "id": "alignment_signoff",
         "title": "Alignment sign-off",
-        "toPhase": "implementation",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "owner",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "implementation"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
           }
         ]
       }
@@ -157,13 +174,18 @@ async function main(): Promise<void> {
       "gate": {
         "id": "acceptance_input_check",
         "title": "Acceptance input check",
-        "toPhase": "acceptance",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "builder",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "acceptance"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "builder"
           }
         ]
       }
@@ -180,6 +202,24 @@ async function main(): Promise<void> {
 flowchart LR
   alignment --> implementation
   implementation --> acceptance
+\`\`\`
+`;
+
+  const bindingsMarkdown = `# Phase Gate Bindings
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "builder",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
+    }
+  ]
+}
 \`\`\`
 `;
 
@@ -229,18 +269,30 @@ flowchart LR
 {
   "version": 1,
   "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
   "phases": [
     {
       "id": "alignment",
       "gate": {
         "id": "alignment_signoff",
-        "toPhase": "done",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "owner",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "done"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
           }
         ]
       }
@@ -259,18 +311,30 @@ flowchart LR
 {
   "version": 1,
   "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
   "phases": [
     {
       "id": "alignment",
       "gate": {
         "id": "alignment_signoff",
-        "toPhase": "done",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "owner",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "done"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
           }
         ]
       }
@@ -294,6 +358,18 @@ flowchart LR
 {
   "version": 1,
   "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "implementer",
+      "title": "Implementer",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
   "phases": [
     {
       "id": "alignment",
@@ -301,13 +377,18 @@ flowchart LR
       "gate": {
         "id": "alignment_signoff",
         "title": "Alignment sign-off",
-        "toPhase": "implementation",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "owner",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "implementation"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
           }
         ]
       }
@@ -318,13 +399,18 @@ flowchart LR
       "gate": {
         "id": "implementation_review",
         "title": "Implementation review",
-        "toPhase": "acceptance",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "implementer",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "acceptance"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "implementer"
           }
         ]
       }
@@ -332,6 +418,21 @@ flowchart LR
     {
       "id": "acceptance",
       "title": "Acceptance"
+    }
+  ]
+}
+\`\`\`
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "implementer",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
     }
   ]
 }
@@ -373,7 +474,14 @@ flowchart LR
       "gate": {
         "id": "alignment_signoff",
         "title": "Alignment sign-off",
-        "toPhase": "implementation",
+        "exits": [
+          {
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "implementation"
+          }
+        ],
         "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
         "participants": [
           { "roleId": "owner" }
@@ -386,7 +494,14 @@ flowchart LR
       "gate": {
         "id": "implementation_review",
         "title": "Implementation review",
-        "toPhase": "acceptance",
+        "exits": [
+          {
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "acceptance"
+          }
+        ],
         "quorum": { "approveAtLeast": 2, "vetoAtMost": 0 },
         "participants": [
           { "roleId": "owner" },
@@ -430,6 +545,7 @@ flowchart LR
   try {
     process.chdir(tmpRoot);
     await writeText(path.join(taskDocAbs, 'phasegate', 'flow.md'), flowMarkdown);
+    await writeText(path.join(taskDocAbs, 'phasegate', 'bindings.md'), bindingsMarkdown);
     await writeText(path.join(taskDocAbs, 'phasegate', 'state.md'), stateMarkdown);
 
     const hostModuleUnknown = await import(pathToFileURL(hostModuleAbs).href);

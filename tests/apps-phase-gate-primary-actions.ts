@@ -73,6 +73,8 @@ async function main(): Promise<void> {
   const taskDocAbs = path.join(tmpRoot, taskDocRel);
   const reviewTaskDocRel = 'review-case.tsk';
   const reviewTaskDocAbs = path.join(tmpRoot, reviewTaskDocRel);
+  const manualTaskDocRel = 'manual-case.tsk';
+  const manualTaskDocAbs = path.join(tmpRoot, manualTaskDocRel);
   const packageRootAbs = path.resolve(
     __dirname,
     '..',
@@ -94,6 +96,18 @@ async function main(): Promise<void> {
     "toolsets": ["phase_gate_status", "phase_gate_manage"]
   },
   "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "builder",
+      "title": "Builder",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
   "phases": [
     {
       "id": "alignment",
@@ -101,13 +115,18 @@ async function main(): Promise<void> {
       "gate": {
         "id": "alignment_signoff",
         "title": "Alignment sign-off",
-        "toPhase": "implementation",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "owner",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "implementation"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
           }
         ]
       }
@@ -118,13 +137,25 @@ async function main(): Promise<void> {
       "gate": {
         "id": "acceptance_input_check",
         "title": "Acceptance input check",
-        "toPhase": "acceptance",
-        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
-        "roles": [
+        "exits": [
           {
-            "id": "builder",
-            "members": ["@owner"],
-            "toolsets": ["phase_gate_status", "phase_gate_review"]
+            "id": "revisit_alignment",
+            "title": "Revisit alignment",
+            "kind": "rollback",
+            "trigger": "manual",
+            "toPhase": "alignment"
+          },
+          {
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "acceptance"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "builder"
           }
         ]
       }
@@ -141,6 +172,25 @@ async function main(): Promise<void> {
 flowchart LR
   alignment --> implementation
   implementation --> acceptance
+  implementation --> alignment
+\`\`\`
+`;
+
+  const flowBindingsMarkdown = `# Phase Gate Bindings
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "builder",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
+    }
+  ]
+}
 \`\`\`
 `;
 
@@ -173,7 +223,14 @@ flowchart LR
       "gate": {
         "id": "alignment_signoff",
         "title": "Alignment sign-off",
-        "toPhase": "implementation",
+        "exits": [
+          {
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "implementation"
+          }
+        ],
         "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
         "participants": [
           {
@@ -188,7 +245,14 @@ flowchart LR
       "gate": {
         "id": "acceptance_input_check",
         "title": "Acceptance input check",
-        "toPhase": "acceptance",
+        "exits": [
+          {
+            "id": "advance",
+            "trigger": "quorum_pass",
+            "kind": "advance",
+            "toPhase": "acceptance"
+          }
+        ],
         "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
         "participants": [
           {
@@ -230,6 +294,121 @@ flowchart LR
 \`\`\`
 `;
 
+  const manualFlowMarkdown = `# Phase Gate Flow
+
+\`\`\`phasegate
+{
+  "version": 1,
+  "flowMentor": {
+    "memberId": "@flow-mentor",
+    "toolsets": ["phase_gate_status", "phase_gate_manage"]
+  },
+  "initialPhase": "triage",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "builder",
+      "title": "Builder",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
+  "phases": [
+    {
+      "id": "triage",
+      "title": "Triage",
+      "gate": {
+        "id": "classify_change",
+        "title": "Classify change",
+        "exits": [
+          {
+            "id": "small_change_path",
+            "title": "Small change path",
+            "kind": "classification",
+            "trigger": "quorum_pass",
+            "toPhase": "implementation"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "implementation",
+      "title": "Implementation",
+      "gate": {
+        "id": "implementation_signoff",
+        "title": "Implementation sign-off",
+        "exits": [
+          {
+            "id": "ship_small_change",
+            "title": "Ship small change",
+            "kind": "path",
+            "trigger": "manual",
+            "toPhase": "acceptance"
+          },
+          {
+            "id": "escalate_committee",
+            "title": "Escalate to expert committee",
+            "label": "Expert committee",
+            "kind": "escalate",
+            "trigger": "manual",
+            "toPhase": "committee_review"
+          }
+        ],
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "builder"
+          }
+        ]
+      }
+    },
+    {
+      "id": "committee_review",
+      "title": "Committee Review"
+    },
+    {
+      "id": "acceptance",
+      "title": "Acceptance"
+    }
+  ]
+}
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+  triage --> implementation
+  implementation --> acceptance
+  implementation --> committee_review
+\`\`\`
+`;
+
+  const manualBindingsMarkdown = `# Phase Gate Bindings
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "builder",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
+    }
+  ]
+}
+\`\`\`
+`;
+
   const stateMarkdown = `# Phase Gate State
 
 \`\`\`phasegate-state
@@ -242,7 +421,44 @@ flowchart LR
       "gateId": "alignment_signoff",
       "fromPhase": "alignment",
       "toPhase": "implementation",
+      "exitId": "advance",
+      "exitKind": "advance",
       "advancedAt": "2026-03-11T00:00:00.000Z"
+    }
+  ],
+  "control": null
+}
+\`\`\`
+`;
+
+  const manualStateMarkdown = `# Phase Gate State
+
+\`\`\`phasegate-state
+{
+  "currentPhase": "implementation",
+  "assessments": [],
+  "votes": [],
+  "history": [
+    {
+      "gateId": "classify_change",
+      "fromPhase": "triage",
+      "toPhase": "implementation",
+      "exitId": "small_change_path",
+      "exitKind": "classification",
+      "advancedAt": "2026-03-11T00:00:00.000Z"
+    }
+  ],
+  "events": [
+    {
+      "kind": "phase_advanced",
+      "createdAt": "2026-03-11T00:00:00.000Z",
+      "phaseId": "implementation",
+      "gateId": "classify_change",
+      "fromPhase": "triage",
+      "toPhase": "implementation",
+      "exitId": "small_change_path",
+      "exitKind": "classification",
+      "memberId": "owner"
     }
   ],
   "control": null
@@ -253,6 +469,7 @@ flowchart LR
   try {
     process.chdir(tmpRoot);
     await writeText(path.join(taskDocAbs, 'phasegate', 'flow.md'), flowMarkdown);
+    await writeText(path.join(taskDocAbs, 'phasegate', 'bindings.md'), flowBindingsMarkdown);
     await writeText(path.join(taskDocAbs, 'phasegate', 'state.md'), stateMarkdown);
     await writeText(path.join(reviewTaskDocAbs, 'phasegate', 'flow.md'), reviewFlowMarkdown);
     await writeText(
@@ -260,6 +477,12 @@ flowchart LR
       reviewBindingsMarkdown,
     );
     await writeText(path.join(reviewTaskDocAbs, 'phasegate', 'state.md'), stateMarkdown);
+    await writeText(path.join(manualTaskDocAbs, 'phasegate', 'flow.md'), manualFlowMarkdown);
+    await writeText(
+      path.join(manualTaskDocAbs, 'phasegate', 'bindings.md'),
+      manualBindingsMarkdown,
+    );
+    await writeText(path.join(manualTaskDocAbs, 'phasegate', 'state.md'), manualStateMarkdown);
 
     const hostModuleUnknown = await import(pathToFileURL(hostModuleAbs).href);
     const hostModule = hostModuleUnknown as HostModule;
@@ -297,6 +520,8 @@ flowchart LR
     assert.ok(recordHumanDecision, 'expected phase_gate_record_human_decision tool');
     const applyRollback = host.tools.phase_gate_apply_rollback;
     assert.ok(applyRollback, 'expected phase_gate_apply_rollback tool');
+    const selectExit = host.tools.phase_gate_select_exit;
+    assert.ok(selectExit, 'expected phase_gate_select_exit tool');
     const recordAssessment = host.tools.phase_gate_record_assessment;
     assert.ok(recordAssessment, 'expected phase_gate_record_assessment tool');
     const castVote = host.tools.phase_gate_cast_vote;
@@ -484,7 +709,10 @@ flowchart LR
 
     const rolledBackStatus = extractOutput(await getStatus({ taskDocPath: taskDocRel }, toolCtx));
     assert.match(rolledBackStatus, /- currentPhase: `alignment` \(Alignment\)/);
-    assert.match(rolledBackStatus, /phase rolled back `implementation` -> `alignment` @ /);
+    assert.match(
+      rolledBackStatus,
+      /phase rolled back `implementation` -> `alignment` via `revisit_alignment` @ /,
+    );
     const rolledBackWorkflowPolicy = parseJsonBlock(rolledBackStatus);
     const rolledBackPhase = rolledBackWorkflowPolicy.phase;
     assertRecord(rolledBackPhase, 'rolled-back phase');
@@ -505,6 +733,10 @@ flowchart LR
         'phase_rolled_back',
       ],
     );
+    const rolledBackLastEvent = rolledBackRecentEvents.at(-1);
+    assertRecord(rolledBackLastEvent, 'rolled-back last event');
+    assert.equal(rolledBackLastEvent.exitId, 'revisit_alignment');
+    assert.equal(rolledBackLastEvent.exitKind, 'rollback');
 
     const clearAfterRollbackOutput = extractOutput(
       await clearControl({ taskDocPath: taskDocRel }, toolCtx),
@@ -585,6 +817,90 @@ flowchart LR
     assert.equal(rejectedReviewTargets[0].memberId, 'owner');
     assert.deepEqual(rejectedReviewTargets[0].roleIds, ['builder']);
 
+    const manualVoteOutput = extractOutput(
+      await castVote(
+        {
+          taskDocPath: manualTaskDocRel,
+          decision: 'approve',
+          rationale: 'Implementation is complete but needs committee escalation.',
+        },
+        toolCtx,
+      ),
+    );
+    assert.match(
+      manualVoteOutput,
+      /Recorded vote `approve` for gate `implementation_signoff`; quorum passed and flow mentor must now select a manual exit: `ship_small_change`, `escalate_committee`\./,
+    );
+
+    const manualSelectionStatus = extractOutput(
+      await getStatus({ taskDocPath: manualTaskDocRel }, flowMentorCtx),
+    );
+    assert.match(
+      manualSelectionStatus,
+      /- primaryAction: `select_exit` -> `ship_small_change` -> `acceptance`, `escalate_committee` -> `committee_review`/,
+    );
+    assert.match(manualSelectionStatus, /- blockingReason: `manual_exit_required`/);
+    assert.match(
+      manualSelectionStatus,
+      /- currentPath: `triage` -> `implementation` via `small_change_path`/,
+    );
+    assert.match(manualSelectionStatus, /- latestEscalation: \(none\)/);
+    assert.match(
+      manualSelectionStatus,
+      /- manualExits: `ship_small_change` \(Ship small change\) -> `acceptance` \(Acceptance\); `escalate_committee` \(Escalate to expert committee\) -> `committee_review` \(Committee Review\)/,
+    );
+    const manualSelectionPolicy = parseJsonBlock(manualSelectionStatus);
+    assert.equal(manualSelectionPolicy.blockingReason, 'manual_exit_required');
+    const manualSelectionGate = manualSelectionPolicy.gate;
+    assertRecord(manualSelectionGate, 'manual-selection gate');
+    assert.deepEqual(manualSelectionGate.manualExitIds, [
+      'ship_small_change',
+      'escalate_committee',
+    ]);
+    assert.equal(manualSelectionGate.autoAdvanceExitId, null);
+    const manualSelectionRouting = manualSelectionPolicy.routing;
+    assertRecord(manualSelectionRouting, 'manual-selection routing');
+    assertRecord(manualSelectionRouting.currentPath, 'manual-selection currentPath');
+    assert.equal(manualSelectionRouting.currentPath.exitId, 'small_change_path');
+    assert.equal(manualSelectionRouting.latestEscalation, null);
+
+    const selectExitOutput = extractOutput(
+      await selectExit(
+        {
+          taskDocPath: manualTaskDocRel,
+          exitId: 'escalate_committee',
+        },
+        flowMentorCtx,
+      ),
+    );
+    assert.match(
+      selectExitOutput,
+      /Selected manual exit `escalate_committee` for gate `implementation_signoff`; phase advanced to `committee_review`\./,
+    );
+
+    const manualEscalatedStatus = extractOutput(
+      await getStatus({ taskDocPath: manualTaskDocRel }, flowMentorCtx),
+    );
+    assert.match(manualEscalatedStatus, /- currentPhase: `committee_review` \(Committee Review\)/);
+    assert.match(
+      manualEscalatedStatus,
+      /phase advanced `implementation` -> `committee_review` via `escalate_committee` @ /,
+    );
+    assert.match(
+      manualEscalatedStatus,
+      /- latestEscalation: `implementation` -> `committee_review` via `escalate_committee` \(Expert committee\)/,
+    );
+    const manualEscalatedPolicy = parseJsonBlock(manualEscalatedStatus);
+    const manualEscalatedPhase = manualEscalatedPolicy.phase;
+    assertRecord(manualEscalatedPhase, 'manual-escalated phase');
+    assert.equal(manualEscalatedPhase.id, 'committee_review');
+    const manualEscalatedRouting = manualEscalatedPolicy.routing;
+    assertRecord(manualEscalatedRouting, 'manual-escalated routing');
+    assertRecord(manualEscalatedRouting.currentPath, 'manual-escalated currentPath');
+    assert.equal(manualEscalatedRouting.currentPath.exitId, 'small_change_path');
+    assertRecord(manualEscalatedRouting.latestEscalation, 'manual-escalated latestEscalation');
+    assert.equal(manualEscalatedRouting.latestEscalation.exitId, 'escalate_committee');
+
     const voteOutput = extractOutput(
       await castVote(
         {
@@ -597,7 +913,7 @@ flowchart LR
     );
     assert.match(
       voteOutput,
-      /Recorded vote `approve` for gate `acceptance_input_check`; quorum passed and phase advanced to `acceptance`\./,
+      /Recorded vote `approve` for gate `acceptance_input_check`; quorum passed and phase advanced to `acceptance` via `advance`\./,
     );
 
     const reviewStatus = extractOutput(await getStatus({ taskDocPath: reviewTaskDocRel }, toolCtx));
@@ -605,7 +921,7 @@ flowchart LR
       reviewStatus,
       /approve vote for `acceptance_input_check` by @owner as `builder` @ /,
     );
-    assert.match(reviewStatus, /phase advanced `implementation` -> `acceptance` @ /);
+    assert.match(reviewStatus, /phase advanced `implementation` -> `acceptance` via `advance` @ /);
     const reviewWorkflowPolicy = parseJsonBlock(reviewStatus);
     const reviewRecentEvents = reviewWorkflowPolicy.recentEvents;
     assertArray(reviewRecentEvents, 'review recent events');

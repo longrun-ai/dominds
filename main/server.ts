@@ -134,8 +134,15 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   // MCP is best-effort: startup must not be blocked by MCP config/server issues.
   startMcpSupervisor();
 
-  // Apps host: optional. Any errors must be loud and should fail fast because toolsets/teammates may depend on apps.
-  await initAppsRuntime({ rtwsRootAbs: process.cwd(), kernel: { host, port } });
+  // Apps host is optional for server boot: app failures must stay loud, but they must not block WebUI startup.
+  try {
+    await initAppsRuntime({ rtwsRootAbs: process.cwd(), kernel: { host, port } });
+  } catch (error: unknown) {
+    log.warn(
+      'Apps runtime initialization failed during server startup; continuing without app runtime capabilities until the app issue is fixed',
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
 
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
   await reconcileRunStatesAfterRestart();

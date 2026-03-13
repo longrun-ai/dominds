@@ -83,6 +83,7 @@
     "apps-phase-gate-primary-actions": "tsx apps-phase-gate-primary-actions.ts",
     "apps-tool-proxy-refresh": "tsx apps-tool-proxy-refresh.ts",
     "apps-webui-self-heal-empty-resolution": "tsx apps-webui-self-heal-empty-resolution.ts",
+    "apps-webui-startup-host-failure-no-interrupt": "tsx apps-webui-startup-host-failure-no-interrupt.ts",
     "apps-web-dev-session-prototype": "tsx apps-web-dev-session-prototype.ts",
     "apps-resolution-default-strategy-local": "tsx apps-resolution-default-strategy-local.ts",
     "apps-resolution-effective-enabled-writeback": "tsx apps-resolution-effective-enabled-writeback.ts",
