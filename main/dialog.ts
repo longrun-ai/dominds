@@ -59,6 +59,16 @@ type NewCourseHookResult =
   | { kind: 'continue'; prompt: DialogPrompt }
   | { kind: 'reject'; errorText: string };
 
+type UpNextPromptState = {
+  prompt: string;
+  msgId: string;
+  grammar?: 'markdown';
+  userLanguageCode?: LanguageCode;
+  origin: 'user' | 'diligence_push' | 'runtime';
+  q4hAnswerCallIds?: string[];
+  runControl?: DialogRunControlSpec;
+};
+
 type NewCourseHook = (args: {
   dialog: Dialog;
   prompt: DialogPrompt;
@@ -209,15 +219,7 @@ export abstract class Dialog {
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
   // Prompt queued for the next drive (set by startNewCourse or deferred-resume flows).
-  protected _upNext?: {
-    prompt: string;
-    msgId: string;
-    grammar?: 'markdown';
-    userLanguageCode?: LanguageCode;
-    origin: 'user' | 'diligence_push' | 'runtime';
-    q4hAnswerCallIds?: string[];
-    runControl?: DialogRunControlSpec;
-  };
+  protected _upNext?: UpNextPromptState;
   protected _driveIntents: DriveIntent[] = [];
   protected _activeRunControlSpec?: DialogRunControlSpec;
   protected _newCourseHook?: NewCourseHook;
@@ -832,6 +834,80 @@ export abstract class Dialog {
     return normalized;
   }
 
+  private mergePromptQ4HAnswerCallIds(
+    existing: string[] | undefined,
+    incoming: string[] | undefined,
+  ): string[] | undefined {
+    if (!existing || existing.length === 0) {
+      return incoming && incoming.length > 0 ? [...incoming] : undefined;
+    }
+    if (!incoming || incoming.length === 0) {
+      return [...existing];
+    }
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const raw of [...existing, ...incoming]) {
+      const callId = raw.trim();
+      if (callId === '' || seen.has(callId)) continue;
+      seen.add(callId);
+      merged.push(callId);
+    }
+    return merged.length > 0 ? merged : undefined;
+  }
+
+  public appendQueuedUserUpNextPrompt(options: {
+    prompt: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    q4hAnswerCallIds?: string[];
+  }): UpNextPromptState {
+    const existing = this._upNext;
+    if (!existing) {
+      throw new Error(`UpNext prompt append violation: dialog=${this.id.valueOf()} missing prompt`);
+    }
+    if (existing.origin !== 'user') {
+      throw new Error(
+        `UpNext prompt append violation: dialog=${this.id.valueOf()} origin=${existing.origin} msgId=${existing.msgId}`,
+      );
+    }
+    const trimmed = options.prompt.trim();
+    if (!trimmed) {
+      throw new Error('Prompt is required to append queued upNext');
+    }
+
+    const merged: UpNextPromptState = {
+      ...existing,
+      prompt: `${existing.prompt}\n\n---\n\n${trimmed}`,
+      grammar: options.grammar,
+      userLanguageCode:
+        options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
+      q4hAnswerCallIds: this.mergePromptQ4HAnswerCallIds(
+        existing.q4hAnswerCallIds,
+        options.q4hAnswerCallIds,
+      ),
+    };
+    this._upNext = merged;
+
+    for (let index = this._driveIntents.length - 1; index >= 0; index -= 1) {
+      const intent = this._driveIntents[index];
+      if (intent.kind !== 'prompt' || intent.prompt.msgId !== merged.msgId) continue;
+      this._driveIntents[index] = {
+        ...intent,
+        prompt: {
+          ...intent.prompt,
+          content: merged.prompt,
+          grammar: merged.grammar ?? 'markdown',
+          userLanguageCode: merged.userLanguageCode,
+          q4hAnswerCallIds: merged.q4hAnswerCallIds,
+        },
+      };
+      break;
+    }
+
+    this._updatedAt = formatUnifiedTimestamp(new Date());
+    return merged;
+  }
+
   public queueUpNextPrompt(options: {
     prompt: string;
     msgId: string;
@@ -878,31 +954,11 @@ export abstract class Dialog {
     return this._upNext !== undefined;
   }
 
-  public peekUpNext():
-    | {
-        prompt: string;
-        msgId: string;
-        grammar?: 'markdown';
-        userLanguageCode?: LanguageCode;
-        origin: 'user' | 'diligence_push' | 'runtime';
-        q4hAnswerCallIds?: string[];
-        runControl?: DialogRunControlSpec;
-      }
-    | undefined {
+  public peekUpNext(): UpNextPromptState | undefined {
     return this._upNext;
   }
 
-  public takeUpNext():
-    | {
-        prompt: string;
-        msgId: string;
-        grammar?: 'markdown';
-        userLanguageCode?: LanguageCode;
-        origin: 'user' | 'diligence_push' | 'runtime';
-        q4hAnswerCallIds?: string[];
-        runControl?: DialogRunControlSpec;
-      }
-    | undefined {
+  public takeUpNext(): UpNextPromptState | undefined {
     const next = this._upNext;
     this._upNext = undefined;
     return next;

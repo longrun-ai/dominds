@@ -187,9 +187,35 @@ async function queueUserSupplementAtGenerationBoundary(
     return false;
   }
   if (dialog.hasUpNext()) {
-    throw new Error(
-      `Dialog already has pending upNext prompt; cannot queue supplement now (dialog=${dialog.id.valueOf()} incomingMsgId=${prompt.msgId})`,
-    );
+    const existing = dialog.peekUpNext();
+    if (!existing || existing.origin !== 'user') {
+      throw new Error(
+        `Dialog already has non-user pending upNext prompt; cannot queue supplement now (dialog=${dialog.id.valueOf()} incomingMsgId=${prompt.msgId} existingMsgId=${existing?.msgId ?? 'unknown'} origin=${existing?.origin ?? 'unknown'})`,
+      );
+    }
+
+    const merged = dialog.appendQueuedUserUpNextPrompt({
+      prompt: prompt.content,
+      grammar: prompt.grammar,
+      userLanguageCode: prompt.userLanguageCode,
+    });
+    postDialogEvent(dialog, {
+      type: 'queue_user_msg_evt',
+      course: dialog.currentCourse,
+      msgId: merged.msgId,
+      content: merged.prompt,
+      grammar: merged.grammar ?? 'markdown',
+      origin: 'user',
+      userLanguageCode: merged.userLanguageCode,
+    });
+
+    log.debug('Merged queued user supplement for next generation boundary', undefined, {
+      rootId: dialog.id.rootId,
+      selfId: dialog.id.selfId,
+      mergedIntoMsgId: merged.msgId,
+      incomingMsgId: prompt.msgId,
+    });
+    return true;
   }
 
   dialog.queueUpNextPrompt({
