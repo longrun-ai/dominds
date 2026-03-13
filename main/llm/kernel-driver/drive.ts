@@ -1,12 +1,15 @@
 import { Dialog, RootDialog, SubDialog } from '../../dialog';
 import {
-  broadcastRunStateMarker,
-  computeIdleRunState,
+  broadcastDisplayStateMarker,
+  clearDialogInterruptedExecutionMarker,
+  computeIdleDisplayState,
   createActiveRun,
   getActiveRunSignal,
   getStopRequestedReason,
-  setDialogRunState,
-} from '../../dialog-run-state';
+  loadDialogExecutionMarker,
+  setDialogDisplayState,
+  setDialogExecutionMarker,
+} from '../../dialog-display-state';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
@@ -20,7 +23,10 @@ import {
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
-import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from '../../shared/types/display-state';
 import { toRootGenerationAnchor, type TellaskCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
@@ -1183,7 +1189,7 @@ export async function driveDialogStreamCore(
   const suppressDiligencePushForDrive = driveOptions?.suppressDiligencePush === true;
   const abortSignal = getActiveRunSignal(dlg.id) ?? createActiveRun(dlg.id);
 
-  let finalRunState: DialogRunState | undefined;
+  let finalDisplayState: DialogDisplayState | undefined;
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
@@ -1195,9 +1201,9 @@ export async function driveDialogStreamCore(
 
   if (!humanPrompt) {
     try {
-      const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
-      if (latest?.runState?.kind === 'interrupted') {
-        broadcastRunStateMarker(dlg.id, { kind: 'resumed' });
+      const executionMarker = await loadDialogExecutionMarker(dlg.id, 'running');
+      if (executionMarker?.kind === 'interrupted') {
+        broadcastDisplayStateMarker(dlg.id, { kind: 'resumed' });
       }
     } catch (err) {
       log.warn('kernel-driver failed to load latest.yaml for resumption marker', err, {
@@ -1206,7 +1212,8 @@ export async function driveDialogStreamCore(
     }
   }
 
-  await setDialogRunState(dlg.id, { kind: 'proceeding' });
+  await clearDialogInterruptedExecutionMarker(dlg.id);
+  await setDialogDisplayState(dlg.id, { kind: 'proceeding' });
 
   try {
     for (;;) {
@@ -1872,7 +1879,7 @@ export async function driveDialogStreamCore(
     }
 
     throwIfAborted(abortSignal, dlg);
-    finalRunState = await computeIdleRunState(dlg);
+    finalDisplayState = await computeIdleDisplayState(dlg);
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
     const interruptedReason: DialogInterruptionReason | undefined =
@@ -1887,8 +1894,8 @@ export async function driveDialogStreamCore(
           : undefined;
 
     if (interruptedReason) {
-      finalRunState = { kind: 'interrupted', reason: interruptedReason };
-      broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
+      finalDisplayState = { kind: 'interrupted', reason: interruptedReason };
+      broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
     } else {
       const errText = extractErrorDetails(err).message;
       try {
@@ -1896,32 +1903,32 @@ export async function driveDialogStreamCore(
       } catch {
         // best-effort
       }
-      finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
-      broadcastRunStateMarker(dlg.id, {
+      finalDisplayState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
+      broadcastDisplayStateMarker(dlg.id, {
         kind: 'interrupted',
         reason: { kind: 'system_stop', detail: errText },
       });
     }
   } finally {
-    if (!finalRunState) {
+    if (!finalDisplayState) {
       try {
-        finalRunState = await computeIdleRunState(dlg);
+        finalDisplayState = await computeIdleDisplayState(dlg);
       } catch (stateErr) {
         log.warn(
-          'kernel-driver failed to compute final run state; falling back to idle',
+          'kernel-driver failed to compute final display-state projection; falling back to idle',
           stateErr,
           {
             dialogId: dlg.id.valueOf(),
           },
         );
-        finalRunState = { kind: 'idle_waiting_user' };
+        finalDisplayState = { kind: 'idle_waiting_user' };
       }
     }
 
     if (
       abortSignal.aborted &&
-      finalRunState.kind !== 'interrupted' &&
-      finalRunState.kind !== 'dead'
+      finalDisplayState.kind !== 'interrupted' &&
+      finalDisplayState.kind !== 'dead'
     ) {
       const stopRequested = getStopRequestedReason(dlg.id);
       const lateInterruptedReason: DialogInterruptionReason =
@@ -1930,22 +1937,30 @@ export async function driveDialogStreamCore(
           : stopRequested === 'user_stop'
             ? { kind: 'user_stop' }
             : { kind: 'system_stop', detail: 'Aborted.' };
-      finalRunState = { kind: 'interrupted', reason: lateInterruptedReason };
-      broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
+      finalDisplayState = { kind: 'interrupted', reason: lateInterruptedReason };
+      broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
     }
 
     try {
       const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
-      if (dlg.id.selfId !== dlg.id.rootId && latest?.runState?.kind === 'dead') {
-        finalRunState = latest.runState;
+      if (dlg.id.selfId !== dlg.id.rootId && latest?.executionMarker?.kind === 'dead') {
+        finalDisplayState = { kind: 'dead', reason: latest.executionMarker.reason };
       }
     } catch (err) {
-      log.warn('kernel-driver failed to re-check runState before finalizing', err, {
+      log.warn('kernel-driver failed to re-check displayState before finalizing', err, {
         dialogId: dlg.id.valueOf(),
       });
     }
 
-    await setDialogRunState(dlg.id, finalRunState);
+    if (finalDisplayState.kind === 'interrupted') {
+      await setDialogExecutionMarker(dlg.id, {
+        kind: 'interrupted',
+        reason: finalDisplayState.reason,
+      });
+    } else if (finalDisplayState.kind !== 'dead') {
+      await clearDialogInterruptedExecutionMarker(dlg.id);
+    }
+    await setDialogDisplayState(dlg.id, finalDisplayState);
   }
 
   return {

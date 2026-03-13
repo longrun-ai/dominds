@@ -10,9 +10,9 @@ export * from './wire';
 
 export * from './context-health';
 export * from './dialog';
-export * from './run-state';
+export * from './display-state';
 
-import type { DialogRunState } from './run-state';
+import type { DialogDisplayState } from './display-state';
 import type { AssignmentFromSup, DialogStatusKind } from './wire';
 
 export interface DialogInfo {
@@ -37,7 +37,7 @@ export interface ApiRootDialogResponse {
   currentCourse: number;
   createdAt: string;
   lastModified: string;
-  runState?: DialogRunState;
+  displayState?: DialogDisplayState;
   supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
   sessionSlug?: string;
   // Optional: present for subdialogs (when available) so the UI can render special cases like FBR.
@@ -55,7 +55,7 @@ export interface ApiSubdialogResponse {
   currentCourse: number;
   createdAt: string;
   lastModified: string;
-  runState?: DialogRunState;
+  displayState?: DialogDisplayState;
   sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
 }
@@ -71,7 +71,7 @@ export interface ApiDialogHierarchyResponse {
       currentCourse: number;
       createdAt: string;
       lastModified: string;
-      runState?: DialogRunState;
+      displayState?: DialogDisplayState;
     };
     subdialogs: ApiSubdialogResponse[];
   };

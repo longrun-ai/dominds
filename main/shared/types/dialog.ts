@@ -7,8 +7,8 @@
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
 import type { ContextHealthSnapshot } from './context-health';
+import type { DialogDisplayState, DialogInterruptionReason } from './display-state';
 import type { LanguageCode } from './language';
-import type { DialogInterruptionReason, DialogRunState } from './run-state';
 import type {
   AssignmentCourseNumber,
   AssignmentGenerationSeqNumber,
@@ -21,9 +21,10 @@ import type {
   FuncResultContentItem,
 } from './storage';
 
-export interface DialogRunStateEvent {
-  type: 'dlg_run_state_evt';
-  runState: DialogRunState;
+export interface DialogDisplayStateEvent {
+  type: 'dlg_display_state_evt';
+  // UI/diagnostic projection only; do not treat this event as a business-fact oracle.
+  displayState: DialogDisplayState;
 }
 
 export interface DialogTouchedEvent {
@@ -39,8 +40,8 @@ export interface DiligenceBudgetEvent {
   disableDiligencePush: boolean;
 }
 
-export interface DialogRunStateMarkerEvent {
-  type: 'dlg_run_state_marker_evt';
+export interface DialogDisplayStateMarkerEvent {
+  type: 'dlg_display_state_marker_evt';
   kind: 'interrupted' | 'resumed';
   reason?: DialogInterruptionReason;
 }
@@ -70,7 +71,7 @@ export interface SubdialogEvent extends DialogEventBase {
     currentCourse: number;
     createdAt: string;
     lastModified: string;
-    runState?: DialogRunState;
+    displayState?: DialogDisplayState;
     sessionSlug?: string;
     assignmentFromSup?: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
@@ -479,8 +480,8 @@ export type DialogEvent =
   | GeneratingFinishEvent
   | ContextHealthEvent
   // Run state
-  | DialogRunStateEvent
-  | DialogRunStateMarkerEvent
+  | DialogDisplayStateEvent
+  | DialogDisplayStateMarkerEvent
   | DiligenceBudgetEvent
   // Thinking stream
   | ThinkingStartEvent

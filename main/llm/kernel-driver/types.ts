@@ -1,6 +1,9 @@
 import type { Dialog, DialogID } from '../../dialog';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from '../../shared/types/display-state';
 import type { LanguageCode } from '../../shared/types/language';
-import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
 
 export type KernelDriverRunControl = Readonly<{
   controlId: string;
@@ -30,6 +33,12 @@ export type KernelDriverDriveSource =
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
+  resolvedPendingTellaskReply?: Readonly<{
+    ownerDialogId: string;
+    subdialogId: string;
+    callType: 'A' | 'B' | 'C';
+    callId: string;
+  }>;
   runControl?: KernelDriverRunControl;
   source: KernelDriverDriveSource;
   reason: string;
@@ -113,7 +122,7 @@ export type KernelDriverRuntimeState = {
   driveCount: number;
   totalGenIterations: number;
   usedLegacyDriveCore: boolean;
-  lastRunState?: DialogRunState;
+  lastDisplayState?: DialogDisplayState;
   lastInterruptionReason?: DialogInterruptionReason;
 };
 

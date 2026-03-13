@@ -11,7 +11,7 @@
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { initAppsRuntime } from './apps/runtime';
-import { reconcileRunStatesAfterRestart } from './dialog-run-state';
+import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
 import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
@@ -145,7 +145,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   }
 
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
-  await reconcileRunStatesAfterRestart();
+  await reconcileDisplayStatesAfterRestart();
 
   // Tests may opt out so the process can shut down cleanly without a driver stop API.
   if (startBackendDriver) {

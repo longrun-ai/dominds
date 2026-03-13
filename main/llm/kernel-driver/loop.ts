@@ -1,3 +1,4 @@
+import { getStopRequestedReason, hasActiveRun } from '../../dialog-display-state';
 import { globalDialogRegistry, type DriveTriggerEvent } from '../../dialog-global-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
@@ -22,13 +23,21 @@ async function driveQueuedDialogsOnce(): Promise<void> {
   for (const rootDialog of dialogsToDrive) {
     try {
       const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
-      const runStateKind = latest?.runState?.kind;
-      if (runStateKind === 'interrupted' || runStateKind === 'proceeding_stop_requested') {
+      const executionMarker = latest?.executionMarker;
+      const stopRequested = getStopRequestedReason(rootDialog.id);
+      if (executionMarker?.kind === 'interrupted' || stopRequested !== undefined) {
         globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
-          reason: `run_state_blocked:${runStateKind}`,
+          reason:
+            executionMarker?.kind === 'interrupted'
+              ? 'execution_marker_blocked:interrupted'
+              : `stop_requested:${stopRequested}`,
         });
         await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
+        continue;
+      }
+
+      if (hasActiveRun(rootDialog.id)) {
         continue;
       }
 

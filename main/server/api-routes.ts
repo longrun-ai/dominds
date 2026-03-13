@@ -9,9 +9,9 @@ import * as path from 'path';
 import type { WebSocket } from 'ws';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
+import { getRunControlCountsSnapshot } from '../dialog-display-state';
 import { forkRootDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
-import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { PrimingScriptLoadIssue } from '../priming';
@@ -2032,7 +2032,7 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
       currentCourse: number;
       createdAt: string;
       lastModified: string;
-      runState?: DialogLatestFile['runState'];
+      displayState?: DialogLatestFile['displayState'];
       subdialogCount: number;
     }> = [];
 
@@ -2057,7 +2057,7 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
         currentCourse: latest?.currentCourse || 1,
         createdAt: meta.createdAt,
         lastModified: latest?.lastModified || meta.createdAt,
-        runState: latest?.runState,
+        displayState: latest?.displayState,
         subdialogCount,
       });
     }
@@ -2156,7 +2156,7 @@ async function handleGetDialogHierarchy(
       currentCourse: rootLatest?.currentCourse || 1,
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
-      runState: rootLatest?.runState,
+      displayState: rootLatest?.displayState,
     };
 
     let subdialogs: Array<{
@@ -2169,7 +2169,7 @@ async function handleGetDialogHierarchy(
       currentCourse: number;
       createdAt: string;
       lastModified: string;
-      runState?: DialogLatestFile['runState'];
+      displayState?: DialogLatestFile['displayState'];
       sessionSlug?: string;
       assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
     }> = [];
@@ -2203,7 +2203,7 @@ async function handleGetDialogHierarchy(
         currentCourse: subLatest?.currentCourse || 1,
         createdAt: meta.createdAt,
         lastModified: subLatest?.lastModified || meta.createdAt,
-        runState: subLatest?.runState,
+        displayState: subLatest?.displayState,
         sessionSlug: meta.sessionSlug,
         assignmentFromSup: meta.assignmentFromSup,
       });
@@ -2294,7 +2294,7 @@ async function handleCreateDialog(
         messageCount: 0,
         functionCallCount: 0,
         subdialogCount: 0,
-        runState: { kind: 'idle_waiting_user' },
+        displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },

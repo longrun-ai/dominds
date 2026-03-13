@@ -37,7 +37,7 @@ async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<v
     currentCourse,
     lastModified: formatUnifiedTimestamp(new Date()),
     status: 'active',
-    runState: { kind: 'idle_waiting_user' },
+    displayState: { kind: 'idle_waiting_user' },
   };
   await DialogPersistence.mutateDialogLatest(dialogId, () => ({ kind: 'replace', next: latest }));
 }

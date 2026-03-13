@@ -5,7 +5,7 @@ import path from 'node:path';
 import yaml from 'yaml';
 
 import { DialogID, RootDialog } from '../../main/dialog';
-import { setDialogRunState } from '../../main/dialog-run-state';
+import { setDialogDisplayState } from '../../main/dialog-display-state';
 import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DiskFileDialogStore } from '../../main/persistence';
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     await waitForDialogsToUnlock(dlg, 2_000);
     const firstRegistered = dlg.lookupSubdialog('pangu', 'dupe-session');
     assert.ok(firstRegistered, 'expected first registered subdialog for dupe-session');
-    await setDialogRunState(firstRegistered.id, {
+    await setDialogDisplayState(firstRegistered.id, {
       kind: 'dead',
       reason: { kind: 'declared_by_user' },
     });

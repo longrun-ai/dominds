@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 import { DialogID } from '../main/dialog';
-import { reconcileRunStatesAfterRestart } from '../main/dialog-run-state';
+import { reconcileDisplayStatesAfterRestart } from '../main/dialog-display-state';
 import { DialogPersistence } from '../main/persistence';
 
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
-      runState: { kind: 'proceeding' },
+      displayState: { kind: 'proceeding' },
     });
 
     // Dialog B: was proceeding, but now has pending Q4H => becomes blocked after reconcile.
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
-      runState: { kind: 'proceeding' },
+      displayState: { kind: 'proceeding' },
     });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'q4h.yaml'), {
       questions: [
@@ -53,21 +53,21 @@ async function main(): Promise<void> {
       updatedAt: new Date().toISOString(),
     });
 
-    await reconcileRunStatesAfterRestart();
+    await reconcileDisplayStatesAfterRestart();
 
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
     assert.ok(latestA, 'latest.yaml for dlg-a should exist');
     assert.equal(latestA.generating, false);
-    assert.ok(latestA.runState);
-    assert.equal(latestA.runState.kind, 'interrupted');
-    assert.equal(latestA.runState.reason.kind, 'server_restart');
+    assert.ok(latestA.displayState);
+    assert.equal(latestA.displayState.kind, 'interrupted');
+    assert.equal(latestA.displayState.reason.kind, 'server_restart');
 
     const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
     assert.ok(latestB, 'latest.yaml for dlg-b should exist');
     assert.equal(latestB.generating, false);
-    assert.ok(latestB.runState);
-    assert.equal(latestB.runState.kind, 'blocked');
-    assert.equal(latestB.runState.reason.kind, 'needs_human_input');
+    assert.ok(latestB.displayState);
+    assert.equal(latestB.displayState.kind, 'blocked');
+    assert.equal(latestB.displayState.reason.kind, 'needs_human_input');
 
     console.log('✅ interruption-resumption reconcile smoke test passed');
   } finally {

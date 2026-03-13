@@ -44,6 +44,7 @@ import type {
   SubdialogEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
+import type { DialogDisplayState, DialogInterruptionReason } from '../shared/types/display-state';
 import {
   formatLanguageName,
   normalizeLanguageCode,
@@ -51,7 +52,6 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
-import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type {
   ClearResolvedProblemsResultMessage,
   DialogReadyMessage,
@@ -324,7 +324,7 @@ export class DomindsApp extends HTMLElement {
   private visibleSubdialogsByRoot = new Map<string, ApiRootDialogResponse[]>();
   private rootStatusById = new Map<string, DialogStatusKind>();
   private dialogListBootstrapState: DialogListBootstrapState = { kind: 'loading' };
-  private dialogRunStatesByKey = new Map<string, DialogRunState>();
+  private dialogDisplayStatesByKey = new Map<string, DialogDisplayState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
@@ -7725,11 +7725,11 @@ export class DomindsApp extends HTMLElement {
       this.rebuildRootStatusIndex();
       this.pruneVisibleSubdialogRoots();
 
-      this.dialogRunStatesByKey.clear();
+      this.dialogDisplayStatesByKey.clear();
       for (const root of this.getAllDisplayedDialogs()) {
         const selfId = root.selfId ? root.selfId : root.rootId;
-        if (!root.runState) continue;
-        this.dialogRunStatesByKey.set(this.dialogKey(root.rootId, selfId), root.runState);
+        if (!root.displayState) continue;
+        this.dialogDisplayStatesByKey.set(this.dialogKey(root.rootId, selfId), root.displayState);
       }
       if (runControlCountsResp.success && runControlCountsResp.data) {
         this.proceedingDialogsCount = runControlCountsResp.data.proceeding;
@@ -7789,7 +7789,7 @@ export class DomindsApp extends HTMLElement {
 
     if (this.q4hInput) {
       this.q4hInput.clearDialog();
-      this.q4hInput.setRunState(null);
+      this.q4hInput.setDisplayState(null);
     }
 
     this.updateDialogViewportPanels();
@@ -7986,24 +7986,26 @@ export class DomindsApp extends HTMLElement {
         // h is {root: {...}, subdialogs: [...]}
 
         if (Array.isArray(h.subdialogs)) {
-          const cachedRootRunState = this.dialogRunStatesByKey.get(this.dialogKey(rootId, rootId));
-          const rootRunState = h.root.runState ?? cachedRootRunState;
-          if (rootRunState) {
-            this.dialogRunStatesByKey.set(this.dialogKey(rootId, rootId), rootRunState);
+          const cachedRootDisplayState = this.dialogDisplayStatesByKey.get(
+            this.dialogKey(rootId, rootId),
+          );
+          const rootDisplayState = h.root.displayState ?? cachedRootDisplayState;
+          if (rootDisplayState) {
+            this.dialogDisplayStatesByKey.set(this.dialogKey(rootId, rootId), rootDisplayState);
           }
 
           const newSubdialogs: ApiRootDialogResponse[] = [];
 
           for (const subdialog of h.subdialogs) {
             if (subdialog && subdialog.rootId) {
-              const cachedRunState = this.dialogRunStatesByKey.get(
+              const cachedDisplayState = this.dialogDisplayStatesByKey.get(
                 this.dialogKey(subdialog.rootId, subdialog.selfId),
               );
-              const effectiveRunState = subdialog.runState ?? cachedRunState;
-              if (effectiveRunState) {
-                this.dialogRunStatesByKey.set(
+              const effectiveDisplayState = subdialog.displayState ?? cachedDisplayState;
+              if (effectiveDisplayState) {
+                this.dialogDisplayStatesByKey.set(
                   this.dialogKey(subdialog.rootId, subdialog.selfId),
-                  effectiveRunState,
+                  effectiveDisplayState,
                 );
               }
               newSubdialogs.push({
@@ -8015,7 +8017,7 @@ export class DomindsApp extends HTMLElement {
                 currentCourse: subdialog.currentCourse,
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
-                runState: effectiveRunState,
+                displayState: effectiveDisplayState,
                 supdialogId: subdialog.supdialogId ?? rootId,
                 sessionSlug: subdialog.sessionSlug,
                 assignmentFromSup: subdialog.assignmentFromSup,
@@ -8031,7 +8033,7 @@ export class DomindsApp extends HTMLElement {
             currentCourse: h.root.currentCourse,
             createdAt: h.root.createdAt,
             lastModified: h.root.lastModified,
-            runState: rootRunState ?? rootEntry?.runState,
+            displayState: rootDisplayState ?? rootEntry?.displayState,
             subdialogCount:
               typeof rootEntry?.subdialogCount === 'number'
                 ? rootEntry.subdialogCount
@@ -8056,9 +8058,9 @@ export class DomindsApp extends HTMLElement {
     if (!this.visibleSubdialogsByRoot.has(rootId)) return;
     this.visibleSubdialogsByRoot.delete(rootId);
 
-    for (const key of Array.from(this.dialogRunStatesByKey.keys())) {
+    for (const key of Array.from(this.dialogDisplayStatesByKey.keys())) {
       if (key.startsWith(`${rootId}#`)) {
-        this.dialogRunStatesByKey.delete(key);
+        this.dialogDisplayStatesByKey.delete(key);
       }
     }
     for (const key of Array.from(this.contextHealthByDialogKey.keys())) {
@@ -8382,10 +8384,12 @@ export class DomindsApp extends HTMLElement {
     return `${attemptText} · ${failureText}`;
   }
 
-  private getCurrentDialogRunState(): DialogRunState | null {
+  private getCurrentDialogDisplayState(): DialogDisplayState | null {
     const current = this.currentDialog;
     if (!current) return null;
-    return this.dialogRunStatesByKey.get(this.dialogKey(current.rootId, current.selfId)) ?? null;
+    return (
+      this.dialogDisplayStatesByKey.get(this.dialogKey(current.rootId, current.selfId)) ?? null
+    );
   }
 
   private formatInterruptionReason(reason: DialogInterruptionReason): string {
@@ -8462,12 +8466,12 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    const runState = this.getCurrentDialogRunState();
-    const interruptedRunState =
-      this.currentDialog !== null && runState !== null && runState.kind === 'interrupted'
-        ? runState
+    const displayState = this.getCurrentDialogDisplayState();
+    const interruptedDisplayState =
+      this.currentDialog !== null && displayState !== null && displayState.kind === 'interrupted'
+        ? displayState
         : null;
-    const resumeVisible = interruptedRunState !== null;
+    const resumeVisible = interruptedDisplayState !== null;
     resumePanel.classList.toggle('hidden', !resumeVisible);
     resumeTitle.textContent = t.continueLabel;
     resumeBtn.textContent = t.continueLabel;
@@ -8475,7 +8479,7 @@ export class DomindsApp extends HTMLElement {
     if (!resumeVisible) {
       resumeReason.textContent = '';
     } else {
-      resumeReason.textContent = this.formatInterruptionReason(interruptedRunState.reason);
+      resumeReason.textContent = this.formatInterruptionReason(interruptedDisplayState.reason);
     }
 
     const hasVisiblePanels = retryVisible || resumeVisible;
@@ -8509,8 +8513,8 @@ export class DomindsApp extends HTMLElement {
     const current = this.currentDialog;
     if (current) {
       const key = this.dialogKey(current.rootId, current.selfId);
-      const runState = this.dialogRunStatesByKey.get(key) ?? null;
-      isDead = runState !== null && runState.kind === 'dead';
+      const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
+      isDead = displayState !== null && displayState.kind === 'dead';
     }
     const disabled = readOnly || isDead;
 
@@ -8642,13 +8646,13 @@ export class DomindsApp extends HTMLElement {
           status: this.currentDialogStatus ?? 'running',
         });
         const key = this.dialogKey(normalizedDialog.rootId, normalizedDialog.selfId);
-        const runState = this.dialogRunStatesByKey.get(key) ?? null;
-        const isDead = runState !== null && runState.kind === 'dead';
+        const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
+        const isDead = displayState !== null && displayState.kind === 'dead';
         const input = this.q4hInput as HTMLElement & {
-          setRunState?: (state: DialogRunState | null) => void;
+          setDisplayState?: (state: DialogDisplayState | null) => void;
         };
-        if (input && typeof input.setRunState === 'function') {
-          input.setRunState(runState);
+        if (input && typeof input.setDisplayState === 'function') {
+          input.setDisplayState(displayState);
         }
 
         const status = this.currentDialogStatus;
@@ -8666,8 +8670,8 @@ export class DomindsApp extends HTMLElement {
             if (!current) return;
             if (readOnly) return;
             const key = this.dialogKey(current.rootId, current.selfId);
-            const runState = this.dialogRunStatesByKey.get(key) ?? null;
-            const isDead = runState !== null && runState.kind === 'dead';
+            const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
+            const isDead = displayState !== null && displayState.kind === 'dead';
             if (isDead) return;
             input.setDisabled(false);
           }, 500); // Small delay to ensure setDialog completes
@@ -10029,9 +10033,10 @@ export class DomindsApp extends HTMLElement {
           }
 
           const subdialogKey = this.dialogKey(node.rootId, node.selfId);
-          const effectiveRunState = node.runState ?? this.dialogRunStatesByKey.get(subdialogKey);
-          if (effectiveRunState) {
-            this.dialogRunStatesByKey.set(subdialogKey, effectiveRunState);
+          const effectiveDisplayState =
+            node.displayState ?? this.dialogDisplayStatesByKey.get(subdialogKey);
+          if (effectiveDisplayState) {
+            this.dialogDisplayStatesByKey.set(subdialogKey, effectiveDisplayState);
           }
 
           const incomingSubdialog: ApiRootDialogResponse = {
@@ -10043,7 +10048,7 @@ export class DomindsApp extends HTMLElement {
             currentCourse: node.currentCourse,
             createdAt: node.createdAt,
             lastModified: node.lastModified,
-            runState: effectiveRunState,
+            displayState: effectiveDisplayState,
             supdialogId: node.supdialogId,
             sessionSlug: node.sessionSlug,
             assignmentFromSup: node.assignmentFromSup,
@@ -10167,29 +10172,33 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'dlg_run_state_evt': {
-          const runState = (message as { runState?: unknown }).runState;
-          if (typeof runState !== 'object' || runState === null || !('kind' in runState)) {
-            console.warn('Invalid dlg_run_state_evt payload', message);
+        case 'dlg_display_state_evt': {
+          const displayState = (message as { displayState?: unknown }).displayState;
+          if (
+            typeof displayState !== 'object' ||
+            displayState === null ||
+            !('kind' in displayState)
+          ) {
+            console.warn('Invalid dlg_display_state_evt payload', message);
             break;
           }
 
           const selfId = dialog.selfId;
           const rootId = dialog.rootId;
           const key = this.dialogKey(rootId, selfId);
-          const typedRunState = runState as DialogRunState;
-          this.dialogRunStatesByKey.set(key, typedRunState);
+          const typedDisplayState = displayState as DialogDisplayState;
+          this.dialogDisplayStatesByKey.set(key, typedDisplayState);
 
           // Update currently rendered snapshot entry if present.
           if (selfId === rootId) {
             const rootDialog = this.getRootDialog(rootId);
             if (rootDialog) {
-              this.upsertRootDialogSnapshot({ ...rootDialog, runState: typedRunState });
+              this.upsertRootDialogSnapshot({ ...rootDialog, displayState: typedDisplayState });
             }
           } else if (this.visibleSubdialogsByRoot.has(rootId)) {
             const subs = this.getVisibleSubdialogsForRoot(rootId);
             const updated = subs.map((d) =>
-              d.selfId === selfId ? { ...d, runState: typedRunState } : d,
+              d.selfId === selfId ? { ...d, displayState: typedDisplayState } : d,
             );
             this.setVisibleSubdialogsForRoot(rootId, updated);
           }
@@ -10201,10 +10210,10 @@ export class DomindsApp extends HTMLElement {
             this.currentDialog.selfId === selfId
           ) {
             const input = this.q4hInput as HTMLElement & {
-              setRunState?: (state: DialogRunState | null) => void;
+              setDisplayState?: (state: DialogDisplayState | null) => void;
             };
-            if (input && typeof input.setRunState === 'function') {
-              input.setRunState(typedRunState);
+            if (input && typeof input.setDisplayState === 'function') {
+              input.setDisplayState(typedDisplayState);
             }
             this.updateInputPanelVisibility();
           }
@@ -10213,9 +10222,9 @@ export class DomindsApp extends HTMLElement {
           // recovery path for reconnect/race windows so the badge/panel can converge
           // to persisted state even if a transient event was missed.
           if (
-            typedRunState.kind === 'blocked' &&
-            (typedRunState.reason.kind === 'needs_human_input' ||
-              typedRunState.reason.kind === 'needs_human_input_and_subdialogs')
+            typedDisplayState.kind === 'blocked' &&
+            (typedDisplayState.reason.kind === 'needs_human_input' ||
+              typedDisplayState.reason.kind === 'needs_human_input_and_subdialogs')
           ) {
             this.wsManager.sendRaw({ type: 'get_q4h_state' });
           }
@@ -10224,7 +10233,7 @@ export class DomindsApp extends HTMLElement {
           if (status === 'running') {
             const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
             if (runningList instanceof RunningDialogList) {
-              runningList.updateDialogEntry(rootId, selfId, { runState: typedRunState });
+              runningList.updateDialogEntry(rootId, selfId, { displayState: typedDisplayState });
             }
           }
           const ts = (message as TypedDialogEvent).timestamp;
@@ -10242,28 +10251,28 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'dlg_run_state_marker_evt': {
+        case 'dlg_display_state_marker_evt': {
           const selfId = dialog.selfId;
           const rootId = dialog.rootId;
           const key = this.dialogKey(rootId, selfId);
-          const markerRunState: DialogRunState =
+          const markerDisplayState: DialogDisplayState =
             message.kind === 'interrupted'
               ? {
                   kind: 'interrupted',
                   reason: message.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
                 }
               : { kind: 'proceeding' };
-          this.dialogRunStatesByKey.set(key, markerRunState);
+          this.dialogDisplayStatesByKey.set(key, markerDisplayState);
 
           if (selfId === rootId) {
             const rootDialog = this.getRootDialog(rootId);
             if (rootDialog) {
-              this.upsertRootDialogSnapshot({ ...rootDialog, runState: markerRunState });
+              this.upsertRootDialogSnapshot({ ...rootDialog, displayState: markerDisplayState });
             }
           } else if (this.visibleSubdialogsByRoot.has(rootId)) {
             const subs = this.getVisibleSubdialogsForRoot(rootId);
             const updated = subs.map((d) =>
-              d.selfId === selfId ? { ...d, runState: markerRunState } : d,
+              d.selfId === selfId ? { ...d, displayState: markerDisplayState } : d,
             );
             this.setVisibleSubdialogsForRoot(rootId, updated);
           }
@@ -10274,10 +10283,10 @@ export class DomindsApp extends HTMLElement {
             this.currentDialog.selfId === selfId
           ) {
             const input = this.q4hInput as HTMLElement & {
-              setRunState?: (state: DialogRunState | null) => void;
+              setDisplayState?: (state: DialogDisplayState | null) => void;
             };
-            if (input && typeof input.setRunState === 'function') {
-              input.setRunState(markerRunState);
+            if (input && typeof input.setDisplayState === 'function') {
+              input.setDisplayState(markerDisplayState);
             }
             this.updateInputPanelVisibility();
           }
@@ -10286,7 +10295,7 @@ export class DomindsApp extends HTMLElement {
           if (status === 'running') {
             const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
             if (runningList instanceof RunningDialogList) {
-              runningList.updateDialogEntry(rootId, selfId, { runState: markerRunState });
+              runningList.updateDialogEntry(rootId, selfId, { displayState: markerDisplayState });
             }
           }
 
@@ -10301,7 +10310,7 @@ export class DomindsApp extends HTMLElement {
             { suppressRender: true },
           );
 
-          // Marker events are broadcast to all connected clients by backend run-state broadcaster.
+          // Marker events are broadcast to all connected clients by backend display-state broadcaster.
           // Keep a delayed refresh so counters converge from persisted index even after transient hiccups.
           if (message.kind === 'resumed') {
             this.scheduleRunControlRefresh('run_state_marker_resumed');
@@ -10323,8 +10332,8 @@ export class DomindsApp extends HTMLElement {
             let isDead = false;
             if (current) {
               const key = this.dialogKey(current.rootId, current.selfId);
-              const runState = this.dialogRunStatesByKey.get(key) ?? null;
-              isDead = runState !== null && runState.kind === 'dead';
+              const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
+              isDead = displayState !== null && displayState.kind === 'dead';
             }
             inputArea.setDisabled(readOnly || isDead);
           }

@@ -1,8 +1,15 @@
 /**
- * Module: shared/types/run-state
+ * Module: shared/types/display-state
  *
- * Authoritative dialog run state model for proceeding / interrupted / blocked / terminal UX.
- * This is intentionally separate from dialog event types to avoid circular type dependencies.
+ * UI/diagnostic projection for dialog execution state.
+ *
+ * Important:
+ * - This is not a business source of truth.
+ * - Backend control flow must rely on primary facts such as active runs, stop requests,
+ *   pending Q4H, pending subdialogs, queued prompts, persisted status, and explicit
+ *   interruption/death markers.
+ * - This projection exists so WebUI and operators can render or inspect the current state
+ *   without recomputing those facts client-side.
  */
 
 export type DialogInterruptionReason =
@@ -18,7 +25,7 @@ export type DialogBlockedReason =
 
 export type DialogDeadReason = { kind: 'declared_by_user' } | { kind: 'system'; detail: string };
 
-export type DialogRunState =
+export type DialogDisplayState =
   | { kind: 'idle_waiting_user' }
   | { kind: 'proceeding' }
   | { kind: 'proceeding_stop_requested'; reason: 'user_stop' | 'emergency_stop' }

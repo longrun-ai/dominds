@@ -1,4 +1,4 @@
-import type { DialogBlockedReason, DialogRunState } from '../shared/types/run-state';
+import type { DialogBlockedReason, DialogDisplayState } from '../shared/types/display-state';
 
 export type RunControlVisualState =
   | { kind: 'none' }
@@ -9,7 +9,7 @@ export type RunControlVisualState =
   | { kind: 'blocked_subdialogs' }
   | { kind: 'blocked_both' };
 
-export type RunStateClassSuffix =
+export type DisplayStateClassSuffix =
   | ''
   | 'state-proceeding'
   | 'state-proceeding-stop'
@@ -33,11 +33,11 @@ function blockedReasonToVisualState(reason: DialogBlockedReason): RunControlVisu
   }
 }
 
-export function runControlVisualStateFromRunState(
-  runState: DialogRunState | undefined,
+export function runControlVisualStateFromDisplayState(
+  displayState: DialogDisplayState | undefined,
 ): RunControlVisualState {
-  if (!runState) return { kind: 'none' };
-  switch (runState.kind) {
+  if (!displayState) return { kind: 'none' };
+  switch (displayState.kind) {
     case 'idle_waiting_user':
     case 'terminal':
     case 'dead':
@@ -49,18 +49,18 @@ export function runControlVisualStateFromRunState(
     case 'interrupted':
       return { kind: 'interrupted' };
     case 'blocked':
-      return blockedReasonToVisualState(runState.reason);
+      return blockedReasonToVisualState(displayState.reason);
     default: {
-      const _exhaustive: never = runState;
+      const _exhaustive: never = displayState;
       return { kind: 'none' };
     }
   }
 }
 
-export function runStateClassSuffixFromRunState(
-  runState: DialogRunState | undefined,
-): RunStateClassSuffix {
-  const visual = runControlVisualStateFromRunState(runState);
+export function displayStateClassSuffixFromDisplayState(
+  displayState: DialogDisplayState | undefined,
+): DisplayStateClassSuffix {
+  const visual = runControlVisualStateFromDisplayState(displayState);
   switch (visual.kind) {
     case 'none':
       return '';

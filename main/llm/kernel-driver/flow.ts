@@ -1,12 +1,13 @@
 import { applyRegisteredAppDialogRunControls } from '../../apps/run-control';
 import { DialogID, SubDialog } from '../../dialog';
-import { globalDialogRegistry } from '../../dialog-global-registry';
 import {
   clearActiveRun,
   createActiveRun,
   getActiveRunSignal,
+  getStopRequestedReason,
   hasActiveRun,
-} from '../../dialog-run-state';
+} from '../../dialog-display-state';
+import { globalDialogRegistry } from '../../dialog-global-registry';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
@@ -15,7 +16,7 @@ import {
   formatNewCourseStartPrompt,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { DialogRunState } from '../../shared/types/run-state';
+import type { DialogDisplayState } from '../../shared/types/display-state';
 import { generateShortId } from '../../shared/utils/id';
 import { LlmConfig } from '../client';
 import {
@@ -118,6 +119,17 @@ async function loadPendingDiagnosticsSnapshot(args: {
   }
 }
 
+function hasResolvedPendingTellaskReplyEntitlement(
+  dialog: SubDialog,
+  driveOptions: KernelDriverDriveOptions | undefined,
+): boolean {
+  const entitlement = driveOptions?.resolvedPendingTellaskReply;
+  if (!entitlement) {
+    return false;
+  }
+  return entitlement.ownerDialogId === dialog.id.selfId;
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverHumanPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -209,7 +221,7 @@ async function inspectNoPromptSubdialogDrive(args: {
   | {
       shouldReject: false;
       source: KernelDriverDriveSource;
-      runState: DialogRunState | undefined;
+      displayState: DialogDisplayState | undefined;
       currentCourse: number;
       lastEvent:
         | {
@@ -224,7 +236,7 @@ async function inspectNoPromptSubdialogDrive(args: {
       rejection:
         | 'finalized_after_response_anchor'
         | 'missing_explicit_interrupted_resume_entitlement';
-      runState: DialogRunState | undefined;
+      displayState: DialogDisplayState | undefined;
       currentCourse: number;
       lastEvent:
         | {
@@ -236,7 +248,7 @@ async function inspectNoPromptSubdialogDrive(args: {
 > {
   const source = resolveDriveRequestSource(undefined, args.driveOptions);
   const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
-  const runState = latest?.runState;
+  const displayState = latest?.displayState;
   const rawCourse = latest?.currentCourse ?? args.dialog.currentCourse;
   const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
   const courseEvents = await DialogPersistence.loadCourseEvents(
@@ -253,17 +265,17 @@ async function inspectNoPromptSubdialogDrive(args: {
         : undefined;
 
   const explicitInterruptedResumeAllowed =
-    args.driveOptions?.allowResumeFromInterrupted === true && runState?.kind === 'interrupted';
+    args.driveOptions?.allowResumeFromInterrupted === true &&
+    latest?.executionMarker?.kind === 'interrupted';
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
-    runState?.kind === 'blocked' &&
-    runState.reason.kind === 'waiting_for_subdialogs';
+    hasResolvedPendingTellaskReplyEntitlement(args.dialog, args.driveOptions);
   if (lastEvent?.type === 'tellask_call_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
       source,
       rejection: 'finalized_after_response_anchor',
-      runState,
+      displayState,
       currentCourse,
       lastEvent,
     };
@@ -273,7 +285,7 @@ async function inspectNoPromptSubdialogDrive(args: {
       shouldReject: true,
       source,
       rejection: 'missing_explicit_interrupted_resume_entitlement',
-      runState,
+      displayState,
       currentCourse,
       lastEvent,
     };
@@ -281,7 +293,7 @@ async function inspectNoPromptSubdialogDrive(args: {
   return {
     shouldReject: false,
     source,
-    runState,
+    displayState,
     currentCourse,
     lastEvent,
   };
@@ -353,26 +365,27 @@ export async function executeDriveRound(args: {
       if (
         dialog.id.selfId !== dialog.id.rootId &&
         latest &&
-        latest.runState &&
-        latest.runState.kind === 'dead'
+        latest.executionMarker &&
+        latest.executionMarker.kind === 'dead'
       ) {
         return;
       }
-      if (latest && latest.runState && latest.runState.kind === 'proceeding_stop_requested') {
+      const stopRequested = getStopRequestedReason(dialog.id);
+      if (stopRequested !== undefined) {
         log.debug(
           'kernel-driver skip drive while stop request is still being processed',
           undefined,
           {
             dialogId: dialog.id.valueOf(),
-            reason: latest.runState.reason,
+            reason: stopRequested,
           },
         );
         return;
       }
       if (
         latest &&
-        latest.runState &&
-        latest.runState.kind === 'interrupted' &&
+        latest.executionMarker &&
+        latest.executionMarker.kind === 'interrupted' &&
         !allowResumeFromInterrupted
       ) {
         log.debug(
@@ -380,15 +393,19 @@ export async function executeDriveRound(args: {
           undefined,
           {
             dialogId: dialog.id.valueOf(),
-            reason: latest.runState.reason,
+            reason: latest.executionMarker.reason,
           },
         );
         return;
       }
     } catch (err) {
-      log.warn('kernel-driver failed to check runState before drive; proceeding best-effort', err, {
-        dialogId: dialog.id.valueOf(),
-      });
+      log.warn(
+        'kernel-driver failed to check execution facts before drive; proceeding best-effort',
+        err,
+        {
+          dialogId: dialog.id.valueOf(),
+        },
+      );
     }
 
     // Queued/auto drive (without fresh human input) must not proceed while dialog is
@@ -407,7 +424,7 @@ export async function executeDriveRound(args: {
               reason: driveOptions?.reason ?? null,
               rejection: inspection.rejection,
               allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-              runState: inspection.runState ?? null,
+              displayState: inspection.displayState ?? null,
               currentCourse: inspection.currentCourse,
               lastEvent: inspection.lastEvent ?? null,
               waitInQue,

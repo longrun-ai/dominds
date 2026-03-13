@@ -7,15 +7,19 @@ import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
 import { Dialog, DialogID, RootDialog } from '../dialog';
-import { globalDialogRegistry } from '../dialog-global-registry';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
   getRunControlCountsSnapshot,
+  getStopRequestedReason,
+  hasActiveRun,
+  loadDialogExecutionMarker,
   requestEmergencyStopAll,
   requestInterruptDialog,
-  setDialogRunState,
-  setRunStateBroadcaster,
-} from '../dialog-run-state';
+  setDialogDisplayState,
+  setDialogExecutionMarker,
+  setDisplayStateBroadcaster,
+} from '../dialog-display-state';
+import { globalDialogRegistry } from '../dialog-global-registry';
+import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
   dialogEventRegistry,
   postDialogEvent,
@@ -179,8 +183,7 @@ async function queueUserSupplementAtGenerationBoundary(
   },
 ): Promise<boolean> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, 'running');
-  const runStateKind = latest?.runState?.kind;
-  if (runStateKind !== 'proceeding') {
+  if (latest?.generating !== true) {
     return false;
   }
   if (!dialog.isLocked()) {
@@ -467,7 +470,7 @@ async function handleDeclareSubdialogDead(
     return;
   }
 
-  if (latest.runState && latest.runState.kind === 'dead') {
+  if (latest.executionMarker?.kind === 'dead') {
     // Idempotent
     return;
   }
@@ -475,7 +478,11 @@ async function handleDeclareSubdialogDead(
   // Best-effort abort if the dialog is currently proceeding.
   await requestInterruptDialog(dialogIdObj, 'emergency_stop');
 
-  await setDialogRunState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
+  await setDialogExecutionMarker(dialogIdObj, {
+    kind: 'dead',
+    reason: { kind: 'declared_by_user' },
+  });
+  await setDialogDisplayState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
 
   // If a supdialog is waiting on this subdialog (pending-subdialogs.json), supply a system-style
   // response so the supdialog can unblock and the model sees the failure reason.
@@ -634,9 +641,14 @@ async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Pro
       return;
     }
 
-    const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
-    const runState = latest?.runState;
-    if (runState && runState.kind !== 'idle_waiting_user') {
+    if (hasActiveRun(rootDialog.id)) {
+      return;
+    }
+    if (getStopRequestedReason(rootDialog.id) !== undefined) {
+      return;
+    }
+    const executionMarker = await loadDialogExecutionMarker(rootDialog.id, 'running');
+    if (executionMarker?.kind === 'interrupted' || executionMarker?.kind === 'dead') {
       return;
     }
 
@@ -869,7 +881,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         messageCount: 0,
         functionCallCount: 0,
         subdialogCount: 0,
-        runState: { kind: 'idle_waiting_user' },
+        displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },
@@ -1089,11 +1101,12 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 
-    // Send authoritative run state for this dialog so the client can render Send↔Stop and Continue.
+    // Send the persisted display-state projection so the client can render Send↔Stop and Continue
+    // without inferring state locally. This is a UI snapshot, not a business-fact oracle.
     try {
       const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
-      const runState =
-        latest?.runState ??
+      const displayState =
+        latest?.displayState ??
         (requestedStatus === 'running'
           ? { kind: 'idle_waiting_user' }
           : requestedStatus === 'completed'
@@ -1101,18 +1114,18 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
             : { kind: 'terminal', status: 'archived' });
       // `display_dialog` is a read/navigation action. Use persisted lastModified as timestamp
       // so the frontend list does not reorder as if there were new activity "now".
-      const runStateEvt: TypedDialogEvent = {
+      const displayStateEvt: TypedDialogEvent = {
         dialog: {
           selfId: dialogIdObj.selfId,
           rootId: dialogIdObj.rootId,
         },
         timestamp: latest?.lastModified ?? formatUnifiedTimestamp(new Date()),
-        type: 'dlg_run_state_evt',
-        runState,
+        type: 'dlg_display_state_evt',
+        displayState,
       };
-      ws.send(JSON.stringify(runStateEvt));
+      ws.send(JSON.stringify(displayStateEvt));
     } catch (err) {
-      log.warn(`Failed to send dlg_run_state_evt for ${dialogIdObj.valueOf()}:`, err);
+      log.warn(`Failed to send dlg_display_state_evt for ${dialogIdObj.valueOf()}:`, err);
     }
 
     // Emit one Q4H snapshot to ensure frontend has current global questions state.
@@ -1330,7 +1343,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 
     const dialogIdObj = new DialogID(dialogId, rootDialogId);
     const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
-    if (latest && latest.runState && latest.runState.kind === 'dead') {
+    if (latest?.executionMarker?.kind === 'dead') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1522,9 +1535,9 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
   }
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
   const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
-  const runState = latest?.runState;
+  const executionMarker = latest?.executionMarker;
 
-  if (!runState || runState.kind !== 'interrupted') {
+  if (!executionMarker || executionMarker.kind !== 'interrupted') {
     ws.send(JSON.stringify({ type: 'error', message: 'Dialog is not eligible for resumption.' }));
     return;
   }
@@ -1544,8 +1557,8 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const id of dialogIds) {
     const latest = await DialogPersistence.loadDialogLatest(id, 'running');
-    const runState = latest?.runState;
-    if (!runState || runState.kind !== 'interrupted') continue;
+    const executionMarker = latest?.executionMarker;
+    if (!executionMarker || executionMarker.kind !== 'interrupted') continue;
     void (async () => {
       try {
         const dlg = await restoreDialogForDrive(id, 'running');
@@ -1603,7 +1616,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 
     const dialogIdObj = new DialogID(dialogId, rootDialogId);
     const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
-    if (latest && latest.runState && latest.runState.kind === 'dead') {
+    if (latest?.executionMarker?.kind === 'dead') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1744,8 +1757,8 @@ export function setupWebSocketServer(
 ): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
 
-  // Broadcast dialog run-state changes to all connected clients so multi-tab views converge.
-  setRunStateBroadcaster((msg: WebSocketMessage) => {
+  // Broadcast dialog display-state changes to all connected clients so multi-tab views converge.
+  setDisplayStateBroadcaster((msg: WebSocketMessage) => {
     const data = JSON.stringify(msg);
     for (const ws of clients) {
       if (ws.readyState === 1) {

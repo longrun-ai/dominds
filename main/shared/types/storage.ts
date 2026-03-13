@@ -6,8 +6,12 @@
  */
 
 import type { ContextHealthSnapshot } from './context-health';
+import type {
+  DialogDeadReason,
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from './display-state';
 import type { LanguageCode } from './language';
-import type { DialogRunState } from './run-state';
 
 // === DIALOG METADATA STORAGE ===
 
@@ -150,10 +154,28 @@ export interface DialogLatestFile {
   needsDrive?: boolean;
 
   /**
-   * Authoritative dialog run state for WebUI controls (Send↔Stop, Continue, etc.).
-   * Persisted to survive process restarts.
+   * Persisted UI/diagnostic projection for dialog execution state.
+   *
+   * Important:
+   * - Not a business source of truth.
+   * - Backend control flow must use primary facts instead of branching on this field.
+   * - Persisted so WebUI controls (Send↔Stop, Continue, badges, diagnostics) can recover after
+   *   restart without recomputing everything client-side.
    */
-  runState?: DialogRunState;
+  displayState?: DialogDisplayState;
+
+  /**
+   * Persisted execution marker for explicit non-idle control facts.
+   *
+   * Important:
+   * - This is a business source of truth for explicit execution barriers such as
+   *   `interrupted` and `dead`.
+   * - Backend control flow should branch on this field instead of using `displayState`
+   *   for resumption/death eligibility.
+   * - `proceeding` / `blocked` / `idle` remain derived from other facts and must not be
+   *   persisted here.
+   */
+  executionMarker?: DialogExecutionMarker;
 
   /**
    * Disable Diligence Push for this dialog.
@@ -171,6 +193,16 @@ export interface DialogLatestFile {
    */
   diligencePushRemainingBudget?: number;
 }
+
+export type DialogExecutionMarker =
+  | {
+      kind: 'interrupted';
+      reason: DialogInterruptionReason;
+    }
+  | {
+      kind: 'dead';
+      reason: DialogDeadReason;
+    };
 
 // === COURSE TRACKING ===
 

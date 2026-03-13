@@ -8,9 +8,9 @@
 
 import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
+import type { DialogDisplayState } from '../shared/types/display-state.js';
 import type { LanguageCode } from '../shared/types/language';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
-import type { DialogRunState } from '../shared/types/run-state.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { generateShortId } from '../shared/utils/id.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
@@ -54,7 +54,7 @@ export class DomindsQ4HInput extends HTMLElement {
     maxLength: 4000,
   };
   private currentDialog: DialogIdent | null = null;
-  private runState: DialogRunState | null = null;
+  private displayState: DialogDisplayState | null = null;
   private primaryActionMode: 'send' | 'queue_now' | 'stop' | 'stopping' = 'send';
 
   private inputHistory: string[] = [];
@@ -242,12 +242,12 @@ export class DomindsQ4HInput extends HTMLElement {
 
   public clearDialog(): void {
     this.currentDialog = null;
-    this.runState = null;
+    this.displayState = null;
     this.updateUI();
   }
 
-  public setRunState(runState: DialogRunState | null): void {
-    this.runState = runState;
+  public setDisplayState(displayState: DialogDisplayState | null): void {
+    this.displayState = displayState;
     this.applyPrimaryActionMode();
     this.updateUI();
   }
@@ -268,7 +268,7 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.currentDialog === null) return 'send';
 
     const hasContent = (this.textInput?.value ?? '').trim().length > 0;
-    const state = this.runState;
+    const state = this.displayState;
     if (state === null) return 'send';
     if (state.kind === 'proceeding_stop_requested') return 'stopping';
     if (state.kind === 'proceeding') return hasContent ? 'queue_now' : 'stop';
@@ -757,7 +757,7 @@ export class DomindsQ4HInput extends HTMLElement {
     if (dialog.selfId === dialog.rootId) {
       throw new Error(t.q4hDeclareDeadOnlySidelineToast);
     }
-    const state = this.runState;
+    const state = this.displayState;
     if (state === null || state.kind !== 'interrupted') {
       throw new Error(t.q4hDeclareDeadOnlyInterruptedToast);
     }
@@ -960,7 +960,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private updateUI(): void {
     if (!this.inputWrapper || !this.textInput) return;
 
-    const state = this.runState;
+    const state = this.displayState;
     const isProceeding =
       state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
     const shouldDisable = this.props.disabled === true;
@@ -969,7 +969,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.textInput.disabled = shouldDisable;
     this.textInput.readOnly = false;
 
-    this.setAttribute('data-run-state', state ? state.kind : 'none');
+    this.setAttribute('data-display-state', state ? state.kind : 'none');
     this.setAttribute('aria-busy', isProceeding ? 'true' : 'false');
     this.updateSendButton();
 
@@ -1025,7 +1025,7 @@ export class DomindsQ4HInput extends HTMLElement {
           : 'send-button stop';
     const dialog = this.currentDialog;
     const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
-    const state = this.runState;
+    const state = this.displayState;
     const isDead = state !== null && state.kind === 'dead';
     const showDeclareDeath =
       isSubdialog && !isDead && state !== null && state.kind === 'interrupted';

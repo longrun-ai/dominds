@@ -458,8 +458,8 @@ async function lookupLiveRegisteredSubdialog(
     );
   }
   const latest = await DialogPersistence.loadDialogLatest(existing.id, rootDialog.status);
-  const runState = latest?.runState;
-  if (!runState || runState.kind !== 'dead') {
+  const executionMarker = latest?.executionMarker;
+  if (!executionMarker || executionMarker.kind !== 'dead') {
     return existing;
   }
   const removed = rootDialog.unregisterSubdialog(existing.agentId, existingSession);

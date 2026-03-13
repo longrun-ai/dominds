@@ -143,7 +143,7 @@ export async function createRootDialog(agentId: string = 'tester'): Promise<Root
       messageCount: 0,
       functionCallCount: 0,
       subdialogCount: 0,
-      runState: { kind: 'idle_waiting_user' },
+      displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
     },

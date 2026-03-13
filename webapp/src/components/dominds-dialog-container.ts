@@ -14,9 +14,9 @@ import type {
   TypedDialogEvent,
   WebSearchCallEvent,
 } from '../shared/types/dialog';
+import type { DialogDisplayState, DialogInterruptionReason } from '../shared/types/display-state';
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
-import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
@@ -172,7 +172,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private currentDialog?: DialogContext;
   private uiLanguage: LanguageCode = 'en';
   private serverWorkLanguage: LanguageCode = 'en';
-  private runState: DialogRunState | null = null;
+  private displayState: DialogDisplayState | null = null;
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -1116,7 +1116,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.resetAutoScrollTransientState();
     this.clearRetryPanel();
     this.previousDialog = undefined;
-    this.runState = null;
+    this.displayState = null;
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
@@ -1210,7 +1210,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     switch (event.type) {
-      case 'dlg_run_state_evt':
+      case 'dlg_display_state_evt':
         if (
           !this.currentDialog ||
           event.dialog.selfId !== this.currentDialog.selfId ||
@@ -1218,13 +1218,13 @@ export class DomindsDialogContainer extends HTMLElement {
         ) {
           break;
         }
-        this.runState = event.runState;
-        if (event.runState.kind === 'interrupted' || event.runState.kind === 'dead') {
+        this.displayState = event.displayState;
+        if (event.displayState.kind === 'interrupted' || event.displayState.kind === 'dead') {
           this.clearRetryPanel();
         }
         break;
 
-      case 'dlg_run_state_marker_evt': {
+      case 'dlg_display_state_marker_evt': {
         if (
           !this.currentDialog ||
           event.dialog.selfId !== this.currentDialog.selfId ||
@@ -1233,20 +1233,20 @@ export class DomindsDialogContainer extends HTMLElement {
           break;
         }
         if (event.kind === 'interrupted') {
-          this.runState = {
+          this.displayState = {
             kind: 'interrupted',
             reason: event.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
           };
           this.clearRetryPanel();
-        } else if (this.runState !== null && this.runState.kind === 'interrupted') {
-          this.runState = { kind: 'proceeding' };
+        } else if (this.displayState !== null && this.displayState.kind === 'interrupted') {
+          this.displayState = { kind: 'proceeding' };
         }
         let reasonText: string | undefined;
         const reason = event.reason;
         if (reason) {
           reasonText = this.formatInterruptionReason(reason);
         }
-        this.appendRunStateMarker({ kind: event.kind, reason: reasonText });
+        this.appendDisplayStateMarker({ kind: event.kind, reason: reasonText });
         break;
       }
 
@@ -4236,7 +4236,10 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  private appendRunStateMarker(marker: { kind: 'interrupted' | 'resumed'; reason?: string }): void {
+  private appendDisplayStateMarker(marker: {
+    kind: 'interrupted' | 'resumed';
+    reason?: string;
+  }): void {
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (!messages) return;
 

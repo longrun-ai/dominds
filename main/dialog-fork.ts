@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { DialogID } from './dialog';
 import { DialogPersistence } from './persistence';
-import type { DialogRunState } from './shared/types/run-state';
+import type { DialogDisplayState } from './shared/types/display-state';
 import type {
   DialogMetadataFile,
   FuncResultContentItem,
@@ -351,11 +351,11 @@ function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
   return count;
 }
 
-function computeRootForkRunState(args: {
+function computeRootForkDisplayState(args: {
   action: ForkDialogAction;
   questions: readonly HumanQuestion[];
   pendingSubdialogs: readonly PendingSubdialogStateRecord[];
-}): DialogRunState {
+}): DialogDisplayState {
   if (args.action.kind === 'draft_user_text') {
     return { kind: 'idle_waiting_user' };
   }
@@ -711,9 +711,9 @@ async function persistForkPlan(args: {
 
   const currentCourseEvents =
     plan.retainedCourses.find((item) => item.course === plan.currentCourse)?.events ?? [];
-  const runState =
+  const displayState =
     plan.targetId.selfId === plan.targetId.rootId
-      ? computeRootForkRunState({
+      ? computeRootForkDisplayState({
           action: args.action,
           questions: plan.questions,
           pendingSubdialogs: plan.pendingSubdialogs,
@@ -731,7 +731,7 @@ async function persistForkPlan(args: {
       subdialogCount: plan.childCount,
       generating: false,
       needsDrive: false,
-      runState,
+      displayState,
       disableDiligencePush:
         plan.targetId.selfId === plan.targetId.rootId ? args.latestDisableDiligencePush : false,
       diligencePushRemainingBudget:

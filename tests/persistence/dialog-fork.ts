@@ -34,7 +34,7 @@ async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<v
     currentCourse,
     lastModified: formatUnifiedTimestamp(new Date()),
     status: 'active',
-    runState: { kind: 'idle_waiting_user' },
+    displayState: { kind: 'idle_waiting_user' },
   };
   await DialogPersistence.mutateDialogLatest(dialogId, () => ({ kind: 'replace', next: latest }));
 }
@@ -240,7 +240,7 @@ async function main(): Promise<void> {
     );
 
     const forkedLatest = await DialogPersistence.loadDialogLatest(forkedRootId, 'running');
-    assert.equal(forkedLatest?.runState?.kind, 'interrupted');
+    assert.equal(forkedLatest?.displayState?.kind, 'interrupted');
 
     const forkedSubMeta = await DialogPersistence.loadDialogMetadata(
       new DialogID(subId.selfId, forkedRootId.selfId),

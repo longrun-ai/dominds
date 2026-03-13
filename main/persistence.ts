@@ -255,21 +255,21 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (value.generating !== undefined && typeof value.generating !== 'boolean') return null;
   if (value.needsDrive !== undefined && typeof value.needsDrive !== 'boolean') return null;
 
-  const runStateRaw = (value as Record<string, unknown>).runState;
-  const runState: DialogLatestFile['runState'] | null = (() => {
-    if (runStateRaw === undefined) return undefined;
-    if (!isRecord(runStateRaw)) return null;
-    if (typeof runStateRaw.kind !== 'string') return null;
-    const kind = runStateRaw.kind;
+  const displayStateRaw = (value as Record<string, unknown>).displayState;
+  const displayState: DialogLatestFile['displayState'] | null = (() => {
+    if (displayStateRaw === undefined) return undefined;
+    if (!isRecord(displayStateRaw)) return null;
+    if (typeof displayStateRaw.kind !== 'string') return null;
+    const kind = displayStateRaw.kind;
     if (kind === 'idle_waiting_user') return { kind: 'idle_waiting_user' } as const;
     if (kind === 'proceeding') return { kind: 'proceeding' } as const;
     if (kind === 'proceeding_stop_requested') {
-      const reason = runStateRaw.reason;
+      const reason = displayStateRaw.reason;
       if (reason !== 'user_stop' && reason !== 'emergency_stop') return null;
       return { kind: 'proceeding_stop_requested', reason } as const;
     }
     if (kind === 'interrupted') {
-      const reason = runStateRaw.reason;
+      const reason = displayStateRaw.reason;
       if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
       switch (reason.kind) {
         case 'user_stop':
@@ -288,7 +288,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       }
     }
     if (kind === 'blocked') {
-      const reason = runStateRaw.reason;
+      const reason = displayStateRaw.reason;
       if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
       switch (reason.kind) {
         case 'needs_human_input':
@@ -302,7 +302,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       }
     }
     if (kind === 'dead') {
-      const reason = runStateRaw.reason;
+      const reason = displayStateRaw.reason;
       if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
       switch (reason.kind) {
         case 'declared_by_user':
@@ -317,13 +317,58 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       }
     }
     if (kind === 'terminal') {
-      const status = runStateRaw.status;
+      const status = displayStateRaw.status;
       if (status !== 'completed' && status !== 'archived') return null;
       return { kind: 'terminal', status };
     }
     return null;
   })();
-  if (runState === null) return null;
+  if (displayState === null) return null;
+
+  const executionMarkerRaw = (value as Record<string, unknown>).executionMarker;
+  const executionMarker: DialogLatestFile['executionMarker'] | null = (() => {
+    if (executionMarkerRaw === undefined) return undefined;
+    if (!isRecord(executionMarkerRaw) || typeof executionMarkerRaw.kind !== 'string') return null;
+    switch (executionMarkerRaw.kind) {
+      case 'interrupted': {
+        const reason = executionMarkerRaw.reason;
+        if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
+        switch (reason.kind) {
+          case 'user_stop':
+            return { kind: 'interrupted', reason: { kind: 'user_stop' } } as const;
+          case 'emergency_stop':
+            return { kind: 'interrupted', reason: { kind: 'emergency_stop' } } as const;
+          case 'server_restart':
+            return { kind: 'interrupted', reason: { kind: 'server_restart' } } as const;
+          case 'system_stop': {
+            const detail = (reason as Record<string, unknown>).detail;
+            if (typeof detail !== 'string') return null;
+            return { kind: 'interrupted', reason: { kind: 'system_stop', detail } } as const;
+          }
+          default:
+            return null;
+        }
+      }
+      case 'dead': {
+        const reason = executionMarkerRaw.reason;
+        if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
+        switch (reason.kind) {
+          case 'declared_by_user':
+            return { kind: 'dead', reason: { kind: 'declared_by_user' } } as const;
+          case 'system': {
+            const detail = (reason as Record<string, unknown>).detail;
+            if (typeof detail !== 'string') return null;
+            return { kind: 'dead', reason: { kind: 'system', detail } } as const;
+          }
+          default:
+            return null;
+        }
+      }
+      default:
+        return null;
+    }
+  })();
+  if (executionMarker === null) return null;
 
   return {
     currentCourse,
@@ -334,7 +379,8 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     status: value.status,
     generating: value.generating,
     needsDrive: value.needsDrive,
-    runState,
+    displayState,
+    executionMarker,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };
@@ -632,7 +678,7 @@ export class DiskFileDialogStore extends DialogStore {
         messageCount: 0,
         functionCallCount: 0,
         subdialogCount: 0,
-        runState: { kind: 'idle_waiting_user' },
+        displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: false,
       },
     }));
@@ -669,7 +715,7 @@ export class DiskFileDialogStore extends DialogStore {
         currentCourse: 1,
         createdAt: nowTs,
         lastModified: nowTs,
-        runState: { kind: 'idle_waiting_user' },
+        displayState: { kind: 'idle_waiting_user' },
         sessionSlug: options.sessionSlug,
         assignmentFromSup: {
           callName: options.callName,
@@ -1954,8 +2000,8 @@ export class DiskFileDialogStore extends DialogStore {
 
       if (shouldPruneDead) {
         const latest = await DialogPersistence.loadDialogLatest(entry.subdialogId, status);
-        const runState = latest?.runState;
-        if (runState && runState.kind === 'dead') {
+        const executionMarker = latest?.executionMarker;
+        if (executionMarker && executionMarker.kind === 'dead') {
           prunedDeadRegistryEntries = true;
           rootDialog.unregisterSubdialog(entry.agentId, entry.sessionSlug);
           log.debug('Skip dead subdialog while loading Type B registry', undefined, {
@@ -2576,7 +2622,7 @@ export class DiskFileDialogStore extends DialogStore {
             currentCourse: subLatest?.currentCourse || 1,
             createdAt: subMeta.createdAt,
             lastModified: subLatest?.lastModified || subMeta.createdAt,
-            runState: subLatest?.runState,
+            displayState: subLatest?.displayState,
             sessionSlug: subMeta.sessionSlug,
             assignmentFromSup: subMeta.assignmentFromSup,
           },

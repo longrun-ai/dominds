@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import type { DialogRunState } from '../../webapp/src/shared/types/run-state';
-import { runStateClassSuffixFromRunState } from '../../webapp/src/utils/run-control-visual';
+import type { DialogDisplayState } from '../../webapp/src/shared/types/display-state';
+import { displayStateClassSuffixFromDisplayState } from '../../webapp/src/utils/run-control-visual';
 
-function expectSuffix(runState: DialogRunState | undefined, expected: string): void {
-  assert.equal(runStateClassSuffixFromRunState(runState), expected);
+function expectSuffix(displayState: DialogDisplayState | undefined, expected: string): void {
+  assert.equal(displayStateClassSuffixFromDisplayState(displayState), expected);
 }
 
 expectSuffix(undefined, '');

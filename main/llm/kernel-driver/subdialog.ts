@@ -541,6 +541,12 @@ export async function supplyResponseToSupdialog(args: {
           waitInQue: true,
           driveOptions: {
             suppressDiligencePush: parentDialog.disableDiligencePush,
+            resolvedPendingTellaskReply: {
+              ownerDialogId: parentDialog.id.selfId,
+              subdialogId: subdialogId.selfId,
+              callType,
+              callId: resolvedCallId,
+            },
             source: 'kernel_driver_supply_response_parent_revive',
             reason: `all_pending_subdialogs_resolved:type_${callType}`,
           },

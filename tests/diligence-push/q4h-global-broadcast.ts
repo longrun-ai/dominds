@@ -27,8 +27,8 @@ async function main(): Promise<void> {
     });
 
     postDialogEvent(dlg, {
-      type: 'dlg_run_state_evt',
-      runState: { kind: 'idle_waiting_user' },
+      type: 'dlg_display_state_evt',
+      displayState: { kind: 'idle_waiting_user' },
     });
 
     postDialogEvent(dlg, {
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
         currentCourse: 1,
         createdAt: '2026-01-29 00:00:01',
         lastModified: '2026-01-29 00:00:01',
-        runState: { kind: 'idle_waiting_user' },
+        displayState: { kind: 'idle_waiting_user' },
         sessionSlug: 'sess-1',
         assignmentFromSup: {
           mentionList: ['@coder'],
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
       touchedEvents.map((evt) => (evt.type === 'dlg_touched_evt' ? evt.sourceType : 'unexpected')),
     );
     const expectedTouchedSources = new Set([
-      'dlg_run_state_evt',
+      'dlg_display_state_evt',
       'new_q4h_asked',
       'q4h_answered',
       'subdialog_created_evt',

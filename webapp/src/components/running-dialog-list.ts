@@ -6,8 +6,8 @@ import { getUiStrings } from '../i18n/ui';
 import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 import {
-  runControlVisualStateFromRunState,
-  runStateClassSuffixFromRunState,
+  displayStateClassSuffixFromDisplayState,
+  runControlVisualStateFromDisplayState,
 } from '../utils/run-control-visual';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
@@ -187,8 +187,8 @@ export class RunningDialogList extends HTMLElement {
     next.selfId = existing.selfId;
 
     entry.el.dataset.dialogJson = this.encodeDialogDataset(next);
-    if (patch.runState !== undefined) {
-      this.updateRunStateForEntry(entry.el, next);
+    if (patch.displayState !== undefined) {
+      this.updateDisplayStateForEntry(entry.el, next);
     }
     if (patch.lastModified !== undefined) {
       const timeEl = entry.el.querySelector('.dialog-time');
@@ -244,7 +244,7 @@ export class RunningDialogList extends HTMLElement {
 
   private renderRunBadges(dialog: ApiRootDialogResponse): string {
     const t = getUiStrings(this.props.uiLanguage);
-    const visualState = runControlVisualStateFromRunState(dialog.runState);
+    const visualState = runControlVisualStateFromDisplayState(dialog.displayState);
     const badges: string[] = [];
 
     switch (visualState.kind) {
@@ -282,16 +282,16 @@ export class RunningDialogList extends HTMLElement {
     return `<span class="run-badges">${badges.join('')}</span>`;
   }
 
-  private getRunStateClass(dialog: ApiRootDialogResponse): string {
-    const suffix = runStateClassSuffixFromRunState(dialog.runState);
+  private getDisplayStateClass(dialog: ApiRootDialogResponse): string {
+    const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
     return suffix ? ` ${suffix}` : '';
   }
 
-  private updateRunStateForEntry(el: HTMLElement, dialog: ApiRootDialogResponse): void {
+  private updateDisplayStateForEntry(el: HTMLElement, dialog: ApiRootDialogResponse): void {
     for (const cls of RunningDialogList.RUN_STATE_CLASSES) {
       el.classList.remove(cls);
     }
-    const suffix = runStateClassSuffixFromRunState(dialog.runState);
+    const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
     if (suffix) {
       el.classList.add(suffix);
     }
@@ -1058,7 +1058,7 @@ export class RunningDialogList extends HTMLElement {
   ): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const runStateClass = this.getRunStateClass(dialog);
+    const displayStateClass = this.getDisplayStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId = dialog.rootId;
     const updatedAt = dialog.lastModified || '';
@@ -1067,7 +1067,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${runStateClass}"
+        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${displayStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
         data-dialog-key="${dialogKey}"
@@ -1109,7 +1109,7 @@ export class RunningDialogList extends HTMLElement {
   private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const runStateClass = this.getRunStateClass(dialog);
+    const displayStateClass = this.getDisplayStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId =
       kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
@@ -1123,7 +1123,7 @@ export class RunningDialogList extends HTMLElement {
       const callsign = this.getDialogDisplayCallsign(dialog);
       return `
         <div
-          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${runStateClass}"
+          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${displayStateClass}"
           data-root-id="${dialog.rootId}"
           data-self-id="${dialog.selfId ?? ''}"
           data-dialog-key="${dialogKey}"
@@ -1153,7 +1153,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="${rowClass}${isSelected ? ' selected' : ''}${runStateClass}"
+        class="${rowClass}${isSelected ? ' selected' : ''}${displayStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
         data-dialog-key="${dialogKey}"
@@ -1346,7 +1346,7 @@ export class RunningDialogList extends HTMLElement {
     // Ensure the selected dialog's hierarchy is available in the list.
     // We only lazy-load subdialogs when the root is expanded via the toggle button,
     // but selection can happen through other UX paths (clicking a row, deep-link,
-    // programmatic selection, etc.). Without this, run-state styling only appears
+    // programmatic selection, etc.). Without this, display-state styling only appears
     // for the currently selected node because siblings/children are not loaded.
     if (
       !this.requestedSubdialogRoots.has(dialog.rootId) &&
