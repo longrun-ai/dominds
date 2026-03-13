@@ -14,7 +14,6 @@ import { DialogPersistence } from '../../persistence';
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '../../shared/diligence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
-  formatCurrentUserLanguagePreference,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
   formatReminderItemGuide,
@@ -1450,14 +1449,6 @@ export async function driveDialogStreamCore(
           dlg.taskDocPath && !skipTaskdocForThisDrive ? await formatTaskDocContent(dlg) : undefined;
 
         const renderedReminders = await renderRemindersForContext(dlg);
-        const uiLanguage = dlg.getLastUserLanguageCode();
-        const workingLanguage = getWorkLanguage();
-        const guideMsg: ChatMessage = {
-          type: 'environment_msg',
-          role: 'user',
-          content: formatCurrentUserLanguagePreference(workingLanguage, uiLanguage),
-        };
-
         const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
           base: {
             prependedContextMessages: policy.prependedContextMessages,
@@ -1467,7 +1458,7 @@ export async function driveDialogStreamCore(
             dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
           },
           ephemeral: {},
-          tail: { renderedReminders, languageGuideMsg: guideMsg },
+          tail: { renderedReminders },
         });
 
         const newMsgs: ChatMessage[] = [];

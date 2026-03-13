@@ -17,6 +17,10 @@ import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './shared/async-fifo-mutex';
+import {
+  formatCurrentUserLanguagePreference,
+  formatUserLanguagePreferenceChangedNotice,
+} from './shared/i18n/driver-messages';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
@@ -222,6 +226,7 @@ export abstract class Dialog {
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
   // like Agent Priming transcripts.
   protected _coursePrefixMsgs: ChatMessage[] = [];
+  protected _courseRuntimeNoticeMsgs: ChatMessage[] = [];
   // Track whether the current course's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives
   // only after parent events are emitted.
@@ -286,6 +291,7 @@ export abstract class Dialog {
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
     this._lastContextHealthGenseq = undefined;
+    this.resetCourseLanguageNotice();
   }
 
   public setLastContextHealth(snapshot: ContextHealthSnapshot): void {
@@ -326,6 +332,40 @@ export abstract class Dialog {
 
   public setLastUserLanguageCode(language: LanguageCode): void {
     this._lastUserLanguageCode = language;
+  }
+
+  private buildCourseRuntimeNotice(content: string): ChatMessage {
+    return {
+      type: 'environment_msg',
+      role: 'user',
+      content,
+    };
+  }
+
+  public resetCourseLanguageNotice(): void {
+    this._courseRuntimeNoticeMsgs = [
+      this.buildCourseRuntimeNotice(
+        formatCurrentUserLanguagePreference(getWorkLanguage(), this._lastUserLanguageCode),
+      ),
+    ];
+  }
+
+  public appendCourseLanguageChangedNotice(
+    previousLanguage: LanguageCode,
+    nextLanguage: LanguageCode,
+  ): void {
+    if (previousLanguage === nextLanguage) {
+      return;
+    }
+    this._courseRuntimeNoticeMsgs.push(
+      this.buildCourseRuntimeNotice(
+        formatUserLanguagePreferenceChangedNotice(
+          getWorkLanguage(),
+          previousLanguage,
+          nextLanguage,
+        ),
+      ),
+    );
   }
 
   /**
@@ -668,7 +708,7 @@ export abstract class Dialog {
   }
 
   public getCoursePrefixMsgs(): ReadonlyArray<ChatMessage> {
-    return this._coursePrefixMsgs;
+    return [...this._coursePrefixMsgs, ...this._courseRuntimeNoticeMsgs];
   }
 
   // only to be used by the driver
@@ -966,6 +1006,7 @@ export abstract class Dialog {
       : this._currentCourse + 1;
     this._currentCourse = storeCourse;
     this._updatedAt = formatUnifiedTimestamp(new Date());
+    this.resetCourseLanguageNotice();
 
     const normalized = this.setUpNextPrompt(nextPrompt);
     if (options?.skipEnqueueIntent !== true) {

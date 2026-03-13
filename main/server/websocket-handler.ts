@@ -154,6 +154,21 @@ function resolveUserLanguageCode(
   return getWorkLanguage();
 }
 
+function syncDialogLanguagePreference(
+  dialog: Dialog,
+  language: LanguageCode,
+  options?: { appendSwitchNotice?: boolean },
+): void {
+  const previousLanguage = dialog.getLastUserLanguageCode();
+  dialog.setUiLanguage(language);
+  dialog.setLastUserLanguageCode(language);
+  if (options?.appendSwitchNotice) {
+    dialog.appendCourseLanguageChangedNotice(previousLanguage, language);
+    return;
+  }
+  dialog.resetCourseLanguageNotice();
+}
+
 async function queueUserSupplementAtGenerationBoundary(
   dialog: Dialog,
   prompt: {
@@ -764,6 +779,10 @@ async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Pro
   }
 
   wsUiLanguage.set(ws, parsed);
+  const liveDialog = wsLiveDlg.get(ws);
+  if (liveDialog) {
+    syncDialogLanguagePreference(liveDialog, parsed, { appendSwitchNotice: true });
+  }
   ws.send(JSON.stringify({ type: 'ui_language_set', uiLanguage: parsed }));
 }
 
@@ -791,6 +810,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     // Create RootDialog instance with the new store
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    syncDialogLanguagePreference(dialog, resolveUserLanguageCode(ws, undefined, dialog));
     globalDialogRegistry.register(dialog);
     // Setup WebSocket subscription for real-time events
     await setupWebSocketSubscription(ws, dialog);
@@ -971,6 +991,8 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       }
       dialog = loaded;
     }
+
+    syncDialogLanguagePreference(dialog, resolveUserLanguageCode(ws, undefined, dialog));
 
     // Subscribe BEFORE sending restoration events.
     // This avoids a race where new persisted events (e.g., Agent Priming replay) are emitted

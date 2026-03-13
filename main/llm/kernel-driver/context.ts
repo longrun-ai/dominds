@@ -14,39 +14,7 @@ export type DriveEphemeralContextParts = Readonly<{
 
 export type DriveTailContextParts = Readonly<{
   renderedReminders: readonly ChatMessage[];
-  languageGuideMsg: ChatMessage;
 }>;
-
-function findLastUserPromptLikeIndex(msgs: readonly ChatMessage[]): number {
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const msg = msgs[i];
-    if (
-      msg &&
-      (msg.type === 'prompting_msg' ||
-        msg.type === 'environment_msg' ||
-        msg.type === 'tellask_carryover_result_msg') &&
-      msg.role === 'user'
-    ) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-function insertBeforeLastUserPromptLike(
-  msgs: readonly ChatMessage[],
-  toInsert: readonly ChatMessage[],
-): ChatMessage[] {
-  if (toInsert.length === 0) return [...msgs];
-  const next = [...msgs];
-  const insertIndex = findLastUserPromptLikeIndex(next);
-  if (insertIndex >= 0) {
-    next.splice(insertIndex, 0, ...toInsert);
-  } else {
-    next.push(...toInsert);
-  }
-  return next;
-}
 
 export function buildDriveBaseContextMessages(parts: DriveBaseContextParts): ChatMessage[] {
   return [
@@ -92,12 +60,9 @@ export function appendDriveTailContext(
   parts: DriveTailContextParts,
 ): ChatMessage[] {
   if (hasUserPromptLikeAnchor(source)) {
-    return [...source, ...parts.renderedReminders, parts.languageGuideMsg];
+    return [...source, ...parts.renderedReminders];
   }
-  if (parts.renderedReminders.length > 0) {
-    return [parts.languageGuideMsg, ...parts.renderedReminders];
-  }
-  return [...source, parts.languageGuideMsg];
+  return [...source, ...parts.renderedReminders];
 }
 
 export function assembleDriveContextMessages(args: {

@@ -13,15 +13,59 @@ export function formatCurrentUserLanguagePreference(
   const prefix = formatSystemNoticePrefix(workingLanguage);
   if (workingLanguage === 'zh') {
     if (uiLanguage === workingLanguage) {
-      return `${prefix}\n你对用户的可见回复语言应使用：${uiName}。`;
+      return [
+        prefix,
+        '这是浏览器里的界面语言设置，不是新的用户指令；不要停下当前工作，也不要单独回复确认，只需在后续继续任务时遵守。',
+        `你对用户的可见回复语言应使用：${uiName}。`,
+      ].join('\n');
     }
-    return `${prefix}\n你对用户的可见回复语言应使用：${uiName}。\n你的内部工作语言保持为：${workingName}（用于系统提示、队友诉请与工具调用）。`;
+    return [
+      prefix,
+      '这是浏览器里的界面语言设置，不是新的用户指令；不要停下当前工作，也不要单独回复确认，只需在后续继续任务时遵守。',
+      `你对用户的可见回复语言应使用：${uiName}。`,
+      `你的内部工作语言保持为：${workingName}（用于系统提示、队友诉请与工具调用）。`,
+    ].join('\n');
   }
 
   if (uiLanguage === workingLanguage) {
-    return `${prefix}\nYour user-visible reply language should be: ${uiName}.`;
+    return [
+      prefix,
+      'This comes from a browser UI language change, not a new user instruction. Do not stop the current work or send a standalone acknowledgement; just follow it in subsequent work.',
+      `Your user-visible reply language should be: ${uiName}.`,
+    ].join('\n');
   }
-  return `${prefix}\nYour user-visible reply language should be: ${uiName}.\nYour internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`;
+  return [
+    prefix,
+    'This comes from a browser UI language change, not a new user instruction. Do not stop the current work or send a standalone acknowledgement; just follow it in subsequent work.',
+    `Your user-visible reply language should be: ${uiName}.`,
+    `Your internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`,
+  ].join('\n');
+}
+
+export function formatUserLanguagePreferenceChangedNotice(
+  workingLanguage: LanguageCode,
+  previousUiLanguage: LanguageCode,
+  nextUiLanguage: LanguageCode,
+): string {
+  const previousName = formatLanguageName(previousUiLanguage, workingLanguage);
+  const nextName = formatLanguageName(nextUiLanguage, workingLanguage);
+  const prefix = formatSystemNoticePrefix(workingLanguage);
+  if (workingLanguage === 'zh') {
+    return [
+      prefix,
+      '这是浏览器里的界面语言切换，不是新的用户指令；不要停下当前工作，不要只回复“收到/好的”，也不要把这条提示当成新的待办。',
+      `用户的界面语言已从 ${previousName} 切换为 ${nextName}。`,
+      `从现在起，你对用户的可见回复语言应使用：${nextName}。`,
+      '继续推进当前任务本身。',
+    ].join('\n');
+  }
+  return [
+    prefix,
+    'This is a browser UI language change, not a new user instruction. Do not stop the current work, do not reply with a standalone "acknowledged/ok", and do not treat this notice as a new to-do.',
+    `The user UI language changed from ${previousName} to ${nextName}.`,
+    `From now on, your user-visible reply language should be: ${nextName}.`,
+    'Continue the current task itself.',
+  ].join('\n');
 }
 
 export function formatNewCourseStartPrompt(
