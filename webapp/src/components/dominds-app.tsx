@@ -8924,6 +8924,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private handleConnectionStateChange(state: ConnectionState): void {
+    const previousStatus = this.connectionState.status;
     this.connectionState = state;
     this.updateConnectionStatus();
 
@@ -8936,6 +8937,10 @@ export class DomindsApp extends HTMLElement {
       this.wsManager.sendRaw({
         type: 'get_q4h_state',
       });
+
+      if (previousStatus !== 'connected') {
+        this.refreshCurrentDialogAfterReconnect();
+      }
     } else if (state.status === 'error') {
       if (state.error === 'Unauthorized') {
         this.onAuthRejected('ws');
@@ -8943,6 +8948,23 @@ export class DomindsApp extends HTMLElement {
       }
       this.showError(state.error || 'Connection error');
     }
+  }
+
+  private refreshCurrentDialogAfterReconnect(): void {
+    if (!this.currentDialog) {
+      return;
+    }
+
+    const status =
+      this.currentDialogStatus ?? this.resolveDialogStatus(this.currentDialog) ?? 'running';
+    this.currentDialogStatus = status;
+    this.wsManager.sendRaw({
+      type: 'display_dialog',
+      dialog: {
+        ...this.currentDialog,
+        status,
+      },
+    });
   }
 
   private updateConnectionStatus(): void {
