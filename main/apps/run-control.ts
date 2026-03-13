@@ -2,8 +2,11 @@ import type {
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
 } from '../apps-host/app-host-contract';
+import { createLogger } from '../log';
 import { getAppDialogRunControlMeta, listAppDialogRunControls } from './dialog-run-controls';
 import { waitForAppsHostClient } from './runtime';
+
+const log = createLogger('apps-run-control');
 
 export async function applyAppDialogRunControl(params: {
   controlId: string;
@@ -25,10 +28,24 @@ export async function applyRegisteredAppDialogRunControls(
   payload: DomindsAppRunControlContext,
 ): Promise<DomindsAppRunControlResult> {
   for (const control of listAppDialogRunControls()) {
-    const result = await applyAppDialogRunControl({
-      controlId: control.id,
-      payload,
-    });
+    let result: DomindsAppRunControlResult;
+    try {
+      result = await applyAppDialogRunControl({
+        controlId: control.id,
+        payload,
+      });
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      log.warn('App dialog run control failed; continuing without this app control', err, {
+        controlId: control.id,
+        dialogId: payload.dialog.selfId,
+        rootId: payload.dialog.rootId,
+        agentId: payload.agentId,
+        taskDocPath: payload.taskDocPath,
+        source: payload.source,
+      });
+      continue;
+    }
     if (result.kind === 'reject') {
       return result;
     }

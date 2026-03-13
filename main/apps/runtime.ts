@@ -49,6 +49,23 @@ type RegisteredAppArtifacts = Readonly<{
 
 const registeredAppArtifactsById = new Map<string, RegisteredAppArtifacts>();
 
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function formatAppCapabilityUnavailableMessage(params: {
+  appId: string;
+  capability: string;
+  detail: string;
+}): string {
+  return [
+    `App capability unavailable: ${params.capability}`,
+    `appId=${params.appId}`,
+    `reason=${params.detail}`,
+    'This app-specific capability is unavailable for now. Continue with other available tools unless this app is required.',
+  ].join('\n');
+}
+
 function resolveRootDialogFor(dlg: Dialog): RootDialog {
   if (dlg instanceof RootDialog) {
     return dlg;
@@ -335,29 +352,49 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
       descriptionI18n: t.descriptionI18n,
       parameters: t.parameters,
       call: async (dlg, caller, args) => {
-        const host = await ensureAppsHostReadyForToolCalls();
-        const result = await host.callTool(t.name, args, {
-          dialogId: dlg.id.selfId,
-          rootDialogId: dlg.id.rootId,
-          agentId: dlg.agentId,
-          taskDocPath: dlg.taskDocPath,
-          sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
-          callerId: caller.id,
-        });
-        if (Array.isArray(result.reminderRequests) && result.reminderRequests.length > 0) {
-          await applyAppReminderRequests(dlg, {
-            appId: app.appId,
-            reminderRequests: result.reminderRequests,
-            resolveHostClient: waitForAppsHostClient,
+        try {
+          const host = await ensureAppsHostReadyForToolCalls();
+          const result = await host.callTool(t.name, args, {
+            dialogId: dlg.id.selfId,
+            rootDialogId: dlg.id.rootId,
+            agentId: dlg.agentId,
+            taskDocPath: dlg.taskDocPath,
+            sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
+            callerId: caller.id,
           });
+          if (Array.isArray(result.reminderRequests) && result.reminderRequests.length > 0) {
+            await applyAppReminderRequests(dlg, {
+              appId: app.appId,
+              reminderRequests: result.reminderRequests,
+              resolveHostClient: waitForAppsHostClient,
+            });
+          }
+          if (
+            Array.isArray(result.dialogReminderRequests) &&
+            result.dialogReminderRequests.length > 0
+          ) {
+            await applyDialogReminderRequestBatches(dlg, app.appId, result.dialogReminderRequests);
+          }
+          return result.output;
+        } catch (error: unknown) {
+          const err = asError(error);
+          log.warn('App tool call failed', err, {
+            appId: app.appId,
+            toolName: t.name,
+            dialogId: dlg.id.valueOf(),
+            rootId: dlg.id.rootId,
+            selfId: dlg.id.selfId,
+            agentId: dlg.agentId,
+            callerId: caller.id,
+          });
+          throw new Error(
+            formatAppCapabilityUnavailableMessage({
+              appId: app.appId,
+              capability: `tool:${t.name}`,
+              detail: err.message,
+            }),
+          );
         }
-        if (
-          Array.isArray(result.dialogReminderRequests) &&
-          result.dialogReminderRequests.length > 0
-        ) {
-          await applyDialogReminderRequestBatches(dlg, app.appId, result.dialogReminderRequests);
-        }
-        return result.output;
       },
     }));
     registerAppToolset({
@@ -496,18 +533,34 @@ export async function listDynamicAppToolsetsForMember(_params: {
   taskDocPath: string;
   memberId: string;
 }): Promise<readonly string[]> {
-  await registerEnabledAppsToolProxies({ rtwsRootAbs: _params.rtwsRootAbs });
+  try {
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: _params.rtwsRootAbs });
+  } catch (error: unknown) {
+    log.warn(
+      `Failed to refresh enabled app tool proxies while resolving dynamic toolsets for member '${_params.memberId}'; continuing without dynamic app toolsets.`,
+      asError(error),
+    );
+    return [];
+  }
   if (!appsRuntimeConfig && !appsHostClient && !appsHostTransition) {
     return [];
   }
   if (!appsHostClient && !appsHostTransition) {
     return [];
   }
-  const host = await ensureAppsHostReadyForToolCalls();
-  return await host.listDynamicToolsets({
-    memberId: _params.memberId,
-    taskDocPath: _params.taskDocPath,
-  });
+  try {
+    const host = await ensureAppsHostReadyForToolCalls();
+    return await host.listDynamicToolsets({
+      memberId: _params.memberId,
+      taskDocPath: _params.taskDocPath,
+    });
+  } catch (error: unknown) {
+    log.warn(
+      `Failed to load dynamic app toolsets for member '${_params.memberId}'; continuing without dynamic app toolsets.`,
+      asError(error),
+    );
+    return [];
+  }
 }
 
 export async function initAppsRuntime(params: {

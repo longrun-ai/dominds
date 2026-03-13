@@ -43,6 +43,12 @@
   2. 修复 team.yaml 中的格式问题
   3. 重新验证直到无错误
   4. 清空 Problems 面板后再继续
+- 重要：即使 app 提供的 toolset 缺失或损坏，`team_mgmt_validate_team_cfg({})`、`team_mgmt_validate_mcp_cfg({})`、`team_mgmt_manual({})` 这些团队管理校验工具也应继续可用；应继续用它们排查，而不是中止。
+- app/toolset 排查顺序：
+  1. 保留校验输出，先定位缺失的 toolset / 断裂绑定
+  2. 用 `team_mgmt_read_file({ path: "app.yaml" })` 检查 `.minds/app.yaml`
+  3. 查看 `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })`
+  4. 再核对 app 安装/启用状态、apps-host 启动情况，以及 app host 路径/模块是否损坏
 
 **MCP_VALIDATION_ERROR**
 

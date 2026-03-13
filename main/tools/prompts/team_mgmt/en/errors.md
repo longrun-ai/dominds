@@ -43,6 +43,12 @@
   2. Fix format issues in team.yaml
   3. Re-validate until no errors
   4. Clear Problems panel before proceeding
+- Important: `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `team_mgmt_manual({})` should remain usable even when an app-provided toolset is broken or missing; use them to continue investigation instead of stopping.
+- App/toolset triage:
+  1. Keep the validation output and identify the exact missing toolset / broken binding
+  2. Inspect `.minds/app.yaml` with `team_mgmt_read_file({ path: "app.yaml" })`
+  3. Review `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })`
+  4. Then verify app install/enable state, apps-host startup, and the app host path/module integrity
 
 **MCP_VALIDATION_ERROR**
 

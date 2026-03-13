@@ -3867,6 +3867,7 @@ function renderTroubleshooting(language: LanguageCode): string {
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
         '症状：提示“permission denied / forbidden / not allowed” → 原因：权限规则（目录或扩展名）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` 配置。',
+        '症状：`team.yaml` 里引用的 app toolset 缺失 / app 相关能力失效 → 原因：enabled app 未正确安装/启用、apps-host 启动失败，或 app 自身 host 模块/运行时损坏 → 步骤：`team_mgmt_validate_team_cfg({})` 仍然可用；先用它确认具体缺失项，再检查 `.minds/app.yaml`、已启用 apps 解析结果与相关 app 安装路径；必要时让持有 team_mgmt 的团队管理智能体继续用 `team_mgmt_read_file` / `team_mgmt_ripgrep_*` / `team_mgmt_manual({ topics: [\"toolsets\",\"troubleshooting\"] })` 排查。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
@@ -3879,8 +3880,21 @@ function renderTroubleshooting(language: LanguageCode): string {
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
       'Symptom: "permission denied / forbidden / not allowed" → Cause: permission rules (directory or extension) hit deny-list or are not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` config.',
+      'Symptom: an app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable → Cause: enabled app not installed/enabled correctly, apps-host startup failure, or a broken app host module/runtime → Steps: `team_mgmt_validate_team_cfg({})` remains available; use it first to identify the missing binding, then inspect `.minds/app.yaml`, enabled-app resolution, and the app install path. The team manager should continue with `team_mgmt_read_file`, `team_mgmt_ripgrep_*`, and `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })`.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first, then use `mcp_restart` if needed; call `mcp_release` when done.',
     ])
+  );
+}
+
+function isLikelyAppToolsetBindingProblem(problem: WorkspaceProblem): boolean {
+  if (problem.kind !== 'team_workspace_config_error') return false;
+  if (!problem.id.includes('/toolsets/')) return false;
+  return (
+    problem.detail.errorText.includes('enabled app') ||
+    problem.detail.errorText.includes('enabled apps') ||
+    problem.detail.errorText.includes('inspect / refresh enabled apps') ||
+    problem.detail.errorText.includes('inspect the app install path') ||
+    problem.detail.errorText.includes('app is installed/enabled')
   );
 }
 
@@ -5003,12 +5017,29 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
         issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
       }
 
+      const hasAppToolsetBindingProblem = teamProblems.some(isLikelyAppToolsetBindingProblem);
+      const followUpLines =
+        language === 'zh'
+          ? [
+              '说明：`team_mgmt_validate_team_cfg({})` / `team_mgmt_validate_mcp_cfg({})` / `team_mgmt_manual({})` 等团队管理校验工具应继续可用；不要因为相关 app/toolset 出错就停止排查。',
+              hasAppToolsetBindingProblem
+                ? '建议排查顺序：1) 先保留并阅读本校验输出；2) 用 `team_mgmt_read_file({ path: "app.yaml" })` 检查 `.minds/app.yaml` 依赖声明；3) 再结合 `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })` 核对该 toolset 是否应来自 enabled app，以及 app 安装/启用/宿主路径是否损坏。'
+                : '建议：继续用 `team_mgmt_manual({ topics: ["team","toolsets","troubleshooting"] })`、`team_mgmt_read_file`、`team_mgmt_ripgrep_*` 缩小范围，再修复后重新运行本校验工具。',
+            ]
+          : [
+              'Note: team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `team_mgmt_manual({})` should remain usable; do not stop investigation just because a related app/toolset is failing.',
+              hasAppToolsetBindingProblem
+                ? 'Suggested triage order: 1) keep and read this validation output; 2) inspect `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`; 3) use `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })` to confirm whether the missing toolset should come from an enabled app, then verify app install/enable state and host path integrity.'
+                : 'Suggestion: continue with `team_mgmt_manual({ topics: ["team","toolsets","troubleshooting"] })`, `team_mgmt_read_file`, and `team_mgmt_ripgrep_*` to narrow scope, then re-run this validator after fixes.',
+            ];
+
       const msg =
         language === 'zh'
           ? fmtHeader('team.yaml 校验失败') +
             fmtList([
               `\`${TEAM_YAML_REL}\`：❌ 检测到 ${teamProblems.length} 个问题（详见 Problems 面板）`,
               '说明：坏的成员配置可能会在运行时被跳过或在使用时失败（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
+              ...followUpLines,
             ]) +
             '\n' +
             issueLines.join('\n')
@@ -5016,6 +5047,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
             fmtList([
               `\`${TEAM_YAML_REL}\`: ❌ ${teamProblems.length} issue(s) detected (see Problems panel)`,
               'Note: invalid member configs may be omitted at runtime or fail when used (to keep the Team usable), but you should fix them immediately.',
+              ...followUpLines,
             ]) +
             '\n' +
             issueLines.join('\n');
