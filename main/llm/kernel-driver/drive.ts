@@ -1497,7 +1497,7 @@ export async function driveDialogStreamCore(
                   {
                     dialogSelfId: dlg.id.selfId,
                     dialogRootId: dlg.id.rootId,
-                    promptCacheKey: dlg.id.selfId,
+                    promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
                   },
                   ctxMsgs,
                   dlg.activeGenSeq,
@@ -1691,7 +1691,7 @@ export async function driveDialogStreamCore(
                 {
                   dialogSelfId: dlg.id.selfId,
                   dialogRootId: dlg.id.rootId,
-                  promptCacheKey: dlg.id.selfId,
+                  promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
                 },
                 ctxMsgs,
                 receiver,
