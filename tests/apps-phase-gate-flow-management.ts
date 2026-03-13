@@ -39,6 +39,41 @@ function extractOutput(result: string | Readonly<{ output: string }>): string {
   return typeof result === 'string' ? result : result.output;
 }
 
+function stripFrontmatter(markdown: string): string {
+  const match = /^---\n[\s\S]*?\n---\n/m.exec(markdown);
+  if (!match) {
+    return markdown.trimStart();
+  }
+  return markdown.slice(match[0].length).trimStart();
+}
+
+function stripBindingsBlock(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const kept: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      const next = trimmed.slice(3).trim();
+      if (!skipping && next === 'phasegate-bindings') {
+        skipping = true;
+        continue;
+      }
+      if (skipping && trimmed === '```') {
+        skipping = false;
+        continue;
+      }
+    }
+    if (!skipping) {
+      kept.push(line);
+    }
+  }
+  return kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimStart();
+}
+
 function parseJsonBlock(markdown: string): Record<string, unknown> {
   const match = /```json\n([\s\S]*?)\n```/.exec(markdown);
   assert.ok(match, 'expected status markdown to include a JSON block');
@@ -75,6 +110,7 @@ async function main(): Promise<void> {
   const taskDocRel = 'manage-case.tsk';
   const taskDocAbs = path.join(tmpRoot, taskDocRel);
   const uninitializedTaskDocRel = 'uninitialized-case.tsk';
+  const bindingsTaskDocRel = 'bindings-case.tsk';
   const packageRootAbs = path.resolve(
     __dirname,
     '..',
@@ -308,6 +344,89 @@ flowchart LR
 \`\`\`
 `;
 
+  const bindingsAwareFlow = `# Bindings-aware Flow
+
+\`\`\`phasegate
+{
+  "version": 1,
+  "flowMentor": {
+    "memberId": "@flow-mentor",
+    "toolsets": ["phase_gate_status", "phase_gate_manage"]
+  },
+  "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "reviewer",
+      "title": "Reviewer",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
+  "phases": [
+    {
+      "id": "alignment",
+      "title": "Alignment",
+      "gate": {
+        "id": "alignment_signoff",
+        "title": "Alignment sign-off",
+        "toPhase": "implementation",
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          { "roleId": "owner" }
+        ]
+      }
+    },
+    {
+      "id": "implementation",
+      "title": "Implementation",
+      "gate": {
+        "id": "implementation_review",
+        "title": "Implementation review",
+        "toPhase": "acceptance",
+        "quorum": { "approveAtLeast": 2, "vetoAtMost": 0 },
+        "participants": [
+          { "roleId": "owner" },
+          { "roleId": "reviewer" }
+        ]
+      }
+    },
+    {
+      "id": "acceptance",
+      "title": "Acceptance"
+    }
+  ]
+}
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+  alignment --> implementation
+  implementation --> acceptance
+\`\`\`
+`;
+
+  const bindingsAwareBindings = `# Phase Gate Bindings
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "reviewer",
+      "memberIds": ["@reviewer-a", "@reviewer-b"]
+    }
+  ]
+}
+\`\`\`
+`;
+
   try {
     process.chdir(tmpRoot);
     await writeText(path.join(taskDocAbs, 'phasegate', 'flow.md'), flowMarkdown);
@@ -337,8 +456,12 @@ flowchart LR
     assert.ok(initFlow, 'expected phase_gate_init_flow tool');
     const getFlow = host.tools.phase_gate_get_flow;
     assert.ok(getFlow, 'expected phase_gate_get_flow tool');
+    const getBindings = host.tools.phase_gate_get_bindings;
+    assert.ok(getBindings, 'expected phase_gate_get_bindings tool');
     const replaceFlow = host.tools.phase_gate_replace_flow;
     assert.ok(replaceFlow, 'expected phase_gate_replace_flow tool');
+    const replaceBindings = host.tools.phase_gate_replace_bindings;
+    assert.ok(replaceBindings, 'expected phase_gate_replace_bindings tool');
     const getStatus = host.tools.phase_gate_get_status;
     assert.ok(getStatus, 'expected phase_gate_get_status tool');
 
@@ -346,27 +469,33 @@ flowchart LR
     assert.match(templateListOutput, /`mvp_default`/);
     assert.match(templateListOutput, /`web_dev_acceptance`/);
 
-    const packageTemplateIndexRaw = await fs.readFile(
-      path.join(packageTemplatesDirAbs, 'index.json'),
-      'utf-8',
+    const packageTemplateFileNames = (await fs.readdir(packageTemplatesDirAbs))
+      .filter((entry) => entry.endsWith('.flow.md'))
+      .sort();
+    assert.deepEqual(packageTemplateFileNames, [
+      'mvp_default.flow.md',
+      'web_dev_acceptance.flow.md',
+    ]);
+
+    const packageTemplateFrontmatters = await Promise.all(
+      packageTemplateFileNames.map(async (fileName) => {
+        const raw = await fs.readFile(path.join(packageTemplatesDirAbs, fileName), 'utf-8');
+        const match = /^---\n([\s\S]*?)\n---\n/m.exec(raw);
+        assert.ok(match, `expected template ${fileName} to start with frontmatter`);
+        const frontmatter = match[1] ?? '';
+        const idMatch = /^id:\s*(.+)$/m.exec(frontmatter);
+        assert.ok(idMatch, `expected template ${fileName} frontmatter to declare id`);
+        const descriptionMatch = /^description:\s*(.+)$/m.exec(frontmatter);
+        assert.ok(
+          descriptionMatch,
+          `expected template ${fileName} frontmatter to declare description`,
+        );
+        return idMatch[1]?.trim();
+      }),
     );
-    const packageTemplateIndex: unknown = JSON.parse(packageTemplateIndexRaw);
-    assert.equal(typeof packageTemplateIndex, 'object');
-    assert.notEqual(packageTemplateIndex, null);
-    assert.equal(Array.isArray(packageTemplateIndex), false);
-    const packageTemplateEntries = (packageTemplateIndex as { templates?: unknown }).templates;
-    assert.ok(
-      Array.isArray(packageTemplateEntries),
-      'expected package template index to expose templates[]',
+    const packageTemplateIds = packageTemplateFrontmatters.filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
     );
-    const packageTemplateIds = packageTemplateEntries.map((entry) => {
-      assert.equal(typeof entry, 'object');
-      assert.notEqual(entry, null);
-      assert.equal(Array.isArray(entry), false);
-      const id = (entry as { id?: unknown }).id;
-      assert.equal(typeof id, 'string');
-      return id;
-    });
     assert.deepEqual(packageTemplateIds, ['mvp_default', 'web_dev_acceptance']);
 
     const initOutput = extractOutput(
@@ -389,6 +518,8 @@ flowchart LR
       path.join(packageTemplatesDirAbs, 'mvp_default.flow.md'),
       'utf-8',
     );
+    const packagedMvpTemplateBody = stripFrontmatter(packagedMvpTemplate);
+    const packagedMvpFlowBody = stripBindingsBlock(packagedMvpTemplateBody);
     const mirroredMvpTemplate = await fs.readFile(
       path.join(rtwsAppDirAbs, 'templates', 'mvp_default.flow.md'),
       'utf-8',
@@ -397,14 +528,31 @@ flowchart LR
       path.join(taskDocAbs, 'phasegate', 'flow.md'),
       'utf-8',
     );
-    assert.equal(mirroredMvpTemplate, packagedMvpTemplate);
-    assert.equal(initializedFlowMarkdown, packagedMvpTemplate);
+    const initializedBindingsMarkdown = await fs.readFile(
+      path.join(taskDocAbs, 'phasegate', 'bindings.md'),
+      'utf-8',
+    );
+    assert.doesNotMatch(initializedFlowMarkdown, /^---$/m);
+    assert.match(mirroredMvpTemplate, /```phasegate-bindings/);
+    assert.doesNotMatch(initializedFlowMarkdown, /```phasegate-bindings/);
+    assert.equal(mirroredMvpTemplate, packagedMvpTemplateBody);
+    assert.equal(initializedFlowMarkdown, packagedMvpFlowBody);
+    assert.match(initializedBindingsMarkdown, /"roleId": "owner"/);
 
     const currentFlowOutput = extractOutput(await getFlow({ taskDocPath: taskDocRel }, toolCtx));
     assert.match(currentFlowOutput, /^# Current phase-gate flow/m);
     assert.match(currentFlowOutput, /Taskdoc: `manage-case\.tsk`/);
     assert.match(currentFlowOutput, /```phasegate/);
+    assert.match(currentFlowOutput, /"participants": \[/);
     assert.match(currentFlowOutput, /"id": "browser_regression"/);
+
+    const legacyBindingsOutput = extractOutput(
+      await getBindings({ taskDocPath: taskDocRel }, toolCtx),
+    );
+    assert.match(legacyBindingsOutput, /^# Current phase-gate bindings/m);
+    assert.match(legacyBindingsOutput, /- bindingsSource: `file`/);
+    assert.match(legacyBindingsOutput, /"roleId": "builder"/);
+    assert.match(legacyBindingsOutput, /@owner/);
 
     const preservedStatus = extractOutput(await getStatus({ taskDocPath: taskDocRel }, toolCtx));
     assert.match(preservedStatus, /- currentPhase: `implementation` \(Implementation\)/);
@@ -486,6 +634,65 @@ flowchart LR
       statusAfterFailures,
       /- activeGate: `acceptance_input_check` \(Acceptance input check\)/,
     );
+
+    const replacedBindingsAwareFlow = extractOutput(
+      await replaceFlow(
+        {
+          taskDocPath: bindingsTaskDocRel,
+          content: bindingsAwareFlow,
+          resetState: true,
+        },
+        toolCtx,
+      ),
+    );
+    assert.match(
+      replacedBindingsAwareFlow,
+      /Replaced phase-gate flow for `bindings-case\.tsk` and reset state\./,
+    );
+
+    const initialBindingsOutput = extractOutput(
+      await getBindings({ taskDocPath: bindingsTaskDocRel }, toolCtx),
+    );
+    assert.match(initialBindingsOutput, /- bindingsSource: `file`/);
+    assert.match(initialBindingsOutput, /"roleId": "owner"/);
+    assert.match(initialBindingsOutput, /"roleId": "reviewer"/);
+
+    const statusWithMissingBindings = extractOutput(
+      await getStatus({ taskDocPath: bindingsTaskDocRel }, toolCtx),
+    );
+    assert.match(statusWithMissingBindings, /- blockingReason: `missing_bindings`/);
+    assert.match(statusWithMissingBindings, /- missingBindings: `owner`/);
+    const missingBindingsPolicy = parseJsonBlock(statusWithMissingBindings);
+    assert.equal(missingBindingsPolicy.blockingReason, 'missing_bindings');
+
+    const replacedBindingsOutput = extractOutput(
+      await replaceBindings(
+        {
+          taskDocPath: bindingsTaskDocRel,
+          content: bindingsAwareBindings,
+        },
+        toolCtx,
+      ),
+    );
+    assert.match(replacedBindingsOutput, /Replaced phase-gate bindings for `bindings-case\.tsk`\./);
+
+    const currentBindingsOutput = extractOutput(
+      await getBindings({ taskDocPath: bindingsTaskDocRel }, toolCtx),
+    );
+    assert.match(currentBindingsOutput, /"memberIds": \[/);
+    assert.match(currentBindingsOutput, /@reviewer-a/);
+    assert.match(currentBindingsOutput, /@reviewer-b/);
+
+    const statusAfterBindings = extractOutput(
+      await getStatus({ taskDocPath: bindingsTaskDocRel }, toolCtx),
+    );
+    assert.doesNotMatch(statusAfterBindings, /- missingBindings:/);
+    assert.match(statusAfterBindings, /- activeRolesNow: `owner`/);
+    const bindingsWorkflowPolicy = parseJsonBlock(statusAfterBindings);
+    const bindingsMeta = bindingsWorkflowPolicy.bindings;
+    assert.equal(typeof bindingsMeta, 'object');
+    assert.notEqual(bindingsMeta, null);
+    assert.equal((bindingsMeta as Record<string, unknown>).source, 'file');
   } finally {
     process.chdir(previousCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

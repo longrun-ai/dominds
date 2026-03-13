@@ -144,6 +144,92 @@ flowchart LR
 \`\`\`
 `;
 
+  const reviewFlowMarkdown = `# Phase Gate Flow
+
+\`\`\`phasegate
+{
+  "version": 1,
+  "flowMentor": {
+    "memberId": "@flow-mentor",
+    "toolsets": ["phase_gate_status", "phase_gate_manage"]
+  },
+  "initialPhase": "alignment",
+  "roles": [
+    {
+      "id": "owner",
+      "title": "Owner",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    },
+    {
+      "id": "builder",
+      "title": "Builder",
+      "toolsets": ["phase_gate_status", "phase_gate_review"]
+    }
+  ],
+  "phases": [
+    {
+      "id": "alignment",
+      "title": "Alignment",
+      "gate": {
+        "id": "alignment_signoff",
+        "title": "Alignment sign-off",
+        "toPhase": "implementation",
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "owner"
+          }
+        ]
+      }
+    },
+    {
+      "id": "implementation",
+      "title": "Implementation",
+      "gate": {
+        "id": "acceptance_input_check",
+        "title": "Acceptance input check",
+        "toPhase": "acceptance",
+        "quorum": { "approveAtLeast": 1, "vetoAtMost": 0 },
+        "participants": [
+          {
+            "roleId": "builder"
+          }
+        ]
+      }
+    },
+    {
+      "id": "acceptance",
+      "title": "Acceptance"
+    }
+  ]
+}
+\`\`\`
+
+\`\`\`mermaid
+flowchart LR
+  alignment --> implementation
+  implementation --> acceptance
+\`\`\`
+`;
+
+  const reviewBindingsMarkdown = `# Phase Gate Bindings
+
+\`\`\`phasegate-bindings
+{
+  "bindings": [
+    {
+      "roleId": "builder",
+      "memberIds": ["@owner"]
+    },
+    {
+      "roleId": "owner",
+      "memberIds": ["@owner"]
+    }
+  ]
+}
+\`\`\`
+`;
+
   const stateMarkdown = `# Phase Gate State
 
 \`\`\`phasegate-state
@@ -168,7 +254,11 @@ flowchart LR
     process.chdir(tmpRoot);
     await writeText(path.join(taskDocAbs, 'phasegate', 'flow.md'), flowMarkdown);
     await writeText(path.join(taskDocAbs, 'phasegate', 'state.md'), stateMarkdown);
-    await writeText(path.join(reviewTaskDocAbs, 'phasegate', 'flow.md'), flowMarkdown);
+    await writeText(path.join(reviewTaskDocAbs, 'phasegate', 'flow.md'), reviewFlowMarkdown);
+    await writeText(
+      path.join(reviewTaskDocAbs, 'phasegate', 'bindings.md'),
+      reviewBindingsMarkdown,
+    );
     await writeText(path.join(reviewTaskDocAbs, 'phasegate', 'state.md'), stateMarkdown);
 
     const hostModuleUnknown = await import(pathToFileURL(hostModuleAbs).href);
