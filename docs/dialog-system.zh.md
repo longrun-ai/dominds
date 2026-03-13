@@ -690,7 +690,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 1. 清除所有聊天消息
 2. 清除所有 Q4H 问题
-3. 增加“多程对话”（course）计数器
+3. 增加“某一程对话”（dialog course）计数器
 4. 更新对话的时间戳
 5. 将 `newCoursePrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作新一程的**第一个 `role=user` 消息**
 
@@ -882,7 +882,7 @@ interface SubdialogRegistry {
 
 - **层级支持**：用于子对话管理的父子关系
 - **内存管理**：持久化提醒和临时聊天消息
-- **清理头脑操作**：`startNewRound(newRoundPrompt)` 方法（清除消息，清除 Q4H，开启新一程对话，为下一轮驱动排队开启提示）
+- **清理头脑操作**：`startNewCourse(newCoursePrompt)` 方法（清除消息，清除 Q4H，开启新一程对话，并为下一次驱动排队开启提示）
 - **子对话管理**：专门子任务的创建和协调
 - **Q4H 管理**：用于问题跟踪的 `updateQuestions4Human()` 方法
 - **内存访问**：与差遣牒和团队/智能体内存的集成
@@ -899,7 +899,7 @@ interface SubdialogRegistry {
 - **对话存储**：`dominds/main/persistence.ts`
 - **Q4H 存储**：每个对话的 `q4h.yaml`（被 clear_mind 清除）
 - **提醒存储**：每个对话的 `reminders.json`
-- **事件持久化**：基于轮的 JSONL 文件
+- **事件持久化**：按程分文件的 JSONL 事件流
 - **注册表存储**：每个根对话的 `registry.yaml`
 
 **Q4H 持久化方法**：
@@ -983,9 +983,9 @@ interface RegistryMethods {
 - fork 后的 root/subdialog 都落到 `running/`，并拥有新的 rootId
 - 前端不得对 sideline dialog 暴露该入口；当前实现仅支持 fork root dialog
 
-### 子对话课程头（强制）
+### 支线对话起始角色提示（强制）
 
-每次子对话 course 开始时，运行时必须在 assignment prompt 前插入角色头：
+每当支线对话进入新一程时，运行时必须在 assignment prompt 前插入角色头：
 
 - ZH：`你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @xxx（当前发起本次诉请）。`
 - EN：`You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @xxx (the current caller).`
