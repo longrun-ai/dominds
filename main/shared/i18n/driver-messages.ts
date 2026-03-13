@@ -1,22 +1,27 @@
 import { formatLanguageName, type LanguageCode } from '../types/language';
 
+export function formatSystemNoticePrefix(language: LanguageCode): string {
+  return language === 'zh' ? '【系统提示】' : '[System notice]';
+}
+
 export function formatCurrentUserLanguagePreference(
   workingLanguage: LanguageCode,
   uiLanguage: LanguageCode,
 ): string {
   const uiName = formatLanguageName(uiLanguage, workingLanguage);
   const workingName = formatLanguageName(workingLanguage, workingLanguage);
+  const prefix = formatSystemNoticePrefix(workingLanguage);
   if (workingLanguage === 'zh') {
     if (uiLanguage === workingLanguage) {
-      return `用户可见回复语言：${uiName}。`;
+      return `${prefix}\n你对用户的可见回复语言应使用：${uiName}。`;
     }
-    return `用户可见回复语言：${uiName}。内部工作语言保持为：${workingName}（用于系统提示、队友诉请与工具调用）。`;
+    return `${prefix}\n你对用户的可见回复语言应使用：${uiName}。\n你的内部工作语言保持为：${workingName}（用于系统提示、队友诉请与工具调用）。`;
   }
 
   if (uiLanguage === workingLanguage) {
-    return `User-visible response language: ${uiName}.`;
+    return `${prefix}\nYour user-visible reply language should be: ${uiName}.`;
   }
-  return `User-visible response language: ${uiName}. Internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`;
+  return `${prefix}\nYour user-visible reply language should be: ${uiName}.\nYour internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`;
 }
 
 export function formatNewCourseStartPrompt(
@@ -101,12 +106,12 @@ export function formatReminderItemGuide(
       return [
         `提醒项 #${index}（工具状态）`,
         '',
-        '说明：这是由工具维护的提醒展示，可视为当前状态参考；它不自动等于你现在必须立刻执行的指令。',
+        '我把这条当作工具维护的状态参考，不把它自动当成我现在必须立刻执行的指令。',
         '',
-        `提示：该提醒项由工具 ${managementTool} 管理；如需调整，请使用 ${managementTool}（不要用 update_reminder）。`,
+        `这条提醒项由工具 ${managementTool} 管理；如果我要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
         '',
-        `如需更新此提醒项，可执行：${updateExampleSafe}`,
-        `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+        `如果我要更新这条提醒项，可执行：${updateExampleSafe}`,
+        `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
         '',
         '---',
         content,
@@ -116,12 +121,12 @@ export function formatReminderItemGuide(
       return [
         `提醒项 #${index}（换程接续信息）`,
         '',
-        '说明：这是用于换程后快速恢复工作的接续包，不自动等于当前必须立刻执行的指令。',
+        '我把这条当作换程后快速恢复工作的接续包，不把它自动当成当前必须立刻执行的指令。',
         '',
-        '建议：优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，第一步就要以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后必须尽快收敛。',
+        '我应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后我必须尽快收敛。',
         '',
-        `如需更新此接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
-        `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+        `如果我要更新这份接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+        `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
         '',
         '---',
         content,
@@ -130,12 +135,12 @@ export function formatReminderItemGuide(
     return [
       `提醒项 #${index}`,
       '',
-      '说明：这是你给自己的显眼提示，用于保留当前对话里容易丢的工作信息；它不自动等于系统下发的下一步动作。',
+      '这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。',
       '',
-      '建议：保持简洁、及时更新；不再需要时删除。若后续准备换程，也可以把它整理成接续包。',
+      '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
       '',
-      `如需更新此提醒项，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
-      `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+      `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+      `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
       '',
       '---',
       content,
@@ -146,35 +151,35 @@ export function formatReminderItemGuide(
     const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
     return `REMINDER ITEM #${index} (TOOL STATE)
 
-Note: this is a tool-maintained reminder display. Treat it as state reference, not as an automatic must-do command.
+I treat this as a tool-maintained state reference, not as an automatic must-do command.
 
-This reminder is managed by tool ${managementTool}; if you need to change it, use ${managementTool} instead of update_reminder.
+This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
 
-If you need to update this reminder, run: ${updateExampleSafe}
-If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+If I need to update this reminder, run: ${updateExampleSafe}
+If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
   }
   if (isContinuationPackageReminder) {
     return `REMINDER ITEM #${index} (CONTINUATION PACKAGE)
 
-Note: this is resume information for the next course, not an automatic must-do command.
+I treat this as resume information for the next course, not as an automatic must-do command.
 
-Guidance: keep the next step, key pointers, run/verify info, and easy-to-lose volatile details. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
+I should keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. I should not duplicate Taskdoc content. In the new course, my first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, I should reconcile it early in the new course.
 
-If you need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
-If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+If I need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
   }
   return `REMINDER ITEM #${index}
 
-Note: this is a conspicuous reminder to yourself for easy-to-lose work details in the current dialog. It is not an automatically assigned next action.
+This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.
 
-Guidance: keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.
+I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.
 
-If you need to update this reminder, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
-If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+If I need to update this reminder, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
 }
@@ -185,11 +190,13 @@ export function formatQ4HDiligencePushBudgetExhausted(
 ): string {
   const maxInjectCount = args.maxInjectCount;
   if (language === 'zh') {
-    return [`[系统通知] 已经鞭策了 ${maxInjectCount} 次，智能体仍不听劝。`].join('\n');
+    return [
+      `${formatSystemNoticePrefix(language)} 已经鞭策了 ${maxInjectCount} 次，智能体仍不听劝。`,
+    ].join('\n');
   }
 
   return [
-    `[System notification] After ${maxInjectCount} Diligence Push attempts, the agent is still not moved.`,
+    `${formatSystemNoticePrefix(language)} After ${maxInjectCount} Diligence Push attempts, the agent is still not moved.`,
   ].join('\n');
 }
 
@@ -249,7 +256,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   if (language === 'zh') {
     if (args.kind === 'caution' && args.mode === 'soft') {
       return [
-        '[系统通知] 上下文状态：🟡 吃紧',
+        `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
@@ -264,7 +271,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     }
 
     return [
-      '[系统通知] 上下文状态：🔴 告急',
+      `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急`,
       '',
       `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
@@ -281,7 +288,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
 
   if (args.kind === 'caution' && args.mode === 'soft') {
     return [
-      '[System notification] Context state: 🟡 caution',
+      `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
@@ -296,7 +303,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   }
 
   return [
-    '[System notification] Context state: 🔴 critical',
+    `${formatSystemNoticePrefix(language)} Context state: 🔴 critical`,
     '',
     `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',

@@ -552,8 +552,8 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
       continue;
     }
     rendered.push({
-      type: 'environment_msg',
-      role: 'user',
+      type: 'transient_guide_msg',
+      role: 'assistant',
       content: formatReminderItemGuide(language, reminderNo, reminder.content, {
         meta: reminder.meta,
       }),
@@ -1453,8 +1453,8 @@ export async function driveDialogStreamCore(
         const uiLanguage = dlg.getLastUserLanguageCode();
         const workingLanguage = getWorkLanguage();
         const guideMsg: ChatMessage = {
-          type: 'transient_guide_msg',
-          role: 'assistant',
+          type: 'environment_msg',
+          role: 'user',
           content: formatCurrentUserLanguagePreference(workingLanguage, uiLanguage),
         };
 

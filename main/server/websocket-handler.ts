@@ -37,6 +37,7 @@ import {
 } from '../problems';
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
+import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
   ClearResolvedProblemsRequest,
@@ -469,8 +470,8 @@ async function handleDeclareSubdialogDead(
 
   const responseText =
     getWorkLanguage() === 'zh'
-      ? `系统反馈：支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。后续可以重用相同的 slug 发起全新支线对话；只是之前的上下文已不再，诉请正文请提供最新的完整上下文信息。`
-      : `System notice: sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the tellask body.`;
+      ? `${formatSystemNoticePrefix('zh')} 支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。后续可以重用相同的 slug 发起全新支线对话；只是之前的上下文已不再，诉请正文请提供最新的完整上下文信息。`
+      : `${formatSystemNoticePrefix('en')} sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the tellask body.`;
   const responseTextWithNote =
     note === ''
       ? responseText

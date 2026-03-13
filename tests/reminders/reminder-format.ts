@@ -10,7 +10,7 @@ async function main() {
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
   assert(zh.includes('\n  - A\n'), 'Expected zh reminder guide to preserve whitespace');
   assert(
-    zh.includes('显眼提示'),
+    zh.includes('我给自己的显眼提示'),
     'Expected zh reminder guide to describe plain reminders as conspicuous self-reminders',
   );
   assert(
@@ -23,7 +23,7 @@ async function main() {
   );
   assert(!zh.includes('可选操作：'), 'Expected zh reminder guide to omit action section labels');
   assert(
-    zh.includes('如需更新此提醒项'),
+    zh.includes('如果我要更新这条提醒项'),
     'Expected zh reminder guide to use conditional update wording',
   );
 
@@ -67,11 +67,11 @@ async function main() {
     'Expected continuation reminder to use continuation label (zh)',
   );
   assert(
-    zhContinuation.includes('不自动等于当前必须立刻执行的指令'),
+    zhContinuation.includes('不把它自动当成当前必须立刻执行的指令'),
     'Expected continuation reminder to clarify it is not an immediate command (zh)',
   );
   assert(
-    zhContinuation.includes('进入新一程后，第一步就要以清醒头脑重新审视并整理更新'),
+    zhContinuation.includes('进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新'),
     'Expected continuation reminder to require new-course first-step cleanup (zh)',
   );
 
@@ -79,7 +79,7 @@ async function main() {
   assert(en.includes('REMINDER ITEM #2'), 'Expected en reminder guide to include index');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
   assert(
-    en.includes('conspicuous reminder to yourself'),
+    en.includes('my conspicuous self-reminder'),
     'Expected en reminder guide to describe plain reminders as self-reminders',
   );
   assert(
@@ -91,7 +91,7 @@ async function main() {
     'Expected en reminder guide to omit action section labels',
   );
   assert(
-    en.includes('If you need to update this reminder'),
+    en.includes('If I need to update this reminder'),
     'Expected en reminder guide to use conditional update wording',
   );
 
@@ -127,11 +127,11 @@ async function main() {
     'Expected continuation reminder to use continuation label (en)',
   );
   assert(
-    enContinuation.includes('not an automatic must-do command'),
+    enContinuation.includes('not as an automatic must-do command'),
     'Expected continuation reminder to clarify it is not an immediate command (en)',
   );
   assert(
-    enContinuation.includes('your first step is to review and rewrite this with a clear head'),
+    enContinuation.includes('my first step is to review and rewrite this with a clear head'),
     'Expected continuation reminder to require new-course first-step cleanup (en)',
   );
 

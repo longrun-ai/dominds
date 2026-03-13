@@ -5,6 +5,7 @@ import { ensureDialogLoaded, getOrRestoreRootDialog } from './dialog-instance-re
 import type { ChatMessage } from './llm/client';
 import { log } from './log';
 import { DialogPersistence } from './persistence';
+import { formatSystemNoticePrefix } from './shared/i18n/driver-messages';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { LanguageCode } from './shared/types/language';
 import type { PendingSubdialogStateRecord } from './shared/types/storage';
@@ -21,9 +22,9 @@ type WaitingOwnerRecord = Readonly<{
 
 export function buildClearedMindInvalidationNotice(language: LanguageCode): string {
   if (language === 'zh') {
-    return '系统反馈：诉请对象已清理头脑并开启新一程对话；本轮诉请已失效，请基于最新完整上下文重新诉请祂。';
+    return `${formatSystemNoticePrefix(language)} 诉请对象已清理头脑并开启新一程对话；本轮诉请已失效，请基于最新完整上下文重新诉请祂。`;
   }
-  return 'System notice: the callee cleared its mind and started a new course; this tellask round is no longer valid. Re-tellask with the latest complete context.';
+  return `${formatSystemNoticePrefix(language)} the callee cleared its mind and started a new course; this tellask round is no longer valid. Re-tellask with the latest complete context.`;
 }
 
 async function loadWaitingOwnerRecords(dialog: Dialog): Promise<WaitingOwnerRecord[]> {

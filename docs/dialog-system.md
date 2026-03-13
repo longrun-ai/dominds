@@ -1116,7 +1116,10 @@ To make the UI **faithfully reflect the original generation order**, and to ensu
 Dominds persists fine-grained message entries (thinking/saying/tool call/tool result, etc.). In contrast, most mainstream LLM provider chat protocols only support `role=user|assistant` (plus limited tool-specific variants).
 
 - **Ideal target**: Provider SDKs/protocols should natively support `role='environment'` (or an equivalent mechanism) for runtime-injected environment/system content (e.g. reminders, transient guides), so we don't have to disguise environment content as user messages.
-- **Current reality**: Most providers do not support `role='environment'`. Therefore, when projecting Dominds messages into provider request payloads, Dominds must temporarily project `environment_msg` / `transient_guide_msg` / reminders as `role='user'` text blocks to keep requests valid.
+- **Current reality**: Most providers do not support `role='environment'`. Therefore, when projecting Dominds messages into provider request payloads, Dominds must flatten internal message kinds into provider-supported roles.
+  - Runtime/system notices (`environment_msg`) are projected as `role='user'` text blocks.
+  - Self-authored guides / self-reminders (`transient_guide_msg`) are projected as `role='assistant'` text blocks.
+  - Reminders follow their source semantics rather than one blanket rule: system-maintained reminders (for example runtime status signals) should land on the `user` side as explicit system notices, while self-maintained work reminders stay on the `assistant` side as first-person work notes.
 
 Additionally, some providers (especially Anthropic-compatible endpoints) enforce stricter validation around **role alternation** and **tool_use/tool_result boundaries**. Dominds' projection layer must assemble internal fine-grained entries into provider-friendly turns (turn assembly), rather than sending a 1:1 mapping of persisted entries.
 

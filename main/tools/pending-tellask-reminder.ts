@@ -1,6 +1,7 @@
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { DialogPersistence } from '../persistence';
+import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -211,21 +212,25 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
   },
 
   async renderReminder(_dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage> {
+    const language = getWorkLanguage();
+    const prefix = formatSystemNoticePrefix(language);
     if (reminder.owner !== pendingTellaskReminderOwner) {
-      const language = getWorkLanguage();
       return {
-        type: 'transient_guide_msg',
-        role: 'assistant',
+        type: 'environment_msg',
+        role: 'user',
         content:
           language === 'zh'
-            ? `系统提醒 #${index + 1}\n\n${reminder.content}`
-            : `System reminder #${index + 1}\n\n${reminder.content}`,
+            ? `${prefix} 自动维护诉请状态提醒 #${index + 1}\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+            : `${prefix} Auto-maintained tellask status reminder #${index + 1}\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
       };
     }
     return {
-      type: 'transient_guide_msg',
-      role: 'assistant',
-      content: reminder.content,
+      type: 'environment_msg',
+      role: 'user',
+      content:
+        language === 'zh'
+          ? `${prefix} 自动维护诉请状态提醒 #${index + 1}\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+          : `${prefix} Auto-maintained tellask status reminder #${index + 1}\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
     };
   },
 };

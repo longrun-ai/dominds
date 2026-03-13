@@ -11,6 +11,7 @@ import {
   releaseMcpToolsetLeaseForDialog,
   requestMcpServerRestart,
 } from '../mcp/supervisor';
+import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import { Team } from '../team';
 import type {
@@ -177,41 +178,41 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
   },
 
   async renderReminder(dlg: Dialog, reminder: Reminder, index: number) {
+    const workLanguage = getWorkLanguage();
+    const prefix = formatSystemNoticePrefix(workLanguage);
     if (reminder.owner !== mcpLeaseReminderOwner || !isMcpLeaseReminderMeta(reminder.meta)) {
-      const workLanguage = getWorkLanguage();
       return {
-        type: 'transient_guide_msg',
-        role: 'assistant',
+        type: 'environment_msg',
+        role: 'user',
         content:
           workLanguage === 'zh'
-            ? `系统提醒 #${index + 1}\n\n${reminder.content}`
-            : `System Reminder #${index + 1}\n\n${reminder.content}`,
+            ? `${prefix} MCP 工具集租约提醒 #${index + 1}\n你正在查看系统维护的 MCP 租约状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+            : `${prefix} MCP toolset lease reminder #${index + 1}\nYou are looking at system-maintained MCP lease state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
       };
     }
 
     const serverId = reminder.meta.serverId;
-    const workLanguage = getWorkLanguage();
     return {
-      type: 'transient_guide_msg',
-      role: 'assistant',
+      type: 'environment_msg',
+      role: 'user',
       content:
         workLanguage === 'zh'
           ? [
-              `MCP 工具集租约 #${index + 1}: \`${serverId}\``,
+              `${prefix} MCP 工具集租约 #${index + 1}: \`${serverId}\``,
               '',
-              `该 MCP server 被视为非“真正无状态”。此对话已租用一个专用的 MCP client 实例。`,
+              `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；此对话已租用一个专用的 MCP client 实例。`,
               '',
-              `当你确认近期不再需要这个工具集时，请释放以停止/回收底层 MCP 进程/连接：`,
+              `当你确认近期不再需要这个工具集时，请释放它，以停止/回收底层 MCP 进程或连接：`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
               '',
               `如果另一个对话同时使用同一个 MCP 工具集，Dominds 会为那个对话启动一个独立的 MCP client 实例。`,
             ].join('\n')
           : [
-              `MCP toolset lease #${index + 1}: \`${serverId}\``,
+              `${prefix} MCP toolset lease #${index + 1}: \`${serverId}\``,
               '',
-              `This MCP server is treated as non-stateless. A dedicated MCP client instance is leased to this dialog.`,
+              `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and a dedicated MCP client instance is leased to this dialog.`,
               '',
-              `When you are confident you won't need this toolset in the near future, release it to stop the underlying MCP process/connection:`,
+              `When you are confident you will not need this toolset soon, release it to stop the underlying MCP process/connection:`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
               '',
               `If another dialog uses the same MCP toolset concurrently, Dominds will spawn a separate MCP client instance for that dialog.`,

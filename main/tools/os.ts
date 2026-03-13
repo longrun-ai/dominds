@@ -9,6 +9,7 @@ import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
+import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -624,13 +625,21 @@ export const shellCmdReminderOwner: ReminderOwner = {
   },
 
   async renderReminder(dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage> {
+    const language = getWorkLanguage();
+    const prefix = formatSystemNoticePrefix(language);
     if (reminder.owner !== shellCmdReminderOwner || !isShellCmdReminderMeta(reminder.meta)) {
       // Fallback to default rendering if this reminder doesn't belong to this tool
       return {
-        type: 'transient_guide_msg',
-        role: 'assistant',
-        content: `🔔 **System-managed reminder item #${index + 1}** - Process Management
-This reminder is system-managed and should update/drop automatically based on the underlying process lifecycle.
+        type: 'environment_msg',
+        role: 'user',
+        content:
+          language === 'zh'
+            ? `${prefix} 后台进程状态提醒 #${index + 1}
+你正在查看系统维护的后台进程状态，不要把它当成你自己写的工作便签。该提醒会随进程生命周期自动更新或删除。
+---
+${reminder.content}`
+            : `${prefix} Background process status reminder #${index + 1}
+You are looking at system-maintained background process state. Do not treat it as a self-authored work note. This reminder will update or disappear automatically with the process lifecycle.
 ---
 ${reminder.content}`,
       };
@@ -642,10 +651,14 @@ ${reminder.content}`,
     if (!daemon) {
       // Daemon no longer exists, render as completed
       return {
-        type: 'transient_guide_msg',
-        role: 'assistant',
-        content: `⚰️ **Process Lifecycle Alert #${index + 1}** - Daemon Terminated (PID ${pid})
-This daemon process has completed its lifecycle and is no longer running. This reminder should auto-drop (or can be ignored).`,
+        type: 'environment_msg',
+        role: 'user',
+        content:
+          language === 'zh'
+            ? `${prefix} 进程生命周期提醒 #${index + 1} - 后台进程已结束（PID ${pid}）
+该后台进程的生命周期已经结束，当前不再运行。这条提醒应当很快自动消失；你也可以直接忽略它。`
+            : `${prefix} Process lifecycle reminder #${index + 1} - daemon terminated (PID ${pid})
+This daemon process has finished its lifecycle and is no longer running. This reminder should disappear automatically soon, and you may also ignore it.`,
       };
     }
 
@@ -661,12 +674,19 @@ This daemon process has completed its lifecycle and is no longer running. This r
     const statusInfo = formatDaemonStatus(daemon);
 
     return {
-      type: 'transient_guide_msg',
-      role: 'assistant',
-      content: `🔄 **Active Daemon Monitor #${index + 1}** - PID ${pid} (Uptime: ${uptimeStr})
-This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. This reminder is system-managed and will update/drop automatically.
+      type: 'environment_msg',
+      role: 'user',
+      content:
+        language === 'zh'
+          ? `🔄 ${prefix} 运行中后台进程监控 #${index + 1} - PID ${pid}（已运行 ${uptimeStr}）
+你当前有一个仍在运行的后台进程。请按需要检查它的健康状态、资源占用和输出情况；这条提醒由系统自动维护，会随进程状态变化自动更新或删除。
 
-**Current Status:**
+**当前状态：**
+${statusInfo}`
+          : `🔄 ${prefix} Active daemon monitor #${index + 1} - PID ${pid} (uptime: ${uptimeStr})
+You currently have a background process that is still running. Check its health, resource usage, and output as needed. This reminder is system-maintained and will update or disappear automatically as the process state changes.
+
+**Current status:**
 ${statusInfo}`,
     };
   },

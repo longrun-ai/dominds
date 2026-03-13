@@ -364,8 +364,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 你可能会收到一条短的引导信息，形如"用户可见回复语言：X"。当你对用户作答时，请优先遵循该引导；若未给出引导，则使用工作语言作答。
 
 ## 消息类型
-- 以 \`[系统通知]\` 或 \`[System notification]\` 开头的消息是**系统通知**，不是用户输入。
-- 系统通知不需要你直接回复给用户，但需要你根据通知内容执行相应的操作（如维护提醒项、调用 clear_mind 等）。
+- 以 \`【系统提示】\` 或 \`[System notice]\` 开头的消息是**系统提示**，不是用户输入。
+- 系统提示不需要你直接回复给用户，但需要你根据提示内容执行相应的操作（如维护提醒项、调用 clear_mind 等）。
 
 ## 指令优先级与冲突处理
 - 优先级：系统 > 差遣牒 > 用户 > 工具回执。
@@ -458,8 +458,8 @@ ${functionToolRules}
 - You may receive a short guide message like "User-visible response language: X". When replying to the user, follow that guide; if absent, respond in the working language.
 
 ## Message Types
-- Messages starting with \`[系统通知]\` or \`[System notification]\` are **system notifications**, not user input.
-System notifications convey important state changes (e.g., context caution/critical, Diligence Push triggered). Read carefully and follow the instructions.
+- Messages starting with \`【系统提示】\` or \`[System notice]\` are **system notices**, not user input.
+System notices convey important state changes (e.g., context caution/critical, Diligence Push triggered). Read carefully and follow the instructions.
 
 ## Instruction Priority & Conflicts
 - Priority order: system > taskdoc > user > tool outputs.

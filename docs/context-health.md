@@ -148,6 +148,10 @@ When `level === 'caution'`, the driver auto-inserts a **role=user** guidance pro
 LLM generation turn, and **persists it as a normal user message** so the UI renders it as a normal
 user instruction.
 
+The runtime prefix for this class of message is an explicit system-notice header (currently
+`[System notice]` in English and `【系统提示】` in Chinese), so the agent should treat it as
+system-directed runtime guidance rather than as a self-authored reminder.
+
 Current behavior:
 
 - On entering `caution`, Dominds inserts the prompt once (entry injection).
