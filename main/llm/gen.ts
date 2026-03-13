@@ -15,6 +15,12 @@ export interface LlmBatchResult {
   llmGenModel?: string;
 }
 
+export interface LlmRequestContext {
+  dialogSelfId: string;
+  dialogRootId: string;
+  promptCacheKey?: string;
+}
+
 export type LlmWebSearchAction =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
@@ -50,6 +56,7 @@ export interface LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     genseq: number,
@@ -61,6 +68,7 @@ export interface LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,

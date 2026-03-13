@@ -14,6 +14,7 @@ pnpm add @longrun-ai/codex-auth
 ```ts
 import {
   AuthManager,
+  createChatGptConversationId,
   createChatGptClientFromManager,
   createChatGptStartRequest,
   runLoginServer,
@@ -29,9 +30,11 @@ if (!auth) {
 }
 
 const client = await createChatGptClientFromManager(manager);
+const conversationId = createChatGptConversationId();
 const payload = createChatGptStartRequest({
   model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
+  conversationId,
   tools: [{ type: 'web_search', external_web_access: true }],
   userText: 'hello',
 });
@@ -46,9 +49,11 @@ Continue a conversation from stored history:
 import { createChatGptContinuationRequest } from '@longrun-ai/codex-auth';
 
 const history = JSON.parse(historyJson);
+const conversationId = createChatGptConversationId();
 const followup = createChatGptContinuationRequest({
   model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
+  conversationId,
   history,
   userText: 'continue',
 });
@@ -159,6 +164,7 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 - The CLI uses the same file schema as Codex Rust.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
+- Reusing the same `conversationId` across turns also reuses the same `prompt_cache_key`.
 - `service_tier` is supported on responses requests. In typical user-facing UX, `default`
   and `priority` are the practical choices; `priority` is the API-side equivalent of Codex
   product fast mode.

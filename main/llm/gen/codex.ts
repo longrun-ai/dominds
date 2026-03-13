@@ -30,6 +30,7 @@ import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '..
 import type {
   LlmBatchResult,
   LlmGenerator,
+  LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
   LlmWebSearchCall,
@@ -519,6 +520,7 @@ async function buildCodexRequest(
   instructions: string,
   assistantPrelude: string | null,
   funcTools: FuncTool[],
+  requestContext: LlmRequestContext,
   context: ChatMessage[],
 ): Promise<ChatGptResponsesRequest> {
   if (!agent.model) {
@@ -561,6 +563,10 @@ async function buildCodexRequest(
     store: false,
     stream: true,
     include,
+    ...(requestContext.promptCacheKey !== undefined &&
+    requestContext.promptCacheKey.trim().length > 0
+      ? { prompt_cache_key: requestContext.promptCacheKey }
+      : {}),
     text,
   };
 }
@@ -575,6 +581,7 @@ export class CodexGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
@@ -607,6 +614,7 @@ export class CodexGen implements LlmGenerator {
       resolvedInstructions.instructions,
       resolvedInstructions.assistantPrelude,
       funcTools,
+      requestContext,
       context,
     );
 
@@ -985,6 +993,7 @@ export class CodexGen implements LlmGenerator {
     _agent: Team.Member,
     _systemPrompt: string,
     _funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     _context: ChatMessage[],
     _genseq: number,
   ): Promise<LlmBatchResult> {

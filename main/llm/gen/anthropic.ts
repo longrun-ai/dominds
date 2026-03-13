@@ -22,7 +22,13 @@ import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
-import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import type {
+  LlmBatchResult,
+  LlmGenerator,
+  LlmRequestContext,
+  LlmStreamReceiver,
+  LlmStreamResult,
+} from '../gen';
 import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import {
   resolveProviderToolResultMaxChars,
@@ -1129,6 +1135,7 @@ export class AnthropicGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
@@ -1208,6 +1215,7 @@ export class AnthropicGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,

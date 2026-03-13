@@ -19,6 +19,7 @@ import {
   ChatGptEventReceiver,
   ChatGptTriggerError,
   createChatGptContinuationRequest,
+  createChatGptConversationId,
   createChatGptStartRequest,
   resolveChatGptResponsesUrl,
   resolveProxyForBaseUrl,
@@ -1060,7 +1061,7 @@ async function verifyChatGptConversation(
     DEFAULT_CHATGPT_BASE_URL;
   const model = selection.model;
   const instructions = selection.instructions;
-  const conversationId = randomUUID();
+  const conversationId = createChatGptConversationId();
 
   const preflight: FetchPreflight = {
     name: 'chatgpt_verify',
@@ -1097,7 +1098,7 @@ async function verifyChatGptConversation(
     model,
     instructions,
     userText: 'hello',
-    prompt_cache_key: conversationId,
+    conversationId,
   });
   const receiver: ChatGptEventReceiver =
     options.verbose && !options.json ? { onEvent: logChatGptEvent } : { onEvent: () => {} };
@@ -1150,7 +1151,7 @@ async function probeChatGptReasoningStream(
     DEFAULT_CHATGPT_BASE_URL;
   const model = selection.model;
   const instructions = selection.instructions;
-  const conversationId = randomUUID();
+  const conversationId = createChatGptConversationId();
 
   const preflight: FetchPreflight = {
     name: 'chatgpt_reasoning_probe',
@@ -1199,7 +1200,7 @@ async function probeChatGptReasoningStream(
     include: ['reasoning.encrypted_content'],
     userText:
       'Puzzle: I have a two-digit number. The sum of its digits is 9. Reversing the digits increases the number by 27. What is the number? Output only the number.',
-    prompt_cache_key: conversationId,
+    conversationId,
   });
 
   const eventCounts: EventCountByType = {};
@@ -1336,7 +1337,7 @@ async function probeChatGptFuncResultReplacement(
   const markerSuffix = randomUUID().slice(0, 8).toUpperCase();
   const pendingMarker = `PENDING_${markerSuffix}`;
   const finalMarker = `FINAL_${markerSuffix}`;
-  const conversationId = randomUUID();
+  const conversationId = createChatGptConversationId();
 
   const probeInstructions = `${selection.instructions}\n\nWhen asked, you must call askHuman first before answering directly.`;
   const firstUserText =
@@ -1446,7 +1447,7 @@ async function probeChatGptFuncResultReplacement(
     tools: [askHumanTool],
     parallel_tool_calls: false,
     userText: firstUserText,
-    prompt_cache_key: conversationId,
+    conversationId,
   });
   const round1 = await collectResponseStream({
     client,
@@ -1503,7 +1504,7 @@ async function probeChatGptFuncResultReplacement(
     instructions: probeInstructions,
     history: [...historyBase, pendingOutput],
     userText: compareUserText,
-    prompt_cache_key: conversationId,
+    conversationId,
   });
   const round2 = await collectResponseStream({
     client,
@@ -1537,7 +1538,7 @@ async function probeChatGptFuncResultReplacement(
     instructions: probeInstructions,
     history: [...historyBase, finalOutput],
     userText: compareUserText,
-    prompt_cache_key: conversationId,
+    conversationId,
   });
   const round3 = await collectResponseStream({
     client,

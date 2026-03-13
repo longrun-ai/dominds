@@ -8,13 +8,16 @@ way to start or continue a conversation.
 
 ```ts
 import {
+  createChatGptConversationId,
   createChatGptContinuationRequest,
   createChatGptStartRequest,
 } from '@longrun-ai/codex-auth';
 
+const conversationId = createChatGptConversationId();
 const payload = createChatGptStartRequest({
   model: 'gpt-5.4',
   instructions: 'You are Codex CLI.',
+  conversationId,
   // Native built-in tools are supported:
   // - web_search: cached/live web retrieval handled by Responses API
   // - local_shell: provider-side shell runtime (if available in your environment)
@@ -38,6 +41,7 @@ const history = JSON.parse(historyJson);
 const followup = createChatGptContinuationRequest({
   model: 'gpt-5.4',
   instructions: 'You are Codex CLI.',
+  conversationId,
   history,
   userText: 'continue',
 });
@@ -55,6 +59,9 @@ const event = JSON.parse(data) as ChatGptResponsesStreamEvent;
 `parallel_tool_calls` defaults to `true` in `createChatGptStartRequest` /
 `createChatGptContinuationRequest`. Set it to `false` if your runtime cannot
 handle multiple in-flight tool calls safely.
+
+If you pass `conversationId`, codex-auth will also use it as the default
+`prompt_cache_key`.
 
 `service_tier` is optional. For most callers, `default` and `priority` are the
 useful user-facing choices. `priority` corresponds to faster processing without

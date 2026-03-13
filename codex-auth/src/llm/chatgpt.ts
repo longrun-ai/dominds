@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -360,6 +361,7 @@ export interface ChatGptConversationConfig {
   service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null;
   store?: boolean;
   include?: ChatGptInclude[];
+  conversationId?: string;
   prompt_cache_key?: string;
   text?: ChatGptTextControls;
 }
@@ -374,6 +376,10 @@ export type ChatGptContinueConversationOptions = ChatGptConversationConfig &
   ChatGptUserInput & {
     history: ChatGptResponseItem[];
   };
+
+export function createChatGptConversationId(): string {
+  return randomUUID();
+}
 
 export function createChatGptStartRequest(
   options: ChatGptStartConversationOptions,
@@ -416,6 +422,14 @@ function buildChatGptRequest(
       : requestedReasoning;
   const include: ChatGptInclude[] =
     options.include ?? (reasoning ? ['reasoning.encrypted_content'] : []);
+  const conversationId =
+    typeof options.conversationId === 'string' && options.conversationId.trim().length > 0
+      ? options.conversationId
+      : undefined;
+  const promptCacheKey =
+    typeof options.prompt_cache_key === 'string' && options.prompt_cache_key.trim().length > 0
+      ? options.prompt_cache_key
+      : conversationId;
 
   return {
     model: options.model,
@@ -429,7 +443,7 @@ function buildChatGptRequest(
     store: options.store ?? false,
     stream: true,
     include,
-    prompt_cache_key: options.prompt_cache_key,
+    prompt_cache_key: promptCacheKey,
     text: options.text,
   };
 }

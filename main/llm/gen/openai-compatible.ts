@@ -29,7 +29,13 @@ import type { ReasoningPayload } from '../../shared/types/storage';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
-import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import type {
+  LlmBatchResult,
+  LlmGenerator,
+  LlmRequestContext,
+  LlmStreamReceiver,
+  LlmStreamResult,
+} from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import {
   resolveProviderToolResultMaxChars,
@@ -666,6 +672,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     genseq: number,
@@ -908,6 +915,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,

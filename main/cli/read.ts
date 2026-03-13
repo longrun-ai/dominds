@@ -146,6 +146,10 @@ async function runFuxiAuditCall(
     runtime.auditAgent,
     runtime.auditorSystemPrompt,
     [],
+    {
+      dialogSelfId: 'cli-read-audit',
+      dialogRootId: 'cli-read-audit',
+    },
     context,
     receiver,
     0,

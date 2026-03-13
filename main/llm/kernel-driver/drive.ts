@@ -1494,6 +1494,11 @@ export async function driveDialogStreamCore(
                   agent,
                   systemPrompt,
                   funcTools,
+                  {
+                    dialogSelfId: dlg.id.selfId,
+                    dialogRootId: dlg.id.rootId,
+                    promptCacheKey: dlg.id.selfId,
+                  },
                   ctxMsgs,
                   dlg.activeGenSeq,
                   abortSignal,
@@ -1683,6 +1688,11 @@ export async function driveDialogStreamCore(
                 agent,
                 systemPrompt,
                 funcTools,
+                {
+                  dialogSelfId: dlg.id.selfId,
+                  dialogRootId: dlg.id.rootId,
+                  promptCacheKey: dlg.id.selfId,
+                },
                 ctxMsgs,
                 receiver,
                 dlg.activeGenSeq,

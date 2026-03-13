@@ -801,7 +801,19 @@ export const teamMgmtCheckProviderTool: FuncTool = {
           const systemPrompt = 'Connectivity check: reply with a short confirmation (e.g. "ok").';
 
           try {
-            await llmGen.genToReceiver(providerCfg, agent, systemPrompt, [], context, receiver, 0);
+            await llmGen.genToReceiver(
+              providerCfg,
+              agent,
+              systemPrompt,
+              [],
+              {
+                dialogSelfId: 'team-mgmt-connectivity-check',
+                dialogRootId: 'team-mgmt-connectivity-check',
+              },
+              context,
+              receiver,
+              0,
+            );
             const details =
               out.trim().length > 0
                 ? out.trim().slice(0, 120)

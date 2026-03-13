@@ -63,7 +63,13 @@ import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';
-import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import type {
+  LlmBatchResult,
+  LlmGenerator,
+  LlmRequestContext,
+  LlmStreamReceiver,
+  LlmStreamResult,
+} from '../gen';
 
 interface MockResponse {
   /** The input message to match (required) */
@@ -400,6 +406,7 @@ responses:
     agent: Team.Member,
     systemPrompt: string,
     _funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
@@ -518,6 +525,7 @@ responses:
     agent: Team.Member,
     systemPrompt: string,
     _funcTools: FuncTool[],
+    _requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
