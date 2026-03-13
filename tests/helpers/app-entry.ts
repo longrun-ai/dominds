@@ -23,8 +23,15 @@ export type AppFactoryContext = Readonly<{
 
 export async function loadLocalAppEntry(params: {
   packageRootAbs: string;
-}): Promise<Readonly<{ installJson: DomindsAppInstallJsonV1; appFactory: (ctx: AppFactoryContext) => unknown }>> {
-  const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs: params.packageRootAbs });
+}): Promise<
+  Readonly<{
+    installJson: DomindsAppInstallJsonV1;
+    appFactory: (ctx: AppFactoryContext) => unknown;
+  }>
+> {
+  const installJson = await runDomindsAppJsonViaLocalPackage({
+    packageRootAbs: params.packageRootAbs,
+  });
   const moduleAbs = path.resolve(params.packageRootAbs, installJson.host.moduleRelPath);
   const mod: unknown = await import(pathToFileURL(moduleAbs).href);
   if (!isRecord(mod)) {

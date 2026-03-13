@@ -173,7 +173,7 @@ type HostFactoryContext = Readonly<{
 
 type AppModule = Readonly<{
   createDomindsApp: (ctx: HostFactoryContext) => Promise<AppHost>;
-}>; 
+}>;
 
 async function pathExists(absPath: string): Promise<boolean> {
   try {

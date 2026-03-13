@@ -1437,8 +1437,7 @@ export async function driveDialogStreamCore(
               callId: normalizedCallId,
               genseq: dlg.activeGenSeq,
               ...toRootGenerationAnchor({
-                rootCourse:
-                  (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
+                rootCourse: (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
                 rootGenseq:
                   (dlg instanceof SubDialog ? dlg.rootDialog : dlg).activeGenSeqOrUndefined ?? 0,
               }),

@@ -138,10 +138,7 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
 
-    await writeText(
-      path.join(appRootAbs, 'src', 'app.js'),
-      buildHostSource({ version: 'v1' }),
-    );
+    await writeText(path.join(appRootAbs, 'src', 'app.js'), buildHostSource({ version: 'v1' }));
 
     const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs: appRootAbs });
 

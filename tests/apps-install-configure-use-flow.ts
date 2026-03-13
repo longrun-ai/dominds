@@ -146,9 +146,7 @@ async function writeLocalAppPackage(params: {
   );
   await writeText(
     path.join(params.packageRootAbs, 'src', 'app.js'),
-    ['export async function createDomindsApp() {', '  return { tools: {} };', '}', ''].join(
-      '\n',
-    ),
+    ['export async function createDomindsApp() {', '  return { tools: {} };', '}', ''].join('\n'),
   );
 }
 
