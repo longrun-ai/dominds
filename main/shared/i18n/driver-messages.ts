@@ -19,6 +19,34 @@ export function formatCurrentUserLanguagePreference(
   return `User-visible response language: ${uiName}. Internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`;
 }
 
+export function formatNewCourseStartPrompt(
+  language: LanguageCode,
+  args: {
+    nextCourse: number;
+    source: 'clear_mind' | 'critical_auto_clear';
+  },
+): string {
+  if (language === 'zh') {
+    const prefix =
+      args.source === 'clear_mind'
+        ? `你刚清理头脑，开启了第 ${args.nextCourse} 程对话。`
+        : `系统因上下文已告急（critical）而自动开启了第 ${args.nextCourse} 程对话。`;
+    return (
+      `${prefix} ` +
+      '第一步先复核并整理接续包提醒项：以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；再继续推进任务。'
+    );
+  }
+
+  const prefix =
+    args.source === 'clear_mind'
+      ? `This is course #${args.nextCourse} of the dialog. You just cleared your mind.`
+      : `System auto-started course #${args.nextCourse} of the dialog because context health is critical.`;
+  return (
+    `${prefix} ` +
+    'Your first step is to review and rewrite any continuation-package reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, compress them into high-quality reminders, and then continue the task.'
+  );
+}
+
 export function formatReminderItemGuide(
   language: LanguageCode,
   index: number,
@@ -90,7 +118,7 @@ export function formatReminderItemGuide(
         '',
         '说明：这是用于换程后快速恢复工作的接续包，不自动等于当前必须立刻执行的指令。',
         '',
-        '建议：优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，尽快以清醒头脑重新审视、整理更新。若目前只是粗略过桥笔记，进入新一程后尽快收敛。',
+        '建议：优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，第一步就要以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后必须尽快收敛。',
         '',
         `如需更新此接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
         `如需删除此提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
@@ -132,7 +160,7 @@ ${content}`;
 
 Note: this is resume information for the next course, not an automatic must-do command.
 
-Guidance: keep the next step, key pointers, run/verify info, and easy-to-lose volatile details. Do not duplicate Taskdoc content. In the new course, review this again with a clear head and reorganize it promptly. If this is only a rough bridge note, reconcile it early in the new course.
+Guidance: keep the next step, key pointers, run/verify info, and easy-to-lose volatile details. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
 
 If you need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
 If you need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
@@ -227,7 +255,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '行动：先尽量保住易丢信息；如头脑还清楚，优先整理成结构化接续包提醒项（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）。',
         '',
-        '若你已经发乱，允许先记成多条粗略提醒项带到新一程；求稳比求整洁更重要。进入新一程后，第一步就是复核提醒项、收敛冗余、再继续工作。接续包只保留差遣牒未覆盖、但恢复工作会丢的信息。然后主动 clear_mind，开启新一程对话继续工作。',
+        '若你已经发乱，允许先记成多条粗略提醒项带到新一程；求稳比求整洁更重要。进入新一程后，第一步就是复核并整理提醒项：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项，然后再继续工作。接续包只保留差遣牒未覆盖、但恢复工作会丢的信息。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
         '- update_reminder({ "reminder_no": 1, "content": "..." })（推荐）',
@@ -247,7 +275,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '- add_reminder({ "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。若先带多条粗略提醒项过桥，新一程第一步就要重新审视并收敛。',
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。若先带多条粗略提醒项过桥，新一程第一步就要重新审视并整理：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。',
     ].join('\n');
   }
 
@@ -259,7 +287,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Action: first preserve easy-to-lose information; if you are still clear-headed, prefer a structured continuation-package reminder (next step + key pointers + run/verify info + easy-to-lose volatile details).',
       '',
-      'If you are already muddled, multiple rough reminders are acceptable as a bridge; survival matters more than neatness. In the new course, your first step is to review reminders, remove redundancy, and then continue. Keep only details not already covered by Taskdoc. Then proactively clear_mind to start a new dialog course.',
+      'If you are already muddled, multiple rough reminders are acceptable as a bridge; survival matters more than neatness. In the new course, your first step is to review and rewrite reminders: remove redundancy, correct biased or distorted bridge notes, compress them into high-quality reminders, and only then continue. Keep only details not already covered by Taskdoc. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
       '- update_reminder({ "reminder_no": 1, "content": "..." })',
@@ -279,7 +307,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '- add_reminder({ "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. If you bridge with multiple rough reminders first, reconcile them at the start of the new course.',
+    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. If you bridge with multiple rough reminders first, reconcile them at the start of the new course by removing redundancy, correcting biased or distorted bridge notes, and compressing them into high-quality reminders.',
   ].join('\n');
 }
 

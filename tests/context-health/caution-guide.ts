@@ -33,6 +33,10 @@ async function main(): Promise<void> {
     enSoft.includes('multiple rough reminders'),
     'en guide should allow rough multi-reminder bridge when muddled',
   );
+  assert.ok(
+    enSoft.includes('correct biased or distorted bridge notes'),
+    'en guide should require rewriting rough bridge notes in the new course',
+  );
 
   console.log('OK');
 }

@@ -4,7 +4,7 @@
 
 > Agents should be sustaining the continuous development of your products, one-shot product creation is hallucination.
 
-- 中文版：[README.zh.md](./README.zh.md)
+- Chinese version: [中文版](./README.zh.md)
 
 ## CAVEATS
 

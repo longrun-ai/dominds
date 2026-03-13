@@ -98,9 +98,14 @@ That is a workflow break. The model should send the Tellask directly.
 
 - Runtime builds a canonical inter-dialog transfer payload; this payload is delivered to target-agent context, and UI must display the same payload verbatim.
 - First-line markers are runtime-injected into that payload by semantics; agents must not hand-write them:
-  - Ask-back reply: `【tellaskBack】`
-  - Regular completed sideline reply: `【最终完成】`
-  - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+  - English work language:
+    - Ask-back reply: `【TellaskBack】`
+    - Regular completed sideline reply: `【Completed】`
+    - FBR reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
+  - Chinese work language:
+    - Ask-back reply: `【TellaskBack】`
+    - Regular completed sideline reply: `【Completed】`
+    - FBR reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
 - If the requester defines a “reply format” in tellask body, it must explicitly say “no hand-written markers; Dominds auto-injects markers”; do not require responder-side hand-written markers.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
@@ -108,7 +113,7 @@ That is a workflow break. The model should send the Tellask directly.
 **Sideline delivery rule**:
 
 - If a sideline dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
-- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects `【最终完成】` automatically.
+- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, and the localized Chinese completion marker in Chinese work language).
 - If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellasks (including `tellaskBack` / `askHuman`); list missing context + reasoning and return.
 

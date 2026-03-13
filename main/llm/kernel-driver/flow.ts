@@ -10,7 +10,10 @@ import {
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
-import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
+import {
+  formatAgentFacingContextHealthV3RemediationGuide,
+  formatNewCourseStartPrompt,
+} from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { DialogRunState } from '../../shared/types/run-state';
 import { generateShortId } from '../../shared/utils/id';
@@ -499,10 +502,10 @@ export async function executeDriveRound(args: {
     if (healthDecision.kind === 'continue') {
       if (healthDecision.reason === 'critical_force_new_course') {
         const language = getWorkLanguage();
-        const newCoursePrompt =
-          language === 'zh'
-            ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
-            : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+        const newCoursePrompt = formatNewCourseStartPrompt(language, {
+          nextCourse: dialog.currentCourse + 1,
+          source: 'critical_auto_clear',
+        });
         await dialog.startNewCourse(newCoursePrompt);
         dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
         resetContextHealthRoundState(dialog.id.key());

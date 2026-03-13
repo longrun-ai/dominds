@@ -185,7 +185,7 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[CLI Usage Guide](docs/cli-usage.zh.md)** — 命令行工具及使用方法
 - **[Q4H](docs/q4h.zh.md)** — 向人类提问（`askHuman`）机制与 WebUI 支持
 - **[MCP Support](docs/mcp-support.zh.md)** — MCP 工具集成指南
-- **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.zh.md)** — 差遣牒（Taskdoc）封装
+- **[封装式差遣牒](docs/encapsulated-taskdoc.zh.md)** — `*.tsk/` 任务包与访问约束
 - **[FBR](docs/fbr.zh.md)** — 扪心自问（`freshBootsReasoning`）机制设计与增强
 - **[Context Health](docs/context-health.zh.md)** — 上下文健康维护
 - **[Diligence Push](docs/diligence-push.zh.md)** — 鞭策机制

@@ -4,27 +4,27 @@ Chinese version: [中文版](./OEC-philosophy.zh.md)
 
 > Haier: Overall Every(thing/one/day) Control/Clear
 
-The OEC Management Method is a comprehensive enterprise management framework created by Haier Group in 1989, also known as "全方位优化管理法" (Comprehensive Optimization Management Method). This philosophy has generated tremendous economic and social benefits for Haier, earning them the National Enterprise Management Innovation "Golden Horse Award" and the Enterprise Reform "Sail Cup", with Premier Zhu Rongji批示 recommending nationwide promotion of this management experience.
+The OEC Management Method is a comprehensive enterprise management framework created by Haier Group in 1989, also known as the Comprehensive Optimization Management Method. This philosophy generated major economic and social benefits for Haier, earning the company the National Enterprise Management Innovation "Golden Horse Award" and the Enterprise Reform "Sail Cup", along with a recommendation from Premier Zhu Rongji to promote the management experience nationwide.
 
 ## Core Philosophy
 
-OEC represents a systematic approach to daily management that emphasizes **"Daily work completion, daily clearance, daily improvement"** (日事日毕、日清日高). The fundamental principle is that every employee must accomplish targeted work every day, with the overall goal being to achieve a 1% improvement over the previous day's performance.
+OEC represents a systematic approach to daily management that emphasizes **"Daily work completion, daily clearance, daily improvement."** The fundamental principle is that every employee must accomplish targeted work every day, with the overall goal being to achieve a 1% improvement over the previous day's performance.
 
 ## The OEC Components
 
-### **O - Overall (全方位)**
+### **O - Overall**
 
 - **Global Integration**: All activities, processes, and systems are interconnected
 - **Holistic Thinking**: Every element contributes to the overall organizational success
 - **Strategic Alignment**: Daily activities support long-term strategic objectives
 
-### **E - Everyone, Everything, Everyday (每人、每事、每日)**
+### **E - Everyone, Everything, Everyday**
 
 - **Everyone**: Every employee has clear responsibilities and accountability
 - **Everything**: Every task, process, and outcome is managed and controlled
 - **Everyday**: Daily operations, reviews, and improvements are non-negotiable
 
-### **C - Control and Clear (控制和清晰)**
+### **C - Control and Clear**
 
 - **Clear Standards**: Defined expectations, processes, and quality benchmarks
 - **Controlled Processes**: Systematic monitoring and adjustment mechanisms
@@ -32,27 +32,27 @@ OEC represents a systematic approach to daily management that emphasizes **"Dail
 
 ## Three Fundamental Principles
 
-### 1. **Closed-Loop Management (闭环原则)**
+### 1. **Closed-Loop Management**
 
 - **PDCA Cycle**: Plan-Do-Check-Act continuous improvement
 - **Complete Accountability**: Every task has clear ownership and follow-through
 - **Systematic Follow-up**: No loose ends or unaddressed issues
 
-### 2. **Comparative Analysis (比较分析原则)**
+### 2. **Comparative Analysis**
 
 - **Internal Benchmarking**: Compare current performance with past achievements
 - **External Benchmarking**: Measure against industry best practices and international standards
 - **Competitive Intelligence**: Use comparison as a driver for improvement
 
-### 3. **Continuous Optimization (不断优化原则)**
+### 3. **Continuous Optimization**
 
-- **Weakest Link Theory**: Identify and strengthen薄弱环节 (weak areas)
+- **Weakest Link Theory**: Identify and strengthen weak areas
 - **Incremental Progress**: 1% daily improvement compounds significantly over time
 - **Systematic Enhancement**: Continuous refinement of all processes
 
 ## Implementation Framework
 
-### Daily Work Completion (日事日毕)
+### Daily Work Completion
 
 **Core Mechanisms:**
 
@@ -66,7 +66,7 @@ OEC represents a systematic approach to daily management that emphasizes **"Dail
 - Mid-day check-ins ensure progress tracking
 - Evening reviews confirm completion and identify issues
 
-### Daily Clearance (日清日高)
+### Daily Clearance
 
 **The "Three Management Principles":**
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildClearedMindInvalidationNotice } from '../../main/course-transition';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
+import { formatNewCourseStartPrompt } from '../../main/shared/i18n/driver-messages';
 import { getWorkLanguage, setWorkLanguage } from '../../main/shared/runtime-language';
 import {
   formatAssignmentFromSupdialog,
@@ -50,7 +51,10 @@ async function main(): Promise<void> {
       status: 'failed',
       language,
     });
-    const subdialogCourse2Prompt = `${subdialogPrompt}\n---\nThis is course #2 of the dialog. You just cleared your mind; please proceed with the task.`;
+    const subdialogCourse2Prompt = `${subdialogPrompt}\n---\n${formatNewCourseStartPrompt('en', {
+      nextCourse: 2,
+      source: 'clear_mind',
+    })}`;
     const rootAfterFailure = 'Acknowledged. I will re-tellask with fresh context.';
 
     await writeMockDb(tmpRoot, [

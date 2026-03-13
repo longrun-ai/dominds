@@ -16,6 +16,7 @@ import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatCurrentUserLanguagePreference,
   formatDomindsNoteFbrToollessViolation,
+  formatNewCourseStartPrompt,
   formatReminderItemGuide,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
@@ -1128,10 +1129,10 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
 
   if (healthDecision.reason === 'critical_force_new_course') {
     const language = getWorkLanguage();
-    const newCoursePrompt =
-      language === 'zh'
-        ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
-        : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+    const newCoursePrompt = formatNewCourseStartPrompt(language, {
+      nextCourse: dlg.currentCourse + 1,
+      source: 'critical_auto_clear',
+    });
     await dlg.startNewCourse(newCoursePrompt);
     dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
     resetContextHealthRoundState(dlg.id.key());
@@ -1317,10 +1318,10 @@ export async function driveDialogStreamCore(
         if (healthDecision.kind === 'continue') {
           if (healthDecision.reason === 'critical_force_new_course') {
             const language = getWorkLanguage();
-            const newCoursePrompt =
-              language === 'zh'
-                ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
-                : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+            const newCoursePrompt = formatNewCourseStartPrompt(language, {
+              nextCourse: dlg.currentCourse + 1,
+              source: 'critical_auto_clear',
+            });
             await dlg.startNewCourse(newCoursePrompt);
             dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
             resetContextHealthRoundState(dlg.id.key());

@@ -51,7 +51,7 @@ function buildDocTabs(): readonly DocTab[] {
     },
     {
       key: 'encapsulated-taskdocs',
-      titleI18n: { zh: '差遣牒（Taskdoc）封装', en: 'Encapsulated Taskdocs' },
+      titleI18n: { zh: '封装式差遣牒', en: 'Encapsulated Taskdocs' },
       docName: 'encapsulated-taskdoc',
     },
     {

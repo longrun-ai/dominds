@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { formatNewCourseStartPrompt } from '../../main/shared/i18n/driver-messages';
 import { setWorkLanguage } from '../../main/shared/runtime-language';
 
 import {
@@ -17,8 +18,10 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot);
 
     const trigger = 'Please clear mind and continue from next course.';
-    const course2Prompt =
-      'This is course #2 of the dialog. You just cleared your mind; please proceed with the task.';
+    const course2Prompt = formatNewCourseStartPrompt('en', {
+      nextCourse: 2,
+      source: 'clear_mind',
+    });
     const finalAnswer = 'Continued successfully in course #2.';
 
     await writeMockDb(tmpRoot, [

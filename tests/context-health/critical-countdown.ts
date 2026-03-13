@@ -8,7 +8,10 @@
  */
 
 import assert from 'node:assert/strict';
-import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
+import {
+  formatAgentFacingContextHealthV3RemediationGuide,
+  formatNewCourseStartPrompt,
+} from '../../main/shared/i18n/driver-messages';
 
 async function main(): Promise<void> {
   const zh = formatAgentFacingContextHealthV3RemediationGuide('zh', {
@@ -23,6 +26,10 @@ async function main(): Promise<void> {
   assert.ok(
     zh.includes('多条粗略提醒项'),
     'zh guide should allow rough multi-reminder bridge when muddled',
+  );
+  assert.ok(
+    zh.includes('纠正偏激/失真思路'),
+    'zh guide should require correcting distorted bridge notes in the new course',
   );
   assert.ok(
     zh.includes('最多再提醒你 4 次'),
@@ -42,8 +49,32 @@ async function main(): Promise<void> {
     'en guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
+    en.includes('correcting biased or distorted bridge notes'),
+    'en guide should require correcting distorted bridge notes in the new course',
+  );
+  assert.ok(
     en.includes('remind you 0 more time'),
     'en guide should include reminder countdown number (0) in copy',
+  );
+
+  const zhNewCoursePrompt = formatNewCourseStartPrompt('zh', {
+    nextCourse: 3,
+    source: 'critical_auto_clear',
+  });
+  assert.ok(
+    zhNewCoursePrompt.includes('第一步先复核并整理接续包提醒项'),
+    'zh new-course prompt should require reviewing continuation-package reminders first',
+  );
+
+  const enNewCoursePrompt = formatNewCourseStartPrompt('en', {
+    nextCourse: 3,
+    source: 'critical_auto_clear',
+  });
+  assert.ok(
+    enNewCoursePrompt.includes(
+      'Your first step is to review and rewrite any continuation-package reminders',
+    ),
+    'en new-course prompt should require reviewing continuation-package reminders first',
   );
 
   console.log('OK');

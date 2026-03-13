@@ -395,9 +395,9 @@ subdialogs_created: 1
 status: 'completed'
 ```
 
-### 差遣牒（Taskdoc）存储
+### 差遣牒存储
 
-差遣牒（Taskdoc）是独立存在的 rtws 工件，对话通过路径引用它们。实践上，差遣牒也是跨主线/跨智能体的**任务实时协调公告板**。差遣牒必须是封装的 `*.tsk/` 任务包。
+差遣牒是独立存在的 rtws 工件，对话通过路径引用它们。实践上，差遣牒也是跨主线/跨智能体的**任务实时协调公告板**。差遣牒必须是封装的 `*.tsk/` 任务包。
 
 ```yaml
 # 在 dialog.yaml 中
@@ -456,7 +456,7 @@ taskdocChecksum: 'sha256:abc123...'
 4. 使用序列化的 DialogID 写入初始 `dialog.yaml` 元数据
 5. 将 `latest.yaml` 初始化为 `currentCourse: 1`
 6. 创建空的 `reminders.json`
-7. 设置差遣牒（Taskdoc）路径引用
+7. 设置差遣牒路径引用
 
 ### 消息持久化
 
@@ -472,7 +472,7 @@ taskdocChecksum: 'sha256:abc123...'
    - `selfDlgId`：新生成的子对话 ID
    - `rootDlgId`：从 supdialog 的 `rootDlgId` 继承
 3. 在父级的 `subdialogs/` 下创建子对话目录（仅使用 `selfDlgId` 作为目录名）
-4. 从父级设置差遣牒（Taskdoc）路径引用
+4. 从父级设置差遣牒路径引用
 5. 在元数据中设置父调用上下文
 6. 初始化子对话状态，元数据中仅存储 `selfDlgId`
 7. 加载时基于目录结构重建完整的 `DialogID` 和 `rootDlgId`

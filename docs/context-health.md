@@ -113,7 +113,7 @@ Levels are derived from the two thresholds:
 
 ## v3 Remediation Semantics (Driver-enforced)
 
-### Continuation package (“接续包”)
+### Continuation package
 
 The remediation workflow centers around a _continuation package_ (a scannable, actionable bundle of
 context that survives a new course). When the agent is still clear-headed, this should preferably be
@@ -186,10 +186,26 @@ Suggested visual states:
 - **Critical** (red)
 - **Unknown** (gray)
 
-Note (zh UI copy):
+### Canonical bilingual status mapping
 
-- `caution` → “吃紧”
-- `critical` → “告急”
+To avoid ad hoc translations in docs, prompts, and UI copy, this status set uses the following
+canonical mapping:
+
+| Internal state | Canonical English | Canonical Chinese UI copy | Notes                                                                                                                            |
+| -------------- | ----------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `healthy`      | `Healthy`         | `充裕`                    | Means the prompt is still comfortably below the soft threshold; the Chinese UI label is not `健康`.                              |
+| `caution`      | `Caution`         | `吃紧`                    | Means the prompt is past the soft threshold and reminder curation should start; the Chinese UI label is not `警告`.              |
+| `critical`     | `Critical`        | `告急`                    | Means the dialog is in the high-risk zone and driver-enforced countdown remediation applies; the Chinese UI label is not `严重`. |
+| `unknown`      | `Unknown`         | `未知`                    | Means usage stats for the turn are unavailable, so context health cannot be determined.                                          |
+
+Additional constraints:
+
+- English docs and prompts should use `Healthy / Caution / Critical / Unknown` as the canonical
+  English labels.
+- When an English doc needs to mention the Chinese counterpart, it should use the exact Chinese UI
+  labels above (`充裕 / 吃紧 / 告急 / 未知`) rather than improvised near-synonyms.
+- Chinese explanatory prose may still describe the semantics in other words, but those alternate
+  words should not replace the canonical status labels in UI/spec text.
 
 ## Implementation Outline
 

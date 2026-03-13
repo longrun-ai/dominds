@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { buildSystemPrompt } from '../../main/minds/system-prompt';
 import type { LanguageCode } from '../../main/shared/types/language';
-import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
+import {
+  formatAssignmentFromSupdialog,
+  formatTellaskResponseContent,
+  getRuntimeTransferMarkers,
+} from '../../main/shared/utils/inter-dialog-format';
 import { Team } from '../../main/team';
 
 function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCode): string {
@@ -35,6 +39,9 @@ function buildAssignmentPrompt(language: LanguageCode): string {
 }
 
 function main(): void {
+  const zhMarkers = getRuntimeTransferMarkers('zh');
+  const enMarkers = getRuntimeTransferMarkers('en');
+
   const zhMainline = buildPrompt('mainline', 'zh');
   assert.ok(
     zhMainline.includes(
@@ -43,7 +50,7 @@ function main(): void {
   );
   assert.ok(
     zhMainline.includes(
-      '当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：`Dominds 会自动注入回贴标记，禁止手写标记`；不得要求被诉请者手写 `【最终完成】` / `【tellaskBack】` / FBR 标记。',
+      `当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：\`Dominds 会自动注入回贴标记，禁止手写标记\`；不得要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`）。`,
     ),
   );
   assert.ok(
@@ -60,7 +67,7 @@ function main(): void {
   );
   assert.ok(
     enMainline.includes(
-      'When you define a “reply/delivery format” inside tellask body, you must explicitly include: `Dominds auto-injects reply markers; do not hand-write markers`; do not require the responder to hand-write `【最终完成】` / `【tellaskBack】` / FBR markers.',
+      `When you define a “reply/delivery format” inside tellask body, you must explicitly include: \`Dominds auto-injects reply markers; do not hand-write markers\`; do not require the responder to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`).`,
     ),
   );
   assert.ok(
@@ -72,7 +79,7 @@ function main(): void {
   const zhSideline = buildPrompt('sideline', 'zh');
   assert.ok(
     zhSideline.includes(
-      '回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】）；该正文直接进入上游上下文，且 UI 展示与其一致。你无需、也不应手写标记。',
+      `回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=${zhMarkers.finalCompleted}；FBR=${zhMarkers.fbrDirectReply} 或 ${zhMarkers.fbrReasoningOnly}）；该正文直接进入上游上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
     ),
   );
   assert.ok(
@@ -100,14 +107,14 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注【最终完成】。',
+      `仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注 ${zhMarkers.finalCompleted}。`,
     ),
   );
 
   const enSideline = buildPrompt('sideline', 'en');
   assert.ok(
     enSideline.includes(
-      'Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = 【最终完成】; FBR = 【FBR-直接回复】 or 【FBR-仅推理】); this payload is delivered to upstream context and shown identically in UI. Do not hand-write markers.',
+      `Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to upstream context and shown identically in UI. Do not hand-write markers.`,
     ),
   );
   assert.ok(
@@ -137,7 +144,7 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'Runtime marks 【最终完成】 and delivers upstream only when the current sideline has fully completed its objectives and directly replies.',
+      `Runtime marks ${enMarkers.finalCompleted} and delivers upstream only when the current sideline has fully completed its objectives and directly replies.`,
     ),
   );
 
@@ -154,6 +161,37 @@ function main(): void {
       'You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @caller (the current caller). When the task is complete, reply directly; call `tellaskBack` only when you need to ask back upstream.',
     ),
   );
+  assert.ok(
+    enAssignment.includes(
+      `Protocol note: reply markers (for example \`${enMarkers.tellaskBack}\` / \`${enMarkers.finalCompleted}\` / FBR markers \`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`) are auto-injected by Dominds runtime into the inter-dialog transfer payload.`,
+    ),
+  );
+
+  const enCompletedReply = formatTellaskResponseContent({
+    callName: 'tellask',
+    responderId: 'tester',
+    requesterId: 'caller',
+    mentionList: ['@tester'],
+    tellaskContent: 'Please review the current implementation.',
+    responseBody: 'All checks passed.',
+    status: 'completed',
+    language: 'en',
+  });
+  assert.ok(
+    enCompletedReply.startsWith(`${enMarkers.finalCompleted}\n\n@tester provided response:`),
+  );
+
+  const zhAskBackReply = formatTellaskResponseContent({
+    callName: 'tellaskBack',
+    responderId: 'tester',
+    requesterId: 'caller',
+    tellaskContent: '还缺少线上配置信息，请补充。',
+    responseBody: '请确认生产环境端口。',
+    status: 'failed',
+    language: 'zh',
+  });
+  assert.ok(zhAskBackReply.startsWith(`${zhMarkers.tellaskBack}\n\n@tester 已回复：`));
+  assert.equal(zhMarkers.tellaskBack, '【回问诉请】');
 
   console.log('✅ system-prompt-collab-marker-scope: ok');
 }

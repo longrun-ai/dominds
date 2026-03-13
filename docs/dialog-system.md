@@ -36,7 +36,7 @@ A **supdialog** (short for "super dialog") is the supdialog in a hierarchical di
 
 Note: **supdialog** is a structural parent in the dialog hierarchy. It is not the same as the **tellasker dialog** (the caller for the current Tellask). For TYPE A (`tellaskBack`), the tellasker dialog is the direct supdialog; for TYPE B/C, the tellasker dialog may be a different dialog.
 
-A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
+A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack`), which provides responses that feed back into the subdialog's context.
 
 ### Subdialog
 
@@ -152,13 +152,13 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 ```mermaid
 flowchart TD
   M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog Tellasking its direct supdialog (tellasker dialog for TYPE A)?}
-  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: tellaskBack({ tellaskContent: "..." }) (NO sessionSlug)]
+  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack`)<br/>Primary: tellaskBack({ tellaskContent: "..." }) (NO sessionSlug)]
   Q -- no --> T{Is sessionSlug present?}
-  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
-  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
+  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / Registered Session Tellask)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
+  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / One-shot Tellask)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
 ```
 
-### TYPE A: TellaskBack (Type A / `TellaskBack` / 回问诉请)
+### TYPE A: TellaskBack (Type A / `TellaskBack`)
 
 **Primary syntax**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`) — `tellaskBack({ tellaskContent: "..." }) sessionSlug ...` is a **syntax error**
 
@@ -185,7 +185,7 @@ flowchart TD
 **Sideline delivery rule (normative)**:
 
 - If a sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
-- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects `【最终完成】` into the transfer payload automatically.
+- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, and the localized Chinese completion marker in Chinese work language).
 - If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
 - **FBR exception**: FBR sideline dialogs are tellask-free (no `tellaskBack`); they must list missing context and return.
 
@@ -193,9 +193,14 @@ flowchart TD
 
 - Runtime builds a canonical inter-dialog transfer payload for teammate replies; this payload is delivered to target-agent context, and UI must show the same payload verbatim.
 - First-line markers are runtime-injected into that transfer payload by semantics; agents must not hand-write them:
-  - Ask-back reply: `【tellaskBack】`
-  - Regular completed sideline reply: `【最终完成】`
-  - FBR sideline reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+  - English work language:
+    - Ask-back reply: `【TellaskBack】`
+    - Regular completed sideline reply: `【Completed】`
+    - FBR sideline reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
+  - Chinese work language:
+    - Ask-back reply: `【TellaskBack】`
+    - Regular completed sideline reply: `【Completed】`
+    - FBR sideline reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: a model output from one dialog may be embedded into a runtime template and sent as the body to another dialog.
 
@@ -221,7 +226,7 @@ Result:
 - sub-001 resumes with orchestrator's response
 ```
 
-### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / 长线诉请)
+### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / Registered Session Tellask)
 
 **Syntax**: `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` (note the space before `sessionSlug`)
 
@@ -297,7 +302,7 @@ Result (second call):
 - orchestrator resumes
 ```
 
-### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / 一次性诉请)
+### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / One-shot Tellask)
 
 **Syntax**: `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` (NO `sessionSlug`)
 
@@ -965,12 +970,12 @@ interface RegistryMethods {
 At the start of every subdialog course, the runtime must prepend a role header to the assignment prompt:
 
 - EN: `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @xxx (the current caller).`
-- ZH: `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @xxx（当前发起本次诉请）。`
+- Chinese variant: see [the Chinese doc](./dialog-system.zh.md) for the corresponding work-language header.
 
 **FBR special handling**: FBR is a self-subdialog and must keep a dedicated header to avoid confusion:
 
 - EN (example): `This is an FBR sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
-- ZH（示例）: `这是一次 FBR 支线对话；诉请者对话为 @xxx（可能与当前对话同一 agent）。`
+- Chinese variant example: see [the Chinese doc](./dialog-system.zh.md) for the corresponding FBR header example.
 
 **Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`).
 Frontend twin must stay in sync: `dominds/webapp/src/shared/utils/inter-dialog-format.ts`.
@@ -1325,7 +1330,7 @@ sequenceDiagram
   Sub-->>Sup: supply response (resume root)
 ```
 
-### 3. Registered Subdialog Tellask (TYPE B / `Tellask Session` / 长线诉请)
+### 3. Registered Subdialog Tellask (TYPE B / `Tellask Session` / Registered Session Tellask)
 
 ```mermaid
 sequenceDiagram
