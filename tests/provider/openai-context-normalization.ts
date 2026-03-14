@@ -1,5 +1,5 @@
-import type { ChatMessage } from 'dominds/llm/client';
-import { buildOpenAiRequestInputWrapper } from 'dominds/llm/gen/openai';
+import type { ChatMessage } from '../../main/llm/client';
+import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

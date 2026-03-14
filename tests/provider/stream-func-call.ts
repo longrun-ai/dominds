@@ -8,12 +8,12 @@
  *   pnpm tsx --tsconfig tests/tsconfig.json tests/provider/stream-func-call.ts --provider codex --model gpt-5.2-codex
  */
 
-import type { Dialog } from 'dominds/dialog';
-import { ChatMessage, LlmConfig, type ProviderConfig } from 'dominds/llm/client';
-import type { LlmGenerator, LlmStreamReceiver } from 'dominds/llm/gen';
-import { getLlmGenerator } from 'dominds/llm/gen/registry';
-import { Team } from 'dominds/team';
-import type { FuncTool, ToolArguments } from 'dominds/tool';
+import type { Dialog } from '../../main/dialog';
+import { ChatMessage, LlmConfig, type ProviderConfig } from '../../main/llm/client';
+import type { LlmGenerator, LlmStreamReceiver } from '../../main/llm/gen';
+import { getLlmGenerator } from '../../main/llm/gen/registry';
+import { Team } from '../../main/team';
+import type { FuncTool, ToolArguments } from '../../main/tool';
 
 type Scenario =
   | {

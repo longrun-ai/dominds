@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import { parseAppLockFile } from 'dominds/apps/app-lock-file';
+import { parseAppLockFile } from '../main/apps/app-lock-file';
 
 type ExecResult = Readonly<{ code: number; stdout: string; stderr: string }>;
 

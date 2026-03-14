@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import { loadAppsResolutionFile } from 'dominds/apps/resolution-file';
+import { loadAppsResolutionFile } from '../main/apps/resolution-file';
 import { shutdownAppsRuntime } from '../main/apps/runtime';
 import { stopMcpSupervisor } from '../main/mcp/supervisor';
 import { startServer } from '../main/server';

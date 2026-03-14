@@ -1,7 +1,7 @@
 import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
 
-import type { LlmStreamReceiver } from 'dominds/llm/gen';
-import { consumeAnthropicStream } from 'dominds/llm/gen/anthropic';
+import type { LlmStreamReceiver } from '../../main/llm/gen';
+import { consumeAnthropicStream } from '../../main/llm/gen/anthropic';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

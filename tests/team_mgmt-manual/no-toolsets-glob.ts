@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
-import { Team } from 'dominds/team';
-import { teamMgmtManualTool } from 'dominds/tools/team_mgmt';
 import assert from 'node:assert/strict';
+import { Team } from '../../main/team';
+import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
 
 function assertNotIncludes(haystack: string, needle: string): void {
   assert.ok(!haystack.includes(needle), `Expected output not to include: ${needle}`);

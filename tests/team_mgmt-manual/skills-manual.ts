@@ -2,8 +2,8 @@
 
 import assert from 'node:assert/strict';
 
-import { Team } from 'dominds/team';
-import { teamMgmtManualTool } from 'dominds/tools/team_mgmt';
+import { Team } from '../../main/team';
+import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
 
 async function render(lang: 'en' | 'zh'): Promise<string> {
   const dlg = {

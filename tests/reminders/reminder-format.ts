@@ -1,4 +1,4 @@
-import { formatReminderItemGuide } from 'dominds/shared/i18n/driver-messages';
+import { formatReminderItemGuide } from '../../main/shared/i18n/driver-messages';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

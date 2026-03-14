@@ -9,13 +9,13 @@
  * This script is intentionally small and self-contained; it runs against a temp rtws.
  */
 
-import { DialogID } from 'dominds/dialog';
-import { DialogPersistence } from 'dominds/persistence';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
+import { DialogID } from '../../main/dialog';
+import { DialogPersistence } from '../../main/persistence';
 
 const sleep = async (ms: number): Promise<void> =>
   await new Promise((resolve) => setTimeout(resolve, ms));

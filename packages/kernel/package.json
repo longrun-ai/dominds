@@ -1,0 +1,77 @@
+{
+  "name": "@longrun-ai/kernel",
+  "version": "1.8.5",
+  "description": "Dominds kernel public contracts for app handshake/runtime integration.",
+  "type": "commonjs",
+  "private": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./app-json": {
+      "types": "./dist/app-json.d.ts",
+      "require": "./dist/app-json.js",
+      "default": "./dist/app-json.js"
+    },
+    "./app-host-contract": {
+      "types": "./dist/app-host-contract.d.ts",
+      "require": "./dist/app-host-contract.js",
+      "default": "./dist/app-host-contract.js"
+    },
+    "./evt": {
+      "types": "./dist/evt.d.ts",
+      "require": "./dist/evt.js",
+      "default": "./dist/evt.js"
+    },
+    "./diligence": {
+      "types": "./dist/diligence.d.ts",
+      "require": "./dist/diligence.js",
+      "default": "./dist/diligence.js"
+    },
+    "./team-mgmt-manual": {
+      "types": "./dist/team-mgmt-manual.d.ts",
+      "require": "./dist/team-mgmt-manual.js",
+      "default": "./dist/team-mgmt-manual.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "require": "./dist/types.js",
+      "default": "./dist/types.js"
+    },
+    "./types/*": {
+      "types": "./dist/types/*.d.ts",
+      "require": "./dist/types/*.js",
+      "default": "./dist/types/*.js"
+    },
+    "./utils/time": {
+      "types": "./dist/utils/time.d.ts",
+      "require": "./dist/utils/time.js",
+      "default": "./dist/utils/time.js"
+    },
+    "./utils/html": {
+      "types": "./dist/utils/html.d.ts",
+      "require": "./dist/utils/html.js",
+      "default": "./dist/utils/html.js"
+    },
+    "./utils/id": {
+      "types": "./dist/utils/id.d.ts",
+      "require": "./dist/utils/id.js",
+      "default": "./dist/utils/id.js"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11.9.0",
+    "pnpm": ">=10.30.3"
+  },
+  "license": "LGPL-3.0-or-later"
+}

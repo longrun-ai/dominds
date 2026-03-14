@@ -1,18 +1,18 @@
 #!/usr/bin/env tsx
 
-import 'dominds/tools/builtins';
+import '../../main/tools/builtins';
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { DialogID, RootDialog } from 'dominds/dialog';
-import { globalDialogRegistry } from 'dominds/dialog-global-registry';
-import { dialogEventRegistry, setGlobalDialogEventBroadcaster } from 'dominds/evt-registry';
-import { driveDialogStream } from 'dominds/llm/kernel-driver';
-import { DiskFileDialogStore } from 'dominds/persistence';
-import { EndOfStream } from 'dominds/shared/evt';
-import type { TypedDialogEvent } from 'dominds/shared/types/dialog';
+import { DialogID, RootDialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { dialogEventRegistry, setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DiskFileDialogStore } from '../../main/persistence';
+import { EndOfStream } from '../../main/shared/evt';
+import type { TypedDialogEvent } from '../../main/shared/types/dialog';
 
 async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });

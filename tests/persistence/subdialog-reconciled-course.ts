@@ -1,8 +1,8 @@
-import { DialogPersistence } from 'dominds/persistence';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { DialogPersistence } from '../../main/persistence';
 
 import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import { createRootDialog } from '../kernel-driver/helpers';

@@ -2,8 +2,8 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-import { DialogID } from 'dominds/dialog';
-import { DialogPersistence } from 'dominds/persistence';
+import { DialogID } from '../../main/dialog';
+import { DialogPersistence } from '../../main/persistence';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

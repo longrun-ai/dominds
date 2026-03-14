@@ -3,14 +3,14 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
+import { loadEnabledAppsSnapshot } from '../main/apps/enabled-apps';
 import {
   APPS_RESOLUTION_REL_PATH,
   loadAppsResolutionFile,
   writeAppsResolutionFile,
   type AppsResolutionEntry,
   type AppsResolutionFile,
-} from 'dominds/apps/resolution-file';
+} from '../main/apps/resolution-file';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });

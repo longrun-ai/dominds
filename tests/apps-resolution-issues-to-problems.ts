@@ -3,8 +3,8 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
-import { reconcileAppsResolutionIssuesToProblems } from 'dominds/apps/problems';
+import { loadEnabledAppsSnapshot } from '../main/apps/enabled-apps';
+import { reconcileAppsResolutionIssuesToProblems } from '../main/apps/problems';
 
 import {
   clearResolvedProblems,

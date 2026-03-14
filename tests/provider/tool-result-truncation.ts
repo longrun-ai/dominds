@@ -1,14 +1,14 @@
-import type { ChatMessage, ProviderConfig } from 'dominds/llm/client';
-import { buildAnthropicRequestMessagesWrapper } from 'dominds/llm/gen/anthropic';
-import { buildOpenAiRequestInputWrapper } from 'dominds/llm/gen/openai';
-import { buildOpenAiCompatibleRequestMessagesWrapper } from 'dominds/llm/gen/openai-compatible';
-import { resolveProviderToolResultMaxChars } from 'dominds/llm/gen/tool-output-limit';
-import { ripgrepSnippetsTool } from 'dominds/tools/ripgrep';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import type { ResponseInputItem } from 'openai/resources/responses/responses';
+import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
+import { buildAnthropicRequestMessagesWrapper } from '../../main/llm/gen/anthropic';
+import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
+import { buildOpenAiCompatibleRequestMessagesWrapper } from '../../main/llm/gen/openai-compatible';
+import { resolveProviderToolResultMaxChars } from '../../main/llm/gen/tool-output-limit';
+import { ripgrepSnippetsTool } from '../../main/tools/ripgrep';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

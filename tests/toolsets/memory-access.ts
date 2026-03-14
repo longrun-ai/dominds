@@ -4,10 +4,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import type { Dialog } from 'dominds/dialog';
-import { setWorkLanguage } from 'dominds/shared/runtime-language';
-import { Team } from 'dominds/team';
-import { addPersonalMemoryTool, addSharedMemoryTool } from 'dominds/tools/mem';
+import type { Dialog } from '../main/dialog';
+import { setWorkLanguage } from '../main/shared/runtime-language';
+import { Team } from '../main/team';
+import { addPersonalMemoryTool, addSharedMemoryTool } from '../main/tools/mem';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {

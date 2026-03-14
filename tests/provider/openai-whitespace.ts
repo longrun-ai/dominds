@@ -1,5 +1,5 @@
-import type { ChatMessage } from 'dominds/llm/client';
-import { buildOpenAiRequestInputWrapper } from 'dominds/llm/gen/openai';
+import type { ChatMessage } from '../../main/llm/client';
+import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

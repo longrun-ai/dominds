@@ -102,7 +102,7 @@ function printVersion(): void {
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const baseCwd = process.cwd();
   let parsed: { chdir?: string; argv: ReadonlyArray<string> };
   try {
@@ -305,7 +305,9 @@ async function runSubcommand(subcommand: string, args: string[]): Promise<void> 
   }
 }
 
-main().catch((err) => {
-  console.error('Unhandled error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Unhandled error:', err);
+    process.exit(1);
+  });
+}

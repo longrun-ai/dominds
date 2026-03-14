@@ -3,9 +3,9 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { DialogID } from 'dominds/dialog';
-import { forkRootDialogTreeAtGeneration } from 'dominds/dialog-fork';
-import { DialogPersistence } from 'dominds/persistence';
+import { DialogID } from '../../main/dialog';
+import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
+import { DialogPersistence } from '../../main/persistence';
 import type {
   DialogLatestFile,
   PendingSubdialogsReconciledRecord,
@@ -13,9 +13,9 @@ import type {
   RootDialogMetadataFile,
   SubdialogCreatedRecord,
   SubdialogMetadataFile,
-} from 'dominds/shared/types/storage';
-import { toRootGenerationAnchor } from 'dominds/shared/types/storage';
-import { formatUnifiedTimestamp } from 'dominds/shared/utils/time';
+} from '../../main/shared/types/storage';
+import { toRootGenerationAnchor } from '../../main/shared/types/storage';
+import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-dialog-fork-'));

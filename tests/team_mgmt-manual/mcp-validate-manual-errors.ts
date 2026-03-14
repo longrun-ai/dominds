@@ -5,8 +5,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Team } from 'dominds/team';
-import { teamMgmtValidateMcpCfgTool } from 'dominds/tools/team_mgmt';
+import { Team } from '../../main/team';
+import { teamMgmtValidateMcpCfgTool } from '../../main/tools/team_mgmt';
 
 async function withTempRtws(mcpYamlContent: string, run: () => Promise<void>): Promise<void> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-mcp-validate-'));

@@ -1,5 +1,5 @@
-import type { ChatMessage } from 'dominds/llm/client';
-import { reconstructAnthropicContextWrapper } from 'dominds/llm/gen/anthropic';
+import type { ChatMessage } from '../../main/llm/client';
+import { reconstructAnthropicContextWrapper } from '../../main/llm/gen/anthropic';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

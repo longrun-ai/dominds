@@ -5,9 +5,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Team } from 'dominds/team';
-import { teamMgmtManualTool, teamMgmtValidateTeamCfgTool } from 'dominds/tools/team_mgmt';
+import { Team } from '../main/team';
 import '../main/tools/builtins';
+import { teamMgmtManualTool, teamMgmtValidateTeamCfgTool } from '../main/tools/team_mgmt';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });

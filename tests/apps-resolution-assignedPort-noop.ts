@@ -6,7 +6,7 @@ import {
   setResolvedAppEnabled,
   type AppsResolutionEntry,
   type AppsResolutionFile,
-} from 'dominds/apps/resolution-file';
+} from '../main/apps/resolution-file';
 
 function makeFile(params: {
   appId: string;

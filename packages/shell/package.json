@@ -1,0 +1,30 @@
+{
+  "name": "@longrun-ai/shell",
+  "version": "1.8.5",
+  "description": "Dominds shell-facing contract package.",
+  "type": "commonjs",
+  "private": false,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11.9.0",
+    "pnpm": ">=10.30.3"
+  },
+  "dependencies": {
+    "@longrun-ai/kernel": "1.8.5"
+  },
+  "license": "LGPL-3.0-or-later"
+}

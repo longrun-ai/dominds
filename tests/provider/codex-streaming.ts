@@ -1,7 +1,7 @@
-import { ChatMessage, LlmConfig, type ProviderConfig } from 'dominds/llm/client';
-import type { LlmStreamReceiver } from 'dominds/llm/gen';
-import { getLlmGenerator } from 'dominds/llm/gen/registry';
-import { Team } from 'dominds/team';
+import { ChatMessage, LlmConfig, type ProviderConfig } from '../../main/llm/client';
+import type { LlmStreamReceiver } from '../../main/llm/gen';
+import { getLlmGenerator } from '../../main/llm/gen/registry';
+import { Team } from '../../main/team';
 
 function selectModel(provider: ProviderConfig): string {
   if (provider.models['gpt-5.2-codex']) {

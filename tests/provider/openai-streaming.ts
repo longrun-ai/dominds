@@ -1,8 +1,8 @@
-import { ChatMessage, LlmConfig } from 'dominds/llm/client';
-import { LlmStreamReceiver } from 'dominds/llm/gen';
-import { generatorsRegistry } from 'dominds/llm/gen/registry';
-import { Team } from 'dominds/team';
-import type { FuncTool } from 'dominds/tool';
+import { ChatMessage, LlmConfig } from '../../main/llm/client';
+import { LlmStreamReceiver } from '../../main/llm/gen';
+import { generatorsRegistry } from '../../main/llm/gen/registry';
+import { Team } from '../../main/team';
+import type { FuncTool } from '../../main/tool';
 
 async function main() {
   const cfg = await LlmConfig.load();

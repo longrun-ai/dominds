@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 
-import 'dominds/tools/builtins';
+import '../main/tools/builtins';
 
-import { setWorkLanguage } from 'dominds/shared/runtime-language';
-import { Team } from 'dominds/team';
-import { setToolsetMeta } from 'dominds/tools/registry';
-import { buildToolsetManualTools } from 'dominds/tools/toolset-manual';
 import assert from 'node:assert/strict';
+import { setWorkLanguage } from '../main/shared/runtime-language';
+import { Team } from '../main/team';
+import { setToolsetMeta } from '../main/tools/registry';
+import { buildToolsetManualTools } from '../main/tools/toolset-manual';
 
 function createManTool() {
   const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });

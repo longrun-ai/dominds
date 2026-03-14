@@ -38,8 +38,10 @@ Path aliases in `tests/tsconfig.json`:
 
 ```json
 "paths": {
-  "dominds": ["../main/index.ts"],
-  "dominds/*": ["../main/*.ts"]
+  "@longrun-ai/kernel": ["../packages/kernel/src/index.ts"],
+  "@longrun-ai/kernel/*": ["../packages/kernel/src/*"],
+  "@longrun-ai/shell": ["../packages/shell/src/index.ts"],
+  "@longrun-ai/shell/*": ["../packages/shell/src/*"]
 }
 ```
 

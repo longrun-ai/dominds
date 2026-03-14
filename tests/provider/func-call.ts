@@ -27,12 +27,12 @@
  * - Exact value matching against expected arguments
  */
 
-import type { Dialog } from 'dominds/dialog';
-import { ChatMessage, FuncCallMsg, LlmConfig, type ProviderConfig } from 'dominds/llm/client';
-import type { LlmGenerator } from 'dominds/llm/gen';
-import { generatorsRegistry } from 'dominds/llm/gen/registry';
-import { Team } from 'dominds/team';
-import type { FuncTool, JsonObject, ToolArguments } from 'dominds/tool';
+import type { Dialog } from '../../main/dialog';
+import { ChatMessage, FuncCallMsg, LlmConfig, type ProviderConfig } from '../../main/llm/client';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { generatorsRegistry } from '../../main/llm/gen/registry';
+import { Team } from '../../main/team';
+import type { FuncTool, JsonObject, ToolArguments } from '../../main/tool';
 
 type ArgValidationResult = { valid: boolean; error?: string };
 

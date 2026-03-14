@@ -2,6 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "../dist",
+    "declaration": true,
     "baseUrl": ".",
     "paths": {
       "@modelcontextprotocol/sdk": ["../node_modules/@modelcontextprotocol/sdk/dist/esm/index.js"],

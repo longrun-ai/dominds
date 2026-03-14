@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 
-import 'dominds/tools/builtins';
+import '../main/tools/builtins';
 
-import { Team } from 'dominds/team';
-import { getTool, getToolset, listTools, listToolsets } from 'dominds/tools/registry';
+import { Team } from '../main/team';
+import { getTool, getToolset, listTools, listToolsets } from '../main/tools/registry';
 
 // Helper function to run a test case
 function runTest(name: string, testFn: () => void): void {

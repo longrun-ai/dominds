@@ -5,20 +5,20 @@ import * as path from 'node:path';
 
 import YAML from 'yaml';
 
-import { DialogID, type DialogStore, RootDialog } from 'dominds/dialog';
-import { DialogPersistence, DiskFileDialogStore } from 'dominds/persistence';
+import { DialogID, type DialogStore, RootDialog } from '../../main/dialog';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import {
   applyPrimingScriptsToDialog,
   saveDialogCourseAsIndividualPrimingScript,
-} from 'dominds/priming';
+} from '../../main/priming';
 import type {
   DialogLatestFile,
   PendingSubdialogStateRecord,
   RootDialogMetadataFile,
-} from 'dominds/shared/types/storage';
-import { toRootGenerationAnchor } from 'dominds/shared/types/storage';
-import { formatUnifiedTimestamp } from 'dominds/shared/utils/time';
-import type { Reminder } from 'dominds/tool';
+} from '../../main/shared/types/storage';
+import { toRootGenerationAnchor } from '../../main/shared/types/storage';
+import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
+import type { Reminder } from '../../main/tool';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-priming-reminders-'));

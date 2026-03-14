@@ -6,10 +6,10 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import { loadAppLockFile } from 'dominds/apps/app-lock-file';
-import { loadAppsConfigurationFile } from 'dominds/apps/configuration-file';
-import { loadDomindsAppManifest } from 'dominds/apps/manifest';
-import { loadAppsResolutionFile } from 'dominds/apps/resolution-file';
+import { loadAppLockFile } from '../main/apps/app-lock-file';
+import { loadAppsConfigurationFile } from '../main/apps/configuration-file';
+import { loadDomindsAppManifest } from '../main/apps/manifest';
+import { loadAppsResolutionFile } from '../main/apps/resolution-file';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
 

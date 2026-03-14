@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { runDoctor } from 'dominds/cli/doctor';
+import { runDoctor } from '../main/cli/doctor';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });

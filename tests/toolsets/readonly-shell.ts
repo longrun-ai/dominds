@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 
-import type { Dialog } from 'dominds/dialog';
-import { validateFuncToolArguments } from 'dominds/llm/kernel-driver/runtime';
-import { setWorkLanguage } from 'dominds/shared/runtime-language';
-import { Team } from 'dominds/team';
-import { readonlyShellTool } from 'dominds/tools/os';
 import fs from 'node:fs/promises';
+import type { Dialog } from '../main/dialog';
+import { validateFuncToolArguments } from '../main/llm/kernel-driver/runtime';
+import { setWorkLanguage } from '../main/shared/runtime-language';
+import { Team } from '../main/team';
+import { readonlyShellTool } from '../main/tools/os';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {

@@ -5,8 +5,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Team } from 'dominds/team';
-import { teamMgmtManualTool } from 'dominds/tools/team_mgmt';
+import { Team } from '../../main/team';
+import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
 
 async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise<string> {
   const dlg = {

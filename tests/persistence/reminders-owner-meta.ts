@@ -6,16 +6,16 @@
  * - reminder meta is persisted and rehydrated
  */
 
-import { DialogID } from 'dominds/dialog';
-import { DialogPersistence } from 'dominds/persistence';
-import type { ReminderOwner } from 'dominds/tool';
-import { buildAppReminderOwnerRegistryName } from 'dominds/tools/app-reminders';
-import 'dominds/tools/builtins';
-import { getReminderOwner, registerReminderOwner } from 'dominds/tools/registry';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { DialogID } from '../../main/dialog';
+import { DialogPersistence } from '../../main/persistence';
+import type { ReminderOwner } from '../../main/tool';
+import { buildAppReminderOwnerRegistryName } from '../../main/tools/app-reminders';
+import '../../main/tools/builtins';
+import { getReminderOwner, registerReminderOwner } from '../../main/tools/registry';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-reminders-persist-'));
