@@ -5,6 +5,7 @@
  */
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
+import * as readline from 'node:readline';
 import path from 'path';
 import { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
@@ -268,6 +269,7 @@ type RipgrepSnippetsOptions = RipgrepBaseOptions &
 const RIPGREP_SNIPPET_TEXT_CHAR_LIMIT = 400;
 const RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT = 200_000;
 const RIPGREP_SNIPPET_RESULTS_CHAR_BUDGET = RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT - 2048;
+const RIPGREP_STDERR_CHAR_LIMIT = 16_000;
 
 type RipgrepSnippetResult = Readonly<{
   path: string;
@@ -534,20 +536,102 @@ function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): string[] 
   return args;
 }
 
-async function runRgLines(args: string[]): Promise<{ stdoutLines: string[]; stderrText: string }> {
+function appendTruncatedText(
+  state: { text: string; omittedChars: number },
+  chunk: string,
+  maxChars: number,
+): void {
+  if (state.text.length >= maxChars) {
+    state.omittedChars += chunk.length;
+    return;
+  }
+  const remainingChars = maxChars - state.text.length;
+  if (chunk.length <= remainingChars) {
+    state.text += chunk;
+    return;
+  }
+  state.text += chunk.slice(0, remainingChars);
+  state.omittedChars += chunk.length - remainingChars;
+}
+
+function formatTruncatedText(state: { text: string; omittedChars: number }): string {
+  if (state.omittedChars === 0) return state.text;
+  const suffix = `\n...[truncated ${state.omittedChars} chars]`;
+  return `${state.text}${suffix}`;
+}
+
+async function runRgLines(
+  args: string[],
+  onLine: (line: string) => void | Promise<void>,
+): Promise<void> {
   return await new Promise((resolve, reject) => {
     const child = spawn('rg', args, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    child.stdout?.on('data', (d: Buffer) => stdoutChunks.push(d));
-    child.stderr?.on('data', (d: Buffer) => stderrChunks.push(d));
-    child.on('error', (err: unknown) => reject(err));
-    child.on('close', (_code) => {
-      const stdoutText = Buffer.concat(stdoutChunks).toString('utf8');
-      const stderrText = Buffer.concat(stderrChunks).toString('utf8');
-      const stdoutLines = stdoutText.split('\n').filter((l) => l !== '');
-      resolve({ stdoutLines, stderrText });
+    if (!child.stdout || !child.stderr) {
+      reject(new Error('rg failed to create stdio pipes'));
+      return;
+    }
+
+    const stderrState = { text: '', omittedChars: 0 };
+    const rl = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
+    let processClosed = false;
+    let processCloseCode: number | null = null;
+    let processCloseSignal: NodeJS.Signals | null = null;
+    let stdoutConsumed = false;
+    let settled = false;
+
+    const rejectOnce = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      rl.close();
+      if (!child.killed) child.kill();
+      reject(error);
+    };
+
+    const resolveOnce = (): void => {
+      if (settled || !processClosed || !stdoutConsumed) return;
+      settled = true;
+      const stderrText = formatTruncatedText(stderrState).trim();
+      if (processCloseSignal) {
+        reject(new Error(`rg terminated by signal ${processCloseSignal}`));
+        return;
+      }
+      if (processCloseCode !== null && processCloseCode !== 0 && processCloseCode !== 1) {
+        const summary = stderrText === '' ? `rg exited with code ${processCloseCode}` : stderrText;
+        reject(new Error(summary));
+        return;
+      }
+      resolve();
+    };
+
+    child.on('error', (err: unknown) => rejectOnce(err));
+    child.stdout.on('error', (err: Error) => rejectOnce(err));
+    child.stderr.on('error', (err: Error) => rejectOnce(err));
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      appendTruncatedText(
+        stderrState,
+        typeof chunk === 'string' ? chunk : chunk.toString('utf8'),
+        RIPGREP_STDERR_CHAR_LIMIT,
+      );
     });
+    child.on('close', (code, signal) => {
+      processClosed = true;
+      processCloseCode = code;
+      processCloseSignal = signal;
+      resolveOnce();
+    });
+
+    void (async () => {
+      try {
+        for await (const line of rl) {
+          if (line === '') continue;
+          await onLine(line);
+        }
+        stdoutConsumed = true;
+        resolveOnce();
+      } catch (error: unknown) {
+        rejectOnce(error);
+      }
+    })();
   });
 }
 
@@ -577,13 +661,12 @@ async function runRipgrepFiles(
   const args = [...baseRgArgs(options, caller), '--files-with-matches', '--', pattern, searchPath];
 
   try {
-    const { stdoutLines } = await runRgLines(args);
     let totalFiles = 0;
     const results: Array<{ path: string }> = [];
-    for (const line of stdoutLines) {
+    await runRgLines(args, (line) => {
       totalFiles++;
       if (results.length < options.maxFiles) results.push({ path: line });
-    }
+    });
     const truncated = totalFiles > options.maxFiles;
     const summary =
       totalFiles === 0
@@ -690,21 +773,20 @@ async function runRipgrepCount(
   const args = [...baseRgArgs(options, caller), '--count-matches', '--', pattern, searchPath];
 
   try {
-    const { stdoutLines } = await runRgLines(args);
     let totalFiles = 0;
     let totalMatches = 0;
     const results: Array<{ path: string; count: number }> = [];
-    for (const line of stdoutLines) {
+    await runRgLines(args, (line) => {
       const idx = line.lastIndexOf(':');
-      if (idx <= 0) continue;
+      if (idx <= 0) return;
       const p = line.slice(0, idx);
       const rawCount = line.slice(idx + 1);
       const count = Number.parseInt(rawCount, 10);
-      if (!Number.isFinite(count)) continue;
+      if (!Number.isFinite(count)) return;
       totalFiles++;
       totalMatches += count;
       if (results.length < options.maxFiles) results.push({ path: p, count });
-    }
+    });
     const truncated = totalFiles > options.maxFiles;
     const summary =
       totalMatches === 0
@@ -822,7 +904,6 @@ async function runRipgrepSnippets(
   const args = [...baseRgArgs(options, caller), '--vimgrep', '--', pattern, searchPath];
 
   try {
-    const { stdoutLines } = await runRgLines(args);
     let totalMatches = 0;
     const fileSet = new Set<string>();
     const results: Array<{
@@ -835,24 +916,24 @@ async function runRipgrepSnippets(
     }> = [];
     const fileCache = new Map<string, string[]>();
 
-    for (const line of stdoutLines) {
+    await runRgLines(args, async (line) => {
       totalMatches++;
       const first = line.indexOf(':');
-      if (first <= 0) continue;
+      if (first <= 0) return;
       const second = line.indexOf(':', first + 1);
-      if (second <= first) continue;
+      if (second <= first) return;
       const third = line.indexOf(':', second + 1);
-      if (third <= second) continue;
+      if (third <= second) return;
       const filePath = line.slice(0, first);
       const lineStr = line.slice(first + 1, second);
       const colStr = line.slice(second + 1, third);
       const text = line.slice(third + 1);
       const ln = Number.parseInt(lineStr, 10);
       const col = Number.parseInt(colStr, 10);
-      if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
+      if (!Number.isFinite(ln) || !Number.isFinite(col)) return;
       fileSet.add(filePath);
 
-      if (results.length >= options.maxResults) continue;
+      if (results.length >= options.maxResults) return;
       let lines = fileCache.get(filePath);
       if (!lines) {
         lines = await loadFileLines(filePath).catch(() => []);
@@ -862,7 +943,7 @@ async function runRipgrepSnippets(
       const before = lines.slice(Math.max(0, idx0 - options.contextBefore), idx0);
       const after = lines.slice(idx0 + 1, idx0 + 1 + options.contextAfter);
       results.push({ path: filePath, line: ln, col, match: text, before, after });
-    }
+    });
 
     return formatRipgrepSnippetYaml({
       pattern,
@@ -1075,29 +1156,28 @@ async function runRipgrepSearch(
   ];
 
   try {
-    const { stdoutLines } = await runRgLines(rgArgs);
     let totalMatches = 0;
     const fileSet = new Set<string>();
     const results: Array<{ path: string; line: number; col: number; match: string }> = [];
-    for (const line of stdoutLines) {
+    await runRgLines(rgArgs, (line) => {
       totalMatches++;
       const first = line.indexOf(':');
-      if (first <= 0) continue;
+      if (first <= 0) return;
       const secondColon = line.indexOf(':', first + 1);
-      if (secondColon <= first) continue;
+      if (secondColon <= first) return;
       const thirdColon = line.indexOf(':', secondColon + 1);
-      if (thirdColon <= secondColon) continue;
+      if (thirdColon <= secondColon) return;
       const filePath = line.slice(0, first);
       const lineStr = line.slice(first + 1, secondColon);
       const colStr = line.slice(secondColon + 1, thirdColon);
       const text = line.slice(thirdColon + 1);
       const ln = Number.parseInt(lineStr, 10);
       const col = Number.parseInt(colStr, 10);
-      if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
+      if (!Number.isFinite(ln) || !Number.isFinite(col)) return;
       fileSet.add(filePath);
       if (results.length < options.maxResults)
         results.push({ path: filePath, line: ln, col, match: text });
-    }
+    });
 
     return formatRipgrepSnippetYaml({
       pattern,
