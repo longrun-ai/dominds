@@ -83,7 +83,7 @@ import {
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
-  KernelDriverDriveCallOptions,
+  KernelDriverDriveCallbacks,
   KernelDriverHumanPrompt,
 } from './types';
 
@@ -755,7 +755,6 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
 }
 
 type RoutedFunctionResult = {
-  suspendForHuman: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
@@ -869,14 +868,11 @@ async function executeFunctionRound(args: {
   agent: Team.Member;
   agentTools: readonly Tool[];
   funcCalls: readonly FuncCallMsg[];
-  callbacks?: {
-    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
-    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
-  };
+  callbacks: KernelDriverDriveCallbacks;
   abortSignal: AbortSignal | undefined;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
-    return { suspendForHuman: false, pairedMessages: [], tellaskToolOutputs: [] };
+    return { pairedMessages: [], tellaskToolOutputs: [] };
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
@@ -949,9 +945,8 @@ async function executeFunctionRound(args: {
   }
 
   throwIfAborted(args.abortSignal, args.dlg);
-  const specialResult = await executeTellaskSpecialCalls({
+  const tellaskToolOutputs = await executeTellaskSpecialCalls({
     dlg: args.dlg,
-    agent: args.agent,
     calls: classified.specialCalls,
     callbacks: args.callbacks,
   });
@@ -1009,9 +1004,8 @@ async function executeFunctionRound(args: {
   }
 
   return {
-    suspendForHuman: specialResult.suspend,
     pairedMessages,
-    tellaskToolOutputs: specialResult.toolOutputs,
+    tellaskToolOutputs,
   };
 }
 
@@ -1181,12 +1175,9 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
 
 export async function driveDialogStreamCore(
   dlg: Dialog,
+  callbacks: KernelDriverDriveCallbacks,
   humanPrompt?: KernelDriverDriveArgs[1],
   driveOptions?: KernelDriverDriveArgs[3],
-  callbacks?: {
-    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
-    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
-  },
 ): Promise<KernelDriverCoreResult> {
   const suppressDiligencePushForDrive = driveOptions?.suppressDiligencePush === true;
   const abortSignal = getActiveRunSignal(dlg.id) ?? createActiveRun(dlg.id);
@@ -1370,7 +1361,6 @@ export async function driveDialogStreamCore(
 
       let contextHealthForGen: ContextHealthSnapshot | undefined;
       let llmGenModelForGen: string = model;
-      let suspendForHuman = false;
       const currentPrompt = pendingPrompt;
       const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
       pendingPrompt = undefined;
@@ -1826,10 +1816,6 @@ export async function driveDialogStreamCore(
         if (routed.pairedMessages.length > 0) {
           newMsgs.push(...routed.pairedMessages);
         }
-        if (routed.suspendForHuman) {
-          suspendForHuman = true;
-        }
-
         await dlg.addChatMessages(...newMsgs);
 
         if (dlg.hasUpNext()) {
@@ -1842,7 +1828,10 @@ export async function driveDialogStreamCore(
           pubRemindersVer = dlg.remindersVer;
         }
 
-        if (suspendForHuman) {
+        // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
+        // dialog's actual suspension state here so auto-continue is decided in one place.
+        const suspensionAfterToolRound = await dlg.getSuspensionStatus();
+        if (!suspensionAfterToolRound.canDrive) {
           await resetDiligenceBudgetAfterQ4H(dlg, team);
           break;
         }

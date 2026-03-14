@@ -82,6 +82,10 @@ export type KernelDriverDriveInvoker = (
   dialog: Dialog,
   options: KernelDriverDriveCallOptions,
 ) => Promise<void>;
+export type KernelDriverDriveCallbacks = Readonly<{
+  scheduleDrive: KernelDriverDriveScheduler;
+  driveDialog: KernelDriverDriveInvoker;
+}>;
 
 export type KernelDriverDriveArgs =
   | readonly [

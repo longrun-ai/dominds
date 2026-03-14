@@ -586,10 +586,15 @@ export async function executeDriveRound(args: {
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
-    driveResult = await driveDialogStreamCore(dialog, effectivePrompt, driveOptions, {
-      scheduleDrive: args.scheduleDrive,
-      driveDialog: args.driveDialog,
-    });
+    driveResult = await driveDialogStreamCore(
+      dialog,
+      {
+        scheduleDrive: args.scheduleDrive,
+        driveDialog: args.driveDialog,
+      },
+      effectivePrompt,
+      driveOptions,
+    );
     subdialogReplyTarget = driveResult.lastAssistantReplyTarget ?? subdialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {

@@ -1,7 +1,7 @@
 import { inspect } from 'util';
 
 import type { AssignmentFromSup } from '../../dialog';
-import { Dialog, DialogID, RootDialog, SubDialog, type DialogID as TDialogID } from '../../dialog';
+import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
@@ -36,11 +36,7 @@ import { Team } from '../../team';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage, FuncCallMsg } from '../client';
 import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
-import type {
-  KernelDriverDriveInvoker,
-  KernelDriverDriveScheduler,
-  KernelDriverHumanPrompt,
-} from './types';
+import type { KernelDriverDriveCallbacks, KernelDriverHumanPrompt } from './types';
 
 export type TellaskRoutingParseResult =
   | {
@@ -56,11 +52,6 @@ export type TellaskRoutingParseResult =
       type: 'C';
       agentId: string;
     };
-
-type ExecuteCallbacks = {
-  scheduleDrive: KernelDriverDriveScheduler;
-  driveDialog: KernelDriverDriveInvoker;
-};
 
 const TELLASK_SPECIAL_FUNCTION_NAMES = [
   'tellaskBack',
@@ -382,13 +373,6 @@ function showErrorToAi(err: unknown): string {
   }
 }
 
-function ensureCallbacks(callbacks: ExecuteCallbacks | undefined): ExecuteCallbacks {
-  if (!callbacks) {
-    throw new Error('kernel-driver tellask executor requires drive callbacks');
-  }
-  return callbacks;
-}
-
 async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string): Promise<void> {
   try {
     const changed = await syncPendingTellaskReminderState(dlg);
@@ -588,7 +572,7 @@ async function finishRegisteredTellaskReplacement(args: {
 
 async function reviveDialogIfUnblocked(
   dialog: Dialog,
-  callbacks: ExecuteCallbacks,
+  callbacks: KernelDriverDriveCallbacks,
   reason: string,
 ): Promise<void> {
   const hasQ4H = await dialog.hasPendingQ4H();
@@ -646,11 +630,10 @@ async function extractSupdialogResponseForTypeA(supdialog: Dialog): Promise<stri
 
 async function executeTellaskCall(
   dlg: Dialog,
-  agent: Team.Member,
   mentionList: string[] | undefined,
   body: string,
   callId: string,
-  callbacks: ExecuteCallbacks,
+  callbacks: KernelDriverDriveCallbacks,
   options: {
     callName: TellaskSpecialCall['callName'];
     parseResult: TellaskRoutingParseResult | null;
@@ -659,14 +642,8 @@ async function executeTellaskCall(
     q4hRemainingCallIds?: string[];
     fbrEffortOverride?: number;
   },
-): Promise<{
-  toolOutputs: ChatMessage[];
-  suspend: boolean;
-  subdialogsCreated: TDialogID[];
-}> {
+): Promise<ChatMessage[]> {
   const toolOutputs: ChatMessage[] = [];
-  let suspend = false;
-  const subdialogsCreated: TDialogID[] = [];
   const callName = options.callName;
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
@@ -724,7 +701,7 @@ async function executeTellaskCall(
       };
 
       postDialogEvent(dlg, newQuestionEvent);
-      return { toolOutputs, suspend: true, subdialogsCreated: [] };
+      return toolOutputs;
     } catch (q4hErr: unknown) {
       const errMsg = q4hErr instanceof Error ? q4hErr.message : String(q4hErr);
       const streamErr = `Q4H register invariant violation: dialog=${dlg.id.selfId} callId=${callId.trim()} reason=${errMsg}`;
@@ -762,7 +739,7 @@ async function executeTellaskCall(
         callId,
       );
       dlg.clearCurrentCallId();
-      return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      return toolOutputs;
     }
   }
 
@@ -805,7 +782,7 @@ async function executeTellaskCall(
         callId,
       );
       dlg.clearCurrentCallId();
-      return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      return toolOutputs;
     }
 
     if (isFreshBootsCall) {
@@ -833,7 +810,7 @@ async function executeTellaskCall(
           callId,
         );
         dlg.clearCurrentCallId();
-        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        return toolOutputs;
       }
       const override = options.fbrEffortOverride;
       if (
@@ -871,7 +848,7 @@ async function executeTellaskCall(
           callId,
         );
         dlg.clearCurrentCallId();
-        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        return toolOutputs;
       }
 
       const callerDialog = dlg;
@@ -904,7 +881,7 @@ async function executeTellaskCall(
           callId,
         );
         dlg.clearCurrentCallId();
-        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        return toolOutputs;
       }
 
       const buildRoundBody = (iteration: number, total: number): string =>
@@ -924,8 +901,6 @@ async function executeTellaskCall(
         callId,
         collectiveTargets,
       });
-      subdialogsCreated.push(sub.id);
-
       for (let i = 1; i <= fbrEffort; i++) {
         const instanceBody = buildRoundBody(i, fbrEffort);
 
@@ -1016,22 +991,7 @@ async function executeTellaskCall(
         }
       }
 
-      // FBR Type-C rounds are driven inline via callbacks.driveDialog(...), and the final round
-      // may already have supplied a teammate response back to the caller before we return here.
-      // Suspending unconditionally in that case would stop the caller turn and can race with
-      // backend-loop queue cleanup (needsDrive gets cleared as "idle"), dropping continuation.
-      // Only suspend when there is still a pending response record for this call.
-      const hasPendingFbrResponse = await withSubdialogTxnLock(dlg.id, async () => {
-        const pending = await DialogPersistence.loadPendingSubdialogs(dlg.id, dlg.status);
-        return pending.some(
-          (record) =>
-            record.callId === callId &&
-            record.callType === 'C' &&
-            record.subdialogId === sub.id.selfId,
-        );
-      });
-
-      return { toolOutputs, suspend: hasPendingFbrResponse, subdialogsCreated };
+      return toolOutputs;
     }
 
     const isDirectSelfCall = !isFreshBootsCall && parseResult.agentId === dlg.agentId;
@@ -1058,7 +1018,7 @@ async function executeTellaskCall(
         callId,
       );
       dlg.clearCurrentCallId();
-      return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      return toolOutputs;
     }
 
     if (parseResult.type === 'A') {
@@ -1260,8 +1220,6 @@ async function executeTellaskCall(
               reason: 'type_b_fallback_subdialog_init',
             },
           });
-          subdialogsCreated.push(sub.id);
-          suspend = true;
         } catch (err) {
           log.warn('Type B fallback subdialog creation error:', err);
         }
@@ -1564,9 +1522,6 @@ async function executeTellaskCall(
             },
           });
         }
-
-        subdialogsCreated.push(result.subdialog.id);
-        suspend = true;
       }
     }
 
@@ -1636,8 +1591,6 @@ async function executeTellaskCall(
             reason: 'type_c_subdialog_init',
           },
         });
-        subdialogsCreated.push(sub.id);
-        suspend = true;
       } catch (err) {
         log.warn('Subdialog creation error:', err);
       }
@@ -1669,7 +1622,7 @@ async function executeTellaskCall(
     dlg.clearCurrentCallId();
   }
 
-  return { toolOutputs, suspend, subdialogsCreated };
+  return toolOutputs;
 }
 
 async function emitTellaskSpecialCallEvents(args: {
@@ -1832,17 +1785,11 @@ function normalizeQ4HCalls(
 
 async function executeValidTellaskCalls(args: {
   dlg: Dialog;
-  agent: Team.Member;
   calls: readonly ExecutableValidTellaskCall[];
-  callbacks: ExecuteCallbacks;
-  emitCallEvents: boolean;
-}): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
+  callbacks: KernelDriverDriveCallbacks;
+}): Promise<ChatMessage[]> {
   const executionCalls = normalizeQ4HCalls(args.calls, args.dlg);
-  const results: Array<{
-    toolOutputs: ChatMessage[];
-    suspend: boolean;
-    subdialogsCreated: TDialogID[];
-  }> = [];
+  const results: ChatMessage[][] = [];
   for (const call of executionCalls) {
     const runtimeMentionList = (() => {
       switch (call.callName) {
@@ -1855,17 +1802,15 @@ async function executeValidTellaskCalls(args: {
           return undefined;
       }
     })();
-    if (args.emitCallEvents) {
-      const sessionSlug = call.callName === 'tellask' ? call.sessionSlug : undefined;
-      await emitTellaskSpecialCallEvents({
-        dlg: args.dlg,
-        callName: call.callName,
-        mentionList: runtimeMentionList,
-        sessionSlug,
-        tellaskContent: call.tellaskContent,
-        callId: call.callId,
-      });
-    }
+    const sessionSlug = call.callName === 'tellask' ? call.sessionSlug : undefined;
+    await emitTellaskSpecialCallEvents({
+      dlg: args.dlg,
+      callName: call.callName,
+      mentionList: runtimeMentionList,
+      sessionSlug,
+      tellaskContent: call.tellaskContent,
+      callId: call.callId,
+    });
     let targetForError: string | undefined;
     let parseResult: TellaskRoutingParseResult | null;
     switch (call.callName) {
@@ -1913,9 +1858,8 @@ async function executeValidTellaskCalls(args: {
         break;
       }
     }
-    const result = await executeTellaskCall(
+    const toolOutputs = await executeTellaskCall(
       args.dlg,
-      args.agent,
       runtimeMentionList,
       call.tellaskContent,
       call.callId,
@@ -1928,45 +1872,24 @@ async function executeValidTellaskCalls(args: {
         fbrEffortOverride: call.callName === 'freshBootsReasoning' ? call.effort : undefined,
       },
     );
-    results.push(result);
+    results.push(toolOutputs);
   }
 
-  return {
-    suspend: results.some((result) => result.suspend),
-    toolOutputs: results.flatMap((result) => result.toolOutputs),
-    subdialogsCreated: results.flatMap((result) => result.subdialogsCreated),
-  };
+  return results.flatMap((result) => result);
 }
 
 export async function executeTellaskSpecialCalls(args: {
   dlg: Dialog;
-  agent: Team.Member;
   calls: readonly TellaskSpecialCall[];
-  callbacks?: {
-    scheduleDrive: KernelDriverDriveScheduler;
-    driveDialog: KernelDriverDriveInvoker;
-  };
-}): Promise<{
-  suspend: boolean;
-  toolOutputs: ChatMessage[];
-  subdialogsCreated: DialogID[];
-}> {
-  const callbacks = ensureCallbacks(args.callbacks);
+  callbacks: KernelDriverDriveCallbacks;
+}): Promise<ChatMessage[]> {
   if (args.calls.length === 0) {
-    return { suspend: false, toolOutputs: [], subdialogsCreated: [] };
+    return [];
   }
 
-  const tellaskResult = await executeValidTellaskCalls({
+  return await executeValidTellaskCalls({
     dlg: args.dlg,
-    agent: args.agent,
     calls: args.calls.map((call) => toExecutableValidTellaskCall(call)),
-    callbacks,
-    emitCallEvents: true,
+    callbacks: args.callbacks,
   });
-
-  return {
-    suspend: tellaskResult.suspend,
-    toolOutputs: tellaskResult.toolOutputs,
-    subdialogsCreated: tellaskResult.subdialogsCreated,
-  };
 }

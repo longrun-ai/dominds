@@ -6,6 +6,7 @@ import { supplyResponseToSupdialog as supplyResponseToSupdialogInternal } from '
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
+  KernelDriverDriveCallbacks,
   KernelDriverDriveCallOptions,
   KernelDriverDriveResult,
   KernelDriverEmitSayingArgs,
@@ -66,14 +67,11 @@ export async function supplyResponseToSupdialog(
 
 export async function driveDialogStreamCore(
   dlg: Dialog,
+  callbacks: KernelDriverDriveCallbacks,
   humanPrompt?: KernelDriverDriveArgs[1],
   driveOptions?: KernelDriverDriveArgs[3],
-  callbacks?: {
-    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
-    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
-  },
 ): Promise<KernelDriverCoreResult> {
-  return await driveDialogStreamCoreInternal(dlg, humanPrompt, driveOptions, callbacks);
+  return await driveDialogStreamCoreInternal(dlg, callbacks, humanPrompt, driveOptions);
 }
 
 export async function supplyResponseToSubdialogBridge(
