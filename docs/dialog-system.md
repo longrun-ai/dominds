@@ -272,6 +272,7 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
 - For a registered sideline (`same agentId!sessionSlug`), runtime maintains one current waiting caller round.
 - If a newer TYPE B Tellask arrives before the earlier round replies, runtime immediately closes the earlier waiting round with a system-generated failed Tellask result. The wording must describe the conversation fact in business terms, not protocol jargon.
 - The callee is not force-stopped. Instead, its next runtime prompt explains that the work request has been updated, explicitly says not to send a standalone acknowledgement, and includes the latest full assignment.
+- Delivery of that updated assignment prompt is queued in-order at the next safe turn boundary. Runtime must not reject the update merely because another normal queued prompt already exists; queued prompts are ordered work, not a single overwrite slot.
 - A sideline reply produced before that updated assignment prompt is rendered locally MUST NOT be delivered upstream as the newer round's result.
 
 **Key Characteristics**:
@@ -710,7 +711,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 2. Clears all Q4H questions
 3. Increments the course counter
 4. Updates the dialog's timestamp
-5. Queues `newCoursePrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next dialog course
+5. Queues `newCoursePrompt` into the dialog's next-prompt queue so the driver can start a new coroutine and use it as the **first `role=user` message** in the next dialog course
 
 ### `clear_mind`
 

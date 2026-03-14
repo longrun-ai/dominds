@@ -692,7 +692,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 2. 清除所有 Q4H 问题
 3. 增加“某一程对话”（dialog course）计数器
 4. 更新对话的时间戳
-5. 将 `newCoursePrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作新一程的**第一个 `role=user` 消息**
+5. 将 `newCoursePrompt` 排进对话的“下一条待处理提示”队列，以便驱动程序可以启动新的协程并将其用作新一程的**第一个 `role=user` 消息**
 
 ### `clear_mind`
 
@@ -827,6 +827,7 @@ flowchart TD
 - 对同一个已注册支线（同一 `agentId!sessionSlug`），运行时只维护一个“当前等待中的 caller round”。
 - 如果新的 TYPE B 诉请在上一轮回复前到达，运行时会立刻用一条系统生成的失败回贴结束上一轮等待；文案必须从业务事实描述，不使用协议/实现术语。
 - 被诉请侧不会被强行打断。运行时会在它下一次收到的提示里说明“工作要求已更新”，明确要求不要单独回复“收到/好的”，并直接附上最新完整诉请。
+- 这条更新后的 assignment 提示要按顺序排进“下一条待处理提示”队列，在安全的 turn 边界送达；不能仅仅因为队列里已经有另一条正常提示，就拒绝这次更新写入。
 - 如果子对话在最新 assignment 提示真正落到本地之前先产出了回复，这条回复不得作为新一轮的结果回贴给 caller。
 
 ### 类设计：RootDialog vs SubDialog

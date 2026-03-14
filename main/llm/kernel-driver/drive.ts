@@ -534,6 +534,8 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
     origin: upNext.origin,
     userLanguageCode: upNext.userLanguageCode,
     q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+    skipTaskdoc: upNext.skipTaskdoc,
+    subdialogReplyTarget: upNext.subdialogReplyTarget,
     runControl: normalizedRunControl,
   };
 }
@@ -1193,6 +1195,7 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
+  let lastAssistantReplyTarget: KernelDriverHumanPrompt['subdialogReplyTarget'] | undefined;
   let pubRemindersVer = dlg.remindersVer;
 
   let pendingPrompt: KernelDriverHumanPrompt | undefined = humanPrompt;
@@ -1369,6 +1372,7 @@ export async function driveDialogStreamCore(
       let llmGenModelForGen: string = model;
       let suspendForHuman = false;
       const currentPrompt = pendingPrompt;
+      const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
       pendingPrompt = undefined;
 
       await dlg.notifyGeneratingStart(currentPrompt?.msgId);
@@ -1723,6 +1727,7 @@ export async function driveDialogStreamCore(
             lastAssistantSayingContent = streamAttemptSayingContent;
             lastAssistantSayingGenseq =
               streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
+            lastAssistantReplyTarget = currentReplyTarget;
           }
           return { usage: res.usage, llmGenModel: res.llmGenModel };
         };
@@ -1751,6 +1756,7 @@ export async function driveDialogStreamCore(
             } else if (msg.type === 'saying_msg') {
               lastAssistantSayingContent = msg.content;
               lastAssistantSayingGenseq = msg.genseq;
+              lastAssistantReplyTarget = currentReplyTarget;
               await emitAssistantSaying(dlg, msg.content);
             }
           }
@@ -1788,10 +1794,12 @@ export async function driveDialogStreamCore(
           await dlg.addChatMessages(...newMsgs, violationMsg);
           lastAssistantSayingContent = violationText;
           lastAssistantSayingGenseq = genseq;
+          lastAssistantReplyTarget = currentReplyTarget;
           return {
             lastAssistantSayingContent,
             lastAssistantSayingGenseq,
             lastFunctionCallGenseq,
+            lastAssistantReplyTarget,
           };
         }
 
@@ -1967,5 +1975,6 @@ export async function driveDialogStreamCore(
     lastAssistantSayingContent,
     lastAssistantSayingGenseq,
     lastFunctionCallGenseq,
+    lastAssistantReplyTarget,
   };
 }

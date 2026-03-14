@@ -1495,14 +1495,45 @@ async function executeTellaskCall(
               callId,
             },
           };
-          callbacks.scheduleDrive(result.subdialog, {
-            humanPrompt: resumePrompt,
-            waitInQue: true,
-            driveOptions: {
-              source: 'kernel_driver_subdialog_resume',
-              reason: 'type_b_registered_subdialog_resume',
-            },
-          });
+          let queuedIntoActiveLoop = false;
+          let queuedRuntimePrompt = false;
+          try {
+            result.subdialog.queueRegisteredAssignmentUpdatePrompt({
+              prompt: resumePrompt.content,
+              msgId: resumePrompt.msgId,
+              grammar: resumePrompt.grammar,
+              userLanguageCode: resumePrompt.userLanguageCode,
+              q4hAnswerCallIds: resumePrompt.q4hAnswerCallIds,
+              skipTaskdoc: resumePrompt.skipTaskdoc,
+              subdialogReplyTarget: resumePrompt.subdialogReplyTarget,
+            });
+            queuedRuntimePrompt = true;
+            queuedIntoActiveLoop = result.subdialog.isLocked();
+          } catch (err) {
+            log.warn('Failed to queue registered subdialog update into active loop', err, {
+              subdialogId: result.subdialog.id.valueOf(),
+              sessionSlug: parseResult.sessionSlug,
+              callId,
+            });
+          }
+          if (queuedRuntimePrompt && !queuedIntoActiveLoop) {
+            callbacks.scheduleDrive(result.subdialog, {
+              waitInQue: true,
+              driveOptions: {
+                source: 'kernel_driver_subdialog_resume',
+                reason: 'type_b_registered_subdialog_resume',
+              },
+            });
+          } else if (!queuedRuntimePrompt) {
+            callbacks.scheduleDrive(result.subdialog, {
+              humanPrompt: resumePrompt,
+              waitInQue: true,
+              driveOptions: {
+                source: 'kernel_driver_subdialog_resume',
+                reason: 'type_b_registered_subdialog_resume',
+              },
+            });
+          }
         } else {
           const initPrompt: KernelDriverHumanPrompt = {
             content: formatAssignmentFromSupdialog({

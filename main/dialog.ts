@@ -30,7 +30,12 @@ import type {
   TellaskResponseEvent,
   WebSearchCallAction,
 } from './shared/types/dialog';
-import type { DialogPrompt, DialogRunControlSpec, DriveIntent } from './shared/types/drive-intent';
+import type {
+  DialogPrompt,
+  DialogRunControlSpec,
+  DialogSubdialogReplyTarget,
+  DriveIntent,
+} from './shared/types/drive-intent';
 import type { LanguageCode } from './shared/types/language';
 import type {
   CalleeCourseNumber,
@@ -60,12 +65,19 @@ type NewCourseHookResult =
   | { kind: 'reject'; errorText: string };
 
 type UpNextPromptState = {
+  kind:
+    | 'user_generation_boundary'
+    | 'deferred_q4h_answer'
+    | 'registered_assignment_update'
+    | 'new_course_start';
   prompt: string;
   msgId: string;
   grammar?: 'markdown';
   userLanguageCode?: LanguageCode;
   origin: 'user' | 'diligence_push' | 'runtime';
   q4hAnswerCallIds?: string[];
+  skipTaskdoc?: boolean;
+  subdialogReplyTarget?: DialogSubdialogReplyTarget;
   runControl?: DialogRunControlSpec;
 };
 
@@ -218,8 +230,8 @@ export abstract class Dialog {
   protected _lastUserLanguageCode: LanguageCode;
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
-  // Prompt queued for the next drive (set by startNewCourse or deferred-resume flows).
-  protected _upNext?: UpNextPromptState;
+  // Prompts queued for future drives (set by startNewCourse or deferred-resume flows).
+  protected _upNextQueue: UpNextPromptState[] = [];
   protected _driveIntents: DriveIntent[] = [];
   protected _activeRunControlSpec?: DialogRunControlSpec;
   protected _newCourseHook?: NewCourseHook;
@@ -800,7 +812,63 @@ export abstract class Dialog {
     return this._updatedAt;
   }
 
-  private setUpNextPrompt(prompt: string | DialogPrompt): DialogPrompt {
+  private buildUpNextPromptState(
+    prompt: DialogPrompt,
+    kind: UpNextPromptState['kind'],
+    runControl?: DialogRunControlSpec,
+  ): UpNextPromptState {
+    return {
+      kind,
+      prompt: prompt.content,
+      msgId: prompt.msgId,
+      grammar: prompt.grammar,
+      userLanguageCode: prompt.userLanguageCode,
+      origin: prompt.origin,
+      q4hAnswerCallIds: prompt.q4hAnswerCallIds,
+      skipTaskdoc: prompt.skipTaskdoc,
+      subdialogReplyTarget: prompt.subdialogReplyTarget,
+      runControl,
+    };
+  }
+
+  private replaceQueuedPromptState(
+    existingMsgId: string,
+    nextPrompt: UpNextPromptState,
+  ): UpNextPromptState {
+    const queueIndex = this._upNextQueue.findIndex((prompt) => prompt.msgId === existingMsgId);
+    if (queueIndex < 0) {
+      throw new Error(
+        `UpNext prompt replacement invariant violation: dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
+      );
+    }
+    this._upNextQueue[queueIndex] = nextPrompt;
+
+    for (let index = this._driveIntents.length - 1; index >= 0; index -= 1) {
+      const intent = this._driveIntents[index];
+      if (intent.kind !== 'prompt' || intent.prompt.msgId !== existingMsgId) continue;
+      this._driveIntents[index] = {
+        ...intent,
+        prompt: {
+          ...intent.prompt,
+          content: nextPrompt.prompt,
+          msgId: nextPrompt.msgId,
+          grammar: nextPrompt.grammar ?? 'markdown',
+          userLanguageCode: nextPrompt.userLanguageCode,
+          q4hAnswerCallIds: nextPrompt.q4hAnswerCallIds,
+          skipTaskdoc: nextPrompt.skipTaskdoc,
+          subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
+        },
+        runControl: nextPrompt.runControl,
+      };
+      return nextPrompt;
+    }
+
+    throw new Error(
+      `UpNext prompt replacement invariant violation: missing drive intent dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
+    );
+  }
+
+  private setNewCourseStartPrompt(prompt: string | DialogPrompt): DialogPrompt {
     const prepared: DialogPrompt =
       typeof prompt === 'string'
         ? {
@@ -822,15 +890,7 @@ export abstract class Dialog {
       grammar: 'markdown',
       userLanguageCode: prepared.userLanguageCode ?? this._lastUserLanguageCode,
     };
-    this._upNext = {
-      prompt: normalized.content,
-      msgId: normalized.msgId,
-      grammar: normalized.grammar,
-      userLanguageCode: normalized.userLanguageCode,
-      origin: normalized.origin,
-      q4hAnswerCallIds: normalized.q4hAnswerCallIds,
-      runControl: undefined,
-    };
+    this._upNextQueue = [this.buildUpNextPromptState(normalized, 'new_course_start')];
     return normalized;
   }
 
@@ -855,24 +915,57 @@ export abstract class Dialog {
     return merged.length > 0 ? merged : undefined;
   }
 
-  public appendQueuedUserUpNextPrompt(options: {
+  private enqueueQueuedPromptState(state: UpNextPromptState): void {
+    this._upNextQueue.push(state);
+    this._driveIntents.push({
+      kind: 'prompt',
+      prompt: {
+        content: state.prompt,
+        msgId: state.msgId,
+        grammar: state.grammar ?? 'markdown',
+        userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
+        origin: state.origin,
+        q4hAnswerCallIds: state.q4hAnswerCallIds,
+        skipTaskdoc: state.skipTaskdoc,
+        subdialogReplyTarget: state.subdialogReplyTarget,
+      },
+      runControl: state.runControl,
+    });
+    this._updatedAt = formatUnifiedTimestamp(new Date());
+  }
+
+  private peekLatestUpNext(): UpNextPromptState | undefined {
+    if (this._upNextQueue.length === 0) {
+      return undefined;
+    }
+    return this._upNextQueue[this._upNextQueue.length - 1];
+  }
+
+  public queueUserPromptAtGenerationBoundary(options: {
     prompt: string;
+    msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallIds?: string[];
   }): UpNextPromptState {
-    const existing = this._upNext;
-    if (!existing) {
-      throw new Error(`UpNext prompt append violation: dialog=${this.id.valueOf()} missing prompt`);
-    }
-    if (existing.origin !== 'user') {
-      throw new Error(
-        `UpNext prompt append violation: dialog=${this.id.valueOf()} origin=${existing.origin} msgId=${existing.msgId}`,
-      );
-    }
+    const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
     if (!trimmed) {
-      throw new Error('Prompt is required to append queued upNext');
+      throw new Error('Prompt is required to queue generation-boundary user prompt');
+    }
+
+    if (existing?.kind !== 'user_generation_boundary' || existing.origin !== 'user') {
+      const created: UpNextPromptState = {
+        kind: 'user_generation_boundary',
+        prompt: trimmed,
+        msgId: options.msgId,
+        grammar: options.grammar,
+        userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+        origin: 'user',
+        q4hAnswerCallIds: options.q4hAnswerCallIds,
+      };
+      this.enqueueQueuedPromptState(created);
+      return created;
     }
 
     const merged: UpNextPromptState = {
@@ -886,82 +979,98 @@ export abstract class Dialog {
         options.q4hAnswerCallIds,
       ),
     };
-    this._upNext = merged;
-
-    for (let index = this._driveIntents.length - 1; index >= 0; index -= 1) {
-      const intent = this._driveIntents[index];
-      if (intent.kind !== 'prompt' || intent.prompt.msgId !== merged.msgId) continue;
-      this._driveIntents[index] = {
-        ...intent,
-        prompt: {
-          ...intent.prompt,
-          content: merged.prompt,
-          grammar: merged.grammar ?? 'markdown',
-          userLanguageCode: merged.userLanguageCode,
-          q4hAnswerCallIds: merged.q4hAnswerCallIds,
-        },
-      };
-      break;
-    }
-
+    this.replaceQueuedPromptState(existing.msgId, merged);
     this._updatedAt = formatUnifiedTimestamp(new Date());
     return merged;
   }
 
-  public queueUpNextPrompt(options: {
+  public queueDeferredQ4HAnswerPrompt(options: {
     prompt: string;
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
-    origin: 'user' | 'diligence_push' | 'runtime';
     q4hAnswerCallIds?: string[];
-    runControl?: DialogRunControlSpec;
-  }): void {
-    if (this._upNext !== undefined) {
-      throw new Error(
-        `UpNext prompt overwrite violation: dialog=${this.id.valueOf()} existingMsgId=${this._upNext.msgId} incomingMsgId=${options.msgId}`,
-      );
-    }
+  }): UpNextPromptState {
     const trimmed = options.prompt.trim();
     if (!trimmed) {
-      throw new Error('Prompt is required to queue upNext');
+      throw new Error('Prompt is required to queue deferred Q4H answer');
     }
-    this._upNext = {
+    const created: UpNextPromptState = {
+      kind: 'deferred_q4h_answer',
       prompt: trimmed,
       msgId: options.msgId,
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
-      origin: options.origin,
+      origin: 'user',
       q4hAnswerCallIds: options.q4hAnswerCallIds,
-      runControl: options.runControl,
+      runControl: undefined,
     };
-    this._driveIntents.push({
-      kind: 'prompt',
-      prompt: {
-        content: trimmed,
+    this.enqueueQueuedPromptState(created);
+    return created;
+  }
+
+  public queueRegisteredAssignmentUpdatePrompt(options: {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    q4hAnswerCallIds?: string[];
+    skipTaskdoc?: boolean;
+    subdialogReplyTarget?: DialogSubdialogReplyTarget;
+  }): UpNextPromptState {
+    const existing = this.peekLatestUpNext();
+    const trimmed = options.prompt.trim();
+    if (!trimmed) {
+      throw new Error('Prompt is required to queue registered assignment update');
+    }
+
+    if (existing?.kind !== 'registered_assignment_update') {
+      const created: UpNextPromptState = {
+        kind: 'registered_assignment_update',
+        prompt: trimmed,
         msgId: options.msgId,
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
-        origin: options.origin,
+        origin: 'runtime',
         q4hAnswerCallIds: options.q4hAnswerCallIds,
-      },
-      runControl: options.runControl,
-    });
+        skipTaskdoc: options.skipTaskdoc,
+        subdialogReplyTarget: options.subdialogReplyTarget,
+        runControl: undefined,
+      };
+      this.enqueueQueuedPromptState(created);
+      return created;
+    }
+
+    const merged: UpNextPromptState = {
+      ...existing,
+      prompt: trimmed,
+      msgId: options.msgId,
+      grammar: options.grammar,
+      userLanguageCode:
+        options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
+      q4hAnswerCallIds: this.mergePromptQ4HAnswerCallIds(
+        existing.q4hAnswerCallIds,
+        options.q4hAnswerCallIds,
+      ),
+      skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
+      subdialogReplyTarget: options.subdialogReplyTarget ?? existing.subdialogReplyTarget,
+      runControl: undefined,
+    };
+    this.replaceQueuedPromptState(existing.msgId, merged);
     this._updatedAt = formatUnifiedTimestamp(new Date());
+    return merged;
   }
 
   public hasUpNext(): boolean {
-    return this._upNext !== undefined;
+    return this._upNextQueue.length > 0;
   }
 
   public peekUpNext(): UpNextPromptState | undefined {
-    return this._upNext;
+    return this._upNextQueue[0];
   }
 
   public takeUpNext(): UpNextPromptState | undefined {
-    const next = this._upNext;
-    this._upNext = undefined;
-    return next;
+    return this._upNextQueue.shift();
   }
 
   public setActiveRunControlSpec(spec?: DialogRunControlSpec): void {
@@ -1064,7 +1173,7 @@ export abstract class Dialog {
     this._updatedAt = formatUnifiedTimestamp(new Date());
     this.resetCourseLanguageNotice();
 
-    const normalized = this.setUpNextPrompt(nextPrompt);
+    const normalized = this.setNewCourseStartPrompt(nextPrompt);
     if (options?.skipEnqueueIntent !== true) {
       this._driveIntents.length = 0;
       this._driveIntents.push({

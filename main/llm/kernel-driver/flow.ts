@@ -54,6 +54,8 @@ type UpNextPrompt = {
   userLanguageCode?: string;
   origin: KernelDriverHumanPrompt['origin'];
   q4hAnswerCallIds?: string[];
+  skipTaskdoc?: boolean;
+  subdialogReplyTarget?: KernelDriverHumanPrompt['subdialogReplyTarget'];
   runControl?: KernelDriverRunControl;
 };
 
@@ -325,6 +327,8 @@ function resolveEffectivePrompt(
           ? upNext.userLanguageCode
           : undefined,
       q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+      skipTaskdoc: upNext.skipTaskdoc,
+      subdialogReplyTarget: upNext.subdialogReplyTarget,
       runControl: upNext.runControl,
     },
   };
@@ -445,7 +449,10 @@ export async function executeDriveRound(args: {
       }
 
       const suspension = await dialog.getSuspensionStatus();
-      if (!suspension.canDrive) {
+      const queuedPrompt = dialog.peekUpNext() as UpNextPrompt | undefined;
+      const queuedSubdialogPromptCanResume =
+        dialog instanceof SubDialog && queuedPrompt !== undefined;
+      if (!suspension.canDrive && !queuedSubdialogPromptCanResume) {
         const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
         const lastTriggerAgeMs =
           lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
@@ -583,6 +590,7 @@ export async function executeDriveRound(args: {
       scheduleDrive: args.scheduleDrive,
       driveDialog: args.driveDialog,
     });
+    subdialogReplyTarget = driveResult.lastAssistantReplyTarget ?? subdialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
       followUp = dialog.takeUpNext() as UpNextPrompt | undefined;
@@ -714,6 +722,8 @@ export async function executeDriveRound(args: {
             ? followUp.userLanguageCode
             : undefined,
         q4hAnswerCallIds: followUp.q4hAnswerCallIds,
+        skipTaskdoc: followUp.skipTaskdoc,
+        subdialogReplyTarget: followUp.subdialogReplyTarget,
         runControl: followUp.runControl,
       },
     });

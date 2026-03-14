@@ -189,59 +189,27 @@ async function queueUserSupplementAtGenerationBoundary(
   if (!dialog.isLocked()) {
     return false;
   }
-  if (dialog.hasUpNext()) {
-    const existing = dialog.peekUpNext();
-    if (!existing || existing.origin !== 'user') {
-      throw new Error(
-        `Dialog already has non-user pending upNext prompt; cannot queue supplement now (dialog=${dialog.id.valueOf()} incomingMsgId=${prompt.msgId} existingMsgId=${existing?.msgId ?? 'unknown'} origin=${existing?.origin ?? 'unknown'})`,
-      );
-    }
-
-    const merged = dialog.appendQueuedUserUpNextPrompt({
-      prompt: prompt.content,
-      grammar: prompt.grammar,
-      userLanguageCode: prompt.userLanguageCode,
-    });
-    postDialogEvent(dialog, {
-      type: 'queue_user_msg_evt',
-      course: dialog.currentCourse,
-      msgId: merged.msgId,
-      content: merged.prompt,
-      grammar: merged.grammar ?? 'markdown',
-      origin: 'user',
-      userLanguageCode: merged.userLanguageCode,
-    });
-
-    log.debug('Merged queued user supplement for next generation boundary', undefined, {
-      rootId: dialog.id.rootId,
-      selfId: dialog.id.selfId,
-      mergedIntoMsgId: merged.msgId,
-      incomingMsgId: prompt.msgId,
-    });
-    return true;
-  }
-
-  dialog.queueUpNextPrompt({
+  const queued = dialog.queueUserPromptAtGenerationBoundary({
     prompt: prompt.content,
     msgId: prompt.msgId,
     grammar: prompt.grammar,
     userLanguageCode: prompt.userLanguageCode,
-    origin: 'user',
   });
   postDialogEvent(dialog, {
     type: 'queue_user_msg_evt',
     course: dialog.currentCourse,
-    msgId: prompt.msgId,
-    content: prompt.content,
-    grammar: prompt.grammar,
+    msgId: queued.msgId,
+    content: queued.prompt,
+    grammar: queued.grammar ?? 'markdown',
     origin: 'user',
-    userLanguageCode: prompt.userLanguageCode,
+    userLanguageCode: queued.userLanguageCode,
   });
 
   log.debug('Queued user supplement for next generation boundary', undefined, {
     rootId: dialog.id.rootId,
     selfId: dialog.id.selfId,
-    msgId: prompt.msgId,
+    msgId: queued.msgId,
+    incomingMsgId: prompt.msgId,
   });
   return true;
 }
@@ -1700,14 +1668,12 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 
     const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
     if (hasPendingSubdialogs) {
-      dialog.queueUpNextPrompt({
+      dialog.queueDeferredQ4HAnswerPrompt({
         prompt: effectivePrompt.content,
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
         userLanguageCode: effectivePrompt.userLanguageCode,
-        origin: 'user',
         q4hAnswerCallIds: askHumanCallIds,
-        runControl: undefined,
       });
       log.debug('Deferred Q4H answer until pending subdialogs resolve', undefined, {
         rootId: dialog.id.rootId,

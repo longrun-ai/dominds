@@ -130,6 +130,7 @@ export type KernelDriverCoreResult = {
   lastAssistantSayingContent: string | null;
   lastAssistantSayingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
+  lastAssistantReplyTarget?: KernelDriverSubdialogReplyTarget;
 };
 
 export function createKernelDriverRuntimeState(): KernelDriverRuntimeState {
