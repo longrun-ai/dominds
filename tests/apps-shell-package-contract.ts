@@ -47,8 +47,8 @@ async function main(): Promise<void> {
   );
   assert.equal(
     packageJson.types,
-    'dist/index.d.ts',
-    'Shell package types must point at dist/index.d.ts.',
+    'src/index.ts',
+    'Shell package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
   );
   assert.equal(
     packageJson.bin,
@@ -68,14 +68,14 @@ async function main(): Promise<void> {
 
   const rootExport = expectRecord(exportsField['.'], 'shell package root export');
   assert.equal(
+    rootExport['types'],
+    './src/index.ts',
+    'Shell package root export must point type consumers at src/index.ts.',
+  );
+  assert.equal(
     rootExport['require'],
     './dist/index.js',
     'Shell package root export must point at dist/index.js.',
-  );
-  assert.equal(
-    rootExport['types'],
-    './dist/index.d.ts',
-    'Shell package root export must point at dist/index.d.ts.',
   );
   assert.deepEqual(
     Object.keys(shellContract),

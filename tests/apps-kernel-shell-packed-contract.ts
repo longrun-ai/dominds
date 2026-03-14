@@ -4,7 +4,10 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-type PackEntry = Readonly<{ filename?: unknown }>;
+type PackageJsonShape = Readonly<{
+  version?: unknown;
+  dependencies?: unknown;
+}>;
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
   assert.equal(typeof value, 'object', `${label} must be an object.`);
@@ -13,31 +16,19 @@ function expectRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function parsePackFilename(stdout: string): string {
-  const parsed = JSON.parse(stdout) as unknown;
-  assert.ok(Array.isArray(parsed), 'npm pack --json must return an array payload.');
-  assert.notEqual(parsed.length, 0, 'npm pack --json must report at least one packed artifact.');
-  const first = parsed[0] as PackEntry | undefined;
-  const record = expectRecord(first, 'npm pack result[0]');
-  const filename = record['filename'];
-  assert.equal(typeof filename, 'string', 'npm pack result[0].filename must be a string.');
-  return filename;
-}
-
-function packLocalPackage(packageRootAbs: string, packDirAbs: string): string {
-  const stdout = execFileSync(
-    'npm',
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', packDirAbs],
-    {
-      cwd: packageRootAbs,
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        NODE_OPTIONS: '',
-      },
+async function packLocalPackage(packageRootAbs: string, packDirAbs: string): Promise<string> {
+  execFileSync('pnpm', ['pack', '--pack-destination', packDirAbs], {
+    cwd: packageRootAbs,
+    encoding: 'utf-8',
+    env: {
+      ...process.env,
+      NODE_OPTIONS: '',
     },
-  );
-  return path.join(packDirAbs, parsePackFilename(stdout));
+  });
+  const entries = await fs.readdir(packDirAbs);
+  const tarballs = entries.filter((entry) => entry.endsWith('.tgz')).sort();
+  assert.notEqual(tarballs.length, 0, 'pnpm pack must produce a tarball in the pack directory.');
+  return path.join(packDirAbs, tarballs.at(-1) ?? '');
 }
 
 function listTarballEntries(tarballAbs: string): string[] {
@@ -48,25 +39,48 @@ function listTarballEntries(tarballAbs: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function readTarballPackageJson(tarballAbs: string): PackageJsonShape {
+  const stdout = execFileSync('tar', ['-xOf', tarballAbs, 'package/package.json'], {
+    encoding: 'utf-8',
+  });
+  return JSON.parse(stdout) as PackageJsonShape;
+}
+
+async function readPackageVersion(packageJsonAbs: string, label: string): Promise<string> {
+  const raw = await fs.readFile(packageJsonAbs, 'utf-8');
+  const packageJson = JSON.parse(raw) as PackageJsonShape;
+  assert.equal(typeof packageJson.version, 'string', `${label} package.json version must be a string.`);
+  return packageJson.version;
+}
+
 async function main(): Promise<void> {
   const domindsRootAbs = path.resolve(__dirname, '..');
   const tmpRootAbs = await fs.mkdtemp(
     path.join(os.tmpdir(), 'dominds-kernel-shell-packed-contract-'),
   );
-  const packDirAbs = path.join(tmpRootAbs, 'pack');
-  await fs.mkdir(packDirAbs, { recursive: true });
+  const kernelPackDirAbs = path.join(tmpRootAbs, 'kernel-pack');
+  const shellPackDirAbs = path.join(tmpRootAbs, 'shell-pack');
+  await fs.mkdir(kernelPackDirAbs, { recursive: true });
+  await fs.mkdir(shellPackDirAbs, { recursive: true });
 
-  const kernelTarballAbs = packLocalPackage(
+  const kernelTarballAbs = await packLocalPackage(
     path.join(domindsRootAbs, 'packages', 'kernel'),
-    packDirAbs,
+    kernelPackDirAbs,
   );
-  const shellTarballAbs = packLocalPackage(
+  const shellTarballAbs = await packLocalPackage(
     path.join(domindsRootAbs, 'packages', 'shell'),
-    packDirAbs,
+    shellPackDirAbs,
   );
 
   const kernelEntries = listTarballEntries(kernelTarballAbs);
   const shellEntries = listTarballEntries(shellTarballAbs);
+  const kernelPackageJson = readTarballPackageJson(kernelTarballAbs);
+  const shellPackageJson = readTarballPackageJson(shellTarballAbs);
+  const shellDependencies = expectRecord(shellPackageJson.dependencies, 'packed shell package dependencies');
+  const expectedKernelVersion = await readPackageVersion(
+    path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
+    'kernel',
+  );
 
   assert.ok(
     kernelEntries.includes('package/package.json'),
@@ -103,6 +117,11 @@ async function main(): Promise<void> {
   assert.ok(
     kernelEntries.includes('package/dist/types/storage.js'),
     'Packed kernel tarball must include kernel-owned storage contract artifact.',
+  );
+  assert.equal(
+    kernelPackageJson.dependencies,
+    undefined,
+    'Packed kernel package must not grow runtime dependencies for its public contract surface.',
   );
 
   assert.ok(
@@ -142,6 +161,11 @@ async function main(): Promise<void> {
     shellEntries.includes('package/dist/shell.js'),
     false,
     'Packed shell tarball must not expose legacy dist/shell.js as a public artifact.',
+  );
+  assert.equal(
+    shellDependencies['@longrun-ai/kernel'],
+    expectedKernelVersion,
+    'Packed shell package must rewrite @longrun-ai/kernel to a concrete publishable version.',
   );
 }
 

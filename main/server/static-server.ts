@@ -3,7 +3,7 @@
  *
  * Static file serving functionality for production mode only
  * Development mode: Vite handles all static file serving
- * Production mode: Backend serves static files from dist/static
+ * Production mode: Backend serves static files from the packaged webapp build output.
  */
 import { createReadStream, existsSync, promises as fsPromises } from 'fs';
 import { ServerResponse } from 'http';

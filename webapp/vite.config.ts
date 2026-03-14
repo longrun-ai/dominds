@@ -39,8 +39,7 @@ export default defineConfig(({ command }) => {
       strictPort: true,
       open: false,
       fs: {
-        // Allow importing small shared TS modules from the Dominds monorepo (e.g. `../main/shared/*`).
-        // This keeps certain “shared constants” as a single source of truth across backend + frontend.
+        // Allow serving assets from the workspace root when the outer dev wrapper hosts this package.
         allow: [path.resolve(__dirname, '..')],
       },
       hmr: {
@@ -65,25 +64,24 @@ export default defineConfig(({ command }) => {
     resolve: {
       alias: [
         {
-          find: /^@longrun-ai\/kernel$/,
-          replacement: path.resolve(__dirname, '../packages/kernel/src/index.ts'),
-        },
-        {
-          find: /^@longrun-ai\/kernel\/(.*)$/,
-          replacement: path.resolve(__dirname, '../packages/kernel/src/$1'),
-        },
-        {
           find: '@',
           replacement: path.resolve(__dirname, './src'),
         },
       ],
     },
     build: {
-      outDir: '../dist/static', // Only used for `vite build` command
+      outDir: 'dist',
       emptyOutDir: true,
       sourcemap: true,
       minify: false,
       target: 'es2020',
+      commonjsOptions: {
+        include: [
+          /node_modules/,
+          /packages\/kernel\/dist\//,
+          /packages\/shell\/dist\//,
+        ],
+      },
       rollupOptions: {
         output: {
           manualChunks: {

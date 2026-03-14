@@ -3,7 +3,9 @@
   "version": "1.8.5",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
   "type": "commonjs",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "dominds": "dist/cli.js"
   },
@@ -15,6 +17,14 @@
     },
     "./package.json": "./package.json"
   },
+  "files": [
+    "dist/**/*",
+    "webapp/dist/**/*",
+    "LICENSE",
+    "README.md",
+    "README.zh.md",
+    "package.json"
+  ],
   "scripts": {
     "start": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "dev": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
@@ -22,18 +32,16 @@
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "setup:pm": "corepack enable pnpm && corepack install",
     "manual": "pnpm exec tsx main/cli/manual.ts",
-    "prepare": "pnpm run build:deps",
+    "prepare": "pnpm run build:workspace",
     "prepublishOnly": "pnpm run build",
-    "build": "pnpm run build:deps && pnpm run build:backend && pnpm run build:frontend && pnpm run build:packages",
-    "clean": "rm -rf ./dist",
+    "build": "pnpm run build:workspace && pnpm run build:backend",
+    "build:workspace": "pnpm -r --filter './packages/*' --filter ./codex-auth --filter ./webapp run build",
+    "clean": "rm -rf ./dist && pnpm -r --filter './packages/*' --filter ./codex-auth --filter ./webapp run clean",
     "lint": "pnpm run lint:types && pnpm run format:check",
-    "lint:types": "tsc -p packages/kernel/tsconfig.json --noEmit && tsc -p packages/shell/tsconfig.json --noEmit && tsc -p main/tsconfig.json --noEmit && tsc -p webapp/src/tsconfig.json --noEmit",
+    "lint:types": "pnpm -r --filter './packages/*' --filter ./webapp run lint:types && tsc -p main/tsconfig.json --noEmit",
     "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
-    "build:deps": "pnpm -C codex-auth build",
-    "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds dist/tools dist/snippets dist/docs && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && cp -r main/tools/prompts dist/tools/ && cp -r snippets/. dist/snippets/ && cp -r docs/. dist/docs/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null",
-    "build:frontend": "pnpm -C webapp exec vite build",
-    "build:packages": "rm -rf ./packages/kernel/dist ./packages/shell/dist && tsc -p packages/kernel/tsconfig.json && tsc -p packages/shell/tsconfig.json && node ./scripts/prepare-packages.cjs"
+    "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds dist/tools dist/snippets dist/docs && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && cp -r main/tools/prompts dist/tools/ && cp -r snippets/. dist/snippets/ && cp -r docs/. dist/docs/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null"
   },
   "repository": {
     "type": "git",
@@ -56,7 +64,9 @@
     "pnpm": ">=10.30.3"
   },
   "dependencies": {
-    "@longrun-ai/codex-auth": "^0.10.0",
+    "@longrun-ai/kernel": "workspace:*",
+    "@longrun-ai/shell": "workspace:*",
+    "@longrun-ai/codex-auth": "workspace:*",
     "@anthropic-ai/sdk": "^0.78.0",
     "openai": "^6.27.0",
     "@modelcontextprotocol/sdk": "^1.27.1",

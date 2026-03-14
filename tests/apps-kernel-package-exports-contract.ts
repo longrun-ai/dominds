@@ -50,8 +50,8 @@ async function main(): Promise<void> {
   );
   assert.equal(
     packageJson.types,
-    'dist/index.d.ts',
-    'Kernel package types must point at dist/index.d.ts.',
+    'src/index.ts',
+    'Kernel package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
   );
   assert.deepEqual(
     Object.keys(exportsField).sort(),
@@ -72,17 +72,32 @@ async function main(): Promise<void> {
   );
   const typesExport = expectRecord(exportsField['./types'], 'kernel ./types export');
   assert.equal(
+    typesExport['types'],
+    './src/types.ts',
+    'Kernel ./types export must point type consumers at src/types.ts.',
+  );
+  assert.equal(
     typesExport['require'],
     './dist/types.js',
     'Kernel ./types export must resolve to kernel-owned dist/types.js.',
   );
   const typesStarExport = expectRecord(exportsField['./types/*'], 'kernel ./types/* export');
   assert.equal(
+    typesStarExport['types'],
+    './src/types/*.ts',
+    'Kernel ./types/* export must point type consumers at src/types/*.ts.',
+  );
+  assert.equal(
     typesStarExport['require'],
     './dist/types/*.js',
     'Kernel ./types/* export must resolve to kernel-owned dist/types/*.js.',
   );
   const appJsonExport = expectRecord(exportsField['./app-json'], 'kernel ./app-json export');
+  assert.equal(
+    appJsonExport['types'],
+    './src/app-json.ts',
+    'Kernel ./app-json export must point type consumers at src/app-json.ts.',
+  );
   assert.equal(
     appJsonExport['require'],
     './dist/app-json.js',
@@ -91,6 +106,11 @@ async function main(): Promise<void> {
   const appHostExport = expectRecord(
     exportsField['./app-host-contract'],
     'kernel ./app-host-contract export',
+  );
+  assert.equal(
+    appHostExport['types'],
+    './src/app-host-contract.ts',
+    'Kernel ./app-host-contract export must point type consumers at src/app-host-contract.ts.',
   );
   assert.equal(
     appHostExport['require'],

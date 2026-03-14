@@ -8,6 +8,9 @@ type PackageJsonShape = Readonly<{
   main?: unknown;
   types?: unknown;
   bin?: unknown;
+  private?: unknown;
+  files?: unknown;
+  publishConfig?: unknown;
 }>;
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
@@ -26,11 +29,17 @@ async function main(): Promise<void> {
   const packageJsonText = await fs.readFile(path.join(domindsRootAbs, 'package.json'), 'utf-8');
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
   const exportsField = expectRecord(packageJson.exports, 'dominds root package exports');
+  const publishConfig = expectRecord(packageJson.publishConfig, 'dominds root package publishConfig');
 
   assert.equal(
     packageJson.name,
     'dominds',
     'Root package name stays dominds for CLI/distribution purposes.',
+  );
+  assert.equal(
+    packageJson.private,
+    undefined,
+    'Root package must be publishable; do not keep private=true on the distribution package.',
   );
   assert.equal(
     packageJson.main,
@@ -60,6 +69,12 @@ async function main(): Promise<void> {
   );
   const binField = expectRecord(packageJson.bin, 'dominds root package bin');
   assert.equal(binField['dominds'], 'dist/cli.js', 'Root package may keep the dominds CLI binary.');
+  assert.equal(publishConfig['access'], 'public', 'Root package publishConfig must keep public access.');
+  assert.deepEqual(
+    packageJson.files,
+    ['dist/**/*', 'webapp/dist/**/*', 'LICENSE', 'README.md', 'README.zh.md', 'package.json'],
+    'Root package files must explicitly include the built backend and webapp runtime artifacts.',
+  );
 }
 
 main().catch((error: unknown) => {

@@ -4,27 +4,34 @@
   "description": "Dominds shell-facing contract package.",
   "type": "commonjs",
   "private": false,
+  "packageManager": "pnpm@10.30.3",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
   "files": [
+    "src/**/*",
     "dist/**/*",
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "lint:types": "tsc -p tsconfig.json --noEmit"
+  },
   "engines": {
     "node": ">=24 <25",
     "npm": ">=11.9.0",
     "pnpm": ">=10.30.3"
   },
   "dependencies": {
-    "@longrun-ai/kernel": "1.8.5"
+    "@longrun-ai/kernel": "workspace:*"
   },
   "license": "LGPL-3.0-or-later"
 }

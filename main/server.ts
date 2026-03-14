@@ -109,7 +109,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   // Create server configuration
   const config: ServerConfig = {
     mode: mode === 'dev' ? 'development' : 'production',
-    staticRoot: 'dist/static',
+    staticRoot: 'webapp/dist',
     host,
     port,
     clients,

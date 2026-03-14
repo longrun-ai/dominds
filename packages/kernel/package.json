@@ -4,70 +4,77 @@
   "description": "Dominds kernel public contracts for app handshake/runtime integration.",
   "type": "commonjs",
   "private": false,
+  "packageManager": "pnpm@10.30.3",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./app-json": {
-      "types": "./dist/app-json.d.ts",
+      "types": "./src/app-json.ts",
       "require": "./dist/app-json.js",
       "default": "./dist/app-json.js"
     },
     "./app-host-contract": {
-      "types": "./dist/app-host-contract.d.ts",
+      "types": "./src/app-host-contract.ts",
       "require": "./dist/app-host-contract.js",
       "default": "./dist/app-host-contract.js"
     },
     "./evt": {
-      "types": "./dist/evt.d.ts",
+      "types": "./src/evt.ts",
       "require": "./dist/evt.js",
       "default": "./dist/evt.js"
     },
     "./diligence": {
-      "types": "./dist/diligence.d.ts",
+      "types": "./src/diligence.ts",
       "require": "./dist/diligence.js",
       "default": "./dist/diligence.js"
     },
     "./team-mgmt-manual": {
-      "types": "./dist/team-mgmt-manual.d.ts",
+      "types": "./src/team-mgmt-manual.ts",
       "require": "./dist/team-mgmt-manual.js",
       "default": "./dist/team-mgmt-manual.js"
     },
     "./types": {
-      "types": "./dist/types.d.ts",
+      "types": "./src/types.ts",
       "require": "./dist/types.js",
       "default": "./dist/types.js"
     },
     "./types/*": {
-      "types": "./dist/types/*.d.ts",
+      "types": "./src/types/*.ts",
       "require": "./dist/types/*.js",
       "default": "./dist/types/*.js"
     },
     "./utils/time": {
-      "types": "./dist/utils/time.d.ts",
+      "types": "./src/utils/time.ts",
       "require": "./dist/utils/time.js",
       "default": "./dist/utils/time.js"
     },
     "./utils/html": {
-      "types": "./dist/utils/html.d.ts",
+      "types": "./src/utils/html.ts",
       "require": "./dist/utils/html.js",
       "default": "./dist/utils/html.js"
     },
     "./utils/id": {
-      "types": "./dist/utils/id.d.ts",
+      "types": "./src/utils/id.ts",
       "require": "./dist/utils/id.js",
       "default": "./dist/utils/id.js"
     }
   },
   "files": [
+    "src/**/*",
     "dist/**/*",
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "lint:types": "tsc -p tsconfig.json --noEmit"
+  },
   "engines": {
     "node": ">=24 <25",
     "npm": ">=11.9.0",

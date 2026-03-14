@@ -34,7 +34,7 @@ pnpm -C tests run func-call -- --provider minimaxi.com-coding-plan --model MiniM
 
 If you run `tsx` directly from the repo root, pass `--tsconfig tests/tsconfig.json` to pick up the aliases.
 
-Path aliases in `tests/tsconfig.json`:
+Path aliases in `tests/tsconfig.json` (repo-internal contract tests intentionally resolve the workspace source trees directly, while product packages should consume published package surfaces):
 
 ```json
 "paths": {
