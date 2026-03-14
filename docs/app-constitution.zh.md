@@ -184,11 +184,19 @@ Install JSON 是 app 与 Kernel/CLI 之间的**安装/运行握手载荷**。它
 - published app 与 local/dev app 共用同一握手契约：差别只在于谁负责执行 app bin 并拿到 install JSON，不在于入口解析规则不同。
 - `resolution.yaml.installJson` 是上一次成功解析得到的**派生快照**，用于观察与复用；它不是高于即时握手结果的真理源。重新 probe app 时，应以最新握手结果为准。
 
-#### 对外导入面（首轮约束）
+#### 对外导入面（当前正式 contract）
 
-- 当前只在仓内验证一个**窄公开 kernel 导入面**，用于让代表性 consumer 不再依赖私有深路径；这**不是** `kernel / shell` 已完成物理拆包。
-- 只有显式 re-export 的入口才构成 consumer 可依赖 contract；除这些入口外，`main/**`、`main/shared/**`、`main/apps-host/**` 仍默认属于私有实现路径。
-- B 轨当前先固化依赖方向为 `shell -> kernel`。这表示 shell/webapp/app consumer 应逐步改为依赖窄公开入口，而不是继续猜测或跨入私有实现目录。
+- package 拆分本身已经是正式 contract。对外正式 consumer 对 app/runtime-facing contract 应依赖 `@longrun-ai/kernel`；只有在 shell-facing contract 被明确放入 shell 包时才应依赖 `@longrun-ai/shell`；不得依赖 `dominds/main/**` 或任何 root-package 聚合中转层。
+- `dominds/main/**`、`dominds/main/shared/**`、`dominds/main/apps-host/**` 都是私有实现路径，只服务仓内源码组织，不再构成任何源码层公开面。
+- `dominds/main/index.ts` 已被有意删除。仓内不得再保留这种 legacy 聚合入口，否则会继续制造“main pkg 仍提供 consumer import contract”的错误心智。
+- `tests/**` 被明确排除在公开面扩张依据之外。测试写起来方便，不足以把私有实现模块抬升成事实上的 public API。
+
+这个边界现在只应写在真实发布 contract 上：
+
+- `packages/kernel/package.json#exports` 定义受支持的 `@longrun-ai/kernel` 导入面。
+- `packages/shell/package.json#exports` 定义受支持的 shell-facing `@longrun-ai/shell` 导入面；它不意味着 CLI 或 integrated runtime 归 shell 包承载。
+- `dominds/package.json#exports` 仅限 CLI/聚合壳入口（如 `./cli`）；不得再长出 root runtime import surface。
+- 发布态 package resolution 必须拒绝 `dominds/main/**`、`dominds/main/shared/**`、`dominds/main/apps-host/**`、`dominds/dist/**` 这类 deep import。
 
 职责切分应保持清晰：
 

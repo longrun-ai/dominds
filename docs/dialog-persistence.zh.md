@@ -10,7 +10,7 @@
 
 ### 当前状态
 
-- **✅ 完全实现**：现代存储系统在 `main/shared/types/storage.ts` 中具有强 TypeScript 类型
+- **✅ 完全实现**：现代存储系统使用由 `@longrun-ai/kernel/types/storage` 对外导出的 kernel 自有 TypeScript 合同（源码：`packages/kernel/src/types/storage.ts`）
 - **✅ latest.yaml 支持**：当前对话过程和 lastModified 跟踪，用于准确的 UI 时间戳
 - **✅ 仅追加事件**：基于 JSONL 的事件流，具有原子操作
 - **✅ 强类型安全**：可区分联合和类型守卫，用于编译时验证
@@ -203,7 +203,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 **关键特性**：
 
 - **latest.yaml**：带有当前对话过程、lastModified 和状态的现代跟踪文件
-- **强类型**：所有文件使用来自 `main/shared/types/storage.ts` 的 TypeScript 接口
+- **强类型**：所有文件使用由 `@longrun-ai/kernel/types/storage` 对外导出的 storage 类型合同
 - **原子 在所有对话修改更新**：latest.yaml时原子更新
 - **UI 集成**：latest.yaml 中的时间戳在对话列表中正确显示
 
@@ -243,7 +243,7 @@ assignmentFromSup: # 来自父级的任务上下文
   originMemberId: 'alice'
 ```
 
-**类型安全**：所有元数据遵循 `main/shared/types/storage.ts` 中的 `DialogMetadataFile` 接口，具有编译时验证。
+**类型安全**：所有元数据遵循 `@longrun-ai/kernel/types/storage` 导出的 `DialogMetadataFile` 合同，并具有编译时验证。
 
 ### 最新状态文件 (`latest.yaml`)
 
@@ -575,7 +575,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 持久化层已**完全现代化**，没有向后兼容性：
 
-#### ✅ 强 TypeScript 类型 (`main/shared/types/storage.ts`)
+#### ✅ 强 TypeScript 类型 (`@longrun-ai/kernel/types/storage`)
 
 - **现代可区分联合**：具有编译时验证的类型安全事件处理
 - **类型守卫**：存储格式的运行时验证
@@ -613,7 +613,7 @@ taskdocChecksum: 'sha256:abc123...'
 **破坏性更改**：此重构有意移除了所有向后兼容性：
 
 - 从 `main/persistence.ts` 中移除了旧接口
-- 新的 `main/shared/types/storage.ts` 提供所有类型定义
+- 现在由 `@longrun-ai/kernel/types/storage` 提供 storage 类型定义（源码：`packages/kernel/src/types/storage.ts`）
 - 所有对话创建现在包括 `latest.yaml` 初始化
 - API 响应包括 `lastModified` 字段用于 UI 时间戳
 

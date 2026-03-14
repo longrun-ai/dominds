@@ -185,11 +185,19 @@ Recommended principles:
 - Published apps and local/dev apps share the same handshake contract. The only difference is who executes the app bin and obtains install JSON, not how the entry is resolved.
 - `resolution.yaml.installJson` is a **derived snapshot** from the last successful resolution. It is useful for observation and reuse, but it is not a truth source above a fresh handshake probe.
 
-#### Public import surface (first-round guardrail)
+#### Public import surface (current contract)
 
-- The current work only validates a **narrow public kernel import surface** inside the repo so representative consumers stop depending on private deep paths. This is **not yet** a full `kernel / shell` package split.
-- Only explicitly re-exported entrypoints count as consumer contracts. Outside those entrypoints, `main/**`, `main/shared/**`, and `main/apps-host/**` remain private implementation paths by default.
-- B-track currently fixes the dependency direction as `shell -> kernel`. Shell/webapp/app consumers should gradually depend on the narrow public entry instead of guessing or reaching into private implementation directories.
+- The package split is now the contract. Formal consumers should depend on `@longrun-ai/kernel` for app/runtime-facing contracts, and use `@longrun-ai/shell` only when a shell-facing contract is explicitly defined there; they must not depend on `dominds/main/**` or any root-package aggregation shim.
+- `dominds/main/**`, `dominds/main/shared/**`, and `dominds/main/apps-host/**` are private implementation paths. They are repo-internal source trees, not a source-level public surface.
+- `dominds/main/index.ts` is intentionally gone. The repo must not keep a legacy aggregation entry that suggests `main pkg` still offers a consumer import contract.
+- `tests/**` is explicitly **not** evidence for widening the public surface. Test convenience imports must not turn private implementation modules into de-facto public API.
+
+The boundary must be written once, in the actual published package contracts:
+
+- `packages/kernel/package.json#exports` defines the supported `@longrun-ai/kernel` surface.
+- `packages/shell/package.json#exports` defines the supported shell-facing `@longrun-ai/shell` surface; it does not imply CLI or integrated runtime ownership.
+- `dominds/package.json#exports` is limited to CLI/aggregation-shell entrypoints such as `./cli`; it must not grow a root runtime import surface again.
+- Published package resolution must reject deep imports such as `dominds/main/**`, `dominds/main/shared/**`, `dominds/main/apps-host/**`, and `dominds/dist/**`.
 
 Keep the responsibilities split cleanly:
 
