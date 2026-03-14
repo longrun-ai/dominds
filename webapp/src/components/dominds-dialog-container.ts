@@ -3495,9 +3495,9 @@ export class DomindsDialogContainer extends HTMLElement {
       callerDialogId !== '' &&
       Number.isFinite(callerCourseRaw) &&
       callerCourseRaw > 0;
-    if (!hasAssignmentRef || !hasCallerRef) {
+    if (!hasCallerRef) {
       this.handleProtocolError(
-        `response anchor bubble missing link refs ${JSON.stringify({
+        `response anchor bubble missing caller link refs ${JSON.stringify({
           callId,
           assignmentCourse: bubble.getAttribute('data-assignment-course'),
           assignmentGenseq: bubble.getAttribute('data-assignment-genseq'),
@@ -3512,10 +3512,17 @@ export class DomindsDialogContainer extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const actions = existingActions ?? document.createElement('div');
     actions.className = 'bubble-anchor-actions';
+    // A pending tellask can be satisfied before its queued assignment prompt is rendered inside
+    // the callee dialog. In that case we still have a valid caller deep-link, but no local
+    // assignment bubble to navigate to yet.
     actions.innerHTML = `
-      <button type="button" class="bubble-anchor-assignment-btn" aria-label="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}" title="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}">
+      ${
+        hasAssignmentRef
+          ? `<button type="button" class="bubble-anchor-assignment-btn" aria-label="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}" title="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}">
         <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
-      </button>
+      </button>`
+          : ''
+      }
       <button type="button" class="bubble-anchor-caller-callsite-btn" aria-label="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}" title="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}">
         <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
       </button>

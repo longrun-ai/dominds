@@ -12,6 +12,7 @@
  * - The same transfer payload should be used for both model context and UI rendering.
  */
 
+import { formatRegisteredTellaskCalleeUpdateNotice } from '../i18n/driver-messages';
 import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
@@ -218,6 +219,20 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
         : `Now (${sessionSlug}):`;
 
   return `${roleHeader}\n\n${markerProtocolNote}\n\n${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
+}
+
+export function formatUpdatedAssignmentFromSupdialog(
+  input: SubdialogAssignmentFormatInput,
+): string {
+  const language: LanguageCode = input.language ?? 'en';
+  return [
+    formatRegisteredTellaskCalleeUpdateNotice(language),
+    '',
+    '---',
+    '',
+    formatAssignmentFromSupdialog(input).trimEnd(),
+    '',
+  ].join('\n');
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {

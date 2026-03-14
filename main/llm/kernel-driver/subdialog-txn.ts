@@ -49,3 +49,22 @@ export async function withSubdialogTxnLock<T>(
 ): Promise<T> {
   return await withSuspensionStateLock(dialogId, fn);
 }
+
+export async function withSubdialogTxnLocks<T>(
+  dialogIds: readonly DialogID[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const ordered = [
+    ...new Map(dialogIds.map((dialogId) => [dialogId.key(), dialogId])).values(),
+  ].sort((left, right) => left.key().localeCompare(right.key()));
+  let index = 0;
+  const run = async (): Promise<T> => {
+    if (index >= ordered.length) {
+      return await fn();
+    }
+    const dialogId = ordered[index];
+    index += 1;
+    return await withSuspensionStateLock(dialogId, run);
+  };
+  return await run();
+}

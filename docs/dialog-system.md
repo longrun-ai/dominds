@@ -267,6 +267,13 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
   This ensures the subdialog receives the latest request context for each Tellask.
 - System-injected resume prompts are context only and are **not parsed** for teammate/tool Tellasks.
 
+**Updated Tellask While an Earlier Round Is Still Waiting (normative)**:
+
+- For a registered sideline (`same agentId!sessionSlug`), runtime maintains one current waiting caller round.
+- If a newer TYPE B Tellask arrives before the earlier round replies, runtime immediately closes the earlier waiting round with a system-generated failed Tellask result. The wording must describe the conversation fact in business terms, not protocol jargon.
+- The callee is not force-stopped. Instead, its next runtime prompt explains that the work request has been updated, explicitly says not to send a standalone acknowledgement, and includes the latest full assignment.
+- A sideline reply produced before that updated assignment prompt is rendered locally MUST NOT be delivered upstream as the newer round's result.
+
 **Key Characteristics**:
 
 - Registry lookup is performed on each Tellask
@@ -1211,6 +1218,10 @@ sequenceDiagram
   Driver->>Reg: lookup `agentId!sessionSlug`
   alt registry hit
     Reg-->>Driver: existing subdialog selfId
+    opt earlier round still waiting
+      Driver-->>Caller: close earlier waiting round with system-generated business notice
+      Driver->>Sub: queue update notice + latest full assignment
+    end
     Driver->>Sub: restore + drive
   else registry miss
     Reg-->>Driver: none

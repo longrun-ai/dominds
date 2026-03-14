@@ -411,7 +411,11 @@ export async function supplyResponseToSupdialog(args: {
         status: parentDialog.status,
       });
       if (!assignmentRef) {
-        log.error('Missing assignment anchor for tellask response anchor', undefined, {
+        // A sideline can legitimately finish a pending tellask before the queued assignment
+        // prompt for that call is rendered locally, for example after a direct user nudge inside
+        // the sideline dialog. Keep the caller deep-link anchor, but do not treat the missing
+        // local assignment bubble as an invariant violation.
+        log.debug('Tellask response anchor has no local assignment anchor', undefined, {
           parentId: parentDialog.id.selfId,
           subdialogId: subdialogId.selfId,
           callId: resolvedCallId,
@@ -607,6 +611,48 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     );
     return false;
   }
+  if (pendingRecord.callType === 'B') {
+    const assignmentAnchorRef = await resolveLatestAssignmentAnchorRef({
+      calleeDialogId: subdialog.id,
+      callId: pendingRecord.callId,
+      status: subdialog.status,
+    });
+    if (!assignmentAnchorRef) {
+      log.debug(
+        'Skip Type B response supply before updated assignment is rendered locally',
+        undefined,
+        {
+          rootId: subdialog.rootDialog.id.rootId,
+          subdialogId: subdialog.id.selfId,
+          ownerDialogId: ownerDialog.id.selfId,
+          callId: pendingRecord.callId,
+          responseGenseq,
+        },
+      );
+      return false;
+    }
+    if (
+      subdialog.currentCourse < assignmentAnchorRef.course ||
+      (subdialog.currentCourse === assignmentAnchorRef.course &&
+        responseGenseq < assignmentAnchorRef.genseq)
+    ) {
+      log.debug(
+        'Skip stale Type B response supply from before latest local assignment',
+        undefined,
+        {
+          rootId: subdialog.rootDialog.id.rootId,
+          subdialogId: subdialog.id.selfId,
+          ownerDialogId: ownerDialog.id.selfId,
+          callId: pendingRecord.callId,
+          responseCourse: subdialog.currentCourse,
+          responseGenseq,
+          assignmentCourse: assignmentAnchorRef.course,
+          assignmentGenseq: assignmentAnchorRef.genseq,
+        },
+      );
+      return false;
+    }
+  }
 
   await supplyResponseToSupdialog({
     parentDialog: ownerDialog,
@@ -659,6 +705,48 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
   const pendingRecord = pending.find((p) => p.subdialogId === subdialog.id.selfId);
   if (!pendingRecord) {
     return false;
+  }
+  if (pendingRecord.callType === 'B') {
+    const assignmentAnchorRef = await resolveLatestAssignmentAnchorRef({
+      calleeDialogId: subdialog.id,
+      callId: pendingRecord.callId,
+      status: subdialog.status,
+    });
+    if (!assignmentAnchorRef) {
+      log.debug(
+        'Skip assigned Type B response supply before updated assignment is rendered locally',
+        undefined,
+        {
+          rootId: subdialog.rootDialog.id.rootId,
+          subdialogId: subdialog.id.selfId,
+          callerDialogId: callerDialog.id.selfId,
+          callId: pendingRecord.callId,
+          responseGenseq,
+        },
+      );
+      return false;
+    }
+    if (
+      subdialog.currentCourse < assignmentAnchorRef.course ||
+      (subdialog.currentCourse === assignmentAnchorRef.course &&
+        responseGenseq < assignmentAnchorRef.genseq)
+    ) {
+      log.debug(
+        'Skip assigned stale Type B response supply from before latest local assignment',
+        undefined,
+        {
+          rootId: subdialog.rootDialog.id.rootId,
+          subdialogId: subdialog.id.selfId,
+          callerDialogId: callerDialog.id.selfId,
+          callId: pendingRecord.callId,
+          responseCourse: subdialog.currentCourse,
+          responseGenseq,
+          assignmentCourse: assignmentAnchorRef.course,
+          assignmentGenseq: assignmentAnchorRef.genseq,
+        },
+      );
+      return false;
+    }
   }
 
   await supplyResponseToSupdialog({

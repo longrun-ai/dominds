@@ -2,6 +2,7 @@ import { inspect } from 'util';
 
 import type { AssignmentFromSup } from '../../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog, type DialogID as TDialogID } from '../../dialog';
+import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
@@ -11,6 +12,7 @@ import {
   formatDomindsNoteFbrToollessViolation,
   formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskForTeammatesOnly,
+  formatRegisteredTellaskCallerUpdateNotice,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
@@ -25,13 +27,15 @@ import { generateShortId } from '../../shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
+  formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,
+  formatUpdatedAssignmentFromSupdialog,
 } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage, FuncCallMsg } from '../client';
-import { withSubdialogTxnLock } from './subdialog-txn';
+import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
 import type {
   KernelDriverDriveInvoker,
   KernelDriverDriveScheduler,
@@ -476,6 +480,133 @@ async function lookupLiveRegisteredSubdialog(
     sessionSlug: existingSession,
   });
   return undefined;
+}
+
+async function resolveDialogWithinRoot(
+  rootDialog: RootDialog,
+  callerDialogId: string,
+): Promise<Dialog> {
+  if (callerDialogId === rootDialog.id.selfId) {
+    return rootDialog;
+  }
+  const live = rootDialog.lookupDialog(callerDialogId);
+  if (live) {
+    return live;
+  }
+  const restored = await ensureDialogLoaded(
+    rootDialog,
+    new DialogID(callerDialogId, rootDialog.id.rootId),
+    rootDialog.status,
+  );
+  if (!restored) {
+    throw new Error(
+      `Type B caller restore invariant violation: root=${rootDialog.id.valueOf()} caller=${callerDialogId}`,
+    );
+  }
+  return restored;
+}
+
+async function finishRegisteredTellaskReplacement(args: {
+  ownerDialog: Dialog;
+  subdialog: SubDialog;
+  pendingRecord: PendingSubdialogStateRecord;
+  responseBody: string;
+}): Promise<void> {
+  const { ownerDialog, subdialog, pendingRecord, responseBody } = args;
+  const language = getWorkLanguage();
+  const requesterId = ownerDialog.agentId;
+  const response = formatTellaskResponseContent({
+    callName: pendingRecord.callName,
+    responderId: subdialog.agentId,
+    requesterId,
+    mentionList: pendingRecord.mentionList,
+    sessionSlug: pendingRecord.sessionSlug,
+    tellaskContent: pendingRecord.tellaskContent,
+    responseBody,
+    status: 'failed',
+    language,
+  });
+  const carryoverOriginCourse = pendingRecord.callingCourse;
+  const carryoverContent =
+    carryoverOriginCourse !== undefined && carryoverOriginCourse !== ownerDialog.currentCourse
+      ? formatTellaskCarryoverResultContent({
+          originCourse: carryoverOriginCourse,
+          callName: pendingRecord.callName,
+          responderId: subdialog.agentId,
+          mentionList: pendingRecord.mentionList,
+          sessionSlug: pendingRecord.sessionSlug,
+          tellaskContent: pendingRecord.tellaskContent,
+          responseBody,
+          status: 'failed',
+          language,
+        })
+      : undefined;
+
+  await ownerDialog.receiveTellaskResponse(
+    subdialog.agentId,
+    pendingRecord.callName,
+    pendingRecord.mentionList,
+    pendingRecord.tellaskContent,
+    'failed',
+    subdialog.id,
+    {
+      response,
+      agentId: subdialog.agentId,
+      callId: pendingRecord.callId,
+      originMemberId: requesterId,
+      originCourse: carryoverOriginCourse,
+      carryoverContent,
+      sessionSlug: pendingRecord.sessionSlug,
+    },
+  );
+
+  const immediateMirror: ChatMessage =
+    carryoverContent !== undefined
+      ? {
+          type: 'tellask_carryover_result_msg',
+          role: 'user',
+          content: carryoverContent,
+          originCourse: carryoverOriginCourse!,
+          responderId: subdialog.agentId,
+          callName: pendingRecord.callName,
+          tellaskContent: pendingRecord.tellaskContent,
+          status: 'failed',
+          callId: pendingRecord.callId,
+        }
+      : {
+          type: 'tellask_result_msg',
+          role: 'tool',
+          responderId: subdialog.agentId,
+          mentionList: pendingRecord.mentionList,
+          tellaskContent: pendingRecord.tellaskContent,
+          status: 'failed',
+          callId: pendingRecord.callId,
+          content: response,
+        };
+  await ownerDialog.addChatMessages(immediateMirror);
+}
+
+async function reviveDialogIfUnblocked(
+  dialog: Dialog,
+  callbacks: ExecuteCallbacks,
+  reason: string,
+): Promise<void> {
+  const hasQ4H = await dialog.hasPendingQ4H();
+  const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
+  if (hasQ4H || hasPendingSubdialogs) {
+    return;
+  }
+  if (dialog instanceof RootDialog) {
+    await DialogPersistence.setNeedsDrive(dialog.id, true, dialog.status);
+  }
+  callbacks.scheduleDrive(dialog, {
+    waitInQue: true,
+    driveOptions: {
+      source: 'kernel_driver_supply_response_parent_revive',
+      reason,
+      suppressDiligencePush: dialog.disableDiligencePush,
+    },
+  });
 }
 
 function extractLastAssistantResponse(
@@ -1146,68 +1277,206 @@ async function executeTellaskCall(
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
         const pendingOwner = callerDialog;
+        const replacementNotice = formatRegisteredTellaskCallerUpdateNotice(getWorkLanguage());
 
-        const result = await withSubdialogTxnLock(rootDialog.id, async () => {
-          const existing = await lookupLiveRegisteredSubdialog(
-            rootDialog,
-            parseResult.agentId,
-            parseResult.sessionSlug,
-          );
-          if (existing) {
-            try {
-              await updateSubdialogAssignment(existing, assignment);
-            } catch (err) {
-              log.warn('Failed to update registered subdialog assignment', err);
+        const result = await (async (): Promise<
+          | {
+              kind: 'created';
+              subdialog: SubDialog;
             }
-            return { kind: 'existing' as const, subdialog: existing };
+          | {
+              kind: 'existing';
+              subdialog: SubDialog;
+              previousCaller: Dialog;
+              replacedPending: PendingSubdialogStateRecord | undefined;
+            }
+        > => {
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            const seededExisting = rootDialog.lookupSubdialog(
+              parseResult.agentId,
+              parseResult.sessionSlug,
+            );
+            const seededPreviousCallerId = seededExisting?.assignmentFromSup.callerDialogId;
+            const lockIds: DialogID[] = [rootDialog.id, pendingOwner.id];
+            if (
+              seededPreviousCallerId !== undefined &&
+              seededPreviousCallerId !== rootDialog.id.selfId &&
+              seededPreviousCallerId !== pendingOwner.id.selfId
+            ) {
+              lockIds.push(new DialogID(seededPreviousCallerId, rootDialog.id.rootId));
+            }
+
+            const attemptResult = await withSubdialogTxnLocks(lockIds, async () => {
+              const existing = await lookupLiveRegisteredSubdialog(
+                rootDialog,
+                parseResult.agentId,
+                parseResult.sessionSlug,
+              );
+              if (existing) {
+                if (existing.assignmentFromSup.callerDialogId !== seededPreviousCallerId) {
+                  return { kind: 'retry' as const };
+                }
+                const previousCaller = await resolveDialogWithinRoot(
+                  rootDialog,
+                  existing.assignmentFromSup.callerDialogId,
+                );
+                const pendingRecord: PendingSubdialogStateRecord = {
+                  subdialogId: existing.id.selfId,
+                  createdAt: formatUnifiedTimestamp(new Date()),
+                  callName: subdialogCallName,
+                  mentionList,
+                  tellaskContent: body,
+                  targetAgentId: parseResult.agentId,
+                  callId,
+                  callingCourse,
+                  callType: 'B',
+                  sessionSlug: parseResult.sessionSlug,
+                };
+                try {
+                  const previousPending = await DialogPersistence.loadPendingSubdialogs(
+                    previousCaller.id,
+                    previousCaller.status,
+                  );
+                  const replacedPending = previousPending.filter(
+                    (record) => record.subdialogId === existing.id.selfId,
+                  );
+                  if (replacedPending.length > 1) {
+                    throw new Error(
+                      `Type B pending invariant violation: caller=${previousCaller.id.valueOf()} sub=${existing.id.valueOf()} count=${replacedPending.length}`,
+                    );
+                  }
+
+                  if (previousCaller.id.selfId === pendingOwner.id.selfId) {
+                    const nextPending = previousPending.filter(
+                      (record) => record.subdialogId !== existing.id.selfId,
+                    );
+                    nextPending.push(pendingRecord);
+                    await DialogPersistence.savePendingSubdialogs(
+                      pendingOwner.id,
+                      nextPending,
+                      undefined,
+                      pendingOwner.status,
+                    );
+                  } else {
+                    await DialogPersistence.savePendingSubdialogs(
+                      previousCaller.id,
+                      previousPending.filter((record) => record.subdialogId !== existing.id.selfId),
+                      undefined,
+                      previousCaller.status,
+                    );
+                    const nextPending = (
+                      await DialogPersistence.loadPendingSubdialogs(
+                        pendingOwner.id,
+                        pendingOwner.status,
+                      )
+                    ).filter((record) => record.subdialogId !== existing.id.selfId);
+                    nextPending.push(pendingRecord);
+                    await DialogPersistence.savePendingSubdialogs(
+                      pendingOwner.id,
+                      nextPending,
+                      undefined,
+                      pendingOwner.status,
+                    );
+                  }
+
+                  await updateSubdialogAssignment(existing, assignment);
+                  return {
+                    kind: 'existing' as const,
+                    subdialog: existing,
+                    previousCaller,
+                    replacedPending: replacedPending[0],
+                  };
+                } catch (err) {
+                  log.warn('Failed to update registered subdialog assignment', err);
+                  return {
+                    kind: 'existing' as const,
+                    subdialog: existing,
+                    previousCaller,
+                    replacedPending: undefined,
+                  };
+                }
+              }
+
+              if (seededPreviousCallerId !== undefined) {
+                return { kind: 'retry' as const };
+              }
+
+              const created = await createSubDialog(
+                rootDialog,
+                parseResult.agentId,
+                mentionList,
+                body,
+                {
+                  callName: subdialogCallName,
+                  originMemberId,
+                  callerDialogId: callerDialog.id.selfId,
+                  callId,
+                  sessionSlug: parseResult.sessionSlug,
+                  collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+                },
+              );
+              rootDialog.registerSubdialog(created);
+              await rootDialog.saveSubdialogRegistry();
+              const pendingRecord: PendingSubdialogStateRecord = {
+                subdialogId: created.id.selfId,
+                createdAt: formatUnifiedTimestamp(new Date()),
+                callName: subdialogCallName,
+                mentionList,
+                tellaskContent: body,
+                targetAgentId: parseResult.agentId,
+                callId,
+                callingCourse,
+                callType: 'B',
+                sessionSlug: parseResult.sessionSlug,
+              };
+              const nextPending = (
+                await DialogPersistence.loadPendingSubdialogs(pendingOwner.id, pendingOwner.status)
+              ).filter((record) => record.subdialogId !== created.id.selfId);
+              nextPending.push(pendingRecord);
+              await DialogPersistence.savePendingSubdialogs(
+                pendingOwner.id,
+                nextPending,
+                undefined,
+                pendingOwner.status,
+              );
+              return { kind: 'created' as const, subdialog: created };
+            });
+            if (attemptResult.kind !== 'retry') {
+              return attemptResult;
+            }
           }
-
-          const created = await createSubDialog(
-            rootDialog,
-            parseResult.agentId,
-            mentionList,
-            body,
-            {
-              callName: subdialogCallName,
-              originMemberId,
-              callerDialogId: callerDialog.id.selfId,
-              callId,
-              sessionSlug: parseResult.sessionSlug,
-              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-            },
+          throw new Error(
+            `Type B registered subdialog mutation failed to stabilize: root=${rootDialog.id.valueOf()} agent=${parseResult.agentId} session=${parseResult.sessionSlug}`,
           );
-          rootDialog.registerSubdialog(created);
-          await rootDialog.saveSubdialogRegistry();
-          return { kind: 'created' as const, subdialog: created };
-        });
+        })();
 
-        const pendingRecord: PendingSubdialogStateRecord = {
-          subdialogId: result.subdialog.id.selfId,
-          createdAt: formatUnifiedTimestamp(new Date()),
-          callName: subdialogCallName,
-          mentionList,
-          tellaskContent: body,
-          targetAgentId: parseResult.agentId,
-          callId,
-          callingCourse,
-          callType: 'B',
-          sessionSlug: parseResult.sessionSlug,
-        };
-        await withSubdialogTxnLock(pendingOwner.id, async () => {
-          await DialogPersistence.mutatePendingSubdialogs(pendingOwner.id, (previous) => {
-            const next = previous.filter((p) => p.subdialogId !== pendingRecord.subdialogId);
-            next.push(pendingRecord);
-            return { kind: 'replace', records: next };
-          });
-        });
         await syncPendingTellaskReminderBestEffort(
           pendingOwner,
           'kernel-driver:executeTellaskCall:TypeB:replacePending',
         );
+        if (result.kind === 'existing' && result.replacedPending) {
+          await finishRegisteredTellaskReplacement({
+            ownerDialog: result.previousCaller,
+            subdialog: result.subdialog,
+            pendingRecord: result.replacedPending,
+            responseBody: replacementNotice,
+          });
+          if (result.previousCaller.id.selfId !== pendingOwner.id.selfId) {
+            await syncPendingTellaskReminderBestEffort(
+              result.previousCaller,
+              'kernel-driver:executeTellaskCall:TypeB:clearPreviousPending',
+            );
+            await reviveDialogIfUnblocked(
+              result.previousCaller,
+              callbacks,
+              'type_b_registered_subdialog_replaced_pending_round',
+            );
+          }
+        }
 
         if (result.kind === 'existing') {
           const resumePrompt: KernelDriverHumanPrompt = {
-            content: formatAssignmentFromSupdialog({
+            content: formatUpdatedAssignmentFromSupdialog({
               callName: subdialogCallName,
               fromAgentId: dlg.agentId,
               toAgentId: result.subdialog.agentId,

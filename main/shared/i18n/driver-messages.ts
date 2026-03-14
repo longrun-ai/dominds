@@ -68,6 +68,38 @@ export function formatUserLanguagePreferenceChangedNotice(
   ].join('\n');
 }
 
+export function formatRegisteredTellaskCallerUpdateNotice(language: LanguageCode): string {
+  const prefix = formatSystemNoticePrefix(language);
+  if (language === 'zh') {
+    return [
+      prefix,
+      '刚才那轮诉请先不用继续等待了；对方接下来会按你更新后的要求继续处理，请以后续要求为准。',
+    ].join('\n');
+  }
+  return [
+    prefix,
+    'You no longer need to wait on that earlier request. The teammate will continue from your updated request, so follow the later request from here.',
+  ].join('\n');
+}
+
+export function formatRegisteredTellaskCalleeUpdateNotice(language: LanguageCode): string {
+  const prefix = formatSystemNoticePrefix(language);
+  if (language === 'zh') {
+    return [
+      prefix,
+      '你的工作要求刚刚更新了。',
+      '这不是一条需要你单独回复的消息；不要停在“收到/好的”之类的确认上。',
+      '请继续处理下面这份最新完整要求，并以它为准推进后续工作。',
+    ].join('\n');
+  }
+  return [
+    prefix,
+    'Your working request has just been updated.',
+    'This is not a message to acknowledge on its own; do not stop at a standalone "acknowledged/ok" reply.',
+    'Continue the work using the latest full request below as the one to follow.',
+  ].join('\n');
+}
+
 export function formatNewCourseStartPrompt(
   language: LanguageCode,
   args: {

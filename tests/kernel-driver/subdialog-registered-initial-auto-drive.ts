@@ -22,8 +22,7 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Trigger a registered sideline and let it finish cleanly.';
-    const rootFirstResponse = 'Start.';
+    const trigger = 'Start the registered sideline now.';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1 with exactly `2`.';
     const sessionSlug = 'sticky-session';
@@ -57,7 +56,7 @@ async function main(): Promise<void> {
       {
         message: trigger,
         role: 'user',
-        response: rootFirstResponse,
+        response: 'Starting the sideline.',
         funcCalls: [
           {
             id: 'root-call-pangu-sticky',
@@ -82,80 +81,52 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = await createRootDialog('tester');
-    dlg.disableDiligencePush = true;
+    const root = await createRootDialog('tester');
+    root.disableDiligencePush = true;
 
     await driveDialogStream(
-      dlg,
+      root,
       {
         content: trigger,
-        msgId: 'kernel-driver-subdialog-no-empty-autodrive-after-final-response',
+        msgId: 'kernel-driver-subdialog-registered-initial-auto-drive',
         grammar: 'markdown',
+        origin: 'user',
       },
       true,
       { suppressDiligencePush: true },
     );
     await waitFor(
-      async () => lastAssistantSaying(dlg) === rootFinalResponse,
+      async () => lastAssistantSaying(root) === rootFinalResponse,
       3_000,
-      'root dialog to receive final registered sideline result',
+      'registered subdialog to auto-drive and deliver its final response',
     );
-    await waitForAllDialogsUnlocked(dlg, 3_000);
+    await waitForAllDialogsUnlocked(root, 3_000);
 
-    const subdialog = dlg.lookupSubdialog('pangu', sessionSlug);
+    const subdialog = root.lookupSubdialog('pangu', sessionSlug);
     assert.ok(subdialog, 'expected registered subdialog to exist after tellask completion');
 
-    const eventsBefore = await DialogPersistence.loadCourseEvents(
+    const events = await DialogPersistence.loadCourseEvents(
       subdialog.id,
       subdialog.currentCourse,
       subdialog.status,
     );
-    const genStartCountBefore = eventsBefore.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
-    const lastEventBefore = eventsBefore[eventsBefore.length - 1];
     assert.ok(
-      lastEventBefore?.type === 'tellask_call_anchor_record' &&
-        lastEventBefore.anchorRole === 'response',
-      'expected subdialog to end its finalized round at a response anchor',
+      events.some((event) => event.type === 'gen_start_record'),
+      'expected registered subdialog to start a generation automatically',
     );
-
-    await driveDialogStream(subdialog, undefined, true, {
-      suppressDiligencePush: true,
-      source: 'unspecified',
-      reason: 'stale_auto_drive_probe',
-    });
-    await waitForAllDialogsUnlocked(dlg, 3_000);
-
-    const eventsAfter = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
-    );
-    const genStartCountAfter = eventsAfter.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
-    const lastEventAfter = eventsAfter[eventsAfter.length - 1];
-
-    assert.equal(
-      genStartCountAfter,
-      genStartCountBefore,
-      'stale queued auto-drive must not open a new generation after final response anchor',
-    );
-    assert.deepEqual(
-      lastEventAfter,
-      lastEventBefore,
-      'stale queued auto-drive must leave the finalized subdialog tail untouched',
+    assert.ok(
+      events.some(
+        (event) => event.type === 'tellask_call_anchor_record' && event.anchorRole === 'response',
+      ),
+      'expected registered subdialog to emit a response anchor after auto-drive',
     );
   });
 
-  console.log('kernel-driver subdialog-no-empty-autodrive-after-final-response: PASS');
+  console.log('kernel-driver subdialog-registered-initial-auto-drive: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(
-    `kernel-driver subdialog-no-empty-autodrive-after-final-response: FAIL\n${message}`,
-  );
+  console.error(`kernel-driver subdialog-registered-initial-auto-drive: FAIL\n${message}`);
   process.exit(1);
 });

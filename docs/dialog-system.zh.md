@@ -822,6 +822,13 @@ flowchart TD
   Create --> Supply
 ```
 
+**前一轮仍在等待时又收到更新诉请（规范）**：
+
+- 对同一个已注册支线（同一 `agentId!sessionSlug`），运行时只维护一个“当前等待中的 caller round”。
+- 如果新的 TYPE B 诉请在上一轮回复前到达，运行时会立刻用一条系统生成的失败回贴结束上一轮等待；文案必须从业务事实描述，不使用协议/实现术语。
+- 被诉请侧不会被强行打断。运行时会在它下一次收到的提示里说明“工作要求已更新”，明确要求不要单独回复“收到/好的”，并直接附上最新完整诉请。
+- 如果子对话在最新 assignment 提示真正落到本地之前先产出了回复，这条回复不得作为新一轮的结果回贴给 caller。
+
 ### 类设计：RootDialog vs SubDialog
 
 **关键设计原则**：子对话注册表仅由 `RootDialog` 管理，**子对话实例无法访问**。
@@ -1191,6 +1198,10 @@ sequenceDiagram
   Driver->>Reg: 查找 `agentId!sessionSlug`
   alt 注册表命中
     Reg-->>Driver: 现有子对话 selfId
+    opt 前一轮仍在等待
+      Driver-->>Caller: 用系统生成的业务化文案结束前一轮等待
+      Driver->>Sub: 排入“要求已更新”通知 + 最新完整诉请
+    end
     Driver->>Sub: 恢复 + 驱动
   else 注册表未命中
     Reg-->>Driver: 无
