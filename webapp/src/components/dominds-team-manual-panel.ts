@@ -4,10 +4,10 @@ import {
   type TeamMgmtManualTopicKey,
   getTeamMgmtManualTopicTitle,
   isTeamMgmtManualTopicKey,
-} from '../../../main/index';
+} from '@longrun-ai/kernel';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
-import type { LanguageCode } from '../shared/types/language';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 
 type LoadState =

@@ -6,13 +6,13 @@
  * (`dominds-q4h-panel`).
  */
 
+import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
+import type { DialogIdent } from '@longrun-ai/kernel/types/wire';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
-import type { DialogDisplayState } from '../shared/types/display-state.js';
-import type { LanguageCode } from '../shared/types/language';
-import type { Q4HDialogContext } from '../shared/types/q4h.js';
-import type { DialogIdent } from '../shared/types/wire.js';
-import { generateShortId } from '../shared/utils/id.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface Q4HQuestion {

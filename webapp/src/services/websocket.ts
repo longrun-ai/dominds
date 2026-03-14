@@ -5,9 +5,9 @@
  */
 
 import type { ConnectionState } from '@/services/store';
-import { createPubChan, createSubChan, PubChan, SubChan } from '../shared/evt';
-import type { ErrorMessage, WebSocketMessage } from '../shared/types';
-import type { LanguageCode } from '../shared/types/language';
+import { createPubChan, createSubChan, PubChan, SubChan } from '@longrun-ai/kernel/evt';
+import type { ErrorMessage, WebSocketMessage } from '@longrun-ai/kernel/types';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getWebSocketUrl } from '../utils';
 // StreamHandler removed - streaming is now handled directly by event type matching
 

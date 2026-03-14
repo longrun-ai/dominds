@@ -3,6 +3,51 @@
  */
 
 import type { ConnectionState } from '@/services/store';
+import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
+import type {
+  ApiForkDialogResponse,
+  ApiMoveDialogsRequest,
+  ApiRootDialogResponse,
+  DialogInfo,
+  DialogStatusKind,
+  PrimingScriptSummary,
+  PrimingScriptWarningSummary,
+  ToolsetInfo,
+  WorkspaceProblemRecord,
+} from '@longrun-ai/kernel/types';
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
+import type {
+  ContextHealthEvent,
+  FullRemindersEvent,
+  NewQ4HAskedEvent,
+  Q4HAnsweredEvent,
+  ReminderContent,
+  SubdialogEvent,
+  TypedDialogEvent,
+} from '@longrun-ai/kernel/types/dialog';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from '@longrun-ai/kernel/types/display-state';
+import {
+  formatLanguageName,
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+} from '@longrun-ai/kernel/types/language';
+import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
+import type {
+  ClearResolvedProblemsResultMessage,
+  DialogReadyMessage,
+  DiligencePushUpdatedMessage,
+  ErrorMessage,
+  ProblemsSnapshotMessage,
+  Q4HStateResponse,
+  RunControlRefreshReason,
+  WebSocketMessage,
+  WelcomeMessage,
+} from '@longrun-ai/kernel/types/wire';
+import { escapeHtml } from '@longrun-ai/kernel/utils/html';
 import faviconUrl from '../assets/favicon.svg';
 import {
   formatContextUsageTitle,
@@ -22,48 +67,6 @@ import {
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
 import { getWebSocketManager } from '../services/websocket.js';
-import { DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
-import type {
-  ApiForkDialogResponse,
-  ApiMoveDialogsRequest,
-  ApiRootDialogResponse,
-  DialogInfo,
-  DialogStatusKind,
-  PrimingScriptSummary,
-  PrimingScriptWarningSummary,
-  ToolsetInfo,
-  WorkspaceProblemRecord,
-} from '../shared/types';
-import type { ContextHealthSnapshot } from '../shared/types/context-health';
-import type {
-  ContextHealthEvent,
-  FullRemindersEvent,
-  NewQ4HAskedEvent,
-  Q4HAnsweredEvent,
-  ReminderContent,
-  SubdialogEvent,
-  TypedDialogEvent,
-} from '../shared/types/dialog';
-import type { DialogDisplayState, DialogInterruptionReason } from '../shared/types/display-state';
-import {
-  formatLanguageName,
-  normalizeLanguageCode,
-  supportedLanguageCodes,
-  type LanguageCode,
-} from '../shared/types/language';
-import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
-import type {
-  ClearResolvedProblemsResultMessage,
-  DialogReadyMessage,
-  DiligencePushUpdatedMessage,
-  ErrorMessage,
-  ProblemsSnapshotMessage,
-  Q4HStateResponse,
-  RunControlRefreshReason,
-  WebSocketMessage,
-  WelcomeMessage,
-} from '../shared/types/wire';
-import { escapeHtml } from '../shared/utils/html.js';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
 import {

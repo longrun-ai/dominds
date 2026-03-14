@@ -1,4 +1,4 @@
-import { formatLanguageName, type LanguageCode } from '../shared/types/language';
+import { formatLanguageName, type LanguageCode } from '@longrun-ai/kernel/types/language';
 
 export type UiStrings = {
   logoGitHubTitle: string;

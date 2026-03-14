@@ -2,9 +2,13 @@
  * Running dialog list (minimal UI)
  */
 
+import type {
+  ApiMoveDialogsRequest,
+  ApiRootDialogResponse,
+  DialogInfo,
+} from '@longrun-ai/kernel/types';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
-import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
-import type { LanguageCode } from '../shared/types/language';
 import {
   displayStateClassSuffixFromDisplayState,
   runControlVisualStateFromDisplayState,

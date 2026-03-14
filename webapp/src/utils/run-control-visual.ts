@@ -1,4 +1,7 @@
-import type { DialogBlockedReason, DialogDisplayState } from '../shared/types/display-state';
+import type {
+  DialogBlockedReason,
+  DialogDisplayState,
+} from '@longrun-ai/kernel/types/display-state';
 
 export type RunControlVisualState =
   | { kind: 'none' }

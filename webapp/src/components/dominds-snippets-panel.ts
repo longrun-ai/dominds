@@ -1,11 +1,11 @@
-import { getUiStrings } from '../i18n/ui';
-import { getApiClient } from '../services/api';
-import type { LanguageCode } from '../shared/types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   SnippetCatalogResponse,
   SnippetTemplateGroup as SnippetGroup,
   SnippetTemplate as SnippetItem,
-} from '../shared/types/snippets';
+} from '@longrun-ai/kernel/types/snippets';
+import { getUiStrings } from '../i18n/ui';
+import { getApiClient } from '../services/api';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 type LoadState =

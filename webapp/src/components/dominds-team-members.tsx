@@ -3,9 +3,9 @@
  * Renders the current team roster from `/api/team/config` and supports quick @mention insertion.
  */
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatTeamMembersTitle, getUiStrings } from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
-import type { LanguageCode } from '../shared/types/language';
 
 export interface TeamMembersProps {
   members: FrontendTeamMember[];

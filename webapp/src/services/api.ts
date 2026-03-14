@@ -27,8 +27,8 @@ import {
   type CreateDialogInput,
   type CreateDialogResult,
   type DialogStatusKind,
-} from '../shared/types';
-import type { LanguageCode } from '../shared/types/language';
+} from '@longrun-ai/kernel/types';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   CreateRtwsSnippetGroupRequest,
   CreateRtwsSnippetGroupResponse,
@@ -38,8 +38,8 @@ import type {
   SnippetTemplatesResponse,
   TeamMgmtManualRequest,
   TeamMgmtManualResponse,
-} from '../shared/types/snippets';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+} from '@longrun-ai/kernel/types/snippets';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 export interface FrontendTeamMember {
   id: string;

@@ -2,14 +2,14 @@
  * Completed ("done") dialog list (minimal UI)
  */
 
-import { getUiStrings } from '../i18n/ui';
 import type {
   ApiMoveDialogsRequest,
   ApiRootDialogResponse,
   DialogInfo,
   DialogStatusKind,
-} from '../shared/types';
-import type { LanguageCode } from '../shared/types/language';
+} from '@longrun-ai/kernel/types';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { getUiStrings } from '../i18n/ui';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface DoneDialogListProps {

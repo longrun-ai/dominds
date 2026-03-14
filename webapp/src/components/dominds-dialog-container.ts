@@ -2,10 +2,6 @@
  * Simple Dialog Container - Direct DOM Updates Based on Wire Protocol Packets
  */
 
-import mannedToolIcon from '../assets/manned-tool.svg';
-import { getUiStrings } from '../i18n/ui';
-import { getApiClient } from '../services/api';
-import { getWebSocketManager } from '../services/websocket.js';
 import type {
   EndOfUserSayingEvent,
   FullRemindersEvent,
@@ -13,10 +9,13 @@ import type {
   SubdialogEvent,
   TypedDialogEvent,
   WebSearchCallEvent,
-} from '../shared/types/dialog';
-import type { DialogDisplayState, DialogInterruptionReason } from '../shared/types/display-state';
-import type { LanguageCode } from '../shared/types/language';
-import { normalizeLanguageCode } from '../shared/types/language';
+} from '@longrun-ai/kernel/types/dialog';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from '@longrun-ai/kernel/types/display-state';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
@@ -27,8 +26,16 @@ import {
   type CalleeCourseNumber,
   type CallerCourseNumber,
   type CallingGenerationSeqNumber,
-} from '../shared/types/storage';
-import type { AssignmentFromSup, DialogIdent, DialogStatusKind } from '../shared/types/wire';
+} from '@longrun-ai/kernel/types/storage';
+import type {
+  AssignmentFromSup,
+  DialogIdent,
+  DialogStatusKind,
+} from '@longrun-ai/kernel/types/wire';
+import mannedToolIcon from '../assets/manned-tool.svg';
+import { getUiStrings } from '../i18n/ui';
+import { getApiClient } from '../services/api';
+import { getWebSocketManager } from '../services/websocket.js';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';

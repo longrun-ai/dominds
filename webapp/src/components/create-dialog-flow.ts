@@ -1,12 +1,12 @@
-import { getUiStrings } from '../i18n/ui';
-import type { FrontendTeamMember } from '../services/api';
 import type {
   DialogPrimingInput,
   PrimingScriptSummary,
   PrimingScriptWarningSummary,
-} from '../shared/types';
-import type { LanguageCode } from '../shared/types/language';
-import { escapeHtml } from '../shared/utils/html.js';
+} from '@longrun-ai/kernel/types';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { escapeHtml } from '@longrun-ai/kernel/utils/html';
+import { getUiStrings } from '../i18n/ui';
+import type { FrontendTeamMember } from '../services/api';
 
 export type DialogCreateAction =
   | { kind: 'task'; taskDocPath: string }

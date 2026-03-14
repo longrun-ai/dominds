@@ -1,4 +1,4 @@
-import type { ApiRootDialogResponse } from '../shared/types';
+import type { ApiRootDialogResponse } from '@longrun-ai/kernel/types';
 
 export function bumpDialogsLastModified(
   dialogs: ApiRootDialogResponse[],

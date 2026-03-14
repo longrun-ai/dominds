@@ -10,7 +10,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@longrun-ai/kernel": ["../../packages/kernel/src/index.ts"],
+      "@longrun-ai/kernel/*": ["../../packages/kernel/src/*"]
     },
     "types": ["vite/client"]
   },

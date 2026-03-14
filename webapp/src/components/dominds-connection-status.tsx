@@ -4,9 +4,9 @@
  */
 
 import type { ConnectionStatus } from '@/services/store';
+import { normalizeLanguageCode, type LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
-import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export class DomindsConnectionStatus extends HTMLElement {

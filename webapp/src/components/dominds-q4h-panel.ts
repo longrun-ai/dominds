@@ -4,9 +4,9 @@
  * Used inline between conversation and input area
  */
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import { getUiStrings } from '../i18n/ui';
-import type { LanguageCode } from '../shared/types/language';
-import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 

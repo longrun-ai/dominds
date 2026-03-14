@@ -1,3 +1,18 @@
+import type {
+  SetupFileKind,
+  SetupFileResponse,
+  SetupProminentEnumModelParam,
+  SetupProviderSummary,
+  SetupRequirement,
+  SetupStatusResponse,
+} from '@longrun-ai/kernel/types';
+import {
+  formatLanguageName,
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+} from '@longrun-ai/kernel/types/language';
+import { escapeHtmlAttr } from '@longrun-ai/kernel/utils/html';
 import faviconUrl from '../assets/favicon.svg';
 import { getUiStrings, type UiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
@@ -7,21 +22,6 @@ import {
   removeAuthKeyFromUrl,
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
-import type {
-  SetupFileKind,
-  SetupFileResponse,
-  SetupProminentEnumModelParam,
-  SetupProviderSummary,
-  SetupRequirement,
-  SetupStatusResponse,
-} from '../shared/types';
-import {
-  formatLanguageName,
-  normalizeLanguageCode,
-  supportedLanguageCodes,
-  type LanguageCode,
-} from '../shared/types/language';
-import { escapeHtmlAttr } from '../shared/utils/html.js';
 import './dominds-code-block';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 

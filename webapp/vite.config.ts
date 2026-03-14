@@ -63,9 +63,20 @@ export default defineConfig(({ command }) => {
         : undefined,
     },
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-      },
+      alias: [
+        {
+          find: /^@longrun-ai\/kernel$/,
+          replacement: path.resolve(__dirname, '../packages/kernel/src/index.ts'),
+        },
+        {
+          find: /^@longrun-ai\/kernel\/(.*)$/,
+          replacement: path.resolve(__dirname, '../packages/kernel/src/$1'),
+        },
+        {
+          find: '@',
+          replacement: path.resolve(__dirname, './src'),
+        },
+      ],
     },
     build: {
       outDir: '../dist/static', // Only used for `vite build` command
