@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "1.8.7",
+  "version": "1.8.8",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
   "type": "commonjs",
   "publishConfig": {
@@ -33,7 +33,7 @@
     "setup:pm": "corepack enable pnpm && corepack install",
     "manual": "pnpm exec tsx main/cli/manual.ts",
     "prepare": "pnpm run build:workspace",
-    "prepublishOnly": "pnpm run build",
+    "prepublishOnly": "node ./scripts/require-pnpm-publish.mjs && pnpm run build",
     "build": "pnpm run build:workspace && pnpm run build:backend",
     "build:workspace": "pnpm -r --filter './packages/*' --filter ./codex-auth --filter ./webapp run build",
     "clean": "rm -rf ./dist && pnpm -r --filter './packages/*' --filter ./codex-auth --filter ./webapp run clean",

@@ -76,7 +76,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "lint:types": "tsc -p tsconfig.json --noEmit"
+    "lint:types": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "node ../../scripts/require-pnpm-publish.mjs && pnpm run build"
   },
   "engines": {
     "node": ">=24 <25",

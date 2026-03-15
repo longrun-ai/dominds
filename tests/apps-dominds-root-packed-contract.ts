@@ -27,7 +27,11 @@ async function packLocalPackage(packageRootAbs: string, packDirAbs: string): Pro
   });
   const entries = await fs.readdir(packDirAbs);
   const tarballs = entries.filter((entry) => entry.endsWith('.tgz')).sort();
-  assert.equal(tarballs.length, 1, 'pnpm pack must produce exactly one tarball in the pack directory.');
+  assert.equal(
+    tarballs.length,
+    1,
+    'pnpm pack must produce exactly one tarball in the pack directory.',
+  );
   return path.join(packDirAbs, tarballs[0]);
 }
 
@@ -49,7 +53,11 @@ function readTarballPackageJson(tarballAbs: string): PackageJsonShape {
 async function readPackageVersion(packageJsonAbs: string, label: string): Promise<string> {
   const raw = await fs.readFile(packageJsonAbs, 'utf-8');
   const packageJson = JSON.parse(raw) as PackageJsonShape;
-  assert.equal(typeof packageJson.version, 'string', `${label} package.json version must be a string.`);
+  assert.equal(
+    typeof packageJson.version,
+    'string',
+    `${label} package.json version must be a string.`,
+  );
   return packageJson.version;
 }
 
@@ -79,9 +87,18 @@ async function main(): Promise<void> {
     'codex-auth',
   );
 
-  assert.ok(entries.includes('package/package.json'), 'Packed root tarball must include package.json.');
-  assert.ok(entries.includes('package/dist/cli.js'), 'Packed root tarball must include dist/cli.js.');
-  assert.ok(entries.includes('package/dist/server.js'), 'Packed root tarball must include dist/server.js.');
+  assert.ok(
+    entries.includes('package/package.json'),
+    'Packed root tarball must include package.json.',
+  );
+  assert.ok(
+    entries.includes('package/dist/cli.js'),
+    'Packed root tarball must include dist/cli.js.',
+  );
+  assert.ok(
+    entries.includes('package/dist/server.js'),
+    'Packed root tarball must include dist/server.js.',
+  );
   assert.ok(
     entries.includes('package/webapp/dist/index.html'),
     'Packed root tarball must include webapp/dist/index.html for npx dominds WebUI serving.',

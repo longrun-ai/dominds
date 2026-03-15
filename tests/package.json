@@ -90,6 +90,7 @@
     "apps-shell-no-main-source-bridge": "tsx apps-shell-no-main-source-bridge.ts",
     "apps-shell-package-contract": "tsx apps-shell-package-contract.ts",
     "apps-dominds-root-package-boundary": "tsx apps-dominds-root-package-boundary.ts",
+    "apps-public-publish-guard": "tsx apps-public-publish-guard.ts",
     "apps-dominds-root-packed-contract": "pnpm -C .. run build && tsx apps-dominds-root-packed-contract.ts",
     "apps-kernel-shell-packed-contract": "pnpm -C .. run build:workspace && tsx apps-kernel-shell-packed-contract.ts",
     "apps-cli-doctor-guidance": "tsx apps-cli-doctor-guidance.ts",

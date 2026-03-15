@@ -10,6 +10,8 @@ type PackageJsonShape = Readonly<{
   bin?: unknown;
   private?: unknown;
   files?: unknown;
+  scripts?: unknown;
+  dependencies?: unknown;
   publishConfig?: unknown;
 }>;
 
@@ -29,7 +31,15 @@ async function main(): Promise<void> {
   const packageJsonText = await fs.readFile(path.join(domindsRootAbs, 'package.json'), 'utf-8');
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
   const exportsField = expectRecord(packageJson.exports, 'dominds root package exports');
-  const publishConfig = expectRecord(packageJson.publishConfig, 'dominds root package publishConfig');
+  const scriptsField = expectRecord(packageJson.scripts, 'dominds root package scripts');
+  const dependenciesField = expectRecord(
+    packageJson.dependencies,
+    'dominds root package dependencies',
+  );
+  const publishConfig = expectRecord(
+    packageJson.publishConfig,
+    'dominds root package publishConfig',
+  );
 
   assert.equal(
     packageJson.name,
@@ -69,7 +79,31 @@ async function main(): Promise<void> {
   );
   const binField = expectRecord(packageJson.bin, 'dominds root package bin');
   assert.equal(binField['dominds'], 'dist/cli.js', 'Root package may keep the dominds CLI binary.');
-  assert.equal(publishConfig['access'], 'public', 'Root package publishConfig must keep public access.');
+  assert.equal(
+    dependenciesField['@longrun-ai/kernel'],
+    'workspace:*',
+    'Root package must keep the kernel workspace edge as the future package split direction.',
+  );
+  assert.equal(
+    dependenciesField['@longrun-ai/shell'],
+    'workspace:*',
+    'Root package must keep the shell workspace edge as the future package split direction.',
+  );
+  assert.equal(
+    dependenciesField['@longrun-ai/codex-auth'],
+    'workspace:*',
+    'Root package must keep codex-auth as a workspace-managed publishable dependency.',
+  );
+  assert.equal(
+    scriptsField['prepublishOnly'],
+    'node ./scripts/require-pnpm-publish.mjs && pnpm run build',
+    'Root package publish flow must go through the shared pnpm publish guard.',
+  );
+  assert.equal(
+    publishConfig['access'],
+    'public',
+    'Root package publishConfig must keep public access.',
+  );
   assert.deepEqual(
     packageJson.files,
     ['dist/**/*', 'webapp/dist/**/*', 'LICENSE', 'README.md', 'README.zh.md', 'package.json'],

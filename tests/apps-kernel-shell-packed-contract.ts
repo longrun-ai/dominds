@@ -49,7 +49,11 @@ function readTarballPackageJson(tarballAbs: string): PackageJsonShape {
 async function readPackageVersion(packageJsonAbs: string, label: string): Promise<string> {
   const raw = await fs.readFile(packageJsonAbs, 'utf-8');
   const packageJson = JSON.parse(raw) as PackageJsonShape;
-  assert.equal(typeof packageJson.version, 'string', `${label} package.json version must be a string.`);
+  assert.equal(
+    typeof packageJson.version,
+    'string',
+    `${label} package.json version must be a string.`,
+  );
   return packageJson.version;
 }
 
@@ -76,7 +80,10 @@ async function main(): Promise<void> {
   const shellEntries = listTarballEntries(shellTarballAbs);
   const kernelPackageJson = readTarballPackageJson(kernelTarballAbs);
   const shellPackageJson = readTarballPackageJson(shellTarballAbs);
-  const shellDependencies = expectRecord(shellPackageJson.dependencies, 'packed shell package dependencies');
+  const shellDependencies = expectRecord(
+    shellPackageJson.dependencies,
+    'packed shell package dependencies',
+  );
   const expectedKernelVersion = await readPackageVersion(
     path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
     'kernel',

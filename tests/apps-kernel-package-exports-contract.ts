@@ -42,7 +42,10 @@ async function main(): Promise<void> {
   );
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
   const exportsField = expectRecord(packageJson.exports, 'kernel package.json exports');
-  const publishConfig = expectRecord(packageJson.publishConfig, 'kernel package.json publishConfig');
+  const publishConfig = expectRecord(
+    packageJson.publishConfig,
+    'kernel package.json publishConfig',
+  );
 
   assert.equal(packageJson.name, '@longrun-ai/kernel', 'Kernel package name must be stable.');
   assert.equal(
