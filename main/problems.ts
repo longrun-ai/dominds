@@ -2,8 +2,8 @@ import type {
   ProblemsSnapshotMessage,
   WorkspaceProblem,
   WorkspaceProblemRecord,
-} from './shared/types/problems';
-import type { WebSocketMessage } from './shared/types/wire';
+} from '@longrun-ai/kernel/types/problems';
+import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 
 let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;

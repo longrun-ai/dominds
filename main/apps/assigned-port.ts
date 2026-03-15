@@ -1,6 +1,6 @@
 import net from 'node:net';
 
-import type { DomindsAppInstallJsonV1 } from './app-json';
+import type { DomindsAppInstallJsonV1 } from '@longrun-ai/kernel/app-json';
 import type { AppsResolutionEntry } from './resolution-file';
 
 const STABLE_PORT_RANGE_START = 43000;

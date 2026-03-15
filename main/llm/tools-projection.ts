@@ -1,4 +1,4 @@
-import type { WorkspaceProblem } from '../shared/types/problems';
+import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import type { FuncTool } from '../tool';
 
 export type ProviderToolProjectionResult = {

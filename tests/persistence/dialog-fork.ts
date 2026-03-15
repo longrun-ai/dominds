@@ -3,9 +3,6 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { DialogID } from '../../main/dialog';
-import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
-import { DialogPersistence } from '../../main/persistence';
 import type {
   DialogLatestFile,
   PendingSubdialogsReconciledRecord,
@@ -13,8 +10,11 @@ import type {
   RootDialogMetadataFile,
   SubdialogCreatedRecord,
   SubdialogMetadataFile,
-} from '../../main/shared/types/storage';
-import { toRootGenerationAnchor } from '../../main/shared/types/storage';
+} from '@longrun-ai/kernel/types/storage';
+import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
+import { DialogID } from '../../main/dialog';
+import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
+import { DialogPersistence } from '../../main/persistence';
 import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {

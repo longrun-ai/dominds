@@ -4,8 +4,6 @@ import os from 'os';
 import path from 'path';
 import YAML from 'yaml';
 
-import { LlmConfig, type ProviderConfig } from '../llm/client';
-import { createLogger } from '../log';
 import {
   type SetupFileKind,
   type SetupFileResponse,
@@ -18,7 +16,9 @@ import {
   type SetupWriteShellEnvResponse,
   type SetupWriteTeamYamlRequest,
   type SetupWriteTeamYamlResponse,
-} from '../shared/types/setup';
+} from '@longrun-ai/kernel/types/setup';
+import { LlmConfig, type ProviderConfig } from '../llm/client';
+import { createLogger } from '../log';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 
 const log = createLogger('setup-routes');

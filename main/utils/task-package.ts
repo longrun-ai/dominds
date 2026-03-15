@@ -11,9 +11,9 @@
  * These files are considered high-integrity state and MUST NOT be accessible via general file tools.
  */
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LanguageCode } from '../shared/types/language';
 
 export type TaskPackageSection = 'goals' | 'constraints' | 'progress';
 

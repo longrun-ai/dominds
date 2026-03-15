@@ -6,9 +6,9 @@
  * - `hasReadAccess`/`hasWriteAccess` to evaluate member permissions
  * - `getAccessDeniedMessage` to format denial responses
  */
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import path from 'path';
 import { log } from './log';
-import type { LanguageCode } from './shared/types/language';
 import { Team } from './team';
 
 function isEncapsulatedTaskPath(targetPath: string): boolean {

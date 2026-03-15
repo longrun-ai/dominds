@@ -1,4 +1,8 @@
-import type { ToolInfo, ToolsetInfo, ToolsRegistrySnapshot } from '../shared/types/tools-registry';
+import type {
+  ToolInfo,
+  ToolsetInfo,
+  ToolsRegistrySnapshot,
+} from '@longrun-ai/kernel/types/tools-registry';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool } from '../tool';
 import { getToolsetMeta, toolsetsRegistry } from './registry';

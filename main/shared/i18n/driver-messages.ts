@@ -1,4 +1,4 @@
-import { formatLanguageName, type LanguageCode } from '../types/language';
+import { formatLanguageName, type LanguageCode } from '@longrun-ai/kernel/types/language';
 
 export function formatSystemNoticePrefix(language: LanguageCode): string {
   return language === 'zh' ? '【系统提示】' : '[System notice]';

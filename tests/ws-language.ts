@@ -1,8 +1,8 @@
+import type { WebSocketMessage, WelcomeMessage } from '@longrun-ai/kernel/types/wire';
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
 import { WebSocket } from 'ws';
 import { setupWebSocketServer } from '../main/server/websocket-handler';
-import type { WebSocketMessage, WelcomeMessage } from '../main/shared/types/wire';
 
 function waitForMessage(ws: WebSocket): Promise<WebSocketMessage> {
   return new Promise((resolve, reject) => {

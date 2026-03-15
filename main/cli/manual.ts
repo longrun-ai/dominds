@@ -12,7 +12,7 @@
  *   dominds manual team_mgmt --topics index,tools
  */
 
-import type { LanguageCode } from '../shared/types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { FuncTool } from '../tool';
 import '../tools/builtins';
 import { renderToolsetManual } from '../tools/manual/render';

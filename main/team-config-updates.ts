@@ -12,8 +12,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import type { TeamConfigUpdatedMessage, WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { createLogger } from './log';
-import type { TeamConfigUpdatedMessage, WebSocketMessage } from './shared/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 
 const log = createLogger('team-config-updates');

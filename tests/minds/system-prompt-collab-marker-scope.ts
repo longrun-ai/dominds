@@ -1,6 +1,6 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import assert from 'node:assert/strict';
 import { buildSystemPrompt } from '../../main/minds/system-prompt';
-import type { LanguageCode } from '../../main/shared/types/language';
 import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,

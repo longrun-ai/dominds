@@ -1,6 +1,6 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LanguageCode } from '../../shared/types/language';
 import type { FuncTool } from '../../tool';
 import { getToolset, getToolsetMeta } from '../registry';
 import { buildSchemaToolsSection } from './schema';

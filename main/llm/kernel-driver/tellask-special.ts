@@ -1,5 +1,12 @@
 import { inspect } from 'util';
 
+import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
+import {
+  toCallingCourseNumber,
+  toRootGenerationAnchor,
+  type HumanQuestion,
+  type PendingSubdialogStateRecord,
+} from '@longrun-ai/kernel/types/storage';
 import type { AssignmentFromSup } from '../../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
@@ -15,13 +22,6 @@ import {
   formatRegisteredTellaskCallerUpdateNotice,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
-import {
-  toCallingCourseNumber,
-  toRootGenerationAnchor,
-  type HumanQuestion,
-  type PendingSubdialogStateRecord,
-} from '../../shared/types/storage';
 import { appendDistinctPerspectiveFbrBody } from '../../shared/utils/fbr';
 import { generateShortId } from '../../shared/utils/id';
 import {

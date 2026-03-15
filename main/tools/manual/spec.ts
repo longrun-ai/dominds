@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../../shared/types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 
 export const MANUAL_TOPICS = ['index', 'principles', 'tools', 'scenarios', 'errors'] as const;
 

@@ -5,18 +5,18 @@ import * as path from 'node:path';
 
 import YAML from 'yaml';
 
+import type {
+  DialogLatestFile,
+  PendingSubdialogStateRecord,
+  RootDialogMetadataFile,
+} from '@longrun-ai/kernel/types/storage';
+import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { DialogID, type DialogStore, RootDialog } from '../../main/dialog';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import {
   applyPrimingScriptsToDialog,
   saveDialogCourseAsIndividualPrimingScript,
 } from '../../main/priming';
-import type {
-  DialogLatestFile,
-  PendingSubdialogStateRecord,
-  RootDialogMetadataFile,
-} from '../../main/shared/types/storage';
-import { toRootGenerationAnchor } from '../../main/shared/types/storage';
 import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 import type { Reminder } from '../../main/tool';
 

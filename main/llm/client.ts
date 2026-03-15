@@ -3,113 +3,19 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
-import type {
-  FuncResultContentItem,
-  ProviderData,
-  ReasoningPayload,
-} from '../shared/types/storage';
-
-export type EnvironmentMsg = {
-  type: 'environment_msg';
-  role: 'user';
-  content: string;
-};
-
-export type TransientGuideMsg = {
-  type: 'transient_guide_msg';
-  role: 'assistant';
-  content: string;
-};
-
-export type PromptingMsg = {
-  type: 'prompting_msg';
-  role: 'user';
-  genseq: number;
-  msgId: string;
-  content: string;
-  grammar: 'markdown';
-};
-
-export type SayingMsg = {
-  type: 'saying_msg';
-  role: 'assistant';
-  genseq: number;
-  content: string;
-  provider_data?: ProviderData;
-};
-
-export type UiOnlyMarkdownMsg = {
-  type: 'ui_only_markdown_msg';
-  role: 'assistant';
-  genseq: number;
-  content: string;
-};
-
-export type ThinkingMsg = {
-  type: 'thinking_msg';
-  role: 'assistant';
-  genseq: number;
-  content: string;
-  reasoning?: ReasoningPayload;
-  provider_data?: ProviderData;
-};
-
-export type FuncCallMsg = {
-  type: 'func_call_msg';
-  role: 'assistant';
-  genseq: number;
-  id: string;
-  name: string;
-  arguments: string;
-  provider_data?: ProviderData;
-};
-
-export type FuncResultMsg = {
-  type: 'func_result_msg';
-  role: 'tool';
-  genseq: number;
-  id: string;
-  name: string;
-  content: string;
-  contentItems?: FuncResultContentItem[];
-};
-
-export type TellaskCallResultMsg = {
-  type: 'tellask_result_msg';
-  role: 'tool';
-  responderId: string; // id of tool only
-  mentionList?: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  content: string;
-  // Optional internal correlation key used for context projection.
-  // UI navigation still relies on response events.
-  callId?: string;
-};
-
-export type TellaskCarryoverResultMsg = {
-  type: 'tellask_carryover_result_msg';
-  role: 'user';
-  content: string;
-  originCourse: number;
-  responderId: string;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  callId: string;
-};
-
-export type ChatMessage =
-  | EnvironmentMsg
-  | TransientGuideMsg
-  | PromptingMsg
-  | SayingMsg
-  | UiOnlyMarkdownMsg
-  | ThinkingMsg
-  | FuncCallMsg
-  | FuncResultMsg
-  | TellaskCallResultMsg
-  | TellaskCarryoverResultMsg;
+export type {
+  ChatMessage,
+  EnvironmentMsg,
+  FuncCallMsg,
+  FuncResultMsg,
+  PromptingMsg,
+  SayingMsg,
+  TellaskCallResultMsg,
+  TellaskCarryoverResultMsg,
+  ThinkingMsg,
+  TransientGuideMsg,
+  UiOnlyMarkdownMsg,
+} from '@longrun-ai/kernel/types/chat-message';
 
 export interface ModelInfo {
   name?: string; // Optional, defaults to model key if not specified

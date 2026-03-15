@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import {
   decideKernelDriverContextHealth,
   KERNEL_DRIVER_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
@@ -7,7 +8,6 @@ import {
   resolveCautionRemediationCadenceGenerations,
   resolveCriticalCountdownRemaining,
 } from '../../main/llm/kernel-driver/context-health';
-import type { ContextHealthSnapshot } from '../../main/shared/types/context-health';
 
 const CAUTION_SNAPSHOT: ContextHealthSnapshot = {
   kind: 'available',

@@ -15,6 +15,12 @@ export type DialogRunControlSpec = Readonly<{
   }>;
 }>;
 
+export type DialogSubdialogReplyTarget = Readonly<{
+  ownerDialogId: string;
+  callType: 'A' | 'B' | 'C';
+  callId: string;
+}>;
+
 export type DialogPrompt = Readonly<{
   content: string;
   msgId: string;
@@ -24,12 +30,6 @@ export type DialogPrompt = Readonly<{
   q4hAnswerCallIds?: string[];
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;
-}>;
-
-export type DialogSubdialogReplyTarget = Readonly<{
-  ownerDialogId: string;
-  callType: 'A' | 'B' | 'C';
-  callId: string;
 }>;
 
 export type DriveIntent =

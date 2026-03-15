@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../shared/types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 
 export function defaultPersonaText(language: LanguageCode): string {
   return language === 'zh' ? '你是一个乐于助人的助手。' : 'You are a helpful assistant.';

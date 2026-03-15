@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { DomindsAppInstallJsonV1 } from '../../main/apps/app-json';
+import type { DomindsAppInstallJsonV1 } from '@longrun-ai/kernel/app-json';
 import { runDomindsAppJsonViaLocalPackage } from '../../main/apps/run-app-json';
 
 function isRecord(value: unknown): value is Record<string, unknown> {

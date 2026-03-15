@@ -1,9 +1,9 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { DialogPersistence } from '../persistence';
 import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 

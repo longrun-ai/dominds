@@ -86,6 +86,7 @@
     "apps-public-import-boundary-guardrail": "tsx apps-public-import-boundary-guardrail.ts",
     "apps-tests-no-dominds-root-imports": "tsx apps-tests-no-dominds-root-imports.ts",
     "apps-kernel-no-main-source-bridge": "tsx apps-kernel-no-main-source-bridge.ts",
+    "apps-main-kernel-phase1-contract": "tsx apps-main-kernel-phase1-contract.ts",
     "apps-kernel-package-exports-contract": "tsx apps-kernel-package-exports-contract.ts",
     "apps-shell-no-main-source-bridge": "tsx apps-shell-no-main-source-bridge.ts",
     "apps-shell-package-contract": "tsx apps-shell-package-contract.ts",

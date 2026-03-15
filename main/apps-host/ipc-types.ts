@@ -5,9 +5,9 @@ import type {
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
   DomindsAppReminderState,
-} from '../apps/app-json';
+} from '@longrun-ai/kernel/app-json';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { ChatMessage } from '../llm/client';
-import type { LanguageCode } from '../shared/types/language';
 import type { ToolArguments, ToolCallOutput } from '../tool';
 
 export type AppsHostKernelInitMessage = Readonly<{

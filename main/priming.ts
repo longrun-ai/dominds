@@ -1,14 +1,5 @@
-import type { Dirent } from 'fs';
-import fs from 'fs/promises';
-import path from 'path';
-import YAML from 'yaml';
-import type { Dialog } from './dialog';
-import { DialogID } from './dialog';
-import type { ChatMessage } from './llm/client';
-import { DialogPersistence } from './persistence';
-import { parseMarkdownFrontmatter } from './shared/markdown-frontmatter';
-import type { LanguageCode } from './shared/types/language';
-import type { PrimingScriptSummary } from './shared/types/priming';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { PrimingScriptSummary } from '@longrun-ai/kernel/types/priming';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
@@ -33,7 +24,7 @@ import type {
   UiOnlyMarkdownRecord,
   WebSearchCallActionRecord,
   WebSearchCallRecord,
-} from './shared/types/storage';
+} from '@longrun-ai/kernel/types/storage';
 import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
@@ -44,8 +35,17 @@ import {
   toCallingGenerationSeqNumber,
   toDialogCourseNumber,
   toRootGenerationAnchor,
-} from './shared/types/storage';
-import type { DialogPrimingInput, DialogStatusKind } from './shared/types/wire';
+} from '@longrun-ai/kernel/types/storage';
+import type { DialogPrimingInput, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
+import type { Dirent } from 'fs';
+import fs from 'fs/promises';
+import path from 'path';
+import YAML from 'yaml';
+import type { Dialog } from './dialog';
+import { DialogID } from './dialog';
+import type { ChatMessage } from './llm/client';
+import { DialogPersistence } from './persistence';
+import { parseMarkdownFrontmatter } from './shared/markdown-frontmatter';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';

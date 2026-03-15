@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 
+import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { EndOfStream } from '../../main/shared/evt';
 import { setWorkLanguage } from '../../main/shared/runtime-language';
-import type { TypedDialogEvent } from '../../main/shared/types/dialog';
 
 import {
   createRootDialog,

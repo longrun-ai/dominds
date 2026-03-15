@@ -1,4 +1,7 @@
-import type { ContextHealthLevel, ContextHealthSnapshot } from '../../shared/types/context-health';
+import type {
+  ContextHealthLevel,
+  ContextHealthSnapshot,
+} from '@longrun-ai/kernel/types/context-health';
 
 export type KernelDriverContextHealthDecision =
   | Readonly<{ kind: 'proceed' }>

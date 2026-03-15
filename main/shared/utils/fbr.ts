@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 
 type FbrPerspectiveInput = Readonly<{
   body: string;

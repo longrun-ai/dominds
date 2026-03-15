@@ -1,15 +1,15 @@
-import type { AppsHostClient, EnabledAppForHost } from '../apps-host/client';
 import type {
   DomindsAppReminderApplyRequest,
   DomindsAppReminderOwnerJson,
   DomindsAppReminderState,
-} from '../apps/app-json';
+} from '@longrun-ai/kernel/app-json';
+import type { FullRemindersEvent, ReminderContent } from '@longrun-ai/kernel/types/dialog';
+import type { AppsHostClient, EnabledAppForHost } from '../apps-host/client';
 import type { Dialog } from '../dialog';
 import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
 import { formatReminderItemGuide } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { FullRemindersEvent, ReminderContent } from '../shared/types/dialog';
 import {
   computeReminderNoByIndex,
   reminderEchoBackEnabled,

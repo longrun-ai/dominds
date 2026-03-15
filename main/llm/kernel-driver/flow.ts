@@ -1,3 +1,4 @@
+import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import { applyRegisteredAppDialogRunControls } from '../../apps/run-control';
 import { DialogID, SubDialog } from '../../dialog';
 import {
@@ -16,7 +17,6 @@ import {
   formatNewCourseStartPrompt,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { DialogDisplayState } from '../../shared/types/display-state';
 import { generateShortId } from '../../shared/utils/id';
 import { LlmConfig } from '../client';
 import {

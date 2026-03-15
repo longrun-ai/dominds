@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 
+import type { TellaskResponseRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/subdialog';
 import { DialogPersistence } from '../../main/persistence';
 import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
-import type { TellaskResponseRecord } from '../../main/shared/types/storage';
 import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,

@@ -6,11 +6,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setQ4HBroadcaster } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DiskFileDialogStore } from '../../main/persistence';
-import type { TypedDialogEvent } from '../../main/shared/types/dialog';
 
 async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });

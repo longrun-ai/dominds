@@ -12,8 +12,8 @@
  * - The same transfer payload should be used for both model context and UI rendering.
  */
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatRegisteredTellaskCalleeUpdateNotice } from '../i18n/driver-messages';
-import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
 export type InterDialogCallContent = {

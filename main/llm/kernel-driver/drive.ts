@@ -1,3 +1,12 @@
+import type { ContextHealthSnapshot, LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+} from '@longrun-ai/kernel/types/display-state';
+import {
+  toRootGenerationAnchor,
+  type TellaskCallAnchorRecord,
+} from '@longrun-ai/kernel/types/storage';
 import { Dialog, RootDialog, SubDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
@@ -22,12 +31,6 @@ import {
   formatReminderItemGuide,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
-import type {
-  DialogDisplayState,
-  DialogInterruptionReason,
-} from '../../shared/types/display-state';
-import { toRootGenerationAnchor, type TellaskCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { Team } from '../../team';

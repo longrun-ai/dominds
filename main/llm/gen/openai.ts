@@ -18,11 +18,11 @@ import type {
   Tool,
 } from 'openai/resources/responses/responses';
 
+import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { LlmUsageStats } from '../../shared/types/context-health';
-import type { ReasoningPayload } from '../../shared/types/storage';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';

@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { HumanQuestion } from '@longrun-ai/kernel/types/storage';
 import { Dialog } from '../../dialog';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
@@ -9,9 +12,6 @@ import { removeProblem, upsertProblem } from '../../problems';
 import { DILIGENCE_FALLBACK_TEXT } from '../../shared/diligence';
 import { formatQ4HDiligencePushBudgetExhausted } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
-import type { LanguageCode } from '../../shared/types/language';
-import type { HumanQuestion } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { FuncTool, ToolArguments } from '../../tool';

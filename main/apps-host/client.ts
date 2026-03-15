@@ -5,24 +5,24 @@ import { createRequire } from 'module';
 import path from 'path';
 
 import type {
-  DomindsAppDialogReminderRequestBatch,
-  DomindsAppHostReminderUpdateResult,
-  DomindsAppHostToolResult,
-  DomindsAppInstallJsonV1,
-  DomindsAppReminderApplyRequest,
-  DomindsAppReminderApplyResult,
-} from '../apps/app-json';
-import type { ChatMessage } from '../llm/client';
-import { createLogger } from '../log';
-import type { ToolArguments } from '../tool';
-import type {
   DomindsAppDynamicToolsetsContext,
   DomindsAppReminderOwnerApplyContext,
   DomindsAppReminderOwnerRenderContext,
   DomindsAppReminderOwnerUpdateContext,
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
-} from './app-host-contract';
+} from '@longrun-ai/kernel/app-host-contract';
+import type {
+  DomindsAppDialogReminderRequestBatch,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppHostToolResult,
+  DomindsAppInstallJsonV1,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+} from '@longrun-ai/kernel/app-json';
+import type { ChatMessage } from '../llm/client';
+import { createLogger } from '../log';
+import type { ToolArguments } from '../tool';
 import type {
   AppsHostKernelDynamicToolsetsMessage,
   AppsHostKernelInitMessage,

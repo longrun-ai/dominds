@@ -26,6 +26,8 @@
  * humans should better have clickable UI widgets to draft reminder manips
  */
 
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog } from '../dialog';
@@ -33,8 +35,6 @@ import { SubDialog } from '../dialog';
 import { formatNewCourseStartPrompt } from '../shared/i18n/driver-messages';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { ContextHealthSnapshot } from '../shared/types/context-health';
-import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import {
   reminderIsNumbered,

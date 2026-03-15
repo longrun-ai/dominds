@@ -2,8 +2,8 @@ import type { Dirent } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { parseMarkdownFrontmatter } from '../shared/markdown-frontmatter';
-import type { LanguageCode } from '../shared/types/language';
 
 export type WorkspaceSkillScope = 'team_shared' | 'individual';
 

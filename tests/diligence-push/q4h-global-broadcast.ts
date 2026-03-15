@@ -6,10 +6,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { postDialogEvent, postDialogEventById, setQ4HBroadcaster } from '../../main/evt-registry';
 import { DiskFileDialogStore } from '../../main/persistence';
-import type { TypedDialogEvent } from '../../main/shared/types/dialog';
 
 async function main(): Promise<void> {
   const originalCwd = process.cwd();

@@ -1,7 +1,13 @@
-import type { DomindsAppFrontendJson, DomindsAppHostReminderUpdateResult, DomindsAppHostToolHandler, DomindsAppReminderApplyRequest, DomindsAppReminderApplyResult, DomindsAppReminderState } from './app-json';
+import type {
+  DomindsAppFrontendJson,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppHostToolHandler,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+  DomindsAppReminderState,
+} from './app-json';
+import type { ChatMessage } from './types/chat-message';
 import type { LanguageCode } from './types/language';
-
-export type ChatMessage = Readonly<Record<string, unknown>>;
 
 export type DomindsAppRunControlContext = Readonly<{
   dialog: Readonly<{
@@ -26,7 +32,9 @@ export type DomindsAppRunControlContext = Readonly<{
   }>;
 }>;
 
-export type DomindsAppRunControlResult = Readonly<{ kind: 'continue' } | { kind: 'reject'; errorText: string }>;
+export type DomindsAppRunControlResult = Readonly<
+  { kind: 'continue' } | { kind: 'reject'; errorText: string }
+>;
 export type DomindsAppRunControlHandler = (
   ctx: DomindsAppRunControlContext,
 ) => Promise<DomindsAppRunControlResult>;

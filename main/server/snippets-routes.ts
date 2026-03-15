@@ -1,8 +1,8 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 import { createLogger } from '../log';
-import type { LanguageCode } from '../shared/types/language';
 
 type SnippetTemplateSource = 'builtin' | 'rtws';
 

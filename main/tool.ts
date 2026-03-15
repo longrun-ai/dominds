@@ -7,25 +7,34 @@
  * NOTE: "tellask" is reserved for teammate tellasks / dialog orchestration and is
  * not a tool type.
  */
+import type {
+  JsonArray as KernelJsonArray,
+  JsonObject as KernelJsonObject,
+  JsonPrimitive as KernelJsonPrimitive,
+  JsonSchema as KernelJsonSchema,
+  JsonValue as KernelJsonValue,
+  ReminderUpdateResult as KernelReminderUpdateResult,
+  ToolArguments as KernelToolArguments,
+  ToolCallOutput as KernelToolCallOutput,
+} from '@longrun-ai/kernel/app-json';
+import type { I18nText } from '@longrun-ai/kernel/types/i18n';
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
-import type { I18nText } from './shared/types/i18n';
-import type { FuncResultContentItem } from './shared/types/storage';
 import { Team } from './team';
 
-export type JsonPrimitive = string | number | boolean | null;
+export type JsonPrimitive = KernelJsonPrimitive;
 
-export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+export type JsonValue = KernelJsonValue;
 
-export type JsonObject = { [key: string]: JsonValue };
+export type JsonObject = KernelJsonObject;
 
-export type JsonArray = JsonValue[];
+export type JsonArray = KernelJsonArray;
 
-export type ToolArguments = JsonObject;
+export type ToolArguments = KernelToolArguments;
 
 // Full JSON Schema (passthrough) shape used by MCP tools and supported LLM providers.
 // Dominds does not attempt to statically model every JSON Schema keyword at the type level.
-export type JsonSchema = Record<string, unknown>;
+export type JsonSchema = KernelJsonSchema;
 
 export interface FuncTool {
   readonly type: 'func';
@@ -44,12 +53,7 @@ export interface FuncTool {
 
 export type Tool = FuncTool;
 
-export type ToolCallOutput =
-  | string
-  | {
-      content: string;
-      contentItems?: FuncResultContentItem[];
-    };
+export type ToolCallOutput = KernelToolCallOutput;
 
 export interface ReminderOptions {
   readonly echoback?: boolean;
@@ -90,11 +94,7 @@ export function computeReminderNoByIndex(reminders: readonly Reminder[]): Map<nu
 
 export type ReminderTreatment = 'drop' | 'keep' | 'update';
 
-export interface ReminderUpdateResult {
-  treatment: ReminderTreatment;
-  updatedContent?: string; // Required when treatment is 'update'
-  updatedMeta?: JsonValue; // Optional when treatment is 'update'
-}
+export type ReminderUpdateResult = KernelReminderUpdateResult;
 
 export interface ReminderOwner {
   readonly name: string;

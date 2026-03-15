@@ -3,7 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { promisify } from 'util';
 
-import { parseDomindsAppInstallJson, type DomindsAppInstallJsonV1 } from './app-json';
+import {
+  parseDomindsAppInstallJson,
+  type DomindsAppInstallJsonV1,
+} from '@longrun-ai/kernel/app-json';
 
 const execFileAsync = promisify(execFile);
 

@@ -4,6 +4,7 @@
  * Text file tooling for reading and modifying rtws (runtime workspace) files.
  * Provides `read_file`, `overwrite_entire_file`, `prepare_*`, and `apply_file_modification`.
  */
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import crypto from 'crypto';
 import fsSync from 'fs';
 import fs from 'fs/promises';
@@ -12,7 +13,6 @@ import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access
 import type { ChatMessage } from '../llm/client';
 import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { LanguageCode } from '../shared/types/language';
 import type { FuncTool, ToolArguments } from '../tool';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];

@@ -13,6 +13,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/client';
 import { LlmConfig } from '../llm/client';
@@ -25,8 +27,6 @@ import { validateAllPrimingScriptsInRtws } from '../priming';
 import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
 import type { TeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
 import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
-import type { LanguageCode } from '../shared/types/language';
-import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';

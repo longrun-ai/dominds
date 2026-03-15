@@ -1,7 +1,7 @@
 import type {
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
-} from '../apps-host/app-host-contract';
+} from '@longrun-ai/kernel/app-host-contract';
 import { createLogger } from '../log';
 import { getAppDialogRunControlMeta, listAppDialogRunControls } from './dialog-run-controls';
 import { waitForAppsHostClient } from './runtime';

@@ -1,3 +1,5 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { PendingSubdialogStateRecord } from '@longrun-ai/kernel/types/storage';
 import type { Dialog, RootDialog, SubDialog } from './dialog';
 import { DialogID } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
@@ -7,8 +9,6 @@ import { log } from './log';
 import { DialogPersistence } from './persistence';
 import { formatSystemNoticePrefix } from './shared/i18n/driver-messages';
 import { getWorkLanguage } from './shared/runtime-language';
-import type { LanguageCode } from './shared/types/language';
-import type { PendingSubdialogStateRecord } from './shared/types/storage';
 import {
   formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,

@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../../shared/types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { FuncTool } from '../../tool';
 
 type JsonObject = Record<string, unknown>;

@@ -1,9 +1,9 @@
-import type { Dialog, DialogID } from '../../dialog';
 import type {
   DialogDisplayState,
   DialogInterruptionReason,
-} from '../../shared/types/display-state';
-import type { LanguageCode } from '../../shared/types/language';
+} from '@longrun-ai/kernel/types/display-state';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { Dialog, DialogID } from '../../dialog';
 
 export type KernelDriverRunControl = Readonly<{
   controlId: string;

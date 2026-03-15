@@ -1,6 +1,6 @@
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { Dialog, SubDialog } from '../../dialog';
 import { buildNoToolsNotice } from '../../minds/system-prompt-parts';
-import type { LanguageCode } from '../../shared/types/language';
 import type { Team } from '../../team';
 import type { Tool } from '../../tool';
 import type { ChatMessage } from '../client';

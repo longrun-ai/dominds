@@ -3,10 +3,10 @@
  *
  * Global registries for tools and toolsets with helpers and built-in initialization.
  */
+import type { I18nText } from '@longrun-ai/kernel/types/i18n';
+import type { ToolsetSource } from '@longrun-ai/kernel/types/tools-registry';
 import fsSync from 'fs';
 import path from 'path';
-import type { I18nText } from '../shared/types/i18n';
-import type { ToolsetSource } from '../shared/types/tools-registry';
 import type { ReminderOwner, Tool } from '../tool';
 import type { ManualSpec } from './manual/spec';
 

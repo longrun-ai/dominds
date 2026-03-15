@@ -1,9 +1,3 @@
-import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
-import { globalDialogRegistry } from '../../dialog-global-registry';
-import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
-import { log } from '../../log';
-import { DialogPersistence } from '../../persistence';
-import { getWorkLanguage } from '../../shared/runtime-language';
 import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
@@ -13,7 +7,13 @@ import {
   toRootGenerationAnchor,
   type PendingSubdialogStateRecord,
   type TellaskCallAnchorRecord,
-} from '../../shared/types/storage';
+} from '@longrun-ai/kernel/types/storage';
+import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
+import { globalDialogRegistry } from '../../dialog-global-registry';
+import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
+import { log } from '../../log';
+import { DialogPersistence } from '../../persistence';
+import { getWorkLanguage } from '../../shared/runtime-language';
 import {
   formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,

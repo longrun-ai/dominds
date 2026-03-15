@@ -1,4 +1,4 @@
-import type { LanguageCode } from './types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 
 export const DEFAULT_DILIGENCE_PUSH_MAX = 3;
 

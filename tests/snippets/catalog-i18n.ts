@@ -1,6 +1,6 @@
+import type { SnippetTemplateGroup } from '@longrun-ai/kernel/types/snippets';
 import assert from 'node:assert/strict';
 import { handleGetSnippetCatalog } from '../../main/server/snippets-routes';
-import type { SnippetTemplateGroup } from '../../main/shared/types/snippets';
 
 function requireStartingTemplatePath(groups: ReadonlyArray<SnippetTemplateGroup>): string {
   const daily = groups.find((g) => g.key === 'daily');

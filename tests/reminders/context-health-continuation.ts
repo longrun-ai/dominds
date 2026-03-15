@@ -1,8 +1,8 @@
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import assert from 'node:assert/strict';
 import type { DialogStore } from '../../main/dialog';
 import { RootDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/shared/runtime-language';
-import type { ContextHealthSnapshot } from '../../main/shared/types/context-health';
 import type { Team } from '../../main/team';
 import { addReminderTool, updateReminderTool } from '../../main/tools/ctrl';
 

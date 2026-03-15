@@ -12,6 +12,31 @@
  * - `RootDialog` - Root dialog with subdialog registry
  * - `SubDialog` - Subdialog with root dialog reference and dynamic supdialog resolution
  */
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
+import type {
+  DialogEvent,
+  FullRemindersEvent,
+  ReminderContent,
+  TellaskResponseEvent,
+  WebSearchCallAction,
+} from '@longrun-ai/kernel/types/dialog';
+import type {
+  DialogPrompt,
+  DialogRunControlSpec,
+  DialogSubdialogReplyTarget,
+  DriveIntent,
+} from '@longrun-ai/kernel/types/drive-intent';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type {
+  CalleeCourseNumber,
+  CalleeGenerationSeqNumber,
+  CallingCourseNumber,
+  DialogMetadataFile,
+  HumanQuestion,
+  ProviderData,
+  ReasoningPayload,
+  ToolArguments as StoredToolArguments,
+} from '@longrun-ai/kernel/types/storage';
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
@@ -22,31 +47,6 @@ import {
   formatUserLanguagePreferenceChangedNotice,
 } from './shared/i18n/driver-messages';
 import { getWorkLanguage } from './shared/runtime-language';
-import type { ContextHealthSnapshot } from './shared/types/context-health';
-import type {
-  DialogEvent,
-  FullRemindersEvent,
-  ReminderContent,
-  TellaskResponseEvent,
-  WebSearchCallAction,
-} from './shared/types/dialog';
-import type {
-  DialogPrompt,
-  DialogRunControlSpec,
-  DialogSubdialogReplyTarget,
-  DriveIntent,
-} from './shared/types/drive-intent';
-import type { LanguageCode } from './shared/types/language';
-import type {
-  CalleeCourseNumber,
-  CalleeGenerationSeqNumber,
-  CallingCourseNumber,
-  DialogMetadataFile,
-  HumanQuestion,
-  ProviderData,
-  ReasoningPayload,
-  ToolArguments as StoredToolArguments,
-} from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
 import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';

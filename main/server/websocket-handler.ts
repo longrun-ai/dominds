@@ -3,6 +3,42 @@
  *
  * Common WebSocket handling functionality for dialog communication
  */
+import type {
+  ClearResolvedProblemsRequest,
+  CreateDialogErrorCode,
+  CreateDialogRequest,
+  CreateDialogResult,
+  DeclareSubdialogDeadRequest,
+  DialogReadyMessage,
+  DialogStatusKind,
+  DiligencePushUpdatedMessage,
+  DisplayCourseRequest,
+  DisplayDialogRequest,
+  DisplayRemindersRequest,
+  DriveDialogByUserAnswer,
+  DriveDialogRequest,
+  EmergencyStopRequest,
+  GetProblemsRequest,
+  GetQ4HStateRequest,
+  InterruptDialogRequest,
+  Q4HStateResponse,
+  RefillDiligencePushBudgetRequest,
+  ResumeAllRequest,
+  ResumeDialogRequest,
+  RunControlRefreshMessage,
+  SetDiligencePushRequest,
+  WebSocketMessage,
+} from '@longrun-ai/kernel/types';
+import type {
+  DialogEvent,
+  Q4HAnsweredEvent,
+  TypedDialogEvent,
+} from '@longrun-ai/kernel/types/dialog';
+import {
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+} from '@longrun-ai/kernel/types/language';
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
@@ -43,38 +79,6 @@ import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type {
-  ClearResolvedProblemsRequest,
-  CreateDialogErrorCode,
-  CreateDialogRequest,
-  CreateDialogResult,
-  DeclareSubdialogDeadRequest,
-  DialogReadyMessage,
-  DialogStatusKind,
-  DiligencePushUpdatedMessage,
-  DisplayCourseRequest,
-  DisplayDialogRequest,
-  DisplayRemindersRequest,
-  DriveDialogByUserAnswer,
-  DriveDialogRequest,
-  EmergencyStopRequest,
-  GetProblemsRequest,
-  GetQ4HStateRequest,
-  InterruptDialogRequest,
-  Q4HStateResponse,
-  RefillDiligencePushBudgetRequest,
-  ResumeAllRequest,
-  ResumeDialogRequest,
-  RunControlRefreshMessage,
-  SetDiligencePushRequest,
-  WebSocketMessage,
-} from '../shared/types';
-import type { DialogEvent, Q4HAnsweredEvent, TypedDialogEvent } from '../shared/types/dialog';
-import {
-  normalizeLanguageCode,
-  supportedLanguageCodes,
-  type LanguageCode,
-} from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import {

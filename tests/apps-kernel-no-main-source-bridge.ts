@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const KERNEL_FORBIDDEN_SNIPPETS = [
   'main/shared/types',
+  'main/apps/app-json',
+  'main/apps-host/app-host-contract',
   'main/apps-host',
   'main/apps',
   '../../../main/',

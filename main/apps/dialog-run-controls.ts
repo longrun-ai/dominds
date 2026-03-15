@@ -1,4 +1,4 @@
-import type { I18nText } from '../shared/types/i18n';
+import type { I18nText } from '@longrun-ai/kernel/types/i18n';
 
 export type AppDialogRunControlMeta = Readonly<{
   appId: string;

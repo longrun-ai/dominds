@@ -5,18 +5,7 @@
  * Provides file-based storage with append-only events and atomic operations.
  */
 
-import * as fs from 'fs';
-import { randomUUID } from 'node:crypto';
-import * as path from 'path';
-import { WebSocket } from 'ws';
-import * as yaml from 'yaml';
-import type { PendingSubdialog } from './dialog';
-import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
-import { postDialogEvent, postDialogEventById } from './evt-registry';
-import { ChatMessage, FuncResultMsg } from './llm/client';
-import { log } from './log';
-import { AsyncFifoMutex } from './shared/async-fifo-mutex';
-import type { ContextHealthSnapshot } from './shared/types/context-health';
+import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import type {
   ContextHealthEvent,
   CourseEvent,
@@ -40,8 +29,8 @@ import type {
   ThinkingStartEvent,
   WebSearchCallAction,
   WebSearchCallEvent,
-} from './shared/types/dialog';
-import type { LanguageCode } from './shared/types/language';
+} from '@longrun-ai/kernel/types/dialog';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
@@ -80,12 +69,23 @@ import type {
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
-} from './shared/types/storage';
+} from '@longrun-ai/kernel/types/storage';
 import {
   toCallingGenerationSeqNumber,
   toDialogCourseNumber,
   toRootGenerationAnchor,
-} from './shared/types/storage';
+} from '@longrun-ai/kernel/types/storage';
+import * as fs from 'fs';
+import { randomUUID } from 'node:crypto';
+import * as path from 'path';
+import { WebSocket } from 'ws';
+import * as yaml from 'yaml';
+import type { PendingSubdialog } from './dialog';
+import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
+import { postDialogEvent, postDialogEventById } from './evt-registry';
+import { ChatMessage, FuncResultMsg } from './llm/client';
+import { log } from './log';
+import { AsyncFifoMutex } from './shared/async-fifo-mutex';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
@@ -437,7 +437,7 @@ export interface Questions4Human {
   updatedAt: string;
 }
 
-// Remove old type definitions - now using shared/types/storage.ts
+// Remove old type definitions - now using kernel/types/storage.ts
 import { generateDialogID } from './utils/id';
 
 const TELLASK_SPECIAL_FUNCTION_NAMES = new Set([

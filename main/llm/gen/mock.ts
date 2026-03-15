@@ -58,8 +58,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import yaml from 'yaml';
 
+import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import { log } from '../../log';
-import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';

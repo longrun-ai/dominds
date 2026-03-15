@@ -5,13 +5,13 @@
  * Provides shell_cmd and stop_daemon FuncTools with advanced process management.
  */
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type {

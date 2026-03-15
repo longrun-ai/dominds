@@ -15,10 +15,10 @@ import type {
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
 
+import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';

@@ -11,19 +11,19 @@ import type {
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
   DomindsAppReminderState,
-} from '../apps/app-json';
+} from '@longrun-ai/kernel/app-json';
 import type { ChatMessage } from '../llm/client';
 import { createLogger } from '../log';
 import type { JsonValue } from '../tool';
 
-import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import type {
   CreateDomindsAppFn,
   DomindsAppHostInstance,
   DomindsAppHostStartResult,
   DomindsAppReminderOwnerHandler,
   DomindsAppRunControlResult,
-} from './app-host-contract';
+} from '@longrun-ai/kernel/app-host-contract';
+import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import {
   parseAppsHostMessageFromKernel,
   type AppsHostKernelInitMessage,

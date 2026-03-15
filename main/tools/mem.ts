@@ -4,11 +4,11 @@
  * Memory management tools for personal and shared memory under `.minds/memory`.
  * Add, drop, replace, clear operations with strict path validation.
  */
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import fs from 'fs';
 import path from 'path';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
 

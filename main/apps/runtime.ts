@@ -2,11 +2,15 @@ import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 
+import type {
+  DomindsAppDialogReminderRequestBatch,
+  DomindsAppDialogTargetRef,
+} from '@longrun-ai/kernel/app-json';
+import type { I18nText } from '@longrun-ai/kernel/types/i18n';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import { createLogger } from '../log';
-import type { I18nText } from '../shared/types/i18n';
 import type { Tool } from '../tool';
 import {
   applyAppReminderRequests,
@@ -22,7 +26,6 @@ import {
   unregisterTool,
   unregisterToolset,
 } from '../tools/registry';
-import type { DomindsAppDialogReminderRequestBatch, DomindsAppDialogTargetRef } from './app-json';
 
 import { startAppsHost, type AppsHostClient, type EnabledAppForHost } from '../apps-host/client';
 import { registerAppDialogRunControl, unregisterAppDialogRunControl } from './dialog-run-controls';

@@ -1,3 +1,5 @@
+import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import * as fs from 'fs';
 import { randomUUID } from 'node:crypto';
 import * as path from 'path';
@@ -6,8 +8,6 @@ import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { WorkspaceProblem } from '../shared/types/problems';
-import type { FuncResultContentItem } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool, ToolArguments, ToolCallOutput } from '../tool';
 import {

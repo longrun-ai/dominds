@@ -1,9 +1,9 @@
-import { normalizePrimingConfig } from '../priming';
 import type {
   CreateDialogErrorCode,
   CreateDialogInput,
   CreateDialogResult,
-} from '../shared/types/wire';
+} from '@longrun-ai/kernel/types/wire';
+import { normalizePrimingConfig } from '../priming';
 import { isTaskPackagePath } from '../utils/task-package';
 
 export type CreateDialogParseFailure = {

@@ -1,5 +1,5 @@
-import type { LanguageCode } from './types/language';
-import { normalizeLanguageCode } from './types/language';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 
 let workingLanguage: LanguageCode = 'en';
 

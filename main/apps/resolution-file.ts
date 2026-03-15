@@ -3,9 +3,10 @@ import path from 'node:path';
 
 import YAML from 'yaml';
 
-import { parseDomindsAppInstallJson } from './app-json';
-
-import type { DomindsAppInstallJsonV1 } from './app-json';
+import {
+  parseDomindsAppInstallJson,
+  type DomindsAppInstallJsonV1,
+} from '@longrun-ai/kernel/app-json';
 
 export type AppsResolutionSchemaVersion = 1;
 

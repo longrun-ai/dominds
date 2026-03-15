@@ -1,5 +1,5 @@
-import type { LlmUsageStats } from '../shared/types/context-health';
-import type { ReasoningPayload } from '../shared/types/storage';
+import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { Team } from '../team';
 import { FuncTool } from '../tool';
 import { ChatMessage, ProviderConfig } from './client';

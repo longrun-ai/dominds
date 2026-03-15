@@ -1,5 +1,5 @@
+import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { Dialog } from '../../dialog';
-import type { ReasoningPayload } from '../../shared/types/storage';
 
 export async function emitThinkingEvents(
   dlg: Dialog,

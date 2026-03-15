@@ -1,6 +1,6 @@
+import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 import assert from 'node:assert/strict';
 import { detectOsDefaultWorkLanguage } from '../main/shared/runtime-language';
-import { normalizeLanguageCode } from '../main/shared/types/language';
 import { formatTeammateResponseContent } from '../main/shared/utils/inter-dialog-format';
 
 function run(): void {
