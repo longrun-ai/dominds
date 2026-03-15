@@ -87,6 +87,12 @@ type NewCourseHook = (args: {
   runControl?: DialogRunControlSpec;
 }) => Promise<NewCourseHookResult>;
 
+export type DialogSuspensionStatusOptions = Readonly<{
+  // Some foreground rounds legitimately continue after ordinary tool use even while tellask-
+  // created subdialogs are still pending. Callers must opt into that allowance explicitly.
+  allowPendingSubdialogs?: boolean;
+}>;
+
 export class DialogID {
   public readonly selfId: string;
   public readonly rootId: string;
@@ -475,26 +481,28 @@ export abstract class Dialog {
   /**
    * Check if dialog can be driven (not suspended for Q4H or subdialogs).
    */
-  public async canDrive(): Promise<boolean> {
-    const hasQ4H = await this.hasPendingQ4H();
-    const hasSubdialogs = await this.hasPendingSubdialogs();
-    return !hasQ4H && !hasSubdialogs;
+  public async canDrive(options?: DialogSuspensionStatusOptions): Promise<boolean> {
+    const suspension = await this.getSuspensionStatus(options);
+    return suspension.canDrive;
   }
 
   /**
    * Get suspension status for logging/debugging.
    */
-  public async getSuspensionStatus(): Promise<{
+  public async getSuspensionStatus(options?: DialogSuspensionStatusOptions): Promise<{
     q4h: boolean;
     subdialogs: boolean;
+    blockingSubdialogs: boolean;
     canDrive: boolean;
   }> {
     const hasQ4H = await this.hasPendingQ4H();
     const hasSubdialogs = await this.hasPendingSubdialogs();
+    const blockingSubdialogs = hasSubdialogs && options?.allowPendingSubdialogs !== true;
     return {
       q4h: hasQ4H,
       subdialogs: hasSubdialogs,
-      canDrive: !hasQ4H && !hasSubdialogs,
+      blockingSubdialogs,
+      canDrive: !hasQ4H && !blockingSubdialogs,
     };
   }
 

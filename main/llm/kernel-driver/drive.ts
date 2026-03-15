@@ -758,6 +758,7 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
 }
 
 type RoutedFunctionResult = {
+  hadNormalToolCalls: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
@@ -875,7 +876,7 @@ async function executeFunctionRound(args: {
   abortSignal: AbortSignal | undefined;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
-    return { pairedMessages: [], tellaskToolOutputs: [] };
+    return { hadNormalToolCalls: false, pairedMessages: [], tellaskToolOutputs: [] };
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
@@ -1007,6 +1008,7 @@ async function executeFunctionRound(args: {
   }
 
   return {
+    hadNormalToolCalls: classified.normalCalls.length > 0,
     pairedMessages,
     tellaskToolOutputs,
   };
@@ -1833,7 +1835,9 @@ export async function driveDialogStreamCore(
 
         // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
         // dialog's actual suspension state here so auto-continue is decided in one place.
-        const suspensionAfterToolRound = await dlg.getSuspensionStatus();
+        const suspensionAfterToolRound = await dlg.getSuspensionStatus({
+          allowPendingSubdialogs: routed.hadNormalToolCalls,
+        });
         if (!suspensionAfterToolRound.canDrive) {
           await resetDiligenceBudgetAfterQ4H(dlg, team);
           break;

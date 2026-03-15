@@ -17,13 +17,14 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, {
       includePangu: true,
-      memberToolsets: ['codex_style_tools'],
+      memberTools: ['env_get'],
     });
 
-    const trigger = 'Start one round that emits tellask and readonly_shell together.';
+    const trigger = 'Start one round that emits tellask and env_get together.';
     const sessionSlug = 'mixed-tool-suspend';
     const tellaskBody = 'Please ask the human a blocker question before you finish.';
     const language = getWorkLanguage();
+    const followUpAnswer = 'I finished the local env check while @pangu is still pending.';
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       callName: 'tellask',
@@ -52,14 +53,18 @@ async function main(): Promise<void> {
             },
           },
           {
-            id: 'call-root-readonly',
-            name: 'readonly_shell',
+            id: 'call-root-env-get',
+            name: 'env_get',
             arguments: {
-              command: 'echo hello',
-              timeout_ms: 2_000,
+              key: 'DOMINDS_TEST_MIXED_TOOL_ROUND',
             },
           },
         ],
+      },
+      {
+        message: '(unset)',
+        role: 'tool',
+        response: followUpAnswer,
       },
       {
         message: expectedSubdialogPrompt,
@@ -101,20 +106,16 @@ async function main(): Promise<void> {
     const genStartCount = rootEvents.filter((event) => event.type === 'gen_start_record').length;
     assert.equal(
       genStartCount,
-      1,
-      'pending subdialogs must stop auto-continue even when the same round already executed a normal tool call',
+      2,
+      'ordinary tool use should allow one more follow-up generation even while subdialogs are pending',
     );
     assert.ok(
-      rootEvents.some(
-        (event) => event.type === 'func_call_record' && event.name === 'readonly_shell',
-      ),
-      'normal tool call should still execute in the original round before suspension',
+      rootEvents.some((event) => event.type === 'func_call_record' && event.name === 'env_get'),
+      'ordinary tool call should still execute in the original round',
     );
     assert.ok(
-      rootEvents.some(
-        (event) => event.type === 'func_result_record' && event.name === 'readonly_shell',
-      ),
-      'normal tool result should still persist before suspension',
+      rootEvents.some((event) => event.type === 'func_result_record' && event.name === 'env_get'),
+      'ordinary tool result should still persist before the follow-up round',
     );
 
     const assistantSayings = root.msgs.filter(
@@ -125,15 +126,20 @@ async function main(): Promise<void> {
     );
     assert.equal(
       assistantSayings.length,
-      1,
-      'root dialog must not open a post-tool follow-up assistant round while subdialogs are pending',
+      2,
+      'root dialog should open exactly one post-tool follow-up assistant round while subdialogs are pending',
+    );
+    assert.equal(
+      assistantSayings[assistantSayings.length - 1]?.content,
+      followUpAnswer,
+      'follow-up assistant round should complete before the dialog suspends on pending subdialogs',
     );
 
     const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
     assert.equal(
       pendingSubdialogs.length,
       1,
-      'expected the tellask-created subdialog to remain pending after the round suspends',
+      'expected the tellask-created subdialog to remain pending after the follow-up round suspends',
     );
   });
 
