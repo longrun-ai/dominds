@@ -225,6 +225,23 @@ dominds
 3. In the app, create a new dialog with **shadow member** `@fuxi` (Fuxi is hidden by default; use the “Shadow members” picker in the dialog creation modal). Until you add visible members, you’ll mostly work through shadow members.
 4. Tell `@fuxi` your product idea and ask it to propose and apply a suitable agentic team configuration by updating `.minds/team.yaml` (Fuxi has the `team_mgmt` toolset scoped to `.minds/**`).
 
+## Build from source
+
+When developing Dominds itself, use the integrated build entry from the repo root:
+
+```bash
+pnpm run clean
+pnpm run build
+pnpm run lint:types
+```
+
+Notes:
+
+- `pnpm run build` is the canonical full build. It runs backend first, then frontend.
+- `pnpm run build:backend` and `pnpm run build:frontend` are sub-steps for focused debugging. They are not the recommended "full rebuild" command.
+- Do not manually run multiple top-level build commands in parallel. They share `dist/` outputs, so concurrent runs can create racey, misleading results.
+- The backend build may still let pnpm build independent workspace packages concurrently according to the workspace dependency graph. That scheduler-controlled concurrency is expected.
+
 ## Core Philosophy
 
 Dominds is designed for long-running product development and operations, with a “division of labor” constitution:

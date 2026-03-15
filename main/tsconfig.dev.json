@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@longrun-ai/kernel": ["../packages/kernel/src/index.ts"],
+      "@longrun-ai/kernel/*": ["../packages/kernel/src/*"],
+      "@longrun-ai/shell": ["../packages/shell/src/index.ts"],
+      "@longrun-ai/shell/*": ["../packages/shell/src/*"],
+      "@modelcontextprotocol/sdk": ["../node_modules/@modelcontextprotocol/sdk/dist/esm/index.js"],
+      "@modelcontextprotocol/sdk/*": ["../node_modules/@modelcontextprotocol/sdk/dist/esm/*"]
+    }
+  }
+}

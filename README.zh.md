@@ -106,6 +106,23 @@ https://github.com/longrun-ai/dominds-feat-dev
 - `--shared-rtws` 仅用于调试，会直接使用 `tests/script-rtws`，禁止并发运行多个用例。
 - 需要保留失败现场时，设置 `DOMINDS_TEST_RTWS_KEEP_TMP=1`，测试 CLI 会保留临时 rtws 路径。
 
+### 本仓库源码构建
+
+开发 Dominds 本体时，推荐把仓库根目录下的完整构建入口当成唯一标准用法：
+
+```bash
+pnpm run clean
+pnpm run build
+pnpm run lint:types
+```
+
+说明：
+
+- `pnpm run build` 才是标准的一体构建入口；它会先构建 backend，再构建 frontend。
+- `pnpm run build:backend` / `pnpm run build:frontend` 只是便于聚焦排障的子步骤，不应被当成“完整重建”的推荐命令。
+- 不要手工并行执行多个顶层构建命令，例如同时跑两个 `pnpm run build`，或把 `pnpm run build` 与 `pnpm run build:backend` 并行跑。它们会共享 `dist/` 产物目录，容易制造竞态与误导性结果。
+- `build:backend` 内部的 `pnpm -r ... run build` 仍可能按依赖图并发构建彼此独立的 workspace package；这是 pnpm 调度器控制的正常行为，与“手工并行多个顶层 build”不是一回事。
+
 ## 快速上手（推荐：通过模板创建运行时工作区）
 
 ```bash

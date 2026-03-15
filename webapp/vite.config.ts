@@ -1,6 +1,34 @@
 import path from 'path';
 import { defineConfig } from 'vite';
 
+function createWorkspacePackageAliases(command: 'build' | 'serve') {
+  if (command !== 'serve') {
+    return [];
+  }
+
+  const kernelSrcDir = path.resolve(__dirname, '../packages/kernel/src');
+  const shellSrcDir = path.resolve(__dirname, '../packages/shell/src');
+
+  return [
+    {
+      find: /^@longrun-ai\/kernel$/,
+      replacement: path.join(kernelSrcDir, 'index.ts'),
+    },
+    {
+      find: /^@longrun-ai\/kernel\/(.+)$/,
+      replacement: `${kernelSrcDir}/$1`,
+    },
+    {
+      find: /^@longrun-ai\/shell$/,
+      replacement: path.join(shellSrcDir, 'index.ts'),
+    },
+    {
+      find: /^@longrun-ai\/shell\/(.+)$/,
+      replacement: `${shellSrcDir}/$1`,
+    },
+  ];
+}
+
 function resolveDevBackendOrigin(command: 'build' | 'serve'): string | null {
   const raw = process.env.DOMINDS_DEV_BACKEND_ORIGIN?.trim();
   if (command === 'serve' && !raw) {
@@ -63,6 +91,7 @@ export default defineConfig(({ command }) => {
     },
     resolve: {
       alias: [
+        ...createWorkspacePackageAliases(command),
         {
           find: '@',
           replacement: path.resolve(__dirname, './src'),
