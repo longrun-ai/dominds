@@ -1,6 +1,6 @@
 {
   "name": "@longrun-ai/kernel",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "Dominds kernel public contracts for app handshake/runtime integration.",
   "type": "commonjs",
   "private": false,

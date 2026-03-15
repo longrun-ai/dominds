@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -38,6 +39,23 @@ async function main(): Promise<void> {
     path.join(domindsRootAbs, 'package.json'),
     'node ./scripts/require-pnpm-publish.mjs && pnpm run build',
     'dominds root package',
+  );
+  const rootPackageJson = await readPackageJson(path.join(domindsRootAbs, 'package.json'));
+  const rootScripts = expectRecord(rootPackageJson.scripts, 'dominds root package scripts');
+  assert.equal(
+    rootScripts['release:publish-public'],
+    'node ./scripts/publish-public-packages.mjs',
+    'dominds root package must expose the single-entry ordered public publish script.',
+  );
+  assert.equal(
+    rootScripts['release:publish-public:dry-run'],
+    'node ./scripts/publish-public-packages.mjs --dry-run',
+    'dominds root package must expose a dry-run variant of the public publish script.',
+  );
+  assert.equal(
+    existsSync(path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs')),
+    true,
+    'dominds root package must keep the public publish script in scripts/.',
   );
   await assertPrepublishOnly(
     path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),

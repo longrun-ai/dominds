@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "1.8.8",
+  "version": "1.8.9",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
   "type": "commonjs",
   "publishConfig": {
@@ -32,6 +32,8 @@
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "setup:pm": "corepack enable pnpm && corepack install",
     "manual": "pnpm exec tsx main/cli/manual.ts",
+    "release:publish-public": "node ./scripts/publish-public-packages.mjs",
+    "release:publish-public:dry-run": "node ./scripts/publish-public-packages.mjs --dry-run",
     "prepare": "pnpm run build:workspace",
     "prepublishOnly": "node ./scripts/require-pnpm-publish.mjs && pnpm run build",
     "build": "pnpm run build:workspace && pnpm run build:backend",
