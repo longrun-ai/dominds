@@ -24,6 +24,7 @@ type PackageJsonShape = Readonly<{
   main?: unknown;
   types?: unknown;
   exports?: unknown;
+  publishConfig?: unknown;
 }>;
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
   );
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
   const exportsField = expectRecord(packageJson.exports, 'kernel package.json exports');
+  const publishConfig = expectRecord(packageJson.publishConfig, 'kernel package.json publishConfig');
 
   assert.equal(packageJson.name, '@longrun-ai/kernel', 'Kernel package name must be stable.');
   assert.equal(
@@ -52,6 +54,11 @@ async function main(): Promise<void> {
     packageJson.types,
     'src/index.ts',
     'Kernel package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
+  );
+  assert.equal(
+    publishConfig['access'],
+    'public',
+    'Kernel package must declare publishConfig.access=public for scoped npm publishing.',
   );
   assert.deepEqual(
     Object.keys(exportsField).sort(),

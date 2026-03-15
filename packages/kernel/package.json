@@ -4,6 +4,9 @@
   "description": "Dominds kernel public contracts for app handshake/runtime integration.",
   "type": "commonjs",
   "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "packageManager": "pnpm@10.30.3",
   "main": "dist/index.js",
   "types": "src/index.ts",

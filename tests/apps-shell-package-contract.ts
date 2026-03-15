@@ -12,6 +12,7 @@ type PackageJsonShape = Readonly<{
   exports?: unknown;
   bin?: unknown;
   dependencies?: unknown;
+  publishConfig?: unknown;
 }>;
 
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     packageJson.dependencies,
     'shell package.json dependencies',
   );
+  const publishConfig = expectRecord(packageJson.publishConfig, 'shell package.json publishConfig');
 
   assert.equal(packageJson.name, '@longrun-ai/shell', 'Shell package name must stay stable.');
   assert.equal(
@@ -49,6 +51,11 @@ async function main(): Promise<void> {
     packageJson.types,
     'src/index.ts',
     'Shell package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
+  );
+  assert.equal(
+    publishConfig['access'],
+    'public',
+    'Shell package must declare publishConfig.access=public for scoped npm publishing.',
   );
   assert.equal(
     packageJson.bin,
