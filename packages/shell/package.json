@@ -26,6 +26,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
+    "format": "prettier --write \"src/**/*.{ts,md,json}\" README.md package.json tsconfig.json",
     "lint:types": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "node ../../scripts/require-pnpm-publish.mjs && pnpm run build"
   },

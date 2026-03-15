@@ -138,7 +138,8 @@ function parseToolsetJson(
     return { ok: false, errorText: `Invalid ${at}.descriptionI18n: expected {zh,en} string` };
   }
   const toolsRaw = v['tools'];
-  if (!Array.isArray(toolsRaw)) return { ok: false, errorText: `Invalid ${at}.tools: expected array` };
+  if (!Array.isArray(toolsRaw))
+    return { ok: false, errorText: `Invalid ${at}.tools: expected array` };
   const tools: DomindsAppToolJson[] = [];
   for (let i = 0; i < toolsRaw.length; i += 1) {
     const parsed = parseToolJson(toolsRaw[i], `${at}.tools[${i}]`);
@@ -201,11 +202,13 @@ export function parseDomindsAppInstallJson(
     return { ok: false, errorText: `Unsupported app json schemaVersion: ${String(schemaVersion)}` };
   }
   const appId = asString(v['appId']);
-  if (!appId || appId.trim() === '') return { ok: false, errorText: 'Invalid app json: appId required' };
+  if (!appId || appId.trim() === '')
+    return { ok: false, errorText: 'Invalid app json: appId required' };
   const displayName = asString(v['displayName']) ?? undefined;
 
   const pkg = v['package'];
-  if (!isRecord(pkg)) return { ok: false, errorText: 'Invalid app json: package must be an object' };
+  if (!isRecord(pkg))
+    return { ok: false, errorText: 'Invalid app json: package must be an object' };
   const packageName = asString(pkg['name']);
   const packageVersion = asNullableString(pkg['version']);
   const rootAbs = asString(pkg['rootAbs']);
@@ -237,9 +240,11 @@ export function parseDomindsAppInstallJson(
   const frontendRaw = v['frontend'];
   let frontend: DomindsAppFrontendJson | undefined;
   if (frontendRaw !== undefined) {
-    if (!isRecord(frontendRaw)) return { ok: false, errorText: 'Invalid app json: frontend must be an object' };
+    if (!isRecord(frontendRaw))
+      return { ok: false, errorText: 'Invalid app json: frontend must be an object' };
     const kind = asString(frontendRaw['kind']);
-    if (kind !== 'http') return { ok: false, errorText: "Invalid app json: frontend.kind must be 'http'" };
+    if (kind !== 'http')
+      return { ok: false, errorText: "Invalid app json: frontend.kind must be 'http'" };
     const defaultPortRaw = frontendRaw['defaultPort'];
     const defaultPort =
       defaultPortRaw === undefined
@@ -261,7 +266,8 @@ export function parseDomindsAppInstallJson(
   const contributesRaw = v['contributes'];
   let contributes: DomindsAppContributesJson | undefined;
   if (contributesRaw !== undefined) {
-    if (!isRecord(contributesRaw)) return { ok: false, errorText: 'Invalid app json: contributes must be an object' };
+    if (!isRecord(contributesRaw))
+      return { ok: false, errorText: 'Invalid app json: contributes must be an object' };
     const teammatesYamlRelPath = asString(contributesRaw['teammatesYamlRelPath']) ?? undefined;
 
     const toolsetsRaw = contributesRaw['toolsets'];
@@ -282,7 +288,10 @@ export function parseDomindsAppInstallJson(
     let dialogRunControls: DomindsAppDialogRunControlJson[] | undefined;
     if (dialogRunControlsRaw !== undefined) {
       if (!Array.isArray(dialogRunControlsRaw)) {
-        return { ok: false, errorText: 'Invalid app json: contributes.dialogRunControls must be an array' };
+        return {
+          ok: false,
+          errorText: 'Invalid app json: contributes.dialogRunControls must be an array',
+        };
       }
       dialogRunControls = [];
       for (let i = 0; i < dialogRunControlsRaw.length; i += 1) {
@@ -299,7 +308,10 @@ export function parseDomindsAppInstallJson(
     let reminderOwners: DomindsAppReminderOwnerJson[] | undefined;
     if (reminderOwnersRaw !== undefined) {
       if (!Array.isArray(reminderOwnersRaw)) {
-        return { ok: false, errorText: 'Invalid app json: contributes.reminderOwners must be an array' };
+        return {
+          ok: false,
+          errorText: 'Invalid app json: contributes.reminderOwners must be an array',
+        };
       }
       reminderOwners = [];
       for (let i = 0; i < reminderOwnersRaw.length; i += 1) {

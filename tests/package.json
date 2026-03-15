@@ -5,6 +5,7 @@
   "type": "commonjs",
   "description": "Dominds test scripts",
   "scripts": {
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,md,json}\"",
     "rtws": "tsx cli.ts",
     "auth": "tsx auth.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
