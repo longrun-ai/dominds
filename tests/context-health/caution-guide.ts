@@ -7,16 +7,31 @@
  */
 
 import assert from 'node:assert/strict';
-import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
+import {
+  formatAgentFacingContextHealthV3RemediationGuide,
+  formatSystemNoticePrefix,
+} from '../../main/shared/i18n/driver-messages';
 
 async function main(): Promise<void> {
   const zhSoft = formatAgentFacingContextHealthV3RemediationGuide('zh', {
     kind: 'caution',
     mode: 'soft',
   });
+  assert.ok(
+    zhSoft.startsWith(formatSystemNoticePrefix('zh')),
+    'zh guide should start with the system-notice prefix',
+  );
   assert.ok(zhSoft.includes('上下文状态：🟡 吃紧'), 'zh guide should include caution headline');
   assert.ok(zhSoft.includes('clear_mind'), 'zh guide should mention clear_mind');
   assert.ok(zhSoft.includes('update_reminder'), 'zh guide should mention update_reminder');
+  assert.ok(
+    zhSoft.includes('不是新的用户诉求'),
+    'zh guide should say it is not a new user request',
+  );
+  assert.ok(
+    zhSoft.includes('不要只回复“收到/好的/我先整理提醒项”'),
+    'zh guide should forbid standalone acknowledgement replies',
+  );
   assert.ok(
     zhSoft.includes('多条粗略提醒项'),
     'zh guide should allow rough multi-reminder bridge when muddled',
@@ -30,9 +45,21 @@ async function main(): Promise<void> {
     kind: 'caution',
     mode: 'soft',
   });
+  assert.ok(
+    enSoft.startsWith(formatSystemNoticePrefix('en')),
+    'en guide should start with the system-notice prefix',
+  );
   assert.ok(enSoft.includes('Context state: 🟡 caution'), 'en guide should include caution');
   assert.ok(enSoft.includes('update_reminder'), 'en guide should mention update_reminder');
   assert.ok(enSoft.includes('clear_mind'), 'en guide should mention clear_mind');
+  assert.ok(
+    enSoft.includes('not a new user request'),
+    'en guide should say it is not a new user request',
+  );
+  assert.ok(
+    enSoft.includes('do not reply with a standalone "acknowledged/ok'),
+    'en guide should forbid standalone acknowledgement replies',
+  );
   assert.ok(
     enSoft.includes('rough multi-reminder carry-over is acceptable'),
     'en guide should allow rough multi-reminder bridge during remediation',

@@ -10,7 +10,10 @@ import { extractErrorDetails, log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
 import { DILIGENCE_FALLBACK_TEXT } from '../../shared/diligence';
-import { formatQ4HDiligencePushBudgetExhausted } from '../../shared/i18n/driver-messages';
+import {
+  formatDiligenceAutoContinuePrompt,
+  formatQ4HDiligencePushBudgetExhausted,
+} from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
@@ -130,7 +133,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
       return { kind: 'disabled', nextRemainingBudget: 0 };
     }
     const prompt: KernelDriverHumanPrompt = {
-      content: resolved.diligenceText,
+      content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
       msgId: generateShortId(),
       grammar: 'markdown',
       origin: 'diligence_push',
@@ -149,7 +152,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   }
 
   const prompt: KernelDriverHumanPrompt = {
-    content: resolved.diligenceText,
+    content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
     msgId: generateShortId(),
     grammar: 'markdown',
     origin: 'diligence_push',

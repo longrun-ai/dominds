@@ -23,6 +23,11 @@ async function main(): Promise<void> {
   });
 
   assert.ok(zh.includes('提醒项'), 'zh guide should mention reminders as “提醒项”');
+  assert.ok(zh.includes('不是新的用户诉求'), 'zh guide should say it is not a new user request');
+  assert.ok(
+    zh.includes('不要只回复“收到/好的/我先整理提醒项”'),
+    'zh guide should forbid standalone acknowledgement replies',
+  );
   assert.ok(zh.includes('新一程对话'), 'zh guide should use “新一程对话” phrasing');
   assert.ok(
     zh.includes('多条粗略提醒项'),
@@ -50,6 +55,14 @@ async function main(): Promise<void> {
     promptsTotal: 5,
   });
   assert.ok(en.includes('Context state: 🔴 critical'), 'en guide should include critical headline');
+  assert.ok(
+    en.includes('not a new user request'),
+    'en guide should say it is not a new user request',
+  );
+  assert.ok(
+    en.includes('do not reply with a standalone "acknowledged/ok'),
+    'en guide should forbid standalone acknowledgement replies',
+  );
   assert.ok(
     en.includes('multiple rough reminders'),
     'en guide should allow rough multi-reminder bridge when muddled',

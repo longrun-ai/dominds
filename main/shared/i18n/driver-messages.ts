@@ -133,6 +133,39 @@ export function formatNewCourseStartPrompt(
   );
 }
 
+export function formatDiligenceAutoContinuePrompt(
+  language: LanguageCode,
+  diligenceText: string,
+): string {
+  const noticePrefix = formatSystemNoticePrefix(language);
+  const trimmed = diligenceText.trim();
+  if (trimmed === '') {
+    throw new Error('diligenceText must not be empty');
+  }
+
+  if (language === 'zh') {
+    return [
+      `${noticePrefix} 这是一条运行时自动续推指令，不是新的用户诉求。`,
+      '不要把这条提示当成新的待办，也不要只回复“收到/好的/我先想想/我会先整理一下”。',
+      '请直接按下面的引导继续推进任务；若形成结论，必须尽快落地为实际动作，不要停在“只汇报决定/只确认收到”。',
+      '',
+      '---',
+      '',
+      trimmed,
+    ].join('\n');
+  }
+
+  return [
+    `${noticePrefix} This is a runtime auto-continue instruction, not a new user request.`,
+    'Do not treat this notice as a new to-do, and do not reply with a standalone "acknowledged/ok/I will think first/I will organize things first".',
+    'Follow the guidance below and continue the task directly; if you reach a conclusion, turn it into concrete action promptly instead of stopping at a decision report or acknowledgement.',
+    '',
+    '---',
+    '',
+    trimmed,
+  ].join('\n');
+}
+
 export function formatReminderItemGuide(
   language: LanguageCode,
   index: number,
@@ -339,6 +372,8 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       return [
         `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
         '',
+        '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+        '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
         '行动：先尽量保住易丢信息，并优先把已经掌握的事实压缩成结构化接续包提醒项（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；若不额外继续阅读/分析就做不到，允许先记成多条粗略提醒项。',
@@ -353,6 +388,8 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
 
     return [
       `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急`,
+      '',
+      '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
       '',
       `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
@@ -371,6 +408,8 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     return [
       `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
       '',
+      'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+      '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
       'Action: first preserve easy-to-lose information, and prefer compressing already observed facts into a structured continuation-package reminder (next step + key pointers + run/verify info + easy-to-lose volatile details). If that cannot be done without more reading/analysis, rough multi-reminder carry-over is acceptable.',
@@ -385,6 +424,8 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
 
   return [
     `${formatSystemNoticePrefix(language)} Context state: 🔴 critical`,
+    '',
+    'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
     '',
     `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
