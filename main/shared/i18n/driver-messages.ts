@@ -107,14 +107,17 @@ export function formatNewCourseStartPrompt(
     source: 'clear_mind' | 'critical_auto_clear';
   },
 ): string {
+  const noticePrefix = formatSystemNoticePrefix(language);
   if (language === 'zh') {
     const prefix =
       args.source === 'clear_mind'
         ? `你刚清理头脑，开启了第 ${args.nextCourse} 程对话。`
         : `系统因上下文已告急（critical）而自动开启了第 ${args.nextCourse} 程对话。`;
     return (
-      `${prefix} ` +
-      '现在已经进入新一程：第一步先复核并整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；再继续推进任务。'
+      `${noticePrefix} ${prefix} ` +
+      '这是一条运行时换程指令，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。' +
+      '现在已经进入新一程：第一步先复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。' +
+      '完成这一步后，直接继续推进原任务本身；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。'
     );
   }
 
@@ -123,8 +126,10 @@ export function formatNewCourseStartPrompt(
       ? `This is dialog course #${args.nextCourse}. You just cleared your mind.`
       : `System auto-started dialog course #${args.nextCourse} because context health is critical.`;
   return (
-    `${prefix} ` +
-    'You are now in a new dialog course: your first step is to review and rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, compress them into high-quality reminders, and then continue the task.'
+    `${noticePrefix} ${prefix} ` +
+    'This is a runtime course-transition instruction, not a new user request; do not treat it as a new to-do, and do not reply with a standalone "acknowledged/ok/I will reorganize the reminders first". ' +
+    'You are now in a new course: your first step is to review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. ' +
+    'After that, continue the underlying task itself directly; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.'
   );
 }
 

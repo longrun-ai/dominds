@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatNewCourseStartPrompt,
+  formatSystemNoticePrefix,
 } from '../../main/shared/i18n/driver-messages';
 
 async function main(): Promise<void> {
@@ -75,16 +76,36 @@ async function main(): Promise<void> {
     source: 'critical_auto_clear',
   });
   assert.ok(
+    zhNewCoursePrompt.startsWith(formatSystemNoticePrefix('zh')),
+    'zh critical new-course prompt should start with the system-notice prefix',
+  );
+  assert.ok(
     zhNewCoursePrompt.includes('现在已经进入新一程'),
     'zh critical new-course prompt should explicitly mark the new course boundary',
   );
   assert.ok(
-    zhNewCoursePrompt.includes('第一步先复核并整理接续包提醒项'),
-    'zh critical new-course prompt should require reviewing continuation-package reminders first',
+    zhNewCoursePrompt.includes('不是新的用户诉求'),
+    'zh critical new-course prompt should say it is not a new user request',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('不要只回复“收到/好的/我会先整理提醒项”'),
+    'zh critical new-course prompt should forbid standalone acknowledgement replies',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('第一步先复核'),
+    'zh critical new-course prompt should require reviewing reminders first',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('在必要时整理接续包提醒项'),
+    'zh critical new-course prompt should make reminder rewriting conditional when already clear',
   );
   assert.ok(
     zhNewCoursePrompt.includes('以清醒头脑删除冗余'),
     'zh critical new-course prompt should require clear-headed cleanup wording',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('直接继续推进原任务本身'),
+    'zh critical new-course prompt should tell the agent to continue the underlying task',
   );
 
   const enNewCoursePrompt = formatNewCourseStartPrompt('en', {
@@ -92,18 +113,36 @@ async function main(): Promise<void> {
     source: 'critical_auto_clear',
   });
   assert.ok(
+    enNewCoursePrompt.startsWith(formatSystemNoticePrefix('en')),
+    'en critical new-course prompt should start with the system-notice prefix',
+  );
+  assert.ok(
     enNewCoursePrompt.includes('You are now in a new course'),
     'en critical new-course prompt should explicitly mark the new course boundary',
   );
   assert.ok(
-    enNewCoursePrompt.includes(
-      'your first step is to review and rewrite any continuation-package reminders',
-    ),
-    'en critical new-course prompt should require reviewing continuation-package reminders first',
+    enNewCoursePrompt.includes('not a new user request'),
+    'en critical new-course prompt should say it is not a new user request',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('do not reply with a standalone "acknowledged/ok'),
+    'en critical new-course prompt should forbid standalone acknowledgement replies',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('your first step is to review'),
+    'en critical new-course prompt should require reviewing reminders first',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('if needed, rewrite any continuation-package reminders'),
+    'en critical new-course prompt should make reminder rewriting conditional when already clear',
   );
   assert.ok(
     enNewCoursePrompt.includes('with a clear head'),
     'en critical new-course prompt should require clear-headed cleanup wording',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('continue the underlying task itself directly'),
+    'en critical new-course prompt should tell the agent to continue the underlying task',
   );
 
   console.log('OK');
