@@ -172,6 +172,12 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M2.7:
+        name: MiniMax M2.7
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
         context_length: 204800
@@ -219,6 +225,12 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M2.7:
+        name: MiniMax M2.7
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
         context_length: 204800
@@ -266,6 +278,12 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M2.7:
+        name: MiniMax M2.7
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
         context_length: 204800
@@ -313,6 +331,12 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M2.7:
+        name: MiniMax M2.7
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
         context_length: 204800
