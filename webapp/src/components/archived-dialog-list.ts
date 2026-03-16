@@ -914,11 +914,21 @@ export class ArchivedDialogList extends HTMLElement {
       if (taskRows instanceof HTMLElement) {
         taskRows.classList.remove('collapsed');
       }
+      const taskToggle = taskGroup?.querySelector('.toggle.task-toggle');
+      if (taskToggle instanceof HTMLButtonElement) {
+        this.updateToggleButtonUi(taskToggle, false);
+      }
       const rootChildren = this.listEl.querySelector(
         `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(dialog.rootId)}"] > .sdlg-children`,
       );
       if (rootChildren instanceof HTMLElement) {
         rootChildren.classList.remove('collapsed');
+      }
+      const rootToggle = this.listEl.querySelector(
+        `.toggle.root-toggle[data-root-id="${this.escapeSelector(dialog.rootId)}"]`,
+      );
+      if (rootToggle instanceof HTMLButtonElement) {
+        this.updateToggleButtonUi(rootToggle, false);
       }
     }
   }
