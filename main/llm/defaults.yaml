@@ -423,17 +423,35 @@ providers:
     name: Volcano Engine Coding Plan
     apiType: anthropic
     baseUrl: https://ark.cn-beijing.volces.com/api/coding
-    apiKeyEnvVar: ARK_API_KEY
-    tech_spec_url: https://api.volcengine.com/api-docs/view?serviceCode=ark&version=2024-01-01
+    apiKeyEnvVar: ARK_CP_API_KEY
+    tech_spec_url: https://www.volcengine.com/docs/82379/1928261
     api_mgmt_url: https://console.volcengine.com/ark
     models:
-      doubao-seed-code-preview-latest:
+      doubao-seed-code:
         name: Doubao Seed Code Preview
         context_length: 256000
         input_length: 256000
         output_length: 8192
         context_window: '256K'
         optimization: 专为Agentic Coding任务优化
+      deepseek-v3.2:
+        name: DeepSeek-V3.2
+        context_length: 128000
+        input_length: 96000
+        output_length: 32000
+        context_window: '128K'
+      glm-4.7:
+        name: GLM 4.7
+        context_length: 256000
+        input_length: 256000
+        output_length: 8192
+        context_window: '256K'
+      kimi-k2.5:
+        name: Kimi K2.5
+        context_length: 200000
+        input_length: 200000
+        output_length: 8192
+        context_window: '200K (约20万汉字)'
   volcano-engine:
     name: Volcano Engine
     apiType: openai-compatible
