@@ -150,11 +150,11 @@
 
 ```mermaid
 flowchart TD
-  M[LLM 发出 tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{这是子对话回问其直接上位对话（TYPE A 的诉请者对话）吗？}
-  Q -- 是 --> A[TYPE A：回问诉请<br/>主要：`tellaskBack({ tellaskContent: "..." })`（无 sessionSlug）]
+  M["LLM 发出 tellaskSessionless(...)"] --> Q{"这是子对话回问其直接上位对话（TYPE A 的诉请者对话）吗？"}
+  Q -- 是 --> A["TYPE A：回问诉请<br/>主要：tellaskBack(...)（无 sessionSlug）"]
   Q -- 否 --> T{是否存在 sessionSlug？}
-  T -- 是 --> B[TYPE B：已注册子对话诉请<br/>(长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
-  T -- 否 --> C[TYPE C：瞬态子对话诉请<br/>(一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
+  T -- 是 --> B["TYPE B：已注册子对话诉请<br/>(长线诉请)<br/>tellask(..., sessionSlug=...)"]
+  T -- 否 --> C["TYPE C：瞬态子对话诉请<br/>(一次性诉请)<br/>tellaskSessionless(...)"]
 ```
 
 ### TYPE A：回问诉请
@@ -364,7 +364,7 @@ Dominds 对话系统建立在四个相互关联的核心机制之上，这些机
 ```mermaid
 flowchart TD
   H[对话层级<br/>(root ↔ 子对话)] <--> S[子对话供应<br/>(响应、待处理列表、注册表)]
-  H --> Q[Q4H (askHuman({ tellaskContent: "..." }))<br/>(q4h.yaml 索引)]
+  H --> Q["Q4H（askHuman(...)）<br/>(q4h.yaml 索引)"]
   S --> Q
 
   Q --> UI[前端 Q4H 面板<br/>(questions_count_update)]
@@ -437,7 +437,7 @@ sequenceDiagram
 
   D->>P: 将 HumanQuestion 条目追加到 q4h.yaml（索引）
   D-->>UI: questions_count_update
-  注意：对话在回答之前变为不可驱动
+  Note over D: 对话在回答之前变为不可驱动
 
   UI->>WS: drive_dialog_by_user_answer(questionId, content)
   WS->>P: 从 q4h.yaml 中删除问题（如果为空则删除文件）
@@ -814,7 +814,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Tellask[TYPE B 长线诉请: tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })] --> Key[计算键：agentId!sessionSlug]
+  Tellask["TYPE B 长线诉请: tellask(..., sessionSlug=...)"] --> Key[计算键：agentId!sessionSlug]
   Key --> Lookup{注册表命中？}
   Lookup -- 是 --> Resume[恢复 + 驱动现有子对话]
   Lookup -- 否 --> Create[创建 + 注册 + 驱动新的子对话]
@@ -1161,8 +1161,8 @@ flowchart TD
   B -- 否 --> S[已暂停\\n（等待 Q4H 和/或子对话）]
   S -->|Q4H 回答\\n或子对话响应供应| C{需要驱动？}
   B -- 是 --> C{需要驱动？}
-  C -- 否 --> I[空闲\\n（等待触发器）}
-  C -- 是 --> D[驱动循环\\n（流式传输时 generating=true）}
+  C -- 否 --> I[空闲\\n（等待触发器）]
+  C -- 是 --> D[驱动循环\\n（流式传输时 generating=true）]
   D --> E{有下一个？}
   E -- 是 --> C
   E -- 否 --> I
@@ -1211,12 +1211,9 @@ sequenceDiagram
   Sub-->>Driver: 最终响应
   Driver-->>Caller: 供应响应 + 清除待处理子对话
   opt 调用者是根且现在已解除阻塞
-    Driver-->>Caller: 设置 `needsDrive=true`（自动重启调度）
+    Driver-->>Caller: 设置 needsDrive=true（自动重启调度）
+  end
 ```
-
-end
-
-````
 
 #### TYPE C：瞬态子对话诉请（一次性诉请）（`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`，或 `freshBootsReasoning({ tellaskContent: "..." })`）
 
@@ -1226,18 +1223,18 @@ sequenceDiagram
   participant Driver as 后端驱动程序
   participant Sub as 瞬态子对话
 
-  Caller->>Driver: 发出 `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`
+  Caller->>Driver: 发出 tellaskSessionless(...)
   Driver->>Sub: 创建（不注册）
   Driver->>Sub: 驱动
   Sub-->>Driver: 最终响应
   Driver-->>Caller: 供应响应（无注册表更新）
-````
+```
 
 ### Q4H 生命周期状态
 
 ```mermaid
 flowchart TD
-  A[askHuman({ tellaskContent: "..." }) 诉请发出] --> B[将 HumanQuestion 条目追加到 q4h.yaml]
+  A["askHuman(...) 诉请发出"] --> B[将 HumanQuestion 条目追加到 q4h.yaml]
   B --> C[发出 questions_count_update]
   C --> D[UI 显示 Q4H 徽章/列表]
   D --> E{如何清除？}

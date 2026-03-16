@@ -1522,7 +1522,8 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
     ? [candidateLocalizedFallback, basePathFallback]
     : [basePathFallback];
 
-  for (const filePath of [...candidates, ...candidatesFallback]) {
+  // In development, prefer source docs so live doc fixes show up immediately without rebuilding dist/docs.
+  for (const filePath of [...candidatesFallback, ...candidates]) {
     try {
       const raw = await fsPromises.readFile(filePath, 'utf-8');
       respondJson(res, 200, { success: true, name: stem, path: filePath, raw });

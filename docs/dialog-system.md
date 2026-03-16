@@ -151,11 +151,11 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 
 ```mermaid
 flowchart TD
-  M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog Tellasking its direct supdialog (tellasker dialog for TYPE A)?}
-  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack`)<br/>Primary: tellaskBack({ tellaskContent: "..." }) (NO sessionSlug)]
+  M["LLM emits tellaskSessionless(...)"] --> Q{"Is this a subdialog Tellasking its direct supdialog (tellasker dialog for TYPE A)?"}
+  Q -- yes --> A["TYPE A: TellaskBack<br/>(TellaskBack)<br/>Primary: tellaskBack(...) (NO sessionSlug)"]
   Q -- no --> T{Is sessionSlug present?}
-  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / Registered Session Tellask)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
-  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / One-shot Tellask)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
+  T -- yes --> B["TYPE B: Registered subdialog Tellask<br/>(Tellask Session / Registered Session Tellask)<br/>tellask(..., sessionSlug=...)"]
+  T -- no --> C["TYPE C: Transient subdialog Tellask<br/>(Fresh Tellask / One-shot Tellask)<br/>tellaskSessionless(...)"]
 ```
 
 ### TYPE A: TellaskBack (Type A / `TellaskBack`)
@@ -383,7 +383,7 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 ```mermaid
 flowchart TD
   H[Dialog hierarchy<br/>(root ↔ subdialogs)] <--> S[Subdialog supply<br/>(responses, pending list, registry)]
-  H --> Q[Q4H (askHuman({ tellaskContent: "..." }))<br/>(q4h.yaml index)]
+  H --> Q["Q4H (askHuman(...))<br/>(q4h.yaml index)"]
   S --> Q
 
   Q --> UI[Frontend Q4H panel<br/>(questions_count_update)]
@@ -839,7 +839,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Tellask[TYPE B Tellask: tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })] --> Key[Compute key: agentId!sessionSlug]
+  Tellask["TYPE B Tellask: tellask(..., sessionSlug=...)"] --> Key[Compute key: agentId!sessionSlug]
   Key --> Lookup{Registry hit?}
   Lookup -- yes --> Resume[Restore + drive existing subdialog]
   Lookup -- no --> Create[Create + register + drive new subdialog]
@@ -1254,7 +1254,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[askHuman({ tellaskContent: "..." }) Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
+  A["askHuman(...) Tellask emitted"] --> B[Append HumanQuestion entry to q4h.yaml]
   B --> C[Emit questions_count_update]
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
