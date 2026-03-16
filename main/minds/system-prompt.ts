@@ -130,7 +130,8 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
       '- 队友诉请必须遵循“发起 → 等待 → 判定 → 续推”四段协议：若目标未达成，立即发出下一轮诉请推进。',
-      '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请函数（通常 \\`tellask\\` 复用同一 \\`sessionSlug\\`）。',
+      '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“回贴已送达后，对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请函数（通常 \\`tellask\\` 复用同一 \\`sessionSlug\\`）。',
+      '- 若被诉请者在回贴送达前因 \\`clear_mind\\` 开启新一程，同一进行中诉请默认继续有效；新一程会自然承接，直到产生回贴或明确失败。不要仅因对方换程就把该轮诉请当作失效重发。',
       '- 只有在存在明确进行中诉请时，才可声明“等待回贴/等待结果”（通常应可在“⏳ 进行中诉请（共 N 路，自动添加，手动删除）”这类提醒项中观测到）；若该提醒项不存在，或提醒项已明确“当前没有执行中的诉请”，则“等待”是错误动作，必须执行下一动作（直接诉请或本地执行）。',
       '- 能由队友诉请完成的执行性工作，禁止转交 \\`askHuman\\` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 \\`tellask\\` 或 \\`tellaskSessionless\\`。',
       `- 当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：\`Dominds 会自动注入回贴标记，禁止手写标记\`；不得要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）。`,
@@ -139,7 +140,8 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
     ],
     en: [
       '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
-      '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background” state for the same Tellask. To continue, emit a new Tellask function call explicitly (usually \\`tellask\\` with the same \\`sessionSlug\\`).',
+      '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background after the reply is already delivered” state for the same Tellask. To continue, emit a new Tellask function call explicitly (usually \\`tellask\\` with the same \\`sessionSlug\\`).',
+      '- If the callee starts a new course via \\`clear_mind\\` before delivering the reply, the same in-flight Tellask stays live by default; the new course naturally continues it until a reply is delivered or an explicit failure is returned. Do not re-tellask solely because the callee changed course.',
       '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists (normally observable in a “⏳ In-flight Tellasks (N total, auto-added, manually deleted)” reminder). If that reminder is absent, or it explicitly states there are no in-flight Tellasks, waiting is a wrong action; execute the next action now (direct Tellask or local action).',
       '- Do not use \\`askHuman\\` as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`tellask\\` or \\`tellaskSessionless\\` in the same response.',
       `- When you define a “reply/delivery format” inside tellask body, you must explicitly include: \`Dominds auto-injects reply markers; do not hand-write markers\`; do not require the responder to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`).`,

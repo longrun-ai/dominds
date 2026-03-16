@@ -1192,8 +1192,6 @@ export abstract class Dialog {
       });
     }
 
-    const { notifyWaitingDialogsOfClearedMind } = await import('./course-transition');
-    await notifyWaitingDialogsOfClearedMind(this);
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access

@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 
-import { buildClearedMindInvalidationNotice } from '../../main/course-transition';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/shared/i18n/driver-messages';
 import { getWorkLanguage, setWorkLanguage } from '../../main/shared/runtime-language';
 import {
   formatAssignmentFromSupdialog,
-  formatTeammateResponseContent,
+  formatTellaskResponseContent,
 } from '../../main/shared/utils/inter-dialog-format';
 
 import {
@@ -26,11 +25,12 @@ async function main(): Promise<void> {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Ask @pangu and let the callee clear mind mid-flight.';
+    const trigger = 'Ask @pangu and let the callee continue after clearing mind.';
     const rootFirstResponse = 'Starting tellask.';
     const mentionList = ['@pangu'];
     const tellaskContent = 'Please inspect the problem and come back with the answer.';
     const language = getWorkLanguage();
+    const finalSubdialogReply = 'I cleared context, rebuilt the thread, and the answer is 42.';
 
     const subdialogPrompt = formatAssignmentFromSupdialog({
       callName: 'tellaskSessionless',
@@ -41,21 +41,20 @@ async function main(): Promise<void> {
       language,
       collectiveTargets: ['pangu'],
     });
-    const failedResponseContent = formatTeammateResponseContent({
-      callName: 'tellaskSessionless',
-      responderId: 'pangu',
-      requesterId: 'tester',
-      mentionList,
-      tellaskContent,
-      responseBody: buildClearedMindInvalidationNotice(language),
-      status: 'failed',
-      language,
-    });
     const subdialogCourse2Prompt = `${subdialogPrompt}\n---\n${formatNewCourseStartPrompt('en', {
       nextCourse: 2,
       source: 'clear_mind',
     })}`;
-    const rootAfterFailure = 'Acknowledged. I will re-tellask with fresh context.';
+    const completedResponseContent = formatTellaskResponseContent({
+      callName: 'tellaskSessionless',
+      responderId: 'pangu',
+      mentionList,
+      tellaskContent,
+      responseBody: finalSubdialogReply,
+      status: 'completed',
+      language,
+    });
+    const rootAfterReply = 'Received the continued answer from @pangu.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -64,7 +63,7 @@ async function main(): Promise<void> {
         response: rootFirstResponse,
         funcCalls: [
           {
-            id: 'root-call-clear-mind-invalidates-waiters',
+            id: 'root-call-clear-mind-keeps-pending-round',
             name: 'tellaskSessionless',
             arguments: {
               targetAgentId: 'pangu',
@@ -88,14 +87,14 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: failedResponseContent,
-        role: 'tool',
-        response: rootAfterFailure,
-      },
-      {
         message: subdialogCourse2Prompt,
         role: 'user',
-        response: 'Fresh course started; waiting for a brand-new tellask.',
+        response: finalSubdialogReply,
+      },
+      {
+        message: completedResponseContent,
+        role: 'tool',
+        response: rootAfterReply,
       },
     ]);
 
@@ -106,7 +105,7 @@ async function main(): Promise<void> {
       rootDialog,
       {
         content: trigger,
-        msgId: 'kernel-driver-subdialog-clear-mind-invalidates-waiters',
+        msgId: 'kernel-driver-subdialog-clear-mind-keeps-pending-round',
         grammar: 'markdown',
         origin: 'user',
       },
@@ -114,9 +113,9 @@ async function main(): Promise<void> {
     );
 
     await waitFor(
-      async () => lastAssistantSaying(rootDialog) === rootAfterFailure,
+      async () => lastAssistantSaying(rootDialog) === rootAfterReply,
       3_000,
-      'root dialog to resume after cleared-mind failure reply',
+      'root dialog to resume after the callee replies from the new course',
     );
     await waitForAllDialogsUnlocked(rootDialog, 3_000);
 
@@ -124,13 +123,17 @@ async function main(): Promise<void> {
     assert.equal(
       pending.length,
       0,
-      'caller pending-subdialogs should be cleared after callee clear_mind',
+      'caller pending-subdialogs should clear only after the continued reply arrives',
     );
 
     const tellaskResults = listTellaskResultContents(rootDialog.msgs);
     assert.ok(
-      tellaskResults.includes(failedResponseContent),
-      'caller should receive a failed tellask_result_msg explaining the callee cleared mind',
+      tellaskResults.includes(completedResponseContent),
+      'caller should receive the final tellask_result_msg produced after the callee switches course',
+    );
+    assert.ok(
+      !tellaskResults.some((content) => content.includes('this tellask round is no longer valid')),
+      'caller should not receive the old cleared-mind invalidation failure notice',
     );
 
     const allDialogs = rootDialog.getAllDialogs();
@@ -139,11 +142,11 @@ async function main(): Promise<void> {
     assert.equal(subdialog.currentCourse, 2, 'callee subdialog should advance to course #2');
   });
 
-  console.log('kernel-driver subdialog-clear-mind-invalidates-waiters: PASS');
+  console.log('kernel-driver subdialog-clear-mind-keeps-pending-round: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-clear-mind-invalidates-waiters: FAIL\n${message}`);
+  console.error(`kernel-driver subdialog-clear-mind-keeps-pending-round: FAIL\n${message}`);
   process.exit(1);
 });
