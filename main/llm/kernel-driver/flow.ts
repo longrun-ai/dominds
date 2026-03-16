@@ -1,5 +1,8 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
-import { applyRegisteredAppDialogRunControls } from '../../apps/run-control';
+import {
+  applyRegisteredAppDialogRunControls,
+  renderAppRunControlBlockForPreDrive,
+} from '../../apps/run-control';
 import { DialogID, SubDialog } from '../../dialog';
 import {
   clearActiveRun,
@@ -213,6 +216,9 @@ async function applyRegisteredDialogRunControlsBeforeDrive(args: {
   });
   if (result.kind === 'reject') {
     throw new Error(result.errorText);
+  }
+  if (result.kind === 'block') {
+    throw new Error(renderAppRunControlBlockForPreDrive(result.block));
   }
 }
 

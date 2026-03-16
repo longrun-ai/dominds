@@ -21,6 +21,7 @@ import type {
   DomindsAppHostInstance,
   DomindsAppHostStartResult,
   DomindsAppReminderOwnerHandler,
+  DomindsAppRunControlBlock,
   DomindsAppRunControlResult,
 } from '@longrun-ai/kernel/app-host-contract';
 import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
@@ -370,11 +371,96 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
 
 function isValidRunControlResult(result: unknown): result is DomindsAppRunControlResult {
   if (!isRecord(result)) return false;
+  if (result['kind'] === 'allow') {
+    const recoveryAction = result['recoveryAction'];
+    if (recoveryAction === undefined) return true;
+    if (!isRecord(recoveryAction)) return false;
+    return (
+      recoveryAction['actionId'] === 'continue' &&
+      typeof recoveryAction['promptSummary'] === 'string' &&
+      recoveryAction['promptSummary'].trim() !== ''
+    );
+  }
   if (result['kind'] === 'reject') {
     return typeof result['errorText'] === 'string' && result['errorText'].trim() !== '';
   }
-  if (result['kind'] !== 'continue') return false;
-  return true;
+  if (result['kind'] !== 'block') return false;
+  return isValidRunControlBlock(result['block']);
+}
+
+function isValidRunControlBlock(block: unknown): block is DomindsAppRunControlBlock {
+  if (!isRecord(block)) return false;
+  if (!isValidRunControlOwner(block['owner'])) return false;
+  if (!isValidRunControlTargetRef(block['targetRef'])) return false;
+  if (typeof block['title'] !== 'string' || block['title'].trim() === '') return false;
+  if (typeof block['promptSummary'] !== 'string' || block['promptSummary'].trim() === '') {
+    return false;
+  }
+  if (block['blockKind'] === 'await_members') {
+    return isValidRunControlMemberRefs(block['waitingFor']) && block['waitingFor'].length > 0;
+  }
+  if (block['blockKind'] === 'await_human') {
+    const question = block['question'];
+    const optionsSummary = block['optionsSummary'];
+    if (question !== undefined && (typeof question !== 'string' || question.trim() === ''))
+      return false;
+    return optionsSummary === undefined || isStringArray(optionsSummary);
+  }
+  if (block['blockKind'] === 'await_app_action') {
+    if (
+      block['actionClass'] !== 'input' &&
+      block['actionClass'] !== 'select' &&
+      block['actionClass'] !== 'confirm'
+    ) {
+      return false;
+    }
+    if (typeof block['actionId'] !== 'string' || block['actionId'].trim() === '') return false;
+    if (
+      block['resolutionMode'] !== 'explicit_continue' &&
+      block['resolutionMode'] !== 'auto_resume'
+    ) {
+      return false;
+    }
+    return block['optionsSummary'] === undefined || isStringArray(block['optionsSummary']);
+  }
+  return false;
+}
+
+function isValidRunControlOwner(owner: unknown): boolean {
+  if (!isRecord(owner)) return false;
+  if (owner['kind'] === 'human') return true;
+  if (owner['kind'] !== 'member') return false;
+  if (typeof owner['memberId'] !== 'string' || owner['memberId'].trim() === '') return false;
+  return owner['roleIds'] === undefined || isStringArray(owner['roleIds']);
+}
+
+function isValidRunControlTargetRef(targetRef: unknown): boolean {
+  if (!isRecord(targetRef)) return false;
+  const kind = targetRef['kind'];
+  if (
+    kind !== 'taskdoc' &&
+    kind !== 'phase' &&
+    kind !== 'gate' &&
+    kind !== 'change' &&
+    kind !== 'role' &&
+    kind !== 'member'
+  ) {
+    return false;
+  }
+  if (typeof targetRef['id'] !== 'string' || targetRef['id'].trim() === '') return false;
+  if (targetRef['title'] === undefined) return true;
+  return typeof targetRef['title'] === 'string' && targetRef['title'].trim() !== '';
+}
+
+function isValidRunControlMemberRefs(
+  value: unknown,
+): value is readonly Readonly<Record<string, unknown>>[] {
+  if (!Array.isArray(value)) return false;
+  return value.every((entry) => {
+    if (!isRecord(entry)) return false;
+    if (typeof entry['memberId'] !== 'string' || entry['memberId'].trim() === '') return false;
+    return entry['roleIds'] === undefined || isStringArray(entry['roleIds']);
+  });
 }
 
 async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {

@@ -32,9 +32,78 @@ export type DomindsAppRunControlContext = Readonly<{
   }>;
 }>;
 
-export type DomindsAppRunControlResult = Readonly<
-  { kind: 'continue' } | { kind: 'reject'; errorText: string }
->;
+export type DomindsAppRunControlMemberRef = Readonly<{
+  memberId: string;
+  roleIds?: readonly string[];
+}>;
+
+export type DomindsAppRunControlOwnerRef =
+  | Readonly<{ kind: 'human' }>
+  | Readonly<{
+      kind: 'member';
+      memberId: string;
+      roleIds?: readonly string[];
+    }>;
+
+export type DomindsAppRunControlTargetRef = Readonly<{
+  kind: 'taskdoc' | 'phase' | 'gate' | 'change' | 'role' | 'member';
+  id: string;
+  title?: string;
+}>;
+
+export type DomindsAppRunControlAwaitMembersBlock = Readonly<{
+  blockKind: 'await_members';
+  owner: DomindsAppRunControlOwnerRef;
+  targetRef: DomindsAppRunControlTargetRef;
+  title: string;
+  promptSummary: string;
+  waitingFor: readonly DomindsAppRunControlMemberRef[];
+}>;
+
+export type DomindsAppRunControlAwaitHumanBlock = Readonly<{
+  blockKind: 'await_human';
+  owner: DomindsAppRunControlOwnerRef;
+  targetRef: DomindsAppRunControlTargetRef;
+  title: string;
+  promptSummary: string;
+  question?: string;
+  optionsSummary?: readonly string[];
+}>;
+
+export type DomindsAppRunControlActionClass = 'input' | 'select' | 'confirm';
+
+export type DomindsAppRunControlAwaitAppActionBlock = Readonly<{
+  blockKind: 'await_app_action';
+  actionClass: DomindsAppRunControlActionClass;
+  actionId: string;
+  owner: DomindsAppRunControlOwnerRef;
+  resolutionMode: 'explicit_continue' | 'auto_resume';
+  targetRef: DomindsAppRunControlTargetRef;
+  title: string;
+  promptSummary: string;
+  optionsSummary?: readonly string[];
+}>;
+
+export type DomindsAppRunControlBlock =
+  | DomindsAppRunControlAwaitMembersBlock
+  | DomindsAppRunControlAwaitHumanBlock
+  | DomindsAppRunControlAwaitAppActionBlock;
+
+export type DomindsAppRunControlRecoveryAction = Readonly<{
+  actionId: 'continue';
+  promptSummary: string;
+}>;
+
+export type DomindsAppRunControlResult =
+  | Readonly<{
+      kind: 'allow';
+      recoveryAction?: DomindsAppRunControlRecoveryAction;
+    }>
+  | Readonly<{ kind: 'reject'; errorText: string }>
+  | Readonly<{
+      kind: 'block';
+      block: DomindsAppRunControlBlock;
+    }>;
 export type DomindsAppRunControlHandler = (
   ctx: DomindsAppRunControlContext,
 ) => Promise<DomindsAppRunControlResult>;

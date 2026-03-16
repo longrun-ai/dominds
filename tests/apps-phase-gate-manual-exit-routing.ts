@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { DomindsAppRunControlContext } from '@longrun-ai/kernel/app-host-contract';
+import { renderAppRunControlBlockForPreDrive } from '../main/apps/run-control';
 import {
   assertRecord,
   createPhaseGatePrimaryActionsFixture,
@@ -10,9 +12,26 @@ import {
   parsePhaseGateStateBlock,
 } from './helpers/phase-gate-primary-actions-fixture';
 
+function buildRunControlContext(params: {
+  agentId: string;
+  taskDocPath: string;
+  source?: DomindsAppRunControlContext['source'];
+}): DomindsAppRunControlContext {
+  return {
+    dialog: { selfId: `dlg-${params.agentId}`, rootId: `root-${params.agentId}` },
+    agentId: params.agentId,
+    taskDocPath: params.taskDocPath,
+    genIterNo: 1,
+    source: params.source ?? 'drive_dlg_by_user_msg',
+    input: {},
+  };
+}
+
 async function main(): Promise<void> {
   const fixture = await createPhaseGatePrimaryActionsFixture();
   try {
+    const runControl = fixture.host.runControls?.phase_gate_autonomy;
+    assert.ok(runControl, 'expected phase_gate_autonomy run control');
     const manualVoteOutput = extractOutput(
       await fixture.tools.castVote(
         {
@@ -58,6 +77,24 @@ async function main(): Promise<void> {
     assertRecord(manualSelectionRouting.currentPath, 'manual-selection currentPath');
     assert.equal(manualSelectionRouting.currentPath.exitId, 'small_change_path');
     assert.equal(manualSelectionRouting.latestEscalation, null);
+
+    const manualRunControl = await runControl(
+      buildRunControlContext({ agentId: 'spectator', taskDocPath: fixture.manualTaskDocRel }),
+    );
+    assert.equal(manualRunControl.kind, 'block');
+    if (manualRunControl.kind !== 'block') {
+      throw new Error('expected blocked run-control result for manual exit selection');
+    }
+    assert.equal(manualRunControl.block.blockKind, 'await_app_action');
+    if (manualRunControl.block.blockKind !== 'await_app_action') {
+      throw new Error('expected await_app_action block for manual exit selection');
+    }
+    assert.equal(manualRunControl.block.actionClass, 'select');
+    assert.deepEqual(manualRunControl.block.optionsSummary, [
+      'ship_small_change -> acceptance',
+      'escalate_committee -> committee_review',
+    ]);
+    assert.match(renderAppRunControlBlockForPreDrive(manualRunControl.block), /Choose an option/);
 
     const selectExitOutput = extractOutput(
       await fixture.tools.selectExit(

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import type { DomindsAppRunControlContext } from '@longrun-ai/kernel/app-host-contract';
 import {
   assertArray,
   assertRecord,
@@ -8,9 +9,26 @@ import {
   parseJsonBlock,
 } from './helpers/phase-gate-primary-actions-fixture';
 
+function buildRunControlContext(params: {
+  agentId: string;
+  taskDocPath: string;
+  source?: DomindsAppRunControlContext['source'];
+}): DomindsAppRunControlContext {
+  return {
+    dialog: { selfId: `dlg-${params.agentId}`, rootId: `root-${params.agentId}` },
+    agentId: params.agentId,
+    taskDocPath: params.taskDocPath,
+    genIterNo: 1,
+    source: params.source ?? 'drive_dlg_by_user_msg',
+    input: {},
+  };
+}
+
 async function main(): Promise<void> {
   const fixture = await createPhaseGatePrimaryActionsFixture();
   try {
+    const runControl = fixture.host.runControls?.phase_gate_autonomy;
+    assert.ok(runControl, 'expected phase_gate_autonomy run control');
     const requestHumanOutput = extractOutput(
       await fixture.tools.requestHumanDecision(
         {
@@ -91,6 +109,39 @@ async function main(): Promise<void> {
       'artifacts/acceptance-summary.md',
       'artifacts/browser-run.png',
     ]);
+
+    const awaitingHumanControl = await runControl(
+      buildRunControlContext({ agentId: 'spectator', taskDocPath: fixture.controlTaskDocRel }),
+    );
+    assert.equal(awaitingHumanControl.kind, 'block');
+    if (awaitingHumanControl.kind !== 'block') {
+      throw new Error('expected blocked run-control result while awaiting human decision');
+    }
+    assert.equal(awaitingHumanControl.block.blockKind, 'await_human');
+    if (awaitingHumanControl.block.blockKind !== 'await_human') {
+      throw new Error('expected await_human block');
+    }
+    assert.equal(
+      awaitingHumanControl.block.question,
+      'Should we accept the current behavior or require a product-level change?',
+    );
+    assert.deepEqual(awaitingHumanControl.block.optionsSummary, [
+      'Accept current behavior',
+      'Require product change before acceptance',
+    ]);
+
+    const resumableHumanControl = await runControl(
+      buildRunControlContext({
+        agentId: 'spectator',
+        taskDocPath: fixture.controlTaskDocRel,
+        source: 'drive_dialog_by_user_answer',
+      }),
+    );
+    assert.equal(resumableHumanControl.kind, 'allow');
+    if (resumableHumanControl.kind !== 'allow') {
+      throw new Error('expected allow run-control result after human answer');
+    }
+    assert.equal(resumableHumanControl.recoveryAction?.promptSummary, 'Continue');
 
     const recordHumanDecisionOutput = extractOutput(
       await fixture.tools.recordHumanDecision(

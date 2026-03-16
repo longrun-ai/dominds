@@ -248,6 +248,49 @@ If the root manifest / team config uses the wrong app id (for example, still dec
 
 So even without `<rtws>/.apps/configuration.yaml` or `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
 
+### `phase-gate` first slice: frozen decisions
+
+The following frozen decisions exist to let `phase-gate` become the first recommended TypeScript app without prematurely turning the whole change-governance space into a generic engine. The goal here is to freeze the smallest set of boundaries that would otherwise keep churning kernel contracts, host projection, product recovery actions, and user-facing copy.
+
+This first slice only covers a single change moving through `intake -> routing -> advancement`, plus the two high-value product states `blocked` and `exception in progress`. The only loops included for the first slice are `blocking follow-up`, `exception handling`, and `rollback/recovery`. The first-slice object model stays limited to `change dossier`, `governance decision`, `recovery action`, and `route context`.
+
+#### `Routing` must produce required governance semantics
+
+- `Routing` is not merely “record that the change entered the flow”. It must produce the minimum business truth needed for later governance.
+- For the first slice, that truth must include at least:
+  - the current governance intensity (for example large/medium/small, or an equivalent tiering),
+  - the responsibility boundary (who may continue by default, and who has blocking/approval authority),
+  - whether the default advancement path is allowed.
+- These semantics should live inside the existing `route context + governance decision` surface. Do not introduce a fifth first-slice object just to carry them.
+- Once the flow enters `exception in progress`, the decision must also carry scope, time limit, approving responsibility, and compensating action(s); otherwise a constrained exception degrades into an ungoverned bypass.
+
+#### Minimal formal input contract for `pre-drive decision -> host projection`
+
+- The key first-slice contract is not “push app-private vocabulary into kernel”. It is to freeze how an app expresses whether the host may continue driving.
+- The target direction should widen the current `continue | reject` shape into a formal surface that can express `allow / reject / block`; and for now `block` should carry only mechanism-level orchestration primitives such as `await_members`, `await_human`, and `await_app_action`.
+- For `await_app_action`, the app must provide at least the following stable fields before the host may project it into a product-level recovery action:
+  - `actionClass`
+  - `actionId`
+  - `owner`
+  - `resolutionMode`
+  - `targetRef`
+  - enough target/summary material such as `title`, `promptSummary`, and, for `select`, `optionsSummary`
+- Admission responsibility belongs to host projection: the app provides structured material; the host decides whether the material is sufficient for a concrete recovery action or must be uniformly downgraded to the fallback diagnostic path.
+- This contract should be frozen before implementation starts. `dominds/packages/kernel/src/app-host-contract.ts` still exposes `DomindsAppRunControlResult` as only `continue | reject`, while existing `phase-gate` contract tests already depend on richer blocked / primary-action structures. That gap is the current hard blocker.
+
+#### `Resume advancement` is a product action, not an implicit state jump
+
+- The first slice must expose one explicit, product-level recovery action: `resume advancement`.
+- The reason is simple: `blocking follow-up`, `exception handling`, and `rollback/recovery` only cover “handle the abnormal condition first”. They do not answer “how does the user clearly re-enter the main path once the abnormal condition is resolved?”
+- So after follow-up is completed, an exception is granted/closed, or recovery finishes, host projection must be able to surface a clear “you may now resume advancement” action, instead of hiding that step inside a silent state transition or an implementation detail.
+
+#### Unified fallback label: `View problem details`
+
+- When the app does not provide enough structured material to form a concrete recovery action, the product layer must not surface hollow action classes or implementation placeholders. It should uniformly downgrade to the `inspect_problem` path.
+- The default external label for that path is now fixed as: `View problem details`.
+- Internal identifiers such as `inspect_problem`, `select`, `confirm`, `input`, `driver`, `wiring`, and `host adapter` should not appear in user-facing primary sentences by default.
+- If implementation keeps internal names such as `input`, the projected user copy should still say something like “Provide information” or “Fill in information”, not the raw internal identifier.
+
 ## App-provided `.minds/**` assets
 
 ### Asset types and goals

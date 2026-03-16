@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import type { DomindsAppRunControlContext } from '@longrun-ai/kernel/app-host-contract';
 import {
   assertArray,
   assertRecord,
@@ -8,9 +9,26 @@ import {
   parseJsonBlock,
 } from './helpers/phase-gate-primary-actions-fixture';
 
+function buildRunControlContext(params: {
+  agentId: string;
+  taskDocPath: string;
+  source?: DomindsAppRunControlContext['source'];
+}): DomindsAppRunControlContext {
+  return {
+    dialog: { selfId: `dlg-${params.agentId}`, rootId: `root-${params.agentId}` },
+    agentId: params.agentId,
+    taskDocPath: params.taskDocPath,
+    genIterNo: 1,
+    source: params.source ?? 'drive_dlg_by_user_msg',
+    input: {},
+  };
+}
+
 async function main(): Promise<void> {
   const fixture = await createPhaseGatePrimaryActionsFixture();
   try {
+    const runControl = fixture.host.runControls?.phase_gate_autonomy;
+    assert.ok(runControl, 'expected phase_gate_autonomy run control');
     const pendingReviewStatus = extractOutput(
       await fixture.tools.getStatus(
         { taskDocPath: fixture.reviewTaskDocRel },
@@ -18,6 +36,22 @@ async function main(): Promise<void> {
       ),
     );
     assert.match(pendingReviewStatus, /- primaryAction: `dispatch_to_role` -> `builder`/);
+
+    const pendingReviewControl = await runControl(
+      buildRunControlContext({ agentId: 'spectator', taskDocPath: fixture.reviewTaskDocRel }),
+    );
+    assert.equal(pendingReviewControl.kind, 'block');
+    if (pendingReviewControl.kind !== 'block') {
+      throw new Error('expected blocked run-control result for pending reviews');
+    }
+    assert.equal(pendingReviewControl.block.blockKind, 'await_members');
+    if (pendingReviewControl.block.blockKind !== 'await_members') {
+      throw new Error('expected await_members block');
+    }
+    assert.deepEqual(
+      pendingReviewControl.block.waitingFor.map((entry) => entry.memberId),
+      ['owner'],
+    );
 
     const assessmentOutput = extractOutput(
       await fixture.tools.recordAssessment(

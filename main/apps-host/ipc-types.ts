@@ -1,3 +1,4 @@
+import type { DomindsAppRunControlResult } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppHostReminderUpdateResult,
@@ -209,11 +210,7 @@ export type AppsHostRunControlResultMessage = Readonly<
   } & (
     | Readonly<{
         ok: true;
-        result:
-          | Readonly<{
-              kind: 'continue';
-            }>
-          | Readonly<{ kind: 'reject'; errorText: string }>;
+        result: DomindsAppRunControlResult;
       }>
     | Readonly<{ ok: false; errorText: string }>
   )

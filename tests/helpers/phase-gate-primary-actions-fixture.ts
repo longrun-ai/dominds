@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { DomindsAppRunControlHandler } from '@longrun-ai/kernel/app-host-contract';
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 import { extractOutput, parseJsonBlock, writeText, type ToolCtx } from './phase-gate-flow-fixture';
 
@@ -13,6 +14,7 @@ type ToolHandler = (
 
 type PhaseGateHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
+  runControls?: Readonly<Record<string, DomindsAppRunControlHandler>>;
 }>;
 
 type PhaseGateAppFactory = (ctx: AppFactoryContext) => Promise<PhaseGateHost>;

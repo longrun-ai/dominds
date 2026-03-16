@@ -247,6 +247,49 @@ Install JSON 是 app 与 Kernel/CLI 之间的**安装/运行握手载荷**。它
 
 因此，即使缺少 `<rtws>/.apps/configuration.yaml` 或 `<rtws>/.apps/resolution.yaml`，只要 `.minds/app.yaml` 声明了依赖，Kernel 仍会按默认策略去解析本地 app；反之若根 manifest 没有依赖，则最终已启用 app 集合为空。
 
+### `phase-gate` 第一拍最小纵切：冻结说明
+
+以下冻结点服务于 `phase-gate` 作为首个推荐 TypeScript app 的第一拍落地。它们不是要一次性把通用 change-governance 引擎做完，而是先把会反复影响 kernel contract、host projection、产品恢复动作与用户文案的最小边界钉死。
+
+当前第一拍只覆盖单个 change 的 `进入 -> 定向 -> 推进` 主链路，以及 `已阻断` / `例外处理中` 两个高价值主状态；小循环仅先纳入 `阻断补料`、`豁免`、`回退/恢复`。首拍对象收口为：`change dossier`、`governance decision`、`recovery action`、`route context`。
+
+#### `定向` 的必填语义
+
+- `定向` 不是“登记一下 change 已进入流程”，而是必须产出后续治理所需的最小业务真相。
+- 对第一拍而言，这些真相至少包括：
+  - 当前治理强度（例如大/中/小，或等价分级）；
+  - 责任边界（谁可默认推进，谁有阻断/批准职责）；
+  - 是否允许继续沿默认推进路径前进。
+- 这些语义应落在现有 `route context + governance decision` 内，不应再新造“第五类对象”。
+- 一旦进入 `例外处理中`，该 decision 还必须同时带出范围、时效、批准责任与补偿动作；否则“受约束的例外”会退化成“临时放行的口子”。
+
+#### `pre-drive decision -> host projection` 的最小正式输入 contract
+
+- `phase-gate` 第一拍的关键 contract 不是把 app 私有业务词汇直接塞进 kernel，而是冻结 app 如何把“是否允许继续 drive”表达给 host。
+- 目标方向应从当前过窄的 `continue | reject`，收口到能表达 `allow / reject / block` 的正式输入面；其中 `block` 只先承载机制级 orchestration primitives，例如 `await_members`、`await_human`、`await_app_action`。
+- 对 `await_app_action`，app 至少要提供这些稳定字段，host 才能把它投影成产品级恢复动作：
+  - `actionClass`
+  - `actionId`
+  - `owner`
+  - `resolutionMode`
+  - `targetRef`
+  - 足够的目标/摘要材料，例如 `title`、`promptSummary`，以及 `select` 场景所需的 `optionsSummary`
+- 准入责任在 host projection：app 负责提供结构化材料，host 负责判断这些材料是否足以形成明确恢复动作，并决定是投影为产品级动作，还是统一降级到兜底诊断路径。
+- 这层 contract 冻结前，不宜直接开做第一拍实现。当前 `dominds/packages/kernel/src/app-host-contract.ts` 里的 `DomindsAppRunControlResult` 仍只有 `continue | reject`，而现有 `phase-gate` contract tests 已经依赖更丰富的 blocked / primary-action 结构，这正是当前需要先补齐的硬缺口。
+
+#### `继续推进` 是统一恢复动作，不是隐含状态跳转
+
+- 第一拍产品面必须存在一个显式的统一恢复动作：`继续推进`。
+- 原因很直接：`阻断补料`、`豁免`、`回退/恢复` 只覆盖“先处理异常”，并不自动回答“异常处理完后如何回挂主链路”。
+- 因此，补料完成、豁免决议落定、或恢复动作完成之后，host projection 必须能够给出“现在可以继续推进”的明确动作，而不是把这一步隐含在状态切换或实现细节里。
+
+#### 统一兜底文案：`查看问题详情`
+
+- 当 app 提供的材料不足以形成明确恢复动作时，产品层不得显示空心动作类或实现占位词，而应统一降级到 `inspect_problem` 路径。
+- 该路径的对外默认文案现在就固定为：`查看问题详情`。
+- `inspect_problem`、`select`、`confirm`、`input`、`driver`、`wiring`、`host adapter` 等内部实现词，默认不进入用户主句。
+- 若实现层保留 `input` 之类内部类名，对外文案也应投影成“提供信息 / 填写信息”一类用户可理解表达，而不是直接暴露内部标识。
+
 ## App 可提供的 `.minds/**` 资产
 
 ### 资产类型与目标

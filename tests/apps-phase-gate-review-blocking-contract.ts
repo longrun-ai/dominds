@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+import type { DomindsAppRunControlContext } from '@longrun-ai/kernel/app-host-contract';
+import { renderAppRunControlBlockForPreDrive } from '../main/apps/run-control';
 import {
   assertArray,
   assertRecord,
@@ -8,9 +10,26 @@ import {
   parseJsonBlock,
 } from './helpers/phase-gate-primary-actions-fixture';
 
+function buildRunControlContext(params: {
+  agentId: string;
+  taskDocPath: string;
+  source?: DomindsAppRunControlContext['source'];
+}): DomindsAppRunControlContext {
+  return {
+    dialog: { selfId: `dlg-${params.agentId}`, rootId: `root-${params.agentId}` },
+    agentId: params.agentId,
+    taskDocPath: params.taskDocPath,
+    genIterNo: 1,
+    source: params.source ?? 'drive_dlg_by_user_msg',
+    input: {},
+  };
+}
+
 async function main(): Promise<void> {
   const fixture = await createPhaseGatePrimaryActionsFixture();
   try {
+    const runControl = fixture.host.runControls?.phase_gate_autonomy;
+    assert.ok(runControl, 'expected phase_gate_autonomy run control');
     const pendingReviewStatus = extractOutput(
       await fixture.tools.getStatus(
         { taskDocPath: fixture.reviewTaskDocRel },
@@ -64,6 +83,19 @@ async function main(): Promise<void> {
     assert.equal(rejectedReviewUnlockBy[0].memberId, 'flow-mentor');
     assert.deepEqual(rejectedReviewUnlockBy[0].roleIds, ['flow_mentor']);
 
+    const rejectedReviewControl = await runControl(
+      buildRunControlContext({ agentId: 'spectator', taskDocPath: fixture.reviewTaskDocRel }),
+    );
+    assert.equal(rejectedReviewControl.kind, 'block');
+    if (rejectedReviewControl.kind !== 'block') {
+      throw new Error('expected blocked run-control result for quorum_not_met');
+    }
+    assert.equal(rejectedReviewControl.block.blockKind, 'await_app_action');
+    assert.match(
+      renderAppRunControlBlockForPreDrive(rejectedReviewControl.block),
+      /^View problem details\./,
+    );
+
     const vetoVoteOutput = extractOutput(
       await fixture.tools.castVote(
         {
@@ -95,6 +127,19 @@ async function main(): Promise<void> {
     assertRecord(vetoPrimaryAction, 'veto primaryAction');
     assert.equal(vetoPrimaryAction.kind, 'dispatch_to_role');
     assert.deepEqual(vetoPrimaryAction.targetRoleIds, ['builder']);
+
+    const vetoRunControl = await runControl(
+      buildRunControlContext({ agentId: 'spectator', taskDocPath: fixture.vetoTaskDocRel }),
+    );
+    assert.equal(vetoRunControl.kind, 'block');
+    if (vetoRunControl.kind !== 'block') {
+      throw new Error('expected blocked run-control result for veto_open');
+    }
+    assert.equal(vetoRunControl.block.blockKind, 'await_app_action');
+    assert.match(
+      renderAppRunControlBlockForPreDrive(vetoRunControl.block),
+      /^View problem details\./,
+    );
   } finally {
     await fixture.cleanup();
   }

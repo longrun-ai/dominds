@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { DomindsAppRunControlHandler } from '@longrun-ai/kernel/app-host-contract';
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 
 export type ToolCtx = Readonly<{
@@ -19,6 +20,7 @@ type ToolHandler = (
 
 export type PhaseGateHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
+  runControls?: Readonly<Record<string, DomindsAppRunControlHandler>>;
 }>;
 
 type PhaseGateAppFactory = (ctx: AppFactoryContext) => Promise<PhaseGateHost>;
@@ -28,6 +30,7 @@ export type PhaseGateTools = Readonly<{
   initFlow: ToolHandler;
   getFlow: ToolHandler;
   getBindings: ToolHandler;
+  validateFlow: ToolHandler;
   replaceFlow: ToolHandler;
   replaceBindings: ToolHandler;
   getStatus: ToolHandler;
@@ -309,6 +312,16 @@ const invalidMissingEdgeBody = [
   '',
 ].join('\n');
 
+const invalidBrokenMermaidBody = [
+  invalidNoMermaidBody.trimEnd(),
+  '',
+  '```mermaid',
+  'flowchart TD',
+  '  alignment[broken --> done',
+  '```',
+  '',
+].join('\n');
+
 const incompatiblePreserveStateBody = [
   '```phasegate',
   '{',
@@ -511,6 +524,8 @@ export const invalidNoMermaidFlow = ['# Invalid Flow', '', invalidNoMermaidBody]
 
 export const invalidMissingEdgeFlow = ['# Invalid Flow', '', invalidMissingEdgeBody].join('\n');
 
+export const invalidBrokenMermaidFlow = ['# Invalid Flow', '', invalidBrokenMermaidBody].join('\n');
+
 export const incompatiblePreserveStateFlow = [
   '# Incompatible Flow',
   '',
@@ -604,6 +619,8 @@ function getPhaseGateTools(host: PhaseGateHost): PhaseGateTools {
   assert.ok(getFlow, 'expected phase_gate_get_flow tool');
   const getBindings = host.tools.phase_gate_get_bindings;
   assert.ok(getBindings, 'expected phase_gate_get_bindings tool');
+  const validateFlow = host.tools.phase_gate_validate_flow;
+  assert.ok(validateFlow, 'expected phase_gate_validate_flow tool');
   const replaceFlow = host.tools.phase_gate_replace_flow;
   assert.ok(replaceFlow, 'expected phase_gate_replace_flow tool');
   const replaceBindings = host.tools.phase_gate_replace_bindings;
@@ -615,6 +632,7 @@ function getPhaseGateTools(host: PhaseGateHost): PhaseGateTools {
     initFlow,
     getFlow,
     getBindings,
+    validateFlow,
     replaceFlow,
     replaceBindings,
     getStatus,

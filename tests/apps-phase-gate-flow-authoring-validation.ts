@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   createPhaseGateFixture,
   expectToolError,
+  extractOutput,
+  invalidBrokenMermaidFlow,
   invalidMissingEdgeFlow,
   invalidNoMermaidFlow,
   resolvePhaseGateFixture,
@@ -21,8 +23,23 @@ async function main(): Promise<void> {
       /phase-gate flow is not initialized for 'uninitialized-case\.tsk'; use 'phase_gate_init_flow' first/,
     );
 
+    const validationOutput = extractOutput(
+      await fixture.tools.validateFlow(
+        {
+          taskDocPath: fixture.taskDocRel,
+          content: resolvePhaseGateFixture(invalidMissingEdgeFlow).replace(
+            'done --> alignment',
+            'alignment --> done',
+          ),
+        },
+        fixture.toolCtx,
+      ),
+    );
+    assert.match(validationOutput, /Validation passed:/);
+    assert.match(validationOutput, /mermaidEdges: `alignment->done`/);
+
     const invalidNoMermaidMessage = await expectToolError(
-      fixture.tools.replaceFlow,
+      fixture.tools.validateFlow,
       {
         taskDocPath: fixture.taskDocRel,
         content: resolvePhaseGateFixture(invalidNoMermaidFlow),
@@ -30,6 +47,16 @@ async function main(): Promise<void> {
       fixture.toolCtx,
     );
     assert.match(invalidNoMermaidMessage, /flow markdown must include a ```mermaid block/);
+
+    const invalidBrokenMermaidMessage = await expectToolError(
+      fixture.tools.validateFlow,
+      {
+        taskDocPath: fixture.taskDocRel,
+        content: resolvePhaseGateFixture(invalidBrokenMermaidFlow),
+      },
+      fixture.toolCtx,
+    );
+    assert.match(invalidBrokenMermaidMessage, /mermaid block is not renderable:/);
 
     const invalidMissingEdgeMessage = await expectToolError(
       fixture.tools.replaceFlow,

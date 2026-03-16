@@ -118,6 +118,22 @@ function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
   if (type === 'run_control_result') {
     const callId = asString(v['callId']);
     if (!callId) throw new Error('Invalid run_control_result message: callId required');
+    const ok = v['ok'];
+    if (ok === true) {
+      return {
+        type,
+        callId,
+        ok: true,
+        result: v['result'] as DomindsAppRunControlResult,
+      };
+    }
+    if (ok === false) {
+      const errorText = asString(v['errorText']);
+      if (!errorText) {
+        throw new Error('Invalid run_control_result message: errorText required when ok=false');
+      }
+      return { type, callId, ok: false, errorText };
+    }
     return v as unknown as AppsHostMessageToKernel;
   }
   throw new Error(`Invalid IPC message from apps-host: unknown type '${type}'`);
