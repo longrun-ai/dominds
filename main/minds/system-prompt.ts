@@ -410,6 +410,8 @@ ${input.skillsText}
 
 ${input.envIntro}
 
+**硬边界**：通用文件工具会拒绝访问以下路径（硬编码无条件拒绝）：rtws 根路径下的 \`.minds/\`（团队记忆/配置）、\`.dialogs/\`（对话记录）、任意子目录下的 \`*.tsk/\`（差遣牒）。
+
 ## 团队目录
 
 **Q4H 机制**：通过 \`askHuman\` 发起向人类请求（澄清/决策/授权/缺失输入），或汇报当前环境中无法由智能体自主完成的阻塞事项。
@@ -503,6 +505,8 @@ ${input.skillsText}
 ## Runtime Environment
 
 ${input.envIntro}
+
+**Hard Boundaries**: Generic file tools will reject access to the following paths (hard-coded unconditional denial): rtws root \`.minds/\` (team memory/config), \`.dialogs/\` (dialog records), \`*.tsk/\` in any subdirectory (taskdocs).
 
 ## Team Directory
 
