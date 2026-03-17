@@ -116,6 +116,7 @@ That is a workflow break. The model should send the Tellask directly.
 - Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, and the localized Chinese completion marker in Chinese work language).
 - If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellasks (including `tellaskBack` / `askHuman`); list missing context + reasoning and return.
+- If a human user inserts a message or asks a follow-up in the sideline: just reply normally; no need to report back to the upstream requester.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 

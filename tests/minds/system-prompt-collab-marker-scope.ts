@@ -47,7 +47,7 @@ function main(): void {
   const zhMainline = buildPrompt('mainline', 'zh');
   assert.ok(
     zhMainline.includes(
-      '发起 \\`tellask\\` / \\`tellaskSessionless\\` 时，\\`tellaskContent\\` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，必须显式要求“禁止手写，Dominds 自动注入标记”。',
+      '发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，必须显式要求“禁止手写，Dominds 自动注入标记”。',
     ),
   );
   assert.ok(
@@ -64,7 +64,7 @@ function main(): void {
   const enMainline = buildPrompt('mainline', 'en');
   assert.ok(
     enMainline.includes(
-      'When initiating \\`tellask\\` / \\`tellaskSessionless\\`, \\`tellaskContent\\` must stay as business body and must not hand-write reply markers; if you specify a reply format, explicitly require “no hand-written markers, Dominds auto-injects markers”.',
+      'When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as business body and must not hand-write reply markers; if you specify a reply format, explicitly require “no hand-written markers, Dominds auto-injects markers”.',
     ),
   );
   assert.ok(
@@ -90,21 +90,23 @@ function main(): void {
     ),
   );
   assert.ok(
-    zhSideline.includes('本规则仅用于当前支线向上游诉请者回贴，不适用于你发起新的 tellask。'),
-  );
-  assert.ok(
     zhSideline.includes(
-      '当前支线未完成/不确定/阻塞/需要澄清时：必须调用 \\`tellaskBack({ tellaskContent: "..." })\\`，不得发普通文本中间汇报。',
+      '本规则仅用于当前支线向上游回复（直接发正文）；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
     ),
   );
   assert.ok(
     zhSideline.includes(
-      '`tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 \\`tellaskBack\\` 发送最终结果。',
+      '当前支线未完成/不确定/阻塞/需要澄清时：必须调用 `tellaskBack({ tellaskContent: "..." })`，不得发普通文本中间汇报。',
     ),
   );
   assert.ok(
     zhSideline.includes(
-      '当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 \\`tellaskBack\\`。',
+      '`tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
+    ),
+  );
+  assert.ok(
+    zhSideline.includes(
+      '当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 `tellaskBack`。',
     ),
   );
   assert.ok(
@@ -126,22 +128,22 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'This rule applies only when posting upstream from the current sideline, not when initiating a new tellask.',
+      'This rule applies only when replying upstream from the current sideline (direct response body); tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
     ),
   );
   assert.ok(
     enSideline.includes(
-      'If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call \\`tellaskBack({ tellaskContent: "..." })\\` instead of posting a plain-text progress update.',
+      'If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call `tellaskBack({ tellaskContent: "..." })` instead of posting a plain-text progress update.',
     ),
   );
   assert.ok(
     enSideline.includes(
-      '\\`tellaskBack\\` is allowed only for ask-back / clarification / blocked-state reporting; do not use \\`tellaskBack\\` to send final results.',
+      '`tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
     ),
   );
   assert.ok(
     enSideline.includes(
-      'If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not \\`tellaskBack\\`.',
+      'If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not `tellaskBack`.',
     ),
   );
   assert.ok(

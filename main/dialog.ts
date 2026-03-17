@@ -1191,7 +1191,6 @@ export abstract class Dialog {
         runControl: runControlSpec,
       });
     }
-
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access
