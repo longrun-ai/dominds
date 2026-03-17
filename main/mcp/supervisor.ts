@@ -10,7 +10,7 @@ import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from
 import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool, ToolArguments, ToolCallOutput } from '../tool';
-import { buildStandardManualSpec } from '../tools/manual/spec';
+import { buildMcpManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
   registerTool,
@@ -886,7 +886,7 @@ function registerServer(state: ServerState): void {
   }
   registerToolset(state.toolsetName, state.tools);
   const manualSpec = state.cfg.manual?.contentFile
-    ? buildStandardManualSpec({ baseDir: state.cfg.manual.contentFile })
+    ? buildMcpManualSpec(state.cfg.manual.contentFile)
     : undefined;
   setToolsetMeta(state.toolsetName, {
     source: 'mcp',

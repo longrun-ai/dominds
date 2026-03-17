@@ -16,7 +16,7 @@ import {
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
-import { buildStandardManualSpec } from './manual/spec';
+import { buildBuiltinManualSpec } from './manual/spec';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
   addPersonalMemoryTool,
@@ -74,14 +74,13 @@ function promptFilesFor(toolsetId: string): { en: string; zh: string } {
 
 function manualSpecFor(toolsetId: string) {
   if (toolsetId === 'ws_mod') {
-    // ws_mod: all topics served from the same flat file (no per-topic split).
-    return buildStandardManualSpec({
-      baseDir: 'prompts/ws_mod',
+    return buildBuiltinManualSpec({
+      toolsetId: 'ws_mod',
       warnOnMissing: false,
       includeSchemaToolsSection: false,
     });
   }
-  return buildStandardManualSpec({ baseDir: `prompts/${toolsetId}` });
+  return buildBuiltinManualSpec({ toolsetId });
 }
 
 registerTool(listDirTool);

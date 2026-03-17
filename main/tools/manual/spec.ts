@@ -1,4 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import * as path from 'path';
 
 export const MANUAL_TOPICS = ['index', 'principles', 'tools', 'scenarios', 'errors'] as const;
 
@@ -52,37 +53,108 @@ export function shouldIncludeSchemaToolsSection(spec?: ManualSpec): boolean {
   return spec?.includeSchemaToolsSection ?? true;
 }
 
-export function buildStandardManualSpec(options: {
-  baseDir: string;
-  topics?: readonly ManualTopic[];
-  warnOnMissing?: boolean;
-  includeSchemaToolsSection?: boolean;
-}): ManualSpec {
-  const baseDir = stripTrailingSlash(options.baseDir);
-  const topics =
-    options.topics && options.topics.length > 0 ? [...options.topics] : [...MANUAL_TOPICS];
+// ---------------------------------------------------------------------------
+// Path builders (no hardcoded toolsetId / serverId strings)
+// ---------------------------------------------------------------------------
 
+/**
+ * Build manual topic file paths for a built-in toolset.
+ * Format: `prompts/<toolsetId>/<lang>/<topic>.md`
+ *
+ * No heuristics — `toolsetId` is an explicit parameter.
+ */
+export function builtinManualTopicPaths(
+  toolsetId: string,
+  language: LanguageCode,
+): Record<ManualTopic, string> {
+  const suffix = language === 'en' ? '.en' : '';
+  const langDir = language;
+  const baseDir = `prompts/${toolsetId}`;
+  return {
+    index: path.join(baseDir, langDir, `index${suffix}.md`),
+    principles: path.join(baseDir, langDir, `principles${suffix}.md`),
+    tools: path.join(baseDir, langDir, `tools${suffix}.md`),
+    scenarios: path.join(baseDir, langDir, `scenarios${suffix}.md`),
+    errors: path.join(baseDir, langDir, `errors${suffix}.md`),
+  };
+}
+
+/**
+ * Build manual topic file paths for an MCP toolset.
+ * Format: `<contentFilePrefix>/<topic>.<lang>.md`
+ *
+ * `contentFilePrefix` comes directly from the MCP server's mcp.yaml
+ * `manual.contentFile` field — no hardcoded serverId paths.
+ */
+export function mcpManualTopicPaths(
+  contentFilePrefix: string,
+  language: LanguageCode,
+): Record<ManualTopic, string> {
+  const prefix = stripTrailingSlash(contentFilePrefix);
+  const suffix = language === 'en' ? '.en' : '';
+  return {
+    index: `${prefix}/index${suffix}.md`,
+    principles: `${prefix}/principles${suffix}.md`,
+    tools: `${prefix}/tools${suffix}.md`,
+    scenarios: `${prefix}/scenarios${suffix}.md`,
+    errors: `${prefix}/errors${suffix}.md`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factory functions (selected by call site, not by path inspection)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a ManualSpec for a built-in toolset.
+ * Calls `builtinManualTopicPaths` internally — no hardcoded path inspection.
+ */
+export function buildBuiltinManualSpec(
+  options?: {
+    topics?: readonly ManualTopic[];
+    warnOnMissing?: boolean;
+    includeSchemaToolsSection?: boolean;
+  } & ({ toolsetId: string } | Record<string, never>),
+): ManualSpec {
+  const topics =
+    options?.topics && options.topics.length > 0 ? [...options.topics] : [...MANUAL_TOPICS];
   return {
     topics,
-    warnOnMissing: options.warnOnMissing ?? true,
-    includeSchemaToolsSection: options.includeSchemaToolsSection ?? true,
+    warnOnMissing: options?.warnOnMissing ?? true,
+    includeSchemaToolsSection: options?.includeSchemaToolsSection ?? true,
     topicFilesI18n: {
-      en: topicPathsFor(baseDir, 'en'),
-      zh: topicPathsFor(baseDir, 'zh'),
+      en: builtinManualTopicPaths(options?.toolsetId ?? '', 'en'),
+      zh: builtinManualTopicPaths(options?.toolsetId ?? '', 'zh'),
     },
   };
 }
 
-function topicPathsFor(baseDir: string, language: LanguageCode): Record<ManualTopic, string> {
-  const suffix = language === 'en' ? '.en' : '';
+/**
+ * Build a ManualSpec for an MCP toolset.
+ * Calls `mcpManualTopicPaths` internally — no hardcoded serverId paths.
+ * `contentFilePrefix` is sourced from mcp.yaml `manual.contentFile`.
+ */
+export function buildMcpManualSpec(
+  contentFilePrefix: string,
+  options?: {
+    topics?: readonly ManualTopic[];
+    warnOnMissing?: boolean;
+    includeSchemaToolsSection?: boolean;
+  },
+): ManualSpec {
+  const topics =
+    options?.topics && options.topics.length > 0 ? [...options.topics] : [...MANUAL_TOPICS];
   return {
-    index: `${baseDir}/index${suffix}.md`,
-    principles: `${baseDir}/principles${suffix}.md`,
-    tools: `${baseDir}/tools${suffix}.md`,
-    scenarios: `${baseDir}/scenarios${suffix}.md`,
-    errors: `${baseDir}/errors${suffix}.md`,
+    topics,
+    warnOnMissing: options?.warnOnMissing ?? true,
+    includeSchemaToolsSection: options?.includeSchemaToolsSection ?? true,
+    topicFilesI18n: {
+      en: mcpManualTopicPaths(contentFilePrefix, 'en'),
+      zh: mcpManualTopicPaths(contentFilePrefix, 'zh'),
+    },
   };
 }
+
 function stripTrailingSlash(input: string): string {
   return input.replace(/\/+$/g, '');
 }
