@@ -1601,7 +1601,7 @@ async function runPrepareFileRangeEdit(
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
           planned: (id: string, p: string) => `✅ 已规划：\`${id}\` → \`${p}\``,
           next: (id: string) =>
-            `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${id}\" }`,
+            `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${id}\" }`,
           invalidHunkId: '错误：hunk id 格式无效（例如 `a1b2c3d4`）。',
           unknownHunkId: (id: string) =>
             `错误：hunk id \`${id}\` 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 \`existing_hunk_id\` 设为空字符串。`,
@@ -1616,7 +1616,7 @@ async function runPrepareFileRangeEdit(
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
           planned: (id: string, p: string) => `✅ Planned \`${id}\` for \`${p}\``,
           next: (id: string) =>
-            `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${id}\" }.`,
+            `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${id}" }.`,
           invalidHunkId: 'Error: invalid hunk id format (e.g. `a1b2c3d4`).',
           unknownHunkId: (id: string) =>
             `Error: hunk id \`${id}\` not found (expired or already applied). Custom new ids are not allowed; set \`existing_hunk_id\` to an empty string to generate a new one.`,
@@ -2092,8 +2092,8 @@ async function runPrepareFileAppend(
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
       (language === 'zh'
-        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
+        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = formatYamlCodeBlock(
@@ -2482,8 +2482,8 @@ async function planInsertionCommon(
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
       (language === 'zh'
-        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
+        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = formatYamlCodeBlock(
@@ -4100,8 +4100,8 @@ async function runPrepareBlockReplace(
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
       (language === 'zh'
-        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
+        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
 
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {

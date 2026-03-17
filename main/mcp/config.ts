@@ -18,6 +18,17 @@ type McpServerConfigBase = {
     blacklist: string[];
   };
   transform: ToolNameTransform[];
+  /**
+   * Optional manual metadata for this MCP server.
+   * When `manual.contentFile` is set, the runtime builds a ManualSpec from the
+   * i18n files alongside the entry point:
+   *   - zh:  <baseDir>/index.md        (semantic baseline)
+   *   - en:  <baseDir>/index.en.md
+   * The `contentFile` value is a rtws-relative path.
+   */
+  manual?: {
+    contentFile?: string;
+  };
 };
 
 export type McpStdioServerConfig = McpServerConfigBase & {
@@ -157,6 +168,26 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
   const transformVal = obj.transform;
   const transform = transformVal === undefined ? [] : parseTransformArray(transformVal, serverId);
 
+  const manualVal = obj.manual;
+  const manual: McpServerConfigBase['manual'] =
+    manualVal === undefined
+      ? undefined
+      : (() => {
+          const m = asRecord(manualVal, `servers.${serverId}.manual`);
+          const contentFileVal = m.contentFile;
+          const contentFile =
+            contentFileVal === undefined
+              ? undefined
+              : typeof contentFileVal === 'string' && contentFileVal.trim().length > 0
+                ? contentFileVal.trim()
+                : (() => {
+                    throw new Error(
+                      `Invalid mcp.yaml: servers.${serverId}.manual.contentFile must be a non-empty string`,
+                    );
+                  })();
+          return contentFile !== undefined ? { contentFile } : undefined;
+        })();
+
   if (transport === 'stdio') {
     const command = obj.command;
     if (typeof command !== 'string' || !command.trim()) {
@@ -213,6 +244,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
       env,
       tools: { whitelist, blacklist },
       transform,
+      manual,
     };
   }
 
@@ -263,6 +295,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     sessionId,
     tools: { whitelist, blacklist },
     transform,
+    manual,
   };
 }
 

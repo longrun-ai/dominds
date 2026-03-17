@@ -10,6 +10,7 @@ import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from
 import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool, ToolArguments, ToolCallOutput } from '../tool';
+import { buildStandardManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
   registerTool,
@@ -878,19 +879,22 @@ function reconcileCollisionDependentRegistrations(
 
   return changedAny;
 }
-
 function registerServer(state: ServerState): void {
   for (const t of state.tools) {
     registerTool(t);
     toolOwnerByName.set(t.name, { kind: 'mcp', serverId: state.serverId });
   }
   registerToolset(state.toolsetName, state.tools);
+  const manualSpec = state.cfg.manual?.contentFile
+    ? buildStandardManualSpec({ baseDir: state.cfg.manual.contentFile })
+    : undefined;
   setToolsetMeta(state.toolsetName, {
     source: 'mcp',
     descriptionI18n: {
       en: `MCP server: ${state.serverId}`,
       zh: `MCP 服务器：${state.serverId}`,
     },
+    ...(manualSpec !== undefined ? { manualSpec } : {}),
   });
   toolsetOwnerByName.set(state.toolsetName, { kind: 'mcp', serverId: state.serverId });
 }

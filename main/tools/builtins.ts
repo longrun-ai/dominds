@@ -59,19 +59,33 @@ import {
 } from './txt';
 
 function promptFilesFor(toolsetId: string): { en: string; zh: string } {
+  if (toolsetId === 'ws_mod') {
+    // ws_mod uses flat single-file format, not subdirectory structure.
+    return {
+      en: 'prompts/ws_mod.en.md',
+      zh: 'prompts/ws_mod.zh.md',
+    };
+  }
   return {
-    en: `./prompts/${toolsetId}/en/index.md`,
-    zh: `./prompts/${toolsetId}/zh/index.md`,
+    en: `prompts/${toolsetId}/en/index.md`,
+    zh: `prompts/${toolsetId}/zh/index.md`,
   };
 }
 
 function manualSpecFor(toolsetId: string) {
-  return buildStandardManualSpec({ baseDir: `./prompts/${toolsetId}` });
+  if (toolsetId === 'ws_mod') {
+    // ws_mod: all topics served from the same flat file (no per-topic split).
+    return buildStandardManualSpec({
+      baseDir: 'prompts/ws_mod',
+      warnOnMissing: false,
+      includeSchemaToolsSection: false,
+    });
+  }
+  return buildStandardManualSpec({ baseDir: `prompts/${toolsetId}` });
 }
 
 registerTool(listDirTool);
 registerTool(rmDirTool);
-registerTool(rmFileTool);
 registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);

@@ -74,15 +74,15 @@ export function buildStandardManualSpec(options: {
 }
 
 function topicPathsFor(baseDir: string, language: LanguageCode): Record<ManualTopic, string> {
+  const suffix = language === 'en' ? '.en' : '';
   return {
-    index: `${baseDir}/${language}/index.md`,
-    principles: `${baseDir}/${language}/principles.md`,
-    tools: `${baseDir}/${language}/tools.md`,
-    scenarios: `${baseDir}/${language}/scenarios.md`,
-    errors: `${baseDir}/${language}/errors.md`,
+    index: `${baseDir}/index${suffix}.md`,
+    principles: `${baseDir}/principles${suffix}.md`,
+    tools: `${baseDir}/tools${suffix}.md`,
+    scenarios: `${baseDir}/scenarios${suffix}.md`,
+    errors: `${baseDir}/errors${suffix}.md`,
   };
 }
-
 function stripTrailingSlash(input: string): string {
   return input.replace(/\/+$/g, '');
 }

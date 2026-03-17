@@ -2163,7 +2163,7 @@ export const teamMgmtApplyFileModificationTool: FuncTool = {
         if (relPath) {
           await refreshDerivedStateAfterTeamMgmtWrite({
             relPaths: [relPath],
-            trigger: 'apply_file_modification',
+            trigger: 'team_mgmt_apply_file_modification',
           });
         }
       }
@@ -4127,13 +4127,9 @@ function parseMcpManualField(
     }
   }
 
-  if (!content && sections.length === 0) {
-    return {
-      kind: 'invalid',
-      errorText: `${fieldPath} must include at least one of content or sections`,
-    };
-  }
-
+  // Note: contentFile is handled by the runtime in config.ts (separate from this validation).
+  // We simply accept the descriptor without requiring content/sections so that contentFile-based
+  // manuals are not flagged as invalid here.
   return { kind: 'present', manual: { content, sections } };
 }
 

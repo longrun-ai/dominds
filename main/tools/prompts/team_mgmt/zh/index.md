@@ -43,6 +43,43 @@ team_mgmt 是 Dominds 用于管理 `.minds/`（团队配置与 rtws 记忆）的
 
 ## 与 ws_mod 的关系
 
+## MCP 工具集手册 i18n 机制
+
+Dominds 支持通过 MCP server 配置的 `manual.contentFile` 字段指定 rtws 相对路径来挂载工具集手册，支持多语言（zh/en）。
+
+### 路径约定
+
+| 语言           | 文件路径                                    |
+| -------------- | ------------------------------------------- |
+| zh（语义基准） | `.minds/mcp/manuals/<serverId>/index.md`    |
+| en             | `.minds/mcp/manuals/<serverId>/index.en.md` |
+
+### mcp.yaml 配置示例
+
+```yaml
+servers:
+  my-server:
+    transport: stdio
+    command: ...
+    manual:
+      contentFile: .minds/mcp/manuals/my-server
+```
+
+- `manual.contentFile` 与 `manual.content` / `manual.sections` 互斥，`contentFile` 优先级更高
+- 路径为 rtws 相对路径（以 `.` 开头时相对于运行时工作区根目录解析）
+- 加载时做 early fail 校验：若指定路径不存在或不合法，server 配置将标记为 invalid
+
+### 渲染行为
+
+- `render.ts` 的 `loadTopicDoc()` 函数通过路径前缀判断解析方式：
+  - **rtws 相对路径**（以 `.` 开头）：相对于 `process.cwd()` 解析
+  - **包内路径**（其他情况）：相对于 `__dirname` 解析
+- 运行时语言由对话的 `getLastUserLanguageCode()` 决定，zh 为语义基准
+
+### auto-draft 行为
+
+- auto-draft 不受 `contentFile` 影响；tool calling 输出中的工具名仍以运行时实际注册为准
+
 本工具集与 `ws_mod`（文本编辑工具）的心智模型一致，但：
 
 - 路径解析到 `.minds/` 下（如 `team.yaml` → `.minds/team.yaml`）

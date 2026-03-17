@@ -172,9 +172,13 @@ function loadTopicDoc(params: {
   if (!topicPath) {
     return { status: 'missing', filePath: '', content: '' };
   }
-  const absPathFromToolsRoot = path.resolve(__dirname, '..', topicPath);
+  // rtws-relative paths (start with '.') are resolved from rtws root (cwd);
+  // package-relative paths (used by builtin toolsets) are resolved from __dirname.
+  const absPath = topicPath.startsWith('.')
+    ? path.resolve(process.cwd(), topicPath)
+    : path.resolve(__dirname, '..', topicPath);
   try {
-    const content = fs.readFileSync(absPathFromToolsRoot, 'utf8');
+    const content = fs.readFileSync(absPath, 'utf8');
     return { status: 'ok', filePath: topicPath, content };
   } catch (error: unknown) {
     if (isNodeErrno(error, 'ENOENT')) {
