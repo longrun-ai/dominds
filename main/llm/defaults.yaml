@@ -34,6 +34,11 @@ providers:
           type: enum
           values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
+        reasoning_summary:
+          type: enum
+          default: auto
+          values: [auto, concise, detailed, none]
+          description: Reasoning summary detail level (when supported by the model).
         service_tier:
           prominent: true
           default: default
@@ -86,6 +91,15 @@ providers:
     models:
       gpt-5.4:
         name: GPT-5.4
+        optimal_max_tokens: 200000
+        # Caution remediation reinjection cadence in generation turns (default: 10).
+        caution_remediation_cadence_generations: 10
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
+      gpt-5.4-mini:
+        name: GPT-5.4 Mini
         optimal_max_tokens: 200000
         # Caution remediation reinjection cadence in generation turns (default: 10).
         caution_remediation_cadence_generations: 10
@@ -698,6 +712,11 @@ providers:
           type: enum
           values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
+        reasoning_summary:
+          type: enum
+          default: auto
+          values: [auto, concise, detailed, none]
+          description: Reasoning summary detail level (when supported by the model).
         verbosity:
           type: enum
           values: [low, medium, high]

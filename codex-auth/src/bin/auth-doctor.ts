@@ -221,8 +221,10 @@ interface ModelsProbeResult {
   status?: number;
   error?: string;
   models_count?: number;
+  models?: ModelsProbeModel[];
   model_slugs?: string[];
   gpt_54_model?: ModelsProbeModel | null;
+  gpt_54_mini_model?: ModelsProbeModel | null;
   codex_53_family?: ModelsProbeModel[];
   spark_model?: ModelsProbeModel | null;
   preflight?: FetchPreflight;
@@ -1012,6 +1014,7 @@ async function probeChatGptModels(
 
     const modelSlugs = parsed.models.map((model) => model.slug);
     const gpt54Model = parsed.models.find((model) => model.slug === 'gpt-5.4') ?? null;
+    const gpt54MiniModel = parsed.models.find((model) => model.slug === 'gpt-5.4-mini') ?? null;
     const codex53Family = parsed.models.filter((model) => model.slug.startsWith('gpt-5.3-codex'));
     const sparkModel = parsed.models.find((model) => model.slug === 'gpt-5.3-codex-spark') ?? null;
 
@@ -1019,8 +1022,10 @@ async function probeChatGptModels(
       ok: true,
       status: response.status,
       models_count: parsed.models.length,
+      models: parsed.models,
       model_slugs: modelSlugs,
       gpt_54_model: gpt54Model,
+      gpt_54_mini_model: gpt54MiniModel,
       codex_53_family: codex53Family,
       spark_model: sparkModel,
       preflight,
@@ -1749,11 +1754,44 @@ async function main(): Promise<void> {
       } else {
         console.log('- gpt-5.4 found: no');
       }
+      if (chatgptModelsProbe.gpt_54_mini_model) {
+        const mini = chatgptModelsProbe.gpt_54_mini_model;
+        console.log(`- gpt-5.4-mini found: ${mini.slug}`);
+        if (typeof mini.context_window === 'number') {
+          console.log(`- gpt-5.4-mini context_window: ${mini.context_window}`);
+        }
+        if (typeof mini.auto_compact_token_limit === 'number') {
+          console.log(
+            `- gpt-5.4-mini auto_compact_token_limit: ${mini.auto_compact_token_limit}`,
+          );
+        }
+        if (typeof mini.effective_context_window_percent === 'number') {
+          console.log(
+            `- gpt-5.4-mini effective_context_window_percent: ${mini.effective_context_window_percent}`,
+          );
+        }
+      } else {
+        console.log('- gpt-5.4-mini found: no');
+      }
       if (chatgptModelsProbe.codex_53_family && chatgptModelsProbe.codex_53_family.length > 0) {
         const family = chatgptModelsProbe.codex_53_family.map((model) => model.slug).join(', ');
         console.log(`- gpt-5.3-codex family: ${family}`);
       } else {
         console.log('- gpt-5.3-codex family: none');
+      }
+      if (chatgptModelsProbe.models && chatgptModelsProbe.models.length > 0) {
+        const visible = chatgptModelsProbe.models
+          .filter((model) => model.visibility !== 'hide')
+          .map((model) => model.slug)
+          .join(', ');
+        const hidden = chatgptModelsProbe.models
+          .filter((model) => model.visibility === 'hide')
+          .map((model) => model.slug)
+          .join(', ');
+        console.log(`- chatgpt /models visible: ${visible || '(none)'}`);
+        if (hidden.length > 0) {
+          console.log(`- chatgpt /models hidden: ${hidden}`);
+        }
       }
       if (chatgptModelsProbe.spark_model) {
         const spark = chatgptModelsProbe.spark_model;

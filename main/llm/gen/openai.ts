@@ -476,6 +476,22 @@ function buildOpenAiTextConfig(
     : undefined;
 }
 
+function buildOpenAiReasoning(
+  openAiParams: NonNullable<Team.ModelParams['openai']>,
+): ResponseCreateParamsStreaming['reasoning'] | undefined {
+  if (openAiParams.reasoning_effort === undefined && openAiParams.reasoning_summary === undefined) {
+    return undefined;
+  }
+
+  const summary = openAiParams.reasoning_summary === 'none' ? null : openAiParams.reasoning_summary;
+  return {
+    ...(openAiParams.reasoning_effort !== undefined
+      ? { effort: openAiParams.reasoning_effort }
+      : {}),
+    ...(summary !== undefined ? { summary } : {}),
+  };
+}
+
 function resolveOpenAiJsonResponseEnabled(
   agent: Team.Member,
   openAiParams: NonNullable<Team.ModelParams['openai']>,
@@ -650,6 +666,7 @@ export class OpenAiGen implements LlmGenerator {
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const textConfig = buildOpenAiTextConfig(openAiParams, jsonResponseEnabled);
+    const reasoning = buildOpenAiReasoning(openAiParams);
 
     const payload: ResponseCreateParamsStreaming = {
       model: agent.model,
@@ -662,9 +679,7 @@ export class OpenAiGen implements LlmGenerator {
       ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
-      ...(openAiParams.reasoning_effort !== undefined && {
-        reasoning: { effort: openAiParams.reasoning_effort },
-      }),
+      ...(reasoning !== undefined && { reasoning }),
       ...(textConfig !== undefined && { text: textConfig }),
       ...(funcTools.length > 0
         ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }
@@ -1163,6 +1178,7 @@ export class OpenAiGen implements LlmGenerator {
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const textConfig = buildOpenAiTextConfig(openAiParams, jsonResponseEnabled);
+    const reasoning = buildOpenAiReasoning(openAiParams);
 
     const payload: ResponseCreateParamsNonStreaming = {
       model: agent.model,
@@ -1175,9 +1191,7 @@ export class OpenAiGen implements LlmGenerator {
       ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
-      ...(openAiParams.reasoning_effort !== undefined && {
-        reasoning: { effort: openAiParams.reasoning_effort },
-      }),
+      ...(reasoning !== undefined && { reasoning }),
       ...(textConfig !== undefined && { text: textConfig }),
       ...(funcTools.length > 0
         ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }

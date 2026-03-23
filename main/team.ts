@@ -80,6 +80,7 @@ export namespace Team {
     logit_bias?: Record<string, number>; // Modify likelihood of specific tokens
     user?: string; // User identifier for abuse monitoring
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
+    reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
     web_search?: 'disabled' | 'cached' | 'live'; // Native web_search mode (Responses API).
@@ -1203,6 +1204,7 @@ export namespace Team {
     'logit_bias',
     'user',
     'reasoning_effort',
+    'reasoning_summary',
     'verbosity',
     'parallel_tool_calls',
     'web_search',
@@ -1250,6 +1252,7 @@ export namespace Team {
   ): void {
     const hintsAtMember: Record<string, string> = {
       reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_effort\`? (not supported at ${atPrefix} root)`,
+      reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_summary\`? (not supported at ${atPrefix} root)`,
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
       web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.web_search\`? (not supported at ${atPrefix} root)`,
@@ -1280,6 +1283,7 @@ export namespace Team {
       const modelParamsAt = `${atPrefix}.${field}`;
       const hintsAtModelParams: Record<string, string> = {
         reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
+        reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_summary\`?`,
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
         web_search: `Did you mean \`${modelParamsAt}.codex.web_search\` (preferred for provider: codex) or \`${modelParamsAt}.openai.web_search\`?`,
@@ -2181,6 +2185,21 @@ export namespace Team {
         throw new Error(
           `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
             reasoningEffort,
+          )})`,
+        );
+      }
+
+      const reasoningSummary = params.reasoning_summary;
+      if (
+        reasoningSummary !== undefined &&
+        reasoningSummary !== 'auto' &&
+        reasoningSummary !== 'concise' &&
+        reasoningSummary !== 'detailed' &&
+        reasoningSummary !== 'none'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.reasoning_summary: expected auto|concise|detailed|none (got ${describeValueType(
+            reasoningSummary,
           )})`,
         );
       }

@@ -28,6 +28,7 @@ export interface ChatGptClientOptions {
   codexHome?: string;
   proxyUrl?: string;
   useEnvProxy?: boolean;
+  authManager?: AuthManager;
 }
 
 export type ProxyEnvVarName = 'HTTP_PROXY' | 'http_proxy' | 'HTTPS_PROXY' | 'https_proxy';
@@ -715,8 +716,11 @@ async function emitChatGptEvents(
 export class ChatGptClient {
   private readonly baseUrl: string;
   private readonly codexBaseUrl: string;
-  private readonly headers: Record<string, string>;
+  private headers: Record<string, string>;
   private readonly dispatcher: Dispatcher;
+  private readonly authManager?: AuthManager;
+  private readonly originator: string;
+  private readonly userAgent: string;
 
   constructor(credentials: ChatGptCredentials, options: ChatGptClientOptions = {}) {
     const normalizedBaseUrl = normalizeChatgptBaseUrl(options.baseUrl ?? DEFAULT_CHATGPT_BASE_URL);
@@ -729,12 +733,10 @@ export class ChatGptClient {
       DEFAULT_ORIGINATOR;
     const userAgent =
       options.userAgent ?? buildUserAgent(originator, resolveCodexHome(options.codexHome));
-    this.headers = {
-      Authorization: `Bearer ${credentials.accessToken}`,
-      'ChatGPT-Account-ID': credentials.accountId,
-      originator,
-      'User-Agent': userAgent,
-    };
+    this.originator = originator;
+    this.userAgent = userAgent;
+    this.headers = buildAuthHeaders(credentials, originator, userAgent);
+    this.authManager = options.authManager;
 
     this.dispatcher = resolveDispatcher(this.baseUrl, options);
   }
@@ -752,7 +754,7 @@ export class ChatGptClient {
       const stream = Boolean(payload.stream);
       headers.set('accept', stream ? 'text/event-stream' : 'application/json');
     }
-    return this.requestAtBase(this.codexBaseUrl, 'responses', {
+    return this.responsesWithUnauthorizedRecovery(payload, {
       ...init,
       method: init.method ?? 'POST',
       headers,
@@ -787,6 +789,25 @@ export class ChatGptClient {
       await delay(250);
       return await this.responses(payload, init);
     }
+  }
+
+  private async responsesWithUnauthorizedRecovery(
+    payload: ChatGptResponsesRequest,
+    init: ChatGptRequestInit,
+  ): Promise<ChatGptResponsesStreamResponse> {
+    let response = await this.requestAtBase(this.codexBaseUrl, 'responses', init);
+    if (response.status !== 401 || !this.authManager) {
+      return response;
+    }
+
+    const recovery = this.authManager.createUnauthorizedRecovery();
+    while (response.status === 401 && recovery.hasNext()) {
+      await drainUnauthorizedResponse(response);
+      await recovery.next();
+      await this.reloadCredentialsFromManager();
+      response = await this.requestAtBase(this.codexBaseUrl, 'responses', init);
+    }
+    return response;
   }
 
   private async requestAtBase(
@@ -827,6 +848,38 @@ export class ChatGptClient {
       json: async () => response.body.json(),
     };
   }
+
+  private async reloadCredentialsFromManager(): Promise<void> {
+    const manager = this.authManager;
+    if (!manager) {
+      return;
+    }
+    const auth = await manager.auth();
+    if (!auth) {
+      throw new Error('Auth data is not available.');
+    }
+    const credentials = credentialsFromAuthState(auth);
+    this.headers = buildAuthHeaders(credentials, this.originator, this.userAgent);
+  }
+}
+
+function buildAuthHeaders(
+  credentials: ChatGptCredentials,
+  originator: string,
+  userAgent: string,
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${credentials.accessToken}`,
+    'ChatGPT-Account-ID': credentials.accountId,
+    originator,
+    'User-Agent': userAgent,
+  };
+}
+
+async function drainUnauthorizedResponse(response: ChatGptHttpResponse): Promise<void> {
+  try {
+    await response.text();
+  } catch {}
 }
 
 function toDispatcherBody(body: unknown): Dispatcher.DispatchOptions['body'] {
@@ -928,7 +981,7 @@ export async function createChatGptClientFromManager(
     throw new Error('Auth data is not available.');
   }
   const credentials = credentialsFromAuthState(auth);
-  return new ChatGptClient(credentials, options);
+  return new ChatGptClient(credentials, { ...options, authManager: manager });
 }
 
 function normalizeChatgptBaseUrl(baseUrl: string): string {

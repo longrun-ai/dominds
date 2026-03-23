@@ -9,7 +9,6 @@ import type {
   ChatGptFunctionTool,
   ChatGptMessageItem,
   ChatGptMessageRole,
-  ChatGptReasoning,
   ChatGptReasoningItem,
   ChatGptResponseItem,
   ChatGptResponsesRequest,
@@ -201,6 +200,22 @@ function buildCodexTextControls(agent: Team.Member): ChatGptTextControls | undef
     };
   }
   return Object.keys(text).length > 0 ? text : undefined;
+}
+
+function buildCodexReasoning(agent: Team.Member): ChatGptResponsesRequest['reasoning'] | null {
+  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  if (codexParams?.reasoning_effort === undefined && codexParams?.reasoning_summary === undefined) {
+    return null;
+  }
+
+  return {
+    ...(codexParams?.reasoning_effort !== undefined
+      ? { effort: codexParams.reasoning_effort }
+      : {}),
+    ...(codexParams?.reasoning_summary !== undefined
+      ? { summary: codexParams.reasoning_summary }
+      : { summary: 'auto' }),
+  };
 }
 
 function assertNoCodexNativeToolCollisions(
@@ -535,18 +550,11 @@ async function buildCodexRequest(
   input.push(...(await buildCodexInput(context, providerConfig)));
 
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
-  let reasoning: ChatGptReasoning | null = null;
   const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
-  let include: ChatGptResponsesRequest['include'] = [];
+  const reasoning = buildCodexReasoning(agent);
+  const include: ChatGptResponsesRequest['include'] =
+    reasoning !== null ? ['reasoning.encrypted_content'] : [];
   const text = buildCodexTextControls(agent);
-
-  if (codexParams && codexParams.reasoning_effort) {
-    reasoning = {
-      effort: codexParams.reasoning_effort,
-      summary: 'auto',
-    };
-    include = ['reasoning.encrypted_content'];
-  }
   const nativeTools = buildCodexNativeTools(agent);
   assertNoCodexNativeToolCollisions(funcTools, nativeTools);
   const tools: ChatGptTool[] = [...funcTools.map(funcToolToCodex), ...nativeTools];
