@@ -8,6 +8,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRootAbs = path.resolve(__dirname, '..');
+const npmRegistryUrl = 'https://registry.npmjs.org/';
 
 const publicPackages = [
   {
@@ -33,6 +34,7 @@ function usage() {
   node ./scripts/publish-public-packages.mjs [--dry-run] [--tag <tag>] [--otp <otp>] [extra pnpm publish args]
 
 Behavior:
+  - Non-dry-run publish checks npm login up front and can prompt to run npm login interactively
   - Publishes public packages in dependency order: codex-auth -> kernel -> shell -> dominds
   - Skips packages whose exact local version already exists on npm
   - Fails fast if a local version is behind the highest published version
@@ -56,6 +58,35 @@ function readPackageJson(packageRootAbs) {
     throw new Error(`Missing package.json under ${packageRootAbs}.`);
   }
   return JSON.parse(readFileSync(packageJsonAbs, 'utf8'));
+}
+
+function readExecErrorText(error) {
+  if (!(error instanceof Error)) {
+    return '';
+  }
+  const stdout =
+    'stdout' in error && typeof error.stdout === 'string' ? error.stdout : '';
+  const stderr =
+    'stderr' in error && typeof error.stderr === 'string' ? error.stderr : '';
+  return `${stdout}\n${stderr}`;
+}
+
+function buildDirectNpmEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (key === 'NODE_OPTIONS') {
+      continue;
+    }
+    if (key.startsWith('npm_')) {
+      continue;
+    }
+    env[key] = value;
+  }
+  env.NODE_OPTIONS = '';
+  return env;
 }
 
 function parseSemver(versionText) {
@@ -87,10 +118,7 @@ function npmViewJson(args) {
     const stdout = execFileSync('npm', ['view', ...args, '--json'], {
       cwd: workspaceRootAbs,
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        NODE_OPTIONS: '',
-      },
+      env: buildDirectNpmEnv(),
       stdio: 'pipe',
     }).trim();
     if (stdout === '') {
@@ -98,15 +126,86 @@ function npmViewJson(args) {
     }
     return JSON.parse(stdout);
   } catch (error) {
-    const stderr =
-      error instanceof Error && 'stderr' in error && typeof error.stderr === 'string'
-        ? error.stderr
-        : '';
-    if (stderr.includes('E404')) {
+    const output = readExecErrorText(error);
+    if (output.includes('E404')) {
       return null;
     }
     throw error;
   }
+}
+
+function getNpmLoggedInUser() {
+  try {
+    const stdout = execFileSync('npm', ['whoami', '--registry', npmRegistryUrl], {
+      cwd: workspaceRootAbs,
+      encoding: 'utf8',
+      env: buildDirectNpmEnv(),
+      stdio: 'pipe',
+    }).trim();
+    return stdout === '' ? null : stdout;
+  } catch (error) {
+    const output = readExecErrorText(error);
+    if (
+      output.includes('ENEEDAUTH') ||
+      output.includes('E401') ||
+      output.includes('401 Unauthorized') ||
+      output.includes('This command requires you to be logged in') ||
+      output.includes('not logged in')
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function ensureNpmLogin() {
+  const currentUser = getNpmLoggedInUser();
+  if (currentUser !== null) {
+    console.log(`npm login detected for ${currentUser}.`);
+    return;
+  }
+
+  const loginCommand = `npm login --registry ${npmRegistryUrl}`;
+  const missingLoginMessage =
+    `npm login is required before publishing public packages.\n` +
+    `Run: ${loginCommand}`;
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(missingLoginMessage);
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+  });
+  try {
+    const answer = (
+      await rl.question(`No npm login found for ${npmRegistryUrl}. Run "${loginCommand}" now? [Y/n] `)
+    )
+      .trim()
+      .toLowerCase();
+    if (answer !== '' && answer !== 'y' && answer !== 'yes') {
+      throw new Error(missingLoginMessage);
+    }
+  } finally {
+    rl.close();
+  }
+
+  execFileSync('npm', ['login', '--registry', npmRegistryUrl], {
+    cwd: workspaceRootAbs,
+    encoding: 'utf8',
+    env: buildDirectNpmEnv(),
+    stdio: 'inherit',
+  });
+
+  const loggedInUser = getNpmLoggedInUser();
+  if (loggedInUser === null) {
+    throw new Error(
+      `npm login completed but no authenticated npm user is available for ${npmRegistryUrl}.`,
+    );
+  }
+  console.log(`npm login detected for ${loggedInUser}.`);
 }
 
 function getPublishedVersions(packageName) {
@@ -272,6 +371,9 @@ async function main() {
     return;
   }
   const cli = parseCliArgs(args);
+  if (!cli.dryRun) {
+    await ensureNpmLogin();
+  }
 
   const packages = collectWorkspacePackages();
   const plan = packages.map((pkg) => ({
@@ -312,4 +414,8 @@ async function main() {
   }
 }
 
-await main();
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  process.exit(1);
+});
