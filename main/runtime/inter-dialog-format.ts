@@ -13,8 +13,8 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { formatRegisteredTellaskCalleeUpdateNotice } from '../i18n/driver-messages';
-import { markdownQuote } from './fmt';
+import { formatRegisteredTellaskCalleeUpdateNotice } from './driver-messages';
+import { markdownQuote } from './markdown-format';
 
 export type InterDialogCallContent = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';

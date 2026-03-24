@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 
 import type { Dialog } from '../main/dialog';
-import { setWorkLanguage } from '../main/shared/runtime-language';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import { addPersonalMemoryTool, addSharedMemoryTool } from '../main/tools/mem';
 

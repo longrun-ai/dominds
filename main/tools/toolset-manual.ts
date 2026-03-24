@@ -1,6 +1,6 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { Dialog } from '../dialog';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
 import { renderToolsetManual } from './manual/render';

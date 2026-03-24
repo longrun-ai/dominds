@@ -3,6 +3,8 @@
  *
  * Common WebSocket handling functionality for dialog communication
  */
+import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
+import { EndOfStream, type SubChan } from '@longrun-ai/kernel/evt';
 import type {
   ClearResolvedProblemsRequest,
   CreateDialogErrorCode,
@@ -39,6 +41,7 @@ import {
   supportedLanguageCodes,
   type LanguageCode,
 } from '@longrun-ai/kernel/types/language';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
@@ -75,11 +78,8 @@ import {
   createProblemsSnapshotMessage,
   setProblemsBroadcaster,
 } from '../problems';
-import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
-import { EndOfStream, type SubChan } from '../shared/evt';
-import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import {
   clearTeamConfigBroadcaster,

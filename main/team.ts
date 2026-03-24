@@ -10,6 +10,7 @@ import fs from 'fs/promises';
 import YAML from 'yaml';
 
 import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { loadEnabledAppsSnapshot } from './apps/enabled-apps';
 import { listDynamicAppToolsetsForMember } from './apps/runtime';
 import { loadEnabledAppTeammates, type AppTeammatesSnippet } from './apps/teammates';
@@ -17,7 +18,6 @@ import { LlmConfig } from './llm/client';
 import { log } from './log';
 import { parseMcpYaml } from './mcp/config';
 import { reconcileProblemsByPrefix } from './problems';
-import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Tool } from './tool';
 import { getTool, getToolset, getToolsetMeta, listToolsets } from './tools/registry';
 

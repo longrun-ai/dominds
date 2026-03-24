@@ -21,9 +21,9 @@ import type {
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import type { DialogStatusKind } from '@longrun-ai/kernel/types/wire';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from './dialog';
 import { DialogPersistence } from './persistence';
-import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Reminder } from './tool';
 import { generateDialogID } from './utils/id';
 

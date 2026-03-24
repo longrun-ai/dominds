@@ -12,10 +12,10 @@ import type {
   SubdialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from '../../main/dialog';
 import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
 import { DialogPersistence } from '../../main/persistence';
-import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-dialog-fork-'));

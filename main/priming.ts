@@ -37,6 +37,7 @@ import {
   toRootGenerationAnchor,
 } from '@longrun-ai/kernel/types/storage';
 import type { DialogPrimingInput, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Dirent } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
@@ -44,9 +45,8 @@ import YAML from 'yaml';
 import type { Dialog } from './dialog';
 import { DialogID } from './dialog';
 import type { ChatMessage } from './llm/client';
+import { parseMarkdownFrontmatter } from './markdown/frontmatter';
 import { DialogPersistence } from './persistence';
-import { parseMarkdownFrontmatter } from './shared/markdown-frontmatter';
-import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 

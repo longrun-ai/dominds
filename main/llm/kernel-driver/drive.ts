@@ -1,3 +1,4 @@
+import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
 import type { ContextHealthSnapshot, LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import type {
   DialogDisplayState,
@@ -7,6 +8,8 @@ import {
   toRootGenerationAnchor,
   type TellaskCallAnchorRecord,
 } from '@longrun-ai/kernel/types/storage';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, RootDialog, SubDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
@@ -23,16 +26,13 @@ import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
-import { DEFAULT_DILIGENCE_PUSH_MAX } from '../../shared/diligence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
   formatReminderItemGuide,
-} from '../../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../../shared/runtime-language';
-import { generateShortId } from '../../shared/utils/id';
-import { formatUnifiedTimestamp } from '../../shared/utils/time';
+} from '../../runtime/driver-messages';
+import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import {
   computeReminderNoByIndex,

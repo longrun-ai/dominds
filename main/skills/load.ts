@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { parseMarkdownFrontmatter } from '../shared/markdown-frontmatter';
+import { parseMarkdownFrontmatter } from '../markdown/frontmatter';
 
 export type WorkspaceSkillScope = 'team_shared' | 'individual';
 

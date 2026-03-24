@@ -6,13 +6,13 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
-import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type {
   FuncTool,

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { formatNewCourseStartPrompt } from '../../main/shared/i18n/driver-messages';
-import { setWorkLanguage } from '../../main/shared/runtime-language';
+import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

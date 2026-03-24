@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { driveDialogStream, restoreDialogHierarchy } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-import { getWorkLanguage } from '../../main/shared/runtime-language';
 import {
   formatAssignmentFromSupdialog,
   formatTeammateResponseContent,
-} from '../../main/shared/utils/inter-dialog-format';
+} from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

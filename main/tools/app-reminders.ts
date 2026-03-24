@@ -8,8 +8,8 @@ import type { AppsHostClient, EnabledAppForHost } from '../apps-host/client';
 import type { Dialog } from '../dialog';
 import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
-import { formatReminderItemGuide } from '../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { formatReminderItemGuide } from '../runtime/driver-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import {
   computeReminderNoByIndex,
   reminderEchoBackEnabled,

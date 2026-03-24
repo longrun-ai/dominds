@@ -4,7 +4,7 @@ import type {
   WorkspaceProblemRecord,
 } from '@longrun-ai/kernel/types/problems';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
-import { formatUnifiedTimestamp } from './shared/utils/time';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 

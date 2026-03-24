@@ -31,6 +31,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { initAppsRuntime, registerEnabledAppsToolProxies } from './apps/runtime';
+import { loadRtwsDotenv } from './bootstrap/dotenv';
+import { extractGlobalRtwsChdir } from './bootstrap/rtws-cli';
 import { main as createMain } from './cli/create';
 import { main as disableMain } from './cli/disable';
 import { main as doctorMain } from './cli/doctor';
@@ -42,8 +44,6 @@ import { main as tuiMain } from './cli/tui';
 import { main as uninstallMain } from './cli/uninstall';
 import { main as updateMain } from './cli/update';
 import { main as webuiMain } from './cli/webui';
-import { loadRtwsDotenv } from './shared/dotenv';
-import { extractGlobalRtwsChdir } from './shared/rtws-cli';
 import './tools/builtins';
 
 function printHelp(): void {

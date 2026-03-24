@@ -37,19 +37,19 @@ import type {
   ReasoningPayload,
   ToolArguments as StoredToolArguments,
 } from '@longrun-ai/kernel/types/storage';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
-import { AsyncFifoMutex } from './shared/async-fifo-mutex';
+import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
   formatCurrentUserLanguagePreference,
   formatUserLanguagePreferenceChangedNotice,
-} from './shared/i18n/driver-messages';
-import { getWorkLanguage } from './shared/runtime-language';
-import { generateShortId } from './shared/utils/id';
-import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
-import { formatUnifiedTimestamp } from './shared/utils/time';
+} from './runtime/driver-messages';
+import { formatAssignmentFromSupdialog } from './runtime/inter-dialog-format';
+import { getWorkLanguage } from './runtime/work-language';
 import type { JsonValue } from './tool';
 import {
   computeReminderNoByIndex,

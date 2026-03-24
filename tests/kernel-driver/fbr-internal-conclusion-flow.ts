@@ -10,12 +10,12 @@ import {
   buildProgrammaticFbrUnreasonableSituationContent,
   FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
 } from '../../main/llm/kernel-driver/fbr';
-import { getWorkLanguage, setWorkLanguage } from '../../main/shared/runtime-language';
-import { appendDistinctPerspectiveFbrBody } from '../../main/shared/utils/fbr';
+import { appendDistinctPerspectiveFbrBody } from '../../main/runtime/fbr-body';
 import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,
-} from '../../main/shared/utils/inter-dialog-format';
+} from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

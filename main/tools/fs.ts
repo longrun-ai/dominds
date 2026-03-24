@@ -10,7 +10,7 @@ import path from 'path';
 import { createInterface } from 'readline';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import { log } from '../log';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../tool';
 
 interface DirectoryEntry {

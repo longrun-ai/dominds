@@ -13,10 +13,10 @@
  * - Patterns are interpreted as paths relative to the `.taskdoc-ignore` directory (unless they
  *   start with `/`, in which case they are rtws-root-relative).
  */
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import * as path from 'path';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 export interface TaskDocumentSummary {
   path: string;

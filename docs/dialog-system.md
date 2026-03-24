@@ -986,7 +986,7 @@ At the start of every subdialog course, the runtime must prepend a role header t
 - Chinese variant example: see [the Chinese doc](./dialog-system.zh.md) for the corresponding FBR header example.
 
 **Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`).
-Frontend twin must stay in sync: `dominds/webapp/src/shared/utils/inter-dialog-format.ts`.
+There is no separate frontend twin anymore; [`main/runtime/inter-dialog-format.ts`](../main/runtime/inter-dialog-format.ts) is the authoritative formatter.
 
 **Storage**: All subdialogs are stored flat under the main dialog's (root dialog's) `subdialogs/` directory, regardless of nesting depth.
 

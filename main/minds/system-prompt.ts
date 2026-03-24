@@ -1,5 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { getRuntimeTransferMarkers } from '../shared/utils/inter-dialog-format';
+import { getRuntimeTransferMarkers } from '../runtime/inter-dialog-format';
 import type { Team } from '../team';
 import type { ContextHealthPromptMode } from './system-prompt-parts';
 

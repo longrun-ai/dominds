@@ -5,15 +5,21 @@
  * Maps dialog IDs to PubChans for real-time event streaming during dialog driving.
  */
 
+import {
+  createPubChan,
+  createSubChan,
+  EndOfStream,
+  PubChan,
+  SubChan,
+} from '@longrun-ai/kernel/evt';
 import type {
   DialogEvent,
   DialogEventBase,
   TypedDialogEvent,
 } from '@longrun-ai/kernel/types/dialog';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, DialogID } from './dialog';
 import { createLogger } from './log';
-import { createPubChan, createSubChan, EndOfStream, PubChan, SubChan } from './shared/evt';
-import { formatUnifiedTimestamp } from './shared/utils/time';
 
 export interface DialogEventRegistry {
   getPubChan(dialogId: DialogID): PubChan<TypedDialogEvent>;

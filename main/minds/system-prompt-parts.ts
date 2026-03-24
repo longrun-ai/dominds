@@ -1,5 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { getRuntimeTransferMarkers } from '../shared/utils/inter-dialog-format';
+import { getRuntimeTransferMarkers } from '../runtime/inter-dialog-format';
 import type { FuncTool } from '../tool';
 import { funcToolUsageLabels, noneRequiredFieldsText } from './minds-i18n';
 

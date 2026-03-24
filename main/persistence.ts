@@ -75,6 +75,7 @@ import {
   toDialogCourseNumber,
   toRootGenerationAnchor,
 } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import * as fs from 'fs';
 import { randomUUID } from 'node:crypto';
 import * as path from 'path';
@@ -85,8 +86,7 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
-import { AsyncFifoMutex } from './shared/async-fifo-mutex';
-import { formatUnifiedTimestamp } from './shared/utils/time';
+import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 

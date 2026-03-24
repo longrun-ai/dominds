@@ -189,7 +189,7 @@ async function main(): Promise<void> {
   assert.equal(
     await sub.read(),
     'ok',
-    'Kernel evt contract must remain consumable outside main/shared.',
+    'Kernel evt contract must remain consumable outside main private runtime sources.',
   );
   assert.equal(
     formatUnifiedTimestamp(new Date('2026-03-13T01:02:03Z')).length,

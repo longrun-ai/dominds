@@ -12,7 +12,7 @@ import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatNewCourseStartPrompt,
   formatSystemNoticePrefix,
-} from '../../main/shared/i18n/driver-messages';
+} from '../../main/runtime/driver-messages';
 
 async function main(): Promise<void> {
   const zh = formatAgentFacingContextHealthV3RemediationGuide('zh', {

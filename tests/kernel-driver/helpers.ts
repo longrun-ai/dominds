@@ -2,11 +2,11 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'yaml';
 
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import type { ChatMessage } from '../../main/llm/client';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
-import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 import '../../main/tools/builtins';
 import { generateDialogID } from '../../main/utils/id';
 

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatSystemNoticePrefix,
-} from '../../main/shared/i18n/driver-messages';
+} from '../../main/runtime/driver-messages';
 
 async function main(): Promise<void> {
   const zhSoft = formatAgentFacingContextHealthV3RemediationGuide('zh', {

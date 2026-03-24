@@ -1,7 +1,7 @@
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 import assert from 'node:assert/strict';
-import { detectOsDefaultWorkLanguage } from '../main/shared/runtime-language';
-import { formatTeammateResponseContent } from '../main/shared/utils/inter-dialog-format';
+import { formatTeammateResponseContent } from '../main/runtime/inter-dialog-format';
+import { detectOsDefaultWorkLanguage } from '../main/runtime/work-language';
 
 function run(): void {
   assert.equal(normalizeLanguageCode('en'), 'en');

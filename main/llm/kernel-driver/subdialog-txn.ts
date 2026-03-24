@@ -1,6 +1,6 @@
 import type { DialogID } from '../../dialog';
 import { DialogPersistence } from '../../persistence';
-import { AsyncFifoMutex } from '../../shared/async-fifo-mutex';
+import { AsyncFifoMutex } from '../../runtime/async-fifo-mutex';
 
 export type TakenSubdialogResponse = Awaited<
   ReturnType<typeof DialogPersistence.takeSubdialogResponses>

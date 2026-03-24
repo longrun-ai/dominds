@@ -11,8 +11,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
-import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { formatToolError, formatToolOk } from '../runtime/tool-result-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../tool';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];

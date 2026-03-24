@@ -22,11 +22,11 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import type { DialogExecutionMarker } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
 import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
-import { formatUnifiedTimestamp } from './shared/utils/time';
 
 const log = createLogger('dialog-display-state');
 

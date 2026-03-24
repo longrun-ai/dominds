@@ -15,10 +15,10 @@ import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
 import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
+import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
 import { AuthConfig, computeAuthConfig } from './server/auth';
 import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
-import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './shared/runtime-language';
 import './tools/builtins';
 
 const log = createLogger('server');

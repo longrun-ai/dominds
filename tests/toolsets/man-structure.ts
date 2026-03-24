@@ -3,7 +3,7 @@
 import '../main/tools/builtins';
 
 import assert from 'node:assert/strict';
-import { setWorkLanguage } from '../main/shared/runtime-language';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import { buildToolsetManualTools } from '../main/tools/toolset-manual';
 

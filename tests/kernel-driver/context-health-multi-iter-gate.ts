@@ -3,8 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
-import { setWorkLanguage } from '../../main/shared/runtime-language';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/runtime/driver-messages';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
 

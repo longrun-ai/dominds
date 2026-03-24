@@ -17,8 +17,8 @@ import type {
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import { createLogger } from '../../log';
-import { getTextForLanguage } from '../../shared/i18n/text';
-import { getWorkLanguage } from '../../shared/runtime-language';
+import { getTextForLanguage } from '../../runtime/i18n-text';
+import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';

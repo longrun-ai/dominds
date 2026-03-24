@@ -50,6 +50,9 @@ const FORBIDDEN_MAIN_IMPORT_SNIPPETS = [
   'shared/types',
   'apps/app-json',
   'apps-host/app-host-contract',
+  'main/runtime/',
+  'main/bootstrap/',
+  'main/markdown/',
 ] as const;
 
 async function main(): Promise<void> {
@@ -76,7 +79,7 @@ async function main(): Promise<void> {
   const removedPaths = [
     'main/apps/app-json.ts',
     'main/apps-host/app-host-contract.ts',
-    'main/shared/types',
+    'webapp/src/shared',
   ] as const;
 
   for (const relPath of removedPaths) {

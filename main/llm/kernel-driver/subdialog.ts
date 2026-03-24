@@ -8,17 +8,17 @@ import {
   type PendingSubdialogStateRecord,
   type TellaskCallAnchorRecord,
 } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
-import { getWorkLanguage } from '../../shared/runtime-language';
 import {
   formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,
-} from '../../shared/utils/inter-dialog-format';
-import { formatUnifiedTimestamp } from '../../shared/utils/time';
+} from '../../runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../runtime/work-language';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';

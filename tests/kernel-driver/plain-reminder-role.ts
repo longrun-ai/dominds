@@ -4,8 +4,8 @@ import type { DialogStore } from '../../main/dialog';
 import { RootDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import { assembleDriveContextMessages } from '../../main/llm/kernel-driver/context';
-import { formatReminderItemGuide } from '../../main/shared/i18n/driver-messages';
-import { setWorkLanguage } from '../../main/shared/runtime-language';
+import { formatReminderItemGuide } from '../../main/runtime/driver-messages';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 import { computeReminderNoByIndex, reminderEchoBackEnabled } from '../../main/tool';
 
 async function main(): Promise<void> {

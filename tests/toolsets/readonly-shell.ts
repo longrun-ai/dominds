@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import type { Dialog } from '../main/dialog';
 import { validateFuncToolArguments } from '../main/llm/kernel-driver/runtime';
-import { setWorkLanguage } from '../main/shared/runtime-language';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import { readonlyShellTool } from '../main/tools/os';
 

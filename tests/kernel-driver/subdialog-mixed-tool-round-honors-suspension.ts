@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-import { getWorkLanguage } from '../../main/shared/runtime-language';
-import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
+import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

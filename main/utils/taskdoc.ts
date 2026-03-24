@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Dialog, SubDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../runtime/work-language';
 import {
   formatEffectiveTaskDocFromSections,
   isTaskPackagePath,

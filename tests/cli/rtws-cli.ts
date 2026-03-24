@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as path from 'node:path';
 
-import { extractGlobalRtwsChdir } from '../../main/shared/rtws-cli';
+import { extractGlobalRtwsChdir } from '../../main/bootstrap/rtws-cli';
 
 function main(): void {
   const baseCwd = path.join(path.sep, 'base', 'cwd');

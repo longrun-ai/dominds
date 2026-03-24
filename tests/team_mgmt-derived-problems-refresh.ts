@@ -6,7 +6,7 @@ import path from 'node:path';
 import { registerEnabledAppsToolProxies } from '../main/apps/runtime';
 import type { Dialog } from '../main/dialog';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
-import { setWorkLanguage } from '../main/shared/runtime-language';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
 import { teamMgmtOverwriteEntireFileTool } from '../main/tools/team_mgmt';

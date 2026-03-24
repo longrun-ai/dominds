@@ -49,7 +49,9 @@ const IMPORT_PATTERNS: ReadonlyArray<Readonly<{ kind: ImportMatch['kind']; regex
 ];
 
 const PRIVATE_IMPORT_RULES: ReadonlyArray<Readonly<{ id: string; matcher: RegExp }>> = [
-  { id: 'main/shared', matcher: /(^|\/)main\/shared(?:\/|$)/ },
+  { id: 'main/runtime', matcher: /(^|\/)main\/runtime(?:\/|$)/ },
+  { id: 'main/bootstrap', matcher: /(^|\/)main\/bootstrap(?:\/|$)/ },
+  { id: 'main/markdown', matcher: /(^|\/)main\/markdown(?:\/|$)/ },
   { id: 'main/apps-host', matcher: /(^|\/)main\/apps-host(?:\/|$)/ },
   { id: 'main/apps', matcher: /(^|\/)main\/apps(?:\/|$)/ },
   { id: 'dist/main/apps-host', matcher: /(^|\/)dist\/main\/apps-host(?:\/|$)/ },
@@ -169,7 +171,7 @@ async function main(): Promise<void> {
     0,
     [
       'Non-test consumers must not deep import private kernel/shell paths.',
-      'Use @longrun-ai/kernel or @longrun-ai/shell instead of main/shared/**, main/apps/**, main/apps-host/**, or dist/main/apps-host/**.',
+      'Use @longrun-ai/kernel or @longrun-ai/shell instead of main/runtime/**, main/bootstrap/**, main/markdown/**, main/apps/**, main/apps-host/**, or dist/main/apps-host/**.',
       ...violations.map(
         (violation) =>
           `- [${violation.consumer}] ${violation.fileRel}:${violation.line} ${violation.kind} ${JSON.stringify(violation.specifier)} (${violation.ruleId})`,

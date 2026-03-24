@@ -188,7 +188,7 @@ Recommended principles:
 #### Public import surface (current contract)
 
 - The package split is now the contract. Formal consumers should depend on `@longrun-ai/kernel` for app/runtime-facing contracts, and use `@longrun-ai/shell` only when a shell-facing contract is explicitly defined there; they must not depend on `dominds/main/**` or any root-package aggregation shim.
-- `dominds/main/**`, `dominds/main/shared/**`, and `dominds/main/apps-host/**` are private implementation paths. They are repo-internal source trees, not a source-level public surface.
+- `dominds/main/**` is a private implementation tree. Paths such as `dominds/main/runtime/**`, `dominds/main/bootstrap/**`, `dominds/main/markdown/**`, and `dominds/main/apps-host/**` are repo-internal source organization only, not a source-level public surface.
 - `dominds/main/index.ts` is intentionally gone. The repo must not keep a legacy aggregation entry that suggests `main pkg` still offers a consumer import contract.
 - `tests/**` is explicitly **not** evidence for widening the public surface. Test convenience imports must not turn private implementation modules into de-facto public API.
 
@@ -197,7 +197,7 @@ The boundary must be written once, in the actual published package contracts:
 - `packages/kernel/package.json#exports` defines the supported `@longrun-ai/kernel` surface.
 - `packages/shell/package.json#exports` defines the supported shell-facing `@longrun-ai/shell` surface; it does not imply CLI or integrated runtime ownership.
 - `dominds/package.json#exports` is limited to CLI/aggregation-shell entrypoints such as `./cli`; it must not grow a root runtime import surface again.
-- Published package resolution must reject deep imports such as `dominds/main/**`, `dominds/main/shared/**`, `dominds/main/apps-host/**`, and `dominds/dist/**`.
+- Published package resolution must reject deep imports such as `dominds/main/**`, `dominds/main/runtime/**`, `dominds/main/bootstrap/**`, `dominds/main/markdown/**`, `dominds/main/apps-host/**`, and `dominds/dist/**`.
 
 Keep the responsibilities split cleanly:
 

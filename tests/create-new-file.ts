@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Dialog } from '../main/dialog';
-import { setWorkLanguage } from '../main/shared/runtime-language';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import { createNewFileTool, readFileTool } from '../main/tools/txt';
 

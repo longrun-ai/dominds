@@ -11,13 +11,13 @@ import type {
   RootDialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type DialogStore, RootDialog } from '../../main/dialog';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import {
   applyPrimingScriptsToDialog,
   saveDialogCourseAsIndividualPrimingScript,
 } from '../../main/priming';
-import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
 import type { Reminder } from '../../main/tool';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {

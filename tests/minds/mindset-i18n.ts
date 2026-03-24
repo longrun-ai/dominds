@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { loadAgentMinds } from '../../main/minds/load';
-import { setWorkLanguage } from '../../main/shared/runtime-language';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 
 async function writeText(filePath: string, value: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });

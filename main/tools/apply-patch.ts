@@ -11,7 +11,7 @@ import path from 'node:path';
 
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { Dialog } from '../dialog';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
 

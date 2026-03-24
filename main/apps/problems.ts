@@ -1,6 +1,6 @@
 import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { reconcileProblemsByPrefix } from '../problems';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 import type { AppsResolutionIssue } from './enabled-apps';
 

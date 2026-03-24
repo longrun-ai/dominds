@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-import { formatNewCourseStartPrompt } from '../../main/shared/i18n/driver-messages';
-import { getWorkLanguage, setWorkLanguage } from '../../main/shared/runtime-language';
+import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,
-} from '../../main/shared/utils/inter-dialog-format';
+} from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

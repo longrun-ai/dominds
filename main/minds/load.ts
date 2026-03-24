@@ -4,6 +4,7 @@
  * Loads agent minds/persona/knowledge/lessons and memory files from `.minds`.
  * Composes the system prompt and aggregates memories with optional hints.
  */
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Dirent } from 'fs';
 import { access, readFile, readdir, stat } from 'fs/promises';
 import path from 'path';
@@ -11,8 +12,7 @@ import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { Dialog, SubDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
-import { getWorkLanguage } from '../shared/runtime-language';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { getWorkLanguage } from '../runtime/work-language';
 import { loadWorkspaceSkills, renderWorkspaceSkillsPrompt } from '../skills/load';
 import { Team } from '../team';
 import type { FuncTool, Tool } from '../tool';

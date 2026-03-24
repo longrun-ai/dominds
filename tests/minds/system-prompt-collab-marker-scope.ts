@@ -5,7 +5,7 @@ import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,
   getRuntimeTransferMarkers,
-} from '../../main/shared/utils/inter-dialog-format';
+} from '../../main/runtime/inter-dialog-format';
 import { Team } from '../../main/team';
 
 function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCode): string {

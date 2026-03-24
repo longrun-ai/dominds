@@ -3,7 +3,7 @@ import type {
   ToolsetInfo,
   ToolsRegistrySnapshot,
 } from '@longrun-ai/kernel/types/tools-registry';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Tool } from '../tool';
 import { getToolsetMeta, toolsetsRegistry } from './registry';
 

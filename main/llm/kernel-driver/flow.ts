@@ -1,4 +1,5 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import {
   applyRegisteredAppDialogRunControls,
   renderAppRunControlBlockForPreDrive,
@@ -18,9 +19,8 @@ import { DialogPersistence } from '../../persistence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatNewCourseStartPrompt,
-} from '../../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../../shared/runtime-language';
-import { generateShortId } from '../../shared/utils/id';
+} from '../../runtime/driver-messages';
+import { getWorkLanguage } from '../../runtime/work-language';
 import { LlmConfig } from '../client';
 import {
   consumeCriticalCountdown,

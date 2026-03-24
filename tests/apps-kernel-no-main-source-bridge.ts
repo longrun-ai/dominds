@@ -3,7 +3,9 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
 const KERNEL_FORBIDDEN_SNIPPETS = [
-  'main/shared/types',
+  'main/runtime/',
+  'main/bootstrap/',
+  'main/markdown/',
   'main/apps/app-json',
   'main/apps-host/app-host-contract',
   'main/apps-host',

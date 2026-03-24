@@ -1,12 +1,12 @@
-import type { RootDialog } from './dialog';
-import { DialogPersistence } from './persistence';
 import {
   createPubChan,
   createSubChan,
   EndOfStream,
   type PubChan,
   type SubChan,
-} from './shared/evt';
+} from '@longrun-ai/kernel/evt';
+import type { RootDialog } from './dialog';
+import { DialogPersistence } from './persistence';
 
 type RegistryEntry = {
   rootDialog: RootDialog;

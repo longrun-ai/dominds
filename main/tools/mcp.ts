@@ -11,8 +11,8 @@ import {
   releaseMcpToolsetLeaseForDialog,
   requestMcpServerRestart,
 } from '../mcp/supervisor';
-import { formatSystemNoticePrefix } from '../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type {
   FuncTool,

@@ -1,5 +1,5 @@
+import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import assert from 'node:assert/strict';
-import type { DialogDisplayState } from '../../webapp/src/shared/types/display-state';
 import { displayStateClassSuffixFromDisplayState } from '../../webapp/src/utils/run-control-visual';
 
 function expectSuffix(displayState: DialogDisplayState | undefined, expected: string): void {

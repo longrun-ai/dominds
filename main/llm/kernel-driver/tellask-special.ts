@@ -7,6 +7,8 @@ import {
   type HumanQuestion,
   type PendingSubdialogStateRecord,
 } from '@longrun-ai/kernel/types/storage';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { AssignmentFromSup } from '../../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
@@ -20,18 +22,16 @@ import {
   formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskForTeammatesOnly,
   formatRegisteredTellaskCallerUpdateNotice,
-} from '../../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../../shared/runtime-language';
-import { appendDistinctPerspectiveFbrBody } from '../../shared/utils/fbr';
-import { generateShortId } from '../../shared/utils/id';
+} from '../../runtime/driver-messages';
+import { appendDistinctPerspectiveFbrBody } from '../../runtime/fbr-body';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
   formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,
   formatUpdatedAssignmentFromSupdialog,
-} from '../../shared/utils/inter-dialog-format';
-import { formatUnifiedTimestamp } from '../../shared/utils/time';
+} from '../../runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../runtime/work-language';
 import { Team } from '../../team';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage, FuncCallMsg } from '../client';

@@ -1,7 +1,7 @@
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Dialog } from '../dialog';
-import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { formatToolActionResult } from '../runtime/tool-result-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
 

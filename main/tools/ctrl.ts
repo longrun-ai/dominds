@@ -32,9 +32,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog } from '../dialog';
 import { SubDialog } from '../dialog';
-import { formatNewCourseStartPrompt } from '../shared/i18n/driver-messages';
-import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
+import { formatToolActionResult } from '../runtime/tool-result-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
 import {
   reminderIsNumbered,

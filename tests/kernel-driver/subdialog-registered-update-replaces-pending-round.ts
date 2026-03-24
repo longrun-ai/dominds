@@ -4,13 +4,13 @@ import type { TellaskResponseRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/subdialog';
 import { DialogPersistence } from '../../main/persistence';
-import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/shared/i18n/driver-messages';
-import { getWorkLanguage } from '../../main/shared/runtime-language';
+import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/runtime/driver-messages';
 import {
   formatAssignmentFromSupdialog,
   formatTellaskResponseContent,
   formatUpdatedAssignmentFromSupdialog,
-} from '../../main/shared/utils/inter-dialog-format';
+} from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,

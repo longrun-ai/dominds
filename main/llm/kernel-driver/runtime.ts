@@ -1,22 +1,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { HumanQuestion } from '@longrun-ai/kernel/types/storage';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog } from '../../dialog';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
-import { DILIGENCE_FALLBACK_TEXT } from '../../shared/diligence';
 import {
   formatDiligenceAutoContinuePrompt,
   formatQ4HDiligencePushBudgetExhausted,
-} from '../../shared/i18n/driver-messages';
-import { getWorkLanguage } from '../../shared/runtime-language';
-import { generateShortId } from '../../shared/utils/id';
-import { formatUnifiedTimestamp } from '../../shared/utils/time';
+} from '../../runtime/driver-messages';
+import { getWorkLanguage } from '../../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../../tool';
 import { validateArgs } from '../../tool';
 import { generateDialogID } from '../../utils/id';

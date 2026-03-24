@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   formatDiligenceAutoContinuePrompt,
   formatSystemNoticePrefix,
-} from '../../main/shared/i18n/driver-messages';
+} from '../../main/runtime/driver-messages';
 
 async function main(): Promise<void> {
   const zhBody = '优先直接执行下一步，不要停在汇报。';

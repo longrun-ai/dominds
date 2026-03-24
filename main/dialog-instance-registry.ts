@@ -1,7 +1,7 @@
+import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
 import { Dialog, DialogID, RootDialog, SubDialog } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { DialogPersistence, DiskFileDialogStore } from './persistence';
-import { DEFAULT_DILIGENCE_PUSH_MAX } from './shared/diligence';
 import { Team } from './team';
 
 export type DialogPersistenceStatus = 'running' | 'completed' | 'archived';

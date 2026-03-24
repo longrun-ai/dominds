@@ -7,8 +7,8 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import fs from 'fs';
 import path from 'path';
-import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
-import { getWorkLanguage } from '../shared/runtime-language';
+import { formatToolActionResult } from '../runtime/tool-result-messages';
+import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
 

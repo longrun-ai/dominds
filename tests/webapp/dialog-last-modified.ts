@@ -1,5 +1,5 @@
+import type { ApiRootDialogResponse } from '@longrun-ai/kernel/types';
 import assert from 'node:assert/strict';
-import type { ApiRootDialogResponse } from '../../webapp/src/shared/types';
 import { bumpDialogsLastModified } from '../../webapp/src/utils/dialog-last-modified';
 
 function makeBaseDialog(overrides: Partial<ApiRootDialogResponse>): ApiRootDialogResponse {
