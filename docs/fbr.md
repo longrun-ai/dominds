@@ -14,12 +14,13 @@ The mechanism is the runtime-enforced contract applied to the spawned sideline d
 
 ## 2. Design principles and tradeoffs
 
-### 2.1 Predictability first: FBR is tool-less
+### 2.1 Predictability first: FBR is tool-less until final closure
 
 FBR is meant to be “reasoning over text”, not “an agent run that explores the environment”. To keep it safe and
 predictable, FBR sideline dialogs must be:
 
-- **tool-less by construction** (technically enforced; not “please don’t use tools”), and
+- **tool-less by construction during divergence/convergence** (technically enforced; not “please don’t use tools”), and
+- **closure-only in the final stage** (exactly two conclusion functions, no other tools), and
 - **body-first** (the tellask body is the authoritative task context).
 
 ### 2.2 No silent failure
@@ -29,7 +30,7 @@ silent ignore is worse than an error.
 
 ### 2.3 Serial multi-pass reasoning, not “multi-agent collaboration”
 
-`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` serial passes inside a **single FBR sideline conversation window**. The tellasker dialog is responsible for distilling the results; passes do not coordinate with each other.
+`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` divergence rounds, then `N` convergence rounds, inside a **single FBR sideline conversation window**. The FBR sideline itself must finish denoising and closure before reporting upstream.
 
 ## 3. User syntax
 
@@ -78,8 +79,8 @@ still inject baseline policy/safety/formatting context, but the tellask body rem
 
 Tool-less FBR has two layers, both required:
 
-1. **Prompt contract**: the runtime must communicate the tool-less constraint unambiguously.
-2. **API/transport contract**: the runtime must make the request technically tool-less.
+1. **Prompt contract**: the runtime must communicate the current phase constraints unambiguously.
+2. **API/transport contract**: divergence/convergence must be technically tool-less; final closure may expose exactly two conclusion functions and nothing else.
 
 #### 4.2.1 System prompt requirements (no tool instructions)
 
@@ -111,12 +112,17 @@ Under no circumstances should the FBR sideline dialog see any tool definitions.
 
 #### 4.2.3 The LLM request MUST be “zero tools”
 
-The LLM request for an FBR sideline dialog (`freshBootsReasoning`) MUST have **zero tools available**:
+For divergence/convergence, the LLM request for an FBR sideline dialog (`freshBootsReasoning`) MUST have **zero tools available**:
 
 - the request payload must not include tool/function definitions (effective tool list must be empty)
 - provider tool-calling / function-calling modes must not be enabled
 
-If the model attempts a tool/function call anyway, runtime MUST hard-reject it (see 4.5).
+In the final closure phase, runtime MAY expose exactly these two functions and no others:
+
+- `presentLowNoiseHighlyInformativeConclusion({ content })`
+- `presentUnreasonableSituation({ content })`
+
+If the model attempts any other tool/function call, runtime MUST hard-reject it (see 4.5).
 
 ### 4.3 Tellask restriction: none allowed
 
@@ -125,14 +131,12 @@ If critical context is missing, the FBR sideline should **list the missing items
 
 ### 4.4 Output contract (easy to distill)
 
-An FBR sideline dialog should produce per-round conclusions that are easy to distill. The runtime should aggregate all rounds and post the full set to upstream as one upstream-visible artifact.
+An FBR sideline dialog should denoise internally and post only one upstream-visible final artifact.
 
-1. **Per-round conclusion / findings** (same `freshBootsReasoning` call only)
-2. **Conclusion / recommendation**
-3. **Reasoning** (grounded in the tellask body)
-4. **Assumptions** (explicitly sourced: body vs session history)
-5. **Unknowns / missing context**
-6. **Next steps for tellasker dialog** (where tools/teammates may exist)
+1. **Divergence**: stay open to wild or minority ideas without forcing early consensus.
+2. **Convergence**: discard unsupported wild ideas as noise and keep only stable cross-round consensus.
+3. **Final closure**: end by calling exactly one of the two conclusion functions above.
+4. **Upstream delivery**: caller receives only the final low-noise conclusion, or the final “unreasonable situation” conclusion.
 
 ### 4.5 Violations and errors (loud + debuggable)
 
@@ -152,13 +156,12 @@ An FBR sideline dialog should produce per-round conclusions that are easy to dis
 
 When `fbr-effort = N`:
 
-- runtime expands a single `freshBootsReasoning({ tellaskContent: "..." })` into **N sequential rounds inside one sideline dialog**
-- each round receives the same tellask body and FBR constraints; runtime enforces only “different angle and no conclusion repetition”, without prescribing concrete analysis directions
-- round 1 carries the full tellask body; later rounds append incremental round directives only and do not repeat the round-1 preface
-- each round MUST use an angle explicitly different from all previous rounds
-- each round must stay in one subdialog, avoid repeating previous-round conclusions, and use a fresh perspective.
-- only the final round is posted back to the caller; when posted, upstream receives the full accumulated round conclusions (not only the last-round text).
-- tellasker dialog receives the full consolidated result after all rounds complete
+- runtime expands one `freshBootsReasoning({ tellaskContent: "..." })` into **N divergence rounds + N convergence rounds + up to N finalization retries** inside one sideline dialog
+- divergence rounds must explore distinct angles and stay open to ideas that may later be discarded
+- convergence rounds must denoise autonomously and preserve only stable consensus
+- conclusion functions are exposed only after divergence and convergence are complete
+- if the model still does not end via one of the required conclusion functions after `N` finalization retries, runtime must programmatically produce the `presentUnreasonableSituation` result
+- tellasker dialog receives only the final low-noise conclusion or the final unreasonable-situation conclusion
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 

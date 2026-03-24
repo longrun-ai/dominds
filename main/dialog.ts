@@ -1563,6 +1563,7 @@ export class SubDialog extends Dialog {
   public readonly sessionSlug?: string;
   public assignmentFromSup: AssignmentFromSup;
   protected readonly _supdialog: Dialog;
+  private _fbrConclusionToolsEnabled: boolean = false;
 
   constructor(
     dlgStore: DialogStore,
@@ -1601,6 +1602,14 @@ export class SubDialog extends Dialog {
 
   public override get status(): 'running' | 'completed' | 'archived' {
     return this.rootDialog.status;
+  }
+
+  public setFbrConclusionToolsEnabled(enabled: boolean): void {
+    this._fbrConclusionToolsEnabled = enabled;
+  }
+
+  public areFbrConclusionToolsEnabled(): boolean {
+    return this._fbrConclusionToolsEnabled;
   }
 
   /**

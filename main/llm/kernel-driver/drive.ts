@@ -66,6 +66,7 @@ import {
   resolveCriticalCountdownRemaining,
 } from './context-health';
 import { emitThinkingEvents } from './events';
+import { isFbrConclusionToolName } from './fbr';
 import {
   buildKernelDriverPolicy,
   resolveKernelDriverPolicyViolationKind,
@@ -874,20 +875,24 @@ async function executeFunctionRound(args: {
   funcCalls: readonly FuncCallMsg[];
   callbacks: KernelDriverDriveCallbacks;
   abortSignal: AbortSignal | undefined;
+  allowTellaskSpecialFunctions: boolean;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
     return { hadNormalToolCalls: false, pairedMessages: [], tellaskToolOutputs: [] };
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
-  const allowTellaskBack = args.dlg.id.rootId !== args.dlg.id.selfId;
-  const allowedSpecials = new Set<TellaskSpecialFunctionName>([
-    'tellask',
-    'tellaskSessionless',
-    'askHuman',
-    'freshBootsReasoning',
-    ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
-  ]);
+  const allowTellaskBack =
+    args.allowTellaskSpecialFunctions && args.dlg.id.rootId !== args.dlg.id.selfId;
+  const allowedSpecials = args.allowTellaskSpecialFunctions
+    ? new Set<TellaskSpecialFunctionName>([
+        'tellask',
+        'tellaskSessionless',
+        'askHuman',
+        'freshBootsReasoning',
+        ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
+      ])
+    : new Set<TellaskSpecialFunctionName>();
   const classified = classifyTellaskSpecialFunctionCalls(args.funcCalls, { allowedSpecials });
   const specialCallById = new Map(
     classified.specialCalls.map((call) => [call.callId, call] as const),
@@ -1276,12 +1281,13 @@ export async function driveDialogStreamCore(
       );
       const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
       const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
-      const effectiveFuncTools: FuncTool[] = policy.allowFunctionCalls
-        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
-            includeTellaskBack: isSubdialog,
-            fbrEffortDefault,
-          })
-        : canonicalFuncTools;
+      const effectiveFuncTools: FuncTool[] =
+        policy.mode === 'default'
+          ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
+              includeTellaskBack: isSubdialog,
+              fbrEffortDefault,
+            })
+          : canonicalFuncTools;
       const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
       const funcTools = projected.tools;
 
@@ -1761,14 +1767,16 @@ export async function driveDialogStreamCore(
           streamedFuncCalls.push(...funcCalls);
         }
 
-        const tellaskCallCount = streamedFuncCalls.filter(
-          (c) =>
-            c.name === 'tellask' ||
-            c.name === 'tellaskSessionless' ||
-            c.name === 'tellaskBack' ||
-            c.name === 'askHuman' ||
-            c.name === 'freshBootsReasoning',
-        ).length;
+        const tellaskCallCount = policy.allowTellaskSpecialFunctions
+          ? streamedFuncCalls.filter(
+              (c) =>
+                c.name === 'tellask' ||
+                c.name === 'tellaskSessionless' ||
+                c.name === 'tellaskBack' ||
+                c.name === 'askHuman' ||
+                c.name === 'freshBootsReasoning',
+            ).length
+          : 0;
         const policyViolationKind = resolveKernelDriverPolicyViolationKind({
           policy,
           tellaskCallCount,
@@ -1814,6 +1822,7 @@ export async function driveDialogStreamCore(
           funcCalls: streamedFuncCalls,
           callbacks,
           abortSignal,
+          allowTellaskSpecialFunctions: policy.allowTellaskSpecialFunctions,
         });
         if (routed.tellaskToolOutputs.length > 0) {
           newMsgs.push(...routed.tellaskToolOutputs);
@@ -1822,6 +1831,19 @@ export async function driveDialogStreamCore(
           newMsgs.push(...routed.pairedMessages);
         }
         await dlg.addChatMessages(...newMsgs);
+
+        const shouldStopAfterFbrConclusionAttempt =
+          policy.mode === 'fbr_conclusion_only' &&
+          streamedFuncCalls.some((call) => isFbrConclusionToolName(call.name));
+        if (shouldStopAfterFbrConclusionAttempt) {
+          log.debug('kernel-driver stop FBR round after conclusion function attempt', undefined, {
+            dialogId: dlg.id.valueOf(),
+            toolNames: streamedFuncCalls
+              .filter((call) => isFbrConclusionToolName(call.name))
+              .map((call) => call.name),
+          });
+          break;
+        }
 
         if (dlg.hasUpNext()) {
           pendingPrompt = resolveUpNextPrompt(dlg);

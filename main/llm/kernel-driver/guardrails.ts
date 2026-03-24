@@ -1,13 +1,17 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { Dialog, SubDialog } from '../../dialog';
-import { buildNoToolsNotice } from '../../minds/system-prompt-parts';
 import type { Team } from '../../team';
 import type { Tool } from '../../tool';
 import type { ChatMessage } from '../client';
+import {
+  buildFbrConclusionTools,
+  buildFbrSystemPrompt,
+  buildFbrToolAvailabilityNotice,
+} from './fbr';
 
 export type KernelDriverTellaskPolicy = 'allow_any' | 'deny_all';
 
-export type KernelDriverPolicyMode = 'default' | 'fbr_toolless';
+export type KernelDriverPolicyMode = 'default' | 'fbr_toolless' | 'fbr_conclusion_only';
 
 export type KernelDriverPolicyState = Readonly<{
   mode: KernelDriverPolicyMode;
@@ -16,6 +20,7 @@ export type KernelDriverPolicyState = Readonly<{
   effectiveAgentTools: readonly Tool[];
   prependedContextMessages: readonly ChatMessage[];
   tellaskPolicy: KernelDriverTellaskPolicy;
+  allowTellaskSpecialFunctions: boolean;
   allowFunctionCalls: boolean;
 }>;
 
@@ -41,30 +46,6 @@ function mergeModelParams(
   };
 }
 
-function buildFbrSystemPrompt(language: LanguageCode): string {
-  const prefix =
-    language === 'zh'
-      ? [
-          '# 扪心自问（FBR）支线对话',
-          '',
-          '- 你正在处理一次由 `freshBootsReasoning` 函数触发的 FBR 支线对话。',
-          '- 诉请正文是主要任务上下文；不要假设能访问上游对话历史。',
-          '- 若使用可恢复会话，你可以使用本支线对话自身的 tellaskSession 历史作为显式上下文。',
-          '- 若诉请正文缺少关键上下文，请在输出中列出缺失信息与阻塞原因。',
-          '- 当前 FBR 为技术性禁函数工具模式：不得发起任何函数调用（包括 tellaskBack / tellask / tellaskSessionless / askHuman）。',
-        ].join('\n')
-      : [
-          '# Fresh Boots Reasoning (FBR) sideline dialog',
-          '',
-          '- This is an FBR sideline dialog triggered via the `freshBootsReasoning` function.',
-          '- The tellask body is the primary task context; do not assume access to upstream dialog history.',
-          '- If this is a resumable session, you may use this sideline dialog’s own tellaskSession history as explicit context.',
-          '- If the tellask body is missing critical context, list what is missing and why it blocks reasoning.',
-          '- This FBR turn is in technical no-function mode: do not emit any function call (including tellaskBack / tellask / tellaskSessionless / askHuman).',
-        ].join('\n');
-  return prefix.trim();
-}
-
 export function buildKernelDriverPolicy(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -81,6 +62,7 @@ export function buildKernelDriverPolicy(args: {
       effectiveAgentTools: agentTools,
       prependedContextMessages: [],
       tellaskPolicy: 'allow_any',
+      allowTellaskSpecialFunctions: true,
       allowFunctionCalls: true,
     };
   }
@@ -88,21 +70,25 @@ export function buildKernelDriverPolicy(args: {
   const effectiveAgent = Object.assign(Object.create(agent), {
     model_params: mergeModelParams(agent.model_params, agent.fbr_model_params),
   }) as Team.Member;
+  const isConclusionPhase = dlg.areFbrConclusionToolsEnabled();
+  const mode: KernelDriverPolicyMode = isConclusionPhase ? 'fbr_conclusion_only' : 'fbr_toolless';
+  const noticePhase = isConclusionPhase ? 'finalization' : 'toolless';
 
   return {
-    mode: 'fbr_toolless',
+    mode,
     effectiveAgent,
-    effectiveSystemPrompt: buildFbrSystemPrompt(language),
-    effectiveAgentTools: [],
+    effectiveSystemPrompt: buildFbrSystemPrompt(language, noticePhase),
+    effectiveAgentTools: isConclusionPhase ? buildFbrConclusionTools(language) : [],
     prependedContextMessages: [
       {
         type: 'environment_msg',
         role: 'user',
-        content: buildNoToolsNotice(language),
+        content: buildFbrToolAvailabilityNotice(language, noticePhase),
       },
     ],
     tellaskPolicy: 'deny_all',
-    allowFunctionCalls: false,
+    allowTellaskSpecialFunctions: false,
+    allowFunctionCalls: isConclusionPhase,
   };
 }
 
@@ -110,33 +96,52 @@ export function validateKernelDriverPolicyInvariants(
   policy: KernelDriverPolicyState,
   language: LanguageCode,
 ): { ok: true } | { ok: false; detail: string } {
-  if (policy.mode !== 'fbr_toolless') {
+  if (policy.mode === 'default') {
     return { ok: true };
-  }
-  if (policy.effectiveAgentTools.length > 0) {
-    return { ok: false, detail: 'FBR effectiveAgentTools must be empty.' };
-  }
-  if (policy.allowFunctionCalls) {
-    return { ok: false, detail: 'FBR allowFunctionCalls must be false.' };
   }
   if (policy.tellaskPolicy !== 'deny_all') {
     return { ok: false, detail: 'FBR tellaskPolicy must be deny_all.' };
   }
-  const expectedNoToolsNotice = buildNoToolsNotice(language);
+  if (policy.allowTellaskSpecialFunctions) {
+    return { ok: false, detail: 'FBR allowTellaskSpecialFunctions must be false.' };
+  }
   if (policy.prependedContextMessages.length !== 1) {
     return { ok: false, detail: 'FBR must prepend exactly one no-tools notice message.' };
   }
+  const expectedNotice = buildFbrToolAvailabilityNotice(
+    language,
+    policy.mode === 'fbr_conclusion_only' ? 'finalization' : 'toolless',
+  );
   const [notice] = policy.prependedContextMessages;
   if (
     !notice ||
     notice.type !== 'environment_msg' ||
     notice.role !== 'user' ||
-    notice.content !== expectedNoToolsNotice
+    notice.content !== expectedNotice
   ) {
     return {
       ok: false,
-      detail: 'FBR prepended notice must exactly match buildNoToolsNotice(language).',
+      detail: 'FBR prepended notice must exactly match the expected phase notice.',
     };
+  }
+  if (policy.mode === 'fbr_toolless') {
+    if (policy.effectiveAgentTools.length > 0) {
+      return { ok: false, detail: 'Tool-less FBR effectiveAgentTools must be empty.' };
+    }
+    if (policy.allowFunctionCalls) {
+      return { ok: false, detail: 'Tool-less FBR allowFunctionCalls must be false.' };
+    }
+  }
+  if (policy.mode === 'fbr_conclusion_only') {
+    if (policy.effectiveAgentTools.length !== 2) {
+      return {
+        ok: false,
+        detail: 'FBR conclusion-only mode must expose exactly two conclusion tools.',
+      };
+    }
+    if (!policy.allowFunctionCalls) {
+      return { ok: false, detail: 'FBR conclusion-only mode must allow function calls.' };
+    }
   }
   return { ok: true };
 }

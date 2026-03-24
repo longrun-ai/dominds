@@ -43,41 +43,6 @@ async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string):
   }
 }
 
-function buildFbrRelayPayload(subdialog: SubDialog, finalResponseText: string): string {
-  const language = subdialog.getLastUserLanguageCode();
-  const isZh = language === 'zh';
-  const roundSayingMsgs = subdialog.msgs
-    .filter((msg): msg is Extract<ChatMessage, { type: 'saying_msg' }> => msg.type === 'saying_msg')
-    .map((msg) => msg.content)
-    .filter((content) => content.trim() !== '')
-    .map((content, idx) => ({
-      idx,
-      content,
-    }));
-
-  if (roundSayingMsgs.length <= 1) {
-    return `${finalResponseText}\n\n${buildFbrDistillPrompt(language)}`;
-  }
-
-  const roundsText = roundSayingMsgs
-    .map(
-      (entry) =>
-        `### ${isZh ? `FBR 第 ${entry.idx + 1} 轮` : `FBR Round ${entry.idx + 1}`}\n${entry.content}`,
-    )
-    .join('\n\n');
-  const allRoundPayload = isZh
-    ? `## FBR 全量回帖（按轮次）\n\n${roundsText}`
-    : `## FBR Full Conclusions (by round)\n\n${roundsText}`;
-  return `${allRoundPayload}\n\n${buildFbrDistillPrompt(language)}`;
-}
-
-function buildFbrDistillPrompt(language: 'en' | 'zh'): string {
-  if (language === 'zh') {
-    return `## 提示上游：收到全量回帖后请提炼\n\n以上为该次 FBR 的全量结论，包含全部轮次。上游请在收到这条全量回帖后进行综合提炼（distill），形成可执行项与决策后立即执行；若需要人类澄清/授权/决策，立即发起 \`askHuman\`。`;
-  }
-  return `## Upstream Distill Note\n\nThe text above is the full FBR output for this run, containing all rounds. After receiving this full reply, distill the full set and execute immediately once actionable decisions are formed; if human clarification/authorization/decision is required, issue \`askHuman\` immediately.`;
-}
-
 async function resolveOwnerDialogBySelfId(
   subdialog: SubDialog,
   ownerDialogId: string,
@@ -370,13 +335,7 @@ export async function supplyResponseToSupdialog(args: {
           : undefined;
     const resolvedSubdialog =
       maybeSubdialog ?? (rootForLookup?.lookupDialog(subdialogId.selfId) as SubDialog | undefined);
-    const shouldReportFbrUpstream =
-      callType === 'C' &&
-      result.callName === 'freshBootsReasoning' &&
-      resolvedSubdialog !== undefined;
-    const upstreamResponseBody = shouldReportFbrUpstream
-      ? buildFbrRelayPayload(resolvedSubdialog, responseText)
-      : responseText;
+    const upstreamResponseBody = responseText;
     const requesterId = result.originMemberId ?? parentDialog.agentId;
     const upstreamResponseText = formatTellaskResponseContent({
       callName: result.callName,
