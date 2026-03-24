@@ -155,6 +155,15 @@ export class ArchivedDialogList extends HTMLElement {
       if (timeEl instanceof HTMLElement) {
         timeEl.textContent = next.lastModified || '';
       }
+      if (targetSelf === rootId) {
+        this.reorderVisibleRoots(next.taskDocPath);
+      } else {
+        this.reorderVisibleSubdialogs(rootId);
+        const rootDialog = this.findDialogByIds(rootId, rootId, true);
+        if (rootDialog) {
+          this.reorderVisibleRoots(rootDialog.taskDocPath);
+        }
+      }
     }
     if (patch.subdialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
@@ -402,30 +411,13 @@ export class ArchivedDialogList extends HTMLElement {
       }
     }
 
-    if (this.selectedKey) {
-      const [rootId, selfId] = this.splitDialogKey(this.selectedKey);
-      if (rootId && selfId) {
-        this.selectionState = {
-          kind: 'selected',
-          rootId,
-          selfId,
-          isRoot: rootId === selfId,
-        };
-      }
-    }
-
-    if (this.selectionState.kind === 'selected') {
-      const hasSelection = validated.some((dialog) =>
-        this.isSelectedDialog(dialog, this.selectionState),
-      );
+    const selection = this.selectionState;
+    if (selection.kind === 'selected') {
+      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, selection));
       if (!hasSelection) {
         this.clearSelection();
       } else {
-        this.ensureDialogVisible(
-          this.selectionState.rootId,
-          this.selectionState.selfId,
-          this.selectionState.isRoot,
-        );
+        this.ensureDialogVisible(selection.rootId, selection.selfId, selection.isRoot);
       }
     }
 
@@ -438,98 +430,7 @@ export class ArchivedDialogList extends HTMLElement {
       return;
     }
 
-    const html = groups
-      .map((group) => {
-        const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
-        const taskToggle = this.renderToggleIcon(taskCollapsed);
-        const visibleRootCount =
-          this.visibleRootCountByTask.get(group.taskDocPath) ?? ArchivedDialogList.SHOW_MORE_STEP;
-        const visibleRoots = group.roots.slice(0, visibleRootCount);
-        const hiddenRootCount = Math.max(group.roots.length - visibleRoots.length, 0);
-        const rootNodes = visibleRoots
-          .map((rootGroup) => {
-            const rootDialog = rootGroup.root;
-            const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
-            const rootToggle = this.renderToggleIcon(rootCollapsed);
-            const rootRow = rootDialog
-              ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
-              : `
-                <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
-                  <div class="dialog-row">
-                    <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
-                    <span class="dialog-title">${t.missingRoot}</span>
-                    <span class="dialog-meta-right">
-                      <span class="dialog-count">${rootGroup.subdialogs.length}</span>
-                      <span class="dialog-id">${rootGroup.rootId}</span>
-                    </span>
-                  </div>
-                </div>
-              `;
-            const visibleSubdialogCount =
-              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ??
-              ArchivedDialogList.SHOW_MORE_STEP;
-            const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
-            const hiddenSubdialogCount = Math.max(
-              rootGroup.subdialogs.length - visibleSubdialogs.length,
-              0,
-            );
-            const subNodes = visibleSubdialogs
-              .map((subdialog) => this.renderDialogRow(subdialog))
-              .join('');
-            const subShowMore =
-              hiddenSubdialogCount > 0
-                ? this.renderShowMoreButton({
-                    action: 'show-more-subdialogs',
-                    rootId: rootGroup.rootId,
-                    hiddenCount: hiddenSubdialogCount,
-                  })
-                : '';
-            const subCollapsed = taskCollapsed || rootCollapsed;
-            return `
-              <div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}">
-                ${rootRow}
-                <div class="sdlg-children ${subCollapsed ? 'collapsed' : ''}">
-                  ${subNodes}
-                  ${subShowMore}
-                </div>
-              </div>
-            `;
-          })
-          .join('');
-        const rootShowMore =
-          hiddenRootCount > 0
-            ? this.renderShowMoreButton({
-                action: 'show-more-roots',
-                taskDocPath: group.taskDocPath,
-                hiddenCount: hiddenRootCount,
-              })
-            : '';
-        return `
-          <div class="task-group task-node">
-            <div class="task-title" data-task-path="${group.taskDocPath}">
-              <div class="task-title-left">
-                <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button" aria-label="${this.formatToggleAriaLabel(taskCollapsed)}">${taskToggle}</button>
-                <span>${group.taskDocPath}</span>
-              </div>
-              <div class="task-title-right">
-                <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
-                  ${this.renderCreateIcon()}
-                </button>
-                <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
-                  ${this.renderReviveIcon()}
-                </button>
-                <span class="dialog-count">${group.roots.length}</span>
-              </div>
-            </div>
-            <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">
-              ${rootNodes}
-              ${rootShowMore}
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-    this.listEl.innerHTML = html;
+    this.reconcileTaskGroups(groups);
     this.refreshFromDom();
   }
 
@@ -544,6 +445,273 @@ export class ArchivedDialogList extends HTMLElement {
 
   private encodeDialogDataset(dialog: ApiRootDialogResponse): string {
     return encodeURIComponent(JSON.stringify(dialog));
+  }
+
+  private createElementFromHtml(html: string): HTMLElement {
+    const template = document.createElement('template');
+    template.innerHTML = html.trim();
+    const first = template.content.firstElementChild;
+    if (!(first instanceof HTMLElement)) {
+      throw new Error('Expected HTML template to produce a single HTMLElement.');
+    }
+    return first;
+  }
+
+  private syncElement(target: HTMLElement, next: HTMLElement): void {
+    if (target.outerHTML === next.outerHTML) return;
+
+    for (const name of target.getAttributeNames()) {
+      if (!next.hasAttribute(name)) {
+        target.removeAttribute(name);
+      }
+    }
+    for (const name of next.getAttributeNames()) {
+      const value = next.getAttribute(name);
+      if (value === null) continue;
+      if (target.getAttribute(name) !== value) {
+        target.setAttribute(name, value);
+      }
+    }
+    if (target.innerHTML !== next.innerHTML) {
+      target.innerHTML = next.innerHTML;
+    }
+  }
+
+  private renderTaskTitleRow(group: TaskGroup, taskCollapsed: boolean): string {
+    const t = getUiStrings(this.props.uiLanguage);
+    const taskToggle = this.renderToggleIcon(taskCollapsed);
+    return `
+      <div class="task-title" data-task-path="${group.taskDocPath}">
+        <div class="task-title-left">
+          <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button" aria-label="${this.formatToggleAriaLabel(taskCollapsed)}">${taskToggle}</button>
+          <span>${group.taskDocPath}</span>
+        </div>
+        <div class="task-title-right">
+          <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
+            ${this.renderCreateIcon()}
+          </button>
+          <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
+            ${this.renderReviveIcon()}
+          </button>
+          <span class="dialog-count">${group.roots.length}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderMissingRootRow(rootGroup: RootGroup, rootCollapsed: boolean): string {
+    const t = getUiStrings(this.props.uiLanguage);
+    const rootToggle = this.renderToggleIcon(rootCollapsed);
+    return `
+      <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
+        <div class="dialog-row">
+          <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
+          <span class="dialog-title">${t.missingRoot}</span>
+          <span class="dialog-meta-right">
+            <span class="dialog-count">${rootGroup.subdialogs.length}</span>
+            <span class="dialog-id">${rootGroup.rootId}</span>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  private reconcileShowMoreRow(container: HTMLElement, html: string | null): void {
+    const existing = container.querySelector<HTMLElement>(':scope > .show-more-row');
+    if (html === null) {
+      existing?.remove();
+      return;
+    }
+    const next = this.createElementFromHtml(html);
+    if (existing) {
+      this.syncElement(existing, next);
+      container.appendChild(existing);
+      return;
+    }
+    container.appendChild(next);
+  }
+
+  private reconcileSubdialogRows(rootChildren: HTMLElement, rootGroup: RootGroup): void {
+    const existingRows = new Map<string, HTMLElement>();
+    rootChildren
+      .querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog[data-dialog-key]')
+      .forEach((row) => {
+        const key = (row.getAttribute('data-dialog-key') ?? '').trim();
+        if (key !== '') {
+          existingRows.set(key, row);
+        }
+      });
+
+    const visibleSubdialogCount =
+      this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ?? ArchivedDialogList.SHOW_MORE_STEP;
+    const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
+    const hiddenSubdialogCount = Math.max(
+      rootGroup.subdialogs.length - visibleSubdialogs.length,
+      0,
+    );
+
+    for (const subdialog of visibleSubdialogs) {
+      const key = this.getDialogKey(subdialog);
+      const next = this.createElementFromHtml(this.renderDialogRow(subdialog));
+      const existing = existingRows.get(key);
+      if (existing) {
+        this.syncElement(existing, next);
+        rootChildren.appendChild(existing);
+        existingRows.delete(key);
+      } else {
+        rootChildren.appendChild(next);
+      }
+    }
+
+    for (const stale of existingRows.values()) {
+      stale.remove();
+    }
+
+    const showMoreHtml =
+      hiddenSubdialogCount > 0
+        ? this.renderShowMoreButton({
+            action: 'show-more-subdialogs',
+            rootId: rootGroup.rootId,
+            hiddenCount: hiddenSubdialogCount,
+          })
+        : null;
+    this.reconcileShowMoreRow(rootChildren, showMoreHtml);
+  }
+
+  private reconcileRootNode(
+    rootNode: HTMLElement,
+    rootGroup: RootGroup,
+    taskCollapsed: boolean,
+  ): void {
+    rootNode.setAttribute('data-rdlg-root-id', rootGroup.rootId);
+
+    const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
+    const rootRowHtml = rootGroup.root
+      ? this.renderRootRow(
+          rootGroup.root,
+          this.renderToggleIcon(rootCollapsed),
+          rootGroup.subdialogs.length,
+        )
+      : this.renderMissingRootRow(rootGroup, rootCollapsed);
+
+    const existingRootRow = rootNode.querySelector<HTMLElement>(
+      ':scope > .dialog-item.root-dialog',
+    );
+    if (existingRootRow) {
+      this.syncElement(existingRootRow, this.createElementFromHtml(rootRowHtml));
+      if (rootNode.firstElementChild !== existingRootRow) {
+        rootNode.insertBefore(existingRootRow, rootNode.firstElementChild);
+      }
+    } else {
+      rootNode.insertBefore(this.createElementFromHtml(rootRowHtml), rootNode.firstElementChild);
+    }
+
+    let rootChildren = rootNode.querySelector<HTMLElement>(':scope > .sdlg-children');
+    if (!rootChildren) {
+      rootChildren = this.createElementFromHtml('<div class="sdlg-children"></div>');
+      rootNode.appendChild(rootChildren);
+    }
+    rootChildren.classList.toggle('collapsed', taskCollapsed || rootCollapsed);
+    this.reconcileSubdialogRows(rootChildren, rootGroup);
+  }
+
+  private reconcileRootNodes(
+    taskRows: HTMLElement,
+    group: TaskGroup,
+    taskCollapsed: boolean,
+  ): void {
+    const existingRoots = new Map<string, HTMLElement>();
+    taskRows
+      .querySelectorAll<HTMLElement>(':scope > .rdlg-node[data-rdlg-root-id]')
+      .forEach((node) => {
+        const rootId = (node.getAttribute('data-rdlg-root-id') ?? '').trim();
+        if (rootId !== '') {
+          existingRoots.set(rootId, node);
+        }
+      });
+
+    const visibleRootCount =
+      this.visibleRootCountByTask.get(group.taskDocPath) ?? ArchivedDialogList.SHOW_MORE_STEP;
+    const visibleRoots = group.roots.slice(0, visibleRootCount);
+    const hiddenRootCount = Math.max(group.roots.length - visibleRoots.length, 0);
+
+    for (const rootGroup of visibleRoots) {
+      const existing = existingRoots.get(rootGroup.rootId);
+      const rootNode =
+        existing ??
+        this.createElementFromHtml(
+          `<div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}"></div>`,
+        );
+      this.reconcileRootNode(rootNode, rootGroup, taskCollapsed);
+      taskRows.appendChild(rootNode);
+      existingRoots.delete(rootGroup.rootId);
+    }
+
+    for (const stale of existingRoots.values()) {
+      stale.remove();
+    }
+
+    const showMoreHtml =
+      hiddenRootCount > 0
+        ? this.renderShowMoreButton({
+            action: 'show-more-roots',
+            taskDocPath: group.taskDocPath,
+            hiddenCount: hiddenRootCount,
+          })
+        : null;
+    this.reconcileShowMoreRow(taskRows, showMoreHtml);
+  }
+
+  private reconcileTaskGroups(groups: TaskGroup[]): void {
+    if (!this.listEl) return;
+
+    this.listEl.querySelectorAll<HTMLElement>(':scope > .empty').forEach((node) => node.remove());
+
+    const existingGroups = new Map<string, HTMLElement>();
+    this.listEl
+      .querySelectorAll<HTMLElement>(':scope > .task-group.task-node')
+      .forEach((groupEl) => {
+        const taskPath = (
+          groupEl
+            .querySelector<HTMLElement>(':scope > .task-title')
+            ?.getAttribute('data-task-path') ?? ''
+        ).trim();
+        if (taskPath !== '') {
+          existingGroups.set(taskPath, groupEl);
+        }
+      });
+
+    for (const group of groups) {
+      const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
+      const taskGroup =
+        existingGroups.get(group.taskDocPath) ??
+        this.createElementFromHtml(
+          '<div class="task-group task-node"><div class="task-title"></div><div class="task-rows"></div></div>',
+        );
+
+      const nextTitle = this.createElementFromHtml(this.renderTaskTitleRow(group, taskCollapsed));
+      const currentTitle = taskGroup.querySelector<HTMLElement>(':scope > .task-title');
+      if (currentTitle) {
+        this.syncElement(currentTitle, nextTitle);
+      } else {
+        taskGroup.insertBefore(nextTitle, taskGroup.firstElementChild);
+      }
+
+      let taskRows = taskGroup.querySelector<HTMLElement>(':scope > .task-rows');
+      if (!taskRows) {
+        taskRows = this.createElementFromHtml('<div class="task-rows"></div>');
+        taskGroup.appendChild(taskRows);
+      }
+      taskRows.classList.toggle('collapsed', taskCollapsed);
+      this.reconcileRootNodes(taskRows, group, taskCollapsed);
+
+      this.listEl.appendChild(taskGroup);
+      existingGroups.delete(group.taskDocPath);
+    }
+
+    for (const stale of existingGroups.values()) {
+      stale.remove();
+    }
   }
 
   private decodeDialogDataset(el: HTMLElement): ApiRootDialogResponse | null {
@@ -590,6 +758,98 @@ export class ArchivedDialogList extends HTMLElement {
     } else if (this.selectedKey) {
       this.clearSelection();
     }
+  }
+
+  private getDialogUpdatedAtMsFromElement(el: HTMLElement): number {
+    const dialog = this.decodeDialogDataset(el);
+    if (!dialog) return 0;
+    return this.parseTimestamp(dialog.lastModified);
+  }
+
+  private reorderVisibleSubdialogs(rootId: string): void {
+    if (!this.listEl) return;
+    const rootChildren = this.listEl.querySelector(
+      `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(rootId)}"] > .sdlg-children`,
+    );
+    if (!(rootChildren instanceof HTMLElement)) return;
+    const subRows = Array.from(
+      rootChildren.querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog'),
+    );
+    if (subRows.length <= 1) return;
+    subRows.sort((a, b) => {
+      const delta =
+        this.getDialogUpdatedAtMsFromElement(b) - this.getDialogUpdatedAtMsFromElement(a);
+      if (delta !== 0) return delta;
+      const aSelf = a.getAttribute('data-self-id') ?? '';
+      const bSelf = b.getAttribute('data-self-id') ?? '';
+      return aSelf.localeCompare(bSelf);
+    });
+    const anchor = rootChildren.querySelector(':scope > .show-more-row');
+    for (const row of subRows) {
+      rootChildren.insertBefore(row, anchor);
+    }
+  }
+
+  private reorderVisibleRoots(taskDocPath: string): void {
+    if (!this.listEl) return;
+    const taskTitle = this.listEl.querySelector(
+      `.task-title[data-task-path="${this.escapeSelector(taskDocPath)}"]`,
+    );
+    const taskGroup = taskTitle?.closest('.task-group');
+    if (!(taskGroup instanceof HTMLElement)) return;
+    const taskRows = taskGroup.querySelector('.task-rows');
+    if (!(taskRows instanceof HTMLElement)) return;
+    const rootNodes = Array.from(taskRows.querySelectorAll<HTMLElement>(':scope > .rdlg-node'));
+    if (rootNodes.length <= 1) return;
+    rootNodes.sort((a, b) => {
+      const aRoot = a.querySelector<HTMLElement>(':scope > .dialog-item.root-dialog');
+      const bRoot = b.querySelector<HTMLElement>(':scope > .dialog-item.root-dialog');
+      const delta =
+        (bRoot ? this.getDialogUpdatedAtMsFromElement(bRoot) : 0) -
+        (aRoot ? this.getDialogUpdatedAtMsFromElement(aRoot) : 0);
+      if (delta !== 0) return delta;
+      const aRootId = (a.getAttribute('data-rdlg-root-id') ?? '').trim();
+      const bRootId = (b.getAttribute('data-rdlg-root-id') ?? '').trim();
+      return aRootId.localeCompare(bRootId);
+    });
+    const anchor = taskRows.querySelector(':scope > .show-more-row');
+    for (const node of rootNodes) {
+      taskRows.insertBefore(node, anchor);
+    }
+    this.reorderTaskGroups();
+  }
+
+  private reorderTaskGroups(): void {
+    if (!this.listEl) return;
+    const groups = Array.from(
+      this.listEl.querySelectorAll<HTMLElement>(':scope > .task-group.task-node'),
+    );
+    if (groups.length <= 1) return;
+    groups.sort((a, b) => {
+      const aTs = this.getTaskMaxUpdatedAtMs(a);
+      const bTs = this.getTaskMaxUpdatedAtMs(b);
+      const delta = bTs - aTs;
+      if (delta !== 0) return delta;
+      const aPath = (a.querySelector('.task-title')?.getAttribute('data-task-path') ?? '').trim();
+      const bPath = (b.querySelector('.task-title')?.getAttribute('data-task-path') ?? '').trim();
+      return aPath.localeCompare(bPath);
+    });
+    for (const group of groups) {
+      this.listEl.appendChild(group);
+    }
+    this.refreshFromDom();
+  }
+
+  private getTaskMaxUpdatedAtMs(taskGroup: HTMLElement): number {
+    let max = 0;
+    const roots = taskGroup.querySelectorAll<HTMLElement>(
+      '.dialog-item.root-dialog[data-dialog-json]',
+    );
+    roots.forEach((row) => {
+      const ts = this.getDialogUpdatedAtMsFromElement(row);
+      if (ts > max) max = ts;
+    });
+    return max;
   }
 
   private clearSelection(): void {
@@ -931,6 +1191,20 @@ export class ArchivedDialogList extends HTMLElement {
         this.updateToggleButtonUi(rootToggle, false);
       }
     }
+
+    if (
+      !this.requestedSubdialogRoots.has(dialog.rootId) &&
+      !this.hasSubdialogsLoaded(dialog.rootId)
+    ) {
+      this.requestedSubdialogRoots.add(dialog.rootId);
+      this.dispatchEvent(
+        new CustomEvent('dialog-expand', {
+          detail: { rootId: dialog.rootId, status: 'archived' },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
   }
 
   private findDialogByIds(
@@ -1255,7 +1529,12 @@ export class ArchivedDialogList extends HTMLElement {
         flex-direction: column;
         gap: 3px;
         padding: 2px 8px;
+        margin: 0;
         cursor: pointer;
+        border-right: 3px solid transparent;
+        border-radius: 0;
+        position: relative;
+        box-sizing: border-box;
       }
 
       .root-dialog {
@@ -1286,7 +1565,17 @@ export class ArchivedDialogList extends HTMLElement {
       }
 
       .dialog-item.selected {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 13%, transparent);
+        margin: 2px 0;
+        border-radius: 10px 0 0 10px;
+        box-shadow:
+          inset 1px 0 0 color-mix(in srgb, white 55%, transparent),
+          inset 0 1px 0 color-mix(in srgb, white 55%, transparent),
+          inset 0 -1px 0 color-mix(in srgb, white 55%, transparent),
+          inset 2px 0 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
+          inset 0 2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
+          inset 0 -2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent);
+        z-index: var(--dominds-z-local-raised, 1);
       }
 
       .toggle {
@@ -1402,17 +1691,15 @@ export class ArchivedDialogList extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 6px;
+        font-weight: 500;
         flex: none;
         white-space: nowrap;
       }
 
       .dialog-count {
         font-size: var(--dominds-font-size-xs, 11px);
-        padding: 2px 6px;
-        border-radius: 999px;
-        background: var(--dominds-border, #e0e0e0);
         color: var(--dominds-muted, #666666);
-        flex: none;
+        letter-spacing: 0.02em;
       }
 
       .dialog-submeta {
@@ -1451,7 +1738,8 @@ export class ArchivedDialogList extends HTMLElement {
 
       .dialog-topic {
         font-size: var(--dominds-font-size-xs, 11px);
-        color: var(--dominds-muted, #888888);
+        color: var(--dominds-muted, #666666);
+        letter-spacing: 0.02em;
       }
 
       .empty {
