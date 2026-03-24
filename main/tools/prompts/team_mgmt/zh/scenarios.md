@@ -93,7 +93,7 @@ Call the function tool `team_mgmt_prepare_file_append` with:
 # @coder 经验教训
 
 - 修改前先定位调用链与数据流，避免“只改表面”。
-- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。
+- 涉及权限/配置时，改完立即运行对应校验工具；若输出出现“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。
 ```
 
 ### 6. 验证配置
@@ -105,7 +105,7 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 {}
 ```
 
-确保 Problems 面板无错误后再继续。
+确保没有进行中的问题；若只剩“已解决但未清理的问题”，可用 `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })` 收尾后再继续。
 
 修改完 `.minds/mcp.yaml` 后务必运行：
 
@@ -114,7 +114,7 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 {}
 ```
 
-确保 Problems 面板无 MCP 相关错误后再继续。
+确保没有进行中的 MCP 相关问题；若只剩“已解决但未清理的问题”，可用 `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })` 收尾后再继续。
 
 ### 7. 配置 shell 专员（使用 os 工具集）
 

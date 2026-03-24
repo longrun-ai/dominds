@@ -31,8 +31,8 @@
 - 锚点插入：`team_mgmt_prepare_file_insert_after|team_mgmt_prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - 双锚点块替换：`team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
 - 应用写入：`team_mgmt_apply_file_modification({ hunk_id })`
-- 修改完 `.minds/team.yaml`：务必运行 `team_mgmt_validate_team_cfg({})`，并清空 Problems 面板里的 team.yaml 错误后再继续。
-- 修改完 `.minds/mcp.yaml`：务必运行 `team_mgmt_validate_mcp_cfg({})`，并清空 Problems 面板里的 MCP 相关错误后再继续。
+- 修改完 `.minds/team.yaml`：务必运行 `team_mgmt_validate_team_cfg({})`；若输出里出现“已解决但未清理的问题”，可用 `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })` 收尾。
+- 修改完 `.minds/mcp.yaml`：务必运行 `team_mgmt_validate_mcp_cfg({})`；若输出里出现“已解决但未清理的问题”，可用 `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })` 收尾。
 
 > 可选字段默认可省略。  
 > 若你想显式传入“未指定/默认”，支持以下哨兵值写法：

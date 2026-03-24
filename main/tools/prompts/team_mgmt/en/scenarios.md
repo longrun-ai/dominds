@@ -93,7 +93,7 @@ Strongly recommended: maintain `persona/knowledge/lessons` assets for each membe
 # @coder Lessons
 
 - Trace call chain and data flow before editing; avoid patching only symptoms.
-- After changing permissions/config, run corresponding validators and clear Problems.
+- After changing permissions/config, run the corresponding validators; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems(...)`.
 ```
 
 ### 6. Validate Configuration
@@ -105,7 +105,7 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 {}
 ```
 
-Ensure no errors in Problems panel before proceeding.
+Ensure there are no active problems before proceeding; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`.
 
 After modifying `.minds/mcp.yaml`, always run:
 
@@ -114,7 +114,7 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 {}
 ```
 
-Ensure no MCP-related errors in Problems panel before proceeding.
+Ensure there are no active MCP-related problems before proceeding; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`.
 
 ### 7. Configure Shell Specialists (with `os`)
 

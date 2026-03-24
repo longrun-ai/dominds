@@ -27,6 +27,8 @@
 - `team_mgmt_ripgrep_snippets`: Search snippets under `.minds/` (with context)
 - `team_mgmt_ripgrep_count`: Count matches under `.minds/`
 - `team_mgmt_ripgrep_fixed`: Fixed-string search under `.minds/`
+- `team_mgmt_list_problems`: List Problems panel entries, split into active vs resolved-but-not-cleared
+- `team_mgmt_clear_problems`: Clear Problems panel entries; defaults to resolved history only
 
 ## Create Tool
 
@@ -59,12 +61,12 @@
 
 - `team_mgmt_validate_team_cfg({})`: Validate `.minds/team.yaml` configuration
   - Must run after modifying `team.yaml`
-  - Clear all team.yaml errors in Problems panel before proceeding
+  - If output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`
   - Also reads declarations from `.minds/mcp.yaml` for toolset binding checks; even when MCP toolsets are not loaded in the current scene (e.g. read-mind flows), it still detects unknown/invalid MCP serverId references in `members.<id>.toolsets`
   - Also recommended to confirm `default_responder` is explicitly set (not hard-required, but best practice)
 - `team_mgmt_validate_mcp_cfg({})`: Validate `.minds/mcp.yaml` and MCP-related problems
   - Must run after modifying `mcp.yaml`
-  - Clear all MCP-related errors in Problems panel before proceeding
+  - If output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`
 
 ## Common Toolset Capability Quick Map
 
@@ -96,6 +98,8 @@
 | List providers           | `team_mgmt_list_providers`                                                         |
 | List models              | `team_mgmt_list_models`                                                            |
 | Search content           | `team_mgmt_ripgrep_snippets`                                                       |
+| View Problems            | `team_mgmt_list_problems`                                                          |
+| Clear resolved Problems  | `team_mgmt_clear_problems`                                                         |
 | Create new file          | `team_mgmt_create_new_file`                                                        |
 | Small edits (line range) | `team_mgmt_prepare_file_range_edit` → `team_mgmt_apply_file_modification`          |
 | Append to end            | `team_mgmt_prepare_file_append` → `team_mgmt_apply_file_modification`              |

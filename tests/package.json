@@ -48,6 +48,7 @@
     "fs-symlink-follow": "tsx fs-symlink-follow.ts",
     "team_mgmt-create-new-file": "tsx team_mgmt-create-new-file.ts",
     "team_mgmt-derived-problems-refresh": "tsx team_mgmt-derived-problems-refresh.ts",
+    "team_mgmt-problems-lifecycle": "tsx team_mgmt-problems-lifecycle.ts",
     "team_mgmt-validate-team-manual-guidance": "tsx team_mgmt-validate-team-manual-guidance.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",

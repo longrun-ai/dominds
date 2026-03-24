@@ -31,8 +31,8 @@ The YAML header from `team_mgmt_read_file` includes:
 - Anchor insertion: `team_mgmt_prepare_file_insert_after|team_mgmt_prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - Block replace between anchors: `team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
 - Apply: `team_mgmt_apply_file_modification({ hunk_id })`
-- After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})` and clear all Problems panel errors before proceeding.
-- After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})` and clear all MCP-related Problems panel errors before proceeding.
+- After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`.
+- After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`.
 
 > Optional fields can be omitted.
 > If you want to pass explicit “unset / default” values, the following sentinel forms are supported:

@@ -42,7 +42,7 @@
   1. Run `team_mgmt_validate_team_cfg({})` to see specific errors
   2. Fix format issues in team.yaml
   3. Re-validate until no errors
-  4. Clear Problems panel before proceeding
+  4. If only "Resolved But Not Yet Cleared" remains, clear it with `team_mgmt_clear_problems(...)` before proceeding
 - Important: `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `team_mgmt_manual({})` should remain usable even when an app-provided toolset is broken or missing; use them to continue investigation instead of stopping.
 - App/toolset triage:
   1. Keep the validation output and identify the exact missing toolset / broken binding
@@ -57,7 +57,7 @@
   1. Run `team_mgmt_validate_mcp_cfg({})` to summarize specific errors
   2. Fix mcp.yaml or the relevant MCP server config
   3. Run `mcp_restart({"serverId":"<serverId>"})` when needed
-  4. Re-validate until no errors and clear the Problems panel
+  4. Re-validate until no active problems remain; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems(...)`
 
 ## Error Prevention
 

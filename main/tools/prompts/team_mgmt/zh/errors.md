@@ -42,7 +42,7 @@
   1. 运行 `team_mgmt_validate_team_cfg({})` 查看具体错误
   2. 修复 team.yaml 中的格式问题
   3. 重新验证直到无错误
-  4. 清空 Problems 面板后再继续
+  4. 若输出里只剩“已解决但未清理的问题”，用 `team_mgmt_clear_problems(...)` 清理后再继续
 - 重要：即使 app 提供的 toolset 缺失或损坏，`team_mgmt_validate_team_cfg({})`、`team_mgmt_validate_mcp_cfg({})`、`team_mgmt_manual({})` 这些团队管理校验工具也应继续可用；应继续用它们排查，而不是中止。
 - app/toolset 排查顺序：
   1. 保留校验输出，先定位缺失的 toolset / 断裂绑定
@@ -57,7 +57,7 @@
   1. 运行 `team_mgmt_validate_mcp_cfg({})` 汇总具体错误
   2. 修复 mcp.yaml 或对应 MCP server 配置
   3. 必要时运行 `mcp_restart({"serverId":"<serverId>"})`
-  4. 重新验证直到无错误，并清空 Problems 面板
+  4. 重新验证直到无进行中的问题；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾
 
 ## 错误预防
 

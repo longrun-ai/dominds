@@ -27,6 +27,8 @@
 - `team_mgmt_ripgrep_snippets`：在 `.minds/` 下搜索片段（带上下文）
 - `team_mgmt_ripgrep_count`：在 `.minds/` 下计数匹配
 - `team_mgmt_ripgrep_fixed`：在 `.minds/` 下固定字符串搜索
+- `team_mgmt_list_problems`：列出 Problems 面板问题，并按“进行中 / 已解决但未清理”分开展示
+- `team_mgmt_clear_problems`：清理 Problems 面板问题，默认只清理已解决历史
 
 ## 创建工具
 
@@ -59,12 +61,12 @@
 
 - `team_mgmt_validate_team_cfg({})`：验证 `.minds/team.yaml` 配置是否有效
   - 修改完 `team.yaml` 后必须运行
-  - 清空 Problems 面板里的 team.yaml 错误后再继续
+  - 若输出出现“已解决但未清理的问题”，用 `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })` 收尾
   - 会读取 `.minds/mcp.yaml` 声明做 toolset 绑定校验；即使当前场景未加载 MCP toolsets（例如 read mind），也会检查 `members.<id>.toolsets` 是否引用了不存在/无效的 MCP serverId
   - 同时建议检查是否显式设置了 `default_responder`（不是硬性必填，但推荐）
 - `team_mgmt_validate_mcp_cfg({})`：验证 `.minds/mcp.yaml` 配置与 MCP 相关问题
   - 修改完 `mcp.yaml` 后必须运行
-  - 清空 Problems 面板里的 MCP 相关错误后再继续
+  - 若输出出现“已解决但未清理的问题”，用 `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })` 收尾
 
 ## 常见 toolset 能力速览
 
@@ -90,17 +92,19 @@
 
 ## 工具选择指南
 
-| 操作               | 推荐工具                                                                           |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| 读取文件           | `team_mgmt_read_file`                                                              |
-| 列出 provider      | `team_mgmt_list_providers`                                                         |
-| 列出模型           | `team_mgmt_list_models`                                                            |
-| 搜索内容           | `team_mgmt_ripgrep_snippets`                                                       |
-| 创建新文件         | `team_mgmt_create_new_file`                                                        |
-| 小改动（行号范围） | `team_mgmt_prepare_file_range_edit` → `team_mgmt_apply_file_modification`          |
-| 末尾追加           | `team_mgmt_prepare_file_append` → `team_mgmt_apply_file_modification`              |
-| 锚点插入           | `team_mgmt_prepare_file_insert_after/before` → `team_mgmt_apply_file_modification` |
-| 块替换             | `team_mgmt_prepare_file_block_replace` → `team_mgmt_apply_file_modification`       |
-| 覆盖整个文件       | `team_mgmt_overwrite_entire_file`                                                  |
-| 验证 team 配置     | `team_mgmt_validate_team_cfg({})`                                                  |
-| 验证 mcp 配置      | `team_mgmt_validate_mcp_cfg({})`                                                   |
+| 操作                | 推荐工具                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| 读取文件            | `team_mgmt_read_file`                                                              |
+| 列出 provider       | `team_mgmt_list_providers`                                                         |
+| 列出模型            | `team_mgmt_list_models`                                                            |
+| 搜索内容            | `team_mgmt_ripgrep_snippets`                                                       |
+| 查看 Problems       | `team_mgmt_list_problems`                                                          |
+| 清理已解决 Problems | `team_mgmt_clear_problems`                                                         |
+| 创建新文件          | `team_mgmt_create_new_file`                                                        |
+| 小改动（行号范围）  | `team_mgmt_prepare_file_range_edit` → `team_mgmt_apply_file_modification`          |
+| 末尾追加            | `team_mgmt_prepare_file_append` → `team_mgmt_apply_file_modification`              |
+| 锚点插入            | `team_mgmt_prepare_file_insert_after/before` → `team_mgmt_apply_file_modification` |
+| 块替换              | `team_mgmt_prepare_file_block_replace` → `team_mgmt_apply_file_modification`       |
+| 覆盖整个文件        | `team_mgmt_overwrite_entire_file`                                                  |
+| 验证 team 配置      | `team_mgmt_validate_team_cfg({})`                                                  |
+| 验证 mcp 配置       | `team_mgmt_validate_mcp_cfg({})`                                                   |

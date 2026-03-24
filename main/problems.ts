@@ -11,6 +11,13 @@ let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 let problemsVersion = 0;
 const problemsById: Map<string, WorkspaceProblemRecord> = new Map();
 
+export type ProblemFilter = Readonly<{
+  source?: WorkspaceProblem['source'];
+  path?: string;
+  problemId?: string;
+  resolved?: boolean;
+}>;
+
 export function setProblemsBroadcaster(fn: (msg: WebSocketMessage) => void): void {
   broadcastToClients = fn;
 }
@@ -38,6 +45,18 @@ export function upsertProblem(problem: WorkspaceProblem): void {
   problemsById.set(problem.id, next);
   problemsVersion++;
   broadcastSnapshot();
+}
+
+export function listProblems(filter: ProblemFilter = {}): WorkspaceProblemRecord[] {
+  const out: WorkspaceProblemRecord[] = [];
+  for (const problem of problemsById.values()) {
+    if (!matchesProblemFilter(problem, filter)) {
+      continue;
+    }
+    out.push(problem);
+  }
+  out.sort(compareProblemRecordsForDisplay);
+  return out;
 }
 
 export function removeProblem(problemId: string): void {
@@ -108,9 +127,13 @@ export function reconcileProblemsByPrefix(
 }
 
 export function clearResolvedProblems(): number {
+  return clearProblems({ resolved: true });
+}
+
+export function clearProblems(filter: ProblemFilter = {}): number {
   let removed = 0;
   for (const [id, problem] of problemsById.entries()) {
-    if (problem.resolved !== true) continue;
+    if (!matchesProblemFilter(problem, filter)) continue;
     problemsById.delete(id);
     removed += 1;
   }
@@ -180,4 +203,69 @@ function toActiveProblemRecord(
     resolved: false,
     resolvedAt: null,
   };
+}
+
+function matchesProblemFilter(problem: WorkspaceProblemRecord, filter: ProblemFilter): boolean {
+  if (filter.source !== undefined && problem.source !== filter.source) {
+    return false;
+  }
+  if (filter.problemId !== undefined && problem.id !== filter.problemId) {
+    return false;
+  }
+  if (filter.resolved !== undefined && (problem.resolved === true) !== filter.resolved) {
+    return false;
+  }
+  if (filter.path !== undefined) {
+    const problemPath = getProblemPath(problem);
+    if (problemPath === null) {
+      return false;
+    }
+    if (normalizeComparablePath(problemPath) !== normalizeComparablePath(filter.path)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function getProblemPath(problem: WorkspaceProblemRecord): string | null {
+  switch (problem.kind) {
+    case 'team_workspace_config_error':
+    case 'mcp_workspace_config_error':
+      return problem.detail.filePath;
+    case 'mcp_server_error':
+    case 'mcp_tool_collision':
+    case 'mcp_tool_blacklisted':
+    case 'mcp_tool_not_whitelisted':
+    case 'mcp_tool_invalid_name':
+    case 'llm_provider_rejected_request':
+    case 'generic_problem':
+      return null;
+  }
+}
+
+function normalizeComparablePath(raw: string): string {
+  return raw.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function compareProblemRecordsForDisplay(
+  a: WorkspaceProblemRecord,
+  b: WorkspaceProblemRecord,
+): number {
+  const activeA = a.resolved === true ? 0 : 1;
+  const activeB = b.resolved === true ? 0 : 1;
+  if (activeA !== activeB) {
+    return activeB - activeA;
+  }
+  const severityA = a.severity === 'error' ? 3 : a.severity === 'warning' ? 2 : 1;
+  const severityB = b.severity === 'error' ? 3 : b.severity === 'warning' ? 2 : 1;
+  if (severityA !== severityB) {
+    return severityB - severityA;
+  }
+  const updatedA = a.resolved === true && a.resolvedAt ? a.resolvedAt : a.timestamp;
+  const updatedB = b.resolved === true && b.resolvedAt ? b.resolvedAt : b.timestamp;
+  const updatedCmp = updatedB.localeCompare(updatedA);
+  if (updatedCmp !== 0) {
+    return updatedCmp;
+  }
+  return a.id.localeCompare(b.id);
 }

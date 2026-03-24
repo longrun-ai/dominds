@@ -16,7 +16,7 @@ import YAML from 'yaml';
 import type { TeamMgmtManualTopicKey } from '@longrun-ai/kernel';
 import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '@longrun-ai/kernel';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import type { WorkspaceProblem, WorkspaceProblemRecord } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/client';
@@ -27,7 +27,12 @@ import { createLogger } from '../log';
 import { parseMcpYaml } from '../mcp/config';
 import { requestMcpConfigReload } from '../mcp/supervisor';
 import { validateAllPrimingScriptsInRtws } from '../priming';
-import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
+import {
+  clearProblems,
+  getProblemsSnapshot,
+  listProblems,
+  reconcileProblemsByPrefix,
+} from '../problems';
 import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
@@ -406,9 +411,11 @@ async function ensureMindsRootDirExists(): Promise<void> {
   await fs.mkdir(abs, { recursive: true });
 }
 
-type TeamConfigProblem = Extract<WorkspaceProblem, { source: 'team' }>;
+type TeamConfigProblem = Extract<WorkspaceProblemRecord, { source: 'team' }>;
 
-function listTeamYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): TeamConfigProblem[] {
+function listTeamYamlProblems(
+  problems: ReadonlyArray<WorkspaceProblemRecord>,
+): TeamConfigProblem[] {
   const out: TeamConfigProblem[] = [];
   for (const p of problems) {
     if (p.source !== 'team') continue;
@@ -420,9 +427,9 @@ function listTeamYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): TeamCo
   return out;
 }
 
-type McpConfigProblem = Extract<WorkspaceProblem, { source: 'mcp' }>;
+type McpConfigProblem = Extract<WorkspaceProblemRecord, { source: 'mcp' }>;
 
-function listMcpYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): McpConfigProblem[] {
+function listMcpYamlProblems(problems: ReadonlyArray<WorkspaceProblemRecord>): McpConfigProblem[] {
   const out: McpConfigProblem[] = [];
   for (const p of problems) {
     if (p.source !== 'mcp') continue;
@@ -435,6 +442,187 @@ function listMcpYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): McpConf
   }
   out.sort((a, b) => a.id.localeCompare(b.id));
   return out;
+}
+
+function splitProblemsByLifecycle<TProblem extends WorkspaceProblemRecord>(
+  problems: ReadonlyArray<TProblem>,
+): {
+  active: TProblem[];
+  resolved: TProblem[];
+} {
+  const active: TProblem[] = [];
+  const resolved: TProblem[] = [];
+  for (const problem of problems) {
+    if (problem.resolved === true) {
+      resolved.push(problem);
+      continue;
+    }
+    active.push(problem);
+  }
+  return { active, resolved };
+}
+
+function getWorkspaceProblemPath(problem: WorkspaceProblemRecord): string | null {
+  switch (problem.kind) {
+    case 'team_workspace_config_error':
+    case 'mcp_workspace_config_error':
+      return problem.detail.filePath;
+    case 'mcp_server_error':
+    case 'mcp_tool_collision':
+    case 'mcp_tool_blacklisted':
+    case 'mcp_tool_not_whitelisted':
+    case 'mcp_tool_invalid_name':
+    case 'llm_provider_rejected_request':
+    case 'generic_problem':
+      return null;
+  }
+}
+
+function getProblemUpdatedAt(problem: WorkspaceProblemRecord): string {
+  if (
+    problem.resolved === true &&
+    typeof problem.resolvedAt === 'string' &&
+    problem.resolvedAt !== ''
+  ) {
+    return problem.resolvedAt;
+  }
+  return problem.timestamp;
+}
+
+const TEAM_MGMT_PROBLEM_SOURCES = ['team', 'mcp', 'llm', 'system'] as const;
+type TeamMgmtProblemSource = (typeof TEAM_MGMT_PROBLEM_SOURCES)[number];
+const TEAM_MGMT_PROBLEM_STATUS = ['all', 'active', 'resolved'] as const;
+type TeamMgmtProblemStatus = (typeof TEAM_MGMT_PROBLEM_STATUS)[number];
+
+function isTeamMgmtProblemSource(value: string): value is TeamMgmtProblemSource {
+  return (TEAM_MGMT_PROBLEM_SOURCES as readonly string[]).includes(value);
+}
+
+function isTeamMgmtProblemStatus(value: string): value is TeamMgmtProblemStatus {
+  return (TEAM_MGMT_PROBLEM_STATUS as readonly string[]).includes(value);
+}
+
+function parseTeamMgmtProblemSourceArg(value: unknown): TeamMgmtProblemSource | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !isTeamMgmtProblemSource(value)) {
+    throw new Error(`Invalid source (expected one of: ${TEAM_MGMT_PROBLEM_SOURCES.join(', ')})`);
+  }
+  return value;
+}
+
+function parseTeamMgmtProblemStatusArg(
+  value: unknown,
+  defaultStatus: TeamMgmtProblemStatus,
+): TeamMgmtProblemStatus {
+  if (value === undefined) return defaultStatus;
+  if (typeof value !== 'string' || !isTeamMgmtProblemStatus(value)) {
+    throw new Error(`Invalid status (expected one of: ${TEAM_MGMT_PROBLEM_STATUS.join(', ')})`);
+  }
+  return value;
+}
+
+function parseTeamMgmtProblemPathArg(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('Invalid path (expected non-empty string)');
+  }
+  const rel = toMindsRelativePath(value.trim());
+  ensureMindsScopedPath(rel);
+  return rel;
+}
+
+function parseTeamMgmtProblemIdArg(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('Invalid problem_id (expected non-empty string)');
+  }
+  return value.trim();
+}
+
+function parseOptionalPositiveInteger(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid ${fieldName} (expected positive integer)`);
+  }
+  return value;
+}
+
+function formatProblemDetailLines(
+  problem: WorkspaceProblemRecord,
+  language: LanguageCode,
+): string[] {
+  const lines: string[] = [
+    `- [${problem.severity}] ${problem.id}: ${problem.message}`,
+    `  updated_at: ${getProblemUpdatedAt(problem)}`,
+  ];
+  if (problem.resolved === true && problem.resolvedAt) {
+    lines.push(`  resolved_at: ${problem.resolvedAt}`);
+  }
+  const problemPath = getWorkspaceProblemPath(problem);
+  if (problemPath !== null) {
+    lines.push(`  path: ${problemPath}`);
+  }
+  switch (problem.kind) {
+    case 'team_workspace_config_error':
+    case 'mcp_workspace_config_error':
+      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      break;
+    case 'mcp_server_error':
+      lines.push(`  serverId: ${problem.detail.serverId}`);
+      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      break;
+    case 'mcp_tool_collision':
+      lines.push(
+        language === 'zh'
+          ? `  serverId: ${problem.detail.serverId}, toolName: ${problem.detail.toolName}, domindsToolName: ${problem.detail.domindsToolName}`
+          : `  serverId: ${problem.detail.serverId}, toolName: ${problem.detail.toolName}, domindsToolName: ${problem.detail.domindsToolName}`,
+      );
+      break;
+    case 'mcp_tool_blacklisted':
+    case 'mcp_tool_not_whitelisted':
+      lines.push(`  serverId: ${problem.detail.serverId}`);
+      lines.push(`  toolName: ${problem.detail.toolName}`);
+      lines.push(`  pattern: ${problem.detail.pattern}`);
+      break;
+    case 'mcp_tool_invalid_name':
+      lines.push(`  serverId: ${problem.detail.serverId}`);
+      lines.push(`  toolName: ${problem.detail.toolName}`);
+      lines.push(`  rule: ${problem.detail.rule}`);
+      break;
+    case 'llm_provider_rejected_request':
+      lines.push(`  dialogId: ${problem.detail.dialogId}`);
+      lines.push(`  provider: ${problem.detail.provider}`);
+      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      break;
+    case 'generic_problem':
+      lines.push('  ' + problem.detail.text.split('\n').join('\n  '));
+      break;
+  }
+  return lines;
+}
+
+function formatResolvedProblemsHint(params: {
+  language: LanguageCode;
+  source?: TeamMgmtProblemSource;
+  path?: string;
+}): string {
+  const args: string[] = [];
+  if (params.source !== undefined) {
+    args.push(`source: "${params.source}"`);
+  }
+  if (params.path !== undefined) {
+    const shortPath = params.path.startsWith(`${MINDS_DIR}/`)
+      ? params.path.slice(MINDS_DIR.length + 1)
+      : params.path;
+    args.push(`path: "${shortPath}"`);
+  }
+  const call =
+    args.length > 0
+      ? `team_mgmt_clear_problems({ ${args.join(', ')} })`
+      : 'team_mgmt_clear_problems({})';
+  return params.language === 'zh'
+    ? `这些问题已经解决，但仍作为历史项保留在 Problems 面板中；如需清理残留，可执行 \`${call}\`。`
+    : `These issues are already resolved but still retained as Problems history; clear them with \`${call}\` if you want to remove the residue.`;
 }
 
 type ModelCheckResult = { model: string; status: 'pass' | 'fail'; details?: string };
@@ -3154,7 +3342,7 @@ function renderTeamManual(language: LanguageCode): string {
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
     'default_responder: not a hard requirement, but strongly recommended to set explicitly to avoid implicit fallback responder selection and cross-run drift',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
-    'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
+    'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})`; if the output still contains a "Resolved But Not Yet Cleared" section, finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })` before proceeding so runtime state and Problems history stay aligned',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`)',
     'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
     'streaming: Codex providers (apiType=codex) are streaming-only. Setting members.<id>.streaming=false with a Codex provider is a config error and will abort requests.',
@@ -3169,9 +3357,9 @@ function renderTeamManual(language: LanguageCode): string {
         '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
         '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
         '`default_responder` 虽然不是技术必填项，但实践上强烈建议显式设置：否则会退回到实现内置的响应者选择逻辑（例如按可见成员/内置成员兜底），容易造成跨环境或跨轮次行为漂移。',
-        '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
+        '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`；若输出里还有“已解决但未清理的问题”，继续前可用 `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })` 收尾，避免运行时状态与 Problems 历史脱节。',
         '强烈建议为每个成员配置 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 三类资产，用来明确角色职责、工作边界与可复用经验；同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
-        '典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/lessons.zh.md`\n```markdown\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```\n写法约束：`persona/knowledge/lessons` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。',
+        '典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/lessons.zh.md`\n```markdown\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```\n写法约束：`persona/knowledge/lessons` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
@@ -3248,7 +3436,7 @@ function renderTeamManual(language: LanguageCode): string {
         'The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).',
         '`default_responder` is not technically required, but strongly recommended in practice: without it, runtime falls back to implementation-defined responder selection (for example visible-member/built-in fallback), which can drift across environments/runs.',
         'Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowledge,lessons}.*.md` assets to define role ownership, work boundaries, and reusable lessons. The same `<id>` must exist in `members.<id>` in `team.yaml`.',
-        'Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/lessons.en.md`\n```markdown\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run corresponding validators and clear Problems.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`).',
+        'Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/lessons.en.md`\n```markdown\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run the corresponding validators; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems(...)`.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`).',
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
@@ -3540,7 +3728,7 @@ function renderMindsManual(language: LanguageCode): string {
       ]) +
       fmtCodeBlock('markdown', [
         '- 修改前先定位调用链与数据流，避免“只改表面”。',
-        '- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。',
+        '- 涉及权限/配置时，改完立即运行对应校验工具；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。',
         '- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。',
       ])
     );
@@ -3575,7 +3763,7 @@ function renderMindsManual(language: LanguageCode): string {
     ]) +
     fmtCodeBlock('markdown', [
       '- Trace call chain and data flow before editing; avoid patching only symptoms.',
-      '- After changing permissions/config, run corresponding validators and clear Problems.',
+      '- After changing permissions/config, run the corresponding validators; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems(...)`.',
       '- For high-risk changes, start with a minimal reviewable plan before expansion.',
     ])
   );
@@ -4990,30 +5178,53 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
 
       const snapshot = getProblemsSnapshot();
       const teamProblems = listTeamYamlProblems(snapshot.problems);
+      const { active: activeTeamProblems, resolved: resolvedTeamProblems } =
+        splitProblemsByLifecycle(teamProblems);
 
-      if (teamProblems.length === 0) {
+      if (activeTeamProblems.length === 0) {
         const msg =
           language === 'zh'
             ? fmtHeader('team.yaml 校验通过') +
               fmtList([
                 `\`${TEAM_YAML_REL}\`：✅ 未检测到问题`,
                 '提示：每次修改 team.yaml 后都应运行本工具，避免“坏成员配置被静默跳过”。',
+                resolvedTeamProblems.length > 0
+                  ? formatResolvedProblemsHint({
+                      language,
+                      source: 'team',
+                      path: TEAM_YAML_REL,
+                    })
+                  : '',
               ])
             : fmtHeader('team.yaml Validation Passed') +
               fmtList([
                 `\`${TEAM_YAML_REL}\`: ✅ no issues detected`,
                 'Tip: run this after every team.yaml change to avoid silent omission of broken members.',
+                resolvedTeamProblems.length > 0
+                  ? formatResolvedProblemsHint({
+                      language,
+                      source: 'team',
+                      path: TEAM_YAML_REL,
+                    })
+                  : '',
               ]);
-        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        const resolvedBlock =
+          resolvedTeamProblems.length > 0
+            ? fmtSubHeader(
+                language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
+              ) +
+              resolvedTeamProblems
+                .flatMap((p) => formatProblemDetailLines(p, language))
+                .join('\n') +
+              '\n'
+            : '';
+        const content = msg + resolvedBlock;
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const issueLines: string[] = [];
-      for (const p of teamProblems) {
-        issueLines.push(`- ${p.id}: ${p.message}`);
-        issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
-      }
+      const issueLines = activeTeamProblems.flatMap((p) => formatProblemDetailLines(p, language));
 
-      const hasAppToolsetBindingProblem = teamProblems.some(isLikelyAppToolsetBindingProblem);
+      const hasAppToolsetBindingProblem = activeTeamProblems.some(isLikelyAppToolsetBindingProblem);
       const followUpLines =
         language === 'zh'
           ? [
@@ -5028,25 +5239,44 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
                 ? 'Suggested triage order: 1) keep and read this validation output; 2) inspect `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`; 3) use `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })` to confirm whether the missing toolset should come from an enabled app, then verify app install/enable state and host path integrity.'
                 : 'Suggestion: continue with `team_mgmt_manual({ topics: ["team","toolsets","troubleshooting"] })`, `team_mgmt_read_file`, and `team_mgmt_ripgrep_*` to narrow scope, then re-run this validator after fixes.',
             ];
+      const resolvedIssueBlock =
+        resolvedTeamProblems.length > 0
+          ? fmtSubHeader(
+              language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
+            ) +
+            fmtList([
+              formatResolvedProblemsHint({
+                language,
+                source: 'team',
+                path: TEAM_YAML_REL,
+              }),
+            ]) +
+            resolvedTeamProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
+            '\n'
+          : '';
 
       const msg =
         language === 'zh'
           ? fmtHeader('team.yaml 校验失败') +
             fmtList([
-              `\`${TEAM_YAML_REL}\`：❌ 检测到 ${teamProblems.length} 个问题（详见 Problems 面板）`,
+              `\`${TEAM_YAML_REL}\`：❌ 检测到 ${activeTeamProblems.length} 个进行中的问题（详见 Problems 面板）`,
               '说明：坏的成员配置可能会在运行时被跳过或在使用时失败（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
               ...followUpLines,
             ]) +
+            fmtSubHeader('进行中的问题') +
+            issueLines.join('\n') +
             '\n' +
-            issueLines.join('\n')
+            resolvedIssueBlock
           : fmtHeader('team.yaml Validation Failed') +
             fmtList([
-              `\`${TEAM_YAML_REL}\`: ❌ ${teamProblems.length} issue(s) detected (see Problems panel)`,
+              `\`${TEAM_YAML_REL}\`: ❌ ${activeTeamProblems.length} active issue(s) detected (see Problems panel)`,
               'Note: invalid member configs may be omitted at runtime or fail when used (to keep the Team usable), but you should fix them immediately.',
               ...followUpLines,
             ]) +
+            fmtSubHeader('Active Problems') +
+            issueLines.join('\n') +
             '\n' +
-            issueLines.join('\n');
+            resolvedIssueBlock;
 
       return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
     } catch (err: unknown) {
@@ -5142,9 +5372,11 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
 
       const snapshot = getProblemsSnapshot();
       const mcpProblems = listMcpYamlProblems(snapshot.problems);
+      const { active: activeMcpProblems, resolved: resolvedMcpProblems } =
+        splitProblemsByLifecycle(mcpProblems);
       const fallbackOnlyInvalidServers: Array<{ serverId: string; errorText: string }> = [];
       for (const s of fallbackInvalidServers) {
-        const hasMatchingProblem = mcpProblems.some(
+        const hasMatchingProblem = activeMcpProblems.some(
           (p) => p.kind === 'mcp_server_error' && p.detail.serverId === s.serverId,
         );
         if (!hasMatchingProblem) {
@@ -5153,7 +5385,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
       }
       const fallbackOnlyInvalidToolsetManuals: Array<{ serverId: string; errorText: string }> = [];
       for (const s of fallbackInvalidToolsetManuals) {
-        const hasMatchingProblem = mcpProblems.some(
+        const hasMatchingProblem = activeMcpProblems.some(
           (p) =>
             p.kind === 'mcp_server_error' &&
             p.detail.serverId === s.serverId &&
@@ -5165,7 +5397,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
       }
 
       if (
-        mcpProblems.length === 0 &&
+        activeMcpProblems.length === 0 &&
         fallbackOnlyInvalidServers.length === 0 &&
         fallbackOnlyInvalidToolsetManuals.length === 0
       ) {
@@ -5177,6 +5409,13 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
                   ? `\`${MCP_YAML_REL}\`：✅ 未发现（按空配置处理）`
                   : `\`${MCP_YAML_REL}\`：✅ 未检测到问题（已声明 ${declaredServerCount} 个 server）`,
                 '提示：每次修改 mcp.yaml 后都应运行本工具，确认 MCP 相关问题已清空。',
+                resolvedMcpProblems.length > 0
+                  ? formatResolvedProblemsHint({
+                      language,
+                      source: 'mcp',
+                      path: MCP_YAML_REL,
+                    })
+                  : '',
               ])
             : fmtHeader('mcp.yaml Validation Passed') +
               fmtList([
@@ -5184,50 +5423,27 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
                   ? `\`${MCP_YAML_REL}\`: ✅ not found (treated as empty config)`
                   : `\`${MCP_YAML_REL}\`: ✅ no issues detected (${declaredServerCount} declared server(s))`,
                 'Tip: run this after every mcp.yaml change to confirm MCP problems are cleared.',
+                resolvedMcpProblems.length > 0
+                  ? formatResolvedProblemsHint({
+                      language,
+                      source: 'mcp',
+                      path: MCP_YAML_REL,
+                    })
+                  : '',
               ]);
-        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        const resolvedBlock =
+          resolvedMcpProblems.length > 0
+            ? fmtSubHeader(
+                language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
+              ) +
+              resolvedMcpProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
+              '\n'
+            : '';
+        const content = msg + resolvedBlock;
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const issueLines: string[] = [];
-      for (const p of mcpProblems) {
-        issueLines.push(`- [${p.severity}] ${p.id}: ${p.message}`);
-        switch (p.kind) {
-          case 'mcp_workspace_config_error':
-            issueLines.push(`  file: ${p.detail.filePath}`);
-            issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
-            break;
-          case 'mcp_server_error':
-            issueLines.push(`  serverId: ${p.detail.serverId}`);
-            issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
-            break;
-          case 'mcp_tool_collision':
-            issueLines.push(
-              language === 'zh'
-                ? `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, 冲突目标=${p.detail.domindsToolName}`
-                : `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, collides_with=${p.detail.domindsToolName}`,
-            );
-            break;
-          case 'mcp_tool_blacklisted':
-            issueLines.push(
-              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, pattern=${p.detail.pattern}`,
-            );
-            break;
-          case 'mcp_tool_not_whitelisted':
-            issueLines.push(
-              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, pattern=${p.detail.pattern}`,
-            );
-            break;
-          case 'mcp_tool_invalid_name':
-            issueLines.push(
-              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, rule=${p.detail.rule}`,
-            );
-            break;
-          default: {
-            const _exhaustive: never = p;
-            void _exhaustive;
-          }
-        }
-      }
+      const issueLines = activeMcpProblems.flatMap((p) => formatProblemDetailLines(p, language));
       for (const s of fallbackOnlyInvalidServers) {
         issueLines.push(`- [error] ${MCP_SERVER_PROBLEM_PREFIX}${s.serverId}/server_error`);
         issueLines.push(`  serverId: ${s.serverId}`);
@@ -5245,9 +5461,24 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
       }
 
       const totalIssues =
-        mcpProblems.length +
+        activeMcpProblems.length +
         fallbackOnlyInvalidServers.length +
         fallbackOnlyInvalidToolsetManuals.length;
+      const resolvedIssueBlock =
+        resolvedMcpProblems.length > 0
+          ? fmtSubHeader(
+              language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
+            ) +
+            fmtList([
+              formatResolvedProblemsHint({
+                language,
+                source: 'mcp',
+                path: MCP_YAML_REL,
+              }),
+            ]) +
+            resolvedMcpProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
+            '\n'
+          : '';
       const msg =
         language === 'zh'
           ? fmtHeader('mcp.yaml 校验失败') +
@@ -5255,21 +5486,249 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
               `\`${MCP_YAML_REL}\`：❌ 检测到 ${totalIssues} 个问题（详见 Problems 面板）`,
               '说明：MCP 配置问题（含 toolset manual 声明错误）会导致 server/toolset 加载失败、工具手册缺失/错误或运行时异常。',
             ]) +
+            fmtSubHeader('进行中的问题') +
+            issueLines.join('\n') +
             '\n' +
-            issueLines.join('\n')
+            resolvedIssueBlock
           : fmtHeader('mcp.yaml Validation Failed') +
             fmtList([
               `\`${MCP_YAML_REL}\`: ❌ ${totalIssues} issue(s) detected (see Problems panel)`,
               'Note: MCP config issues (including toolset manual declaration errors) can block server/toolset loading, produce bad/missing manual guidance, or cause runtime tool failures.',
             ]) +
+            fmtSubHeader('Active Problems') +
+            issueLines.join('\n') +
             '\n' +
-            issueLines.join('\n');
+            resolvedIssueBlock;
       return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
           ? `校验失败：${err instanceof Error ? err.message : String(err)}`
           : `Validation failed: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtListProblemsTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_list_problems',
+  description: 'List Problems panel entries with active/resolved lifecycle split.',
+  descriptionI18n: {
+    en: 'List Problems panel entries with active/resolved lifecycle split.',
+    zh: '列出 Problems 面板中的问题，并按进行中/已解决历史分开展示。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      source: {
+        type: 'string',
+        enum: [...TEAM_MGMT_PROBLEM_SOURCES],
+      },
+      path: { type: 'string' },
+      problem_id: { type: 'string' },
+      status: {
+        type: 'string',
+        enum: [...TEAM_MGMT_PROBLEM_STATUS],
+      },
+      max_items: { type: 'integer' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const source = parseTeamMgmtProblemSourceArg(args['source']);
+      const filterPath = parseTeamMgmtProblemPathArg(args['path']);
+      const problemId = parseTeamMgmtProblemIdArg(args['problem_id']);
+      const status = parseTeamMgmtProblemStatusArg(args['status'], 'all');
+      const maxItems = parseOptionalPositiveInteger(args['max_items'], 'max_items');
+      const resolvedFilter = status === 'all' ? undefined : status === 'resolved' ? true : false;
+      const matched = listProblems({
+        ...(source !== undefined ? { source } : {}),
+        ...(filterPath !== undefined ? { path: filterPath } : {}),
+        ...(problemId !== undefined ? { problemId } : {}),
+        ...(resolvedFilter !== undefined ? { resolved: resolvedFilter } : {}),
+      });
+      const problems = maxItems !== undefined ? matched.slice(0, maxItems) : matched;
+      const { active, resolved } = splitProblemsByLifecycle(problems);
+      const filters: string[] = [];
+      if (source !== undefined) filters.push(`source=\`${source}\``);
+      if (filterPath !== undefined) filters.push(`path=\`${filterPath}\``);
+      if (problemId !== undefined) filters.push(`problem_id=\`${problemId}\``);
+      filters.push(`status=\`${status}\``);
+      if (maxItems !== undefined) filters.push(`max_items=\`${String(maxItems)}\``);
+      const header =
+        language === 'zh' ? fmtHeader('Problems 查询结果') : fmtHeader('Problems Query');
+      const summary =
+        language === 'zh'
+          ? fmtList([
+              `匹配到 ${matched.length} 条问题，本次返回 ${problems.length} 条`,
+              `进行中：${active.length}，已解决历史：${resolved.length}`,
+              `过滤条件：${filters.join('，')}`,
+            ])
+          : fmtList([
+              `${matched.length} problem(s) matched; returning ${problems.length}`,
+              `active: ${active.length}, resolved history: ${resolved.length}`,
+              `filters: ${filters.join(', ')}`,
+            ]);
+
+      const activeBlock =
+        active.length > 0
+          ? fmtSubHeader(language === 'zh' ? '进行中的问题' : 'Active Problems') +
+            active.flatMap((problem) => formatProblemDetailLines(problem, language)).join('\n') +
+            '\n'
+          : '';
+      const resolvedBlock =
+        resolved.length > 0
+          ? fmtSubHeader(
+              language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
+            ) +
+            fmtList([
+              formatResolvedProblemsHint({
+                language,
+                source,
+                path: filterPath,
+              }),
+            ]) +
+            resolved.flatMap((problem) => formatProblemDetailLines(problem, language)).join('\n') +
+            '\n'
+          : '';
+      const emptyBlock =
+        problems.length === 0
+          ? language === 'zh'
+            ? '当前没有匹配的问题。\n'
+            : 'No matching problems.\n'
+          : '';
+
+      const entries = problems.map((problem) => ({
+        problem_id: problem.id,
+        kind: problem.kind,
+        source: problem.source,
+        severity: problem.severity,
+        active: problem.resolved !== true,
+        occurred_at:
+          typeof problem.occurredAt === 'string' && problem.occurredAt !== ''
+            ? problem.occurredAt
+            : problem.timestamp,
+        updated_at: getProblemUpdatedAt(problem),
+        resolved_at: problem.resolved === true ? (problem.resolvedAt ?? null) : null,
+        path: getWorkspaceProblemPath(problem) ?? undefined,
+        message: problem.message,
+      }));
+      const yamlBlock = formatYamlCodeBlock(
+        YAML.stringify({
+          problems_version: getProblemsSnapshot().version,
+          returned_count: problems.length,
+          active_count: active.length,
+          resolved_count: resolved.length,
+          problems: entries,
+        }).trimEnd(),
+      );
+      const content = header + summary + emptyBlock + activeBlock + resolvedBlock + yamlBlock;
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtClearProblemsTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_clear_problems',
+  description: 'Clear Problems panel entries, defaulting to resolved history only.',
+  descriptionI18n: {
+    en: 'Clear Problems panel entries, defaulting to resolved history only.',
+    zh: '清理 Problems 面板中的问题项，默认只清理已解决的历史项。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      source: {
+        type: 'string',
+        enum: [...TEAM_MGMT_PROBLEM_SOURCES],
+      },
+      path: { type: 'string' },
+      problem_id: { type: 'string' },
+      status: {
+        type: 'string',
+        enum: [...TEAM_MGMT_PROBLEM_STATUS],
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const source = parseTeamMgmtProblemSourceArg(args['source']);
+      const filterPath = parseTeamMgmtProblemPathArg(args['path']);
+      const problemId = parseTeamMgmtProblemIdArg(args['problem_id']);
+      const status = parseTeamMgmtProblemStatusArg(args['status'], 'resolved');
+      const resolvedFilter = status === 'all' ? undefined : status === 'resolved' ? true : false;
+      const hasExplicitTarget =
+        source !== undefined || filterPath !== undefined || problemId !== undefined;
+      if (status !== 'resolved' && !hasExplicitTarget) {
+        throw new Error(
+          language === 'zh'
+            ? '清理 active/all 问题时必须显式指定 source、path 或 problem_id，避免误删进行中的问题。'
+            : 'Clearing active/all problems requires an explicit source, path, or problem_id filter to avoid removing active issues by mistake.',
+        );
+      }
+
+      const before = listProblems({
+        ...(source !== undefined ? { source } : {}),
+        ...(filterPath !== undefined ? { path: filterPath } : {}),
+        ...(problemId !== undefined ? { problemId } : {}),
+        ...(resolvedFilter !== undefined ? { resolved: resolvedFilter } : {}),
+      });
+      const removedCount = clearProblems({
+        ...(source !== undefined ? { source } : {}),
+        ...(filterPath !== undefined ? { path: filterPath } : {}),
+        ...(problemId !== undefined ? { problemId } : {}),
+        ...(resolvedFilter !== undefined ? { resolved: resolvedFilter } : {}),
+      });
+      const filters: string[] = [];
+      if (source !== undefined) filters.push(`source=\`${source}\``);
+      if (filterPath !== undefined) filters.push(`path=\`${filterPath}\``);
+      if (problemId !== undefined) filters.push(`problem_id=\`${problemId}\``);
+      filters.push(`status=\`${status}\``);
+      const removedIds = before.slice(0, removedCount).map((problem) => `- ${problem.id}`);
+      const content =
+        language === 'zh'
+          ? fmtHeader('Problems 清理结果') +
+            fmtList([
+              `已清理 ${removedCount} 条问题`,
+              `过滤条件：${filters.join('，')}`,
+              status === 'resolved'
+                ? '说明：默认只清理已解决历史；进行中的问题不会被静默移除。'
+                : '说明：你本次显式请求了 active/all 清理，请确认这符合预期。',
+            ]) +
+            (removedIds.length > 0
+              ? fmtSubHeader('已清理的问题') + removedIds.join('\n') + '\n'
+              : '')
+          : fmtHeader('Problems Clear Result') +
+            fmtList([
+              `cleared ${removedCount} problem(s)`,
+              `filters: ${filters.join(', ')}`,
+              status === 'resolved'
+                ? 'Note: by default this only clears resolved history; active problems are not removed silently.'
+                : 'Note: this call explicitly requested active/all clearing; make sure that is what you intended.',
+            ]) +
+            (removedIds.length > 0
+              ? fmtSubHeader('Cleared Problems') + removedIds.join('\n') + '\n'
+              : '');
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
       return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
     }
   },
@@ -5487,6 +5946,8 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtValidatePrimingScriptsTool,
   teamMgmtValidateTeamCfgTool,
   teamMgmtValidateMcpCfgTool,
+  teamMgmtListProblemsTool,
+  teamMgmtClearProblemsTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtCreateNewFileTool,
