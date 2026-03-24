@@ -599,11 +599,16 @@ const getDaemonOutputSchema: JsonSchema = {
 };
 
 // Format daemon status for reminder display
-function formatDaemonStatus(daemon: DaemonProcess): string {
+function formatDaemonStatus(daemon: DaemonProcess, language: LanguageCode): string {
   const uptime = Math.floor((Date.now() - daemon.startTime.getTime()) / 1000);
-  const status = daemon.isRunning
-    ? 'running'
-    : `exited (code: ${daemon.exitCode}, signal: ${daemon.exitSignal})`;
+  const status =
+    language === 'zh'
+      ? daemon.isRunning
+        ? '运行中'
+        : `已退出（code: ${daemon.exitCode}, signal: ${daemon.exitSignal}）`
+      : daemon.isRunning
+        ? 'running'
+        : `exited (code: ${daemon.exitCode}, signal: ${daemon.exitSignal})`;
 
   const stdoutInfo = daemon.stdoutBuffer.getScrollInfo();
   const stderrInfo = daemon.stderrBuffer.getScrollInfo();
@@ -611,36 +616,58 @@ function formatDaemonStatus(daemon: DaemonProcess): string {
   let scrollNotice = '';
   if (stdoutInfo.hasScrolledContent || stderrInfo.hasScrolledContent) {
     const scrolledLines = stdoutInfo.linesScrolledOut + stderrInfo.linesScrolledOut;
-    scrollNotice = `\n⚠️  ${scrolledLines} lines have scrolled out of view`;
+    scrollNotice =
+      language === 'zh'
+        ? `\n注意：已有 ${scrolledLines} 行滚出当前保留缓冲区`
+        : `\nNote: ${scrolledLines} lines have scrolled out of the retained buffer`;
   }
 
   const stdoutContent = daemon.stdoutBuffer.isEmpty()
-    ? '(no output)'
+    ? language === 'zh'
+      ? '（无输出）'
+      : '(no output)'
     : daemon.stdoutBuffer.getContent();
   const stderrContent = daemon.stderrBuffer.isEmpty()
-    ? '(no errors)'
+    ? language === 'zh'
+      ? '（无 stderr 输出）'
+      : '(no stderr output)'
     : daemon.stderrBuffer.getContent();
   const fenceConsole = '```console';
   const fenceEnd = '```';
 
-  return `🔄 Daemon Process ${daemon.pid}
-Command: ${daemon.command}
+  return language === 'zh'
+    ? `后台进程 PID: ${daemon.pid}
+命令: ${daemon.command}
 Shell: ${daemon.shell}
-Status: ${status}
-Uptime: ${uptime}s
-Started: ${formatUnifiedTimestamp(daemon.startTime)}${scrollNotice}
+生命周期状态: ${status}
+已运行: ${uptime}s
+启动时间: ${formatUnifiedTimestamp(daemon.startTime)}${scrollNotice}
 
-📤 Latest stdout:
+stdout 缓冲区快照：
 ${fenceConsole}
 ${stdoutContent}
 ${fenceEnd}
 
-📤 Latest stderr:
+stderr 缓冲区快照：
 ${fenceConsole}
 ${stderrContent}
+${fenceEnd}`
+    : `Daemon PID: ${daemon.pid}
+Command: ${daemon.command}
+Shell: ${daemon.shell}
+Lifecycle status: ${status}
+Uptime: ${uptime}s
+Started at: ${formatUnifiedTimestamp(daemon.startTime)}${scrollNotice}
+
+Stdout buffer snapshot:
+${fenceConsole}
+${stdoutContent}
 ${fenceEnd}
 
-💡 Use stop_daemon({"pid": ${daemon.pid}}) to terminate this process`;
+Stderr buffer snapshot:
+${fenceConsole}
+${stderrContent}
+${fenceEnd}`;
 }
 
 // ReminderOwner implementation for shell command tool
@@ -662,7 +689,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
     // Check if process has exited
     if (!daemon.isRunning) {
       // Process has exited, provide final status and drop reminder
-      const finalStatus = formatDaemonStatus(daemon);
+      const finalStatus = formatDaemonStatus(daemon, getWorkLanguage());
       daemonProcesses.delete(pid);
 
       return {
@@ -690,7 +717,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
     }
 
     // Update the reminder with current daemon status
-    const updatedContent = formatDaemonStatus(daemon);
+    const updatedContent = formatDaemonStatus(daemon, getWorkLanguage());
     return {
       treatment: 'update',
       updatedContent,
@@ -712,11 +739,11 @@ export const shellCmdReminderOwner: ReminderOwner = {
         content:
           language === 'zh'
             ? `${prefix} 后台进程状态提醒 #${index + 1}
-你正在查看系统维护的后台进程状态，不要把它当成你自己写的工作便签。该提醒会随进程生命周期自动更新或删除。
+这是系统维护的后台进程状态快照。默认静默吸收即可，不要把它当成你自己写的工作便签，也不要在对外回复里专门确认或复述；只有它实际影响当前判断或后续动作时，才提炼相关事实。该提醒会随进程生命周期自动更新或删除。
 ---
 ${reminder.content}`
             : `${prefix} Background process status reminder #${index + 1}
-You are looking at system-maintained background process state. Do not treat it as a self-authored work note. This reminder will update or disappear automatically with the process lifecycle.
+This is a system-maintained background process snapshot. Consume it silently by default: do not treat it as a self-authored work note, and do not explicitly acknowledge or restate it in your outward reply unless it materially affects your current judgment or next action. This reminder will update or disappear automatically with the process lifecycle.
 ---
 ${reminder.content}`,
       };
@@ -748,22 +775,22 @@ This daemon process has finished its lifecycle and is no longer running. This re
           ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
           : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
 
-    const statusInfo = formatDaemonStatus(daemon);
+    const statusInfo = formatDaemonStatus(daemon, language);
 
     return {
       type: 'environment_msg',
       role: 'user',
       content:
         language === 'zh'
-          ? `🔄 ${prefix} 运行中后台进程监控 #${index + 1} - PID ${pid}（已运行 ${uptimeStr}）
-你当前有一个仍在运行的后台进程。请按需要检查它的健康状态、资源占用和输出情况；这条提醒由系统自动维护，会随进程状态变化自动更新或删除。
+          ? `🔄 ${prefix} 运行中后台进程状态 #${index + 1} - PID ${pid}（已运行 ${uptimeStr}）
+这是系统维护的状态快照，不是新的用户诉求，也不是默认需要单独汇报的事项。只有它实际改变当前判断、计划、风险，或确实需要调用守护进程相关工具时，才使用下面的信息；否则保持静默吸收即可。
 
-**当前状态：**
+**状态快照：**
 ${statusInfo}`
-          : `🔄 ${prefix} Active daemon monitor #${index + 1} - PID ${pid} (uptime: ${uptimeStr})
-You currently have a background process that is still running. Check its health, resource usage, and output as needed. This reminder is system-maintained and will update or disappear automatically as the process state changes.
+          : `🔄 ${prefix} Active daemon state #${index + 1} - PID ${pid} (uptime: ${uptimeStr})
+This is a system-maintained snapshot, not a new user request and not something that normally deserves a standalone mention. Use the information below only when it materially changes your current judgment, plan, risk, or a daemon-management action; otherwise consume it silently.
 
-**Current status:**
+**State snapshot:**
 ${statusInfo}`,
     };
   },

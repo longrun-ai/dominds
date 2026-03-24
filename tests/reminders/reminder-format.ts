@@ -42,6 +42,10 @@ async function main() {
     zhToolManaged.includes('工具状态'),
     'Expected tool-managed reminder to use neutral tool-state framing (zh)',
   );
+  assert(
+    zhToolManaged.includes('默认不在对外回复里专门确认、复述或总结它'),
+    'Expected zh tool-managed reminder to discourage standalone acknowledgment',
+  );
 
   const zhLegacyViaSource = formatReminderItemGuide('zh', 3, 'Legacy content\n', {
     meta: { kind: 'plan', source: 'some_tool' },
@@ -101,6 +105,10 @@ async function main() {
   assert(
     enToolManaged.includes('managed by tool some_tool'),
     'Expected en tool-managed reminder to mention management tool',
+  );
+  assert(
+    enToolManaged.includes('should not explicitly acknowledge, restate, or summarize it'),
+    'Expected en tool-managed reminder to discourage standalone acknowledgment',
   );
   assert(
     !enToolManaged.includes('- Update: update_reminder'),

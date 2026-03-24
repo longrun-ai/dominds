@@ -220,7 +220,7 @@ export function formatReminderItemGuide(
       return [
         `提醒项 #${index}（工具状态）`,
         '',
-        '我把这条当作工具维护的状态参考，不把它自动当成我现在必须立刻执行的指令。',
+        '我把这条当作工具维护的状态参考。默认不在对外回复里专门确认、复述或总结它；只有它实际改变当前判断、计划或风险时，我才提炼真正相关的部分。',
         '',
         `这条提醒项由工具 ${managementTool} 管理；如果我要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
         '',
@@ -265,7 +265,7 @@ export function formatReminderItemGuide(
     const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
     return `REMINDER ITEM #${index} (TOOL STATE)
 
-I treat this as a tool-maintained state reference, not as an automatic must-do command.
+I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
 
 This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
 
