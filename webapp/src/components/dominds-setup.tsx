@@ -348,10 +348,7 @@ export class DomindsSetup extends HTMLElement {
         this.prominentParamSelections[k] = def;
         continue;
       }
-      const first = p.values[0];
-      if (typeof first === 'string' && first !== '') {
-        this.prominentParamSelections[k] = first;
-      }
+      delete this.prominentParamSelections[k];
     }
   }
 
@@ -795,14 +792,7 @@ export class DomindsSetup extends HTMLElement {
     const modelKey = this.selectedModelKey;
     if (!providerKey || !modelKey) return false;
     const providerSummary = status.providers.find((p) => p.providerKey === providerKey);
-    if (!providerSummary) return false;
-    const prominent = providerSummary.prominentModelParams ?? [];
-    for (const p of prominent) {
-      const val = this.prominentParamSelections[`${providerKey}/${p.namespace}/${p.key}`];
-      if (typeof val !== 'string' || val === '') return false;
-      if (!p.values.includes(val)) return false;
-    }
-    return true;
+    return Boolean(providerSummary);
   }
 
   private async writeTeamYamlFromUi(): Promise<void> {
@@ -1098,17 +1088,21 @@ export class DomindsSetup extends HTMLElement {
             const compoundKey = `${providerKey}/${p.namespace}/${p.key}`;
             const stored = this.prominentParamSelections[compoundKey];
             const selected =
-              (typeof stored === 'string' && stored !== '' ? stored : undefined) ??
-              p.defaultValue ??
-              p.values[0] ??
-              '';
-            const options = p.values
-              .map((v) => {
+              typeof stored === 'string'
+                ? stored
+                : typeof p.defaultValue === 'string' && p.values.includes(p.defaultValue)
+                  ? p.defaultValue
+                  : '';
+            const options = [
+              `<option value="" ${selected === '' ? 'selected' : ''}>${escapeHtml(
+                getUiStrings(this.uiLanguage).setupProminentModelParamUnset,
+              )}</option>`,
+              ...p.values.map((v) => {
                 const sel = selected === v ? 'selected' : '';
                 const label = p.valueLabels?.[v] ?? v;
                 return `<option value="${escapeHtmlAttr(v)}" ${sel}>${escapeHtml(label)}</option>`;
-              })
-              .join('');
+              }),
+            ].join('');
 
             return `
               <div class="param-row">

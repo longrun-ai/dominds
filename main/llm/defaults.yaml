@@ -41,15 +41,14 @@ providers:
           description: Reasoning summary detail level (when supported by the model).
         service_tier:
           prominent: true
-          default: default
           type: enum
-          # Keep setup/bootstrap aligned with codex-rs current user-facing handling:
-          # expose only Standard/Fast here (default/priority), even though the upstream SDK enum
-          # also mentions other tiers such as auto/flex/scale. If codex-rs expands its UX to
-          # surface additional tiers later, extend this list in lockstep.
-          values: [default, priority]
+          # Keep setup/bootstrap aligned with the current ChatGPT codex backend behavior:
+          # keep `auto` as the explicit standard path, but allow setup UIs to leave this unset by
+          # default because the backend rejects the literal `default` enum value with HTTP 400 even
+          # though some SDK typings still mention it.
+          values: [auto, priority]
           value_labels:
-            default: Standard
+            auto: Standard
             priority: Fast
           description: Processing tier. Set `priority` to emulate Codex `/fast` without changing reasoning effort.
         verbosity:

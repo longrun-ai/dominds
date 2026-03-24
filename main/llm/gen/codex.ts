@@ -43,6 +43,17 @@ import {
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
 
+export function resolveCodexServiceTier(
+  serviceTier: ChatGptResponsesRequest['service_tier'] | undefined,
+): Exclude<NonNullable<ChatGptResponsesRequest['service_tier']>, 'default'> | undefined {
+  // The ChatGPT codex backend rejects the literal `default` tier even though some SDK typings
+  // still list it. Omitting the field preserves the standard tier semantics without a 400.
+  if (serviceTier === undefined || serviceTier === null || serviceTier === 'default') {
+    return undefined;
+  }
+  return serviceTier;
+}
+
 function limitCodexToolOutputText(text: string, msg: FuncResultMsg, limitChars: number): string {
   const limited = truncateProviderToolOutputText(text, limitChars);
   if (limited.truncated) {
@@ -554,6 +565,7 @@ async function buildCodexRequest(
   const reasoning = buildCodexReasoning(agent);
   const include: ChatGptResponsesRequest['include'] =
     reasoning !== null ? ['reasoning.encrypted_content'] : [];
+  const serviceTier = resolveCodexServiceTier(codexParams?.service_tier);
   const text = buildCodexTextControls(agent);
   const nativeTools = buildCodexNativeTools(agent);
   assertNoCodexNativeToolCollisions(funcTools, nativeTools);
@@ -567,7 +579,7 @@ async function buildCodexRequest(
     tool_choice: 'auto',
     parallel_tool_calls: parallelToolCalls,
     reasoning,
-    ...(codexParams?.service_tier !== undefined ? { service_tier: codexParams.service_tier } : {}),
+    ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
     store: false,
     stream: true,
     include,

@@ -330,6 +330,7 @@ export type UiStrings = {
   setupFileModalCopy: string;
   setupSelectProviderModelFirst: string;
   setupSelectProminentModelParamsFirst: string;
+  setupProminentModelParamUnset: string;
   setupTeamModelParamsHint: string;
   setupReqMissingTeamYaml: string;
   setupReqInvalidTeamYaml: string;
@@ -669,6 +670,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupFileModalCopy: '复制',
       setupSelectProviderModelFirst: '请先选择提供商与模型。',
       setupSelectProminentModelParamsFirst: '请先为 prominent 模型参数选择取值。',
+      setupProminentModelParamUnset: '留空（不设置）',
       setupTeamModelParamsHint: '',
       setupReqMissingTeamYaml: '缺少 team.yaml（请先创建并设置 member_defaults.provider/model）。',
       setupReqInvalidTeamYaml: 'team.yaml 无效：',
@@ -1034,6 +1036,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupFileModalCopy: 'Copy',
     setupSelectProviderModelFirst: 'Please select a provider and model first.',
     setupSelectProminentModelParamsFirst: 'Please select values for prominent model params first.',
+    setupProminentModelParamUnset: 'Leave unset',
     setupTeamModelParamsHint: '',
     setupReqMissingTeamYaml:
       'Missing team.yaml (create it and set member_defaults.provider/model).',

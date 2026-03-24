@@ -744,6 +744,7 @@ function parseOptionalTeamModelParams(
     const nsOut: Record<string, string> = {};
     for (const [k, v] of Object.entries(nsUnknown)) {
       if (typeof v !== 'string') return null;
+      if (v === '') continue;
       nsOut[k] = v;
     }
     if (Object.keys(nsOut).length > 0) out[namespace] = nsOut;
