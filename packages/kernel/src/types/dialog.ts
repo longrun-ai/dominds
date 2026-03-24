@@ -249,17 +249,26 @@ export interface TellaskCallCarryoverEvent {
   carryoverCourse: DialogCourseNumber;
 }
 
-export interface TellaskCallAnchorEvent {
+type TellaskCallAnchorEventBase = {
   type: 'tellask_call_anchor_evt';
   course: number;
   genseq: number;
-  anchorRole: 'assignment' | 'response';
   callId: string;
   assignmentCourse?: AssignmentCourseNumber;
   assignmentGenseq?: AssignmentGenerationSeqNumber;
-  callerDialogId?: string;
-  callerCourse?: CallerCourseNumber;
-}
+};
+
+export type TellaskCallAnchorEvent =
+  | (TellaskCallAnchorEventBase & {
+      anchorRole: 'assignment';
+      callerDialogId?: undefined;
+      callerCourse?: undefined;
+    })
+  | (TellaskCallAnchorEventBase & {
+      anchorRole: 'response';
+      callerDialogId: string;
+      callerCourse: CallerCourseNumber;
+    });
 
 export interface ReminderContent {
   content: string;

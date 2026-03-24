@@ -56,14 +56,21 @@ type PendingScrollRequest =
   | { kind: 'by_message_index'; course: number; messageIndex: number }
   | { kind: 'by_genseq'; course: number; genseq: number };
 
-type TellaskCallAnchorMeta = {
-  callId: string;
-  anchorRole: 'assignment' | 'response';
-  assignmentCourse?: AssignmentCourseNumber;
-  assignmentGenseq?: AssignmentGenerationSeqNumber;
-  callerDialogId?: string;
-  callerCourse?: CallerCourseNumber;
-};
+type TellaskCallAnchorMeta =
+  | {
+      callId: string;
+      anchorRole: 'assignment';
+      assignmentCourse?: AssignmentCourseNumber;
+      assignmentGenseq?: AssignmentGenerationSeqNumber;
+    }
+  | {
+      callId: string;
+      anchorRole: 'response';
+      assignmentCourse?: AssignmentCourseNumber;
+      assignmentGenseq?: AssignmentGenerationSeqNumber;
+      callerDialogId: string;
+      callerCourse: CallerCourseNumber;
+    };
 
 type TellaskAssignmentTarget = {
   course: AssignmentCourseNumber;
@@ -2803,20 +2810,11 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.removeAttribute('data-assignment-genseq');
     }
 
-    const callerDialogId =
-      typeof anchor.callerDialogId === 'string' ? anchor.callerDialogId.trim() : '';
-    if (callerDialogId !== '') {
-      bubble.setAttribute('data-caller-dialog-id', callerDialogId);
+    if (anchor.anchorRole === 'response') {
+      bubble.setAttribute('data-caller-dialog-id', anchor.callerDialogId);
+      bubble.setAttribute('data-caller-course', String(Math.floor(anchor.callerCourse)));
     } else {
       bubble.removeAttribute('data-caller-dialog-id');
-    }
-    const callerCourse =
-      typeof anchor.callerCourse === 'number' && Number.isFinite(anchor.callerCourse)
-        ? Math.floor(anchor.callerCourse)
-        : undefined;
-    if (callerCourse !== undefined) {
-      bubble.setAttribute('data-caller-course', String(callerCourse));
-    } else {
       bubble.removeAttribute('data-caller-course');
     }
 
@@ -2860,18 +2858,54 @@ export class DomindsDialogContainer extends HTMLElement {
     const callerCourse = this.parseOptionalPositiveInt(event.callerCourse);
     const callerDialogId =
       typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
-    const anchorMeta: TellaskCallAnchorMeta = {
-      callId: rawCallId,
-      anchorRole: rawAnchorRole,
-      assignmentCourse:
-        assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
-      assignmentGenseq:
-        assignmentGenseq !== undefined
-          ? toAssignmentGenerationSeqNumber(assignmentGenseq)
-          : undefined,
-      callerDialogId,
-      callerCourse: callerCourse !== undefined ? toCallerCourseNumber(callerCourse) : undefined,
-    };
+    let anchorMeta: TellaskCallAnchorMeta;
+    switch (rawAnchorRole) {
+      case 'assignment':
+        anchorMeta = {
+          callId: rawCallId,
+          anchorRole: 'assignment',
+          assignmentCourse:
+            assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
+          assignmentGenseq:
+            assignmentGenseq !== undefined
+              ? toAssignmentGenerationSeqNumber(assignmentGenseq)
+              : undefined,
+        };
+        break;
+      case 'response':
+        if (callerDialogId === undefined || callerDialogId === '') {
+          this.handleProtocolError(
+            `tellask_call_anchor_evt missing callerDialogId for response ${JSON.stringify({
+              callId: rawCallId,
+              genseq: event.genseq,
+            })}`,
+          );
+          return;
+        }
+        if (callerCourse === undefined) {
+          this.handleProtocolError(
+            `tellask_call_anchor_evt missing callerCourse for response ${JSON.stringify({
+              callId: rawCallId,
+              genseq: event.genseq,
+              callerDialogId,
+            })}`,
+          );
+          return;
+        }
+        anchorMeta = {
+          callId: rawCallId,
+          anchorRole: 'response',
+          assignmentCourse:
+            assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
+          assignmentGenseq:
+            assignmentGenseq !== undefined
+              ? toAssignmentGenerationSeqNumber(assignmentGenseq)
+              : undefined,
+          callerDialogId,
+          callerCourse: toCallerCourseNumber(callerCourse),
+        };
+        break;
+    }
     const genseq = Math.floor(event.genseq);
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     const bubble = messages

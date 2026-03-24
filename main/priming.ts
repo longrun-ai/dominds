@@ -878,26 +878,49 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (callerDialogId !== undefined && typeof callerDialogId !== 'string') {
         throw new Error(`${context}.callerDialogId must be a string when provided`);
       }
-      const record: TellaskCallAnchorRecord = {
+      const baseRecord = {
         ts: '',
         type,
         ...toRootGenerationAnchor({
           rootCourse: expectIntegerField(raw, 'rootCourse', context),
           rootGenseq: expectIntegerField(raw, 'rootGenseq', context),
         }),
-        anchorRole,
         callId: expectStringField(raw, 'callId', context),
         genseq: expectIntegerField(raw, 'genseq', context),
-      };
-      if (assignmentCourse !== undefined) {
-        record.assignmentCourse = toAssignmentCourseNumber(assignmentCourse);
-      }
-      if (assignmentGenseq !== undefined) {
-        record.assignmentGenseq = toAssignmentGenerationSeqNumber(assignmentGenseq);
-      }
-      if (callerDialogId !== undefined) record.callerDialogId = callerDialogId;
-      if (callerCourse !== undefined) {
-        record.callerCourse = toCallerCourseNumber(callerCourse);
+        ...(assignmentCourse !== undefined
+          ? { assignmentCourse: toAssignmentCourseNumber(assignmentCourse) }
+          : {}),
+        ...(assignmentGenseq !== undefined
+          ? { assignmentGenseq: toAssignmentGenerationSeqNumber(assignmentGenseq) }
+          : {}),
+      } as const;
+      let record: TellaskCallAnchorRecord;
+      switch (anchorRole) {
+        case 'assignment':
+          if (callerDialogId !== undefined || callerCourse !== undefined) {
+            throw new Error(
+              `${context} assignment anchor must not provide callerDialogId/callerCourse`,
+            );
+          }
+          record = {
+            ...baseRecord,
+            anchorRole: 'assignment',
+          };
+          break;
+        case 'response':
+          if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') {
+            throw new Error(`${context}.callerDialogId must be a non-empty string for response`);
+          }
+          if (callerCourse === undefined) {
+            throw new Error(`${context}.callerCourse is required for response`);
+          }
+          record = {
+            ...baseRecord,
+            anchorRole: 'response',
+            callerDialogId,
+            callerCourse: toCallerCourseNumber(callerCourse),
+          };
+          break;
       }
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;

@@ -2,6 +2,7 @@ import { inspect } from 'util';
 
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
+  toCallerCourseNumber,
   toCallingCourseNumber,
   toRootGenerationAnchor,
   type HumanQuestion,
@@ -1114,6 +1115,8 @@ async function executeTellaskCall(
           course: sub.currentCourse,
           genseq: finalized.responseGenseq,
         },
+        callerCourseOverride:
+          callingCourse !== undefined ? toCallerCourseNumber(callingCourse) : undefined,
         scheduleDrive: callbacks.scheduleDrive,
       });
 

@@ -391,20 +391,29 @@ export interface TellaskCallCarryoverRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-export interface TellaskCallAnchorRecord {
+type TellaskCallAnchorRecordBase = {
   ts: string;
   type: 'tellask_call_anchor_record';
   rootCourse: RootCourseNumber;
   rootGenseq: RootGenerationSeqNumber;
-  anchorRole: 'assignment' | 'response';
   callId: string;
   genseq: number;
   assignmentCourse?: AssignmentCourseNumber;
   assignmentGenseq?: AssignmentGenerationSeqNumber;
-  callerDialogId?: string;
-  callerCourse?: CallerCourseNumber;
   sourceTag?: 'priming_script';
-}
+};
+
+export type TellaskCallAnchorRecord =
+  | (TellaskCallAnchorRecordBase & {
+      anchorRole: 'assignment';
+      callerDialogId?: undefined;
+      callerCourse?: undefined;
+    })
+  | (TellaskCallAnchorRecordBase & {
+      anchorRole: 'response';
+      callerDialogId: string;
+      callerCourse: CallerCourseNumber;
+    });
 
 export type TellaskResponseRecord =
   | (RootGenerationRef & {

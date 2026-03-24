@@ -19,6 +19,7 @@ import type {
   Q4HAnsweredEvent,
   StreamErrorEvent,
   SubdialogEvent,
+  TellaskCallAnchorEvent,
   TellaskCallCarryoverEvent,
   TellaskCallResultEvent,
   TellaskCallStartEvent,
@@ -2687,22 +2688,44 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'tellask_call_anchor_record': {
-        const anchorEvent = {
-          type: 'tellask_call_anchor_evt',
-          course,
-          genseq: event.genseq,
-          anchorRole: event.anchorRole ?? 'response',
-          callId: event.callId,
-          assignmentCourse: event.assignmentCourse,
-          assignmentGenseq: event.assignmentGenseq,
-          callerDialogId: event.callerDialogId,
-          callerCourse: event.callerCourse,
+        const anchorEvent: TellaskCallAnchorEvent & {
           dialog: {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          },
-          timestamp: event.ts,
-        };
+            selfId: string;
+            rootId: string;
+          };
+          timestamp: string;
+        } =
+          event.anchorRole === 'assignment'
+            ? {
+                type: 'tellask_call_anchor_evt',
+                course,
+                genseq: event.genseq,
+                anchorRole: 'assignment',
+                callId: event.callId,
+                assignmentCourse: event.assignmentCourse,
+                assignmentGenseq: event.assignmentGenseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              }
+            : {
+                type: 'tellask_call_anchor_evt',
+                course,
+                genseq: event.genseq,
+                anchorRole: 'response',
+                callId: event.callId,
+                assignmentCourse: event.assignmentCourse,
+                assignmentGenseq: event.assignmentGenseq,
+                callerDialogId: event.callerDialogId,
+                callerCourse: event.callerCourse,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(anchorEvent));
         }

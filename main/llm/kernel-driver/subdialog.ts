@@ -5,6 +5,7 @@ import {
   toCalleeGenerationSeqNumber,
   toCallerCourseNumber,
   toRootGenerationAnchor,
+  type CallerCourseNumber,
   type PendingSubdialogStateRecord,
   type TellaskCallAnchorRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -203,6 +204,7 @@ export async function supplyResponseToSupdialog(args: {
   callId?: string;
   status?: 'completed' | 'failed';
   calleeResponseRef?: { course: number; genseq: number };
+  callerCourseOverride?: CallerCourseNumber;
   scheduleDrive: ScheduleDriveFn;
   subdialog?: SubDialog;
 }): Promise<void> {
@@ -214,6 +216,7 @@ export async function supplyResponseToSupdialog(args: {
     callId,
     status = 'completed',
     calleeResponseRef,
+    callerCourseOverride,
     scheduleDrive,
     subdialog: maybeSubdialog,
   } = args;
@@ -320,6 +323,10 @@ export async function supplyResponseToSupdialog(args: {
         sessionSlug,
         callId: pendingRecord?.callId,
         callingCourse: pendingRecord?.callingCourse,
+        callerCourse:
+          pendingRecord?.callingCourse !== undefined
+            ? toCallerCourseNumber(pendingRecord.callingCourse)
+            : callerCourseOverride,
         shouldRevive,
       };
     });
@@ -364,6 +371,12 @@ export async function supplyResponseToSupdialog(args: {
           })
         : undefined;
     if (resolvedCallId !== '' && calleeResponseRef) {
+      if (result.callerCourse === undefined) {
+        throw new Error(
+          `tellask response anchor invariant violation: missing callerCourse ` +
+            `(parentId=${parentDialog.id.selfId}, subdialogId=${subdialogId.selfId}, callId=${resolvedCallId})`,
+        );
+      }
       const assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
         callId: resolvedCallId,
@@ -405,10 +418,7 @@ export async function supplyResponseToSupdialog(args: {
             ? toAssignmentGenerationSeqNumber(assignmentRef.genseq)
             : undefined,
         callerDialogId: parentDialog.id.selfId,
-        callerCourse:
-          result.callingCourse !== undefined
-            ? toCallerCourseNumber(result.callingCourse)
-            : undefined,
+        callerCourse: result.callerCourse,
       };
       await DialogPersistence.appendEvent(
         subdialogId,
