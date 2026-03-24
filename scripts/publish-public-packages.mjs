@@ -4,6 +4,7 @@ import path from 'node:path';
 import * as readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { packAndVerifyPublicPackage } from './verify-packed-public-package.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +32,7 @@ const publicPackages = [
 
 function usage() {
   console.log(`Usage:
-  node ./scripts/publish-public-packages.mjs [--dry-run] [--tag <tag>] [--otp <otp>] [extra pnpm publish args]
+  node ./scripts/publish-public-packages.mjs [--dry-run] [--tag <tag>] [--otp <otp>] [extra npm publish args]
 
 Behavior:
   - Non-dry-run publish checks npm login up front and can prompt to run npm login interactively
@@ -39,7 +40,7 @@ Behavior:
   - Skips packages whose exact local version already exists on npm
   - Fails fast if a local version is behind the highest published version
   - Verifies each non-dry-run publish reached the registry before continuing
-  - When multiple packages need publishing, omit --otp so the script prompts for a fresh OTP before each publish`);
+  - When multiple packages need publishing, omit --otp so the script prompts for a fresh OTP right before each publish after the build/pack checks complete`);
 }
 
 function normalizeJsonValue(value) {
@@ -58,6 +59,15 @@ function readPackageJson(packageRootAbs) {
     throw new Error(`Missing package.json under ${packageRootAbs}.`);
   }
   return JSON.parse(readFileSync(packageJsonAbs, 'utf8'));
+}
+
+function getPackageScript(packageJson, scriptName) {
+  const scripts = packageJson.scripts;
+  if (typeof scripts !== 'object' || scripts === null || Array.isArray(scripts)) {
+    return null;
+  }
+  const script = scripts[scriptName];
+  return typeof script === 'string' ? script : null;
 }
 
 function readExecErrorText(error) {
@@ -260,29 +270,25 @@ async function verifyPublished(packageName, version) {
   throw new Error(`Timed out waiting for ${packageName}@${version} to appear on npm.`);
 }
 
-function runPnpmPublish(pkg, passThroughArgs) {
-  execFileSync(
-    'pnpm',
-    ['publish', '--access', 'public', '--no-git-checks', ...passThroughArgs],
-    {
-      cwd: pkg.packageRootAbs,
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        DOMINDS_PUBLIC_PUBLISH_FLOW: '1',
-        NODE_OPTIONS: '',
-      },
-      stdio: 'inherit',
-    },
-  );
+function runNpmPublishTarball(pkg, tarballAbs, passThroughArgs) {
+  execFileSync('npm', ['publish', tarballAbs, '--access', 'public', ...passThroughArgs], {
+    cwd: pkg.packageRootAbs,
+    encoding: 'utf8',
+    env: buildDirectNpmEnv(),
+    stdio: 'inherit',
+  });
 }
 
-function verifyPackedPackage(pkg) {
-  execFileSync('node', [path.join(workspaceRootAbs, 'scripts', 'verify-packed-public-package.mjs')], {
+function runPrepublishOnly(pkg) {
+  if (pkg.prepublishOnlyScript === null) {
+    return;
+  }
+  execFileSync('pnpm', ['run', 'prepublishOnly'], {
     cwd: pkg.packageRootAbs,
     encoding: 'utf8',
     env: {
       ...process.env,
+      DOMINDS_PUBLIC_PUBLISH_FLOW: '1',
       NODE_OPTIONS: '',
     },
     stdio: 'inherit',
@@ -305,6 +311,7 @@ function collectWorkspacePackages() {
       ...entry,
       packageRootAbs,
       localVersion: packageJson.version,
+      prepublishOnlyScript: getPackageScript(packageJson, 'prepublishOnly'),
     };
   });
 }
@@ -400,13 +407,18 @@ async function main() {
 
   for (const pkg of toPublish) {
     console.log(`\n==> ${pkg.packageName}@${pkg.localVersion}`);
-    verifyPackedPackage(pkg);
-    const publishArgs = [...cli.publishArgs];
-    if (!cli.dryRun) {
-      const otp = cli.otp ?? (await promptForOtp(pkg.packageName));
-      publishArgs.push('--otp', otp);
+    runPrepublishOnly(pkg);
+    const packed = packAndVerifyPublicPackage(pkg.packageRootAbs);
+    try {
+      const publishArgs = [...cli.publishArgs];
+      if (!cli.dryRun) {
+        const otp = cli.otp ?? (await promptForOtp(pkg.packageName));
+        publishArgs.push('--otp', otp);
+      }
+      runNpmPublishTarball(pkg, packed.tarballAbs, publishArgs);
+    } finally {
+      packed.cleanup();
     }
-    runPnpmPublish(pkg, publishArgs);
     if (!cli.dryRun) {
       await verifyPublished(pkg.packageName, pkg.localVersion);
       console.log(`Verified ${pkg.packageName}@${pkg.localVersion} on npm.`);

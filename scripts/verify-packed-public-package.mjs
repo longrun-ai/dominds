@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-function findWorkspaceRoot(startAbs) {
+export function findWorkspaceRoot(startAbs) {
   let currentAbs = startAbs;
   while (true) {
     if (existsSync(path.join(currentAbs, 'pnpm-workspace.yaml'))) {
@@ -21,7 +22,7 @@ function readPackageJson(packageJsonAbs) {
   return JSON.parse(readFileSync(packageJsonAbs, 'utf8'));
 }
 
-function readWorkspacePackageVersions(workspaceRootAbs) {
+export function readWorkspacePackageVersions(workspaceRootAbs) {
   const packageJsonRelPaths = [
     'package.json',
     'packages/kernel/package.json',
@@ -47,7 +48,7 @@ function readWorkspacePackageVersions(workspaceRootAbs) {
   return versions;
 }
 
-function packWithPnpm(packageRootAbs) {
+export function packWithPnpm(packageRootAbs) {
   const tmpRootAbs = mkdtempSync(path.join(os.tmpdir(), 'dominds-pack-verify-'));
   try {
     execFileSync('pnpm', ['pack', '--pack-destination', tmpRootAbs], {
@@ -75,14 +76,18 @@ function packWithPnpm(packageRootAbs) {
   }
 }
 
-function readTarballPackageJson(tarballAbs) {
+export function readTarballPackageJson(tarballAbs) {
   const stdout = execFileSync('tar', ['-xOf', tarballAbs, 'package/package.json'], {
     encoding: 'utf8',
   });
   return JSON.parse(stdout);
 }
 
-function assertPackedInternalDepsUseConcreteVersions(packageName, packedPackageJson, workspaceVersions) {
+export function assertPackedInternalDepsUseConcreteVersions(
+  packageName,
+  packedPackageJson,
+  workspaceVersions,
+) {
   const depFields = ['dependencies', 'optionalDependencies', 'peerDependencies'];
   for (const depField of depFields) {
     const deps = packedPackageJson[depField];
@@ -114,8 +119,7 @@ function assertPackedInternalDepsUseConcreteVersions(packageName, packedPackageJ
   }
 }
 
-function main() {
-  const packageRootAbs = process.cwd();
+export function packAndVerifyPublicPackage(packageRootAbs) {
   const packageJson = readPackageJson(path.join(packageRootAbs, 'package.json'));
   if (typeof packageJson.name !== 'string') {
     throw new Error('Current package.json must declare a string name.');
@@ -130,9 +134,22 @@ function main() {
       packedPackageJson,
       workspaceVersions,
     );
-  } finally {
+    return packed;
+  } catch (error) {
     packed.cleanup();
+    throw error;
   }
 }
 
-main();
+function main() {
+  const packed = packAndVerifyPublicPackage(process.cwd());
+  packed.cleanup();
+}
+
+const isMainModule =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isMainModule) {
+  main();
+}
