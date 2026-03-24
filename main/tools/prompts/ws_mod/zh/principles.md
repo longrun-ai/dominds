@@ -35,6 +35,7 @@
 
 - **prepare-first**：所有增量编辑先规划（输出可审阅 diff + evidence + hunk_id）
 - **single apply**：所有计划类编辑仅通过 `apply_file_modification({ "hunk_id": "<hunk_id>" })` 落盘
+- **LLM 落盘语义**：prepare 结果在 apply 前只保存在内存中，不会改动文件；此时再次 `read_file` 看到的仍是旧内容。若只是修订同一个未落盘预览，可用同一 prepare 工具加 `existing_hunk_id` 覆写；若想继续下一笔修改，必须先 apply 当前 hunk，再重新 read/prepare
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）
 
 ## 2. 目标与非目标

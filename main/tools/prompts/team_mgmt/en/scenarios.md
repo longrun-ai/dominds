@@ -52,6 +52,8 @@ Call the function tool `team_mgmt_apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
 
+Important: before this apply, the prepared diff is not persisted yet; re-reading the file still returns the old content. If you want the next edit based on this change, apply the current hunk first, then prepare the next one.
+
 ### 4. Create New Mind File
 
 ```text

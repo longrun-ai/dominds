@@ -5,6 +5,7 @@
 ## 总原则
 
 - 增量编辑：通过 `prepare_*` 生成可 apply 的 hunk；然后用 `apply_file_modification` 写入。
+- LLM 顺序硬约束：`prepare_*` 只生成内存中的预览，不会写盘；在 `apply_file_modification` 之前再次读取文件仍只能读到旧内容。若要基于本次改动继续修改，必须先 apply 当前 hunk，再重新 read/prepare 新改动。
 - 旧工具已移除（无兼容层）：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`。
 - 约束：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。
 - 并行约束：同一轮对话中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**（除非未来有顺序编排器）。
@@ -36,6 +37,7 @@
 - `prepare_*` 会生成 `hunk_id`（TTL=1 小时）；apply 只能用仍然存在的 hunk。
 - 过期/未使用的 hunk **不会产生任何副作用**，会在运行时自动清理；只需关注"最后一次准备的那个 `hunk_id`"。
 - 部分 prepare 工具支持 `existing_hunk_id` 作为"覆写同一 prepare"的方式；**不支持自定义新 id**。
+- 若只是修订同一个未落盘预览，可用同一 prepare 工具配合 `existing_hunk_id` 覆写；若想基于这次改动继续做下一笔修改，必须先 apply 当前 hunk，再重新 prepare。
 
 ## apply 语义（context_match）
 
@@ -58,6 +60,8 @@
 按以下参数调用函数工具 `apply_file_modification`：
 { "hunk_id": "<hunk_id>" }
 ```
+
+在这一步之前，prepare 结果还没有落盘；如果此时再次 `read_file`，读到的仍是旧内容。
 
 ## 示例
 

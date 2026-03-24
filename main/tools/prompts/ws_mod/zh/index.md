@@ -28,6 +28,7 @@ ws_mod 是 Dominds 的文本编辑工具集，采用 **prepare-first + single ap
 
 - **prepare-first**：所有增量编辑先规划（输出可审阅 diff + evidence + hunk_id）
 - **single apply**：所有计划类编辑仅通过 `apply_file_modification` 落盘
+- **LLM 顺序硬约束**：prepare 结果在 apply 前只存在于内存里；此时再次读取文件仍只能读到旧内容。若要基于该结果继续修改，必须先 apply 当前 hunk，再重新 prepare
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除
 
 ## 快速导航

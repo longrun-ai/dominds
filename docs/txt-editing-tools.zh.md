@@ -114,6 +114,7 @@ updated: 2026-01-24
 
 - 每个 plan hunk 带 TTL（输出 `expires_at_ms`）。
 - hunk 存储于进程内内存；进程重启后丢失。
+- prepare 结果在 apply 前不会落盘；此时再次读取文件仍只能看到旧内容。若想基于该结果继续下一笔修改，必须先 apply 当前 hunk，再重新 prepare。
 - `apply_file_modification` 会检查：
   - hunk 是否存在且未过期
   - hunk 是否由当前成员规划（`WRONG_OWNER` 拒绝）

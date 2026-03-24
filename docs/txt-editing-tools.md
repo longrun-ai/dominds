@@ -114,6 +114,7 @@ Chinese version: [中文版](./txt-editing-tools.zh.md)
 
 - 每个 plan hunk 带 TTL（输出 `expires_at_ms`）。
 - hunk 存储于进程内内存；进程重启后丢失。
+- prepare 结果在 apply 前不会落盘；此时再次读取文件仍只能看到旧内容。若想基于该结果继续下一笔修改，必须先 apply 当前 hunk，再重新 prepare。
 - `apply_file_modification` 会检查：
   - hunk 是否存在且未过期
   - hunk 是否由当前成员规划（`WRONG_OWNER` 拒绝）
@@ -278,6 +279,7 @@ This is the design doc for `ws_mod` text editing as implemented.
 - Function tool calls in one message run in parallel → **prepare → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).
 - `hunk_id` is TTL-limited and in-memory; apply checks ownership and access.
+- Before apply, the prepared change is not persisted, so re-reading still returns the old file content; if you want the next edit based on that prepared result, apply the current hunk first, then prepare again.
 - `create_new_file` creates a new file (empty content allowed) and refuses to overwrite existing files (YAML-only output).
 - `overwrite_entire_file` is the exception full-file overwrite tool, guarded by `known_old_total_lines/known_old_total_bytes`, and it refuses diff/patch-like content by default unless `content_format='diff'|'patch'`.
 - Some providers (e.g. Codex) may require “all fields present” in function calls; for those providers only, use sentinels like empty strings / 0 to express “unset/default”. For most providers, omit optional fields naturally.

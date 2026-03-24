@@ -35,6 +35,7 @@ Therefore unified to:
 
 - **prepare-first**: All incremental edits are planned first (output reviewable diff + evidence + hunk_id)
 - **single apply**: All planned edits are persisted only through `apply_file_modification({ "hunk_id": "<hunk_id>" })`
+- **LLM persistence semantics**: before apply, a prepared hunk exists only in memory and does not modify the file; a `read_file` at that point still returns the old content. If you only want to revise the same pending preview, overwrite it with the same prepare tool plus `existing_hunk_id`; if you want the next edit based on this change, apply the current hunk first, then read/prepare again
 - **Legacy tools removed**: `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` are completely removed (no aliases, no compat layer)
 
 ## 2. Goals & Non-Goals

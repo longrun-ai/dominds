@@ -172,6 +172,23 @@ function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
 }
 
+function formatPreparedHunkNextStep(language: LanguageCode, hunkId: string): string {
+  if (language === 'zh') {
+    return [
+      '下一步（LLM 强约束）：',
+      `立即调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ "hunk_id": "${hunkId}" }`,
+      '当前改动仍只是 prepare 预览，apply 前不会落盘；现在再次读取文件只能读到旧内容。',
+      '如果只是修订这个尚未落盘的预览，可用同一 prepare 工具配合 `existing_hunk_id` 覆写该 hunk；如果想基于这次改动继续修改文件，必须先 apply 当前 hunk，再重新 read/prepare 新的改动。',
+    ].join('\n');
+  }
+  return [
+    'Next (hard rule for the LLM):',
+    `Immediately call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`,
+    'This change is still only a prepared preview and is not persisted before apply; re-reading now will still return the old file content.',
+    'If you only want to revise this not-yet-persisted preview, overwrite the same hunk with the same prepare tool plus `existing_hunk_id`; if you want further edits based on this change, you must apply the current hunk first, then read/prepare the next change.',
+  ].join('\n');
+}
+
 function splitFileTextToLines(fileText: string): string[] {
   const parts = fileText.split('\n');
   // Remove the terminator token created by trailing '\n' (canonical line semantics).
@@ -1600,8 +1617,7 @@ async function runPrepareFileRangeEdit(
           rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
           planned: (id: string, p: string) => `✅ 已规划：\`${id}\` → \`${p}\``,
-          next: (id: string) =>
-            `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${id}\" }`,
+          next: (id: string) => formatPreparedHunkNextStep('zh', id),
           invalidHunkId: '错误：hunk id 格式无效（例如 `a1b2c3d4`）。',
           unknownHunkId: (id: string) =>
             `错误：hunk id \`${id}\` 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 \`existing_hunk_id\` 设为空字符串。`,
@@ -1615,8 +1631,7 @@ async function runPrepareFileRangeEdit(
           rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
           planned: (id: string, p: string) => `✅ Planned \`${id}\` for \`${p}\``,
-          next: (id: string) =>
-            `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${id}" }.`,
+          next: (id: string) => formatPreparedHunkNextStep('en', id),
           invalidHunkId: 'Error: invalid hunk id format (e.g. `a1b2c3d4`).',
           unknownHunkId: (id: string) =>
             `Error: hunk id \`${id}\` not found (expired or already applied). Custom new ids are not allowed; set \`existing_hunk_id\` to an empty string to generate a new one.`,
@@ -2091,9 +2106,7 @@ async function runPrepareFileAppend(
     const content =
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-      (language === 'zh'
-        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
+      formatPreparedHunkNextStep(language, hunkId);
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = formatYamlCodeBlock(
@@ -2481,9 +2494,7 @@ async function planInsertionCommon(
     const content =
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-      (language === 'zh'
-        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
+      formatPreparedHunkNextStep(language, hunkId);
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = formatYamlCodeBlock(
@@ -4099,9 +4110,7 @@ async function runPrepareBlockReplace(
     const content =
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-      (language === 'zh'
-        ? `下一步：调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
-        : `Next: call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`);
+      formatPreparedHunkNextStep(language, hunkId);
 
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {

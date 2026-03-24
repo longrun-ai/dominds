@@ -27,6 +27,7 @@
 team_mgmt is Dominds' toolset for managing `.minds/` (team configuration and rtws memory), using **prepare-first + single apply** architecture:
 
 - **Incremental edits (preferred)**: Use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification`
+- **Hard ordering rule for the LLM**: `team_mgmt_prepare_*` only creates an in-memory preview and does not write the file; before `apply`, re-reading still returns the old content. If you want further edits based on the prepared result, you must call `team_mgmt_apply_file_modification` first, then read/prepare the next change
 - **Only operates in `.minds/`**: This toolset only operates within the `.minds/` subtree and should not touch other rtws files
 - **Shell guardrail**: toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`; any member with these shell tools must be listed in top-level `shell_specialists`
 - **Member assets recommended**: strongly recommend `persona/knowledge/lessons` files for every `members.<id>` to define ownership, boundaries, and reusable lessons

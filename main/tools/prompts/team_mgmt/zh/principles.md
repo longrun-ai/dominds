@@ -27,6 +27,7 @@
 
 - **增量编辑（推荐）**：用 `team_mgmt_prepare_*` 先生成可复核的 YAML + diff + `hunk_id`，再用 `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })` 显式写入
 - **并行约束**：同一轮生成中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**
+- **LLM 落盘语义**：`team_mgmt_prepare_*` 只保存待应用的内存预览，apply 前不会改动文件；此时再次 `team_mgmt_read_file` 看到的仍是旧内容。若只是修订同一个未落盘预览，可用同一 prepare 工具加 `existing_hunk_id` 覆写；若想继续下一笔修改，必须先 apply 当前 hunk，再重新 read/prepare
 - **shell 最小授权**：`os` toolset 包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`；只授予少数专员成员，并在顶层 `shell_specialists` 显式列出这些成员 id
 - **例外（创建）**：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）
 - **例外（整文件覆盖）**：`team_mgmt_overwrite_entire_file` 会直接写盘（不走 prepare/apply），必须提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏；建议先用 `team_mgmt_read_file` 从 YAML header 读取 `total_lines/size_bytes` 再填写

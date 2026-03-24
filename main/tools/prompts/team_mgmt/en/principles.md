@@ -27,6 +27,7 @@
 
 - **Incremental edits (preferred)**: Use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })`
 - **Parallelism constraint**: Multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**
+- **LLM persistence semantics**: `team_mgmt_prepare_*` only stores a pending in-memory preview and does not modify the file before apply; a `team_mgmt_read_file` before apply still returns the old content. If you only want to revise that pending preview, overwrite the same hunk with `existing_hunk_id`; if you want the next edit based on this change, apply the current hunk first, then read/prepare again
 - **Minimum shell privilege**: toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`; grant it only to a small specialist set and list those member ids in top-level `shell_specialists`
 - **Exception (create)**: `team_mgmt_create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files
 - **Exception (overwrite)**: `team_mgmt_overwrite_entire_file` writes immediately (no prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header

@@ -5,6 +5,7 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
 ## Principles
 
 - Incremental edits: use `prepare_*` to generate an applyable hunk, then write via `apply_file_modification`.
+- Hard ordering rule for the LLM: `prepare_*` only creates an in-memory preview and does not write the file; before `apply_file_modification`, re-reading still returns the old content. If you want further edits based on the prepared result, you must apply the current hunk first, then read/prepare the next change.
 - Legacy tools are removed (no compatibility layer): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Taskdocs; file tools cannot access them.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
@@ -35,6 +36,7 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
 - `prepare_*` generates `hunk_id` (TTL = 1 hour); apply can only use an unexpired hunk.
 - Expired/unused hunks have no side effects; they are cleaned up automatically.
 - Some prepare tools accept `existing_hunk_id` to overwrite the same prepared hunk; **custom new ids are not supported**.
+- If you only want to revise the same not-yet-persisted preview, overwrite that hunk with the same prepare tool plus `existing_hunk_id`; if you want the next edit based on this change, apply the current hunk first, then prepare again.
 
 ## Apply semantics (context_match)
 
@@ -57,6 +59,8 @@ Call the function tool `prepare_file_insert_after` with:
 Call the function tool `apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
+
+Before this step, the prepared diff is not persisted yet; a `read_file` at that point still returns the old content.
 
 ## Examples
 

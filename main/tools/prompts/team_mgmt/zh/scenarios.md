@@ -52,6 +52,8 @@ Call the function tool `team_mgmt_apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
 
+注意：这一步之前，prepare 结果还没有落盘；如果此时再次读取文件，读到的仍是旧内容。若要基于这次改动继续修改，先 apply 当前 hunk，再准备下一笔改动。
+
 ### 4. 创建新的 mind 文件
 
 ```text
