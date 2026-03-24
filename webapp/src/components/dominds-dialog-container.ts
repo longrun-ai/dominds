@@ -150,6 +150,11 @@ function readScrollToCallSiteDetail(value: unknown): ScrollToCallSiteDetail | nu
   return { course, messageIndex };
 }
 
+function isSystemNoticeMarkdownContent(value: string): boolean {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith('【系统提示】') || trimmed.startsWith('[System notice]');
+}
+
 const CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX = 120;
 const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
 const AUTO_SCROLL_FOLLOW_THRESHOLD_PX = 32;
@@ -2232,7 +2237,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private renderCallTiming(
     section: HTMLElement,
-    state: 'pending' | 'completed' | 'failed',
+    state: 'pending' | 'completed' | 'failed' | 'superseded',
     startedAtMs: number,
     endedAtMs?: number,
     extraNote?: string,
@@ -2251,7 +2256,16 @@ export class DomindsDialogContainer extends HTMLElement {
     const finishedAt = endedAtMs ?? Date.now();
     const endText = this.formatAbsoluteTime(finishedAt);
     const total = this.formatDuration(finishedAt - startedAtMs);
-    const statusMark = state === 'failed' ? (this.uiLanguage === 'zh' ? '失败' : 'failed') : '';
+    const statusMark =
+      state === 'failed'
+        ? this.uiLanguage === 'zh'
+          ? '失败'
+          : 'failed'
+        : state === 'superseded'
+          ? this.uiLanguage === 'zh'
+            ? '已更新'
+            : 'superseded'
+          : '';
     const baseText =
       this.uiLanguage === 'zh'
         ? `${statusMark ? `状态: ${statusMark} · ` : ''}结束: ${endText} · 总用时: ${total}`
@@ -2313,6 +2327,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const startedAtMs = Number.isFinite(startedAtMsParsed) ? startedAtMsParsed : endedAtMs;
     section.classList.remove('pending');
     section.classList.remove('carried-over');
+    section.classList.remove('superseded');
     section.classList.add('completed');
     section.classList.toggle('failed', status === 'failed');
     section.removeAttribute('data-carryover-course');
@@ -2337,6 +2352,7 @@ export class DomindsDialogContainer extends HTMLElement {
     section.classList.remove('pending');
     section.classList.add('completed');
     section.classList.add('carried-over');
+    section.classList.remove('superseded');
     section.classList.toggle('failed', status === 'failed');
     section.setAttribute('data-carryover-course', String(carryoverCourse));
     this.pendingCallTimingById.delete(callId);
@@ -2345,6 +2361,29 @@ export class DomindsDialogContainer extends HTMLElement {
         ? `结果在 C${String(carryoverCourse)} 补入，本程未见此反馈`
         : `Result carried into C${String(carryoverCourse)}; this course never saw the feedback`;
     this.renderCallTiming(section, status, startedAtMs, endedAtMs, extraNote);
+    if (this.pendingCallTimingById.size === 0) {
+      this.stopCallTimingTicker();
+    }
+  }
+
+  private markCallSiteSuperseded(callId: string, endedAtMs: number): void {
+    const section = this.callingSectionByCallId.get(callId);
+    if (!section) return;
+    const startedRaw = section.getAttribute('data-call-start-ms');
+    const startedAtMsParsed = startedRaw ? Number.parseInt(startedRaw, 10) : Number.NaN;
+    const startedAtMs = Number.isFinite(startedAtMsParsed) ? startedAtMsParsed : endedAtMs;
+    section.classList.remove('pending');
+    section.classList.remove('carried-over');
+    section.classList.remove('failed');
+    section.classList.add('completed');
+    section.classList.add('superseded');
+    section.removeAttribute('data-carryover-course');
+    this.pendingCallTimingById.delete(callId);
+    const extraNote =
+      this.uiLanguage === 'zh'
+        ? '该轮诉请已被较新的要求替代'
+        : 'This tellask round was superseded by a newer request';
+    this.renderCallTiming(section, 'superseded', startedAtMs, endedAtMs, extraNote);
     if (this.pendingCallTimingById.size === 0) {
       this.stopCallTimingTicker();
     }
@@ -2716,6 +2755,13 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
+    const isSupersededNotice =
+      event.status === 'failed' && isSystemNoticeMarkdownContent(String(event.result || ''));
+    if (isSupersededNotice) {
+      this.markCallSiteSuperseded(callId, endedAtMs);
+      return;
+    }
+
     this.markCallSiteSettled(callId, event.status, endedAtMs);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
@@ -2939,6 +2985,8 @@ export class DomindsDialogContainer extends HTMLElement {
     event: Extract<TypedDialogEvent, { type: 'tellask_response_evt' }>,
   ): void {
     const normalizedCallId = String(event.callId || '').trim();
+    const isSupersededNotice =
+      event.status === 'failed' && isSystemNoticeMarkdownContent(event.response);
     if (normalizedCallId !== '') {
       const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
       const hasCallSite = this.callingSectionByCallId.has(normalizedCallId);
@@ -2953,7 +3001,11 @@ export class DomindsDialogContainer extends HTMLElement {
           })}`,
         );
       } else {
-        this.markCallSiteSettled(normalizedCallId, event.status, endedAtMs);
+        if (isSupersededNotice) {
+          this.markCallSiteSuperseded(normalizedCallId, endedAtMs);
+        } else {
+          this.markCallSiteSettled(normalizedCallId, event.status, endedAtMs);
+        }
       }
     }
     // Validate calleeDialogId is present
@@ -3008,6 +3060,7 @@ export class DomindsDialogContainer extends HTMLElement {
       typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
         ? toCalleeCourseNumber(event.calleeCourse)
         : undefined,
+      isSupersededNotice ? 'superseded_notice' : 'standard',
     );
 
     const container = this.shadowRoot?.querySelector('.messages');
@@ -3076,6 +3129,7 @@ export class DomindsDialogContainer extends HTMLElement {
     timestamp?: string,
     sessionSlug?: string,
     calleeCourse?: CalleeCourseNumber,
+    visualKind: 'standard' | 'superseded_notice' = 'standard',
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
@@ -3090,6 +3144,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const isFbr = callName === 'freshBootsReasoning';
     if (isFbr) {
       el.classList.add('fbr');
+    }
+    if (visualKind === 'superseded_notice') {
+      el.classList.add('system-notice');
     }
     const responderLabel = (() => {
       if (isFbr) return 'FBR';
@@ -3113,16 +3170,28 @@ export class DomindsDialogContainer extends HTMLElement {
       normalizedSessionSlug === ''
         ? ''
         : `<span class="teammate-session-slug">· ${this.escapeHtml(normalizedSessionSlug)}</span>`;
+    const titleLeftHtml =
+      visualKind === 'superseded_notice'
+        ? `<span class="teammate-kind-label">${this.escapeHtml(
+            this.uiLanguage === 'zh' ? '诉请已更新' : 'Tellask updated',
+          )}</span>
+           <span class="teammate-meta">
+             <span class="requester-name">${safeRequesterLabel}</span>
+             <span class="teammate-meta-sep" aria-hidden="true">·</span>
+             <span class="author-name">${safeResponderLabel}</span>
+           </span>
+           ${sessionSlugHtml}`
+        : `<span class="requester-name">${safeRequesterLabel}</span>
+           <span class="response-arrow" aria-hidden="true">←</span>
+           <span class="author-name">${safeResponderLabel}</span>
+           ${sessionSlugHtml}`;
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
           <div class="bubble-title">
             <div class="title-row">
               <div class="title-left">
-                <span class="requester-name">${safeRequesterLabel}</span>
-                <span class="response-arrow" aria-hidden="true">←</span>
-                <span class="author-name">${safeResponderLabel}</span>
-                ${sessionSlugHtml}
+                ${titleLeftHtml}
               </div>
               <div class="title-right">
                 ${
@@ -5140,6 +5209,15 @@ export class DomindsDialogContainer extends HTMLElement {
         );
       }
 
+      .calling-section.superseded {
+        border-left-color: var(--color-warning, #f59e0b);
+        background: color-mix(
+          in srgb,
+          var(--color-warning, #f59e0b) 10%,
+          var(--color-bg-tertiary, #f1f5f9)
+        );
+      }
+
       /* Function call section styles (nested inside markdown) - non-streaming mode */
       .func-call-section {
         margin: 4px 0;
@@ -5445,6 +5523,15 @@ export class DomindsDialogContainer extends HTMLElement {
         border-left: 3px solid color-mix(in srgb, var(--dominds-primary, #007acc) 78%, transparent);
       }
 
+      .message.teammate.system-notice {
+        background: color-mix(
+          in srgb,
+          var(--color-warning, #f59e0b) 8%,
+          var(--color-bg-secondary, #f7fafc)
+        );
+        border-left-color: var(--color-warning, #f59e0b);
+      }
+
       .author-name {
         font-weight: 600;
         color: var(--dominds-primary, #007acc);
@@ -5461,6 +5548,22 @@ export class DomindsDialogContainer extends HTMLElement {
       .teammate-session-slug {
         color: var(--dominds-text-secondary, #64748b);
         font-size: var(--dominds-font-size-sm, 12px);
+      }
+
+      .teammate-kind-label {
+        font-weight: 700;
+        color: var(--color-warning, #d97706);
+      }
+
+      .teammate-meta {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 5px;
+        color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
+      }
+
+      .teammate-meta-sep {
+        color: var(--dominds-text-secondary, #64748b);
       }
 
       .teammate-content {

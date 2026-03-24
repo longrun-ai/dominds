@@ -73,12 +73,12 @@ export function formatRegisteredTellaskCallerUpdateNotice(language: LanguageCode
   if (language === 'zh') {
     return [
       prefix,
-      '刚才那轮诉请先不用继续等待了；对方接下来会按你更新后的要求继续处理，请以后续要求为准。',
+      '刚才那轮诉请不用再等了；对方接下来会按你刚更新的要求继续处理，后续请以最新要求为准。',
     ].join('\n');
   }
   return [
     prefix,
-    'You no longer need to wait on that earlier request. The teammate will continue from your updated request, so follow the later request from here.',
+    'You no longer need to wait on that earlier request. The teammate will continue under your updated request, so treat the latest request as the one now in effect.',
   ].join('\n');
 }
 

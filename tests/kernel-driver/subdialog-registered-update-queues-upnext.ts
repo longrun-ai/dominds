@@ -6,6 +6,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/runtime/driver-messages';
 import {
   formatAssignmentFromSupdialog,
+  formatTellaskReplacementNoticeContent,
   formatTellaskResponseContent,
   formatUpdatedAssignmentFromSupdialog,
 } from '../../main/runtime/inter-dialog-format';
@@ -151,15 +152,13 @@ async function main(): Promise<void> {
       true,
     );
 
-    const expectedReplacement = formatTellaskResponseContent({
-      callName: 'tellask',
+    const expectedReplacement = formatTellaskReplacementNoticeContent({
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList: ['@pangu'],
       sessionSlug,
       tellaskContent: initialBody,
       responseBody: formatRegisteredTellaskCallerUpdateNotice(language),
-      status: 'failed',
       language,
     });
     await waitFor(

@@ -29,6 +29,7 @@ import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
   formatTellaskCarryoverResultContent,
+  formatTellaskReplacementNoticeContent,
   formatTellaskResponseContent,
   formatUpdatedAssignmentFromSupdialog,
 } from '../../runtime/inter-dialog-format';
@@ -577,15 +578,13 @@ async function finishRegisteredTellaskReplacement(args: {
   const { ownerDialog, subdialog, pendingRecord, responseBody } = args;
   const language = getWorkLanguage();
   const requesterId = ownerDialog.agentId;
-  const response = formatTellaskResponseContent({
-    callName: pendingRecord.callName,
+  const response = formatTellaskReplacementNoticeContent({
     responderId: subdialog.agentId,
     requesterId,
     mentionList: pendingRecord.mentionList,
     sessionSlug: pendingRecord.sessionSlug,
     tellaskContent: pendingRecord.tellaskContent,
     responseBody,
-    status: 'failed',
     language,
   });
   const carryoverOriginCourse = pendingRecord.callingCourse;

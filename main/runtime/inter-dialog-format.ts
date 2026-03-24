@@ -58,6 +58,16 @@ export type TellaskResponseFormatInput = {
   language?: LanguageCode;
 };
 
+export type TellaskReplacementNoticeFormatInput = {
+  responderId: string;
+  requesterId: string;
+  mentionList?: string[];
+  sessionSlug?: string;
+  tellaskContent: string;
+  responseBody: string;
+  language?: LanguageCode;
+};
+
 export type TellaskCarryoverResultFormatInput = {
   originCourse: number;
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
@@ -315,6 +325,32 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
         : `regarding the original tellask: ${mentionLine} • ${sessionSlug}`;
 
   return `${markerPrefix}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
+}
+
+export function formatTellaskReplacementNoticeContent(
+  input: TellaskReplacementNoticeFormatInput,
+): string {
+  const language: LanguageCode = input.language ?? 'en';
+  const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
+  const responseBody = requireNonEmpty(input.responseBody, 'responseBody');
+  const mentionIds = (input.mentionList ?? [])
+    .map((item) => stripMentionPrefix(item))
+    .filter((item) => item !== '');
+  const mentionLine =
+    mentionIds.length === 0
+      ? `@${requireNonEmpty(input.requesterId, 'requesterId')}`
+      : mentionIds.map((mentionId) => `@${mentionId}`).join(' ');
+  const sessionSlug = input.sessionSlug?.trim() ?? '';
+  const tail =
+    language === 'zh'
+      ? sessionSlug === ''
+        ? `对应原始诉请： ${mentionLine}`
+        : `对应原始诉请： ${mentionLine} • ${sessionSlug}`
+      : sessionSlug === ''
+        ? `applies to the original tellask: ${mentionLine}`
+        : `applies to the original tellask: ${mentionLine} • ${sessionSlug}`;
+
+  return `${responseBody}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
 }
 
 export function formatTellaskCarryoverResultContent(
