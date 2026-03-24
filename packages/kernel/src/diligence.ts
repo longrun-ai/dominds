@@ -4,7 +4,7 @@ export const DEFAULT_DILIGENCE_PUSH_MAX = 3;
 
 export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
   zh: [
-    '你扪心自问（做一次 FBR），差遣牒已经包含足够明确的目标定义了吗？',
+    '先直接判断：差遣牒已经包含足够明确的目标定义了吗？',
     '',
     '如果没有，使用 `askHuman` 请求人类给出足够清晰的目标。',
     '',
@@ -12,7 +12,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     '如果已经完成，使用 `askHuman` 请求人类验收。',
     '',
-    '如果尚未完成，优先直接确定并执行下一步最优行动项（调用工具或诉请队友）。仅当“下一步不清晰/难以决策”时，才发起一次 freshBootsReasoning 扪心自问（FBR）；收齐该次回贴后，立即把结论落地为可执行动作并开始执行，不要只汇报决定。',
+    '如果尚未完成，优先直接确定并执行下一步最优行动项（调用工具或诉请队友），并立即开始执行，不要只汇报决定。',
     '',
     '当你确信自己不该或者不能自主继续工作时，立即使用 `askHuman` 请求人类确认相关问题或者指出工作方向。',
     '',
@@ -20,7 +20,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     '**注意**：',
     '',
-    '扪心自问时，自诉请正文需要包含对当前状况的完整事实性总结（但不要包含差遣牒已有内容）；发起 freshBootsReasoning 后不要立即下最终行动决策，先等回贴再综合。综合完成后必须立刻执行已确定行动（工具调用/诉请队友），避免停留在“仅汇报决定”的状态。',
+    '一旦你已经判断出下一步，就必须立刻把结论落地为可执行动作（工具调用/诉请队友），避免停留在“仅汇报决定”的状态。',
     '',
     '队友如果回复 “将要/可以” 做 XXX 的，你要审视祂所说是否符合整体/分项任务目标，是否值得继续：',
     '- 如果祂建议的事情可做可不做，那么就可以忽略，不以琐碎小事安排工作。',
@@ -33,7 +33,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '同理，若不存在“⏳ 进行中诉请（共 N 路，自动添加，手动删除）”这类提醒项，或某条历史诉请未出现在该提醒项中，都表示当前没有可等待的进行中诉请（通常代表该轮已回贴或已结束）；“继续等待”是错误动作，必须立即执行下一步：本地动作，或使用同一个 `sessionSlug` 再次调用 `tellask` 向对应队友发起下一轮诉请。',
   ].join('\n'),
   en: [
-    'Do a self-check (run one FBR): does the Taskdoc already contain a sufficiently clear goal definition?',
+    'First judge directly: does the Taskdoc already contain a sufficiently clear goal definition?',
     '',
     'If not, use `askHuman` to request a sufficiently clear goal.',
     '',
@@ -41,7 +41,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     'If yes, use `askHuman` to request acceptance.',
     '',
-    'If not complete, first determine and execute the best next action (tool call or teammate tellask). Use freshBootsReasoning for FBR only when the next move is unclear or hard to decide; after feedback from that FBR run is collected, immediately turn the conclusion into executable action and start execution. Do not stop at reporting a decision.',
+    'If not complete, first determine the best next action (tool call or teammate tellask), and start executing it immediately. Do not stop at reporting a decision.',
     '',
     'When you are convinced you should not or cannot continue autonomously, immediately use `askHuman` to confirm the relevant issue or provide direction.',
     '',
@@ -49,7 +49,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     '**Notes**:',
     '',
-    'When running FBR, the FBR body must include a complete factual summary of the current situation (but do not repeat information already present in the Taskdoc). After initiating a freshBootsReasoning, do not finalize the next action immediately; wait for feedback first, then synthesize. Once synthesized, immediately execute the chosen action (tool call / teammate tellask), and avoid staying in a “decision report only” state.',
+    'Once you have determined the next move, immediately turn that conclusion into executable action (tool call / teammate tellask), and avoid staying in a “decision report only” state.',
     '',
     'If a teammate replies that they “will/can do X”, examine whether it aligns with the overall/sub-task goals and is worth continuing:',
     '- If it is optional and low impact, ignore it instead of assigning trivial work.',
