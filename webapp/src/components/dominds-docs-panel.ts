@@ -1,6 +1,9 @@
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 
 import { normalizeLanguageCode, type LanguageCode } from '@longrun-ai/kernel/types/language';
 
@@ -268,6 +271,20 @@ export class DomindsDocsPanel extends HTMLElement {
     window.open(href, '_blank', 'noopener,noreferrer');
   }
 
+  private normalizeDocBodyLinkTargets(root: ParentNode): void {
+    if (!('querySelectorAll' in root)) return;
+    const anchors = root.querySelectorAll('a');
+    for (const anchorNode of anchors) {
+      if (!(anchorNode instanceof HTMLAnchorElement)) continue;
+      const href = anchorNode.getAttribute('href');
+      if (typeof href !== 'string') continue;
+      if (href.startsWith('#') || this.parseDocsLinkTarget(href) !== null) {
+        anchorNode.removeAttribute('target');
+        anchorNode.removeAttribute('rel');
+      }
+    }
+  }
+
   private scrollToPendingAnchorIfAny(): void {
     if (!this.pendingScrollAnchorId) return;
     const id = this.pendingScrollAnchorId;
@@ -316,6 +333,8 @@ export class DomindsDocsPanel extends HTMLElement {
         <div class="docs-body">${bodyHtml}</div>
       </div>
     `;
+    postprocessRenderedDomindsMarkdown(root);
+    this.normalizeDocBodyLinkTargets(root);
 
     root.querySelectorAll<HTMLButtonElement>('button.docs-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -349,6 +368,23 @@ export class DomindsDocsPanel extends HTMLElement {
           }
           if (!id) return;
           this.scrollToAnchorId(id);
+          return;
+        }
+
+        if (
+          href.startsWith('/f/') ||
+          href === '/f' ||
+          href === '/workspace' ||
+          href.startsWith('/workspace/') ||
+          href === '/rtws' ||
+          href.startsWith('/rtws/')
+        ) {
+          try {
+            const resolved = new URL(href, window.location.href);
+            this.openExternalLink(resolved.toString());
+          } catch {
+            // Ignore malformed URLs and fall through.
+          }
           return;
         }
 

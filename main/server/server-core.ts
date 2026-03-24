@@ -11,7 +11,7 @@ import type { WebSocket } from 'ws';
 import { createLogger } from '../log';
 import { ApiRouteContext, handleApiRoute, handleWorkspaceFilePreviewPage } from './api-routes';
 import type { AuthConfig } from './auth';
-import { getHttpAuthCheck } from './auth';
+import { getHttpAuthCheck, getHttpAuthCheckAllowUrlParam } from './auth';
 import { serveStatic } from './static-server';
 
 const log = createLogger('server-core');
@@ -96,6 +96,28 @@ export class HttpServerCore {
       // Try custom handlers first
       for (const handler of this.customHandlers) {
         if (await handler(req, res, pathname, query)) {
+          return;
+        }
+      }
+
+      if (
+        pathname === '/f' ||
+        pathname === '/f/' ||
+        pathname.startsWith('/f/') ||
+        pathname === '/workspace' ||
+        pathname === '/workspace/' ||
+        pathname.startsWith('/workspace/') ||
+        pathname === '/rtws' ||
+        pathname === '/rtws/' ||
+        pathname.startsWith('/rtws/')
+      ) {
+        const authCheck = getHttpAuthCheckAllowUrlParam(
+          req,
+          this.config.auth ?? { kind: 'disabled' },
+          requestUrl,
+        );
+        if (authCheck.kind !== 'ok') {
+          this.sendUnauthorized(res);
           return;
         }
       }

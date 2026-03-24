@@ -20,6 +20,7 @@ type WorkspaceFilePreviewTarget = {
   column?: number;
 };
 type MarkdownLinkToken = {
+  attrs?: Array<[string, string]> | null;
   attrGet: (name: string) => string | null;
   attrSet: (name: string, value: string) => void;
 };
@@ -28,7 +29,14 @@ type MarkdownRenderEnv = Readonly<{
   workspaceLinkBaseDir?: string;
 }>;
 const WORKSPACE_FILE_PREVIEW_ROUTE = '/f';
+const RTWS_PSEUDO_ROUTE_SEGMENTS = ['workspace', 'rtws', '<workspace>', '<rtws>'] as const;
 const DOMINDS_RTWS_DATA_ATTR = 'data-dominds-rtws';
+const DOMINDS_PREVIEW_PATH_ATTR = 'dominds-preview-path';
+const DOMINDS_PREVIEW_HREF_ATTR = 'dominds-preview-href';
+const DOMINDS_PREVIEW_STATE_ATTR = 'dominds-preview-state';
+const DOMINDS_PREVIEW_STATE_PENDING = 'pending';
+const DOMINDS_PREVIEW_STATE_READY = 'ready';
+const DOMINDS_PREVIEW_STATE_INVALID = 'invalid';
 
 function slugifyHeadingId(raw: string): string {
   const trimmed = raw.trim();
@@ -218,6 +226,93 @@ function normalizeRtwsRelativePath(
   return out;
 }
 
+function normalizeWorkspacePseudoRelativePath(rawPath: string): string | null {
+  const normalized = normalizeSlashPath(rawPath).replace(/\/+/g, '/').trim();
+  for (const prefix of RTWS_PSEUDO_ROUTE_SEGMENTS) {
+    let tail: string | null = null;
+    if (normalized === prefix || normalized === `/${prefix}`) {
+      tail = '';
+    } else if (normalized.startsWith(`/${prefix}/`)) {
+      tail = normalized.slice(prefix.length + 2);
+    } else if (normalized.startsWith(`${prefix}/`)) {
+      tail = normalized.slice(prefix.length + 1);
+    }
+    if (tail !== null) {
+      return normalizeRtwsRelativePath(tail, { allowRoot: true });
+    }
+  }
+  return null;
+}
+
+function decodeHrefPath(rawPath: string): string {
+  try {
+    return decodeURIComponent(rawPath);
+  } catch {
+    return rawPath;
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+function canRewriteSameRtwsHttpUrl(url: URL): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const current = new URL(window.location.href);
+    if (url.origin === current.origin) return true;
+    return (
+      url.protocol === current.protocol &&
+      url.port === current.port &&
+      isLoopbackHost(url.hostname) &&
+      isLoopbackHost(current.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function extractWorkspacePseudoHrefCandidate(rawHref: string): string | null {
+  const trimmed = rawHref.trim();
+  if (trimmed.length < 1) return null;
+  if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) return trimmed;
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!/^https?:$/i.test(parsedUrl.protocol)) return null;
+  if (!canRewriteSameRtwsHttpUrl(parsedUrl)) return null;
+  return decodeHrefPath(parsedUrl.pathname);
+}
+
+function parseWorkspacePseudoLinkTarget(rawHref: string): WorkspaceFilePreviewTarget | null {
+  const hrefCandidate = extractWorkspacePseudoHrefCandidate(rawHref);
+  if (hrefCandidate === null) return null;
+  const parsed = parseWorkspaceHrefPath(hrefCandidate);
+  if (parsed === null) return null;
+  const relativePath = normalizeWorkspacePseudoRelativePath(parsed.rawPath);
+  if (relativePath === null) return null;
+  return {
+    relativePath,
+    line: parsed.line,
+    column: parsed.column,
+  };
+}
+
+function deleteTokenAttr(token: MarkdownLinkToken, name: string): void {
+  if (!Array.isArray(token.attrs)) return;
+  token.attrs = token.attrs.filter(([attrName]) => attrName !== name);
+}
+
 function resolveRelativeWorkspaceFilePreviewTarget(
   rawHref: string,
   env: MarkdownRenderEnv,
@@ -360,7 +455,15 @@ const domPurifyConfig: DomPurifyConfig = {
     allowCustomizedBuiltInElements: false,
   },
   ADD_TAGS: [...allowedCustomElements],
-  ADD_ATTR: [...allowedCustomElementAttrs, 'id', 'target', 'rel'],
+  ADD_ATTR: [
+    ...allowedCustomElementAttrs,
+    'id',
+    'target',
+    'rel',
+    DOMINDS_PREVIEW_PATH_ATTR,
+    DOMINDS_PREVIEW_HREF_ATTR,
+    DOMINDS_PREVIEW_STATE_ATTR,
+  ],
 };
 
 const md = new MarkdownIt({
@@ -424,19 +527,22 @@ md.renderer.rules.link_open = (tokens, idx, options, _env, self): string => {
   const href = token.attrGet('href');
   const env = getMarkdownRenderEnv(_env);
   if (typeof href === 'string') {
+    const workspacePseudoLink = parseWorkspacePseudoLinkTarget(href);
     const workspaceFileLink = parseWorkspaceFileLinkTarget(href);
     const previewTarget =
-      workspaceFileLink !== null
+      workspacePseudoLink ??
+      (workspaceFileLink !== null
         ? resolveWorkspaceFilePreviewTarget(workspaceFileLink)
-        : resolveRelativeWorkspaceFilePreviewTarget(href, env);
+        : resolveRelativeWorkspaceFilePreviewTarget(href, env));
     if (previewTarget) {
-      token.attrSet('href', buildWorkspaceFilePreviewHref(previewTarget));
+      token.attrSet(DOMINDS_PREVIEW_PATH_ATTR, previewTarget.relativePath);
+      token.attrSet(DOMINDS_PREVIEW_HREF_ATTR, buildWorkspaceFilePreviewHref(previewTarget));
+      token.attrSet(DOMINDS_PREVIEW_STATE_ATTR, DOMINDS_PREVIEW_STATE_PENDING);
+      deleteTokenAttr(token, 'href');
       applyOpenInNewTabAttrs(token);
       return self.renderToken(tokens, idx, options);
     }
-    if (/^https?:\/\//i.test(href.trim())) {
-      applyOpenInNewTabAttrs(token);
-    }
+    applyOpenInNewTabAttrs(token);
   }
   return self.renderToken(tokens, idx, options);
 };
@@ -468,4 +574,128 @@ export function renderDomindsMarkdown(
     console.error('Markdown rendering error:', error);
     return escapeHtmlText(input);
   }
+}
+
+function getAuthTokenForWorkspaceLinkCheck(): string | null {
+  const authFromUrl = getAuthFromCurrentUrl();
+  if (authFromUrl !== null) return authFromUrl;
+  if (typeof window === 'undefined') return null;
+  try {
+    const authFromStorage = window.localStorage.getItem('dominds.authKey');
+    if (typeof authFromStorage !== 'string') return null;
+    const trimmed = authFromStorage.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveWorkspaceEntryBatch(
+  relativePaths: readonly string[],
+): Promise<Map<string, boolean>> {
+  const uniquePaths = Array.from(
+    new Set(relativePaths.map((path) => path.trim()).filter((path) => path.length > 0)),
+  );
+  const resultMap = new Map<string, boolean>();
+  if (uniquePaths.length < 1) return resultMap;
+
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  const authToken = getAuthTokenForWorkspaceLinkCheck();
+  if (authToken !== null) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  try {
+    const response = await fetch('/api/markdown-links/resolve', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ paths: uniquePaths }),
+      cache: 'no-store',
+    });
+    if (!response.ok) return resultMap;
+
+    const payload: unknown = await response.json();
+    if (typeof payload !== 'object' || payload === null) return resultMap;
+    const rawResults = (payload as { results?: unknown }).results;
+    if (!Array.isArray(rawResults)) return resultMap;
+
+    for (const entry of rawResults) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const path = (entry as { path?: unknown }).path;
+      const exists = (entry as { exists?: unknown }).exists;
+      if (typeof path !== 'string' || typeof exists !== 'boolean') continue;
+      resultMap.set(path, exists);
+    }
+    return resultMap;
+  } catch {
+    return resultMap;
+  }
+}
+
+function unwrapAnchor(anchor: HTMLAnchorElement): void {
+  const parent = anchor.parentNode;
+  if (parent === null) return;
+  const fragment = document.createDocumentFragment();
+  while (anchor.firstChild) {
+    fragment.appendChild(anchor.firstChild);
+  }
+  parent.replaceChild(fragment, anchor);
+}
+
+export function postprocessRenderedDomindsMarkdown(root: ParentNode): void {
+  if (typeof window === 'undefined') return;
+  if (!('querySelectorAll' in root)) return;
+
+  const anchors = root.querySelectorAll('a');
+  const previewAnchorsByPath = new Map<
+    string,
+    Array<{ anchor: HTMLAnchorElement; previewHref: string }>
+  >();
+  for (const anchorNode of anchors) {
+    if (!(anchorNode instanceof HTMLAnchorElement)) continue;
+    anchorNode.setAttribute('target', '_blank');
+    const relTokens = new Set(
+      (anchorNode.getAttribute('rel') ?? '')
+        .split(/\s+/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    );
+    relTokens.add('noopener');
+    relTokens.add('noreferrer');
+    anchorNode.setAttribute('rel', Array.from(relTokens).join(' '));
+
+    const previewPath = anchorNode.getAttribute(DOMINDS_PREVIEW_PATH_ATTR);
+    const previewHref = anchorNode.getAttribute(DOMINDS_PREVIEW_HREF_ATTR);
+    const previewState = anchorNode.getAttribute(DOMINDS_PREVIEW_STATE_ATTR);
+    if (typeof previewPath !== 'string' || typeof previewHref !== 'string') continue;
+    if (
+      previewState === DOMINDS_PREVIEW_STATE_READY ||
+      previewState === DOMINDS_PREVIEW_STATE_INVALID
+    ) {
+      continue;
+    }
+
+    anchorNode.setAttribute(DOMINDS_PREVIEW_STATE_ATTR, DOMINDS_PREVIEW_STATE_PENDING);
+    const bucket = previewAnchorsByPath.get(previewPath) ?? [];
+    bucket.push({ anchor: anchorNode, previewHref });
+    previewAnchorsByPath.set(previewPath, bucket);
+  }
+
+  if (previewAnchorsByPath.size < 1) return;
+
+  void resolveWorkspaceEntryBatch(Array.from(previewAnchorsByPath.keys())).then((results) => {
+    for (const [previewPath, anchorsForPath] of previewAnchorsByPath.entries()) {
+      const exists = results.get(previewPath) === true;
+      for (const item of anchorsForPath) {
+        if (!item.anchor.isConnected) continue;
+        if (exists) {
+          item.anchor.setAttribute('href', item.previewHref);
+          item.anchor.setAttribute(DOMINDS_PREVIEW_STATE_ATTR, DOMINDS_PREVIEW_STATE_READY);
+          continue;
+        }
+        item.anchor.setAttribute(DOMINDS_PREVIEW_STATE_ATTR, DOMINDS_PREVIEW_STATE_INVALID);
+        unwrapAnchor(item.anchor);
+      }
+    }
+  });
 }

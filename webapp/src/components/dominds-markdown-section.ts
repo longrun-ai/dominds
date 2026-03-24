@@ -3,7 +3,10 @@
  * Supports chunk-based incremental rendering
  */
 
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 
 export class DomindsMarkdownSection extends HTMLElement {
   private accumulatedRawMarkdown: string = '';
@@ -48,6 +51,7 @@ export class DomindsMarkdownSection extends HTMLElement {
         kind: 'chat',
         allowRelativeWorkspaceLinks: true,
       });
+      postprocessRenderedDomindsMarkdown(contentEl);
       // Store raw content in data attribute for persistence/reconstruction
       contentEl.setAttribute('data-raw-md', this.accumulatedRawMarkdown);
     }

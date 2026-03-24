@@ -8,7 +8,10 @@ import {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 
 type LoadState =
   | { kind: 'idle' }
@@ -127,6 +130,7 @@ export class DomindsTeamManualPanel extends HTMLElement {
         <div class="body">${bodyHtml}</div>
       </div>
     `;
+    postprocessRenderedDomindsMarkdown(root);
 
     root.querySelectorAll<HTMLButtonElement>('button.topic').forEach((btn) => {
       btn.addEventListener('click', () => {

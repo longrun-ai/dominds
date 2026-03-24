@@ -64,6 +64,32 @@ export function getHttpAuthCheck(req: IncomingMessage, auth: AuthConfig): AuthCh
     : { kind: 'unauthorized', reason: 'invalid' };
 }
 
+export function getHttpAuthCheckAllowUrlParam(
+  req: IncomingMessage,
+  auth: AuthConfig,
+  requestUrl: URL,
+): AuthCheckResult {
+  if (auth.kind === 'disabled') return { kind: 'ok' };
+
+  const header = getSingleHeaderValue(req.headers.authorization);
+  if (header) {
+    const parsed = parseBearerAuthHeader(header);
+    if (!parsed) return { kind: 'unauthorized', reason: 'invalid' };
+    return constantTimeEqual(parsed.token, auth.key)
+      ? { kind: 'ok' }
+      : { kind: 'unauthorized', reason: 'invalid' };
+  }
+
+  const queryToken = requestUrl.searchParams.get('auth');
+  if (typeof queryToken !== 'string' || queryToken === '') {
+    return { kind: 'unauthorized', reason: 'missing' };
+  }
+
+  return constantTimeEqual(queryToken, auth.key)
+    ? { kind: 'ok' }
+    : { kind: 'unauthorized', reason: 'invalid' };
+}
+
 export function getWebSocketAuthCheck(req: IncomingMessage, auth: AuthConfig): AuthCheckResult {
   if (auth.kind === 'disabled') return { kind: 'ok' };
 

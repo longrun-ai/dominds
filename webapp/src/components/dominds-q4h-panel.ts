@@ -7,7 +7,10 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import { getUiStrings } from '../i18n/ui';
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 interface Q4HPanelProps {
@@ -406,6 +409,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       <style>${style}</style>
       ${html}
     `;
+    postprocessRenderedDomindsMarkdown(this.shadowRoot);
     this.setupEventListeners();
     this.applySelectionUi();
   }

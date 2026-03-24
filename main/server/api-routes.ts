@@ -345,6 +345,24 @@ export async function handleWorkspaceFilePreviewPage(
   res: ServerResponse,
   pathname: string,
 ): Promise<boolean> {
+  const pseudoPathRel = parseWorkspacePseudoPreviewPathname(pathname);
+  if (pseudoPathRel !== null) {
+    if (req.method !== 'GET') {
+      res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET' });
+      res.end('Method Not Allowed');
+      return true;
+    }
+
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const location = `${buildWorkspacePreviewRoutePath(pseudoPathRel)}${urlObj.search}`;
+    res.writeHead(307, {
+      Location: location,
+      'Cache-Control': 'no-store',
+    });
+    res.end();
+    return true;
+  }
+
   if (!(pathname === '/f' || pathname === '/f/' || pathname.startsWith('/f/'))) {
     return false;
   }
@@ -384,6 +402,9 @@ export async function handleWorkspaceFilePreviewPage(
       }
     }
   }
+
+  const initialPreviewPayload = await buildWorkspacePreviewPagePayload(pathRel);
+  const initialPreviewPayloadJson = serializeJsonForInlineScript(initialPreviewPayload);
 
   const html = `<!doctype html>
 <html lang="en">
@@ -565,7 +586,7 @@ export async function handleWorkspaceFilePreviewPage(
           <div id="preview-meta" class="meta"></div>
         </div>
         <div class="body">
-          <div id="status" class="status">Loading workspace entry...</div>
+          <div id="status" class="status">Loading preview...</div>
           <div id="code-wrap" class="code-wrap" style="display:none;">
             <div id="code-view" class="code-view"></div>
           </div>
@@ -900,15 +921,10 @@ export async function handleWorkspaceFilePreviewPage(
           return;
         }
 
+        var initialPayload = ${initialPreviewPayloadJson};
         var search = new URLSearchParams(window.location.search);
         var line = parsePositiveInt(search.get('line'));
         var column = parsePositiveInt(search.get('column'));
-        var authFromUrl = search.get('auth');
-        var authFromStorage = null;
-        try { authFromStorage = window.localStorage.getItem('dominds.authKey'); } catch {}
-        var token =
-          (typeof authFromUrl === 'string' && authFromUrl.trim() !== '' ? authFromUrl.trim() : null) ||
-          (typeof authFromStorage === 'string' && authFromStorage.trim() !== '' ? authFromStorage.trim() : null);
 
         pathEl.textContent = previewPath.length > 0 ? previewPath : '.';
         if (line !== null) {
@@ -917,64 +933,44 @@ export async function handleWorkspaceFilePreviewPage(
           metaEl.textContent = '';
         }
 
-        var headers = { Accept: 'application/json' };
-        if (token !== null) {
-          headers['Authorization'] = 'Bearer ' + token;
+        resetViews();
+        if (!initialPayload || initialPayload.success !== true || typeof initialPayload.kind !== 'string') {
+          var errorMessage =
+            initialPayload && typeof initialPayload.error === 'string' && initialPayload.error !== ''
+              ? initialPayload.error
+              : 'Failed to load preview';
+          setError(errorMessage);
+          return;
         }
 
-        resetViews();
-        fetch('/api/workspace/entry?path=' + encodeURIComponent(previewPath), {
-          method: 'GET',
-          headers: headers,
-          cache: 'no-store'
-        })
-          .then(function (resp) {
-            return resp.json().catch(function () { return {}; }).then(function (payload) {
-              return { ok: resp.ok, status: resp.status, payload: payload };
-            });
-          })
-          .then(function (result) {
-            if (!result.ok || !result.payload || result.payload.success !== true || typeof result.payload.kind !== 'string') {
-              var msg = result.payload && typeof result.payload.error === 'string' && result.payload.error !== ''
-                ? result.payload.error
-                : ('Request failed: HTTP ' + String(result.status));
-              setError(msg);
-              return;
-            }
+        showReady();
+        pathEl.textContent =
+          typeof initialPayload.path === 'string' && initialPayload.path.length > 0
+            ? initialPayload.path
+            : '.';
 
-            showReady();
-            pathEl.textContent =
-              typeof result.payload.path === 'string' && result.payload.path.length > 0
-                ? result.payload.path
-                : '.';
+        if (initialPayload.kind === 'file' && typeof initialPayload.raw === 'string') {
+          var lang = detectLang(typeof initialPayload.path === 'string' ? initialPayload.path : previewPath);
+          var sizeText = formatBytes(initialPayload.size);
+          var metaItems = [];
+          if (line !== null) metaItems.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
+          metaItems.push(lang);
+          if (sizeText) metaItems.push(sizeText);
+          metaEl.textContent = metaItems.join(' | ');
+          renderFile(initialPayload.raw, lang, line, column);
+          return;
+        }
 
-            if (result.payload.kind === 'file' && typeof result.payload.raw === 'string') {
-              var lang = detectLang(typeof result.payload.path === 'string' ? result.payload.path : previewPath);
-              var sizeText = formatBytes(result.payload.size);
-              var metaItems = [];
-              if (line !== null) metaItems.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
-              metaItems.push(lang);
-              if (sizeText) metaItems.push(sizeText);
-              metaEl.textContent = metaItems.join(' | ');
-              renderFile(result.payload.raw, lang, line, column);
-              return;
-            }
+        if (initialPayload.kind === 'directory' && Array.isArray(initialPayload.entries)) {
+          metaEl.textContent = 'directory | ' + String(initialPayload.entries.length) + ' entries';
+          renderDirectory(
+            typeof initialPayload.path === 'string' ? initialPayload.path : previewPath,
+            initialPayload.entries,
+          );
+          return;
+        }
 
-            if (result.payload.kind === 'directory' && Array.isArray(result.payload.entries)) {
-              metaEl.textContent = 'directory | ' + String(result.payload.entries.length) + ' entries';
-              renderDirectory(
-                typeof result.payload.path === 'string' ? result.payload.path : previewPath,
-                result.payload.entries,
-              );
-              return;
-            }
-
-            setError('Invalid preview payload');
-          })
-          .catch(function (err) {
-            var msg = err && typeof err.message === 'string' ? err.message : 'Failed to load workspace entry';
-            setError(msg);
-          });
+        setError('Invalid preview payload');
       })();
     </script>
   </body>
@@ -1265,9 +1261,8 @@ export async function handleApiRoute(
       return await handleReadDocsMarkdown(req, res);
     }
 
-    // Read workspace file or directory content for markdown preview links.
-    if (pathname === '/api/workspace/entry' && req.method === 'GET') {
-      return await handleReadWorkspaceEntry(req, res);
+    if (pathname === '/api/markdown-links/resolve' && req.method === 'POST') {
+      return await handleResolveMarkdownLinks(req, res);
     }
 
     if (pathname === '/api/snippets/builtin' && req.method === 'GET') {
@@ -1543,8 +1538,38 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
 }
 
 const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+const RTWS_PSEUDO_ROUTE_SEGMENTS = ['workspace', 'rtws'] as const;
 type WorkspacePreviewEntryKind = 'directory' | 'file' | 'other';
 type WorkspacePreviewResolvedKind = WorkspacePreviewEntryKind | 'broken' | 'outside_rtws';
+type WorkspacePreviewDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: WorkspacePreviewEntryKind;
+  resolvedKind: WorkspacePreviewResolvedKind;
+  size?: number;
+  isSymlink: boolean;
+  symlinkTarget?: string;
+};
+type WorkspacePreviewPagePayload =
+  | {
+      success: true;
+      kind: 'directory';
+      path: string;
+      entries: WorkspacePreviewDirectoryEntry[];
+    }
+  | {
+      success: true;
+      kind: 'file';
+      path: string;
+      raw: string;
+      size: number;
+    }
+  | {
+      success: false;
+      error: string;
+      path?: string;
+      status: number;
+    };
 
 function ensurePathSuffixSeparator(input: string): string {
   if (input.endsWith(path.sep)) return input;
@@ -1579,6 +1604,24 @@ function normalizeRtwsRelativePath(
   return normalized;
 }
 
+function normalizeWorkspacePseudoRelativePath(input: string): string | null {
+  const trimmed = input.trim();
+  for (const prefix of RTWS_PSEUDO_ROUTE_SEGMENTS) {
+    let tail: string | null = null;
+    if (trimmed === prefix || trimmed === `/${prefix}`) {
+      tail = '';
+    } else if (trimmed.startsWith(`/${prefix}/`)) {
+      tail = trimmed.slice(prefix.length + 2);
+    } else if (trimmed.startsWith(`${prefix}/`)) {
+      tail = trimmed.slice(prefix.length + 1);
+    }
+    if (tail !== null) {
+      return normalizeRtwsRelativePath(tail, { allowRoot: true });
+    }
+  }
+  return null;
+}
+
 function parseWorkspacePreviewPathname(pathname: string): string | null {
   if (pathname === '/f' || pathname === '/f/') return '';
   if (!pathname.startsWith('/f/')) return null;
@@ -1606,6 +1649,46 @@ function parseWorkspacePreviewPathname(pathname: string): string | null {
   }
 
   return normalizeRtwsRelativePath(decodedParts.join('/'), { allowRoot: true });
+}
+
+function parseWorkspacePseudoPreviewPathname(pathname: string): string | null {
+  for (const prefixSegment of RTWS_PSEUDO_ROUTE_SEGMENTS) {
+    const prefix = `/${prefixSegment}`;
+    if (pathname === prefix || pathname === `${prefix}/`) return '';
+    if (!pathname.startsWith(`${prefix}/`)) continue;
+
+    const tail = pathname.slice(prefix.length + 1);
+    if (tail.length < 1) return '';
+
+    const rawParts = tail.split('/');
+    const decodedParts: string[] = [];
+    for (const rawPart of rawParts) {
+      if (rawPart.length < 1) continue;
+
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(rawPart);
+      } catch {
+        return null;
+      }
+
+      if (decoded.length < 1) continue;
+      if (decoded.includes('/') || decoded.includes('\\') || decoded.includes('\0')) {
+        return null;
+      }
+      decodedParts.push(decoded);
+    }
+    return normalizeWorkspacePseudoRelativePath(decodedParts.join('/'));
+  }
+  return null;
+}
+
+function buildWorkspacePreviewRoutePath(pathRel: string): string {
+  if (pathRel.length < 1) return '/f';
+  return `/f/${pathRel
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}`;
 }
 
 async function getWorkspaceRootRealAbs(): Promise<string> {
@@ -1662,17 +1745,7 @@ async function listWorkspaceDirectoryEntries(params: {
   pathRel: string;
   dirAbsPath: string;
   workspaceRootRealAbs: string;
-}): Promise<
-  Array<{
-    name: string;
-    path: string;
-    kind: WorkspacePreviewEntryKind;
-    resolvedKind: WorkspacePreviewResolvedKind;
-    size?: number;
-    isSymlink: boolean;
-    symlinkTarget?: string;
-  }>
-> {
+}): Promise<WorkspacePreviewDirectoryEntry[]> {
   const entryNames = await fsPromises.readdir(params.dirAbsPath);
   const entries = await Promise.all(
     entryNames.map(async (name) => {
@@ -1755,18 +1828,15 @@ async function readFileHead(fileAbsPath: string, maxBytes: number): Promise<Buff
   }
 }
 
-async function handleReadWorkspaceEntry(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<boolean> {
-  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-  const pathRaw = urlObj.searchParams.get('path');
-  const pathRel =
-    typeof pathRaw === 'string' ? normalizeRtwsRelativePath(pathRaw, { allowRoot: true }) : '';
-
+async function buildWorkspacePreviewPagePayload(
+  pathRel: string | null,
+): Promise<WorkspacePreviewPagePayload> {
   if (pathRel === null) {
-    respondJson(res, 400, { success: false, error: 'Invalid workspace path' });
-    return true;
+    return {
+      success: false,
+      error: 'Invalid preview path. Expected /f/<rtws-relative-path> and no ..',
+      status: 400,
+    };
   }
 
   try {
@@ -1779,60 +1849,142 @@ async function handleReadWorkspaceEntry(
         dirAbsPath: resolved.resolvedAbsPath,
         workspaceRootRealAbs: resolved.workspaceRootRealAbs,
       });
-      respondJson(res, 200, {
+      return {
         success: true,
         kind: 'directory',
         path: pathRel,
         entries,
-      });
-      return true;
+      };
     }
 
     if (!stat.isFile()) {
-      respondJson(res, 400, {
+      return {
         success: false,
         error: 'Path must resolve to a file or directory',
         path: pathRel,
-      });
-      return true;
+        status: 400,
+      };
     }
+
     if (stat.size > WORKSPACE_FILE_PREVIEW_MAX_BYTES) {
-      respondJson(res, 413, {
+      return {
         success: false,
         error: `File too large for preview (max ${WORKSPACE_FILE_PREVIEW_MAX_BYTES} bytes)`,
         path: pathRel,
-        size: stat.size,
-      });
-      return true;
+        status: 413,
+      };
     }
 
     const raw = await fsPromises.readFile(resolved.candidateAbsPath, 'utf-8');
-    respondJson(res, 200, {
+    return {
       success: true,
       kind: 'file',
       path: pathRel,
       raw,
       size: stat.size,
-    });
-    return true;
+    };
   } catch (error: unknown) {
     const code = getErrorCode(error);
     if (code === 'ENOENT') {
-      respondJson(res, 404, { success: false, error: 'Path not found', path: pathRel });
-      return true;
+      return {
+        success: false,
+        error: 'Path not found',
+        path: pathRel,
+        status: 404,
+      };
     }
     if (code === 'OUTSIDE_RTWS') {
-      respondJson(res, 403, {
+      return {
         success: false,
         error: 'Path resolves outside rtws',
         path: pathRel,
-      });
-      return true;
+        status: 403,
+      };
     }
-    log.error('Failed to read workspace entry', error, { path: pathRel });
-    respondJson(res, 500, { success: false, error: 'Failed to read workspace entry' });
+    log.error('Failed to build workspace preview payload', error, { path: pathRel });
+    return {
+      success: false,
+      error: 'Failed to load preview',
+      path: pathRel,
+      status: 500,
+    };
+  }
+}
+
+function serializeJsonForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+async function resolveWorkspaceEntryExists(pathRel: string): Promise<boolean> {
+  const resolved = await resolveWorkspacePreviewPath(pathRel);
+  const stat = await fsPromises.stat(resolved.candidateAbsPath);
+  return stat.isFile() || stat.isDirectory();
+}
+
+async function handleResolveMarkdownLinks(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  let parsed: unknown;
+  try {
+    const body = await readRequestBody(req);
+    parsed = body.length > 0 ? JSON.parse(body) : {};
+  } catch {
+    respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
     return true;
   }
+
+  if (!isRecord(parsed)) {
+    respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
+    return true;
+  }
+
+  const pathsRaw = parsed['paths'];
+  if (!Array.isArray(pathsRaw)) {
+    respondJson(res, 400, { success: false, error: '`paths` must be an array' });
+    return true;
+  }
+
+  const normalizedPaths: string[] = [];
+  for (const entry of pathsRaw) {
+    if (typeof entry !== 'string') {
+      respondJson(res, 400, { success: false, error: '`paths` entries must be strings' });
+      return true;
+    }
+    const normalized = normalizeRtwsRelativePath(entry, { allowRoot: true });
+    if (normalized === null) {
+      respondJson(res, 400, { success: false, error: `Invalid workspace path: ${entry}` });
+      return true;
+    }
+    normalizedPaths.push(normalized);
+  }
+
+  const uniquePaths = Array.from(new Set(normalizedPaths));
+  const results = await Promise.all(
+    uniquePaths.map(async (pathRel) => {
+      try {
+        const exists = await resolveWorkspaceEntryExists(pathRel);
+        return { path: pathRel, exists };
+      } catch (error: unknown) {
+        const code = getErrorCode(error);
+        if (code === 'ENOENT' || code === 'OUTSIDE_RTWS') {
+          return { path: pathRel, exists: false };
+        }
+        throw error;
+      }
+    }),
+  );
+
+  respondJson(res, 200, {
+    success: true,
+    results,
+  });
+  return true;
 }
 
 async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse): Promise<boolean> {

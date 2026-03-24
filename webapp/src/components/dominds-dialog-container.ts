@@ -36,7 +36,10 @@ import mannedToolIcon from '../assets/manned-tool.svg';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
@@ -2515,6 +2518,7 @@ export class DomindsDialogContainer extends HTMLElement {
         kind: 'chat',
         allowRelativeWorkspaceLinks: true,
       });
+      postprocessRenderedDomindsMarkdown(bodyEl);
       bodyEl.classList.add('markdown-content');
       bodyEl.setAttribute('data-raw-md', event.tellaskContent);
       bodyEl.classList.add('completed');
@@ -2554,6 +2558,7 @@ export class DomindsDialogContainer extends HTMLElement {
                   kind: 'chat',
                   allowRelativeWorkspaceLinks: true,
                 });
+                postprocessRenderedDomindsMarkdown(block);
                 block.classList.add('markdown-content');
                 block.setAttribute('data-raw-md', raw);
                 resultEl.appendChild(block);
@@ -2629,6 +2634,7 @@ export class DomindsDialogContainer extends HTMLElement {
               kind: 'chat',
               allowRelativeWorkspaceLinks: true,
             });
+            postprocessRenderedDomindsMarkdown(resultEl);
             resultEl.setAttribute('data-raw-md', raw);
             resultEl.classList.add('markdown-content');
             resultEl.classList.add('completed');
