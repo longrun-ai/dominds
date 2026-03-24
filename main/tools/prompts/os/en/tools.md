@@ -48,6 +48,7 @@ Stop daemon process.
 **Parameters:**
 
 - `pid` (required): Daemon process ID (number)
+- `entire_pg` (optional): Whether to signal the entire process group (default: `true` on Unix-like systems, `false` on Windows; Windows does not support explicitly passing `true`)
 
 **Returns:**
 
@@ -150,6 +151,12 @@ shell_cmd({
 ```typescript
 stop_daemon({
   pid: 12345,
+});
+
+// On Unix-like systems, you can explicitly terminate the whole process group
+stop_daemon({
+  pid: 12345,
+  entire_pg: true,
 });
 ```
 

@@ -169,6 +169,7 @@ interface DaemonProcess {
   command: string;
   shell: string;
   process: ChildProcess;
+  processGroupId?: number;
   startTime: Date;
   stdoutBuffer: ScrollingBuffer;
   stderrBuffer: ScrollingBuffer;
@@ -180,6 +181,9 @@ interface DaemonProcess {
 
 // Global registry for daemon processes
 const daemonProcesses = new Map<number, DaemonProcess>();
+
+let trackedDaemonShutdownSigtermSent = false;
+let trackedDaemonShutdownSigkillSent = false;
 
 // Shell command arguments interface
 interface ShellCmdArgs {
@@ -197,6 +201,7 @@ interface ReadonlyShellArgs {
 // Stop daemon arguments interface
 interface StopDaemonArgs {
   pid: number;
+  entirePg: boolean;
 }
 
 // Get daemon output arguments interface
@@ -210,6 +215,60 @@ type ShellSpawnSpec = Readonly<{
   args: string[];
   shellLabel: string;
 }>;
+
+function resolveBestEffortDaemonSignalTarget(daemon: DaemonProcess): number {
+  if (process.platform !== 'win32' && daemon.processGroupId !== undefined) {
+    return -daemon.processGroupId;
+  }
+  return daemon.pid;
+}
+
+function signalTrackedDaemonsForProcessShutdown(signal: NodeJS.Signals): void {
+  const alreadySent =
+    signal === 'SIGTERM' ? trackedDaemonShutdownSigtermSent : trackedDaemonShutdownSigkillSent;
+  if (alreadySent) return;
+
+  if (signal === 'SIGTERM') {
+    trackedDaemonShutdownSigtermSent = true;
+  } else {
+    trackedDaemonShutdownSigkillSent = true;
+  }
+
+  for (const daemon of daemonProcesses.values()) {
+    const signalTarget = resolveBestEffortDaemonSignalTarget(daemon);
+    try {
+      process.kill(signalTarget, signal);
+    } catch (error: unknown) {
+      console.error('[os] failed to signal tracked daemon during process shutdown', {
+        pid: daemon.pid,
+        processGroupId: daemon.processGroupId ?? null,
+        signal,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  if (signal === 'SIGKILL') {
+    daemonProcesses.clear();
+  }
+}
+
+process.once('beforeExit', () => {
+  signalTrackedDaemonsForProcessShutdown('SIGTERM');
+});
+
+process.once('exit', () => {
+  signalTrackedDaemonsForProcessShutdown('SIGTERM');
+  signalTrackedDaemonsForProcessShutdown('SIGKILL');
+});
+
+process.once('SIGINT', () => {
+  signalTrackedDaemonsForProcessShutdown('SIGTERM');
+});
+
+process.once('SIGTERM', () => {
+  signalTrackedDaemonsForProcessShutdown('SIGTERM');
+});
 
 type ShellCmdReminderMeta = JsonObject & {
   pid: number;
@@ -377,7 +436,20 @@ function parseStopDaemonArgs(args: ToolArguments): StopDaemonArgs {
   if (typeof pid !== 'number') {
     throw new Error('stop_daemon.pid must be a number');
   }
-  return { pid };
+
+  const entirePg = args.entire_pg;
+  if (entirePg !== undefined && typeof entirePg !== 'boolean') {
+    throw new Error('stop_daemon.entire_pg must be a boolean if provided');
+  }
+
+  if (process.platform === 'win32' && entirePg === true) {
+    throw new Error('stop_daemon.entire_pg=true is unsupported on Windows');
+  }
+
+  return {
+    pid,
+    entirePg: entirePg ?? process.platform !== 'win32',
+  };
 }
 
 function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
@@ -498,6 +570,11 @@ const stopDaemonSchema: JsonSchema = {
     pid: {
       type: 'number',
       description: 'Process ID of the daemon to stop',
+    },
+    entire_pg: {
+      type: 'boolean',
+      description:
+        'Whether to signal the entire process group instead of only the tracked PID (default: true on Unix-like systems; false on Windows)',
     },
   },
   required: ['pid'],
@@ -716,6 +793,7 @@ export const shellCmdTool: FuncTool = {
     return new Promise((resolve) => {
       const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
       });
 
       const pid = childProcess.pid!;
@@ -738,6 +816,7 @@ export const shellCmdTool: FuncTool = {
           command,
           shell: spawnSpec.shellLabel,
           process: childProcess,
+          processGroupId: process.platform === 'win32' ? undefined : pid,
           startTime,
           stdoutBuffer,
           stderrBuffer,
@@ -1602,7 +1681,7 @@ export const stopDaemonTool: FuncTool = {
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
-    const { pid } = parseStopDaemonArgs(args);
+    const { pid, entirePg } = parseStopDaemonArgs(args);
 
     const daemon = daemonProcesses.get(pid);
     if (!daemon) {
@@ -1610,15 +1689,25 @@ export const stopDaemonTool: FuncTool = {
     }
 
     try {
-      // Kill the process
-      process.kill(pid, 'SIGTERM');
+      let signalTarget = pid;
+      if (entirePg) {
+        if (daemon.processGroupId === undefined) {
+          throw new Error(
+            'daemon has no isolated process group; rerun it after this update, or retry with entire_pg=false',
+          );
+        }
+        signalTarget = -daemon.processGroupId;
+      }
+
+      // Kill the tracked process or its entire process group.
+      process.kill(signalTarget, 'SIGTERM');
 
       // Wait a bit for graceful shutdown
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Force kill if still running
       try {
-        process.kill(pid, 'SIGKILL');
+        process.kill(signalTarget, 'SIGKILL');
       } catch (e) {
         // Process already terminated
       }
