@@ -181,42 +181,40 @@ export function formatReminderItemGuide(
   const metaValue = options && 'meta' in options ? options.meta : undefined;
   const isContinuationPackageReminder =
     isRecord(metaValue) && metaValue['kind'] === 'continuation_package';
-  const managedByToolRaw =
-    isRecord(metaValue) && typeof metaValue['managedByTool'] === 'string'
-      ? metaValue['managedByTool'].trim()
-      : undefined;
-  const sourceRaw =
-    isRecord(metaValue) && typeof metaValue['source'] === 'string'
-      ? metaValue['source'].trim()
-      : undefined;
+  const managerValue = isRecord(metaValue) ? metaValue['manager'] : undefined;
   const managementTool =
-    managedByToolRaw && managedByToolRaw.length > 0
-      ? managedByToolRaw
-      : sourceRaw && sourceRaw.length > 0
-        ? sourceRaw
-        : undefined;
+    isRecord(managerValue) && typeof managerValue['tool'] === 'string'
+      ? managerValue['tool'].trim()
+      : undefined;
 
-  const updateExampleRaw =
-    isRecord(metaValue) && typeof metaValue['updateExample'] === 'string'
-      ? metaValue['updateExample'].trim()
+  const updateValue = isRecord(metaValue) ? metaValue['update'] : undefined;
+  const updateAltInstruction =
+    isRecord(updateValue) && typeof updateValue['altInstruction'] === 'string'
+      ? updateValue['altInstruction'].trim()
       : undefined;
-  const editValue = isRecord(metaValue) ? metaValue['edit'] : undefined;
-  const updateExampleFromEdit =
-    isRecord(editValue) && typeof editValue['updateExample'] === 'string'
-      ? editValue['updateExample'].trim()
+  const updateInstruction =
+    updateAltInstruction && updateAltInstruction.length > 0
+      ? updateAltInstruction
+      : managementTool
+        ? `${managementTool}({ ... })`
+        : undefined;
+  const deleteValue = isRecord(metaValue) ? metaValue['delete'] : undefined;
+  const deleteAltInstruction =
+    isRecord(deleteValue) && typeof deleteValue['altInstruction'] === 'string'
+      ? deleteValue['altInstruction'].trim()
       : undefined;
-  const updateExample =
-    updateExampleRaw && updateExampleRaw.length > 0
-      ? updateExampleRaw
-      : updateExampleFromEdit && updateExampleFromEdit.length > 0
-        ? updateExampleFromEdit
-        : managementTool
-          ? `${managementTool}({ ... })`
-          : undefined;
+  const deleteInstruction =
+    language === 'zh'
+      ? deleteAltInstruction
+        ? `如果我要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
+        : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`
+      : deleteAltInstruction
+        ? `If I need to delete this reminder, I must not use delete_reminder; run: ${deleteAltInstruction}`
+        : `If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })`;
 
   if (language === 'zh') {
     if (managementTool) {
-      const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
+      const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
       return [
         `提醒项 #${index}（工具状态）`,
         '',
@@ -224,8 +222,8 @@ export function formatReminderItemGuide(
         '',
         `这条提醒项由工具 ${managementTool} 管理；如果我要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
         '',
-        `如果我要更新这条提醒项，可执行：${updateExampleSafe}`,
-        `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+        `如果我要更新这条提醒项，可执行：${updateInstructionSafe}`,
+        deleteInstruction,
         '',
         '---',
         content,
@@ -240,7 +238,7 @@ export function formatReminderItemGuide(
         '我应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后我必须尽快收敛。',
         '',
         `如果我要更新这份接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
-        `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+        deleteInstruction,
         '',
         '---',
         content,
@@ -254,7 +252,7 @@ export function formatReminderItemGuide(
       '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
       '',
       `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
-      `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`,
+      deleteInstruction,
       '',
       '---',
       content,
@@ -262,15 +260,15 @@ export function formatReminderItemGuide(
   }
 
   if (managementTool) {
-    const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
+    const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
     return `REMINDER ITEM #${index} (TOOL STATE)
 
 I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
 
 This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
 
-If I need to update this reminder, run: ${updateExampleSafe}
-If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+If I need to update this reminder, run: ${updateInstructionSafe}
+${deleteInstruction}
 ---
 ${content}`;
   }
@@ -282,7 +280,7 @@ I treat this as resume information for the next course, not as an automatic must
 I should keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. I should not duplicate Taskdoc content. In the new course, my first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, I should reconcile it early in the new course.
 
 If I need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
-If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+${deleteInstruction}
 ---
 ${content}`;
   }
@@ -293,7 +291,7 @@ This is my conspicuous self-reminder for easy-to-lose work details in the curren
 I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.
 
 If I need to update this reminder, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
-If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })
+${deleteInstruction}
 ---
 ${content}`;
 }

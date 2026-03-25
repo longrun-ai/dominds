@@ -157,10 +157,11 @@ export const updatePlanTool: FuncTool = {
       kind: 'plan',
       schemaVersion: 1,
       updatedAt: now,
-      source: 'update_plan',
-      managedByTool: 'update_plan',
-      edit: {
-        updateExample: 'update_plan({ "plan": [ { "step": "...", "status": "in_progress" } ] })',
+      manager: {
+        tool: 'update_plan',
+      },
+      update: {
+        altInstruction: 'update_plan({ "plan": [ { "step": "...", "status": "in_progress" } ] })',
       },
     };
 

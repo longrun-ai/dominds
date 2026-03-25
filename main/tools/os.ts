@@ -856,11 +856,14 @@ export const shellCmdTool: FuncTool = {
         // Add reminder for daemon process
         const reminderContent = `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`;
         dlg.addReminder(reminderContent, shellCmdReminderOwner, {
-          type: 'daemon',
+          kind: 'daemon',
           pid,
           command,
           shell: spawnSpec.shellLabel,
           startTime: formatUnifiedTimestamp(startTime),
+          delete: {
+            altInstruction: `stop_daemon({ "pid": ${pid} })`,
+          },
         });
 
         resolve(t.daemonStarted(pid, timeoutSeconds, command));

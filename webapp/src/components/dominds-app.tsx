@@ -10619,9 +10619,9 @@ export class DomindsApp extends HTMLElement {
       return content;
     }
     const metaPid = typeof meta.pid === 'number' ? meta.pid : undefined;
-    const metaType = typeof meta.type === 'string' ? meta.type : undefined;
+    const metaKind = typeof meta.kind === 'string' ? meta.kind : undefined;
     const metaCommand = typeof meta.command === 'string' ? meta.command : undefined;
-    if (metaType === 'daemon' && metaPid) {
+    if (metaKind === 'daemon' && metaPid) {
       const t = getUiStrings(this.uiLanguage);
       const pidStr = String(metaPid);
       const commandStr = metaCommand || t.unknownCommand;

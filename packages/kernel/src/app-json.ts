@@ -40,8 +40,15 @@ export type DomindsAppDialogRunControlJson = Readonly<{
 
 export type DomindsAppReminderOwnerJson = Readonly<{
   ref: string;
-  managedByTool?: string;
-  updateExample?: string;
+  manager?: Readonly<{
+    tool: string;
+  }>;
+  update?: Readonly<{
+    altInstruction: string;
+  }>;
+  delete?: Readonly<{
+    altInstruction: string;
+  }>;
 }>;
 
 export type DomindsAppContributesJson = Readonly<{
@@ -183,11 +190,47 @@ function parseReminderOwnerJson(
   if (!isRecord(v)) return { ok: false, errorText: `Invalid ${at}: expected object` };
   const ref = asString(v['ref']);
   if (!ref || ref.trim() === '') return { ok: false, errorText: `Invalid ${at}.ref: required` };
-  const managedByTool = asString(v['managedByTool']) ?? undefined;
-  const updateExample = asString(v['updateExample']) ?? undefined;
+  const managerRaw = v['manager'];
+  let manager: DomindsAppReminderOwnerJson['manager'];
+  if (managerRaw !== undefined) {
+    if (!isRecord(managerRaw)) {
+      return { ok: false, errorText: `Invalid ${at}.manager: expected object` };
+    }
+    const tool = asString(managerRaw['tool']);
+    if (!tool || tool.trim() === '') {
+      return { ok: false, errorText: `Invalid ${at}.manager.tool: required` };
+    }
+    manager = { tool };
+  }
+
+  const updateRaw = v['update'];
+  let update: DomindsAppReminderOwnerJson['update'];
+  if (updateRaw !== undefined) {
+    if (!isRecord(updateRaw)) {
+      return { ok: false, errorText: `Invalid ${at}.update: expected object` };
+    }
+    const altInstruction = asString(updateRaw['altInstruction']);
+    if (!altInstruction || altInstruction.trim() === '') {
+      return { ok: false, errorText: `Invalid ${at}.update.altInstruction: required` };
+    }
+    update = { altInstruction };
+  }
+
+  const deleteRaw = v['delete'];
+  let del: DomindsAppReminderOwnerJson['delete'];
+  if (deleteRaw !== undefined) {
+    if (!isRecord(deleteRaw)) {
+      return { ok: false, errorText: `Invalid ${at}.delete: expected object` };
+    }
+    const altInstruction = asString(deleteRaw['altInstruction']);
+    if (!altInstruction || altInstruction.trim() === '') {
+      return { ok: false, errorText: `Invalid ${at}.delete.altInstruction: required` };
+    }
+    del = { altInstruction };
+  }
   return {
     ok: true,
-    owner: { ref, managedByTool, updateExample },
+    owner: { ref, manager, update, delete: del },
   };
 }
 

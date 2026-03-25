@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       {
         content: 'Daemon reminder',
         owner: shellCmdOwner,
-        meta: { type: 'daemon', pid: 123, command: 'sleep 10' },
+        meta: { kind: 'daemon', pid: 123, command: 'sleep 10' },
       },
       {
         content: 'App tool reminder',
@@ -75,9 +75,12 @@ async function main(): Promise<void> {
           kind: 'app_reminder_owner',
           appId,
           ownerRef: 'playwright_interactive_manual',
-          managedByTool: 'playwright_interactive_manual',
-          source: 'playwright_interactive_manual',
-          updateExample: 'playwright_interactive_manual({})',
+          manager: {
+            tool: 'playwright_interactive_manual',
+          },
+          update: {
+            altInstruction: 'playwright_interactive_manual({})',
+          },
           workflow: 'playwright_interactive_manual',
         },
       },
@@ -103,7 +106,7 @@ async function main(): Promise<void> {
     assertRecord(reminders[1]);
     assert.equal(reminders[1]['ownerName'], 'shellCmd');
     assertRecord(reminders[1]['meta']);
-    assert.equal(reminders[1]['meta']['type'], 'daemon');
+    assert.equal(reminders[1]['meta']['kind'], 'daemon');
     assert.equal(reminders[1]['meta']['pid'], 123);
 
     assertRecord(reminders[2]);
@@ -111,6 +114,13 @@ async function main(): Promise<void> {
     assertRecord(reminders[2]['meta']);
     assert.equal(reminders[2]['meta']['appId'], appId);
     assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
+    assertRecord(reminders[2]['meta']['manager']);
+    assert.equal(reminders[2]['meta']['manager']['tool'], 'playwright_interactive_manual');
+    assertRecord(reminders[2]['meta']['update']);
+    assert.equal(
+      reminders[2]['meta']['update']['altInstruction'],
+      'playwright_interactive_manual({})',
+    );
 
     const loaded = await DialogPersistence.loadReminderState(dialogId);
     assert.equal(loaded.length, 3);
@@ -119,13 +129,17 @@ async function main(): Promise<void> {
     assert.ok(loaded[1].owner, 'Expected owner to be rehydrated for reminder[1]');
     assert.equal(loaded[1].owner.name, 'shellCmd');
     assertRecord(loaded[1].meta);
-    assert.equal(loaded[1].meta['type'], 'daemon');
+    assert.equal(loaded[1].meta['kind'], 'daemon');
     assert.equal(loaded[1].meta['pid'], 123);
     assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
     assert.equal(loaded[2].owner.name, appOwnerName);
     assertRecord(loaded[2].meta);
     assert.equal(loaded[2].meta['appId'], appId);
     assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');
+    assertRecord(loaded[2].meta['manager']);
+    assert.equal(loaded[2].meta['manager']['tool'], 'playwright_interactive_manual');
+    assertRecord(loaded[2].meta['update']);
+    assert.equal(loaded[2].meta['update']['altInstruction'], 'playwright_interactive_manual({})');
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.
     // This script intentionally tests only the current on-disk schema.

@@ -139,10 +139,14 @@ async function main(): Promise<void> {
       throw new Error('Expected persisted reminder meta to be an object');
     }
     assert.equal(meta.kind, 'plan', 'Expected persisted reminder meta.kind to be plan');
+    assert.ok(isRecord(meta.manager), 'Expected persisted reminder meta.manager to be an object');
+    if (!isRecord(meta.manager)) {
+      throw new Error('Expected persisted reminder meta.manager to be an object');
+    }
     assert.equal(
-      meta.managedByTool,
+      meta.manager.tool,
       'update_plan',
-      'Expected persisted reminder to stay managed by update_plan',
+      'Expected persisted reminder manager.tool to stay update_plan',
     );
   });
 

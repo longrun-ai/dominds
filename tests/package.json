@@ -75,6 +75,7 @@
     "reminder-format": "tsx reminders/reminder-format.ts",
     "reminder-context-health-continuation": "tsx reminders/context-health-continuation.ts",
     "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",
+    "reminder-delete-meta-guard": "tsx reminders/delete-reminder-meta-guard.ts",
     "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",

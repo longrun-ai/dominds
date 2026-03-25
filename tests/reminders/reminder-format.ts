@@ -28,7 +28,7 @@ async function main() {
   );
 
   const zhToolManaged = formatReminderItemGuide('zh', 1, 'Managed content\n', {
-    meta: { managedByTool: 'some_tool' },
+    meta: { manager: { tool: 'some_tool' } },
   });
   assert(
     zhToolManaged.includes('some_tool'),
@@ -47,20 +47,32 @@ async function main() {
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
   );
 
-  const zhLegacyViaSource = formatReminderItemGuide('zh', 3, 'Legacy content\n', {
-    meta: { kind: 'plan', source: 'some_tool' },
+  const zhPlanManager = formatReminderItemGuide('zh', 3, 'Managed content\n', {
+    meta: { kind: 'plan', manager: { tool: 'some_tool' } },
   });
   assert(
-    zhLegacyViaSource.includes('some_tool'),
-    'Expected legacy reminder with meta.source to infer management tool (zh)',
+    zhPlanManager.includes('some_tool'),
+    'Expected reminder meta manager.tool to be used (zh)',
   );
 
-  const zhEditExample = formatReminderItemGuide('zh', 4, 'Managed content\n', {
-    meta: { managedByTool: 'some_tool', edit: { updateExample: 'some_tool({ \"x\": 1 })' } },
+  const zhUpdateInstruction = formatReminderItemGuide('zh', 4, 'Managed content\n', {
+    meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
   });
   assert(
-    zhEditExample.includes('some_tool({ "x": 1 })'),
-    'Expected reminder meta edit.updateExample to be used (zh)',
+    zhUpdateInstruction.includes('some_tool({ "x": 1 })'),
+    'Expected reminder meta update.altInstruction to be used (zh)',
+  );
+
+  const zhDeleteExample = formatReminderItemGuide('zh', 6, 'Managed content\n', {
+    meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
+  });
+  assert(
+    zhDeleteExample.includes('stop_daemon({ "pid": 321 })'),
+    'Expected reminder meta delete.altInstruction to be used (zh)',
+  );
+  assert(
+    !zhDeleteExample.includes('delete_reminder({ "reminder_no": 6 })'),
+    'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (zh)',
   );
 
   const zhContinuation = formatReminderItemGuide('zh', 5, '接续信息\n', {
@@ -100,7 +112,7 @@ async function main() {
   );
 
   const enToolManaged = formatReminderItemGuide('en', 3, 'Managed content\n', {
-    meta: { managedByTool: 'some_tool' },
+    meta: { manager: { tool: 'some_tool' } },
   });
   assert(
     enToolManaged.includes('managed by tool some_tool'),
@@ -119,12 +131,24 @@ async function main() {
     'Expected en tool-managed reminder to use tool-state framing',
   );
 
-  const enEditExample = formatReminderItemGuide('en', 4, 'Managed content\n', {
-    meta: { managedByTool: 'some_tool', edit: { updateExample: 'some_tool({ \"x\": 1 })' } },
+  const enUpdateInstruction = formatReminderItemGuide('en', 4, 'Managed content\n', {
+    meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
   });
   assert(
-    enEditExample.includes('some_tool({ "x": 1 })'),
-    'Expected reminder meta edit.updateExample to be used (en)',
+    enUpdateInstruction.includes('some_tool({ "x": 1 })'),
+    'Expected reminder meta update.altInstruction to be used (en)',
+  );
+
+  const enDeleteExample = formatReminderItemGuide('en', 6, 'Managed content\n', {
+    meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
+  });
+  assert(
+    enDeleteExample.includes('stop_daemon({ "pid": 321 })'),
+    'Expected reminder meta delete.altInstruction to be used (en)',
+  );
+  assert(
+    !enDeleteExample.includes('delete_reminder({ "reminder_no": 6 })'),
+    'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (en)',
   );
 
   const enContinuation = formatReminderItemGuide('en', 5, 'Continuation details\n', {

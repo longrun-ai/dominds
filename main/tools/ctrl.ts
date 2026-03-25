@@ -102,6 +102,40 @@ function isJsonObject(value: unknown): value is JsonObject {
   return isRecord(value) && Object.values(value).every((item) => isJsonValue(item));
 }
 
+function getManagerTool(meta: unknown): string | undefined {
+  if (!isRecord(meta)) {
+    return undefined;
+  }
+  const manager = meta['manager'];
+  if (!isRecord(manager)) {
+    return undefined;
+  }
+  const tool = manager['tool'];
+  return typeof tool === 'string' && tool.trim().length > 0 ? tool.trim() : undefined;
+}
+
+function getDeleteAltInstruction(meta: unknown): string | undefined {
+  if (!isRecord(meta)) {
+    return undefined;
+  }
+
+  const deleteValue = meta['delete'];
+  if (!isRecord(deleteValue)) {
+    return undefined;
+  }
+
+  const altInstruction = deleteValue['altInstruction'];
+  return typeof altInstruction === 'string' && altInstruction.trim().length > 0
+    ? altInstruction.trim()
+    : undefined;
+}
+
+function formatManualDeleteBlockedError(language: LanguageCode, altInstruction: string): string {
+  return language === 'zh'
+    ? `错误：该提醒项不能用 delete_reminder 删除；请改为执行：${altInstruction}`
+    : `Error: This reminder cannot be deleted via delete_reminder. Use instead: ${altInstruction}`;
+}
+
 function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
   const indices: number[] = [];
   for (let index = 0; index < reminders.length; index += 1) {
@@ -366,6 +400,10 @@ export const deleteReminderTool: FuncTool = {
     if (targetIndex < 0) {
       return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
     }
+    const deleteAltInstruction = getDeleteAltInstruction(targetReminder.meta);
+    if (deleteAltInstruction !== undefined) {
+      return formatManualDeleteBlockedError(language, deleteAltInstruction);
+    }
     dlg.deleteReminder(targetIndex);
     return formatToolActionResult(language, 'deleted');
   },
@@ -472,16 +510,11 @@ export const updateReminderTool: FuncTool = {
     // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
     // may attach arbitrary metadata for reminder ownership/management.
     const meta = reminder?.meta;
-    if (isRecord(meta)) {
-      const managedByToolValue = meta['managedByTool'];
-      const managedByTool =
-        typeof managedByToolValue === 'string' ? managedByToolValue.trim() : undefined;
-
-      if (managedByTool && managedByTool.length > 0) {
-        return language === 'zh'
-          ? `错误：该提醒项由工具 ${managedByTool} 管理，不能用 update_reminder 修改；请使用 ${managedByTool} 更新。`
-          : `Error: This reminder is managed by tool ${managedByTool}. Do not edit it via update_reminder; use ${managedByTool} instead.`;
-      }
+    const managerTool = getManagerTool(meta);
+    if (managerTool !== undefined) {
+      return language === 'zh'
+        ? `错误：该提醒项由工具 ${managerTool} 管理，不能用 update_reminder 修改；请使用 ${managerTool} 更新。`
+        : `Error: This reminder is managed by tool ${managerTool}. Do not edit it via update_reminder; use ${managerTool} instead.`;
     }
 
     const contentValue = args['content'];

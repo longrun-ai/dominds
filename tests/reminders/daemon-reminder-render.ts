@@ -21,8 +21,17 @@ function requireDaemonPid(reminder: Reminder | undefined): number {
   assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
   assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
   assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  assert.equal(meta['kind'], 'daemon', 'Expected daemon reminder meta.kind to be daemon');
   const pid = meta['pid'];
   assert.equal(typeof pid, 'number', 'Expected daemon reminder meta.pid to be a number');
+  const deleteMeta = meta['delete'];
+  assert.equal(typeof deleteMeta, 'object', 'Expected daemon reminder meta.delete to exist');
+  assert.notEqual(deleteMeta, null, 'Expected daemon reminder meta.delete to be non-null');
+  assert.equal(
+    deleteMeta['altInstruction'],
+    `stop_daemon({ "pid": ${String(pid)} })`,
+    'Expected daemon reminder meta.delete.altInstruction to point to stop_daemon',
+  );
   return pid;
 }
 

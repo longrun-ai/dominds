@@ -25,27 +25,33 @@ type AppReminderOwnerDescriptor = Readonly<{
   appId: string;
   ownerRef: string;
   registryName: string;
-  managedByTool: string;
-  source: string;
-  updateExample: string;
+  managerTool: string;
+  updateAltInstruction?: string;
+  deleteAltInstruction?: string;
 }>;
 
 type AppReminderMeta = Readonly<{
   kind: 'app_reminder_owner';
   appId: string;
   ownerRef: string;
-  managedByTool: string;
-  source: string;
-  updateExample: string;
+  manager: Readonly<{
+    tool: string;
+  }>;
+  update?: Readonly<{
+    altInstruction: string;
+  }>;
+  delete?: Readonly<{
+    altInstruction: string;
+  }>;
 }>;
 
 const APP_REMINDER_META_KEYS = new Set([
   'kind',
   'appId',
   'ownerRef',
-  'managedByTool',
-  'source',
-  'updateExample',
+  'manager',
+  'update',
+  'delete',
   'ownerMeta',
 ]);
 
@@ -64,11 +70,27 @@ function isAppReminderMeta(value: unknown): value is AppReminderMeta {
   if (value['kind'] !== 'app_reminder_owner') return false;
   if (typeof value['appId'] !== 'string' || value['appId'].trim() === '') return false;
   if (typeof value['ownerRef'] !== 'string' || value['ownerRef'].trim() === '') return false;
-  if (typeof value['managedByTool'] !== 'string' || value['managedByTool'].trim() === '')
+  const manager = value['manager'];
+  if (!isRecord(manager)) return false;
+  if (typeof manager['tool'] !== 'string' || manager['tool'].trim() === '') return false;
+  const update = value['update'];
+  if (
+    update !== undefined &&
+    (!isRecord(update) ||
+      typeof update['altInstruction'] !== 'string' ||
+      update['altInstruction'].trim() === '')
+  ) {
     return false;
-  if (typeof value['source'] !== 'string' || value['source'].trim() === '') return false;
-  if (typeof value['updateExample'] !== 'string' || value['updateExample'].trim() === '')
+  }
+  const del = value['delete'];
+  if (
+    del !== undefined &&
+    (!isRecord(del) ||
+      typeof del['altInstruction'] !== 'string' ||
+      del['altInstruction'].trim() === '')
+  ) {
     return false;
+  }
   return true;
 }
 
@@ -81,16 +103,20 @@ function normalizeInsertPosition(remindersLength: number, position: number | und
   return normalized;
 }
 
-function toManagedByTool(owner: DomindsAppReminderOwnerJson): string {
-  const managedByTool = owner.managedByTool?.trim();
-  if (managedByTool && managedByTool.length > 0) return managedByTool;
+function toManagerTool(owner: DomindsAppReminderOwnerJson): string {
+  const tool = owner.manager?.tool?.trim();
+  if (tool && tool.length > 0) return tool;
   return owner.ref;
 }
 
-function toUpdateExample(owner: DomindsAppReminderOwnerJson): string {
-  const updateExample = owner.updateExample?.trim();
-  if (updateExample && updateExample.length > 0) return updateExample;
-  return `${toManagedByTool(owner)}({ ... })`;
+function toUpdateAltInstruction(owner: DomindsAppReminderOwnerJson): string | undefined {
+  const altInstruction = owner.update?.altInstruction?.trim();
+  return altInstruction && altInstruction.length > 0 ? altInstruction : undefined;
+}
+
+function toDeleteAltInstruction(owner: DomindsAppReminderOwnerJson): string | undefined {
+  const altInstruction = owner.delete?.altInstruction?.trim();
+  return altInstruction && altInstruction.length > 0 ? altInstruction : undefined;
 }
 
 function buildDescriptor(params: {
@@ -101,9 +127,9 @@ function buildDescriptor(params: {
     appId: params.appId,
     ownerRef: params.owner.ref,
     registryName: buildAppReminderOwnerRegistryName(params.appId, params.owner.ref),
-    managedByTool: toManagedByTool(params.owner),
-    source: toManagedByTool(params.owner),
-    updateExample: toUpdateExample(params.owner),
+    managerTool: toManagerTool(params.owner),
+    updateAltInstruction: toUpdateAltInstruction(params.owner),
+    deleteAltInstruction: toDeleteAltInstruction(params.owner),
   };
 }
 
@@ -115,9 +141,23 @@ function buildAppReminderMeta(
     kind: 'app_reminder_owner',
     appId: descriptor.appId,
     ownerRef: descriptor.ownerRef,
-    managedByTool: descriptor.managedByTool,
-    source: descriptor.source,
-    updateExample: descriptor.updateExample,
+    manager: {
+      tool: descriptor.managerTool,
+    },
+    ...(descriptor.updateAltInstruction === undefined
+      ? {}
+      : {
+          update: {
+            altInstruction: descriptor.updateAltInstruction,
+          },
+        }),
+    ...(descriptor.deleteAltInstruction === undefined
+      ? {}
+      : {
+          delete: {
+            altInstruction: descriptor.deleteAltInstruction,
+          },
+        }),
   };
   if (isJsonRecord(ownerMeta)) {
     return { ...ownerMeta, ...baseMeta };
