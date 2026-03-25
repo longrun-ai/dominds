@@ -37,15 +37,46 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
   return true;
 }
 
-function callTypeLabel(language: LanguageCode, callType: 'A' | 'B' | 'C'): string {
-  if (language === 'zh') {
-    if (callType === 'A') return '回问诉请';
-    if (callType === 'B') return '长线诉请';
-    return '一次性诉请';
+function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
+  if (view.callType === 'A') {
+    return language === 'zh' ? '回问诉请' : 'TellaskBack';
   }
-  if (callType === 'A') return 'TellaskBack';
-  if (callType === 'B') return 'Tellask Session';
-  return 'Fresh Tellask';
+
+  if (language === 'zh') {
+    switch (view.callName) {
+      case 'tellask':
+        return '长线诉请';
+      case 'tellaskSessionless':
+        return '一次性诉请';
+      case 'freshBootsReasoning':
+        return '扪心自问（FBR）';
+    }
+  }
+
+  switch (view.callName) {
+    case 'tellask':
+      return 'Tellask Session';
+    case 'tellaskSessionless':
+      return 'Fresh Tellask';
+    case 'freshBootsReasoning':
+      return 'Fresh Boots Reasoning (FBR)';
+  }
+}
+
+function pendingTargetLabel(language: LanguageCode, view: PendingSubdialogView): string {
+  if (view.callType === 'A') {
+    return language === 'zh'
+      ? `上游诉请者 @${view.targetAgentId}`
+      : `upstream requester @${view.targetAgentId}`;
+  }
+
+  switch (view.callName) {
+    case 'freshBootsReasoning':
+      return language === 'zh' ? '本对话自身' : 'this dialog itself';
+    case 'tellask':
+    case 'tellaskSessionless':
+      return `@${view.targetAgentId}`;
+  }
 }
 
 function summarizeTellask(view: PendingSubdialogView): string {
@@ -104,8 +135,8 @@ function buildReminderContent(
   const lines = pending.map((p, idx) => {
     const base =
       language === 'zh'
-        ? `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellask(p)}`
-        : `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellask(p)}`;
+        ? `${idx + 1}. ${pendingTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`
+        : `${idx + 1}. ${pendingTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`;
     if (!p.sessionSlug) return base;
     return language === 'zh'
       ? `${base} | 会话: ${p.sessionSlug}`

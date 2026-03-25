@@ -117,6 +117,32 @@ function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
   return raw;
 }
 
+function formatDeclaredDeadSubdialogNotice(
+  language: 'zh' | 'en',
+  dialogId: string,
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+): string {
+  if (language === 'zh') {
+    switch (callName) {
+      case 'tellask':
+        return `${formatSystemNoticePrefix('zh')} 支线对话 ${dialogId} 已被用户宣布卡死（不可逆）。后续仍可重用相同的 slug 发起全新支线对话；只是此前的上下文已不再，新的诉请正文请提供最新的完整上下文信息。`;
+      case 'tellaskSessionless':
+        return `${formatSystemNoticePrefix('zh')} 支线对话 ${dialogId} 已被用户宣布卡死（不可逆）。这是一次性支线对话；后续若仍需继续，请重新发起新的支线对话。由于不会续接此前上下文，新的诉请正文请提供最新的完整上下文信息。`;
+      case 'freshBootsReasoning':
+        return `${formatSystemNoticePrefix('zh')} 支线对话 ${dialogId} 已被用户宣布卡死（不可逆）。这是一次扪心自问（FBR）支线对话；后续若仍需继续，请重新发起新的扪心自问（FBR）支线对话。由于不会续接此前上下文，新的诉请正文请提供最新的完整上下文信息。`;
+    }
+  }
+
+  switch (callName) {
+    case 'tellask':
+      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the new tellask body.`;
+    case 'tellaskSessionless':
+      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was a one-shot sideline dialog; if you still need the work, start a new sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+    case 'freshBootsReasoning':
+      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was an FBR sideline dialog; if you still need the work, start a new FBR sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+  }
+}
+
 const log = createLogger('websocket-handler');
 
 const wsLiveDlg = new WeakMap<WebSocket, Dialog>();
@@ -488,10 +514,11 @@ async function handleDeclareSubdialogDead(
 
   const parentDialog = await restoreDialogForDrive(callerDialogIdObj, 'running');
 
-  const responseText =
-    getWorkLanguage() === 'zh'
-      ? `${formatSystemNoticePrefix('zh')} 支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。后续可以重用相同的 slug 发起全新支线对话；只是之前的上下文已不再，诉请正文请提供最新的完整上下文信息。`
-      : `${formatSystemNoticePrefix('en')} sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the tellask body.`;
+  const responseText = formatDeclaredDeadSubdialogNotice(
+    getWorkLanguage(),
+    dialogIdObj.valueOf(),
+    metadata.assignmentFromSup.callName,
+  );
   const responseTextWithNote =
     note === ''
       ? responseText

@@ -9,7 +9,7 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
-import type { DialogIdent } from '@longrun-ai/kernel/types/wire';
+import type { AssignmentFromSup, DialogIdent } from '@longrun-ai/kernel/types/wire';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
@@ -27,6 +27,10 @@ interface Q4HInputProps {
   placeholder?: string;
   maxLength?: number;
 }
+
+type DialogContext = DialogIdent & {
+  assignmentFromSup?: AssignmentFromSup;
+};
 
 const RESIZE_HANDLE_ARIA_LABEL_I18N = {
   zh: '调整输入区高度',
@@ -53,7 +57,7 @@ export class DomindsQ4HInput extends HTMLElement {
     placeholder: 'Type your answer...',
     maxLength: 4000,
   };
-  private currentDialog: DialogIdent | null = null;
+  private currentDialog: DialogContext | null = null;
   private displayState: DialogDisplayState | null = null;
   private primaryActionMode: 'send' | 'queue_now' | 'stop' | 'stopping' = 'send';
 
@@ -230,7 +234,7 @@ export class DomindsQ4HInput extends HTMLElement {
     return this.selectedQuestionId;
   }
 
-  public setDialog(dialog: DialogIdent): void {
+  public setDialog(dialog: DialogContext): void {
     if (typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
       const t = getUiStrings(this.uiLanguage);
       this.showError(t.q4hInvalidDialogToast);
@@ -764,12 +768,25 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.props.disabled) {
       throw new Error(t.inputNotAvailableToast);
     }
-    const ok = window.confirm(t.declareDeathConfirm);
+    const ok = window.confirm(this.getDeclareDeathConfirmText());
     if (!ok) return;
     const note = this.textInput ? this.textInput.value : '';
     this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog, note });
     this.recordInputHistoryEntry(note);
     this.clear();
+  }
+
+  private getDeclareDeathConfirmText(): string {
+    const t = getUiStrings(this.uiLanguage);
+    const callName = this.currentDialog?.assignmentFromSup?.callName;
+    switch (callName) {
+      case 'tellaskSessionless':
+        return t.declareDeathConfirmSessionless;
+      case 'freshBootsReasoning':
+        return t.declareDeathConfirmFbr;
+      default:
+        return t.declareDeathConfirm;
+    }
   }
 
   private async requestStop(): Promise<void> {

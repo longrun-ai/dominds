@@ -117,6 +117,8 @@ export type UiStrings = {
   deadDialogInputDisabled: string;
   declareDeath: string;
   declareDeathConfirm: string;
+  declareDeathConfirmSessionless: string;
+  declareDeathConfirmFbr: string;
 
   q4hNoPending: string;
   q4hPendingQuestions: string;
@@ -468,7 +470,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       deadDialogInputDisabled: '此支线对话已宣布卡死（不可逆），输入已禁用。',
       declareDeath: '宣布卡死',
       declareDeathConfirm:
-        '宣布此支线对话“卡死”？此操作不可逆转；诉请方对话将收到系统反馈并不再等待该支线对话。后续可重用相同 slug 发起全新支线，但此前上下文不再保留，诉请正文需提供最新完整上下文。',
+        '宣布此支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续仍可重用相同 slug 发起全新支线，但此前上下文不再保留，新的诉请正文需提供最新完整上下文。',
+      declareDeathConfirmSessionless:
+        '宣布此一次性支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
+      declareDeathConfirmFbr:
+        '宣布此扪心自问（FBR）支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的扪心自问（FBR）支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
 
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
@@ -826,7 +832,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'This sideline dialog has been declared dead (irreversible); input is disabled.',
     declareDeath: 'Declare Death',
     declareDeathConfirm:
-      'Declare this sideline dialog as “dead”? This is irreversible; the upstream/requesting dialog will receive a system notice and stop waiting for it. You may reuse the same slug to start a new sideline dialog, but prior context will be gone, so include the latest full context in the tellask body.',
+      'Declare this sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. You may still reuse the same slug to start a new sideline dialog, but prior context will be gone, so include the latest full context in the new tellask body.',
+    declareDeathConfirmSessionless:
+      'Declare this one-shot sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. If the work is still needed later, start a new sideline dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
+    declareDeathConfirmFbr:
+      'Declare this FBR sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR sideline dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',
