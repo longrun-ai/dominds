@@ -191,11 +191,9 @@ function formatReplyFuncResult(args: {
   replyContent: string;
 }): string {
   const language = getWorkLanguage();
-  const title =
-    language === 'zh'
-      ? `已通过 \`${args.replyCallName}\` 送达回复：`
-      : `Reply delivered via \`${args.replyCallName}\`:`;
-  return `${title}\n\n${args.replyContent}`;
+  return language === 'zh'
+    ? `已通过 \`${args.replyCallName}\` 送达回复。`
+    : `Reply delivered via \`${args.replyCallName}\`.`;
 }
 
 function formatReplyFuncErrorResult(args: {
