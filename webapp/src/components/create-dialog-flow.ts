@@ -97,8 +97,13 @@ type PrimingSelectionPreferenceStore = {
   version: 1;
   byAgent: Record<string, PrimingSelectionPreference>;
 };
+type SearchableSuggestionDoc = SuggestionDoc & {
+  normalizedRelativePathForMatch: string;
+  normalizedNameForMatch: string;
+};
 
 const PRIMING_SELECTION_STORAGE_KEY = 'dominds-create-dialog-priming-selection-v1';
+const TASKDOC_SUGGESTION_DEBOUNCE_MS = 120;
 
 export class CreateDialogFlowController {
   private readonly deps: CreateDialogControllerDeps;
@@ -106,6 +111,7 @@ export class CreateDialogFlowController {
   private modal: HTMLElement | null = null;
   private activeKeydownListener: ((e: KeyboardEvent) => void) | null = null;
   private refreshI18nInModal: (() => void) | null = null;
+  private teardownModalInteractions: (() => void) | null = null;
 
   constructor(deps: CreateDialogControllerDeps) {
     this.deps = deps;
@@ -164,6 +170,10 @@ export class CreateDialogFlowController {
     if (this.activeKeydownListener) {
       this.modal.removeEventListener('keydown', this.activeKeydownListener, true);
       this.activeKeydownListener = null;
+    }
+    if (this.teardownModalInteractions) {
+      this.teardownModalInteractions();
+      this.teardownModalInteractions = null;
     }
     this.modal.remove();
     this.modal = null;
@@ -415,9 +425,18 @@ export class CreateDialogFlowController {
     let primingLoadSeq = 0;
     let primingSearchSeq = 0;
     let primingBoundAgentId = '';
+    let taskdocSuggestionTimer: number | null = null;
+    let pendingTaskdocSuggestionQuery: string | null = null;
     const isRecord = (value: unknown): value is Record<string, unknown> => {
       return typeof value === 'object' && value !== null && !Array.isArray(value);
     };
+    const searchableTaskDocuments: SearchableSuggestionDoc[] = this.deps
+      .getTaskDocuments()
+      .map((doc) => ({
+        ...doc,
+        normalizedRelativePathForMatch: stripTaskdocSuffixForMatch(doc.relativePath.toLowerCase()),
+        normalizedNameForMatch: stripTaskdocSuffixForMatch(doc.name.toLowerCase()),
+      }));
 
     const normalizePreference = (value: unknown): PrimingSelectionPreference | null => {
       if (!isRecord(value)) return null;
@@ -489,6 +508,13 @@ export class CreateDialogFlowController {
       if (!(errorEl instanceof HTMLElement)) return;
       errorEl.textContent = '';
       errorEl.style.display = 'none';
+    };
+
+    const clearTaskdocSuggestionTimer = (): void => {
+      if (taskdocSuggestionTimer !== null) {
+        window.clearTimeout(taskdocSuggestionTimer);
+        taskdocSuggestionTimer = null;
+      }
     };
 
     const setInlineError = (error: CreateDialogError): void => {
@@ -956,24 +982,22 @@ export class CreateDialogFlowController {
         hideSuggestions();
         return;
       }
-      currentSuggestions = this.deps
-        .getTaskDocuments()
+      currentSuggestions = searchableTaskDocuments
         .filter((doc) => {
-          const relativePathForMatch = stripTaskdocSuffixForMatch(doc.relativePath.toLowerCase());
-          const nameForMatch = stripTaskdocSuffixForMatch(doc.name.toLowerCase());
-          return relativePathForMatch.includes(normalized) || nameForMatch.includes(normalized);
+          return (
+            doc.normalizedRelativePathForMatch.includes(normalized) ||
+            doc.normalizedNameForMatch.includes(normalized)
+          );
         })
         .map((doc) => ({
           ...doc,
           _score: (() => {
-            const relativePathForMatch = stripTaskdocSuffixForMatch(doc.relativePath.toLowerCase());
-            const nameForMatch = stripTaskdocSuffixForMatch(doc.name.toLowerCase());
             return this.calculateSortScore(
-              nameForMatch.includes(normalized),
-              relativePathForMatch.includes(normalized),
-              nameForMatch.startsWith(normalized),
-              relativePathForMatch.startsWith(normalized),
-              nameForMatch === normalized,
+              doc.normalizedNameForMatch.includes(normalized),
+              doc.normalizedRelativePathForMatch.includes(normalized),
+              doc.normalizedNameForMatch.startsWith(normalized),
+              doc.normalizedRelativePathForMatch.startsWith(normalized),
+              doc.normalizedNameForMatch === normalized,
             );
           })(),
         }))
@@ -983,7 +1007,9 @@ export class CreateDialogFlowController {
           return a.name.localeCompare(b.name);
         })
         .slice(0, 50)
-        .map(({ _score, ...doc }) => doc);
+        .map(
+          ({ _score, normalizedRelativePathForMatch, normalizedNameForMatch, ...doc }) => doc,
+        );
       if (currentSuggestions.length === 0) {
         const t = strings();
         suggestions.innerHTML = `<div class="no-suggestions">${escapeHtml(t.taskDocumentNoMatches)}</div>`;
@@ -1006,8 +1032,33 @@ export class CreateDialogFlowController {
       selectedSuggestionIndex = -1;
     };
 
+    const flushPendingTaskdocSuggestions = (): void => {
+      clearTaskdocSuggestionTimer();
+      if (pendingTaskdocSuggestionQuery === null) {
+        return;
+      }
+      const query = pendingTaskdocSuggestionQuery;
+      pendingTaskdocSuggestionQuery = null;
+      updateSuggestions(query);
+    };
+
+    const scheduleTaskdocSuggestions = (query: string): void => {
+      pendingTaskdocSuggestionQuery = query;
+      clearTaskdocSuggestionTimer();
+      const delayMs = query.trim() === '' ? 0 : TASKDOC_SUGGESTION_DEBOUNCE_MS;
+      if (delayMs === 0) {
+        flushPendingTaskdocSuggestions();
+        return;
+      }
+      taskdocSuggestionTimer = window.setTimeout(() => {
+        flushPendingTaskdocSuggestions();
+      }, delayMs);
+    };
+
     const selectSuggestion = (index: number): void => {
       if (index < 0 || index >= currentSuggestions.length) return;
+      clearTaskdocSuggestionTimer();
+      pendingTaskdocSuggestionQuery = null;
       taskInput.value = currentSuggestions[index].relativePath;
       hideSuggestions();
       taskInput.focus();
@@ -1016,10 +1067,22 @@ export class CreateDialogFlowController {
     taskInput.addEventListener('input', (e) => {
       const target = e.target;
       if (!(target instanceof HTMLInputElement)) return;
-      updateSuggestions(target.value);
+      scheduleTaskdocSuggestions(target.value);
     });
 
     taskInput.addEventListener('keydown', (e) => {
+      if (
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'Tab' ||
+        e.key === 'Enter'
+      ) {
+        flushPendingTaskdocSuggestions();
+      }
+      if (e.key === 'Escape') {
+        clearTaskdocSuggestionTimer();
+        pendingTaskdocSuggestionQuery = null;
+      }
       if (suggestions.style.display === 'none') {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -1091,6 +1154,8 @@ export class CreateDialogFlowController {
 
     createBtn.addEventListener('click', async () => {
       if (createInFlight) return;
+      clearTaskdocSuggestionTimer();
+      pendingTaskdocSuggestionQuery = null;
       clearInlineError();
       if (hasVisibleSuggestions()) hideSuggestions();
 
@@ -1169,6 +1234,11 @@ export class CreateDialogFlowController {
         createBtn.click();
       }
     });
+
+    this.teardownModalInteractions = () => {
+      clearTaskdocSuggestionTimer();
+      pendingTaskdocSuggestionQuery = null;
+    };
   }
 
   private normalizeTaskDocPath(
