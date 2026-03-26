@@ -1007,9 +1007,7 @@ export class CreateDialogFlowController {
           return a.name.localeCompare(b.name);
         })
         .slice(0, 50)
-        .map(
-          ({ _score, normalizedRelativePathForMatch, normalizedNameForMatch, ...doc }) => doc,
-        );
+        .map(({ _score, normalizedRelativePathForMatch, normalizedNameForMatch, ...doc }) => doc);
       if (currentSuggestions.length === 0) {
         const t = strings();
         suggestions.innerHTML = `<div class="no-suggestions">${escapeHtml(t.taskDocumentNoMatches)}</div>`;
@@ -1071,12 +1069,7 @@ export class CreateDialogFlowController {
     });
 
     taskInput.addEventListener('keydown', (e) => {
-      if (
-        e.key === 'ArrowDown' ||
-        e.key === 'ArrowUp' ||
-        e.key === 'Tab' ||
-        e.key === 'Enter'
-      ) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab' || e.key === 'Enter') {
         flushPendingTaskdocSuggestions();
       }
       if (e.key === 'Escape') {

@@ -39,7 +39,8 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
   if (typeof value.updatedAt !== 'string') return false;
   const update = value.update;
   if (!isRecord(update)) return false;
-  if (typeof update.altInstruction !== 'string' || update.altInstruction.trim() === '') return false;
+  if (typeof update.altInstruction !== 'string' || update.altInstruction.trim() === '')
+    return false;
   return true;
 }
 
