@@ -19,6 +19,24 @@
 
 ## Tool List
 
+## Inter-dialog Reply Quick Reference
+
+The **tool descriptions themselves** for these functions intentionally stay minimal and spec-like. This section carries the smallest practical lookup for when they appear and how to choose among them.
+
+| Function                  | Minimal parameter contract   | When runtime exposes it                                                                       | Effect                                                     |
+| ------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `replyTellask`            | `{ replyContent: string }`   | Current sideline comes from a sessioned `tellask` and is ready for final delivery             | Delivers the final result for the current tellask session  |
+| `replyTellaskSessionless` | `{ replyContent: string }`   | Current sideline comes from a one-shot `tellaskSessionless` and is ready for final delivery   | Delivers the final result for the current one-shot tellask |
+| `replyTellaskBack`        | `{ replyContent: string }`   | Current dialog holds an unresolved `tellaskBack` reply directive                              | Delivers the final answer to the upstream ask-back         |
+| `tellaskBack`             | `{ tellaskContent: string }` | Current sideline is not done yet and needs clarification / ask-back / blocked-state reporting | Sends a follow-up request upstream; not final delivery     |
+
+### Minimal Usage Rules
+
+- Call whichever `reply*` runtime currently exposes; do not switch to another reply variant by yourself
+- If the assignment header explicitly names a reply function, follow that exact name
+- Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"
+- If you emit plain text instead of the reply tool, runtime may inject a temporary `role=user` reminder telling you to use the correct reply function
+
 ### 1. add_reminder
 
 Add reminder.
@@ -91,7 +109,32 @@ updated_at: <update timestamp>
 
 - `REMINDER_NOT_FOUND`: Reminder number does not exist
 
-### 4. change_mind
+### 4. clear_mind
+
+Start a new dialog course.
+
+Use when:
+
+- The current course has too much context noise and you want to continue in a fresh course
+- The continuation info is already stored in existing reminders, so `clear_mind({})` is enough
+- One extra continuation note is still missing from reminders, so you want to carry it with `reminder_content`
+
+**Parameters:**
+
+- `reminder_content` (optional): Extra continuation note; pass it only when that note is not already captured in existing reminders
+
+**Returns:**
+
+```yaml
+status: ok|error
+```
+
+**Minimal Rules:**
+
+- If you just finished writing the same continuation info via `add_reminder` / `update_reminder`, prefer `clear_mind({})`
+- If you are not sure whether it duplicates something, a small amount of redundancy is acceptable; do not risk losing information just to force perfect dedupe
+
+### 5. change_mind
 
 Update taskdoc chapter.
 
@@ -115,7 +158,7 @@ updated_at: <update timestamp>
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
-### 5. recall_taskdoc
+### 6. recall_taskdoc
 
 Read taskdoc chapter.
 
@@ -135,6 +178,27 @@ retrieved_at: <retrieval timestamp>
 ```
 
 ## Usage Examples
+
+### Switch Course and Reuse Existing Reminder
+
+```typescript
+update_reminder({
+  reminder_no: 1,
+  content:
+    'In the next course, run smoke first, then re-check the release script against port-injection config.',
+});
+
+clear_mind({});
+```
+
+### Switch Course and Add One Extra Continuation Note
+
+```typescript
+clear_mind({
+  reminder_content:
+    'In the next course, run smoke first, then re-check the release script against port-injection config.',
+});
+```
 
 ### Add Reminder
 
@@ -195,6 +259,14 @@ status: error
 error_code: <error code>
 message: <error message>
 ```
+
+## Documentation Split
+
+- Tool descriptions: minimal spec only
+- This chapter: quick lookup and input/output skeleton
+- `principles`: boundaries and decision rules
+- `scenarios`: copy-ready situational examples
+- `clear_mind` is designed to preserve continuation info first; correct guidance is preferred over programmatic dedupe
 
 ## Reminder Content Guidance
 

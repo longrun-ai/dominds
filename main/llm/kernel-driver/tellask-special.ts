@@ -7,6 +7,7 @@ import {
   toRootGenerationAnchor,
   type HumanQuestion,
   type PendingSubdialogStateRecord,
+  type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -43,7 +44,10 @@ import {
   buildProgrammaticFbrUnreasonableSituationContent,
   inspectFbrConclusionAttempt,
 } from './fbr';
-import { supplyResponseToSupdialog } from './subdialog';
+import {
+  supplyResponseToSupdialog,
+  supplySubdialogResponseToAssignedCallerIfPendingV2,
+} from './subdialog';
 import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
 import type { KernelDriverDriveCallbacks, KernelDriverHumanPrompt } from './types';
 
@@ -66,6 +70,9 @@ const TELLASK_SPECIAL_FUNCTION_NAMES = [
   'tellaskBack',
   'tellask',
   'tellaskSessionless',
+  'replyTellask',
+  'replyTellaskSessionless',
+  'replyTellaskBack',
   'askHuman',
   'freshBootsReasoning',
 ] as const;
@@ -95,6 +102,21 @@ export type TellaskSpecialCall =
     }>
   | Readonly<{
       callId: string;
+      callName: 'replyTellask';
+      replyContent: string;
+    }>
+  | Readonly<{
+      callId: string;
+      callName: 'replyTellaskSessionless';
+      replyContent: string;
+    }>
+  | Readonly<{
+      callId: string;
+      callName: 'replyTellaskBack';
+      replyContent: string;
+    }>
+  | Readonly<{
+      callId: string;
       callName: 'askHuman';
       tellaskContent: string;
     }>
@@ -110,12 +132,207 @@ export type TellaskSpecialCallParseIssue = Readonly<{
   error: string;
 }>;
 
+type ReplyTellaskCallName = 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+type NonReplyTellaskCallName = Exclude<TellaskSpecialCall['callName'], ReplyTellaskCallName>;
+
 export function isTellaskSpecialFunctionName(name: string): name is TellaskSpecialFunctionName {
   return (TELLASK_SPECIAL_FUNCTION_NAMES as readonly string[]).includes(name);
 }
 
+function isReplyTellaskCallName(name: string): name is ReplyTellaskCallName {
+  return (
+    name === 'replyTellask' || name === 'replyTellaskSessionless' || name === 'replyTellaskBack'
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export async function loadLatestActiveTellaskReplyDirective(
+  dialog: Dialog,
+): Promise<TellaskReplyDirective | undefined> {
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  if (!latest) {
+    return undefined;
+  }
+  const maxCourse = Math.floor(latest.currentCourse);
+  const resolvedTargetCallIds = new Set<string>();
+  for (let course = maxCourse; course >= 1; course -= 1) {
+    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event.type === 'tellask_reply_resolution_record') {
+        const targetCallId = event.targetCallId.trim();
+        if (targetCallId !== '') {
+          resolvedTargetCallIds.add(targetCallId);
+        }
+        continue;
+      }
+      if (event.type !== 'human_text_record') {
+        continue;
+      }
+      const directive = event.tellaskReplyDirective;
+      if (!directive) {
+        continue;
+      }
+      const targetCallId = directive.targetCallId.trim();
+      if (targetCallId === '' || resolvedTargetCallIds.has(targetCallId)) {
+        continue;
+      }
+      return directive;
+    }
+  }
+  return undefined;
+}
+
+function formatReplyFuncResult(args: {
+  replyCallName: ReplyTellaskCallName;
+  replyContent: string;
+}): string {
+  const language = getWorkLanguage();
+  const title =
+    language === 'zh'
+      ? `已通过 \`${args.replyCallName}\` 送达回复：`
+      : `Reply delivered via \`${args.replyCallName}\`:`;
+  return `${title}\n\n${args.replyContent}`;
+}
+
+function formatReplyFuncErrorResult(args: {
+  attemptedCallName: ReplyTellaskCallName;
+  expectedCallName?: ReplyTellaskCallName;
+  reason: 'wrong_tool' | 'no_active' | 'no_pending';
+}): string {
+  const language = getWorkLanguage();
+  if (language === 'zh') {
+    switch (args.reason) {
+      case 'wrong_tool':
+        if (!args.expectedCallName) {
+          throw new Error(
+            'replyTellask error formatting invariant violation: missing expectedCallName',
+          );
+        }
+        return (
+          `错误：当前精确应调用 \`${args.expectedCallName}\`，而不是 \`${args.attemptedCallName}\`。\n\n` +
+          `请改用 \`${args.expectedCallName}({ replyContent })\`。`
+        );
+      case 'no_active':
+        return (
+          `错误：当前没有待完成的跨对话回复义务。\n\n` +
+          `不要调用 \`${args.attemptedCallName}\`；请直接继续当前本地对话。`
+        );
+      case 'no_pending':
+        return (
+          `错误：当前已没有待本对话送达的跨对话回复义务（可能已回复或已失效）。\n\n` +
+          `不要再次调用 \`${args.attemptedCallName}\`；请直接继续当前本地对话。`
+        );
+    }
+  }
+  switch (args.reason) {
+    case 'wrong_tool':
+      if (!args.expectedCallName) {
+        throw new Error(
+          'replyTellask error formatting invariant violation: missing expectedCallName',
+        );
+      }
+      return (
+        `Error: the exact reply tool for the current state is \`${args.expectedCallName}\`, not \`${args.attemptedCallName}\`.\n\n` +
+        `Call \`${args.expectedCallName}({ replyContent })\` instead.`
+      );
+    case 'no_active':
+      return (
+        'Error: there is no active inter-dialog reply obligation right now.\n\n' +
+        `Do not call \`${args.attemptedCallName}\`; continue the current local conversation instead.`
+      );
+    case 'no_pending':
+      return (
+        'Error: there is no longer a pending inter-dialog reply obligation for this dialog (it may already be resolved or no longer valid).\n\n' +
+        `Do not call \`${args.attemptedCallName}\` again; continue the current local conversation instead.`
+      );
+  }
+}
+
+type ReplyTellaskExecutionResult = Readonly<{
+  messages: ChatMessage[];
+  delivered: boolean;
+}>;
+
+function buildAssignmentReplyDirective(args: {
+  callName: 'tellask' | 'tellaskSessionless';
+  targetCallId: string;
+  tellaskContent: string;
+}): TellaskReplyDirective {
+  return {
+    expectedReplyCallName: args.callName === 'tellask' ? 'replyTellask' : 'replyTellaskSessionless',
+    targetCallId: args.targetCallId,
+    tellaskContent: args.tellaskContent,
+  };
+}
+
+function buildTellaskBackReplyDirective(args: {
+  targetDialogId: string;
+  targetCallId: string;
+  tellaskContent: string;
+}): TellaskReplyDirective {
+  return {
+    expectedReplyCallName: 'replyTellaskBack',
+    targetDialogId: args.targetDialogId,
+    targetCallId: args.targetCallId,
+    tellaskContent: args.tellaskContent,
+  };
+}
+
+export async function deliverTellaskBackReplyFromDirective(args: {
+  dlg: Dialog;
+  directive: Extract<TellaskReplyDirective, { expectedReplyCallName: 'replyTellaskBack' }>;
+  replyContent: string;
+  callbacks: KernelDriverDriveCallbacks;
+  deliveryMode?: 'reply_tool' | 'direct_fallback';
+}): Promise<void> {
+  const rootDialog =
+    args.dlg instanceof RootDialog
+      ? args.dlg
+      : args.dlg instanceof SubDialog
+        ? args.dlg.rootDialog
+        : undefined;
+  if (!rootDialog) {
+    throw new Error('replyTellaskBack invariant violation: missing root dialog');
+  }
+  const targetDialogId = new DialogID(args.directive.targetDialogId, rootDialog.id.rootId);
+  const targetDialog =
+    rootDialog.lookupDialog(targetDialogId.selfId) ??
+    (await ensureDialogLoaded(rootDialog, targetDialogId, rootDialog.status));
+  if (!targetDialog) {
+    throw new Error(
+      `replyTellaskBack invariant violation: target dialog ${targetDialogId.selfId} not found`,
+    );
+  }
+  targetDialog.setSuspensionState('resumed');
+  const response = formatTellaskResponseContent({
+    callName: 'tellaskBack',
+    responderId: args.dlg.agentId,
+    requesterId: targetDialog.agentId,
+    tellaskContent: args.directive.tellaskContent,
+    responseBody: args.replyContent,
+    status: 'completed',
+    deliveryMode: args.deliveryMode,
+    language: getWorkLanguage(),
+  });
+  await targetDialog.receiveTellaskResponse(
+    args.dlg.agentId,
+    'tellaskBack',
+    undefined,
+    args.directive.tellaskContent,
+    'completed',
+    args.dlg.id,
+    {
+      response,
+      agentId: args.dlg.agentId,
+      callId: args.directive.targetCallId,
+      originMemberId: targetDialog.agentId,
+    },
+  );
+  await reviveDialogIfUnblocked(targetDialog, args.callbacks, 'reply_tellask_back_delivered');
 }
 
 function parseFuncCallArgsObject(call: FuncCallMsg):
@@ -237,13 +454,12 @@ function parseTellaskSpecialCall(
   }
   const args = argsResult.value;
 
-  const tellaskContent = readRequiredStringField(args, 'tellaskContent');
-  if (!tellaskContent.ok) {
-    return tellaskContent;
-  }
-
   switch (call.name) {
     case 'tellaskBack': {
+      const tellaskContent = readRequiredStringField(args, 'tellaskContent');
+      if (!tellaskContent.ok) {
+        return tellaskContent;
+      }
       return {
         ok: true,
         value: {
@@ -253,7 +469,27 @@ function parseTellaskSpecialCall(
         },
       };
     }
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack': {
+      const replyContent = readRequiredStringField(args, 'replyContent');
+      if (!replyContent.ok) {
+        return replyContent;
+      }
+      return {
+        ok: true,
+        value: {
+          callId: call.id,
+          callName: call.name,
+          replyContent: replyContent.value,
+        },
+      };
+    }
     case 'askHuman': {
+      const tellaskContent = readRequiredStringField(args, 'tellaskContent');
+      if (!tellaskContent.ok) {
+        return tellaskContent;
+      }
       return {
         ok: true,
         value: {
@@ -264,6 +500,10 @@ function parseTellaskSpecialCall(
       };
     }
     case 'freshBootsReasoning': {
+      const tellaskContent = readRequiredStringField(args, 'tellaskContent');
+      if (!tellaskContent.ok) {
+        return tellaskContent;
+      }
       const effort = readOptionalEffortField(args, 'effort');
       if (!effort.ok) {
         return effort;
@@ -279,6 +519,10 @@ function parseTellaskSpecialCall(
       };
     }
     case 'tellask': {
+      const tellaskContent = readRequiredStringField(args, 'tellaskContent');
+      if (!tellaskContent.ok) {
+        return tellaskContent;
+      }
       const target = readTargetAgentId(args);
       if (!target.ok) {
         return target;
@@ -311,6 +555,10 @@ function parseTellaskSpecialCall(
       };
     }
     case 'tellaskSessionless': {
+      const tellaskContent = readRequiredStringField(args, 'tellaskContent');
+      if (!tellaskContent.ok) {
+        return tellaskContent;
+      }
       const target = readTargetAgentId(args);
       if (!target.ok) {
         return target;
@@ -712,7 +960,7 @@ async function executeTellaskCall(
   callId: string,
   callbacks: KernelDriverDriveCallbacks,
   options: {
-    callName: TellaskSpecialCall['callName'];
+    callName: NonReplyTellaskCallName;
     parseResult: TellaskRoutingParseResult | null;
     targetForError?: string;
     collectiveTargets?: string[];
@@ -1176,6 +1424,11 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
+            tellaskReplyDirective: buildTellaskBackReplyDirective({
+              targetDialogId: dlg.id.selfId,
+              targetCallId: callId,
+              tellaskContent: body,
+            }),
           };
           await callbacks.driveDialog(supdialog, {
             humanPrompt: supPrompt,
@@ -1335,6 +1588,11 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
+            tellaskReplyDirective: buildAssignmentReplyDirective({
+              callName: 'tellaskSessionless',
+              targetCallId: callId,
+              tellaskContent: body,
+            }),
             subdialogReplyTarget: {
               ownerDialogId: callerDialog.id.selfId,
               callType: 'C',
@@ -1576,6 +1834,11 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
+            tellaskReplyDirective: buildAssignmentReplyDirective({
+              callName: 'tellask',
+              targetCallId: callId,
+              tellaskContent: body,
+            }),
             subdialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
@@ -1591,6 +1854,7 @@ async function executeTellaskCall(
               grammar: resumePrompt.grammar,
               userLanguageCode: resumePrompt.userLanguageCode,
               q4hAnswerCallIds: resumePrompt.q4hAnswerCallIds,
+              tellaskReplyDirective: resumePrompt.tellaskReplyDirective,
               skipTaskdoc: resumePrompt.skipTaskdoc,
               subdialogReplyTarget: resumePrompt.subdialogReplyTarget,
             });
@@ -1636,6 +1900,11 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
+            tellaskReplyDirective: buildAssignmentReplyDirective({
+              callName: 'tellask',
+              targetCallId: callId,
+              tellaskContent: body,
+            }),
             subdialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
@@ -1706,6 +1975,11 @@ async function executeTellaskCall(
           msgId: generateShortId(),
           grammar: 'markdown',
           origin: 'runtime',
+          tellaskReplyDirective: buildAssignmentReplyDirective({
+            callName: 'tellaskSessionless',
+            targetCallId: callId,
+            tellaskContent: body,
+          }),
           subdialogReplyTarget: {
             ownerDialogId: dlg.id.selfId,
             callType: 'C',
@@ -1756,7 +2030,7 @@ async function executeTellaskCall(
 
 async function emitTellaskSpecialCallEvents(args: {
   dlg: Dialog;
-  callName: TellaskSpecialCall['callName'];
+  callName: NonReplyTellaskCallName;
   mentionList?: string[];
   sessionSlug?: string;
   tellaskContent: string;
@@ -1769,6 +2043,151 @@ async function emitTellaskSpecialCallEvents(args: {
     sessionSlug: args.sessionSlug,
     tellaskContent: args.tellaskContent,
   });
+}
+
+async function executeReplyTellaskCall(args: {
+  dlg: Dialog;
+  call:
+    | Extract<ExecutableValidTellaskCall, { callName: 'replyTellask' }>
+    | Extract<ExecutableValidTellaskCall, { callName: 'replyTellaskSessionless' }>
+    | Extract<ExecutableValidTellaskCall, { callName: 'replyTellaskBack' }>;
+  callbacks: KernelDriverDriveCallbacks;
+}): Promise<ReplyTellaskExecutionResult> {
+  const genseq = args.dlg.activeGenSeqOrUndefined ?? 1;
+  const activeDirective = await loadLatestActiveTellaskReplyDirective(args.dlg);
+  const expectedCallName = activeDirective?.expectedReplyCallName;
+  if (!expectedCallName) {
+    return {
+      delivered: false,
+      messages: [
+        {
+          type: 'func_result_msg',
+          role: 'tool',
+          genseq,
+          id: args.call.callId,
+          name: args.call.callName,
+          content: formatReplyFuncErrorResult({
+            attemptedCallName: args.call.callName,
+            reason: 'no_active',
+          }),
+        },
+      ],
+    };
+  }
+  if (expectedCallName !== args.call.callName) {
+    return {
+      delivered: false,
+      messages: [
+        {
+          type: 'func_result_msg',
+          role: 'tool',
+          genseq,
+          id: args.call.callId,
+          name: args.call.callName,
+          content: formatReplyFuncErrorResult({
+            attemptedCallName: args.call.callName,
+            expectedCallName,
+            reason: 'wrong_tool',
+          }),
+        },
+      ],
+    };
+  }
+
+  switch (args.call.callName) {
+    case 'replyTellask':
+    case 'replyTellaskSessionless': {
+      if (!(args.dlg instanceof SubDialog)) {
+        throw new Error(
+          `${args.call.callName} invariant violation: only subdialogs may reply upstream`,
+        );
+      }
+      const expectedCallName =
+        args.call.callName === 'replyTellask' ? 'tellask' : 'tellaskSessionless';
+      if (args.dlg.assignmentFromSup.callName !== expectedCallName) {
+        throw new Error(
+          `${args.call.callName} invariant violation: assignment callName=${args.dlg.assignmentFromSup.callName}`,
+        );
+      }
+      const supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+        subdialog: args.dlg,
+        responseText: args.call.replyContent,
+        responseGenseq: genseq,
+        replyResolution: {
+          callId: args.call.callId,
+          replyCallName: args.call.callName,
+        },
+        scheduleDrive: args.callbacks.scheduleDrive,
+      });
+      if (!supplied) {
+        return {
+          delivered: false,
+          messages: [
+            {
+              type: 'func_result_msg',
+              role: 'tool',
+              genseq,
+              id: args.call.callId,
+              name: args.call.callName,
+              content: formatReplyFuncErrorResult({
+                attemptedCallName: args.call.callName,
+                reason: 'no_pending',
+              }),
+            },
+          ],
+        };
+      }
+      return {
+        delivered: true,
+        messages: [
+          {
+            type: 'func_result_msg',
+            role: 'tool',
+            genseq,
+            id: args.call.callId,
+            name: args.call.callName,
+            content: formatReplyFuncResult({
+              replyCallName: args.call.callName,
+              replyContent: args.call.replyContent,
+            }),
+          },
+        ],
+      };
+    }
+    case 'replyTellaskBack': {
+      if (activeDirective.expectedReplyCallName !== 'replyTellaskBack') {
+        throw new Error('replyTellaskBack invariant violation: unexpected active reply directive');
+      }
+      await deliverTellaskBackReplyFromDirective({
+        dlg: args.dlg,
+        directive: activeDirective,
+        replyContent: args.call.replyContent,
+        callbacks: args.callbacks,
+        deliveryMode: 'reply_tool',
+      });
+      await args.dlg.appendTellaskReplyResolution({
+        callId: args.call.callId,
+        replyCallName: 'replyTellaskBack',
+        targetCallId: activeDirective.targetCallId,
+      });
+      return {
+        delivered: true,
+        messages: [
+          {
+            type: 'func_result_msg',
+            role: 'tool',
+            genseq,
+            id: args.call.callId,
+            name: args.call.callName,
+            content: formatReplyFuncResult({
+              replyCallName: args.call.callName,
+              replyContent: args.call.replyContent,
+            }),
+          },
+        ],
+      };
+    }
+  }
 }
 
 type ExecutableValidTellaskCall =
@@ -1794,6 +2213,21 @@ type ExecutableValidTellaskCall =
       tellaskContent: string;
       callId: string;
       q4hRemainingCallIds?: string[];
+    }>
+  | Readonly<{
+      callName: 'replyTellask';
+      replyContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'replyTellaskSessionless';
+      replyContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'replyTellaskBack';
+      replyContent: string;
+      callId: string;
     }>
   | Readonly<{
       callName: 'askHuman';
@@ -1834,6 +2268,14 @@ function toExecutableValidTellaskCall(call: TellaskSpecialCall): ExecutableValid
         targetAgentId: call.targetAgentId,
         callId: call.callId,
       };
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack':
+      return {
+        callName: call.callName,
+        replyContent: call.replyContent,
+        callId: call.callId,
+      };
     case 'askHuman':
       return {
         callName: call.callName,
@@ -1863,6 +2305,9 @@ function normalizeQ4HCalls(
         case 'tellaskSessionless':
           return { ...call, mentionList: [...call.mentionList] };
         case 'tellaskBack':
+        case 'replyTellask':
+        case 'replyTellaskSessionless':
+        case 'replyTellaskBack':
         case 'freshBootsReasoning':
           return { ...call };
       }
@@ -1916,9 +2361,10 @@ async function executeValidTellaskCalls(args: {
   dlg: Dialog;
   calls: readonly ExecutableValidTellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
-}): Promise<ChatMessage[]> {
+}): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   const executionCalls = normalizeQ4HCalls(args.calls, args.dlg);
   const results: ChatMessage[][] = [];
+  const successfulReplyCallIds: string[] = [];
   for (const call of executionCalls) {
     const runtimeMentionList = (() => {
       switch (call.callName) {
@@ -1926,20 +2372,27 @@ async function executeValidTellaskCalls(args: {
         case 'tellaskSessionless':
           return call.mentionList;
         case 'tellaskBack':
+        case 'replyTellask':
+        case 'replyTellaskSessionless':
+        case 'replyTellaskBack':
         case 'askHuman':
         case 'freshBootsReasoning':
           return undefined;
       }
     })();
-    const sessionSlug = call.callName === 'tellask' ? call.sessionSlug : undefined;
-    await emitTellaskSpecialCallEvents({
-      dlg: args.dlg,
-      callName: call.callName,
-      mentionList: runtimeMentionList,
-      sessionSlug,
-      tellaskContent: call.tellaskContent,
-      callId: call.callId,
-    });
+    if (!isReplyTellaskCallName(call.callName)) {
+      const nonReplyCall = call as Exclude<ExecutableValidTellaskCall, { replyContent: string }>;
+      const sessionSlug =
+        nonReplyCall.callName === 'tellask' ? nonReplyCall.sessionSlug : undefined;
+      await emitTellaskSpecialCallEvents({
+        dlg: args.dlg,
+        callName: nonReplyCall.callName,
+        mentionList: runtimeMentionList,
+        sessionSlug,
+        tellaskContent: nonReplyCall.tellaskContent,
+        callId: nonReplyCall.callId,
+      });
+    }
     let targetForError: string | undefined;
     let parseResult: TellaskRoutingParseResult | null;
     switch (call.callName) {
@@ -1948,6 +2401,20 @@ async function executeValidTellaskCalls(args: {
         parseResult =
           args.dlg instanceof SubDialog ? { type: 'A', agentId: args.dlg.supdialog.agentId } : null;
         break;
+      }
+      case 'replyTellask':
+      case 'replyTellaskSessionless':
+      case 'replyTellaskBack': {
+        const replyResult = await executeReplyTellaskCall({
+          dlg: args.dlg,
+          call,
+          callbacks: args.callbacks,
+        });
+        if (replyResult.delivered) {
+          successfulReplyCallIds.push(call.callId);
+        }
+        results.push(replyResult.messages);
+        continue;
       }
       case 'tellask': {
         const targetAgentId = call.targetAgentId;
@@ -1987,6 +2454,11 @@ async function executeValidTellaskCalls(args: {
         break;
       }
     }
+    if (isReplyTellaskCallName(call.callName)) {
+      throw new Error(
+        `replyTellask* control-flow invariant violation: unexpected call ${call.callName}`,
+      );
+    }
     const toolOutputs = await executeTellaskCall(
       args.dlg,
       runtimeMentionList,
@@ -2004,16 +2476,19 @@ async function executeValidTellaskCalls(args: {
     results.push(toolOutputs);
   }
 
-  return results.flatMap((result) => result);
+  return {
+    toolOutputs: results.flatMap((result) => result),
+    successfulReplyCallIds,
+  };
 }
 
 export async function executeTellaskSpecialCalls(args: {
   dlg: Dialog;
   calls: readonly TellaskSpecialCall[];
   callbacks: KernelDriverDriveCallbacks;
-}): Promise<ChatMessage[]> {
+}): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   if (args.calls.length === 0) {
-    return [];
+    return { toolOutputs: [], successfulReplyCallIds: [] };
   }
 
   return await executeValidTellaskCalls({

@@ -344,7 +344,26 @@ export interface HumanTextRecord extends RootGenerationRef {
   userLanguageCode?: LanguageCode;
   sourceTag?: 'priming_script';
   q4hAnswerCallIds?: string[];
+  tellaskReplyDirective?: TellaskReplyDirective;
 }
+
+export type TellaskReplyDirective =
+  | Readonly<{
+      expectedReplyCallName: 'replyTellask';
+      targetCallId: string;
+      tellaskContent: string;
+    }>
+  | Readonly<{
+      expectedReplyCallName: 'replyTellaskSessionless';
+      targetCallId: string;
+      tellaskContent: string;
+    }>
+  | Readonly<{
+      expectedReplyCallName: 'replyTellaskBack';
+      targetCallId: string;
+      targetDialogId: string;
+      tellaskContent: string;
+    }>;
 
 export interface FuncResultRecord extends RootGenerationRef {
   ts: string;
@@ -378,6 +397,16 @@ export interface TellaskCallResultRecord extends RootGenerationRef {
   status: 'completed' | 'failed';
   result: string;
   callId: string;
+  sourceTag?: 'priming_script';
+}
+
+export interface TellaskReplyResolutionRecord extends RootGenerationRef {
+  ts: string;
+  type: 'tellask_reply_resolution_record';
+  genseq: number;
+  callId: string;
+  replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  targetCallId: string;
   sourceTag?: 'priming_script';
 }
 
@@ -677,6 +706,7 @@ export type PersistedDialogRecord =
   | FuncResultRecord
   | QuestForSupRecord
   | TellaskCallResultRecord
+  | TellaskReplyResolutionRecord
   | TellaskCallCarryoverRecord
   | TellaskCallAnchorRecord
   | TellaskResponseRecord

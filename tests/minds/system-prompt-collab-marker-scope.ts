@@ -91,7 +91,7 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '本规则仅用于当前支线向上游回复（直接发正文）；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
+      '本规则仅用于当前支线向上游回复；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
     ),
   );
   assert.ok(
@@ -106,12 +106,17 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 `tellaskBack`。',
+      '当前支线已完成并能给出最终交付时：只服从运行时程序化给出的当前指令。若运行时点名了精确 reply 函数，就调用那个函数；不要自行改选其他 `reply*` 变体，也不要再走 `tellaskBack`。',
     ),
   );
   assert.ok(
     zhSideline.includes(
-      `仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注 ${zhMarkers.finalCompleted}。`,
+      `仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给上游并标注 ${zhMarkers.finalCompleted}。`,
+    ),
+  );
+  assert.ok(
+    zhSideline.includes(
+      '若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
     ),
   );
 
@@ -128,7 +133,7 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'This rule applies only when replying upstream from the current sideline (direct response body); tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
+      'This rule applies only when replying upstream from the current sideline; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
     ),
   );
   assert.ok(
@@ -143,26 +148,31 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not `tellaskBack`.',
+      'If the current sideline is complete and can deliver the final result: follow only the current programmatic runtime instruction. If runtime names an exact reply function, call that function; do not switch among `reply*` variants yourself, and do not use `tellaskBack` for final delivery.',
     ),
   );
   assert.ok(
     enSideline.includes(
-      `Runtime marks ${enMarkers.finalCompleted} and delivers upstream only when the current sideline has fully completed its objectives and directly replies.`,
+      `Runtime marks ${enMarkers.finalCompleted} and delivers upstream only when runtime currently names an exact reply function and you reply through that named function.`,
+    ),
+  );
+  assert.ok(
+    enSideline.includes(
+      'If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
     ),
   );
 
   const zhAssignment = buildAssignmentPrompt('zh');
   assert.ok(
     zhAssignment.includes(
-      '你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @caller（当前发起本次诉请）。完成任务时直接回复即可；只有在需要回问上游时才调用 `tellaskBack`。',
+      '你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @caller（当前发起本次诉请）。本轮精确完成回复函数名是 `replyTellask`；不要自行改选其他 `reply*` 变体。完成任务时必须调用 `replyTellask`；只有在需要回问上游时才调用 `tellaskBack`。',
     ),
   );
 
   const enAssignment = buildAssignmentPrompt('en');
   assert.ok(
     enAssignment.includes(
-      'You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @caller (the current caller). When the task is complete, reply directly; call `tellaskBack` only when you need to ask back upstream.',
+      'You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @caller (the current caller). The exact completion reply function for this round is `replyTellask`; do not switch to another `reply*` variant by yourself. When the task is complete, you must call `replyTellask`; call `tellaskBack` only when you need to ask back upstream.',
     ),
   );
   assert.ok(
@@ -196,6 +206,19 @@ function main(): void {
   });
   assert.ok(zhAskBackReply.startsWith(`${zhMarkers.tellaskBack}\n\n@tester 已回复：`));
   assert.equal(zhMarkers.tellaskBack, '【回问诉请】');
+
+  const enFallbackReply = formatTellaskResponseContent({
+    callName: 'tellaskSessionless',
+    responderId: 'tester',
+    requesterId: 'caller',
+    mentionList: ['@tester'],
+    tellaskContent: 'Please summarize the blocker.',
+    responseBody: 'The blocker is still pending.',
+    status: 'completed',
+    deliveryMode: 'direct_fallback',
+    language: 'en',
+  });
+  assert.ok(enFallbackReply.includes('did not use a replyTellask* tool'));
 
   console.log('✅ system-prompt-collab-marker-scope: ok');
 }

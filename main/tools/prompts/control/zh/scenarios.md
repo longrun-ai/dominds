@@ -37,27 +37,67 @@ delete_reminder({
 });
 ```
 
-## 场景 2：阻塞问题记录
+## 场景 2：支线已完成，按 assignment 头部要求调用 replyTellask
 
 ### 场景描述
 
-记录当前遇到的阻塞问题。
+当前支线处理完毕，assignment 头部明确写着“完成任务时必须调用 `replyTellask`”。
 
 ### 示例
 
 ```typescript
-add_reminder({
-  content: '阻塞: 等待后端 API 文档确认',
-});
-
-// 阻塞解决后
-update_reminder({
-  reminder_no: 1,
-  content: '阻塞已解决: 后端 API 文档已确认',
+replyTellask({
+  replyContent: '已核对实现与约束，结论：当前方案可接受，剩余风险为测试覆盖不足。',
 });
 ```
 
-## 场景 3：差遣牒进度更新
+### 关键点
+
+- 不要再发一条普通最终消息代替
+- `replyContent` 直接放最终交付正文
+- 若 assignment 头部写的是 `replyTellaskSessionless`，则同结构替换函数名
+
+## 场景 3：当前未完成，需要回问上游
+
+### 场景描述
+
+当前支线仍未完成，因此需要向上游补问缺失信息。
+
+### 示例
+
+```typescript
+tellaskBack({
+  tellaskContent: '还缺少生产环境端口与部署入口信息。请补充这两项后我再继续给出最终方案。',
+});
+
+// 等上游补充后，runtime 会在当前对话里继续推进
+```
+
+### 关键点
+
+- 未完成态用 `tellaskBack`，不要用 `replyTellask*`
+- `tellaskBack` 只负责把问题问回去，不负责最终交付
+
+## 场景 4：收到 ask-back 续诉请后，用 replyTellaskBack 收口
+
+### 场景描述
+
+你之前发过 `tellaskBack`，上游现在补回了所需信息，runtime 暴露了 `replyTellaskBack`。
+
+### 示例
+
+```typescript
+replyTellaskBack({
+  replyContent: '已基于你补充的生产端口与入口信息完成检查；结论：发布脚本只需补一条端口注入配置。',
+});
+```
+
+### 关键点
+
+- 看到 `replyTellaskBack` 被暴露时，说明当前语义是“回复上一条 ask-back”
+- 这时不要误用 `replyTellask` / `replyTellaskSessionless`
+
+## 场景 5：差遣牒进度更新
 
 ### 场景描述
 
@@ -73,7 +113,7 @@ change_mind({
 });
 ```
 
-## 场景 4：差遣牒目标更新
+## 场景 6：差遣牒目标更新
 
 ### 场景描述
 
@@ -89,7 +129,7 @@ change_mind({
 });
 ```
 
-## 场景 5：差遣牒约束更新
+## 场景 7：差遣牒约束更新
 
 ### 场景描述
 
@@ -105,7 +145,7 @@ change_mind({
 });
 ```
 
-## 场景 6：读取差遣牒
+## 场景 8：读取差遣牒
 
 ### 场景描述
 
@@ -127,7 +167,7 @@ recall_taskdoc({
 });
 ```
 
-## 场景 7：差遣牒维护
+## 场景 9：差遣牒维护
 
 ### 场景描述
 

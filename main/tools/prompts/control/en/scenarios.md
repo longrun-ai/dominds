@@ -37,27 +37,68 @@ delete_reminder({
 });
 ```
 
-## Scenario 2: Blocking Issue Recording
+## Scenario 2: Sideline is complete, and the assignment header requires replyTellask
 
 ### Scenario Description
 
-Record blocking issues encountered.
+The current sideline is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
 
 ### Example
 
 ```typescript
-add_reminder({
-  content: 'Blocked: Waiting for backend API documentation confirmation',
-});
-
-// After blocking resolved
-update_reminder({
-  reminder_no: 1,
-  content: 'Blocking resolved: Backend API documentation confirmed',
+replyTellask({
+  replyContent:
+    'I checked the implementation and constraints. Conclusion: the current approach is acceptable; the main remaining risk is insufficient test coverage.',
 });
 ```
 
-## Scenario 3: Taskdoc Progress Update
+### Key Points
+
+- Do not replace this with a plain final message
+- Put the final deliverable body directly in `replyContent`
+- If the header says `replyTellaskSessionless`, use the same shape with that exact function name
+
+## Scenario 3: Work is not finished yet, and an upstream clarification is required
+
+### Scenario Description
+
+The sideline is still blocked or incomplete, so you need to ask upstream for missing information.
+
+### Example
+
+```typescript
+tellaskBack({
+  tellaskContent:
+    'I still need the production port and deployment entrypoint before I can give the final answer.',
+});
+```
+
+### Key Points
+
+- Use `tellaskBack` while the work is still unfinished
+- Do not use `replyTellask*` for intermediate clarifications
+
+## Scenario 4: Upstream answered the ask-back, so use replyTellaskBack to close
+
+### Scenario Description
+
+You previously sent a `tellaskBack`, upstream has now replied, and runtime exposes `replyTellaskBack`.
+
+### Example
+
+```typescript
+replyTellaskBack({
+  replyContent:
+    'With the production port and entrypoint confirmed, the review is complete. Conclusion: only one port-injection config line is missing in the release script.',
+});
+```
+
+### Key Points
+
+- If `replyTellaskBack` is exposed, the current semantics are "answer the previous ask-back"
+- Do not switch to `replyTellask` or `replyTellaskSessionless`
+
+## Scenario 5: Taskdoc Progress Update
 
 ### Scenario Description
 
@@ -73,7 +114,7 @@ change_mind({
 });
 ```
 
-## Scenario 4: Taskdoc Goals Update
+## Scenario 6: Taskdoc Goals Update
 
 ### Scenario Description
 
@@ -89,7 +130,7 @@ change_mind({
 });
 ```
 
-## Scenario 5: Taskdoc Constraints Update
+## Scenario 7: Taskdoc Constraints Update
 
 ### Scenario Description
 
@@ -105,7 +146,7 @@ change_mind({
 });
 ```
 
-## Scenario 6: Reading Taskdoc
+## Scenario 8: Reading Taskdoc
 
 ### Scenario Description
 
@@ -127,7 +168,7 @@ recall_taskdoc({
 });
 ```
 
-## Scenario 7: Taskdoc Maintenance
+## Scenario 9: Taskdoc Maintenance
 
 ### Scenario Description
 

@@ -220,6 +220,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
       return true;
     case 'web_search_call_record':
     case 'quest_for_sup_record':
+    case 'tellask_reply_resolution_record':
     case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
@@ -305,6 +306,7 @@ function rewriteRecordForFork(
     case 'human_text_record':
     case 'quest_for_sup_record':
     case 'tellask_call_result_record':
+    case 'tellask_reply_resolution_record':
     case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
     case 'tellask_response_record':

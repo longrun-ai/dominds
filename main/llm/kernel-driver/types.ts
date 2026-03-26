@@ -3,6 +3,7 @@ import type {
   DialogInterruptionReason,
 } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import type { Dialog, DialogID } from '../../dialog';
 
 export type KernelDriverRunControl = Readonly<{
@@ -56,6 +57,7 @@ export interface KernelDriverHumanPrompt {
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
   q4hAnswerCallIds?: string[];
+  tellaskReplyDirective?: TellaskReplyDirective;
   origin: 'user' | 'diligence_push' | 'runtime';
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: KernelDriverSubdialogReplyTarget;

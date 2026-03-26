@@ -19,6 +19,24 @@
 
 ## 工具列表
 
+## 跨对话 reply 速查
+
+这些函数的**工具自身说明**刻意保持最小规格风格；这里负责补充“何时会出现、出现后怎么选”的最小速查。
+
+| 函数                      | 最小参数契约                 | runtime 何时暴露                                                     | 调用后语义                          |
+| ------------------------- | ---------------------------- | -------------------------------------------------------------------- | ----------------------------------- |
+| `replyTellask`            | `{ replyContent: string }`   | 当前支线承接的是 sessioned `tellask`，且已进入可交付完成态           | 把最终结果回复给当前 `tellask` 会话 |
+| `replyTellaskSessionless` | `{ replyContent: string }`   | 当前支线承接的是 one-shot `tellaskSessionless`，且已进入可交付完成态 | 把最终结果回复给当前一次性诉请      |
+| `replyTellaskBack`        | `{ replyContent: string }`   | 当前对话持有一条未完成的 `tellaskBack` 回复指令                      | 把对上一条回问的最终答复送回上游    |
+| `tellaskBack`             | `{ tellaskContent: string }` | 当前支线尚未完成，但需要补问/澄清/报阻塞                             | 向上游发起续诉请，不算最终交付      |
+
+### 最小使用规则
+
+- 看见哪一个 `reply*` 被 runtime 暴露，就调用哪一个；不要自行改选别的 reply 变体
+- assignment 头部若已点名 reply 函数名，以那个名字为准
+- `replyContent` 只放最终交付正文，不要再包一层“我现在调用了 replyXXX”
+- 如果你直接输出普通文本而没调 reply 工具，runtime 可能插入一条 `role=user` 的 runtime reminder 纠正你
+
 ### 1. add_reminder
 
 添加提醒。
@@ -91,7 +109,32 @@ updated_at: <更新时间戳>
 
 - `REMINDER_NOT_FOUND`：提醒编号不存在
 
-### 4. change_mind
+### 4. clear_mind
+
+开启新一程对话。
+
+**适用：**
+
+- 当前程上下文噪音太大，需要换程继续
+- 已经把接续信息放进现有 reminder，此时直接 `clear_mind({})` 即可
+- 还差一条额外接续信息没写进 reminder，可用 `reminder_content` 一并带过去
+
+**参数：**
+
+- `reminder_content`（可选）：额外接续信息；只在该信息尚未写入现有 reminder 时再传
+
+**返回：**
+
+```yaml
+status: ok|error
+```
+
+**最小规则：**
+
+- 若你刚刚已经 `add_reminder` / `update_reminder` 完同一份接续信息，优先直接 `clear_mind({})`
+- 若不确定是否重复，少量重复可以接受；不要为了“绝不重复”而冒信息丢失风险
+
+### 5. change_mind
 
 更新差遣牒章节。
 
@@ -115,7 +158,7 @@ updated_at: <更新时间戳>
 - 变更对所有队友可见
 - 约束规则：`constraints` 只写任务特有硬要求，不得重复系统提示/工具文档中的全局规则；一经发现重复，必须删除并告知用户
 
-### 5. recall_taskdoc
+### 6. recall_taskdoc
 
 读取差遣牒章节。
 
@@ -135,6 +178,25 @@ retrieved_at: <读取时间戳>
 ```
 
 ## 使用示例
+
+### 换程但复用现有 reminder
+
+```typescript
+update_reminder({
+  reminder_no: 1,
+  content: '下一程先跑 smoke，再对照端口注入配置复核发布脚本。',
+});
+
+clear_mind({});
+```
+
+### 换程时补一条额外接续信息
+
+```typescript
+clear_mind({
+  reminder_content: '下一程先跑 smoke，再对照端口注入配置复核发布脚本。',
+});
+```
 
 ### 添加提醒
 
@@ -195,6 +257,14 @@ status: error
 error_code: <错误代码>
 message: <错误消息>
 ```
+
+## 说明分层
+
+- 工具 description：只保留最小规格
+- 本章：提供最小速查和输入输出骨架
+- `principles`：讲边界与决策规则
+- `scenarios`：给复制即用的情景示例
+- `clear_mind` 的设计目标是“优先保全接续信息”；正确引导优先于程序化去重
 
 ## 提醒项内容建议
 

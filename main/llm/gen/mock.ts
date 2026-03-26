@@ -144,6 +144,8 @@ interface CachedDatabase {
   lookupMap: Map<string, MockResponse[]>;
 }
 
+const REPLY_TOOL_REMINDER_PREFIX = '[Dominds replyTellask required]';
+
 function normalizeDelayMs(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   if (value <= 0) return 0;
@@ -350,6 +352,49 @@ export class MockGen implements LlmGenerator {
     return JSON.stringify(args);
   }
 
+  private extractLastAssistantSaying(context: ReadonlyArray<ChatMessage>): string | null {
+    for (let i = context.length - 1; i >= 0; i -= 1) {
+      const msg = context[i];
+      if (msg?.type !== 'saying_msg') {
+        continue;
+      }
+      const trimmed = msg.content.trim();
+      if (trimmed !== '') {
+        return trimmed;
+      }
+    }
+    return null;
+  }
+
+  private buildReplyToolReminderAutoResponse(
+    input: string,
+    role: string,
+    context: ReadonlyArray<ChatMessage>,
+  ): MockResponse | null {
+    if (role !== 'user' || !input.startsWith(REPLY_TOOL_REMINDER_PREFIX)) {
+      return null;
+    }
+    const toolMatch = input.match(/`(replyTellask(?:Sessionless|Back)?)`/);
+    if (!toolMatch) {
+      return null;
+    }
+    const replyContent = this.extractLastAssistantSaying(context);
+    if (!replyContent) {
+      return null;
+    }
+    return {
+      message: input,
+      role,
+      response: '',
+      funcCalls: [
+        {
+          name: toolMatch[1]!,
+          arguments: { replyContent },
+        },
+      ],
+    };
+  }
+
   /**
    * Find matching response using EXACT last message only.
    * NO fallback to message-only matching - if exact match fails, return null.
@@ -425,7 +470,9 @@ responses:
     }
 
     const db = await this.loadResponseDatabase(dbPath, modelName);
-    const matched = this.findMatchingResponse(db, content, role, context);
+    const matched =
+      this.findMatchingResponse(db, content, role, context) ??
+      this.buildReplyToolReminderAutoResponse(content, role, context);
     await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
     await receiver.thinkingStart();
@@ -490,19 +537,21 @@ responses:
       };
     }
 
-    await receiver.sayingStart();
-    const chunkDelayMs = normalizeDelayMs(matched?.chunkDelayMs ?? 0);
-    const words = responseText.split(/(\s+)/);
-    for (const word of words) {
-      if (abortSignal?.aborted) {
-        throw new Error('AbortError');
+    if (responseText !== '') {
+      await receiver.sayingStart();
+      const chunkDelayMs = normalizeDelayMs(matched?.chunkDelayMs ?? 0);
+      const words = responseText.split(/(\s+)/);
+      for (const word of words) {
+        if (abortSignal?.aborted) {
+          throw new Error('AbortError');
+        }
+        await receiver.sayingChunk(word);
+        if (chunkDelayMs > 0) {
+          await delayWithAbort(chunkDelayMs, abortSignal);
+        }
       }
-      await receiver.sayingChunk(word);
-      if (chunkDelayMs > 0) {
-        await delayWithAbort(chunkDelayMs, abortSignal);
-      }
+      await receiver.sayingFinish();
     }
-    await receiver.sayingFinish();
 
     const funcCalls = matched?.funcCalls ?? [];
     for (let i = 0; i < funcCalls.length; i++) {
@@ -543,7 +592,9 @@ responses:
 
     try {
       const db = await this.loadResponseDatabase(dbPath, modelName);
-      const matched = this.findMatchingResponse(db, content, role, context);
+      const matched =
+        this.findMatchingResponse(db, content, role, context) ??
+        this.buildReplyToolReminderAutoResponse(content, role, context);
       await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
       const responseText =
@@ -556,12 +607,17 @@ responses:
         content: `[${modelName}] ${content.substring(0, 100)}`,
       };
 
-      const saying: SayingMsg = {
-        type: 'saying_msg',
-        role: 'assistant',
-        genseq,
-        content: matched?.streamError ? `❌ Mock Error: ${matched.streamError}` : responseText,
-      };
+      const saying: SayingMsg | undefined =
+        matched?.streamError || responseText !== ''
+          ? {
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: matched?.streamError
+                ? `❌ Mock Error: ${matched.streamError}`
+                : responseText,
+            }
+          : undefined;
 
       let usage: LlmUsageStats = { kind: 'unavailable' };
       if (matched && matched.usageUnavailable === true) {
@@ -631,7 +687,11 @@ responses:
           };
         }) ?? [];
 
-      return { messages: [thinking, saying, ...funcMsgs], usage, llmGenModel: modelName };
+      return {
+        messages: saying ? [thinking, saying, ...funcMsgs] : [thinking, ...funcMsgs],
+        usage,
+        llmGenModel: modelName,
+      };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const saying: SayingMsg = {

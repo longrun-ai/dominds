@@ -66,6 +66,8 @@ import type {
   TellaskCallCarryoverRecord,
   TellaskCallResultRecord,
   TellaskCarryoverResultRecord,
+  TellaskReplyDirective,
+  TellaskReplyResolutionRecord,
   TellaskResponseRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
@@ -1682,6 +1684,7 @@ export class DiskFileDialogStore extends DialogStore {
     origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
     q4hAnswerCallIds?: string[],
+    tellaskReplyDirective?: TellaskReplyDirective,
   ): Promise<void> {
     const course = dialog.currentCourse;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
@@ -1711,10 +1714,32 @@ export class DiskFileDialogStore extends DialogStore {
       origin,
       userLanguageCode,
       q4hAnswerCallIds: normalizedQ4HAnswerCallIds,
+      tellaskReplyDirective,
     };
     await this.appendEvent(dialog, course, humanEv);
 
     // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after tellask calls complete
+  }
+
+  public async appendTellaskReplyResolution(
+    dialog: Dialog,
+    payload: {
+      callId: string;
+      replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+      targetCallId: string;
+    },
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const genseq = dialog.activeGenSeqOrUndefined ?? 1;
+    const record: TellaskReplyResolutionRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'tellask_reply_resolution_record',
+      genseq,
+      callId: payload.callId,
+      replyCallName: payload.replyCallName,
+      targetCallId: payload.targetCallId,
+    };
+    await this.appendEvent(dialog, course, record);
   }
 
   /**
@@ -2246,6 +2271,9 @@ export class DiskFileDialogStore extends DialogStore {
         }
         break;
       }
+
+      case 'tellask_reply_resolution_record':
+        break;
 
       case 'gen_start_record': {
         // Create generating_start_evt event using persisted genseq directly
@@ -5802,6 +5830,9 @@ export class DialogPersistence {
           });
           break;
         }
+
+        case 'tellask_reply_resolution_record':
+          break;
 
         case 'func_call_record': {
           // Convert function call to ChatMessage

@@ -18,6 +18,19 @@ import {
   writeStandardMinds,
 } from './helpers';
 
+function findLastMeaningfulTailEvent(
+  events: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>,
+): (typeof events)[number] | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type === 'tellask_reply_resolution_record' || event.type === 'gen_finish_record') {
+      continue;
+    }
+    return event;
+  }
+  return events[events.length - 1];
+}
+
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
@@ -113,7 +126,7 @@ async function main(): Promise<void> {
     const genStartCountBefore = eventsBefore.filter(
       (event) => event.type === 'gen_start_record',
     ).length;
-    const lastEventBefore = eventsBefore[eventsBefore.length - 1];
+    const lastEventBefore = findLastMeaningfulTailEvent(eventsBefore);
     assert.ok(
       lastEventBefore?.type === 'tellask_call_anchor_record' &&
         lastEventBefore.anchorRole === 'response',
@@ -135,7 +148,7 @@ async function main(): Promise<void> {
     const genStartCountAfter = eventsAfter.filter(
       (event) => event.type === 'gen_start_record',
     ).length;
-    const lastEventAfter = eventsAfter[eventsAfter.length - 1];
+    const lastEventAfter = findLastMeaningfulTailEvent(eventsAfter);
 
     assert.equal(
       genStartCountAfter,

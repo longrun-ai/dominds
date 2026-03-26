@@ -19,6 +19,8 @@ import type {
   TellaskCallCarryoverRecord,
   TellaskCallResultRecord,
   TellaskCarryoverResultRecord,
+  TellaskReplyDirective,
+  TellaskReplyResolutionRecord,
   TellaskResponseRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
@@ -329,6 +331,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'func_result_record' ||
     raw === 'quest_for_sup_record' ||
     raw === 'tellask_call_result_record' ||
+    raw === 'tellask_reply_resolution_record' ||
     raw === 'tellask_call_carryover_record' ||
     raw === 'tellask_call_anchor_record' ||
     raw === 'tellask_response_record' ||
@@ -350,6 +353,8 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
       return 'tellaskContent';
     case 'tellask_call_result_record':
       return 'result';
+    case 'tellask_reply_resolution_record':
+      return null;
     case 'tellask_call_carryover_record':
       return null;
     case 'tellask_response_record':
@@ -556,6 +561,52 @@ function parseOptionalStringArray(
     throw new Error(`${context}.${key} must be a string[] when provided`);
   }
   return raw;
+}
+
+function parseTellaskReplyDirective(
+  record: Record<string, unknown>,
+  context: string,
+): TellaskReplyDirective | undefined {
+  const raw = record['tellaskReplyDirective'];
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    throw new Error(`${context}.tellaskReplyDirective must be an object when provided`);
+  }
+  const expectedReplyCallName = raw['expectedReplyCallName'];
+  const targetCallId = raw['targetCallId'];
+  const tellaskContent = raw['tellaskContent'];
+  if (
+    expectedReplyCallName !== 'replyTellask' &&
+    expectedReplyCallName !== 'replyTellaskSessionless' &&
+    expectedReplyCallName !== 'replyTellaskBack'
+  ) {
+    throw new Error(
+      `${context}.tellaskReplyDirective.expectedReplyCallName must be a supported replyTellask* function`,
+    );
+  }
+  if (typeof targetCallId !== 'string') {
+    throw new Error(`${context}.tellaskReplyDirective.targetCallId must be a string`);
+  }
+  if (typeof tellaskContent !== 'string') {
+    throw new Error(`${context}.tellaskReplyDirective.tellaskContent must be a string`);
+  }
+  if (expectedReplyCallName === 'replyTellaskBack') {
+    const targetDialogId = raw['targetDialogId'];
+    if (typeof targetDialogId !== 'string') {
+      throw new Error(`${context}.tellaskReplyDirective.targetDialogId must be a string`);
+    }
+    return {
+      expectedReplyCallName,
+      targetCallId,
+      targetDialogId,
+      tellaskContent,
+    };
+  }
+  return {
+    expectedReplyCallName,
+    targetCallId,
+    tellaskContent,
+  };
 }
 
 function normalizeWebSearchAction(
@@ -771,6 +822,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       }
       const userLanguageCode = parseOptionalLanguageCodeField(raw, 'userLanguageCode', context);
       const q4hAnswerCallIds = parseOptionalStringArray(raw, 'q4hAnswerCallIds', context);
+      const tellaskReplyDirective = parseTellaskReplyDirective(raw, context);
       const record: HumanTextRecord = {
         ts: '',
         type,
@@ -781,6 +833,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       };
       if (userLanguageCode !== undefined) record.userLanguageCode = userLanguageCode;
       if (q4hAnswerCallIds) record.q4hAnswerCallIds = q4hAnswerCallIds;
+      if (tellaskReplyDirective !== undefined) record.tellaskReplyDirective = tellaskReplyDirective;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -845,6 +898,27 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
       }
       if (mentionList) record.mentionList = mentionList;
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'tellask_reply_resolution_record': {
+      const replyCallName = raw['replyCallName'];
+      if (
+        replyCallName !== 'replyTellask' &&
+        replyCallName !== 'replyTellaskSessionless' &&
+        replyCallName !== 'replyTellaskBack'
+      ) {
+        throw new Error(`${context}.replyCallName must be a supported replyTellask* function`);
+      }
+      const record: TellaskReplyResolutionRecord = {
+        ts: '',
+        type,
+        genseq: expectIntegerField(raw, 'genseq', context),
+        callId: expectStringField(raw, 'callId', context),
+        replyCallName,
+        targetCallId: expectStringField(raw, 'targetCallId', context),
+      };
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1684,6 +1758,8 @@ function remapRecordGenseq(
             ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
             : undefined,
       };
+    case 'tellask_reply_resolution_record':
+      return { ...record, genseq: mapGenseq(record.genseq) };
     case 'tellask_call_carryover_record':
       return record;
     case 'tellask_response_record':
@@ -1744,6 +1820,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'func_result_record':
     case 'quest_for_sup_record':
     case 'tellask_call_result_record':
+    case 'tellask_reply_resolution_record':
     case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
     case 'tellask_response_record':
@@ -1769,6 +1846,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'func_result_record':
     case 'quest_for_sup_record':
     case 'tellask_call_result_record':
+    case 'tellask_reply_resolution_record':
     case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
     case 'tellask_response_record':
@@ -1885,6 +1963,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
     case 'web_search_call_record':
     case 'quest_for_sup_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_reply_resolution_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return null;
@@ -2040,6 +2119,8 @@ function formatScriptMarkdown(args: {
           blockMeta['userLanguageCode'] = record.userLanguageCode;
         if (record.q4hAnswerCallIds !== undefined)
           blockMeta['q4hAnswerCallIds'] = record.q4hAnswerCallIds;
+        if (record.tellaskReplyDirective !== undefined)
+          blockMeta['tellaskReplyDirective'] = record.tellaskReplyDirective;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.content;
         break;
@@ -2072,6 +2153,14 @@ function formatScriptMarkdown(args: {
           blockMeta['calling_genseq'] = record.calling_genseq;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.result;
+        break;
+      }
+      case 'tellask_reply_resolution_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockMeta['callId'] = record.callId;
+        blockMeta['replyCallName'] = record.replyCallName;
+        blockMeta['targetCallId'] = record.targetCallId;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
       case 'tellask_call_carryover_record': {
@@ -2213,6 +2302,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'pending_subdialogs_reconciled_record':
     case 'subdialog_registry_reconciled_record':
     case 'subdialog_responses_reconciled_record':
+    case 'tellask_reply_resolution_record':
       throw new Error(`Record type ${event.type} is not supported in priming scripts`);
     default: {
       const _exhaustive: never = event;

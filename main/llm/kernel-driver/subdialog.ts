@@ -8,6 +8,7 @@ import {
   type CallerCourseNumber,
   type PendingSubdialogStateRecord,
   type TellaskCallAnchorRecord,
+  type TellaskReplyResolutionRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
@@ -203,6 +204,11 @@ export async function supplyResponseToSupdialog(args: {
   callType: 'A' | 'B' | 'C';
   callId?: string;
   status?: 'completed' | 'failed';
+  deliveryMode?: 'reply_tool' | 'direct_fallback';
+  replyResolution?: {
+    callId: string;
+    replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  };
   calleeResponseRef?: { course: number; genseq: number };
   callerCourseOverride?: CallerCourseNumber;
   scheduleDrive: ScheduleDriveFn;
@@ -215,6 +221,7 @@ export async function supplyResponseToSupdialog(args: {
     callType,
     callId,
     status = 'completed',
+    deliveryMode = 'reply_tool',
     calleeResponseRef,
     callerCourseOverride,
     scheduleDrive,
@@ -353,6 +360,7 @@ export async function supplyResponseToSupdialog(args: {
       tellaskContent: result.tellaskContent,
       responseBody: upstreamResponseBody,
       status,
+      deliveryMode,
       language: getWorkLanguage(),
     });
     const carryoverOriginCourse = result.callingCourse;
@@ -394,6 +402,32 @@ export async function supplyResponseToSupdialog(args: {
           responseCourse: calleeResponseRef.course,
           responseGenseq: calleeResponseRef.genseq,
         });
+      }
+      if (args.replyResolution) {
+        const replyResolutionRecord: TellaskReplyResolutionRecord = {
+          ts: formatUnifiedTimestamp(new Date()),
+          type: 'tellask_reply_resolution_record',
+          genseq: calleeResponseRef.genseq,
+          callId: args.replyResolution.callId,
+          replyCallName: args.replyResolution.replyCallName,
+          targetCallId: resolvedCallId,
+          ...toRootGenerationAnchor({
+            rootCourse:
+              parentDialog instanceof SubDialog
+                ? parentDialog.rootDialog.currentCourse
+                : parentDialog.currentCourse,
+            rootGenseq:
+              parentDialog instanceof SubDialog
+                ? (parentDialog.rootDialog.activeGenSeqOrUndefined ?? 0)
+                : (parentDialog.activeGenSeqOrUndefined ?? 0),
+          }),
+        };
+        await DialogPersistence.appendEvent(
+          subdialogId,
+          calleeResponseRef.course,
+          replyResolutionRecord,
+          parentDialog.status,
+        );
       }
       const anchorRecord: TellaskCallAnchorRecord = {
         ts: formatUnifiedTimestamp(new Date()),
@@ -540,6 +574,11 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
   responseText: string;
   responseGenseq: number;
   target: SubdialogReplyTarget;
+  deliveryMode?: 'reply_tool' | 'direct_fallback';
+  replyResolution?: {
+    callId: string;
+    replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  };
   scheduleDrive: ScheduleDriveFn;
 }): Promise<boolean> {
   const { subdialog, responseText, responseGenseq, target, scheduleDrive } = args;
@@ -631,6 +670,8 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     callType: pendingRecord.callType,
     callId: target.callId,
     status: 'completed',
+    deliveryMode: args.deliveryMode,
+    replyResolution: args.replyResolution,
     calleeResponseRef: { course: subdialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,
   });
@@ -641,6 +682,11 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
   subdialog: SubDialog;
   responseText: string;
   responseGenseq: number;
+  deliveryMode?: 'reply_tool' | 'direct_fallback';
+  replyResolution?: {
+    callId: string;
+    replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  };
   scheduleDrive: ScheduleDriveFn;
 }): Promise<boolean> {
   const { subdialog, responseText, responseGenseq, scheduleDrive } = args;
@@ -726,6 +772,8 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
     callType: pendingRecord.callType,
     callId: assignment.callId,
     status: 'completed',
+    deliveryMode: args.deliveryMode,
+    replyResolution: args.replyResolution,
     calleeResponseRef: { course: subdialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,
   });

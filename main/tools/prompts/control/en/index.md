@@ -24,20 +24,21 @@
 
 - <When to use this vs a sibling toolset>
 
-control is Dominds' **dialog control toolset** for managing dialog state, reminders, and taskdocs:
+control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
 - **Reminder management**: Dialog-local working set; usually keep it small, prefer continuation-package cleanup before `clear_mind`, but rough multi-reminder carry-over is allowed when context is already degraded
 - **Taskdoc operations**: Update task contracts (goals/constraints/progress)
 - **Context maintenance**: Reduce cognitive load without losing key resume state
+- **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in sideline / ask-back flows
 
 ## Quick Navigation
 
-| Topic                         | Description                                          |
-| ----------------------------- | ---------------------------------------------------- |
-| [principles](./principles.md) | Core concepts, reminder lifecycle, taskdoc structure |
-| [tools](./tools.md)           | Complete tool list and interface contracts           |
-| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)            |
-| [errors](./errors.md)         | Error codes and solutions                            |
+| Topic                         | Description                                                               |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| [principles](./principles.md) | Core concepts, reminder lifecycle, taskdoc structure, reply-routing model |
+| [tools](./tools.md)           | Complete tool list, minimal interface contracts, reply quick reference    |
+| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                                 |
+| [errors](./errors.md)         | Error codes and solutions                                                 |
 
 ## Status
 

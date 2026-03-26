@@ -37,6 +37,10 @@ import {
   supplySubdialogResponseToAssignedCallerIfPendingV2,
   supplySubdialogResponseToSpecificCallerIfPendingV2,
 } from './subdialog';
+import {
+  deliverTellaskBackReplyFromDirective,
+  loadLatestActiveTellaskReplyDirective,
+} from './tellask-special';
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
@@ -57,10 +61,46 @@ type UpNextPrompt = {
   userLanguageCode?: string;
   origin: KernelDriverHumanPrompt['origin'];
   q4hAnswerCallIds?: string[];
+  tellaskReplyDirective?: KernelDriverHumanPrompt['tellaskReplyDirective'];
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: KernelDriverHumanPrompt['subdialogReplyTarget'];
   runControl?: KernelDriverRunControl;
 };
+
+const REPLY_TOOL_REMINDER_PREFIX = '[Dominds replyTellask required]';
+
+function isReplyToolReminderPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
+  return (
+    typeof prompt?.content === 'string' && prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX)
+  );
+}
+
+function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
+  return type === 'tellask_reply_resolution_record' || type === 'gen_finish_record';
+}
+
+function buildReplyToolReminderPrompt(args: {
+  directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
+  language: 'zh' | 'en';
+}): string {
+  const toolName = args.directive.expectedReplyCallName;
+  if (args.language === 'zh') {
+    return [
+      REPLY_TOOL_REMINDER_PREFIX,
+      '',
+      `你刚才给出了正文，但尚未调用必需的 \`${toolName}\`。`,
+      `请现在立刻调用 \`${toolName}({ replyContent })\` 完成本次对话间回贴，不要再直接输出最终消息。`,
+      '如果你再次直接输出最终消息而仍不调用该工具，运行时当前会暂按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
+    ].join('\n');
+  }
+  return [
+    REPLY_TOOL_REMINDER_PREFIX,
+    '',
+    `You produced a reply body but did not call the required \`${toolName}\` tool.`,
+    `Call \`${toolName}({ replyContent })\` now to deliver this inter-dialog reply. Do not emit another plain final message.`,
+    'If you still emit a plain final message without the tool, runtime will currently deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
+  ].join('\n');
+}
 
 type PendingDiagnosticsSnapshot =
   | {
@@ -264,7 +304,15 @@ async function inspectNoPromptSubdialogDrive(args: {
     currentCourse,
     args.dialog.status,
   );
-  const rawLastEvent = courseEvents[courseEvents.length - 1];
+  const rawLastEvent = (() => {
+    for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
+      const event = courseEvents[index];
+      if (!isIgnorablePostResponseAnchorTailEvent(event.type)) {
+        return event;
+      }
+    }
+    return courseEvents[courseEvents.length - 1];
+  })();
   const lastEvent =
     rawLastEvent?.type === 'tellask_call_anchor_record'
       ? { type: rawLastEvent.type, anchorRole: rawLastEvent.anchorRole }
@@ -333,6 +381,7 @@ function resolveEffectivePrompt(
           ? upNext.userLanguageCode
           : undefined,
       q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+      tellaskReplyDirective: upNext.tellaskReplyDirective,
       skipTaskdoc: upNext.skipTaskdoc,
       subdialogReplyTarget: upNext.subdialogReplyTarget,
       runControl: upNext.runControl,
@@ -358,6 +407,8 @@ export async function executeDriveRound(args: {
   let followUp: UpNextPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
+  let activeTellaskReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'] | undefined;
+  let activePromptWasReplyToolReminder = false;
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   const driveSource = resolveDriveRequestSource(humanPrompt, driveOptions);
@@ -589,6 +640,10 @@ export async function executeDriveRound(args: {
       }
     }
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
+    activeTellaskReplyDirective =
+      effectivePrompt?.tellaskReplyDirective ??
+      (await loadLatestActiveTellaskReplyDirective(dialog));
+    activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
@@ -656,62 +711,169 @@ export async function executeDriveRound(args: {
         );
       }
       if (suspension.canDrive && !hasFollowUp) {
-        if (
-          typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-          !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-          driveResult.lastAssistantSayingGenseq <= 0
-        ) {
-          throw new Error(
-            `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+        if (!activeTellaskReplyDirective) {
+          log.debug(
+            'kernel-driver skip implicit subdialog reply because no active tellask reply directive is bound to this drive',
+            undefined,
+            {
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+            },
           );
-        }
-        const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
-        let supplied = false;
-        if (subdialogReplyTarget) {
-          supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
-            subdialog: dialog,
-            responseText: driveResult.lastAssistantSayingContent,
-            responseGenseq,
-            target: subdialogReplyTarget,
-            scheduleDrive: args.scheduleDrive,
-          });
-          if (!supplied) {
+        } else if (!activePromptWasReplyToolReminder) {
+          const language = getWorkLanguage();
+          followUp = {
+            prompt: buildReplyToolReminderPrompt({
+              directive: activeTellaskReplyDirective,
+              language,
+            }),
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            origin: 'runtime',
+            userLanguageCode: language,
+            tellaskReplyDirective: activeTellaskReplyDirective,
+            subdialogReplyTarget,
+          };
+          log.debug(
+            'kernel-driver queued replyTellask reminder prompt after plain sideline reply',
+            undefined,
+            {
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              expectedReplyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+            },
+          );
+        } else {
+          if (
+            typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+            !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+            driveResult.lastAssistantSayingGenseq <= 0
+          ) {
+            throw new Error(
+              `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+            );
+          }
+          const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
+          const directFallbackCallId = `direct-fallback-${generateShortId()}`;
+          let supplied = false;
+          if (subdialogReplyTarget) {
+            supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
+              subdialog: dialog,
+              responseText: driveResult.lastAssistantSayingContent,
+              responseGenseq,
+              target: subdialogReplyTarget,
+              deliveryMode: 'direct_fallback',
+              replyResolution: {
+                callId: directFallbackCallId,
+                replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+              },
+              scheduleDrive: args.scheduleDrive,
+            });
+            if (!supplied) {
+              supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+                subdialog: dialog,
+                responseText: driveResult.lastAssistantSayingContent,
+                responseGenseq,
+                deliveryMode: 'direct_fallback',
+                replyResolution: {
+                  callId: directFallbackCallId,
+                  replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+                },
+                scheduleDrive: args.scheduleDrive,
+              });
+            }
+          } else {
             supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
               subdialog: dialog,
               responseText: driveResult.lastAssistantSayingContent,
               responseGenseq,
+              deliveryMode: 'direct_fallback',
+              replyResolution: {
+                callId: directFallbackCallId,
+                replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+              },
               scheduleDrive: args.scheduleDrive,
             });
           }
-        } else {
-          supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-            subdialog: dialog,
-            responseText: driveResult.lastAssistantSayingContent,
-            responseGenseq,
-            scheduleDrive: args.scheduleDrive,
-          });
-        }
 
-        if (!supplied && subdialogReplyTarget) {
-          const diagnostics = await loadPendingDiagnosticsSnapshot({
-            rootId: dialog.id.rootId,
-            ownerDialogId: subdialogReplyTarget.ownerDialogId,
-            expectedSubdialogId: dialog.id.selfId,
-            status: dialog.status,
-          });
-          log.debug(
-            'kernel-driver failed to supply subdialog response to specific caller',
-            undefined,
-            {
-              calleeId: dialog.id.valueOf(),
-              targetOwner: subdialogReplyTarget.ownerDialogId,
-              targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-              targetCallType: subdialogReplyTarget.callType,
-              targetCallId: subdialogReplyTarget.callId,
-              diagnostics,
-            },
-          );
+          if (!supplied && subdialogReplyTarget) {
+            const diagnostics = await loadPendingDiagnosticsSnapshot({
+              rootId: dialog.id.rootId,
+              ownerDialogId: subdialogReplyTarget.ownerDialogId,
+              expectedSubdialogId: dialog.id.selfId,
+              status: dialog.status,
+            });
+            log.debug(
+              'kernel-driver failed to supply subdialog response to specific caller',
+              undefined,
+              {
+                calleeId: dialog.id.valueOf(),
+                targetOwner: subdialogReplyTarget.ownerDialogId,
+                targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+                targetCallType: subdialogReplyTarget.callType,
+                targetCallId: subdialogReplyTarget.callId,
+                diagnostics,
+              },
+            );
+          }
         }
+      }
+    }
+  }
+
+  if (
+    !(dialog instanceof SubDialog) &&
+    driveResult &&
+    !interruptedBySignal &&
+    driveResult.lastAssistantSayingContent !== null &&
+    activeTellaskReplyDirective?.expectedReplyCallName === 'replyTellaskBack' &&
+    followUp === undefined
+  ) {
+    const hasInProgressFunctionCall =
+      typeof driveResult.lastFunctionCallGenseq === 'number' &&
+      Number.isFinite(driveResult.lastFunctionCallGenseq) &&
+      driveResult.lastFunctionCallGenseq > 0 &&
+      (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+        !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+        driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
+    if (!hasInProgressFunctionCall) {
+      if (!activePromptWasReplyToolReminder) {
+        const language = getWorkLanguage();
+        followUp = {
+          prompt: buildReplyToolReminderPrompt({
+            directive: activeTellaskReplyDirective,
+            language,
+          }),
+          msgId: generateShortId(),
+          grammar: 'markdown',
+          origin: 'runtime',
+          userLanguageCode: language,
+          tellaskReplyDirective: activeTellaskReplyDirective,
+        };
+        log.debug(
+          'kernel-driver queued replyTellaskBack reminder prompt after plain reply',
+          undefined,
+          {
+            dialogId: dialog.id.valueOf(),
+            targetCallId: activeTellaskReplyDirective.targetCallId,
+          },
+        );
+      } else {
+        await deliverTellaskBackReplyFromDirective({
+          dlg: dialog,
+          directive: activeTellaskReplyDirective,
+          replyContent: driveResult.lastAssistantSayingContent,
+          callbacks: {
+            scheduleDrive: args.scheduleDrive,
+            driveDialog: args.driveDialog,
+          },
+          deliveryMode: 'direct_fallback',
+        });
+        await dialog.appendTellaskReplyResolution({
+          callId: `direct-fallback-${generateShortId()}`,
+          replyCallName: 'replyTellaskBack',
+          targetCallId: activeTellaskReplyDirective.targetCallId,
+        });
       }
     }
   }

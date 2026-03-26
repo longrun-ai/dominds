@@ -55,6 +55,7 @@ export type TellaskResponseFormatInput = {
   tellaskContent: string;
   responseBody: string;
   status?: 'completed' | 'failed';
+  deliveryMode?: 'reply_tool' | 'direct_fallback';
   language?: LanguageCode;
 };
 
@@ -132,14 +133,36 @@ type SubdialogRoleHeaderInput = {
   language: LanguageCode;
 };
 
+function getExpectedReplyToolName(
+  callName: SubdialogRoleHeaderInput['callName'],
+): 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' | undefined {
+  switch (callName) {
+    case 'tellask':
+      return 'replyTellask';
+    case 'tellaskSessionless':
+      return 'replyTellaskSessionless';
+    case 'tellaskBack':
+      return 'replyTellaskBack';
+    case 'askHuman':
+    case 'freshBootsReasoning':
+      return undefined;
+  }
+}
+
 function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
   if (input.callName === 'freshBootsReasoning') {
     return '';
   }
   const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  const expectedReplyTool = getExpectedReplyToolName(input.callName);
+  if (!expectedReplyTool) {
+    return input.language === 'zh'
+      ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。只有在需要回问上游时才调用 \`tellaskBack\`。`
+      : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). Call \`tellaskBack\` only when you need to ask back upstream.`;
+  }
   return input.language === 'zh'
-    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。完成任务时直接回复即可；只有在需要回问上游时才调用 \`tellaskBack\`。`
-    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). When the task is complete, reply directly; call \`tellaskBack\` only when you need to ask back upstream.`;
+    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。本轮精确完成回复函数名是 \`${expectedReplyTool}\`；不要自行改选其他 \`reply*\` 变体。完成任务时必须调用 \`${expectedReplyTool}\`；只有在需要回问上游时才调用 \`tellaskBack\`。`
+    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). The exact completion reply function for this round is \`${expectedReplyTool}\`; do not switch to another \`reply*\` variant by yourself. When the task is complete, you must call \`${expectedReplyTool}\`; call \`tellaskBack\` only when you need to ask back upstream.`;
 }
 
 function requireMentionLine(mentionList: string[]): string {
@@ -286,10 +309,16 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
   const isFbr = input.callName === 'freshBootsReasoning';
   const marker = getRuntimeTransferMarker(input);
   const markerPrefix = marker ? `${marker}\n\n` : '';
+  const deliveryNotice =
+    input.deliveryMode === 'direct_fallback'
+      ? language === 'zh'
+        ? '> 系统提示：本次回贴未调用 replyTellask* 工具，当前按“直接回复 fallback”投递；请留意这只是过渡期兼容路径。\n\n'
+        : '> System note: this reply did not use a replyTellask* tool. It is being delivered via direct-reply fallback for now; treat this as a temporary compatibility path.\n\n'
+      : '';
 
   if (isFbr) {
     const title = language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR sideline response]';
-    return `${markerPrefix}${title}\n\n${input.responseBody}\n`;
+    return `${markerPrefix}${deliveryNotice}${title}\n\n${input.responseBody}\n`;
   }
 
   if (
@@ -324,7 +353,11 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
         ? `regarding the original tellask: ${mentionLine}`
         : `regarding the original tellask: ${mentionLine} • ${sessionSlug}`;
 
-  return `${markerPrefix}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
+  return `${markerPrefix}${deliveryNotice}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
+}
+
+export function formatTeammateResponseContent(input: TellaskResponseFormatInput): string {
+  return formatTellaskResponseContent(input);
 }
 
 export function formatTellaskReplacementNoticeContent(

@@ -70,6 +70,23 @@
 | change_mind     | 更新差遣牒（goals/constraints/progress） |
 | recall_taskdoc  | 读取差遣牒章节                           |
 
+## 跨对话回复路由
+
+### 决策规则
+
+- 当前支线未完成、仍有疑问、被阻塞，或必须向上游补问时：调用 `tellaskBack({ tellaskContent })`
+- 当前支线已经完成，且当前 assignment 明确要求 `replyTellask`：调用 `replyTellask({ replyContent })`
+- 当前支线已经完成，且当前 assignment 明确要求 `replyTellaskSessionless`：调用 `replyTellaskSessionless({ replyContent })`
+- 当前是在回复一条上游发来的 `tellaskBack` 续诉请，且 runtime 暴露了 `replyTellaskBack`：调用 `replyTellaskBack({ replyContent })`
+- 普通文本不是跨对话完成交付通道；如果你直接输出正文而没调 reply 工具，runtime 可能临时插入一条 `role=user` 的提醒要求你改用正确的 reply 函数
+
+### 心智负担最小化规则
+
+- 不要靠记忆硬选 reply 变体；以当前 assignment 头部和 runtime 当前暴露的函数名为准
+- `reply*` 函数自身说明文案故意保持极简，只承载最小规格；情景判断看本手册的 principles / scenarios
+- 若 runtime 只暴露一个 `reply*`，那就是当前应调用的唯一完成路径
+- `tellaskBack` 只用于回问，不用于最终交付
+
 ## 最佳实践
 
 ### 1. 提醒使用场景

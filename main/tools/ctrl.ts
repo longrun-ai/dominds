@@ -546,10 +546,10 @@ export const updateReminderTool: FuncTool = {
 export const clearMindTool: FuncTool = {
   type: 'func',
   name: 'clear_mind',
-  description: 'Clear dialog mind and start a new course, optionally adding a reminder.',
+  description: 'Start a new dialog course, optionally carrying one extra continuation reminder.',
   descriptionI18n: {
-    en: 'Clear dialog mind and start a new course. If needed, pass reminder_content so you can resume quickly. Default to a structured "Continuation Package"; if the current course is already under system caution/critical remediation, rough bridge notes are acceptable and can be reorganized in the new course.',
-    zh: '清理头脑并开启新一程对话。若需要，可传入 reminder_content 以便快速接续。默认整理成结构化"接续包"；若当前程已被系统置于吃紧/告急处置态，粗略过桥笔记也可以，进入新一程后再重新整理。',
+    en: 'Start a new dialog course, optionally carrying one extra continuation reminder.',
+    zh: '开启新一程对话；必要时可额外带一条接续提醒。',
   },
   parameters: {
     type: 'object',
@@ -557,8 +557,7 @@ export const clearMindTool: FuncTool = {
     properties: {
       reminder_content: {
         type: 'string',
-        description:
-          'Optional reminder content to add. Prefer structured continuation notes when possible; rough bridge notes are also acceptable if context is already degraded.',
+        description: 'Optional extra continuation note not already captured in existing reminders.',
       },
     },
   },
@@ -591,11 +590,10 @@ export const clearMindTool: FuncTool = {
 export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
-  description:
-    'Update a shared Taskdoc section (`*.tsk/`) in the mainline dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
+  description: 'Replace one shared Taskdoc section in the mainline dialog.',
   descriptionI18n: {
-    en: 'Update a shared Taskdoc section (`*.tsk/`) in the mainline dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
-    zh: '在主线对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不开启新一程对话）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
+    en: 'Replace one shared Taskdoc section in the mainline dialog.',
+    zh: '在主线对话中替换一段共享差遣牒章节。',
   },
   parameters: {
     type: 'object',
@@ -693,11 +691,10 @@ export const changeMindTool: FuncTool = {
 export const recallTaskdocTool: FuncTool = {
   type: 'func',
   name: 'recall_taskdoc',
-  description:
-    'Read a Taskdoc section from an encapsulated `*.tsk/` package by (category, selector). Use this when the section is not auto-injected and general file tools cannot access `*.tsk/`.',
+  description: 'Read one Taskdoc section by (category, selector).',
   descriptionI18n: {
-    en: 'Read a Taskdoc section from an encapsulated `*.tsk/` package by (category, selector). Use this when the section is not auto-injected and general file tools cannot access `*.tsk/`.',
-    zh: '按 (category, selector) 读取封装差遣牒（`*.tsk/`）中“不会自动注入上下文”的章节。用于在通用文件工具无法读取 `*.tsk/` 的前提下显式取回章节内容。',
+    en: 'Read one Taskdoc section by (category, selector).',
+    zh: '按 (category, selector) 读取一段差遣牒章节。',
   },
   parameters: {
     type: 'object',

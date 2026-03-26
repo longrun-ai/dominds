@@ -70,6 +70,23 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 | change_mind     | Update taskdoc (goals/constraints/progress) |
 | recall_taskdoc  | Read taskdoc chapter                        |
 
+## Inter-dialog Reply Routing
+
+### Decision Rules
+
+- If the current sideline is unfinished, blocked, uncertain, or needs an upstream clarification: call `tellaskBack({ tellaskContent })`
+- If the current sideline is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`
+- If the current sideline is complete and the assignment header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
+- If you are answering an upstream `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
+- Plain text is not the normal completion channel for inter-dialog delivery; if you emit plain text instead of the reply tool, runtime may temporarily inject a `role=user` reminder telling you to use the correct reply function
+
+### Low-Burden Rule
+
+- Do not memorize reply variants by yourself; follow the current assignment header and the function currently exposed by runtime
+- `reply*` tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
+- If runtime exposes only one `reply*`, that is the only correct completion path for the current state
+- `tellaskBack` is for ask-back only, not final delivery
+
 ## Best Practices
 
 ### 1. Reminder Usage Scenarios

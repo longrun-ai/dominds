@@ -36,6 +36,7 @@ import type {
   ProviderData,
   ReasoningPayload,
   ToolArguments as StoredToolArguments,
+  TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -76,6 +77,7 @@ type UpNextPromptState = {
   userLanguageCode?: LanguageCode;
   origin: 'user' | 'diligence_push' | 'runtime';
   q4hAnswerCallIds?: string[];
+  tellaskReplyDirective?: TellaskReplyDirective;
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;
   runControl?: DialogRunControlSpec;
@@ -833,6 +835,7 @@ export abstract class Dialog {
       userLanguageCode: prompt.userLanguageCode,
       origin: prompt.origin,
       q4hAnswerCallIds: prompt.q4hAnswerCallIds,
+      tellaskReplyDirective: prompt.tellaskReplyDirective,
       skipTaskdoc: prompt.skipTaskdoc,
       subdialogReplyTarget: prompt.subdialogReplyTarget,
       runControl,
@@ -863,6 +866,7 @@ export abstract class Dialog {
           grammar: nextPrompt.grammar ?? 'markdown',
           userLanguageCode: nextPrompt.userLanguageCode,
           q4hAnswerCallIds: nextPrompt.q4hAnswerCallIds,
+          tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
           skipTaskdoc: nextPrompt.skipTaskdoc,
           subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
         },
@@ -934,6 +938,7 @@ export abstract class Dialog {
         userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
         origin: state.origin,
         q4hAnswerCallIds: state.q4hAnswerCallIds,
+        tellaskReplyDirective: state.tellaskReplyDirective,
         skipTaskdoc: state.skipTaskdoc,
         subdialogReplyTarget: state.subdialogReplyTarget,
       },
@@ -1023,6 +1028,7 @@ export abstract class Dialog {
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallIds?: string[];
+    tellaskReplyDirective?: TellaskReplyDirective;
     skipTaskdoc?: boolean;
     subdialogReplyTarget?: DialogSubdialogReplyTarget;
   }): UpNextPromptState {
@@ -1041,6 +1047,7 @@ export abstract class Dialog {
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
         origin: 'runtime',
         q4hAnswerCallIds: options.q4hAnswerCallIds,
+        tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
         subdialogReplyTarget: options.subdialogReplyTarget,
         runControl: undefined,
@@ -1060,6 +1067,7 @@ export abstract class Dialog {
         existing.q4hAnswerCallIds,
         options.q4hAnswerCallIds,
       ),
+      tellaskReplyDirective: options.tellaskReplyDirective ?? existing.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
       subdialogReplyTarget: options.subdialogReplyTarget ?? existing.subdialogReplyTarget,
       runControl: undefined,
@@ -1383,6 +1391,7 @@ export abstract class Dialog {
     origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
     q4hAnswerCallIds?: string[],
+    tellaskReplyDirective?: TellaskReplyDirective,
   ): Promise<void> {
     return await this.dlgStore.persistUserMessage(
       this,
@@ -1392,7 +1401,16 @@ export abstract class Dialog {
       origin,
       userLanguageCode,
       q4hAnswerCallIds,
+      tellaskReplyDirective,
     );
+  }
+
+  public async appendTellaskReplyResolution(payload: {
+    callId: string;
+    replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+    targetCallId: string;
+  }): Promise<void> {
+    await this.dlgStore.appendTellaskReplyResolution(this, payload);
   }
 
   public async persistAgentMessage(
@@ -2034,6 +2052,16 @@ export abstract class DialogStore {
     _origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     _userLanguageCode?: LanguageCode,
     _q4hAnswerCallIds?: string[],
+    _tellaskReplyDirective?: TellaskReplyDirective,
+  ): Promise<void> {}
+
+  public async appendTellaskReplyResolution(
+    _dialog: Dialog,
+    _payload: {
+      callId: string;
+      replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+      targetCallId: string;
+    },
   ): Promise<void> {}
 
   /**

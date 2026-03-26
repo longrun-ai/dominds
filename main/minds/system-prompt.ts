@@ -156,11 +156,13 @@ function buildSidelineUpstreamReplyMarkerRules(language: LanguageCode): string {
   const runtimeMarkers = getRuntimeTransferMarkers(language);
   const lines = pickLocalized(language, {
     zh: [
-      '- 本规则仅用于当前支线向上游回复（直接发正文）；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
+      '- 本规则仅用于当前支线向上游回复；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
       '- 当前支线未完成/不确定/阻塞/需要澄清时：必须发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
-      '- 当前支线已完成并可交付最终结果时：必须直接回复正文；禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
-      `- 运行时会自动把这条直接回复作为完成结果投递给上游，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。`,
-      '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应直接回复正文，不要使用 `tellaskBack` 或 `tellask`。',
+      '- 是否存在“待你收口的跨对话回复义务”、以及精确该调用哪个 reply 函数，均由运行时程序化判断；运行时会在 assignment 或最新 runtime/user 提示里直接点名。',
+      '- 若运行时点名了精确 reply 函数名，你只需调用那个被点名的函数；不要自己判断 `reply*` 变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
+      `- 只有在运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复作为完成结果投递给上游，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。`,
+      '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，就直接继续当前本地对话；不要凭记忆再次调用 `reply*`。',
+      '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应使用运行时当前点名的精确 reply 函数，不要使用 `tellaskBack` 或 `tellask`。',
       '- 例外：FBR 支线为工具禁用模式（不得调用 `tellaskBack`）；其回贴标记（`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
@@ -169,11 +171,13 @@ function buildSidelineUpstreamReplyMarkerRules(language: LanguageCode): string {
       '- 若人类用户在支线对话中插入消息或补问：直接正常回复即可，不需要向诉请者汇报（支线不需要主动汇报上游，默认行为就是直接回复）。',
     ],
     en: [
-      '- This rule applies only when replying upstream from the current sideline (direct response body); tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
+      '- This rule applies only when replying upstream from the current sideline; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
       '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must emit `tellaskBack({ tellaskContent: "..." })` and put concrete questions in `tellaskContent`.',
-      '- If the current sideline is complete and ready to deliver a final result: you must reply with the response body directly; do not use `tellaskBack` or `tellask` to send final delivery.',
-      `- Runtime will deliver that direct reply upstream as the completion result and inject ${runtimeMarkers.finalCompleted} into the transfer payload.`,
-      '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, reply directly instead of using `tellaskBack` or `tellask`.',
+      '- Runtime programmatically decides whether there is an active inter-dialog reply obligation for you, and which exact reply function name applies; runtime will state that directly in the assignment or the latest runtime/user prompt.',
+      '- If runtime names an exact reply function, call that named function and do not choose a `reply*` variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
+      `- Only replies sent through the exact reply function currently named by runtime are delivered upstream as completion results and marked with ${runtimeMarkers.finalCompleted}.`,
+      '- If runtime explicitly tells you there is no active inter-dialog reply obligation right now, just continue the current local conversation; do not call `reply*` again from memory.',
+      '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, use the exact reply function currently named by runtime instead of `tellaskBack` or `tellask`.',
       '- Exception: FBR sideline is tool-less (no \`tellaskBack\`); its reply markers (`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
@@ -198,16 +202,18 @@ function buildTellaskReplyMarkerScopePolicy(
           '- 若你在正文中给下游写“回贴格式”，必须写明“Dominds 自动注入标记，禁止手写”；不得要求下游手写任何标记。',
           '- `tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
           '- 当前支线未完成/不确定/阻塞/需要澄清时：必须调用 `tellaskBack({ tellaskContent: "..." })`，不得发普通文本中间汇报。',
-          '- 当前支线已完成并能给出最终交付时：必须直接回复正文；这条直接回复就是完成交付通道，不要再走 `tellaskBack`。',
-          `- 仅当确认当前支线已完成全部目标并直接回复时，运行时才会把该回复投递给上游并标注 ${runtimeMarkers.finalCompleted}。`,
+          '- 当前支线已完成并能给出最终交付时：只服从运行时程序化给出的当前指令。若运行时点名了精确 reply 函数，就调用那个函数；不要自行改选其他 `reply*` 变体，也不要再走 `tellaskBack`。',
+          `- 仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给上游并标注 ${runtimeMarkers.finalCompleted}。`,
+          '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
         ],
         en: [
           `- Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to upstream context and shown identically in UI. Do not hand-write markers.`,
           '- If you define a reply format for downstream, you must state “Dominds auto-injects markers; do not hand-write them”; do not require downstream to hand-write any marker.',
           '- `tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
           '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call `tellaskBack({ tellaskContent: "..." })` instead of posting a plain-text progress update.',
-          '- If the current sideline is complete and can deliver the final result: you must reply with the response body directly; that direct reply is the completion-delivery path, not `tellaskBack`.',
-          `- Runtime marks ${runtimeMarkers.finalCompleted} and delivers upstream only when the current sideline has fully completed its objectives and directly replies.`,
+          '- If the current sideline is complete and can deliver the final result: follow only the current programmatic runtime instruction. If runtime names an exact reply function, call that function; do not switch among `reply*` variants yourself, and do not use `tellaskBack` for final delivery.',
+          `- Runtime marks ${runtimeMarkers.finalCompleted} and delivers upstream only when runtime currently names an exact reply function and you reply through that named function.`,
+          '- If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
         ],
       }),
     ];

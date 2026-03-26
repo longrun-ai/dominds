@@ -1,4 +1,5 @@
 import type { LanguageCode } from './language';
+import type { TellaskReplyDirective } from './storage';
 
 export type DialogRunControlSource =
   | 'drive_dlg_by_user_msg'
@@ -28,6 +29,7 @@ export type DialogPrompt = Readonly<{
   userLanguageCode?: LanguageCode;
   origin: 'user' | 'diligence_push' | 'runtime';
   q4hAnswerCallIds?: string[];
+  tellaskReplyDirective?: TellaskReplyDirective;
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;
 }>;

@@ -82,6 +82,7 @@ import {
   classifyTellaskSpecialFunctionCalls,
   executeTellaskSpecialCalls,
   isTellaskSpecialFunctionName,
+  loadLatestActiveTellaskReplyDirective,
   type TellaskSpecialFunctionName,
 } from './tellask-special';
 import type {
@@ -379,6 +380,56 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   },
   {
     type: 'func',
+    name: 'replyTellask',
+    description: 'Deliver final reply for the current tellask session.',
+    parameters: {
+      type: 'object',
+      properties: {
+        replyContent: { type: 'string' },
+      },
+      required: ['replyContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('replyTellask is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'replyTellaskSessionless',
+    description: 'Deliver final reply for the current one-shot tellask.',
+    parameters: {
+      type: 'object',
+      properties: {
+        replyContent: { type: 'string' },
+      },
+      required: ['replyContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error(
+        'replyTellaskSessionless is handled by kernel-driver tellask-special channel',
+      );
+    },
+  },
+  {
+    type: 'func',
+    name: 'replyTellaskBack',
+    description: 'Deliver final reply for the current tellaskBack request.',
+    parameters: {
+      type: 'object',
+      properties: {
+        replyContent: { type: 'string' },
+      },
+      required: ['replyContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('replyTellaskBack is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
     name: 'askHuman',
     description: 'Ask for required clarification/decision from human.',
     parameters: {
@@ -407,12 +458,11 @@ function mergeTellaskSpecialVirtualTools(
   const freshBootsReasoning = createFreshBootsReasoningTool({
     fbrEffortDefault: options.fbrEffortDefault,
   });
-  const specialTools = options.includeTellaskBack
-    ? [...TELLASK_SPECIAL_VIRTUAL_TOOLS, freshBootsReasoning]
-    : [
-        ...TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => tool.name !== 'tellaskBack'),
-        freshBootsReasoning,
-      ];
+  const specialTools = TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => {
+    if (tool.name === 'tellaskBack') return options.includeTellaskBack;
+    return true;
+  });
+  specialTools.push(freshBootsReasoning);
   for (const virtualTool of specialTools) {
     if (seen.has(virtualTool.name)) {
       throw new Error(
@@ -538,6 +588,7 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
     origin: upNext.origin,
     userLanguageCode: upNext.userLanguageCode,
     q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+    tellaskReplyDirective: upNext.tellaskReplyDirective,
     skipTaskdoc: upNext.skipTaskdoc,
     subdialogReplyTarget: upNext.subdialogReplyTarget,
     runControl: normalizedRunControl,
@@ -758,8 +809,59 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
   await dlg.sayingFinish();
 }
 
+function buildPromptContentWithExactReplyToolName(args: {
+  dlg: Dialog;
+  prompt: KernelDriverHumanPrompt;
+  activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
+  language: 'zh' | 'en';
+}): string {
+  const directive = args.activeReplyDirective;
+  if (!directive) {
+    if (!(args.dlg instanceof SubDialog)) {
+      return args.prompt.content;
+    }
+    if (args.prompt.content.startsWith('[Dominds no active inter-dialog reply]')) {
+      return args.prompt.content;
+    }
+    const note =
+      args.language === 'zh'
+        ? [
+            '[Dominds no active inter-dialog reply]',
+            '当前没有待完成的跨对话回复义务。',
+            '这轮不要调用任何 `reply*`；直接按当前本地对话继续即可。',
+          ].join('\n')
+        : [
+            '[Dominds no active inter-dialog reply]',
+            'There is no active inter-dialog reply obligation right now.',
+            'Do not call any `reply*` tool in this turn; just continue the current local conversation.',
+          ].join('\n');
+    return `${note}\n\n${args.prompt.content}`;
+  }
+  if (args.prompt.content.startsWith('[Dominds active reply tool]')) {
+    return args.prompt.content;
+  }
+  const toolName = directive.expectedReplyCallName;
+  if (args.prompt.content.startsWith('[Dominds replyTellask required]')) {
+    return args.prompt.content;
+  }
+  const note =
+    args.language === 'zh'
+      ? [
+          '[Dominds active reply tool]',
+          `当前这轮若完成交付，精确应调用 \`${toolName}\`。`,
+          '不要自己判断该选哪个 `reply*`；以上述函数名为准。',
+        ].join('\n')
+      : [
+          '[Dominds active reply tool]',
+          `If this round is ready for final delivery, the exact reply tool is \`${toolName}\`.`,
+          'Do not decide among `reply*` variants by yourself; follow that exact function name.',
+        ].join('\n');
+  return `${note}\n\n${args.prompt.content}`;
+}
+
 type RoutedFunctionResult = {
   hadNormalToolCalls: boolean;
+  shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
@@ -878,7 +980,12 @@ async function executeFunctionRound(args: {
   allowTellaskSpecialFunctions: boolean;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
-    return { hadNormalToolCalls: false, pairedMessages: [], tellaskToolOutputs: [] };
+    return {
+      hadNormalToolCalls: false,
+      shouldStopAfterReplyTool: false,
+      pairedMessages: [],
+      tellaskToolOutputs: [],
+    };
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
@@ -888,6 +995,9 @@ async function executeFunctionRound(args: {
     ? new Set<TellaskSpecialFunctionName>([
         'tellask',
         'tellaskSessionless',
+        'replyTellask',
+        'replyTellaskSessionless',
+        'replyTellaskBack',
         'askHuman',
         'freshBootsReasoning',
         ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
@@ -922,6 +1032,10 @@ async function executeFunctionRound(args: {
           targetAgentId: call.targetAgentId,
           tellaskContent: call.tellaskContent,
         };
+      case 'replyTellask':
+      case 'replyTellaskSessionless':
+      case 'replyTellaskBack':
+        return { replyContent: call.replyContent };
     }
   };
 
@@ -954,11 +1068,13 @@ async function executeFunctionRound(args: {
   }
 
   throwIfAborted(args.abortSignal, args.dlg);
-  const tellaskToolOutputs = await executeTellaskSpecialCalls({
+  const tellaskExecution = await executeTellaskSpecialCalls({
     dlg: args.dlg,
     calls: classified.specialCalls,
     callbacks: args.callbacks,
   });
+  const tellaskToolOutputs = tellaskExecution.toolOutputs;
+  const shouldStopAfterReplyTool = tellaskExecution.successfulReplyCallIds.length > 0;
   throwIfAborted(args.abortSignal, args.dlg);
   const specialCallIds = new Set(classified.specialCalls.map((call) => call.callId));
 
@@ -1014,6 +1130,7 @@ async function executeFunctionRound(args: {
 
   return {
     hadNormalToolCalls: classified.normalCalls.length > 0,
+    shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs,
   };
@@ -1398,6 +1515,19 @@ export async function driveDialogStreamCore(
           const persistedUserLanguageCode =
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
           const q4hAnswerCallIds = normalizeQ4HAnswerCallIds(currentPrompt.q4hAnswerCallIds);
+          const promptLanguage =
+            persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
+              ? persistedUserLanguageCode
+              : getWorkLanguage();
+          const activeReplyDirective =
+            currentPrompt.tellaskReplyDirective ??
+            (await loadLatestActiveTellaskReplyDirective(dlg));
+          const promptContent = buildPromptContentWithExactReplyToolName({
+            dlg,
+            prompt: currentPrompt,
+            activeReplyDirective,
+            language: promptLanguage,
+          });
 
           await dlg.addChatMessages({
             type: 'prompting_msg',
@@ -1405,15 +1535,16 @@ export async function driveDialogStreamCore(
             genseq: dlg.activeGenSeq,
             msgId: currentPrompt.msgId,
             grammar: 'markdown',
-            content: currentPrompt.content,
+            content: promptContent,
           });
           await dlg.persistUserMessage(
-            currentPrompt.content,
+            promptContent,
             currentPrompt.msgId,
             'markdown',
             origin,
             persistedUserLanguageCode,
             q4hAnswerCallIds,
+            activeReplyDirective,
           );
 
           // Emit the live user-side boundary event for UI generation bubbles.
@@ -1424,7 +1555,7 @@ export async function driveDialogStreamCore(
             course: dlg.currentCourse,
             genseq: dlg.activeGenSeq,
             msgId: currentPrompt.msgId,
-            content: currentPrompt.content,
+            content: promptContent,
             grammar: 'markdown',
             origin,
             userLanguageCode: persistedUserLanguageCode,
@@ -1840,6 +1971,21 @@ export async function driveDialogStreamCore(
             dialogId: dlg.id.valueOf(),
             toolNames: streamedFuncCalls
               .filter((call) => isFbrConclusionToolName(call.name))
+              .map((call) => call.name),
+          });
+          break;
+        }
+
+        if (routed.shouldStopAfterReplyTool) {
+          log.debug('kernel-driver stop round after explicit replyTellask* tool', undefined, {
+            dialogId: dlg.id.valueOf(),
+            toolNames: streamedFuncCalls
+              .filter(
+                (call) =>
+                  call.name === 'replyTellask' ||
+                  call.name === 'replyTellaskSessionless' ||
+                  call.name === 'replyTellaskBack',
+              )
               .map((call) => call.name),
           });
           break;
