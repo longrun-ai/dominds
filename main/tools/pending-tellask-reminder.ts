@@ -22,6 +22,9 @@ type PendingTellaskReminderMeta = Readonly<{
   pendingCount: number;
   pendingSignature: string;
   updatedAt: string;
+  update: Readonly<{
+    altInstruction: string;
+  }>;
 }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,7 +37,16 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
   if (typeof value.pendingCount !== 'number') return false;
   if (typeof value.pendingSignature !== 'string') return false;
   if (typeof value.updatedAt !== 'string') return false;
+  const update = value.update;
+  if (!isRecord(update)) return false;
+  if (typeof update.altInstruction !== 'string' || update.altInstruction.trim() === '') return false;
   return true;
+}
+
+function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
+  return language === 'zh'
+    ? '等待系统根据真实诉请状态自动刷新此提醒；不要手动改内容。若状态变化，靠诉请流转自然更新。'
+    : 'Wait for the system to refresh this reminder from real tellask state; do not hand-edit its content.';
 }
 
 function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
@@ -102,11 +114,15 @@ function makePendingSignature(pending: ReadonlyArray<PendingSubdialogView>): str
 function buildReminderMeta(
   pending: ReadonlyArray<PendingSubdialogView>,
 ): PendingTellaskReminderMeta {
+  const language = getWorkLanguage();
   return {
     kind: 'pending_tellask',
     pendingCount: pending.length,
     pendingSignature: makePendingSignature(pending),
     updatedAt: formatUnifiedTimestamp(new Date()),
+    update: {
+      altInstruction: getPendingTellaskUpdateAltInstruction(language),
+    },
   };
 }
 

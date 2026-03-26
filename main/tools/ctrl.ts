@@ -130,10 +130,32 @@ function getDeleteAltInstruction(meta: unknown): string | undefined {
     : undefined;
 }
 
+function getUpdateAltInstruction(meta: unknown): string | undefined {
+  if (!isRecord(meta)) {
+    return undefined;
+  }
+
+  const updateValue = meta['update'];
+  if (!isRecord(updateValue)) {
+    return undefined;
+  }
+
+  const altInstruction = updateValue['altInstruction'];
+  return typeof altInstruction === 'string' && altInstruction.trim().length > 0
+    ? altInstruction.trim()
+    : undefined;
+}
+
 function formatManualDeleteBlockedError(language: LanguageCode, altInstruction: string): string {
   return language === 'zh'
     ? `错误：该提醒项不能用 delete_reminder 删除；请改为执行：${altInstruction}`
     : `Error: This reminder cannot be deleted via delete_reminder. Use instead: ${altInstruction}`;
+}
+
+function formatManualUpdateBlockedError(language: LanguageCode, altInstruction: string): string {
+  return language === 'zh'
+    ? `错误：该提醒项不能用 update_reminder 修改；请改按此处理：${altInstruction}`
+    : `Error: This reminder cannot be edited via update_reminder. Follow instead: ${altInstruction}`;
 }
 
 function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
@@ -510,6 +532,10 @@ export const updateReminderTool: FuncTool = {
     // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
     // may attach arbitrary metadata for reminder ownership/management.
     const meta = reminder?.meta;
+    const updateAltInstruction = getUpdateAltInstruction(meta);
+    if (updateAltInstruction !== undefined) {
+      return formatManualUpdateBlockedError(language, updateAltInstruction);
+    }
     const managerTool = getManagerTool(meta);
     if (managerTool !== undefined) {
       return language === 'zh'

@@ -75,6 +75,18 @@ async function main() {
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (zh)',
   );
 
+  const zhMetaControlledUpdate = formatReminderItemGuide('zh', 7, 'Auto-managed content\n', {
+    meta: { update: { altInstruction: '等待系统自动刷新' } },
+  });
+  assert(
+    zhMetaControlledUpdate.includes('等待系统自动刷新'),
+    'Expected reminder meta update.altInstruction to work without manager.tool (zh)',
+  );
+  assert(
+    !zhMetaControlledUpdate.includes('如果我要更新这条提醒项，可执行：update_reminder'),
+    'Expected meta-controlled reminder not to suggest update_reminder (zh)',
+  );
+
   const zhContinuation = formatReminderItemGuide('zh', 5, '接续信息\n', {
     meta: { kind: 'continuation_package', createdBy: 'clear_mind' },
   });
@@ -149,6 +161,18 @@ async function main() {
   assert(
     !enDeleteExample.includes('delete_reminder({ "reminder_no": 6 })'),
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (en)',
+  );
+
+  const enMetaControlledUpdate = formatReminderItemGuide('en', 7, 'Auto-managed content\n', {
+    meta: { update: { altInstruction: 'wait for system refresh' } },
+  });
+  assert(
+    enMetaControlledUpdate.includes('wait for system refresh'),
+    'Expected reminder meta update.altInstruction to work without manager.tool (en)',
+  );
+  assert(
+    !enMetaControlledUpdate.includes('If I need to update this reminder, run: update_reminder'),
+    'Expected meta-controlled reminder not to suggest update_reminder (en)',
   );
 
   const enContinuation = formatReminderItemGuide('en', 5, 'Continuation details\n', {

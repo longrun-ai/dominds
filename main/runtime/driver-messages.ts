@@ -229,6 +229,19 @@ export function formatReminderItemGuide(
         content,
       ].join('\n');
     }
+    if (updateInstruction) {
+      return [
+        `提醒项 #${index}`,
+        '',
+        '这是带有 meta 控制更新规则的提醒项。我仍把它当作状态参考，但不要用 update_reminder 直接改写内容。',
+        '',
+        `如果我要更新这条提醒项，不能用 update_reminder；请按此处理：${updateInstruction}`,
+        deleteInstruction,
+        '',
+        '---',
+        content,
+      ].join('\n');
+    }
     if (isContinuationPackageReminder) {
       return [
         `提醒项 #${index}（换程接续信息）`,
@@ -268,6 +281,16 @@ I treat this as a tool-maintained state reference. By default I should not expli
 This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
 
 If I need to update this reminder, run: ${updateInstructionSafe}
+${deleteInstruction}
+---
+${content}`;
+  }
+  if (updateInstruction) {
+    return `REMINDER ITEM #${index}
+
+This reminder has a meta-controlled update path. I should still treat it as state/reference, and I must not rewrite it directly with update_reminder.
+
+If I need to update this reminder, I must not use update_reminder; follow instead: ${updateInstruction}
 ${deleteInstruction}
 ---
 ${content}`;
