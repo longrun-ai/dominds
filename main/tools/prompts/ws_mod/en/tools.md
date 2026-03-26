@@ -40,6 +40,7 @@ Full file overwrite (**no prepare/apply**).
 - **Usage suggestion**: First use `read_file` to get `total_lines/size_bytes` as input for `known_old_total_lines/known_old_total_bytes`
 - **Design intent**: For "new content is small (e.g., <100 lines)" or "clearly a reset/generated artifact" scenarios; prefer prepare/apply for other cases
 - **Guardrail (required)**: Must provide `known_old_total_lines/known_old_total_bytes` (old file snapshot) to execute; reject if reconciliation doesn't match
+- `content_format`: Optional text hint; any non-empty label is accepted (for example `yaml`, `toml`, `json`, `markdown`)
 - **Guardrail (default reject)**: If content looks like diff/patch and `content_format=diff|patch` is not explicitly declared, default reject and guide to use prepare/apply (avoid mistakenly writing patch text into file)
 - **Limitation**: Does not create files; for creating empty/new files use `create_new_file`; for creating new file with non-empty initial content use `prepare_file_append create=true` → `apply_file_modification`
 

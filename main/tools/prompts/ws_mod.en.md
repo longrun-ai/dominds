@@ -11,7 +11,7 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
 - Output is YAML + unified diff (scan-friendly) with `summary` + `evidence`/`apply_evidence`.
 - Normalization: all writes follow “each line ends with `\n` (including the last line)”; missing EOF newline will be added and shown in `normalized.*`.
-- Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). It also rejects diff/patch-like content by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; otherwise prefer prepare/apply.
+- Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; otherwise prefer prepare/apply.
 - Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
 
 ## Which `prepare_*` to use

@@ -93,7 +93,7 @@
 > - `occurrence: ""` 或 `0`：不指定 occurrence
 > - `match: ""`：使用默认 `contains`（注意：`match` 是 match mode，不是要匹配的文本/正则）
 > - `read_file({ range: "", max_lines: 0 })`：分别表示"不指定范围 / 使用默认 500 行"
-> - `overwrite_entire_file({ content_format: "" })`：表示"未显式声明内容格式"（此时若正文强特征疑似 diff/patch 将默认拒绝写入）
+> - `overwrite_entire_file({ content_format: "" })`：表示"未显式声明内容格式"（此时若正文强特征疑似 diff/patch 将默认拒绝写入）。任意非空标签（例如 `yaml`）都会被原样接受，但只有 `diff` / `patch` 具有特殊语义。
 > - `ripgrep_*({ path: "", case: "", max_files: 0, max_results: 0 })`：分别表示"默认路径 '.' / 默认 smart-case / 使用默认上限"
 
 ## 5. 规范化策略

@@ -93,7 +93,7 @@ Tools supporting "re-plan with `existing_hunk_id` to overwrite" and their rules:
 > - `occurrence: ""` or `0`: do not specify occurrence
 > - `match: ""`: use default `contains` (note: `match` is match mode, not the text/regex to match)
 > - `read_file({ range: "", max_lines: 0 })`: respectively "do not specify range / use default 500 lines"
-> - `overwrite_entire_file({ content_format: "" })`: means "content format not explicitly declared" (will default reject if body strongly looks like diff/patch)
+> - `overwrite_entire_file({ content_format: "" })`: means "content format not explicitly declared" (will default reject if body strongly looks like diff/patch). Any non-empty label such as `yaml` is accepted literally, but only `diff` / `patch` have special semantics.
 > - `ripgrep_*({ path: "", case: "", max_files: 0, max_results: 0 })`: respectively "default path '.' / default smart-case / use default limits"
 
 ## 5. Normalization Strategy

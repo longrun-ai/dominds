@@ -11,7 +11,7 @@
 - 并行约束：同一轮对话中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**（除非未来有顺序编排器）。
 - 输出以 YAML + unified diff 为主：低注意力可复核（`summary` + `evidence`/`apply_evidence`）。
 - 规范化：所有写入遵循"每行以 `\n` 结尾（含最后一行）"；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
-- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`），并且在正文疑似 diff/patch 且未显式声明 `content_format=diff|patch` 时默认拒绝。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；其他情况优先 prepare/apply。
+- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；其他情况优先 prepare/apply。
   - 复制参数建议：对账参数请直接用 `read_file` 的 `total_lines/size_bytes`。
 - 例外：`create_new_file` 只负责"创建新文件"（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
 

@@ -44,6 +44,7 @@
     "team-imports-members": "tsx team-imports-members.ts",
     "team-file-ext-permissions": "tsx team-file-ext-permissions.ts",
     "create-new-file": "tsx create-new-file.ts",
+    "overwrite-entire-file": "tsx overwrite-entire-file.ts",
     "list-dir-symlink": "tsx list-dir-symlink.ts",
     "fs-symlink-follow": "tsx fs-symlink-follow.ts",
     "team_mgmt-create-new-file": "tsx team_mgmt-create-new-file.ts",

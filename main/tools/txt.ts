@@ -1094,7 +1094,7 @@ export const readFileTool = {
   },
 } satisfies FuncTool;
 
-type OverwriteContentFormat = 'text' | 'markdown' | 'json' | 'diff' | 'patch';
+type OverwriteContentFormat = string;
 
 const overwriteEntireFileSchema = {
   type: 'object',
@@ -1122,7 +1122,7 @@ const overwriteEntireFileSchema = {
     content_format: {
       type: 'string',
       description:
-        "Optional content format hint. If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use prepare/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
+        "Optional content format hint. Any non-empty string is accepted (for example: yaml, toml, json, markdown). If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use prepare/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
     },
   },
   required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
@@ -1147,17 +1147,9 @@ function parseCreateNewFileArgs(args: ToolArguments): { path: string; content: s
 function parseOverwriteContentFormat(value: unknown): OverwriteContentFormat | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') return undefined;
-  if (value.trim() === '') return undefined;
-  switch (value) {
-    case 'text':
-    case 'markdown':
-    case 'json':
-    case 'diff':
-    case 'patch':
-      return value;
-    default:
-      return undefined;
-  }
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+  return trimmed;
 }
 
 function parseOverwriteEntireFileArgs(args: ToolArguments): {
@@ -1202,11 +1194,6 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
       contentFormat = undefined;
     } else {
       contentFormat = parseOverwriteContentFormat(rawContentFormat);
-      if (contentFormat === undefined) {
-        throw new Error(
-          'Invalid `content_format` (expected one of: text, markdown, json, diff, patch)',
-        );
-      }
     }
   } else {
     throw new Error('Invalid `content_format` (expected string)');

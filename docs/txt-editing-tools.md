@@ -82,6 +82,7 @@ Chinese version: [中文版](./txt-editing-tools.zh.md)
   使用建议：先用 `read_file` 获取 `total_lines/size_bytes` 作为 `known_old_total_lines/known_old_total_bytes` 的对账输入。  
   设计定位：用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 prepare/apply。  
   护栏（强制）：必须提供 `known_old_total_lines/known_old_total_bytes`（旧文件快照）才允许执行；若对账不匹配则拒绝覆盖。  
+  `content_format`：可选文本提示，任意非空字符串都可接受（例如 `yaml` / `toml` / `json` / `markdown`）。  
   护栏（默认拒绝）：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 prepare/apply（避免把 patch 文本误写进文件）。  
   限制：不负责创建文件；创建空文件/新文件请用 `create_new_file`；创建“带非空初始内容”的新文件可用 `prepare_file_append create=true` → `apply_file_modification`。
 
@@ -136,7 +137,7 @@ Chinese version: [中文版](./txt-editing-tools.zh.md)
 > - `occurrence: ""` 或 `0`：不指定 occurrence。
 > - `match: ""`：使用默认 `contains`（注意：`match` 是 match mode，不是要匹配的文本/正则）。
 > - `read_file({ range: "", max_lines: 0 })`：分别表示“不指定范围 / 使用默认 500 行”。
-> - `overwrite_entire_file({ content_format: "" })`：表示“未显式声明内容格式”（此时若正文强特征疑似 diff/patch 将默认拒绝写入）。
+> - `overwrite_entire_file({ content_format: "" })`：表示“未显式声明内容格式”（此时若正文强特征疑似 diff/patch 将默认拒绝写入）；若显式提供任意非空标签（例如 `yaml`），工具会原样接受，但只有 `diff` / `patch` 具有放行 diff/patch 字面量的特殊语义。
 > - `ripgrep_*({ path: "", case: "", max_files: 0, max_results: 0 })`：分别表示“默认路径 '.' / 默认 smart-case / 使用默认上限”。
 
 ## 7. 规范化策略（当前实现）
