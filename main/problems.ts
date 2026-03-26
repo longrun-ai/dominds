@@ -157,6 +157,8 @@ function problemPayloadEqual(a: WorkspaceProblem, b: WorkspaceProblem): boolean 
     a.severity === b.severity &&
     a.source === b.source &&
     a.message === b.message &&
+    JSON.stringify(a.messageI18n) === JSON.stringify(b.messageI18n) &&
+    JSON.stringify(a.detailTextI18n) === JSON.stringify(b.detailTextI18n) &&
     JSON.stringify(a.detail) === JSON.stringify(b.detail)
   );
 }

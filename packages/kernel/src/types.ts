@@ -7,6 +7,7 @@ export * from './types/i18n';
 export * from './types/language';
 export * from './types/priming';
 export type {
+  ProblemI18nText,
   ProblemSeverity,
   WorkspaceProblem,
   WorkspaceProblemLifecycle,

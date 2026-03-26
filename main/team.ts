@@ -9,7 +9,7 @@
 import fs from 'fs/promises';
 import YAML from 'yaml';
 
-import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import type { ProblemI18nText, WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { loadEnabledAppsSnapshot } from './apps/enabled-apps';
 import { listDynamicAppToolsetsForMember } from './apps/runtime';
@@ -65,6 +65,94 @@ export class Team {
 export namespace Team {
   const TEAM_YAML_PATH = '.minds/team.yaml';
   const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
+
+  function buildTeamProblemI18n(text: string): ProblemI18nText {
+    const zh = (() => {
+      let out = text;
+      const replacements: Array<[RegExp, string]> = [
+        [
+          /Warning in \.minds\/team\.yaml: (.+?) uses a YAML list for labeled entries\./g,
+          '.minds/team.yaml 警告：$1 使用了带标签项的 YAML 列表。',
+        ],
+        [
+          /(.+?) is allowed as string\|string\[\]\|Record<string,string>\./g,
+          '$1 允许使用 string|string[]|Record<string,string>。',
+        ],
+        [
+          /The current list items all look like labeled entries \(for example `Label: value`\)\./g,
+          '当前列表项看起来都像带标签的条目（例如 `Label: value`）。',
+        ],
+        [
+          /If you want labeled structure, prefer YAML object form for readability:/g,
+          '如果你要表达带标签的结构，建议改用 YAML object，阅读性更好：',
+        ],
+        [
+          /Object keys are freeform; there is no fixed required key set\./g,
+          'object key 完全 freeform，没有固定必填 key。',
+        ],
+        [/The current YAML list form is still accepted\./g, '当前 YAML list 形式仍然允许。'],
+        [/Invalid \.minds\/team\.yaml:/g, '无效的 .minds/team.yaml：'],
+        [/Failed to parse \.minds\/team\.yaml\./g, '解析 .minds/team.yaml 失败。'],
+        [/Failed to load \.minds\/team\.yaml\./g, '加载 .minds/team.yaml 失败。'],
+        [/Failed to load enabled app teammates\./g, '加载已启用 app 的队友定义失败。'],
+        [
+          /Failed to load enabled app toolsets while validating \.minds\/team\.yaml toolset bindings\./g,
+          '校验 .minds/team.yaml 的 toolset 绑定时，加载已启用 app 的 toolset 失败。',
+        ],
+        [
+          /Failed to load LLM configuration for validating \.minds\/team\.yaml provider\/model bindings\./g,
+          '校验 .minds/team.yaml 的 provider/model 绑定时，加载 LLM 配置失败。',
+        ],
+        [/contains an unknown toolset\./g, '包含未知 toolset。'],
+        [
+          /contains an unresolved toolset, and \.minds\/mcp\.yaml is invalid\./g,
+          '包含未解析的 toolset，且 .minds/mcp.yaml 无效。',
+        ],
+        [
+          /contains an MCP toolset whose server config is invalid\./g,
+          '包含一个其服务器配置无效的 MCP toolset。',
+        ],
+        [/contains an unknown member id\./g, '包含未知成员 id。'],
+        [/non-shell-specialist member has shell tools\./g, '非 shell 专员成员拥有 shell 工具。'],
+        [/shell specialist has no shell tools\./g, 'shell 专员成员没有 shell 工具。'],
+        [
+          /shell tools are present but shell_specialists is empty\/null\./g,
+          '存在 shell 工具，但 shell_specialists 为空/null。',
+        ],
+        [/missing member_defaults\.provider\./g, '缺少 member_defaults.provider。'],
+        [/missing member_defaults\.model\./g, '缺少 member_defaults.model。'],
+        [/default_responder does not match any member\./g, 'default_responder 没有匹配任何成员。'],
+        [/must be an object\./g, '必须是对象。'],
+        [/must be a string\./g, '必须是字符串。'],
+        [/must be string\|string\[\] or null\./g, '必须是 string|string[] 或 null。'],
+        [/unknown top-level fields\./g, '存在未知顶层字段。'],
+        [/has invalid fields\./g, '字段无效。'],
+        [/contains unknown fields\./g, '包含未知字段。'],
+        [
+          /contains forbidden built-in scopes\. These entries are ignored\./g,
+          '包含被禁止的内置作用域；这些条目会被忽略。',
+        ],
+        [/is not allowed for Codex providers\./g, '对 Codex provider 不允许。'],
+        [/refers to an unknown provider key\./g, '引用了未知 provider key。'],
+        [
+          /is not present in provider '(.+?)' models list\./g,
+          "不在 provider '$1' 的 models 列表中。",
+        ],
+        [/expected an object/g, '期望为对象'],
+        [/expected a boolean/g, '期望为 boolean'],
+        [/expected a number/g, '期望为 number'],
+        [/expected string\[\]/g, '期望为 string[]'],
+        [/expected string\|string\[\]/g, '期望为 string|string[]'],
+        [/expected string/g, '期望为 string'],
+        [/value required/g, '值必填'],
+      ];
+      for (const [pattern, replacement] of replacements) {
+        out = out.replace(pattern, replacement);
+      }
+      return out;
+    })();
+    return { en: text, zh };
+  }
 
   type OpenAiStyleModelParams = {
     temperature?: number; // 0-2, controls randomness
@@ -123,7 +211,7 @@ export namespace Team {
     name: string;
     provider?: string;
     model?: string;
-    gofor?: string[] | Record<string, string>;
+    gofor?: string | string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -156,7 +244,7 @@ export namespace Team {
       name: string;
       provider?: string;
       model?: string;
-      gofor?: string[] | Record<string, string>;
+      gofor?: string | string[] | Record<string, string>;
       toolsets?: string[];
       tools?: string[];
       model_params?: ModelParams;
@@ -261,7 +349,7 @@ export namespace Team {
       this.model = model;
     }
 
-    setGofor(gofor: string[] | Record<string, string> | undefined): void {
+    setGofor(gofor: string | string[] | Record<string, string> | undefined): void {
       if (gofor === undefined) {
         delete this.gofor;
         return;
@@ -577,22 +665,48 @@ export namespace Team {
     });
     Object.setPrototypeOf(pangu, md);
 
-    const issuesById = new Map<string, { message: string; errorText: string; filePath?: string }>();
-    const addIssue = (id: string, message: string, errorText: string, filePath?: string): void => {
-      issuesById.set(id, { message, errorText, filePath });
+    const issuesById = new Map<
+      string,
+      {
+        message: string;
+        errorText: string;
+        filePath?: string;
+        severity: 'error' | 'warning';
+      }
+    >();
+    const addIssue = (
+      id: string,
+      message: string,
+      errorText: string,
+      filePath?: string,
+      severity: 'error' | 'warning' = 'error',
+    ): void => {
+      issuesById.set(id, { message, errorText, filePath, severity });
+    };
+    const addWarning = (
+      id: string,
+      message: string,
+      errorText: string,
+      filePath?: string,
+    ): void => {
+      addIssue(id, message, errorText, filePath, 'warning');
     };
 
     const finalizeProblems = (): void => {
       const now = formatUnifiedTimestamp(new Date());
       const desired: WorkspaceProblem[] = [];
       for (const [id, issue] of issuesById.entries()) {
+        const messageI18n = buildTeamProblemI18n(issue.message);
+        const detailTextI18n = buildTeamProblemI18n(issue.errorText);
         desired.push({
           kind: 'team_workspace_config_error',
           source: 'team',
           id: TEAM_YAML_PROBLEM_PREFIX + id,
-          severity: 'error',
+          severity: issue.severity,
           timestamp: now,
-          message: issue.message,
+          message: messageI18n.en ?? issue.message,
+          messageI18n,
+          detailTextI18n,
           detail: { filePath: issue.filePath ?? TEAM_YAML_PATH, errorText: issue.errorText },
         });
       }
@@ -943,6 +1057,72 @@ export namespace Team {
         });
       }
     }
+
+    function validateGoforShapeWarnings(team: Team, md: Team.Member): void {
+      const findStructuredGoforLabelDelimiter = (value: string): number => {
+        const halfWidth = value.indexOf(':');
+        const fullWidth = value.indexOf('：');
+        if (halfWidth === -1) return fullWidth;
+        if (fullWidth === -1) return halfWidth;
+        return Math.min(halfWidth, fullWidth);
+      };
+
+      const looksLikeStructuredGoforListEntry = (value: string): boolean => {
+        const trimmed = value.trim();
+        if (trimmed === '') return false;
+        const delimiterIndex = findStructuredGoforLabelDelimiter(trimmed);
+        if (delimiterIndex <= 0 || delimiterIndex > 32) return false;
+        const label = trimmed.slice(0, delimiterIndex).trim();
+        const detail = trimmed.slice(delimiterIndex + 1).trim();
+        if (label === '' || detail === '') return false;
+        const secondHalfWidth = trimmed.indexOf(':', delimiterIndex + 1);
+        const secondFullWidth = trimmed.indexOf('：', delimiterIndex + 1);
+        return secondHalfWidth === -1 && secondFullWidth === -1;
+      };
+
+      const validateAt = (args: {
+        idPrefix: string;
+        atPrefix: string;
+        gofor: string | string[] | Record<string, string> | undefined;
+      }): void => {
+        const gofor = args.gofor;
+        if (!Array.isArray(gofor)) return;
+        if (gofor.length === 0) return;
+        if (!gofor.every(looksLikeStructuredGoforListEntry)) return;
+        addWarning(
+          `${args.idPrefix}/gofor/prefer_object_for_labeled_entries`,
+          `Warning in .minds/team.yaml: ${args.atPrefix}.gofor uses a YAML list for labeled entries.`,
+          [
+            `${args.atPrefix}.gofor is allowed as string|string[]|Record<string,string>.`,
+            `The current list items all look like labeled entries (for example \`Label: value\`).`,
+            `If you want labeled structure, prefer YAML object form for readability:`,
+            `gofor:`,
+            `  Label: value`,
+            `  Another label: value`,
+            `Object keys are freeform; there is no fixed required key set.`,
+            `The current YAML list form is still accepted.`,
+          ].join('\n'),
+        );
+      };
+
+      if (Object.prototype.hasOwnProperty.call(md, 'gofor')) {
+        validateAt({
+          idPrefix: 'member_defaults',
+          atPrefix: 'member_defaults',
+          gofor: md.gofor,
+        });
+      }
+
+      for (const member of Object.values(team.members)) {
+        if (!Object.prototype.hasOwnProperty.call(member, 'gofor')) continue;
+        const idSeg = sanitizeProblemIdSegment(member.id);
+        validateAt({
+          idPrefix: `members/${idSeg}`,
+          atPrefix: `members.${member.id}`,
+          gofor: member.gofor,
+        });
+      }
+    }
     const buildBootstrapTeam = async (): Promise<Team> => {
       try {
         await applyBootstrapMemberDefaults(md);
@@ -999,7 +1179,7 @@ export namespace Team {
 
       const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu }, { appTeammates });
       for (const issue of parsedTeam.issues) {
-        addIssue(issue.id, issue.message, issue.errorText);
+        addIssue(issue.id, issue.message, issue.errorText, undefined, issue.severity);
       }
 
       team = parsedTeam.team;
@@ -1062,6 +1242,7 @@ export namespace Team {
     // Fail-open: always keep Team usable; publish config errors to Problems panel.
     await validateResolvedProviderModelBindings(team, md);
     await validateMemberToolsetBindings(team, md);
+    validateGoforShapeWarnings(team, md);
 
     finalizeProblems();
     return team;
@@ -1138,7 +1319,12 @@ export namespace Team {
     return value;
   }
 
-  type TeamYamlIssue = { id: string; message: string; errorText: string };
+  type TeamYamlIssue = {
+    id: string;
+    message: string;
+    errorText: string;
+    severity: 'error' | 'warning';
+  };
 
   function isRecordValue(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1373,7 +1559,7 @@ export namespace Team {
     name?: string;
     provider?: string;
     model?: string;
-    gofor?: string[] | Record<string, string>;
+    gofor?: string | string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -1738,8 +1924,13 @@ export namespace Team {
     deps: { appTeammates: ReadonlyArray<AppTeammatesSnippet> },
   ): { team: Team; issues: TeamYamlIssue[] } {
     const issues: TeamYamlIssue[] = [];
-    const pushIssue = (id: string, message: string, errorText: string): void => {
-      issues.push({ id, message, errorText });
+    const pushIssue = (
+      id: string,
+      message: string,
+      errorText: string,
+      severity: 'error' | 'warning' = 'error',
+    ): void => {
+      issues.push({ id, message, errorText, severity });
     };
 
     const appMembersByAppId = new Map<string, Record<string, unknown>>();
@@ -2099,11 +2290,40 @@ export namespace Team {
   function asOptionalGofor(
     value: unknown,
     at: string,
-  ): string[] | Record<string, string> | undefined {
+  ): string | string[] | Record<string, string> | undefined {
     if (value === undefined) return undefined;
 
-    if (typeof value === 'string') return [value];
-    if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value;
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      const normalized: string[] = [];
+      for (let i = 0; i < value.length; i += 1) {
+        const item = value[i];
+        if (typeof item === 'string') {
+          normalized.push(item);
+          continue;
+        }
+        if (isRecordValue(item)) {
+          const entries = Object.entries(item);
+          if (entries.length !== 1) {
+            throw new Error(
+              `Invalid ${at}[${i}]: expected string or single-entry object (got ${describeValueType(item)})`,
+            );
+          }
+          const [k, v] = entries[0];
+          if (typeof v !== 'string') {
+            throw new Error(
+              `Invalid ${at}[${i}].${k}: expected string (got ${describeValueType(v)})`,
+            );
+          }
+          normalized.push(`${k}: ${v}`);
+          continue;
+        }
+        throw new Error(
+          `Invalid ${at}[${i}]: expected string or single-entry object (got ${describeValueType(item)})`,
+        );
+      }
+      return normalized;
+    }
 
     if (isRecordValue(value)) {
       const obj = value as Record<string, unknown>;

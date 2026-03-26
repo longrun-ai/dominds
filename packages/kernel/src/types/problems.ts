@@ -1,4 +1,7 @@
+import type { LanguageCode } from './language';
+
 export type ProblemSeverity = 'info' | 'warning' | 'error';
+export type ProblemI18nText = Partial<Record<LanguageCode, string>>;
 
 export type WorkspaceProblemLifecycle = Readonly<{
   occurredAt?: string;
@@ -14,6 +17,8 @@ export type WorkspaceProblem =
       severity: 'error';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         filePath: string;
         errorText: string;
@@ -26,6 +31,8 @@ export type WorkspaceProblem =
       severity: 'error' | 'warning';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         filePath: string;
         errorText: string;
@@ -38,6 +45,8 @@ export type WorkspaceProblem =
       severity: 'error';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         serverId: string;
         errorText: string;
@@ -50,6 +59,8 @@ export type WorkspaceProblem =
       severity: 'warning';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         serverId: string;
         toolName: string;
@@ -63,6 +74,8 @@ export type WorkspaceProblem =
       severity: 'info' | 'warning';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         serverId: string;
         toolName: string;
@@ -76,6 +89,8 @@ export type WorkspaceProblem =
       severity: 'info' | 'warning';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         serverId: string;
         toolName: string;
@@ -89,6 +104,8 @@ export type WorkspaceProblem =
       severity: 'warning';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         serverId: string;
         toolName: string;
@@ -102,6 +119,8 @@ export type WorkspaceProblem =
       severity: 'error';
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         dialogId: string;
         provider: string;
@@ -115,6 +134,8 @@ export type WorkspaceProblem =
       severity: ProblemSeverity;
       timestamp: string;
       message: string;
+      messageI18n?: ProblemI18nText;
+      detailTextI18n?: ProblemI18nText;
       detail: {
         text: string;
       };

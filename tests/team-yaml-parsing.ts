@@ -360,6 +360,94 @@ async function main(): Promise<void> {
       assert.ok(toolNames.includes('shell_cmd'), 'cmdr should receive shell_cmd');
     }
 
+    // gofor should preserve string/object forms, and structured list form should remain allowed
+    // while surfacing a warning that object form is clearer for labeled entries.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'llm.yaml'),
+      [
+        'providers:',
+        '  stub:',
+        '    name: Stub',
+        '    apiType: openai',
+        '    baseUrl: https://example.invalid',
+        '    apiKeyEnvVar: STUB_API_KEY',
+        '    models:',
+        '      fake_model: { name: "fake-model" }',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: stub',
+        '  model: fake_model',
+        'default_responder: coordinator',
+        'members:',
+        '  coordinator:',
+        '    name: Coordinator',
+        '    gofor:',
+        '      Scope: oversee the team',
+        '      Deliverables: planning and integration',
+        '  reviewer:',
+        '    name: Reviewer',
+        '    gofor: keep reviews focused',
+        '  listed:',
+        '    name: Listed',
+        '    gofor:',
+        '      - Scope: triage incoming work',
+        '      - Deliverables: handoff notes',
+        '  bullety:',
+        '    name: Bullety',
+        '    gofor:',
+        '      - investigate flaky tests',
+        '      - capture logs',
+        '',
+      ].join('\n'),
+    );
+
+    const goforTeam = await Team.load();
+    assert.deepEqual(goforTeam.getMember('coordinator')?.gofor, {
+      Scope: 'oversee the team',
+      Deliverables: 'planning and integration',
+    });
+    assert.equal(goforTeam.getMember('reviewer')?.gofor, 'keep reviews focused');
+    assert.deepEqual(goforTeam.getMember('listed')?.gofor, [
+      'Scope: triage incoming work',
+      'Deliverables: handoff notes',
+    ]);
+
+    const goforSnapshot = getProblemsSnapshot();
+    const structuredListWarning = goforSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/listed/gofor/prefer_object_for_labeled_entries',
+    );
+    assert.ok(
+      structuredListWarning && structuredListWarning.kind === 'team_workspace_config_error',
+      'structured gofor list should surface a warning problem',
+    );
+    assert.equal(structuredListWarning.severity, 'warning');
+    assert.equal(
+      structuredListWarning.messageI18n?.en,
+      'Warning in .minds/team.yaml: members.listed.gofor uses a YAML list for labeled entries.',
+    );
+    assert.equal(
+      structuredListWarning.messageI18n?.zh,
+      '.minds/team.yaml 警告：members.listed.gofor 使用了带标签项的 YAML 列表。',
+    );
+    assert.ok(
+      structuredListWarning.detailTextI18n?.zh?.includes('object key 完全 freeform'),
+      'team problem should carry zh localized detail text from backend',
+    );
+    assert.ok(structuredListWarning.detail.errorText.includes('Object keys are freeform'));
+    assert.ok(
+      goforSnapshot.problems.every(
+        (p) =>
+          p.id !== 'team/team_yaml_error/members/bullety/gofor/prefer_object_for_labeled_entries',
+      ),
+      'plain gofor bullet lists should not warn',
+    );
+
     console.log('✅ team-yaml-parsing tests passed');
 
     // Provider/model bindings:

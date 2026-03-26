@@ -2896,6 +2896,48 @@ export class DomindsApp extends HTMLElement {
         word-break: break-word;
       }
 
+      .problem-detail-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .problem-detail-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: baseline;
+      }
+
+      .problem-detail-label {
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .problem-detail-value {
+        white-space: pre-wrap;
+      }
+
+      .problem-detail-value.code {
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
+      }
+
+      .problem-detail-block {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
       .problem-lifecycle {
         margin-top: 4px;
         display: inline-flex;
@@ -9310,6 +9352,123 @@ export class DomindsApp extends HTMLElement {
     return sawWarning ? 'warning' : 'info';
   }
 
+  private getProblemDetailLabel(key: string): string {
+    const zh = this.uiLanguage === 'zh';
+    switch (key) {
+      case 'filePath':
+        return zh ? '文件' : 'File';
+      case 'errorText':
+        return zh ? '详情' : 'Details';
+      case 'text':
+        return zh ? '详情' : 'Details';
+      case 'serverId':
+        return zh ? '服务' : 'Server';
+      case 'toolName':
+        return zh ? '工具' : 'Tool';
+      case 'domindsToolName':
+        return zh ? '冲突工具' : 'Conflicts With';
+      case 'pattern':
+        return zh ? '模式' : 'Pattern';
+      case 'rule':
+        return zh ? '规则' : 'Rule';
+      case 'dialogId':
+        return zh ? '对话' : 'Dialog';
+      case 'provider':
+        return zh ? 'Provider' : 'Provider';
+      default:
+        return key;
+    }
+  }
+
+  private selectProblemMessage(problem: WorkspaceProblemRecord): string {
+    return problem.messageI18n?.[this.uiLanguage] ?? problem.message;
+  }
+
+  private selectProblemDetailText(problem: WorkspaceProblemRecord, fallback: string): string {
+    return problem.detailTextI18n?.[this.uiLanguage] ?? fallback;
+  }
+
+  private renderProblemDetailValue(value: unknown): string {
+    if (typeof value === 'string') return this.escapeHtml(value);
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return this.escapeHtml(String(value));
+    }
+    if (value === null) return this.escapeHtml('null');
+    return this.escapeHtml(JSON.stringify(value, null, 2));
+  }
+
+  private renderProblemDetailHtml(problem: WorkspaceProblemRecord): string {
+    const detail = problem.detail;
+    if (typeof detail !== 'object' || detail === null || Array.isArray(detail)) {
+      return `<div class="problem-detail">${this.escapeHtml(JSON.stringify(detail, null, 2))}</div>`;
+    }
+
+    const record = detail as Record<string, unknown>;
+    const blocks: string[] = [];
+    const preferredOrder = [
+      'filePath',
+      'serverId',
+      'toolName',
+      'domindsToolName',
+      'pattern',
+      'rule',
+      'dialogId',
+      'provider',
+      'errorText',
+      'text',
+    ];
+    const emitted = new Set<string>();
+
+    const renderField = (key: string, value: unknown): void => {
+      emitted.add(key);
+      if (value === undefined) return;
+      const label = this.escapeHtml(this.getProblemDetailLabel(key));
+      const isBlock = key === 'errorText' || key === 'text';
+      const isCode =
+        key === 'filePath' ||
+        key === 'serverId' ||
+        key === 'toolName' ||
+        key === 'domindsToolName' ||
+        key === 'pattern' ||
+        key === 'rule' ||
+        key === 'dialogId' ||
+        key === 'provider';
+      const displayValue =
+        typeof value === 'string' && (key === 'errorText' || key === 'text')
+          ? this.selectProblemDetailText(problem, value)
+          : value;
+      const valueHtml = this.renderProblemDetailValue(displayValue);
+      if (isBlock) {
+        blocks.push(
+          `<div class="problem-detail-block"><div class="problem-detail-label">${label}</div><div class="problem-detail-value">${valueHtml}</div></div>`,
+        );
+        return;
+      }
+      blocks.push(
+        `<div class="problem-detail-row"><span class="problem-detail-label">${label}</span><span class="problem-detail-value${isCode ? ' code' : ''}">${valueHtml}</span></div>`,
+      );
+    };
+
+    for (const key of preferredOrder) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        renderField(key, record[key]);
+      }
+    }
+
+    const remainingKeys = Object.keys(record)
+      .filter((key) => !emitted.has(key))
+      .sort();
+    for (const key of remainingKeys) {
+      renderField(key, record[key]);
+    }
+
+    if (blocks.length === 0) {
+      return `<div class="problem-detail">${this.escapeHtml(JSON.stringify(detail, null, 2))}</div>`;
+    }
+
+    return `<div class="problem-detail"><div class="problem-detail-list">${blocks.join('')}</div></div>`;
+  }
+
   private renderProblemsListHtml(): string {
     const t = getUiStrings(this.uiLanguage);
     if (this.problems.length === 0) {
@@ -9327,7 +9486,6 @@ export class DomindsApp extends HTMLElement {
         return b.timestamp.localeCompare(a.timestamp);
       })
       .map((p) => {
-        const detailText = JSON.stringify(p.detail, null, 2);
         const lifecycleLabel =
           p.resolved === true ? t.problemsResolvedBadge : t.problemsActiveBadge;
         const occurredAt =
@@ -9340,14 +9498,15 @@ export class DomindsApp extends HTMLElement {
             : null;
         const lifecycleMeta =
           p.resolved === true && resolvedAt ? `${occurredAt} → ${resolvedAt}` : occurredAt;
+        const message = this.selectProblemMessage(p);
         return `
           <div class="problem-item" data-severity="${p.severity}" data-resolved="${p.resolved === true ? 'true' : 'false'}">
             <div class="problem-head">
-              <div class="problem-message">${this.escapeHtml(p.message)}</div>
+              <div class="problem-message">${this.escapeHtml(message)}</div>
               <div class="problem-meta problem-timestamp">${this.escapeHtml(lifecycleMeta)}</div>
             </div>
             <div class="problem-meta problem-lifecycle">${this.escapeHtml(lifecycleLabel)}</div>
-            <div class="problem-detail">${this.escapeHtml(detailText)}</div>
+            ${this.renderProblemDetailHtml(p)}
           </div>
         `;
       })

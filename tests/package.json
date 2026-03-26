@@ -137,6 +137,7 @@
     "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts",
     "team_mgmt-manual-skills-manual": "tsx team_mgmt-manual/skills-manual.ts",
     "team_mgmt-manual-minds-manual-mindset-headings": "tsx team_mgmt-manual/minds-manual-mindset-headings.ts",
+    "team_mgmt-manual-team-gofor-shapes": "tsx team_mgmt-manual/team-gofor-shapes.ts",
     "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
   },
   "devDependencies": {
