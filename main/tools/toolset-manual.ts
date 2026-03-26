@@ -5,7 +5,7 @@ import { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
 import { renderToolsetManual } from './manual/render';
 import { MANUAL_TOPICS } from './manual/spec';
-import { listToolsets } from './registry';
+import { getToolsetMeta, listToolsets } from './registry';
 
 type ToolsetManualResult = {
   tools: FuncTool[];
@@ -22,25 +22,79 @@ export function buildToolsetManualTools(_options: {
   return { tools: [tool], toolNames: [tool.name] };
 }
 
-export function formatToolsetManualIntro(language: LanguageCode, toolNames: string[]): string {
-  const names = toolNames.map((name) => `\`${name}\``).join(', ');
-  const calls = toolNames.map((name) => `\`${name}({ "toolsetId": "..." })\``).join(', ');
-  if (toolNames.length === 0) {
-    return language === 'zh' ? '（无可用手册工具）' : '(no manual tool available)';
+function getToolsetDescription(language: LanguageCode, toolsetId: string): string {
+  const meta = getToolsetMeta(toolsetId);
+  const description = meta?.descriptionI18n;
+  if (!description) {
+    return language === 'zh' ? '工具集说明暂缺' : 'No description available';
   }
-  return language === 'zh'
-    ? `手册：${names}（调用：${calls}）`
-    : `Manuals: ${names} (call: ${calls})`;
+  return description[language] ?? description.en ?? description.zh ?? '';
 }
 
-function formatToolsetListForUnavailable(
+function formatToolsetEntry(
+  language: LanguageCode,
+  toolsetId: string,
+  includeCall: boolean,
+): string {
+  const description = getToolsetDescription(language, toolsetId);
+  const endsWithSentencePunctuation =
+    description.endsWith('。') ||
+    description.endsWith('.') ||
+    description.endsWith('!') ||
+    description.endsWith('！');
+  if (language === 'zh') {
+    return includeCall
+      ? `- \`${toolsetId}\`：${description}${endsWithSentencePunctuation ? '' : '。'}查看详情：\`man({ "toolsetId": "${toolsetId}" })\``
+      : `- \`${toolsetId}\`：${description}`;
+  }
+  return includeCall
+    ? `- \`${toolsetId}\`: ${description}${endsWithSentencePunctuation ? '' : '.'} Details: \`man({ "toolsetId": "${toolsetId}" })\``
+    : `- \`${toolsetId}\`: ${description}`;
+}
+
+function formatToolsetEntries(
   language: LanguageCode,
   toolsetIds: readonly string[],
+  includeCall: boolean,
 ): string {
   if (toolsetIds.length === 0) {
     return language === 'zh' ? '（当前无可用工具集）' : '(no toolsets currently available)';
   }
-  return toolsetIds.map((toolsetId) => `\`${toolsetId}\``).join(', ');
+  return toolsetIds
+    .map((toolsetId) => formatToolsetEntry(language, toolsetId, includeCall))
+    .join('\n');
+}
+
+function formatToolsetIdList(language: LanguageCode, toolsetIds: readonly string[]): string {
+  if (toolsetIds.length === 0) {
+    return language === 'zh' ? '（当前无可用工具集）' : '(no toolsets currently available)';
+  }
+  return toolsetIds.map((toolsetId) => `- \`${toolsetId}\``).join('\n');
+}
+
+export function formatToolsetManualIntro(
+  language: LanguageCode,
+  toolNames: string[],
+  toolsetIds: readonly string[],
+): string {
+  const names = toolNames.map((name) => `\`${name}\``).join(', ');
+  if (toolNames.length === 0) {
+    return language === 'zh' ? '（无可用手册工具）' : '(no manual tool available)';
+  }
+  if (language === 'zh') {
+    return [
+      `手册工具：${names}`,
+      '可用工具集：',
+      formatToolsetEntries(language, toolsetIds, true),
+      '何时查阅手册：当某个工具集的功能边界、参数写法、典型场景或报错处理不确定时，调用 `man` 查看详情。',
+    ].join('\n');
+  }
+  return [
+    `Manual tool: ${names}`,
+    'Available toolsets:',
+    formatToolsetEntries(language, toolsetIds, true),
+    'When to read the manual: call `man` when a toolset’s boundaries, argument shape, typical scenarios, or error handling are unclear.',
+  ].join('\n');
 }
 
 function buildManTool(): FuncTool {
@@ -48,10 +102,10 @@ function buildManTool(): FuncTool {
   return {
     type: 'func',
     name: 'man',
-    description: `Show manual for a toolset. Use 'toolsetId' to specify which toolset. Use 'topic' or 'topics' to select sections.`,
+    description: `Show manual for a toolset. Use without 'toolsetId' to list available toolsets. Use 'toolsetId' to inspect one toolset and 'topic' or 'topics' to select sections.`,
     descriptionI18n: {
-      en: `Show manual for a toolset. Use 'toolsetId' to specify which toolset. Use 'topic' or 'topics' to select sections.`,
-      zh: `查看工具集的手册。使用 'toolsetId' 指定工具集。使用 'topic' 或 'topics' 选择章节。`,
+      en: `Show manual for a toolset. Use without 'toolsetId' to list available toolsets. Use 'toolsetId' to inspect one toolset and 'topic' or 'topics' to select sections.`,
+      zh: `查看工具集手册。不带 'toolsetId' 时列出可用工具集；带上 'toolsetId' 时查看单个工具集；使用 'topic' 或 'topics' 选择章节。`,
     },
     parameters: {
       type: 'object',
@@ -90,8 +144,22 @@ function buildManTool(): FuncTool {
       if (!toolsetId) {
         // When no toolsetId is provided, show all available toolsets
         const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
-        const list = formatToolsetListForUnavailable(language, availableToolsetNames);
-        return language === 'zh' ? `可用的工具集：${list}` : `Available toolsets: ${list}`;
+        if (language === 'zh') {
+          return [
+            '**可用工具集**',
+            '',
+            formatToolsetIdList(language, availableToolsetNames),
+            '',
+            '提示：当某个工具集的功能边界、参数写法、场景示例或错误处理不确定时，继续调用 `man({ "toolsetId": "<toolset>" })` 查看详情。',
+          ].join('\n');
+        }
+        return [
+          '**Available toolsets**',
+          '',
+          formatToolsetIdList(language, availableToolsetNames),
+          '',
+          'Hint: when a toolset’s boundaries, argument shape, scenarios, or error handling are unclear, call `man({ "toolsetId": "<toolset>" })` for details.',
+        ].join('\n');
       }
 
       // Step 1: Get available toolsets for this caller (dynamic availability)
@@ -111,10 +179,10 @@ function buildManTool(): FuncTool {
             : `Toolset '${toolsetId}' is not available to you. Did you mean: '${suggestion}'?`;
         }
         // No suggestion available, just report unavailability and list available toolsets
-        const list = formatToolsetListForUnavailable(language, availableToolsetNames);
+        const list = formatToolsetIdList(language, availableToolsetNames);
         return language === 'zh'
-          ? `工具集 '${toolsetId}' 暂未配置给您使用。可用工具集：${list}`
-          : `Toolset '${toolsetId}' is not available to you. Available toolsets: ${list}`;
+          ? `工具集 '${toolsetId}' 暂未配置给您使用。\n\n可用工具集：\n${list}`
+          : `Toolset '${toolsetId}' is not available to you.\n\nAvailable toolsets:\n${list}`;
       }
 
       const availableToolNames = new Set(

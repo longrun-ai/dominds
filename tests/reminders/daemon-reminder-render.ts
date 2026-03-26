@@ -57,6 +57,8 @@ async function main(): Promise<void> {
     assert.match(rendered.content, /状态快照/);
     assert.match(rendered.content, /stdout 缓冲区快照/);
     assert.match(rendered.content, /daemon-ready/);
+    assert.match(rendered.content, /禁止做任何用户可见回应/);
+    assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
     assert.doesNotMatch(rendered.content, /请按需要检查/);
     assert.doesNotMatch(rendered.content, /Latest stdout/);
     assert.doesNotMatch(rendered.content, /Use stop_daemon/);

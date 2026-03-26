@@ -156,7 +156,10 @@ registerToolset('personal_memory', [
 ]);
 setToolsetMeta('personal_memory', {
   source: 'dominds',
-  descriptionI18n: { en: 'Personal memory tools', zh: '个人记忆工具' },
+  descriptionI18n: {
+    en: 'Private memory for this agent: keep stable preferences, responsibility-scope paths, and durable facts accurate.',
+    zh: '仅当前智能体可见的个人记忆：维护稳定偏好、职责域路径索引与长期事实。',
+  },
   promptFilesI18n: promptFilesFor('personal_memory'),
   manualSpec: manualSpecFor('personal_memory'),
 });
@@ -168,7 +171,10 @@ registerToolset('team_memory', [
 ]);
 setToolsetMeta('team_memory', {
   source: 'dominds',
-  descriptionI18n: { en: 'Shared team memory tools', zh: '团队共享记忆工具' },
+  descriptionI18n: {
+    en: 'Shared team memory: record reusable conventions, invariants, and cross-task collaboration rules.',
+    zh: '团队共享记忆：沉淀可复用的约定、不变量与跨任务协作规则。',
+  },
   promptFilesI18n: promptFilesFor('team_memory'),
   manualSpec: manualSpecFor('team_memory'),
 });
@@ -182,7 +188,10 @@ registerToolset('control', [
 ]);
 setToolsetMeta('control', {
   source: 'dominds',
-  descriptionI18n: { en: 'Dialog control tools', zh: '对话控制工具' },
+  descriptionI18n: {
+    en: 'Dialog control: manage reminders, Taskdoc sections, and course resets via clear_mind/change_mind.',
+    zh: '对话控制：维护提醒项、差遣牒分段，并通过 clear_mind/change_mind 管理对话进程。',
+  },
   promptFilesI18n: promptFilesFor('control'),
   manualSpec: manualSpecFor('control'),
 });
@@ -196,7 +205,10 @@ registerToolset('os', [
 ]);
 setToolsetMeta('os', {
   source: 'dominds',
-  descriptionI18n: { en: 'Shell and process tools', zh: '命令行与进程工具' },
+  descriptionI18n: {
+    en: 'Shell and process operations: run commands, manage daemons, inspect output, and adjust local env vars.',
+    zh: '命令行与进程操作：执行命令、管理后台进程、查看输出，并调整本地环境变量。',
+  },
   promptFilesI18n: promptFilesFor('os'),
   manualSpec: manualSpecFor('os'),
 });
@@ -209,7 +221,10 @@ registerToolset('mcp_admin', [
 ]);
 setToolsetMeta('mcp_admin', {
   source: 'dominds',
-  descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
+  descriptionI18n: {
+    en: 'MCP administration: restart/release MCP servers and manage related local environment configuration.',
+    zh: 'MCP 管理：重启/释放 MCP 服务器，并维护相关本地环境配置。',
+  },
   promptFilesI18n: promptFilesFor('mcp_admin'),
   manualSpec: manualSpecFor('mcp_admin'),
 });
@@ -224,7 +239,10 @@ registerToolset('ws_read', [
 ]);
 setToolsetMeta('ws_read', {
   source: 'dominds',
-  descriptionI18n: { en: 'rtws read-only tools', zh: '运行时工作区只读工具' },
+  descriptionI18n: {
+    en: 'rtws read-only access: list directories, read files, and search code/content to gather facts safely.',
+    zh: '运行时工作区只读访问：列目录、读文件、检索代码与文本，用于安全获取事实。',
+  },
   promptFilesI18n: promptFilesFor('ws_read'),
   manualSpec: manualSpecFor('ws_read'),
 });
@@ -252,7 +270,10 @@ registerToolset('ws_mod', [
 ]);
 setToolsetMeta('ws_mod', {
   source: 'dominds',
-  descriptionI18n: { en: 'rtws read/write tools', zh: '运行时工作区读写工具' },
+  descriptionI18n: {
+    en: 'rtws read/write access: inspect, create, move, delete, and precisely edit workspace files.',
+    zh: '运行时工作区读写访问：检查、创建、移动、删除，并精确编辑工作区文件。',
+  },
   promptFilesI18n: promptFilesFor('ws_mod'),
   manualSpec: manualSpecFor('ws_mod'),
 });
@@ -263,8 +284,8 @@ if (process.platform !== 'win32') {
   setToolsetMeta('codex_style_tools', {
     source: 'dominds',
     descriptionI18n: {
-      en: 'Codex-style tools (readonly_shell + apply_patch + update_plan)',
-      zh: 'Codex 风格工具（readonly_shell + apply_patch + update_plan）',
+      en: 'Codex-style helpers: readonly_shell for lightweight inspection, apply_patch for edits, and update_plan for task tracking.',
+      zh: 'Codex 风格辅助：用 readonly_shell 做轻量检查，用 apply_patch 修改文件，用 update_plan 维护计划。',
     },
     promptI18n: {
       en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple rtws (runtime workspace) inspection via its small allowlist; commands outside the allowlist are rejected. For node/python, only exact version probes are allowed (no scripts). Chains via |/&&/|| are validated segment-by-segment. Use `update_plan` to record/update the task plan. You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the rtws (runtime workspace). Hard denies: `readonly_shell` refuses rtws-root `.minds/` and `.dialogs/`; `apply_patch` is subject to the same access-control (including hard denies for `*.tsk/`, `.minds/`, and rtws-root `.dialogs/`).',
@@ -277,7 +298,10 @@ if (process.platform !== 'win32') {
 registerToolset('team_mgmt', [...teamMgmtTools]);
 setToolsetMeta('team_mgmt', {
   source: 'dominds',
-  descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
+  descriptionI18n: {
+    en: 'Team management under `.minds/`: maintain team config, members, manuals, memory, and governed file changes.',
+    zh: '`.minds/` 下的团队管理：维护团队配置、成员、手册、记忆与受控文件修改。',
+  },
   promptFilesI18n: promptFilesFor('team_mgmt'),
   manualSpec: manualSpecFor('team_mgmt'),
 });

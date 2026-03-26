@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { DialogStore } from '../main/dialog';
 import { RootDialog } from '../main/dialog';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
 import { recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
@@ -56,6 +57,22 @@ async function main(): Promise<void> {
         msg1.content.includes('Encapsulated `*.tsk/`') &&
         msg1.content.includes('`goals.md`: missing'),
     );
+    assert.ok(
+      typeof msg1.content === 'string' &&
+        msg1.content.includes(
+          '`progress` is the team-shared milestone bulletin board for key decisions, current status, and next steps',
+        ),
+    );
+
+    setWorkLanguage('zh');
+    const msg1Zh = await formatTaskDocContent(dlg);
+    assert.ok(
+      typeof msg1Zh.content === 'string' &&
+        msg1Zh.content.includes(
+          '`progress` 是全队共享的里程碑公告牌，用于关键决策、当前状态与下一步，不是“我当前在做什么”的个人笔记',
+        ),
+    );
+    setWorkLanguage('en');
 
     // Note: formatting does not auto-create files; Taskdoc package updates should be explicit.
     assert.ok(!(await pathExists(taskDir)));

@@ -67,15 +67,14 @@ export function builtinManualTopicPaths(
   toolsetId: string,
   language: LanguageCode,
 ): Record<ManualTopic, string> {
-  const suffix = language === 'en' ? '.en' : '';
   const langDir = language;
   const baseDir = `prompts/${toolsetId}`;
   return {
-    index: path.join(baseDir, langDir, `index${suffix}.md`),
-    principles: path.join(baseDir, langDir, `principles${suffix}.md`),
-    tools: path.join(baseDir, langDir, `tools${suffix}.md`),
-    scenarios: path.join(baseDir, langDir, `scenarios${suffix}.md`),
-    errors: path.join(baseDir, langDir, `errors${suffix}.md`),
+    index: path.join(baseDir, langDir, 'index.md'),
+    principles: path.join(baseDir, langDir, 'principles.md'),
+    tools: path.join(baseDir, langDir, 'tools.md'),
+    scenarios: path.join(baseDir, langDir, 'scenarios.md'),
+    errors: path.join(baseDir, langDir, 'errors.md'),
   };
 }
 

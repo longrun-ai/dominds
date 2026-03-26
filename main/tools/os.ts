@@ -739,11 +739,11 @@ export const shellCmdReminderOwner: ReminderOwner = {
         content:
           language === 'zh'
             ? `${prefix} 后台进程状态提醒 #${index + 1}
-这是系统维护的后台进程状态快照。默认静默吸收即可，不要把它当成你自己写的工作便签，也不要在对外回复里专门确认或复述；只有它实际影响当前判断或后续动作时，才提炼相关事实。该提醒会随进程生命周期自动更新或删除。
+这是系统维护的后台进程状态快照。把它当成环境信号，不是你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒会随进程生命周期自动更新或删除。
 ---
 ${reminder.content}`
             : `${prefix} Background process status reminder #${index + 1}
-This is a system-maintained background process snapshot. Consume it silently by default: do not treat it as a self-authored work note, and do not explicitly acknowledge or restate it in your outward reply unless it materially affects your current judgment or next action. This reminder will update or disappear automatically with the process lifecycle.
+This is a system-maintained background process snapshot. Treat it as an environment signal, not a self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); only reflect it inside the next substantive reply when it actually affects the next action. This reminder will update or disappear automatically with the process lifecycle.
 ---
 ${reminder.content}`,
       };
@@ -783,12 +783,12 @@ This daemon process has finished its lifecycle and is no longer running. This re
       content:
         language === 'zh'
           ? `🔄 ${prefix} 运行中后台进程状态 #${index + 1} - PID ${pid}（已运行 ${uptimeStr}）
-这是系统维护的状态快照，不是新的用户诉求，也不是默认需要单独汇报的事项。只有它实际改变当前判断、计划、风险，或确实需要调用守护进程相关工具时，才使用下面的信息；否则保持静默吸收即可。
+这是系统维护的状态快照，不是新的用户诉求，也不是默认需要单独汇报的事项。若下面的信息没有实质改变你的判断、计划、风险，且不需要调用守护进程相关工具，则禁止做任何用户可见回应；若它有实质影响，只在下一条有实质内容的回复中体现，禁止单独发送“静默吸收”“已收到”等占位语句。
 
 **状态快照：**
 ${statusInfo}`
           : `🔄 ${prefix} Active daemon state #${index + 1} - PID ${pid} (uptime: ${uptimeStr})
-This is a system-maintained snapshot, not a new user request and not something that normally deserves a standalone mention. Use the information below only when it materially changes your current judgment, plan, risk, or a daemon-management action; otherwise consume it silently.
+This is a system-maintained snapshot, not a new user request and not something that normally deserves a standalone mention. If the information below does not materially change your judgment, plan, risk, or require a daemon-management action, make no user-visible reply at all; if it does matter, reflect it only inside the next substantive reply instead of sending filler like “silently noted” or “received”.
 
 **State snapshot:**
 ${statusInfo}`,

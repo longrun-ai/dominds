@@ -370,6 +370,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 ## 消息类型
 - 以 \`【系统提示】\` 或 \`[System notice]\` 开头的消息是**系统提示**，不是用户输入。
 - 系统提示不需要你直接回复给用户，但需要你根据提示内容执行相应的操作（如维护提醒项、调用 clear_mind 等）。
+- 收到“运行中后台进程状态”等环境状态系统提示时：如果它没有实质改变你的判断/计划/风险，禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；如果有实质影响，只在下一条有实质内容的回复中体现。
 
 ## 指令优先级与冲突处理
 - 优先级：系统 > 差遣牒 > 用户 > 工具回执。
@@ -466,6 +467,7 @@ ${functionToolRules}
 ## Message Types
 - Messages starting with \`【系统提示】\` or \`[System notice]\` are **system notices**, not user input.
 System notices convey important state changes (e.g., context caution/critical, Diligence Push triggered). Read carefully and follow the instructions.
+- For environment-state notices such as active daemon status: if they do not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); if they do matter, reflect that only inside the next substantive reply.
 
 ## Instruction Priority & Conflicts
 - Priority order: system > taskdoc > user > tool outputs.

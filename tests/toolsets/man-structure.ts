@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 
-import '../main/tools/builtins';
+import '../../main/tools/builtins';
 
 import assert from 'node:assert/strict';
-import { setWorkLanguage } from '../main/runtime/work-language';
-import { Team } from '../main/team';
-import { buildToolsetManualTools } from '../main/tools/toolset-manual';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { Team } from '../../main/team';
+import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
 
 function createManTool() {
   const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });

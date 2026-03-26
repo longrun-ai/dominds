@@ -217,6 +217,7 @@ type MemoryPromptCopy = Readonly<{
   temporaryInfoLine: string;
   clearMindLine: string;
   taskdocContractLine: string;
+  taskdocSemanticsLine: string;
   taskdocSectionReplaceLine: string;
   progressLine: string;
   injectedTaskdocLine: string;
@@ -269,10 +270,12 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       clearMindLine:
         '`clear_mind` 会开启新一程对话（保留差遣牒、提醒项与记忆层），从而卸掉这部分认知负载并继续推进。因此你必须先把关键信息提炼到高价值载体：',
       taskdocContractLine:
-        '- 差遣牒（`*.tsk/`）：全队共享的任务契约（goals/constraints/progress）；保持足够短，每轮都应可通读。',
+        '- 差遣牒（`*.tsk/`）：全队共享的任务契约（goals/constraints/progress）；不是个人笔记，保持足够短，每轮都应可通读。',
+      taskdocSemanticsLine:
+        '- 章节语义约定：`progress` 是全队共享的里程碑公告牌，用来记录关键决策、当前状态与下一步；不是流水账，也不是个人工作记录。`goals` / `constraints` 是较稳定的任务契约；每次更新都必须保留仍然有效的他人条目。',
       taskdocSectionReplaceLine: `- 更新差遣牒的任意分段时：每次调用会替换该分段全文；你必须先对照“上下文中注入的当前内容”做合并/压缩；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
       progressLine:
-        '- 其中 `progress` 是全队共享公告牌：用于“阶段性进度快照”（关键决策/当前状态/下一步），不是流水账。',
+        '- 更新 `progress` 时：它必须始终是可供全队扫读的完整当前快照，而不是只追加自己这一轮的零散笔记。',
       injectedTaskdocLine:
         '- 重要：差遣牒内容会被系统以内联形式注入到上下文中（本轮生成视角下即为最新；注入内容不包括全局约束）。需要回顾时请直接基于上下文里的差遣牒内容回顾与决策，不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
       constraintsLine:
@@ -304,10 +307,12 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     clearMindLine:
       '`clear_mind` starts a new course while preserving Taskdoc, reminders, and memory layers. Therefore, before clearing, distill key information into durable layers:',
     taskdocContractLine:
-      '- Taskdoc (`*.tsk/`): team-shared task contract (goals/constraints/progress). Keep it small enough to read every course.',
+      '- Taskdoc (`*.tsk/`): the team-shared task contract (goals/constraints/progress). It is not a personal notebook; keep it small enough to read every course.',
+    taskdocSemanticsLine:
+      '- Section semantics: `progress` is the team’s shared milestone bulletin board for key decisions, current status, and next steps; it is not a raw log or personal work record. `goals` / `constraints` are the more stable task contract; every update must preserve still-valid entries from others.',
     taskdocSectionReplaceLine: `- When updating any Taskdoc section: each call replaces the entire section; always start from the current injected content and merge/compress; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
     progressLine:
-      '- Taskdoc `progress` is the team’s shared bulletin board: distilled milestone snapshots (key decisions/current status/next steps), not raw logs.',
+      '- When updating `progress`, keep it as a complete, team-scannable current snapshot instead of appending only your own latest notes.',
     injectedTaskdocLine:
       '- Important: the Taskdoc content is injected inline into the context (the latest as of this generation; injected content excludes global constraints). Review the injected Taskdoc instead of trying to read files under `*.tsk/` via general file tools (they will be rejected).',
     constraintsLine:
@@ -339,6 +344,7 @@ export function buildMemorySystemPrompt(ctx: PromptdocContext): string {
     copy.temporaryInfoLine,
     copy.clearMindLine,
     copy.taskdocContractLine,
+    copy.taskdocSemanticsLine,
     copy.taskdocSectionReplaceLine,
     copy.progressLine,
     copy.injectedTaskdocLine,

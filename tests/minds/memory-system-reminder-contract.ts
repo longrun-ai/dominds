@@ -16,8 +16,20 @@ async function main(): Promise<void> {
     contextHealthPromptMode: 'normal',
   });
   assert.ok(
+    zh.includes('`progress` 是全队共享的里程碑公告牌'),
+    'zh prompt should define progress as the team-shared milestone bulletin board',
+  );
+  assert.ok(
+    zh.includes('`goals` / `constraints` 是较稳定的任务契约'),
+    'zh prompt should define goals/constraints as the stable task contract',
+  );
+  assert.ok(
     zh.includes('当前没有生效中的上下文健康处置指令'),
     'zh normal prompt should contain the normal context-health directive',
+  );
+  assert.ok(
+    zh.includes('完整当前快照'),
+    'zh prompt should require progress updates to preserve a full current snapshot',
   );
   assert.ok(
     zh.includes('差遣牒未覆盖'),
@@ -46,8 +58,20 @@ async function main(): Promise<void> {
     contextHealthPromptMode: 'critical',
   });
   assert.ok(
+    en.includes('`progress` is the team’s shared milestone bulletin board'),
+    'en prompt should define progress as the team-shared milestone bulletin board',
+  );
+  assert.ok(
+    en.includes('`goals` / `constraints` are the more stable task contract'),
+    'en prompt should define goals/constraints as the stable task contract',
+  );
+  assert.ok(
     en.includes('Current context is under system critical remediation'),
     'en critical prompt should contain the critical context-health directive',
+  );
+  assert.ok(
+    en.includes('complete, team-scannable current snapshot'),
+    'en prompt should require progress updates to preserve a full current snapshot',
   );
   assert.ok(
     en.includes('not already covered by Taskdoc'),

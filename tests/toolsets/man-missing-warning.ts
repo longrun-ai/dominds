@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 
-import '../main/tools/builtins';
+import '../../main/tools/builtins';
 
 import assert from 'node:assert/strict';
-import { setWorkLanguage } from '../main/runtime/work-language';
-import { Team } from '../main/team';
-import { setToolsetMeta } from '../main/tools/registry';
-import { buildToolsetManualTools } from '../main/tools/toolset-manual';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { Team } from '../../main/team';
+import { setToolsetMeta } from '../../main/tools/registry';
+import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
 
 function createManTool() {
   const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });
@@ -25,14 +25,14 @@ async function main(): Promise<void> {
       includeSchemaToolsSection: true,
       topicFilesI18n: {
         en: {
-          index: './prompts/ws_read/en/index.md',
-          tools: './prompts/ws_read/en/tools.md',
-          errors: './prompts/ws_read/en/__missing__.md',
+          index: 'prompts/ws_read/en/index.md',
+          tools: 'prompts/ws_read/en/tools.md',
+          errors: 'prompts/ws_read/en/__missing__.md',
         },
         zh: {
-          index: './prompts/ws_read/zh/index.md',
-          tools: './prompts/ws_read/zh/tools.md',
-          errors: './prompts/ws_read/zh/__missing__.md',
+          index: 'prompts/ws_read/zh/index.md',
+          tools: 'prompts/ws_read/zh/tools.md',
+          errors: 'prompts/ws_read/zh/__missing__.md',
         },
       },
     },
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
 
   assert.ok(output.includes('⚠️ Missing manual sections'));
   assert.ok(output.includes('`errors`: missing'));
-  assert.ok(output.includes('./prompts/ws_read/en/__missing__.md'));
+  assert.ok(output.includes('prompts/ws_read/en/__missing__.md'));
   assert.ok(output.includes('### Overview'));
 
   console.log('man missing-section warning test: ok');

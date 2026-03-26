@@ -343,7 +343,11 @@ export async function loadAgentMinds(
     .join('\n\n');
 
   const intrinsicToolUsageText = buildIntrinsicToolUsageText(workingLanguage, intrinsicFuncTools);
-  const toolsetManualIntro = formatToolsetManualIntro(workingLanguage, manualTools.toolNames);
+  const toolsetManualIntro = formatToolsetManualIntro(
+    workingLanguage,
+    manualTools.toolNames,
+    toolsetNames,
+  );
   const funcToolRulesText = funcTools.length > 0 ? formatFuncToolRulesText(workingLanguage) : '';
 
   const systemPrompt = buildSystemPrompt({
