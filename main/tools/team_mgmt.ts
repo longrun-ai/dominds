@@ -13,8 +13,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
-import type { TeamMgmtManualTopicKey } from '@longrun-ai/kernel';
-import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '@longrun-ai/kernel';
+import type { TeamMgmtGuideTopicKey } from '@longrun-ai/kernel';
+import { getTeamMgmtGuideTopicTitle, isTeamMgmtGuideTopicKey } from '@longrun-ai/kernel';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { WorkspaceProblem, WorkspaceProblemRecord } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -3136,7 +3136,21 @@ export const teamMgmtRmDirTool: FuncTool = {
   },
 };
 
-type ManualTopic = TeamMgmtManualTopicKey;
+type ManualTopic = TeamMgmtGuideTopicKey;
+
+function parseTeamMgmtGuideTopics(topicsRaw: readonly string[]): ManualTopic[] {
+  const topics: ManualTopic[] = [];
+  for (const token0 of topicsRaw) {
+    const token = token0.trim().startsWith('!') ? token0.trim().slice(1) : token0.trim();
+    if (token === '') continue;
+    if (isTeamMgmtGuideTopicKey(token)) {
+      topics.push(token);
+      continue;
+    }
+    throw new Error(`Unknown topic: ${token0}`);
+  }
+  return topics;
+}
 
 function fmtHeader(title: string): string {
   return `# ${title}\n`;
@@ -3316,7 +3330,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`diligence-push-max`：鞭策 上限（number）。也接受兼容别名 `diligence_push_max`，但请优先用 `diligence-push-max`。',
         '`streaming`：是否启用流式输出。注意：若该成员解析后的 provider 的 `apiType` 是 `codex`，则 `streaming: false` 属于配置错误（Codex 仅支持流式）；会在 team 校验与运行期被视为严重问题并中止请求。',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
-        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
+        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
       ])
     );
   }
@@ -3331,7 +3345,7 @@ function renderMemberProperties(language: LanguageCode): string {
       '`diligence-push-max`: Diligence Push cap (number). Compatibility alias `diligence_push_max` is accepted, but prefer `diligence-push-max`.',
       '`streaming`: whether to enable streaming output. Note: if the member resolves to a provider whose `apiType` is `codex`, then `streaming: false` is a configuration error (Codex is streaming-only); it is treated as a severe issue during validation/runtime and the request will be aborted.',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
-      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
+      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
     ])
   );
 }
@@ -3502,7 +3516,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '可选手册字段：你可以在 `servers.<serverId>.manual` 放手册内容。支持 `content`（总说明）+ `sections`（章节列表），用于告诉智能体该 toolset 该怎么用。',
         '重要：`manual` 缺失并不代表 MCP toolset 不可用；这只是团队管理工作不足。智能体应继续依据每个工具 description/参数自行判断并使用。',
         '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，最后把“典型用法 + 主要意图方向”沉淀到 `servers.<serverId>.manual`（`content + sections`）。',
-        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
+        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（stdio）',
@@ -3576,7 +3590,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       'Optional manual field: place guide text at `servers.<serverId>.manual`. Supported shapes: `content` (overview) + `sections` (chapter list) to explain practical usage for this toolset.',
       'Important: missing `manual` does not mean the MCP toolset is unavailable. It only indicates team-management coverage is incomplete; continue by reading each tool description/argument schema.',
       'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write `servers.<serverId>.manual` (`content + sections`) capturing typical usage patterns and primary intent directions.',
-      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
+      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` to confirm the LLM provider works; 2) review member directory permissions (`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (stdio)',
@@ -4054,8 +4068,8 @@ function renderTroubleshooting(language: LanguageCode): string {
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
-        '症状：提示“permission denied / forbidden / not allowed” → 原因：权限规则（目录或扩展名）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` 配置。',
-        '症状：`team.yaml` 里引用的 app toolset 缺失 / app 相关能力失效 → 原因：enabled app 未正确安装/启用、apps-host 启动失败，或 app 自身 host 模块/运行时损坏 → 步骤：`team_mgmt_validate_team_cfg({})` 仍然可用；先用它确认具体缺失项，再检查 `.minds/app.yaml`、已启用 apps 解析结果与相关 app 安装路径；必要时让持有 team_mgmt 的团队管理智能体继续用 `team_mgmt_read_file` / `team_mgmt_ripgrep_*` / `team_mgmt_manual({ topics: [\"toolsets\",\"troubleshooting\"] })` 排查。',
+        '症状：提示“permission denied / forbidden / not allowed” → 原因：权限规则（目录或扩展名）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` 复核规则，并检查该成员的 `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` 配置。',
+        '症状：`team.yaml` 里引用的 app toolset 缺失 / app 相关能力失效 → 原因：enabled app 未正确安装/启用、apps-host 启动失败，或 app 自身 host 模块/运行时损坏 → 步骤：`team_mgmt_validate_team_cfg({})` 仍然可用；先用它确认具体缺失项，再检查 `.minds/app.yaml`、已启用 apps 解析结果与相关 app 安装路径；必要时让持有 team_mgmt 的团队管理智能体继续用 `team_mgmt_read_file` / `team_mgmt_ripgrep_*` / `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })` 排查。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
@@ -4067,8 +4081,8 @@ function renderTroubleshooting(language: LanguageCode): string {
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
-      'Symptom: "permission denied / forbidden / not allowed" → Cause: permission rules (directory or extension) hit deny-list or are not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` config.',
-      'Symptom: an app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable → Cause: enabled app not installed/enabled correctly, apps-host startup failure, or a broken app host module/runtime → Steps: `team_mgmt_validate_team_cfg({})` remains available; use it first to identify the missing binding, then inspect `.minds/app.yaml`, enabled-app resolution, and the app install path. The team manager should continue with `team_mgmt_read_file`, `team_mgmt_ripgrep_*`, and `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })`.',
+      'Symptom: "permission denied / forbidden / not allowed" → Cause: permission rules (directory or extension) hit deny-list or are not covered by allow-list → Steps: review `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` and the member `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` config.',
+      'Symptom: an app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable → Cause: enabled app not installed/enabled correctly, apps-host startup failure, or a broken app host module/runtime → Steps: `team_mgmt_validate_team_cfg({})` remains available; use it first to identify the missing binding, then inspect `.minds/app.yaml`, enabled-app resolution, and the app install path. The team manager should continue with `team_mgmt_read_file`, `team_mgmt_ripgrep_*`, and `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })`.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first, then use `mcp_restart` if needed; call `mcp_release` when done.',
     ])
   );
@@ -5228,16 +5242,16 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
       const followUpLines =
         language === 'zh'
           ? [
-              '说明：`team_mgmt_validate_team_cfg({})` / `team_mgmt_validate_mcp_cfg({})` / `team_mgmt_manual({})` 等团队管理校验工具应继续可用；不要因为相关 app/toolset 出错就停止排查。',
+              '说明：`team_mgmt_validate_team_cfg({})` / `team_mgmt_validate_mcp_cfg({})` / `man({ "toolsetId": "team_mgmt" })` 等团队管理校验工具应继续可用；不要因为相关 app/toolset 出错就停止排查。',
               hasAppToolsetBindingProblem
-                ? '建议排查顺序：1) 先保留并阅读本校验输出；2) 用 `team_mgmt_read_file({ path: "app.yaml" })` 检查 `.minds/app.yaml` 依赖声明；3) 再结合 `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })` 核对该 toolset 是否应来自 enabled app，以及 app 安装/启用/宿主路径是否损坏。'
-                : '建议：继续用 `team_mgmt_manual({ topics: ["team","toolsets","troubleshooting"] })`、`team_mgmt_read_file`、`team_mgmt_ripgrep_*` 缩小范围，再修复后重新运行本校验工具。',
+                ? '建议排查顺序：1) 先保留并阅读本校验输出；2) 用 `team_mgmt_read_file({ path: "app.yaml" })` 检查 `.minds/app.yaml` 依赖声明；3) 再结合 `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })` 核对该 toolset 是否应来自 enabled app，以及 app 安装/启用/宿主路径是否损坏。'
+                : '建议：继续用 `man({ "toolsetId": "team_mgmt", "topics": ["team","toolsets","troubleshooting"] })`、`team_mgmt_read_file`、`team_mgmt_ripgrep_*` 缩小范围，再修复后重新运行本校验工具。',
             ]
           : [
-              'Note: team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `team_mgmt_manual({})` should remain usable; do not stop investigation just because a related app/toolset is failing.',
+              'Note: team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `man({ "toolsetId": "team_mgmt" })` should remain usable; do not stop investigation just because a related app/toolset is failing.',
               hasAppToolsetBindingProblem
-                ? 'Suggested triage order: 1) keep and read this validation output; 2) inspect `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`; 3) use `team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })` to confirm whether the missing toolset should come from an enabled app, then verify app install/enable state and host path integrity.'
-                : 'Suggestion: continue with `team_mgmt_manual({ topics: ["team","toolsets","troubleshooting"] })`, `team_mgmt_read_file`, and `team_mgmt_ripgrep_*` to narrow scope, then re-run this validator after fixes.',
+                ? 'Suggested triage order: 1) keep and read this validation output; 2) inspect `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`; 3) use `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })` to confirm whether the missing toolset should come from an enabled app, then verify app install/enable state and host path integrity.'
+                : 'Suggestion: continue with `man({ "toolsetId": "team_mgmt", "topics": ["team","toolsets","troubleshooting"] })`, `team_mgmt_read_file`, and `team_mgmt_ripgrep_*` to narrow scope, then re-run this validator after fixes.',
             ];
       const resolvedIssueBlock =
         resolvedTeamProblems.length > 0
@@ -5734,212 +5748,151 @@ export const teamMgmtClearProblemsTool: FuncTool = {
   },
 };
 
-export const teamMgmtManualTool: FuncTool = {
-  type: 'func',
-  name: 'team_mgmt_manual',
-  description: `Team management manual for ${MINDS_DIR}/.`,
-  descriptionI18n: {
-    en: `Team management manual for ${MINDS_DIR}/.`,
-    zh: `${MINDS_DIR}/ 的团队管理手册。`,
-  },
-  parameters: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      topics: {
-        type: 'array',
-        items: { type: 'string' },
-        description:
-          'Manual topics to render. Empty/omitted renders the index. Examples: ["team"], ["team","member-properties"].',
-      },
-    },
-  },
-  argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
-    const language = getUserLang(dlg);
-    const topicsValue = args['topics'];
-    const topicsRaw: string[] =
-      topicsValue === undefined
-        ? []
-        : Array.isArray(topicsValue) && topicsValue.every((v) => typeof v === 'string')
-          ? topicsValue
-          : (() => {
-              throw new Error('Invalid topics (expected string[])');
-            })();
+export async function renderTeamMgmtGuideContent(
+  language: LanguageCode,
+  topicsRaw: readonly string[] = [],
+): Promise<string> {
+  const topics = parseTeamMgmtGuideTopics(topicsRaw);
+  const msgPrefix =
+    language === 'zh'
+      ? `（生成时间：${formatUnifiedTimestamp(new Date())}）\n\n`
+      : `(Generated: ${formatUnifiedTimestamp(new Date())})\n\n`;
 
-    const topics: ManualTopic[] = [];
-    for (const token0 of topicsRaw) {
-      const token = token0.trim().startsWith('!') ? token0.trim().slice(1) : token0.trim();
-      if (token === '') continue;
-      if (isTeamMgmtManualTopicKey(token)) {
-        topics.push(token);
-        continue;
-      }
-      throw new Error(`Unknown topic: ${token0}`);
-    }
-    const msgPrefix =
-      language === 'zh'
-        ? `（生成时间：${formatUnifiedTimestamp(new Date())}）\n\n`
-        : `(Generated: ${formatUnifiedTimestamp(new Date())})\n\n`;
-
-    const renderIndex = (): string => {
-      const topicTitle = (key: TeamMgmtManualTopicKey): string =>
-        getTeamMgmtManualTopicTitle(language, key);
-      if (language === 'zh') {
-        return (
-          fmtHeader('Team Management Manual') +
-          msgPrefix +
-          fmtList([
-            `\`team_mgmt_manual({ topics: ["topics"] })\`：${topicTitle('topics')}（你在这里）`,
-            '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`。',
-            '',
-            `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
-            `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
-            `\`team_mgmt_manual({ topics: ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、app 化边界）`,
-            `\`team_mgmt_manual({ topics: ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
-            '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
-            `\`team_mgmt_manual({ topics: ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
-            `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录+扩展名权限（*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names 语义与冲突规则）`,
-            `\`team_mgmt_manual({ topics: ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
-            `\`team_mgmt_manual({ topics: ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
-            `\`team_mgmt_manual({ topics: ["mcp"] })\`：${topicTitle('mcp')} — .minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）`,
-            `\`team_mgmt_manual({ topics: ["troubleshooting"] })\`：${topicTitle('troubleshooting')} — 按症状定位；优先 list_providers/list_models → check_provider`,
-            '',
-            `\`team_mgmt_manual({ topics: ["team","member-properties"] })\`：${topicTitle('team')} + ${topicTitle('member-properties')} — 成员字段表（members.<id> 字段参考）`,
-            `\`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })\`：${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — 内置 defaults 摘要（内置 provider/model 概览与合并语义）`,
-            `\`team_mgmt_manual({ topics: ["llm","model-params"] })\`：${topicTitle('llm')} + ${topicTitle('model-params')} — 模型参数参考（model_params / model_param_options）`,
-          ])
-        );
-      }
+  const renderIndex = (): string => {
+    const topicTitle = (key: TeamMgmtGuideTopicKey): string =>
+      getTeamMgmtGuideTopicTitle(language, key);
+    if (language === 'zh') {
       return (
         fmtHeader('Team Management Manual') +
         msgPrefix +
         fmtList([
-          `\`team_mgmt_manual({ topics: ["topics"] })\`: ${topicTitle('topics')} (you are here)`,
-          'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`. ',
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["topics"] })\`：${topicTitle('topics')}（你在这里）`,
+          '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`。',
           '',
-          `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
-          `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
-          `\`team_mgmt_manual({ topics: ["skills"] })\`: ${topicTitle('skills')} — .minds/skills/* (public skill migration, field mapping, app boundary)`,
-          `\`team_mgmt_manual({ topics: ["priming"] })\`: ${topicTitle('priming')} — .minds/priming/* (how to author, maintain, and reuse startup scripts)`,
-          'After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.',
-          `\`team_mgmt_manual({ topics: ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
-          `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory + extension permissions (semantics + conflict rules)`,
-          `\`team_mgmt_manual({ topics: ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
-          `\`team_mgmt_manual({ topics: ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
-          `\`team_mgmt_manual({ topics: ["mcp"] })\`: ${topicTitle('mcp')} — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)`,
-          `\`team_mgmt_manual({ topics: ["troubleshooting"] })\`: ${topicTitle('troubleshooting')} — symptom → steps; start with list_providers/list_models, then check_provider`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、app 化边界）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
+          '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })\`：${topicTitle('permissions')} — 目录+扩展名权限（*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names 语义与冲突规则）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })\`：${topicTitle('mcp')} — .minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })\`：${topicTitle('troubleshooting')} — 按症状定位；优先 list_providers/list_models → check_provider`,
           '',
-          `\`team_mgmt_manual({ topics: ["team","member-properties"] })\`: ${topicTitle('team')} + ${topicTitle('member-properties')} — member field reference (members.<id>)`,
-          `\`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })\`: ${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — built-in defaults summary (what/when/merge behavior)`,
-          `\`team_mgmt_manual({ topics: ["llm","model-params"] })\`: ${topicTitle('llm')} + ${topicTitle('model-params')} — \`model_params\` and \`model_param_options\` reference`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["team","member-properties"] })\`：${topicTitle('team')} + ${topicTitle('member-properties')} — 成员字段表（members.<id> 字段参考）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","builtin-defaults"] })\`：${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — 内置 defaults 摘要（内置 provider/model 概览与合并语义）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","model-params"] })\`：${topicTitle('llm')} + ${topicTitle('model-params')} — 模型参数参考（model_params / model_param_options）`,
         ])
       );
-    };
-
-    const want = (t: ManualTopic): boolean => topics.includes(t);
-
-    try {
-      if (topics.length === 0) {
-        const content = renderIndex();
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('topics')) {
-        const content = renderIndex();
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('team') && want('member-properties')) {
-        const content = renderMemberProperties(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('team')) {
-        const content = renderTeamManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('llm') && want('builtin-defaults')) {
-        const content = await renderBuiltinDefaults(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('llm') && want('model-params')) {
-        const content = await renderModelParamsManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('llm')) {
-        const llmText =
-          language === 'zh'
-            ? fmtHeader('.minds/llm.yaml') +
-              fmtList([
-                '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
-                '快速自检：用 `team_mgmt_list_providers({})` 列出内置/rtws provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
-                '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
-
-                '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
-
-                '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
-                'member_defaults.provider/model 需要引用这里的 key。',
-                '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
-              ])
-            : fmtHeader('.minds/llm.yaml') +
-              fmtList([
-                'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
-                'Quick checks: use `team_mgmt_list_providers({})` to list built-in/rtws providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
-                'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
-
-                'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',
-
-                'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
-                'member_defaults.provider/model must reference these keys.',
-                'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',
-              ]);
-        return ok(llmText, [{ type: 'environment_msg', role: 'user', content: llmText }]);
-      }
-      if (want('mcp')) {
-        const content = await renderMcpManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('minds')) {
-        const content = renderMindsManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('skills')) {
-        const content = renderSkillsManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('priming')) {
-        const content = renderPrimingManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('env')) {
-        const content = renderEnvManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('permissions')) {
-        const content = renderPermissionsManual(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('toolsets')) {
-        const content = await renderToolsets(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (want('troubleshooting')) {
-        const content = renderTroubleshooting(language);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const content = renderIndex();
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (err: unknown) {
-      const content =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
-  },
-};
+    return (
+      fmtHeader('Team Management Manual') +
+      msgPrefix +
+      fmtList([
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["topics"] })\`: ${topicTitle('topics')} (you are here)`,
+        'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`. ',
+        '',
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`: ${topicTitle('skills')} — .minds/skills/* (public skill migration, field mapping, app boundary)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["priming"] })\`: ${topicTitle('priming')} — .minds/priming/* (how to author, maintain, and reuse startup scripts)`,
+        'After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.',
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })\`: ${topicTitle('permissions')} — directory + extension permissions (semantics + conflict rules)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })\`: ${topicTitle('mcp')} — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })\`: ${topicTitle('troubleshooting')} — symptom → steps; start with list_providers/list_models, then check_provider`,
+        '',
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["team","member-properties"] })\`: ${topicTitle('team')} + ${topicTitle('member-properties')} — member field reference (members.<id>)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","builtin-defaults"] })\`: ${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — built-in defaults summary (what/when/merge behavior)`,
+        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","model-params"] })\`: ${topicTitle('llm')} + ${topicTitle('model-params')} — \`model_params\` and \`model_param_options\` reference`,
+      ])
+    );
+  };
+
+  const want = (t: ManualTopic): boolean => topics.includes(t);
+
+  try {
+    if (topics.length === 0) {
+      return renderIndex();
+    }
+    if (want('topics')) {
+      return renderIndex();
+    }
+    if (want('team') && want('member-properties')) {
+      return renderMemberProperties(language);
+    }
+    if (want('team')) {
+      return renderTeamManual(language);
+    }
+    if (want('llm') && want('builtin-defaults')) {
+      return await renderBuiltinDefaults(language);
+    }
+    if (want('llm') && want('model-params')) {
+      return await renderModelParamsManual(language);
+    }
+    if (want('llm')) {
+      return language === 'zh'
+        ? fmtHeader('.minds/llm.yaml') +
+            fmtList([
+              '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
+              '快速自检：用 `team_mgmt_list_providers({})` 列出内置/rtws provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
+              '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
+
+              '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
+
+              '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
+              'member_defaults.provider/model 需要引用这里的 key。',
+              '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
+            ])
+        : fmtHeader('.minds/llm.yaml') +
+            fmtList([
+              'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
+              'Quick checks: use `team_mgmt_list_providers({})` to list built-in/rtws providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
+              'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
+
+              'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',
+
+              'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
+              'member_defaults.provider/model must reference these keys.',
+              'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',
+            ]);
+    }
+    if (want('mcp')) {
+      return await renderMcpManual(language);
+    }
+    if (want('minds')) {
+      return renderMindsManual(language);
+    }
+    if (want('skills')) {
+      return renderSkillsManual(language);
+    }
+    if (want('priming')) {
+      return renderPrimingManual(language);
+    }
+    if (want('env')) {
+      return renderEnvManual(language);
+    }
+    if (want('permissions')) {
+      return renderPermissionsManual(language);
+    }
+    if (want('toolsets')) {
+      return await renderToolsets(language);
+    }
+    if (want('troubleshooting')) {
+      return renderTroubleshooting(language);
+    }
+
+    return renderIndex();
+  } catch (err: unknown) {
+    throw err;
+  }
+}
 
 export const teamMgmtTools: ReadonlyArray<FuncTool> = [
-  teamMgmtManualTool,
   teamMgmtCheckProviderTool,
   teamMgmtListProvidersTool,
   teamMgmtListModelsTool,

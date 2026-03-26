@@ -36,8 +36,8 @@ import type {
   SaveRtwsSnippetTemplateResponse,
   SnippetCatalogResponse,
   SnippetTemplatesResponse,
-  TeamMgmtManualRequest,
-  TeamMgmtManualResponse,
+  ToolsetManualRequest,
+  ToolsetManualResponse,
 } from '@longrun-ai/kernel/types/snippets';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
@@ -682,8 +682,8 @@ export class ApiClient {
     return this.request('/api/snippets/rtws', { method: 'POST', body: req });
   }
 
-  async teamMgmtManual(req: TeamMgmtManualRequest): Promise<ApiResponse<TeamMgmtManualResponse>> {
-    return this.request('/api/team_mgmt/manual', { method: 'POST', body: req });
+  async toolsetManual(req: ToolsetManualRequest): Promise<ApiResponse<ToolsetManualResponse>> {
+    return this.request('/api/manual', { method: 'POST', body: req });
   }
 
   /**

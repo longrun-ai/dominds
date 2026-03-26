@@ -36,10 +36,10 @@
       "require": "./dist/diligence.js",
       "default": "./dist/diligence.js"
     },
-    "./team-mgmt-manual": {
-      "types": "./src/team-mgmt-manual.ts",
-      "require": "./dist/team-mgmt-manual.js",
-      "default": "./dist/team-mgmt-manual.js"
+    "./team-mgmt-guide": {
+      "types": "./src/team-mgmt-guide.ts",
+      "require": "./dist/team-mgmt-guide.js",
+      "default": "./dist/team-mgmt-guide.js"
     },
     "./types": {
       "types": "./src/types.ts",

@@ -6,14 +6,18 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { Team } from '../../main/team';
-import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
+import '../../main/tools/builtins';
+import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
 
 async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise<string> {
+  const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });
+  const tool = built.tools.find((entry) => entry.name === 'man');
+  assert.ok(tool, 'man tool should be available');
   const dlg = {
     getLastUserLanguageCode: () => lang,
   };
-  const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-  return await teamMgmtManualTool.call(dlg, caller, { topics: [...topics] });
+  const caller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
+  return await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: [...topics] });
 }
 
 async function withTempRtws(mcpYamlContent: string, run: () => Promise<void>): Promise<void> {
@@ -110,11 +114,11 @@ async function main(): Promise<void> {
     },
   );
 
-  console.log('team_mgmt_manual mcp-manual-hints tests: ok');
+  console.log('team_mgmt manual via man mcp-manual-hints tests: ok');
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt_manual mcp-manual-hints tests: failed: ${message}`);
+  console.error(`team_mgmt manual via man mcp-manual-hints tests: failed: ${message}`);
   process.exit(1);
 });

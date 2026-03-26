@@ -6,6 +6,9 @@ This document specifies a dedicated **team management toolset** whose only job i
 rtws’s “mindset” configuration files under `.minds/` (team roster, LLM providers, and agent
 minds files), without granting broad rtws access.
 
+> Historical note: the runtime/manual entrypoint has since been unified to
+> `man({ "toolsetId": "team_mgmt" })`, which now renders the authoritative handbook content.
+
 The outer repository root is the **rtws** (runtime workspace). All paths below are relative to the
 rtws root.
 
@@ -33,18 +36,18 @@ This document is a **design spec** for the new `team_mgmt` toolset. It is not so
 ever tell an agent to “look up” at runtime.
 
 Instead, the runtime “single source of truth” for team management guidance should be
-the function tool `team_mgmt_manual`.
+`man({ "toolsetId": "team_mgmt" })`.
 
 Historically, some of the guidance lived in a legacy builtin “team manager” mind set inside the
 `dominds/` source tree. That legacy builtin is being removed. The runtime “single source of truth”
-should be the `team_mgmt_manual` tool output.
+should be the `man({ "toolsetId": "team_mgmt" })` output.
 
 Planned change:
 
-- Add a new function tool `team_mgmt_manual` whose responses cover the team-management topics (file
-  formats, workflows, safety).
+- Route team-management handbook content through the generic `man` tool under
+  `man({ "toolsetId": "team_mgmt" })`, covering file formats, workflows, and safety.
 - Remove legacy builtin guidance to avoid duplication. If any stub remains, it must point to
-  `team_mgmt_manual` (and not to this design document).
+  `man({ "toolsetId": "team_mgmt" })` (and not to this design document).
 
 Rationale:
 
@@ -82,7 +85,7 @@ The `team_mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scope
 
 ### Naming Conventions (Human / UI)
 
-- **Tools** use `snake_case` (underscore-separated) for tool IDs (e.g. `team_mgmt_manual`). Avoid
+- **Tools** use `snake_case` (underscore-separated) for tool IDs (e.g. `team_mgmt_validate_team_cfg`). Avoid
   `kebab-case` aliases for tool IDs; if UX needs a friendlier label, treat that as presentation-only.
 - **Teammates** use either `kebab-case` (hyphen-separated) or an “internet name” (dot-separated).
 - This is a convention for docs/UI/readability only; do not enforce it via validation or other
@@ -111,7 +114,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | `team_mgmt_rm_dir`                     | `fs`     | Delete directories under `.minds/`                                                | `.minds/**`             |
 | `team_mgmt_validate_priming_scripts`   | new      | Validate path constraints and script format under `.minds/priming/**.md`          | `.minds/**`             |
 | `team_mgmt_validate_team_cfg`          | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel              | `.minds/**`             |
-| `team_mgmt_manual`                     | new      | Built-in “how-to” manual (see below)                                              | N/A                     |
+| `man({ "toolsetId": "team_mgmt" })`    | builtin  | Handbook entrypoint for the `team_mgmt` toolset (see below)                       | N/A                     |
 
 Notes:
 
@@ -143,32 +146,32 @@ may not exist during bootstrap. A dedicated `team_mgmt` toolset:
 - Makes it easy to grant _just_ team management capabilities to an ad-hoc agent without full rtws
   access.
 
-## `team_mgmt_manual`
+## Team Handbook via `man({ "toolsetId": "team_mgmt" })`
 
 We need a single in-chat manual tool so the team manager can reliably self-serve guidance without
 reading source code.
 
 ### Command shape
 
-- `team_mgmt_manual({ "topics": [] })` → show a short index (topics).
-- `team_mgmt_manual({ "topics": ["topics"] })` → list topics.
-- `team_mgmt_manual({ "topics": ["llm"] })` → how to manage `.minds/llm.yaml` (+ templates).
-- `team_mgmt_manual({ "topics": ["llm", "builtin-defaults"] })` → show builtin providers/models (from defaults).
-- `team_mgmt_manual({ "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (+ templates).
-- `team_mgmt_manual({ "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (transports, env/headers, tools whitelist/blacklist, naming transforms, hot reload, leasing).
-- `team_mgmt_manual({ "topics": ["mcp", "troubleshooting"] })` → common MCP failure modes and how to recover.
-- `team_mgmt_manual({ "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
-- `team_mgmt_manual({ "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
-- `team_mgmt_manual({ "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
-- `team_mgmt_manual({ "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
-- `team_mgmt_manual({ "topics": ["permissions"] })` → how `read_dirs`/`write_dirs` and deny-lists work.
-- `team_mgmt_manual({ "topics": ["troubleshooting"] })` → common failure modes and how to recover.
+- `man({ "toolsetId": "team_mgmt" })` → show a short index (topics).
+- `man({ "toolsetId": "team_mgmt", "topics": ["topics"] })` → list topics.
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm"] })` → how to manage `.minds/llm.yaml` (+ templates).
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })` → show builtin providers/models (from defaults).
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (+ templates).
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (transports, env/headers, tools whitelist/blacklist, naming transforms, hot reload, leasing).
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → common MCP failure modes and how to recover.
+- `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
+- `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
+- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
+- `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
+- `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` → how `read_dirs`/`write_dirs` and deny-lists work.
+- `man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })` → common failure modes and how to recover.
 
 The manual should accept **multiple** `topics` entries (a simple topic “path”); the tool should
 select the most specific match and fall back to the nearest parent when needed.
 
-If UX wants a friendlier label than `team_mgmt_manual`, treat that as presentation-only; the
-canonical tool ID remains `team_mgmt_manual`.
+If UX wants a friendlier label than `man`, treat that as presentation-only; the
+canonical runtime entrypoint remains `man({ "toolsetId": "team_mgmt" })`.
 
 ## Manual Coverage Requirements (legacy coverage)
 
@@ -209,12 +212,12 @@ This keeps the manual accurate when the framework changes, and avoids documentat
 
 Recommended sources by topic:
 
-- `team_mgmt_manual({ "topics": ["llm", "builtin-defaults"] })`
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })`
   - Load from the same installation resource the runtime uses for defaults:
     `dominds/main/llm/defaults.yaml` (via `__dirname` resolution in the backend build output).
   - Prefer reusing `LlmConfig.load()` and formatting its merged view, or adding a helper that returns
     both “defaults-only” and “merged” provider maps.
-- `team_mgmt_manual({ "topics": ["toolsets"] })` (if added)
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` (if added)
   - Load from the in-memory registries at runtime (`listToolsets()` / `listTools()` in
     `dominds/main/tools/registry.ts`), rather than maintaining a separate list.
 

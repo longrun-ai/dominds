@@ -39,10 +39,10 @@ export type {
 } from './app-json';
 
 export {
-  TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY,
-  TEAM_MGMT_MANUAL_UI_TOPIC_ORDER,
-  getTeamMgmtManualTopicTitle,
-  isTeamMgmtManualTopicKey,
-} from './team-mgmt-manual';
+  TEAM_MGMT_GUIDE_UI_TOOL_TOPICS_BY_KEY,
+  TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
+  getTeamMgmtGuideTopicTitle,
+  isTeamMgmtGuideTopicKey,
+} from './team-mgmt-guide';
 
-export type { TeamMgmtManualLanguageCode, TeamMgmtManualTopicKey } from './team-mgmt-manual';
+export type { TeamMgmtGuideLanguageCode, TeamMgmtGuideTopicKey } from './team-mgmt-guide';

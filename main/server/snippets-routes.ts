@@ -51,9 +51,14 @@ type CreateRtwsSnippetGroupResponse =
   | { success: true; groupKey: string }
   | { success: false; error: string };
 
-type TeamMgmtManualRequest = { topics?: string[]; uiLanguage: 'en' | 'zh' };
+type ToolsetManualRequest = {
+  toolsetId: string;
+  topic?: string;
+  topics?: string[];
+  uiLanguage: 'en' | 'zh';
+};
 
-type TeamMgmtManualResponse =
+type ToolsetManualResponse =
   | { success: true; markdown: string }
   | { success: false; error: string };
 
@@ -361,15 +366,21 @@ async function ensureRtwsCatalogGroup(
   return { success: true, groupKey };
 }
 
-function parseTeamMgmtManualRequest(raw: unknown): TeamMgmtManualRequest | null {
+function parseToolsetManualRequest(raw: unknown): ToolsetManualRequest | null {
   if (!isRecord(raw)) return null;
+  const toolsetId = requireNonEmptyString(raw['toolsetId']);
   const uiLanguageRaw = raw['uiLanguage'];
   const uiLanguage = uiLanguageRaw === 'zh' || uiLanguageRaw === 'en' ? uiLanguageRaw : null;
-  if (!uiLanguage) return null;
+  if (!toolsetId || !uiLanguage) return null;
+
+  const topic =
+    typeof raw['topic'] === 'string' && raw['topic'].trim() !== ''
+      ? raw['topic'].trim()
+      : undefined;
 
   const topicsValue = raw['topics'];
   if (topicsValue === undefined) {
-    return { uiLanguage, topics: undefined };
+    return { toolsetId, topic, uiLanguage, topics: undefined };
   }
   if (!Array.isArray(topicsValue)) return null;
   const topics: string[] = [];
@@ -377,7 +388,7 @@ function parseTeamMgmtManualRequest(raw: unknown): TeamMgmtManualRequest | null 
     if (typeof v !== 'string') return null;
     topics.push(v);
   }
-  return { uiLanguage, topics };
+  return { toolsetId, topic, uiLanguage, topics };
 }
 
 function safeTemplateIdFromPath(relPath: string): string {
@@ -674,21 +685,21 @@ export async function handleCreateRtwsSnippetGroup(
   }
 }
 
-export async function handleTeamMgmtManual(rawBody: string): Promise<TeamMgmtManualResponse> {
+export async function handleToolsetManual(rawBody: string): Promise<ToolsetManualResponse> {
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : {};
   } catch {
     return { success: false, error: 'Invalid JSON body' };
   }
-  const req = parseTeamMgmtManualRequest(parsed);
+  const req = parseToolsetManualRequest(parsed);
   if (!req) return { success: false, error: 'Invalid request body' };
 
   try {
     const { getTool } = await import('../tools/registry');
-    const tool = getTool('team_mgmt_manual');
+    const tool = getTool('man');
     if (!tool || tool.type !== 'func') {
-      return { success: false, error: 'team_mgmt_manual tool not available' };
+      return { success: false, error: 'man tool not available' };
     }
 
     const fakeDlg = {
@@ -701,13 +712,18 @@ export async function handleTeamMgmtManual(rawBody: string): Promise<TeamMgmtMan
       name: 'WebUI',
       read_dirs: ['.minds/**'],
       write_dirs: ['.minds/**'],
+      toolsets: [req.toolsetId],
     });
 
-    const markdown = await tool.call(fakeDlg, caller, { topics: req.topics ?? [] });
+    const markdown = await tool.call(fakeDlg, caller, {
+      toolsetId: req.toolsetId,
+      ...(req.topic ? { topic: req.topic } : {}),
+      ...(req.topics ? { topics: req.topics } : {}),
+    });
     return { success: true, markdown: String(markdown) };
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Failed to load team manual';
-    log.error('Failed to call team_mgmt_manual', error);
+    const msg = error instanceof Error ? error.message : 'Failed to load toolset manual';
+    log.error('Failed to call man tool', error);
     return { success: false, error: msg };
   }
 }

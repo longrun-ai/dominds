@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 import {
   type DomindsAppRunControlResult,
   type Q4HDialogContext,
-  TEAM_MGMT_MANUAL_UI_TOPIC_ORDER,
-  getTeamMgmtManualTopicTitle,
-  isTeamMgmtManualTopicKey,
+  TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
+  getTeamMgmtGuideTopicTitle,
+  isTeamMgmtGuideTopicKey,
   parseDomindsAppInstallJson,
 } from '@longrun-ai/kernel';
 import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       './app-json',
       './diligence',
       './evt',
-      './team-mgmt-manual',
+      './team-mgmt-guide',
       './types',
       './types/*',
       './utils/html',
@@ -158,17 +158,17 @@ async function main(): Promise<void> {
   const installJsonContract: DomindsAppInstallJsonV1 = installJsonInput;
   assert.equal(installJsonContract.host.exportName, 'createDomindsApp');
   assert.deepEqual(
-    TEAM_MGMT_MANUAL_UI_TOPIC_ORDER.slice(0, 3),
+    TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.slice(0, 3),
     ['topics', 'team', 'member-properties'],
     'Kernel root export must keep team manual UI ordering stable.',
   );
   assert.equal(
-    getTeamMgmtManualTopicTitle('en', 'topics'),
+    getTeamMgmtGuideTopicTitle('en', 'topics'),
     'Index',
     'Kernel root export must expose team manual titles.',
   );
   assert.equal(
-    isTeamMgmtManualTopicKey('topics'),
+    isTeamMgmtGuideTopicKey('topics'),
     true,
     'Kernel root export must expose topic guard.',
   );

@@ -1,16 +1,19 @@
 #!/usr/bin/env tsx
 
 import assert from 'node:assert/strict';
-
 import { Team } from '../../main/team';
-import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
+import '../../main/tools/builtins';
+import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
 
 async function render(lang: 'en' | 'zh'): Promise<string> {
+  const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });
+  const tool = built.tools.find((entry) => entry.name === 'man');
+  assert.ok(tool, 'man tool should be available');
   const dlg = {
     getLastUserLanguageCode: () => lang,
   };
-  const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-  return await teamMgmtManualTool.call(dlg, caller, { topics: ['skills'] });
+  const caller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
+  return await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: ['skills'] });
 }
 
 async function main(): Promise<void> {
@@ -52,11 +55,11 @@ async function main(): Promise<void> {
     'en skills manual should include migration guidance for official public formats',
   );
 
-  console.log('team_mgmt_manual skills-manual tests: ok');
+  console.log('team_mgmt manual via man skills-manual tests: ok');
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt_manual skills-manual tests: failed: ${message}`);
+  console.error(`team_mgmt manual via man skills-manual tests: failed: ${message}`);
   process.exit(1);
 });

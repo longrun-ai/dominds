@@ -1,4 +1,4 @@
-export const TEAM_MGMT_MANUAL_TOPIC_KEYS = [
+export const TEAM_MGMT_GUIDE_TOPIC_KEYS = [
   'topics',
   'llm',
   'model-params',
@@ -15,15 +15,15 @@ export const TEAM_MGMT_MANUAL_TOPIC_KEYS = [
   'troubleshooting',
 ] as const;
 
-export type TeamMgmtManualTopicKey = (typeof TEAM_MGMT_MANUAL_TOPIC_KEYS)[number];
-export type TeamMgmtManualLanguageCode = 'en' | 'zh';
+export type TeamMgmtGuideTopicKey = (typeof TEAM_MGMT_GUIDE_TOPIC_KEYS)[number];
+export type TeamMgmtGuideLanguageCode = 'en' | 'zh';
 
-export type TeamMgmtManualTopicMeta = Readonly<{
+export type TeamMgmtGuideTopicMeta = Readonly<{
   titleI18n: Readonly<{ en: string; zh: string }>;
 }>;
 
-export const TEAM_MGMT_MANUAL_TOPIC_META: Readonly<
-  Record<TeamMgmtManualTopicKey, TeamMgmtManualTopicMeta>
+export const TEAM_MGMT_GUIDE_TOPIC_META: Readonly<
+  Record<TeamMgmtGuideTopicKey, TeamMgmtGuideTopicMeta>
 > = {
   topics: { titleI18n: { zh: '索引', en: 'Index' } },
   team: { titleI18n: { zh: 'Team（team.yaml）', en: 'Team (team.yaml)' } },
@@ -54,23 +54,23 @@ export const TEAM_MGMT_MANUAL_TOPIC_META: Readonly<
   troubleshooting: { titleI18n: { zh: '排障（troubleshooting）', en: 'Troubleshooting' } },
 };
 
-const TEAM_MGMT_MANUAL_TOPIC_KEY_SET: ReadonlySet<string> = new Set(
-  TEAM_MGMT_MANUAL_TOPIC_KEYS as readonly string[],
+const TEAM_MGMT_GUIDE_TOPIC_KEY_SET: ReadonlySet<string> = new Set(
+  TEAM_MGMT_GUIDE_TOPIC_KEYS as readonly string[],
 );
 
-export function isTeamMgmtManualTopicKey(value: string): value is TeamMgmtManualTopicKey {
-  return TEAM_MGMT_MANUAL_TOPIC_KEY_SET.has(value);
+export function isTeamMgmtGuideTopicKey(value: string): value is TeamMgmtGuideTopicKey {
+  return TEAM_MGMT_GUIDE_TOPIC_KEY_SET.has(value);
 }
 
-export function getTeamMgmtManualTopicTitle(
-  lang: TeamMgmtManualLanguageCode,
-  key: TeamMgmtManualTopicKey,
+export function getTeamMgmtGuideTopicTitle(
+  lang: TeamMgmtGuideLanguageCode,
+  key: TeamMgmtGuideTopicKey,
 ): string {
-  const meta = TEAM_MGMT_MANUAL_TOPIC_META[key];
+  const meta = TEAM_MGMT_GUIDE_TOPIC_META[key];
   return lang === 'zh' ? meta.titleI18n.zh : meta.titleI18n.en;
 }
 
-export const TEAM_MGMT_MANUAL_UI_TOPIC_ORDER: readonly TeamMgmtManualTopicKey[] = [
+export const TEAM_MGMT_GUIDE_UI_TOPIC_ORDER: readonly TeamMgmtGuideTopicKey[] = [
   'topics',
   'team',
   'member-properties',
@@ -87,8 +87,8 @@ export const TEAM_MGMT_MANUAL_UI_TOPIC_ORDER: readonly TeamMgmtManualTopicKey[] 
   'troubleshooting',
 ];
 
-export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
-  Record<TeamMgmtManualTopicKey, readonly TeamMgmtManualTopicKey[]>
+export const TEAM_MGMT_GUIDE_UI_TOOL_TOPICS_BY_KEY: Readonly<
+  Record<TeamMgmtGuideTopicKey, readonly TeamMgmtGuideTopicKey[]>
 > = {
   topics: ['topics'],
   team: ['team'],
@@ -106,9 +106,9 @@ export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
   troubleshooting: ['troubleshooting'],
 };
 
-export type TeamMgmtManualPanelTopicKey = 'index' | 'permissions' | 'team' | 'toolsets' | 'skills';
+export type TeamMgmtGuidePanelTopicKey = 'index' | 'permissions' | 'team' | 'toolsets' | 'skills';
 
-export const TEAM_MGMT_MANUAL_PANEL_TOPIC_ORDER: readonly TeamMgmtManualPanelTopicKey[] = [
+export const TEAM_MGMT_GUIDE_PANEL_TOPIC_ORDER: readonly TeamMgmtGuidePanelTopicKey[] = [
   'index',
   'permissions',
   'team',
@@ -116,10 +116,10 @@ export const TEAM_MGMT_MANUAL_PANEL_TOPIC_ORDER: readonly TeamMgmtManualPanelTop
   'skills',
 ];
 
-const EMPTY_TOOL_TOPICS: readonly TeamMgmtManualTopicKey[] = [];
+const EMPTY_TOOL_TOPICS: readonly TeamMgmtGuideTopicKey[] = [];
 
-export const TEAM_MGMT_MANUAL_PANEL_TOOL_TOPICS_BY_KEY: Readonly<
-  Record<TeamMgmtManualPanelTopicKey, readonly TeamMgmtManualTopicKey[]>
+export const TEAM_MGMT_GUIDE_PANEL_TOOL_TOPICS_BY_KEY: Readonly<
+  Record<TeamMgmtGuidePanelTopicKey, readonly TeamMgmtGuideTopicKey[]>
 > = {
   index: EMPTY_TOOL_TOPICS,
   permissions: ['permissions'],
@@ -128,24 +128,24 @@ export const TEAM_MGMT_MANUAL_PANEL_TOOL_TOPICS_BY_KEY: Readonly<
   skills: ['skills'],
 };
 
-export function isTeamMgmtManualPanelTopicKey(value: string): value is TeamMgmtManualPanelTopicKey {
-  return Object.prototype.hasOwnProperty.call(TEAM_MGMT_MANUAL_PANEL_TOOL_TOPICS_BY_KEY, value);
+export function isTeamMgmtGuidePanelTopicKey(value: string): value is TeamMgmtGuidePanelTopicKey {
+  return Object.prototype.hasOwnProperty.call(TEAM_MGMT_GUIDE_PANEL_TOOL_TOPICS_BY_KEY, value);
 }
 
-export const TEAM_MGMT_MANUAL_PANEL_TOPIC_META: Readonly<
-  Record<TeamMgmtManualPanelTopicKey, TeamMgmtManualTopicMeta>
+export const TEAM_MGMT_GUIDE_PANEL_TOPIC_META: Readonly<
+  Record<TeamMgmtGuidePanelTopicKey, TeamMgmtGuideTopicMeta>
 > = {
   index: { titleI18n: { zh: '索引', en: 'Index' } },
-  permissions: TEAM_MGMT_MANUAL_TOPIC_META.permissions,
-  team: TEAM_MGMT_MANUAL_TOPIC_META.team,
-  toolsets: TEAM_MGMT_MANUAL_TOPIC_META.toolsets,
-  skills: TEAM_MGMT_MANUAL_TOPIC_META.skills,
+  permissions: TEAM_MGMT_GUIDE_TOPIC_META.permissions,
+  team: TEAM_MGMT_GUIDE_TOPIC_META.team,
+  toolsets: TEAM_MGMT_GUIDE_TOPIC_META.toolsets,
+  skills: TEAM_MGMT_GUIDE_TOPIC_META.skills,
 };
 
-export function getTeamMgmtManualPanelTopicTitle(
-  lang: TeamMgmtManualLanguageCode,
-  key: TeamMgmtManualPanelTopicKey,
+export function getTeamMgmtGuidePanelTopicTitle(
+  lang: TeamMgmtGuideLanguageCode,
+  key: TeamMgmtGuidePanelTopicKey,
 ): string {
-  const meta = TEAM_MGMT_MANUAL_PANEL_TOPIC_META[key];
+  const meta = TEAM_MGMT_GUIDE_PANEL_TOPIC_META[key];
   return lang === 'zh' ? meta.titleI18n.zh : meta.titleI18n.en;
 }

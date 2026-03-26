@@ -4,8 +4,9 @@ import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
 import { renderToolsetManual } from './manual/render';
-import { MANUAL_TOPICS } from './manual/spec';
+import { MANUAL_TOPICS, type ManualTopic } from './manual/spec';
 import { getToolsetMeta, listToolsets } from './registry';
+import { renderTeamMgmtGuideContent } from './team_mgmt';
 
 type ToolsetManualResult = {
   tools: FuncTool[];
@@ -118,22 +119,24 @@ function buildManTool(): FuncTool {
         },
         topic: {
           type: 'string',
-          enum: topicEnums,
-          description: 'Single topic to display',
+          description: `Single topic to display. Standard topics: ${topicEnums.join(', ')}. Some toolsets may accept additional toolset-specific topic keys.`,
         },
         topics: {
           type: 'array',
           items: {
             type: 'string',
-            enum: [...MANUAL_TOPICS],
           },
-          description: 'Multiple topics to display (union)',
+          description:
+            'Multiple topics to display (union). Standard topics are index/principles/tools/scenarios/errors; some toolsets may accept additional toolset-specific topic keys.',
         },
       },
     },
     argsValidation: 'dominds',
     async call(_dlg: Dialog, _caller: Team.Member, args: JsonObject): Promise<string> {
-      const language = getWorkLanguage();
+      const language =
+        typeof _dlg?.getLastUserLanguageCode === 'function'
+          ? _dlg.getLastUserLanguageCode()
+          : getWorkLanguage();
       const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
         member: _caller,
         taskDocPath: _dlg.taskDocPath,
@@ -185,6 +188,10 @@ function buildManTool(): FuncTool {
           : `Toolset '${toolsetId}' is not available to you.\n\nAvailable toolsets:\n${list}`;
       }
 
+      if (toolsetId === 'team_mgmt') {
+        return await renderTeamMgmtGuideViaMan(language, args);
+      }
+
       const availableToolNames = new Set(
         _caller
           .listTools({
@@ -217,6 +224,73 @@ function buildManTool(): FuncTool {
       return rendered.content;
     },
   };
+}
+
+const TEAM_MGMT_GUIDE_COMPAT_TOPIC_MAP: Readonly<Record<ManualTopic, readonly string[]>> = {
+  index: ['topics'],
+  principles: ['team', 'permissions', 'llm', 'mcp', 'minds', 'skills', 'priming', 'env'],
+  tools: ['team', 'toolsets', 'llm', 'mcp'],
+  scenarios: ['topics', 'team', 'minds', 'skills', 'priming'],
+  errors: ['troubleshooting'],
+};
+
+function normalizeTeamMgmtGuideTopics(args: JsonObject): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (value: string): void => {
+    const trimmed = value.trim();
+    if (trimmed === '' || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    out.push(trimmed);
+  };
+
+  const pushManualTopic = (topic: ManualTopic): void => {
+    const mapped = TEAM_MGMT_GUIDE_COMPAT_TOPIC_MAP[topic] ?? [];
+    for (const entry of mapped) {
+      push(entry);
+    }
+  };
+
+  const topicValue = args?.topic;
+  if (typeof topicValue === 'string') {
+    if (topicValue === 'all') {
+      for (const topic of MANUAL_TOPICS) {
+        pushManualTopic(topic);
+      }
+      return out;
+    }
+    if ((MANUAL_TOPICS as readonly string[]).includes(topicValue)) {
+      pushManualTopic(topicValue as ManualTopic);
+      return out;
+    }
+    push(topicValue);
+    return out;
+  }
+
+  const topicsValue = args?.topics;
+  if (Array.isArray(topicsValue) && topicsValue.length > 0) {
+    for (const entry of topicsValue) {
+      if (typeof entry !== 'string') continue;
+      if ((MANUAL_TOPICS as readonly string[]).includes(entry)) {
+        pushManualTopic(entry as ManualTopic);
+        continue;
+      }
+      push(entry);
+    }
+    return out;
+  }
+
+  push('topics');
+  return out;
+}
+
+async function renderTeamMgmtGuideViaMan(
+  language: LanguageCode,
+  args: JsonObject,
+): Promise<string> {
+  const topics = normalizeTeamMgmtGuideTopics(args);
+  return await renderTeamMgmtGuideContent(language, topics);
 }
 
 /**

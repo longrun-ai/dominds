@@ -1,9 +1,9 @@
 import {
-  TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY,
-  TEAM_MGMT_MANUAL_UI_TOPIC_ORDER,
-  type TeamMgmtManualTopicKey,
-  getTeamMgmtManualTopicTitle,
-  isTeamMgmtManualTopicKey,
+  TEAM_MGMT_GUIDE_UI_TOOL_TOPICS_BY_KEY,
+  TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
+  type TeamMgmtGuideTopicKey,
+  getTeamMgmtGuideTopicTitle,
+  isTeamMgmtGuideTopicKey,
 } from '@longrun-ai/kernel';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
@@ -19,7 +19,7 @@ type LoadState =
   | { kind: 'ready'; markdown: string }
   | { kind: 'error'; message: string };
 
-type TopicKey = TeamMgmtManualTopicKey;
+type TopicKey = TeamMgmtGuideTopicKey;
 
 export class DomindsTeamManualPanel extends HTMLElement {
   private uiLanguage: LanguageCode = 'en';
@@ -49,8 +49,12 @@ export class DomindsTeamManualPanel extends HTMLElement {
 
     try {
       const api = getApiClient();
-      const topics = TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY[this.selectedTopic];
-      const resp = await api.teamMgmtManual({ topics, uiLanguage: this.uiLanguage });
+      const topics = TEAM_MGMT_GUIDE_UI_TOOL_TOPICS_BY_KEY[this.selectedTopic];
+      const resp = await api.toolsetManual({
+        toolsetId: 'team_mgmt',
+        topics,
+        uiLanguage: this.uiLanguage,
+      });
       if (!resp.success && resp.status === 401) {
         this.dispatchEvent(
           new CustomEvent('ui-toast', {
@@ -98,9 +102,9 @@ export class DomindsTeamManualPanel extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
 
     const topicButtons: Array<{ key: TopicKey; label: string }> =
-      TEAM_MGMT_MANUAL_UI_TOPIC_ORDER.map((key: TopicKey) => ({
+      TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.map((key: TopicKey) => ({
         key,
-        label: getTeamMgmtManualTopicTitle(this.uiLanguage, key),
+        label: getTeamMgmtGuideTopicTitle(this.uiLanguage, key),
       }));
 
     const topicsHtml = topicButtons
@@ -135,7 +139,7 @@ export class DomindsTeamManualPanel extends HTMLElement {
     root.querySelectorAll<HTMLButtonElement>('button.topic').forEach((btn) => {
       btn.addEventListener('click', () => {
         const raw = btn.dataset.topic;
-        if (typeof raw === 'string' && isTeamMgmtManualTopicKey(raw)) {
+        if (typeof raw === 'string' && isTeamMgmtGuideTopicKey(raw)) {
           this.onSelectTopic(raw);
         }
       });

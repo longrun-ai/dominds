@@ -302,8 +302,6 @@ setToolsetMeta('team_mgmt', {
     en: 'Team management under `.minds/`: maintain team config, members, manuals, memory, and governed file changes.',
     zh: '`.minds/` 下的团队管理：维护团队配置、成员、手册、记忆与受控文件修改。',
   },
-  promptFilesI18n: promptFilesFor('team_mgmt'),
-  manualSpec: manualSpecFor('team_mgmt'),
 });
 
 // Register ReminderOwners

@@ -4,6 +4,9 @@
 
 本文档指定了一个专用的**团队管理工具集**，其唯一职责是管理 rtws（运行时工作区）`.minds/` 下的"心智"配置文件（团队名单、LLM 提供商和智能体心智文件），而不授予广泛的运行时工作区访问权限。
 
+> 历史说明：运行时/手册入口现已统一为
+> `man({ "toolsetId": "team_mgmt" })`，它才是当前权威的团队管理手册入口。
+
 外部仓库根目录是 **rtws**（运行时工作区）。以下所有路径均相对于 rtws 根目录。
 
 ## 动机
@@ -25,14 +28,14 @@
 
 本文档是新的 `team_mgmt` 工具集的**设计规范**。这不是我们应该在运行时让智能体"查阅"的内容。
 
-相反，运行时团队管理的"单一事实来源"应该是函数工具 `team_mgmt_manual` 的输出。
+相反，运行时团队管理的"单一事实来源"应该是 `man({ "toolsetId": "team_mgmt" })` 的输出。
 
-历史上，部分指导内容位于 `dominds/` 源代码树中的传统内置"团队管理者"心智集中。该传统内置内容正在被移除。运行时的"单一事实来源"应该是 `team_mgmt_manual` 工具的输出。
+历史上，部分指导内容位于 `dominds/` 源代码树中的传统内置"团队管理者"心智集中。该传统内置内容正在被移除。运行时的"单一事实来源"应该是 `man({ "toolsetId": "team_mgmt" })` 的输出。
 
 计划变更：
 
-- 添加一个新的函数工具 `team_mgmt_manual`，其响应涵盖团队管理主题（文件格式、工作流、安全性）
-- 移除传统的内置指导以避免重复。如果保留任何存根，必须指向 `team_mgmt_manual`（而不是本文档）
+- 通过通用 `man` 工具的 `man({ "toolsetId": "team_mgmt" })` 入口承载团队管理主题（文件格式、工作流、安全性）
+- 移除传统的内置指导以避免重复。如果保留任何存根，必须指向 `man({ "toolsetId": "team_mgmt" })`（而不是本文档）
 
 理由：
 
@@ -67,7 +70,7 @@
 
 ### 命名约定（人类 / UI）
 
-- **工具**使用 `snake_case`（下划线分隔）作为工具 ID（例如 `team_mgmt_manual`）。避免为工具 ID 使用 `kebab-case` 别名；如果 UX 需要更友好的标签，将其视为仅展示层。
+- **工具**使用 `snake_case`（下划线分隔）作为工具 ID（例如 `team_mgmt_validate_team_cfg`）。避免为工具 ID 使用 `kebab-case` 别名；如果 UX 需要更友好的标签，将其视为仅展示层。
 - **队友**使用 `kebab-case`（连字符分隔）或"互联网名称"（点分隔）。
 - 这只是文档/UI/可读性的约定；不要通过验证或其他技术机制强制执行。
 
@@ -94,7 +97,7 @@
 | `team_mgmt_rm_dir`                     | `fs`  | 删除 `.minds/` 下的目录                                     | `.minds/**`      |
 | `team_mgmt_validate_priming_scripts`   | 新建  | 校验 `.minds/priming/**.md` 的路径约束与脚本格式            | `.minds/**`      |
 | `team_mgmt_validate_team_cfg`          | 新建  | 验证 `.minds/team.yaml` 并将问题发布到问题面板              | `.minds/**`      |
-| `team_mgmt_manual`                     | 新建  | 内置"操作指南"手册（见下文）                                | N/A              |
+| `man({ "toolsetId": "team_mgmt" })`    | 内置  | `team_mgmt` 工具集的手册入口（见下文）                      | N/A              |
 
 注意：
 
@@ -117,29 +120,29 @@
 - 即使成员的目录允许/拒绝列表为空，也保持作用域边界
 - 便于授予临时智能体仅团队管理能力而无需完整的 rtws 访问
 
-## `team_mgmt_manual`
+## 通过 `man({ "toolsetId": "team_mgmt" })` 查看团队手册
 
 我们需要单一的聊天内手册工具，以便团队管理者能够可靠地自助指导，而无需阅读源代码。
 
 ### 命令形状
 
-- `team_mgmt_manual({ "topics": [] })` → 显示简短索引（主题）
-- `team_mgmt_manual({ "topics": ["topics"] })` → 列出主题
-- `team_mgmt_manual({ "topics": ["llm"] })` → 如何管理 `.minds/llm.yaml`（+ 模板）
-- `team_mgmt_manual({ "topics": ["llm", "builtin-defaults"] })` → 显示内置提供商/模型（来自默认值）
-- `team_mgmt_manual({ "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（+ 模板）
-- `team_mgmt_manual({ "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（传输、env/headers、工具白名单/黑名单、命名转换、热重载、租赁）
-- `team_mgmt_manual({ "topics": ["mcp", "troubleshooting"] })` → 常见 MCP 故障模式及如何恢复
-- `team_mgmt_manual({ "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
-- `team_mgmt_manual({ "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
-- `team_mgmt_manual({ "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowledge/lessons）
-- `team_mgmt_manual({ "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
-- `team_mgmt_manual({ "topics": ["permissions"] })` → `read_dirs`/`write_dirs` 和拒绝列表如何工作
-- `team_mgmt_manual({ "topics": ["troubleshooting"] })` → 常见故障模式及如何恢复
+- `man({ "toolsetId": "team_mgmt" })` → 显示简短索引（主题）
+- `man({ "toolsetId": "team_mgmt", "topics": ["topics"] })` → 列出主题
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm"] })` → 如何管理 `.minds/llm.yaml`（+ 模板）
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })` → 显示内置提供商/模型（来自默认值）
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（+ 模板）
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（传输、env/headers、工具白名单/黑名单、命名转换、热重载、租赁）
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → 常见 MCP 故障模式及如何恢复
+- `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
+- `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
+- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowledge/lessons）
+- `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
+- `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` → `read_dirs`/`write_dirs` 和拒绝列表如何工作
+- `man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })` → 常见故障模式及如何恢复
 
 该手册应接受**多个**`topics` 条目（简单的主题"路径"）；工具应选择最具体的匹配，并在需要时回退到最近的父主题。
 
-如果 UX 需要比 `team_mgmt_manual` 更友好的标签，将其视为仅展示层；规范的工具 ID 保持为 `team_mgmt_manual`。
+如果 UX 需要比 `man` 更友好的标签，将其视为仅展示层；规范的运行时入口保持为 `man({ "toolsetId": "team_mgmt" })`。
 
 ## 手册覆盖要求（传统覆盖）
 
@@ -172,10 +175,10 @@
 
 按主题推荐的来源：
 
-- `team_mgmt_manual({ "topics": ["llm", "builtin-defaults"] })`
+- `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })`
   - 从运行时用于默认值的同一安装资源加载：`dominds/main/llm/defaults.yaml`（通过后端构建输出中的 `__dirname` 解析）
   - 优先重用 `LlmConfig.load()` 并格式化其合并视图，或添加一个返回"仅默认值"和"合并"提供商映射的助手
-- `team_mgmt_manual({ "topics": ["toolsets"] })`（如果添加）
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })`（如果添加）
   - 在运行时从内存中注册表加载（`dominds/main/tools/registry.ts` 中的 `listToolsets()` / `listTools()`），而不是维护单独的列表
 
 将这些保持为**静态/手册文本**（而非动态加载）：

@@ -1,16 +1,19 @@
 #!/usr/bin/env tsx
 
 import assert from 'node:assert/strict';
-
 import { Team } from '../../main/team';
-import { teamMgmtManualTool } from '../../main/tools/team_mgmt';
+import '../../main/tools/builtins';
+import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
 
 async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise<string> {
+  const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });
+  const tool = built.tools.find((entry) => entry.name === 'man');
+  assert.ok(tool, 'man tool should be available');
   const dlg = {
     getLastUserLanguageCode: () => lang,
   };
-  const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-  return await teamMgmtManualTool.call(dlg, caller, { topics: [...topics] });
+  const caller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
+  return await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: [...topics] });
 }
 
 function assertNotIncludes(haystack: string, needle: string): void {
@@ -37,11 +40,11 @@ async function main(): Promise<void> {
   assertNotIncludes(en, '# @coder Lessons');
   assertNotIncludes(en, '# .minds/team/coder/persona.en.md (example)');
 
-  console.log('team_mgmt_manual minds-manual-mindset-headings tests: ok');
+  console.log('team_mgmt manual via man minds-manual-mindset-headings tests: ok');
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt_manual minds-manual-mindset-headings tests: failed: ${message}`);
+  console.error(`team_mgmt manual via man minds-manual-mindset-headings tests: failed: ${message}`);
   process.exit(1);
 });

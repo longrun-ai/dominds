@@ -45,11 +45,13 @@ export type CreateRtwsSnippetGroupResponse =
   | { success: true; groupKey: string }
   | { success: false; error: string };
 
-export type TeamMgmtManualRequest = {
+export type ToolsetManualRequest = {
+  toolsetId: string;
+  topic?: string;
   topics?: ReadonlyArray<string>;
   uiLanguage: 'en' | 'zh';
 };
 
-export type TeamMgmtManualResponse =
+export type ToolsetManualResponse =
   | { success: true; markdown: string }
   | { success: false; error: string };

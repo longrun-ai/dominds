@@ -7,7 +7,8 @@ import path from 'node:path';
 
 import { Team } from '../main/team';
 import '../main/tools/builtins';
-import { teamMgmtManualTool, teamMgmtValidateTeamCfgTool } from '../main/tools/team_mgmt';
+import { teamMgmtValidateTeamCfgTool } from '../main/tools/team_mgmt';
+import { buildToolsetManualTools } from '../main/tools/toolset-manual';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
@@ -61,11 +62,18 @@ async function main(): Promise<void> {
       getLastUserLanguageCode: () => 'en' as const,
     };
     const caller = new Team.Member({ id: 'tester', name: 'Tester' });
+    const manualCaller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
+    const built = buildToolsetManualTools({
+      toolsetNames: [],
+      existingToolNames: new Set<string>(),
+    });
+    const manTool = built.tools.find((entry) => entry.name === 'man');
+    assert.ok(manTool, 'man tool should be available');
 
     const validateOut = await teamMgmtValidateTeamCfgTool.call(dlg, caller, {});
     assert.ok(
       validateOut.includes(
-        'team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `team_mgmt_manual({})` should remain usable',
+        'team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `man({ "toolsetId": "team_mgmt" })` should remain usable',
       ),
       'validate_team_cfg should remind that validation/manual tools remain available during app/toolset failures',
     );
@@ -76,11 +84,16 @@ async function main(): Promise<void> {
       'validate_team_cfg should guide the team manager to inspect app.yaml when app toolset bindings fail',
     );
     assert.ok(
-      validateOut.includes('`team_mgmt_manual({ topics: ["toolsets","troubleshooting"] })`'),
+      validateOut.includes(
+        '`man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })`',
+      ),
       'validate_team_cfg should guide the team manager to the relevant manual topics',
     );
 
-    const manualOut = await teamMgmtManualTool.call(dlg, caller, { topics: ['troubleshooting'] });
+    const manualOut = await manTool.call(dlg as never, manualCaller, {
+      toolsetId: 'team_mgmt',
+      topics: ['troubleshooting'],
+    });
     assert.ok(
       manualOut.includes(
         'app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable',

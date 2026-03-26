@@ -55,7 +55,7 @@ import {
   handleGetRtwsSnippets,
   handleGetSnippetCatalog,
   handleSaveRtwsSnippet,
-  handleTeamMgmtManual,
+  handleToolsetManual,
 } from './snippets-routes';
 
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
@@ -1300,9 +1300,9 @@ export async function handleApiRoute(
       return true;
     }
 
-    if (pathname === '/api/team_mgmt/manual' && req.method === 'POST') {
+    if (pathname === '/api/manual' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
-      const payload = await handleTeamMgmtManual(rawBody);
+      const payload = await handleToolsetManual(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
       return true;
     }
