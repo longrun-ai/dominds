@@ -144,7 +144,10 @@ interface CachedDatabase {
   lookupMap: Map<string, MockResponse[]>;
 }
 
-const REPLY_TOOL_REMINDER_PREFIX = '[Dominds replyTellask required]';
+const REPLY_TOOL_REMINDER_PREFIXES = [
+  '[Dominds replyTellask required]',
+  '[Dominds 必须调用回复工具]',
+] as const;
 
 function normalizeDelayMs(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
@@ -371,7 +374,10 @@ export class MockGen implements LlmGenerator {
     role: string,
     context: ReadonlyArray<ChatMessage>,
   ): MockResponse | null {
-    if (role !== 'user' || !input.startsWith(REPLY_TOOL_REMINDER_PREFIX)) {
+    if (
+      role !== 'user' ||
+      !REPLY_TOOL_REMINDER_PREFIXES.some((prefix) => input.startsWith(prefix))
+    ) {
       return null;
     }
     const toolMatch = input.match(/`(replyTellask(?:Sessionless|Back)?)`/);

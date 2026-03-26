@@ -3990,6 +3990,67 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
+  private buildReplyToolDisplay(
+    funcName: string,
+    argumentsStr: string,
+  ): { title: string; bodyLabel: string; bodyMarkdown: string } | null {
+    if (
+      funcName !== 'replyTellask' &&
+      funcName !== 'replyTellaskSessionless' &&
+      funcName !== 'replyTellaskBack'
+    ) {
+      return null;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(argumentsStr);
+    } catch {
+      return null;
+    }
+    if (!isObjectRecord(parsed)) {
+      return null;
+    }
+    const replyContent = typeof parsed['replyContent'] === 'string' ? parsed['replyContent'] : null;
+    if (replyContent === null) {
+      return null;
+    }
+
+    const title =
+      this.uiLanguage === 'zh'
+        ? (() => {
+            switch (funcName) {
+              case 'replyTellask':
+                return '向上游提交最终回复';
+              case 'replyTellaskSessionless':
+                return '提交一次性诉请回复';
+              case 'replyTellaskBack':
+                return '回答上游回问';
+            }
+          })()
+        : (() => {
+            switch (funcName) {
+              case 'replyTellask':
+                return 'Deliver final upstream reply';
+              case 'replyTellaskSessionless':
+                return 'Deliver one-shot tellask reply';
+              case 'replyTellaskBack':
+                return 'Answer upstream ask-back';
+            }
+          })();
+
+    return {
+      title: `${title} · ${funcName}`,
+      bodyLabel: this.uiLanguage === 'zh' ? '回复正文' : 'Reply content',
+      bodyMarkdown:
+        replyContent.trim() === ''
+          ? this.uiLanguage === 'zh'
+            ? '（空）'
+            : '(empty)'
+          : replyContent,
+    };
+  }
+
   // Create func-call section (inside markdown section) - non-streaming mode
   private createFuncCallSection(
     funcId: string,
@@ -4018,18 +4079,37 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const titleEl = document.createElement('span');
     titleEl.className = 'func-call-title';
-    titleEl.textContent = `Function: ${funcName}`;
+    const replyToolDisplay = this.buildReplyToolDisplay(funcName, argumentsStr);
+    titleEl.textContent = replyToolDisplay ? replyToolDisplay.title : `Function: ${funcName}`;
 
     headerEl.append(iconEl, titleEl);
 
     const contentEl = document.createElement('div');
     contentEl.className = 'func-call-content';
 
-    const argsEl = document.createElement('pre');
-    argsEl.className = 'func-call-arguments';
-    // SECURITY: tool/function arguments can contain arbitrary strings (including `<dominds-app>`).
-    // Use `textContent` to prevent HTML/custom element interpretation.
-    argsEl.textContent = argsDisplay;
+    const argsEl = document.createElement(replyToolDisplay ? 'div' : 'pre');
+    argsEl.className = replyToolDisplay
+      ? 'func-call-arguments func-call-arguments-friendly'
+      : 'func-call-arguments';
+    if (replyToolDisplay) {
+      const labelEl = document.createElement('div');
+      labelEl.className = 'func-call-arguments-friendly-label';
+      labelEl.textContent = replyToolDisplay.bodyLabel;
+
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'func-call-arguments-friendly-body markdown-content';
+      bodyEl.innerHTML = renderDomindsMarkdown(replyToolDisplay.bodyMarkdown, {
+        kind: 'chat',
+        allowRelativeWorkspaceLinks: true,
+      });
+      postprocessRenderedDomindsMarkdown(bodyEl);
+      bodyEl.setAttribute('data-raw-md', replyToolDisplay.bodyMarkdown);
+      argsEl.append(labelEl, bodyEl);
+    } else {
+      // SECURITY: tool/function arguments can contain arbitrary strings (including `<dominds-app>`).
+      // Use `textContent` to prevent HTML/custom element interpretation.
+      argsEl.textContent = argsDisplay;
+    }
 
     const argsWrap = document.createElement('div');
     argsWrap.className = 'func-call-arguments-wrap';
@@ -5263,6 +5343,30 @@ export class DomindsDialogContainer extends HTMLElement {
         font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
         overflow-x: auto;
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+      }
+
+      .func-call-arguments-friendly {
+        padding: 6px 8px;
+        white-space: normal;
+        overflow-x: visible;
+        font-family: inherit;
+        font-size: var(--dominds-font-size-sm, 12px);
+        line-height: 1.45;
+      }
+
+      .func-call-arguments-friendly-label {
+        margin-bottom: 4px;
+        font-size: var(--dominds-font-size-xs, 11px);
+        font-weight: 600;
+        color: var(--dominds-fg-muted, var(--color-fg-tertiary, #64748b));
+      }
+
+      .func-call-arguments-friendly-body > :first-child {
+        margin-top: 0;
+      }
+
+      .func-call-arguments-friendly-body > :last-child {
+        margin-bottom: 0;
       }
 
       .func-call-result-wrap {

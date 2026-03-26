@@ -67,11 +67,14 @@ type UpNextPrompt = {
   runControl?: KernelDriverRunControl;
 };
 
-const REPLY_TOOL_REMINDER_PREFIX = '[Dominds replyTellask required]';
+const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
+const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
 
 function isReplyToolReminderPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
   return (
-    typeof prompt?.content === 'string' && prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX)
+    typeof prompt?.content === 'string' &&
+    (prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN) ||
+      prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX_ZH))
   );
 }
 
@@ -86,7 +89,7 @@ function buildReplyToolReminderPrompt(args: {
   const toolName = args.directive.expectedReplyCallName;
   if (args.language === 'zh') {
     return [
-      REPLY_TOOL_REMINDER_PREFIX,
+      REPLY_TOOL_REMINDER_PREFIX_ZH,
       '',
       `你刚才给出了正文，但尚未调用必需的 \`${toolName}\`。`,
       `请现在立刻调用 \`${toolName}({ replyContent })\` 完成本次对话间回贴，不要再直接输出最终消息。`,
@@ -94,7 +97,7 @@ function buildReplyToolReminderPrompt(args: {
     ].join('\n');
   }
   return [
-    REPLY_TOOL_REMINDER_PREFIX,
+    REPLY_TOOL_REMINDER_PREFIX_EN,
     '',
     `You produced a reply body but did not call the required \`${toolName}\` tool.`,
     `Call \`${toolName}({ replyContent })\` now to deliver this inter-dialog reply. Do not emit another plain final message.`,

@@ -815,44 +815,51 @@ function buildPromptContentWithExactReplyToolName(args: {
   activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
   language: 'zh' | 'en';
 }): string {
+  const noActivePrefix =
+    args.language === 'zh'
+      ? '[Dominds 当前无跨对话回复义务]'
+      : '[Dominds no active inter-dialog reply]';
+  const activePrefix =
+    args.language === 'zh' ? '[Dominds 当前回复工具]' : '[Dominds active reply tool]';
+  const reminderPrefixes = ['[Dominds replyTellask required]', '[Dominds 必须调用回复工具]'];
   const directive = args.activeReplyDirective;
   if (!directive) {
     if (!(args.dlg instanceof SubDialog)) {
       return args.prompt.content;
     }
-    if (args.prompt.content.startsWith('[Dominds no active inter-dialog reply]')) {
+    if (args.prompt.content.startsWith(noActivePrefix)) {
       return args.prompt.content;
     }
     const note =
       args.language === 'zh'
         ? [
-            '[Dominds no active inter-dialog reply]',
+            noActivePrefix,
             '当前没有待完成的跨对话回复义务。',
             '这轮不要调用任何 `reply*`；直接按当前本地对话继续即可。',
           ].join('\n')
         : [
-            '[Dominds no active inter-dialog reply]',
+            noActivePrefix,
             'There is no active inter-dialog reply obligation right now.',
             'Do not call any `reply*` tool in this turn; just continue the current local conversation.',
           ].join('\n');
     return `${note}\n\n${args.prompt.content}`;
   }
-  if (args.prompt.content.startsWith('[Dominds active reply tool]')) {
+  if (args.prompt.content.startsWith(activePrefix)) {
     return args.prompt.content;
   }
   const toolName = directive.expectedReplyCallName;
-  if (args.prompt.content.startsWith('[Dominds replyTellask required]')) {
+  if (reminderPrefixes.some((prefix) => args.prompt.content.startsWith(prefix))) {
     return args.prompt.content;
   }
   const note =
     args.language === 'zh'
       ? [
-          '[Dominds active reply tool]',
+          activePrefix,
           `当前这轮若完成交付，精确应调用 \`${toolName}\`。`,
           '不要自己判断该选哪个 `reply*`；以上述函数名为准。',
         ].join('\n')
       : [
-          '[Dominds active reply tool]',
+          activePrefix,
           `If this round is ready for final delivery, the exact reply tool is \`${toolName}\`.`,
           'Do not decide among `reply*` variants by yourself; follow that exact function name.',
         ].join('\n');
@@ -865,6 +872,14 @@ type RoutedFunctionResult = {
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
+
+function isReplyTellaskCallName(
+  name: string,
+): name is 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' {
+  return (
+    name === 'replyTellask' || name === 'replyTellaskSessionless' || name === 'replyTellaskBack'
+  );
+}
 
 async function executeFunctionCalls(args: {
   dlg: Dialog;
@@ -1045,6 +1060,13 @@ async function executeFunctionRound(args: {
     if (!special) {
       continue;
     }
+    const argumentsStr =
+      typeof callMsg.arguments === 'string'
+        ? callMsg.arguments
+        : JSON.stringify(callMsg.arguments ?? {});
+    if (isReplyTellaskCallName(callMsg.name)) {
+      await args.dlg.funcCallRequested(callMsg.id, callMsg.name, argumentsStr);
+    }
     await args.dlg.persistFunctionCall(
       callMsg.id,
       callMsg.name,
@@ -1073,7 +1095,16 @@ async function executeFunctionRound(args: {
     calls: classified.specialCalls,
     callbacks: args.callbacks,
   });
-  const tellaskToolOutputs = tellaskExecution.toolOutputs;
+  const tellaskFuncResults: FuncResultMsg[] = [];
+  const tellaskToolOutputs: ChatMessage[] = [];
+  for (const output of tellaskExecution.toolOutputs) {
+    if (output.type === 'func_result_msg') {
+      await args.dlg.receiveFuncResult(output);
+      tellaskFuncResults.push(output);
+      continue;
+    }
+    tellaskToolOutputs.push(output);
+  }
   const shouldStopAfterReplyTool = tellaskExecution.successfulReplyCallIds.length > 0;
   throwIfAborted(args.abortSignal, args.dlg);
   const specialCallIds = new Set(classified.specialCalls.map((call) => call.callId));
@@ -1097,6 +1128,9 @@ async function executeFunctionRound(args: {
     resultByCallId.set(result.id, result);
   };
   for (const result of issueResults) {
+    register(result);
+  }
+  for (const result of tellaskFuncResults) {
     register(result);
   }
   for (const result of genericResults) {
