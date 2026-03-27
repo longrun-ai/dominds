@@ -881,6 +881,57 @@ function isReplyTellaskCallName(
   );
 }
 
+function isToolArgumentsObject(value: unknown): value is ToolArguments {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type PreparedFuncCallArguments =
+  | {
+      ok: true;
+      raw: ToolArguments;
+      contextArguments: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      contextArguments: string;
+    };
+
+function prepareFuncCallArguments(argumentsStr: string): PreparedFuncCallArguments {
+  if (argumentsStr.trim() === '') {
+    return {
+      ok: true,
+      raw: {},
+      contextArguments: '{}',
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argumentsStr);
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Arguments must be valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      contextArguments: '{}',
+    };
+  }
+
+  if (!isToolArgumentsObject(parsed)) {
+    return {
+      ok: false,
+      error: 'Arguments must be an object',
+      contextArguments: '{}',
+    };
+  }
+
+  return {
+    ok: true,
+    raw: parsed,
+    contextArguments: argumentsStr,
+  };
+}
+
 async function executeFunctionCalls(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -894,6 +945,7 @@ async function executeFunctionCalls(args: {
     const callGenseq = func.genseq;
     const argsStr =
       typeof func.arguments === 'string' ? func.arguments : JSON.stringify(func.arguments ?? {});
+    const preparedArgs = prepareFuncCallArguments(argsStr);
 
     const tool = args.agentTools.find(
       (t): t is FuncTool => t.type === 'func' && t.name === func.name,
@@ -911,26 +963,39 @@ async function executeFunctionCalls(args: {
       return errorResult;
     }
 
-    let rawArgs: unknown = {};
-    if (typeof func.arguments === 'string' && func.arguments.trim()) {
-      try {
-        rawArgs = JSON.parse(func.arguments);
-      } catch (parseErr) {
-        rawArgs = null;
-        log.warn('kernel-driver failed to parse function arguments as JSON', undefined, {
-          funcName: func.name,
-          arguments: func.arguments,
-          error: parseErr,
-        });
-      }
-    }
-
     let result: FuncResultMsg;
-    const argsValidation = validateFuncToolArguments(tool, rawArgs);
-    if (argsValidation.ok) {
+    if (!preparedArgs.ok) {
+      log.warn('kernel-driver rejected function call arguments before execution', undefined, {
+        funcName: func.name,
+        arguments: argsStr,
+        error: preparedArgs.error,
+      });
+      result = {
+        type: 'func_result_msg',
+        id: func.id,
+        name: func.name,
+        content: `Invalid arguments: ${preparedArgs.error}`,
+        role: 'tool',
+        genseq: callGenseq,
+      };
+    } else {
+      const argsValidation = validateFuncToolArguments(tool, preparedArgs.raw);
+      if (!argsValidation.ok) {
+        result = {
+          type: 'func_result_msg',
+          id: func.id,
+          name: func.name,
+          content: `Invalid arguments: ${argsValidation.error}`,
+          role: 'tool',
+          genseq: callGenseq,
+        };
+        await args.dlg.receiveFuncResult(result);
+        return result;
+      }
+
       const argsObj: ToolArguments = argsValidation.args;
 
-      await args.dlg.funcCallRequested(func.id, func.name, argsStr);
+      await args.dlg.funcCallRequested(func.id, func.name, preparedArgs.contextArguments);
       await args.dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
 
       try {
@@ -967,15 +1032,6 @@ async function executeFunctionCalls(args: {
           throw err;
         }
       }
-    } else {
-      result = {
-        type: 'func_result_msg',
-        id: func.id,
-        name: func.name,
-        content: `Invalid arguments: ${argsValidation.error}`,
-        role: 'tool',
-        genseq: callGenseq,
-      };
     }
 
     await args.dlg.receiveFuncResult(result);
@@ -1139,15 +1195,16 @@ async function executeFunctionRound(args: {
 
   const pairedMessages: ChatMessage[] = [];
   for (const call of args.funcCalls) {
-    const argsStr =
+    const originalArgsStr =
       typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
+    const preparedArgs = prepareFuncCallArguments(originalArgsStr);
     pairedMessages.push({
       type: 'func_call_msg',
       role: 'assistant',
       genseq: call.genseq,
       id: call.id,
       name: call.name,
-      arguments: argsStr,
+      arguments: preparedArgs.contextArguments,
     });
     const result = resultByCallId.get(call.id);
     if (result) {
