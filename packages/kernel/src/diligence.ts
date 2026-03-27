@@ -33,6 +33,8 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '同理，若不存在“⏳ 进行中诉请（共 N 路，自动维护；仅 0 路时可手动删除）”这类提醒项，或某条历史诉请未出现在该提醒项中，都表示当前没有可等待的进行中诉请（通常代表该轮已回贴或已结束）；“继续等待”是错误动作，必须立即执行下一步：本地动作，或使用同一个 `sessionSlug` 再次调用 `tellask` 向对应队友发起下一轮诉请。',
     '',
     '若某一路仍在进行中的诉请已经过时、需要纠偏，或希望它提前收口，不要试图删除提醒项来“终止”它。非 0 路时误删会被拒绝，并返回引导文案。正确动作只有一个：更新那一路特定诉请的“任务安排”（对长线诉请复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。',
+    '',
+    '特别注意：一次性诉请（`tellaskSessionless`）没有“更新任务安排”的通道；你不能靠再开一个新的 `tellaskSessionless` 去要求旧的一次性支线停止，那只会再创建一个新的瞬态支线。若后续可能需要改要求/提前收口，应从一开始就使用带 `sessionSlug` 的 `tellask`。',
   ].join('\n'),
   en: [
     'First judge directly: does the Taskdoc already contain a sufficiently clear goal definition?',
@@ -64,5 +66,7 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     'Likewise, if a “⏳ In-flight Tellasks (N total, auto-maintained; manually deletable only at zero in-flight)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight Tellask for it at the moment (usually the previous round has replied or ended). “Keep waiting” is a wrong action; execute the next step immediately: local action, or launch a new Tellask round to the same teammate via `tellask` with the same `sessionSlug`.',
     '',
     'If an in-flight Tellask becomes outdated, needs correction, or should wrap up earlier, do not try to “terminate” it by deleting the reminder. Mistaken deletion while non-zero in-flight will be rejected with guidance. The correct action is to update that specific Tellask’s assignment instead (for a sessioned Tellask, send another `tellask` with the same `sessionSlug`) so the responder can deliver a final reply naturally under the latest assignment.',
+    '',
+    'Important: a one-shot Tellask (`tellaskSessionless`) has no assignment-update channel. You cannot open another `tellaskSessionless` to tell the earlier one-shot sideline to stop; that only creates another transient sideline. If later correction or earlier wrap-up may be needed, choose `tellask` with a `sessionSlug` from the start.',
   ].join('\n'),
 };

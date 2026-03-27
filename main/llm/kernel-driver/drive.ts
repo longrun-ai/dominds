@@ -364,7 +364,8 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellaskSessionless',
-    description: 'Create a one-shot teammate sideline dialog.',
+    description:
+      'Create a one-shot teammate sideline dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
     parameters: {
       type: 'object',
       properties: {

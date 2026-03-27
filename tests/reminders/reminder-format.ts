@@ -99,12 +99,19 @@ async function main() {
 
   const zhPendingActiveGuard = formatReminderItemGuide('zh', 8, '进行中诉请内容\n', {
     meta: {
-      update: { altInstruction: '只能更新特定诉请的“任务安排”' },
-      delete: { altInstruction: '当前仍有进行中诉请；不可删除，只能更新特定诉请的“任务安排”' },
+      update: {
+        altInstruction: '只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+      },
+      delete: {
+        altInstruction:
+          '当前仍有进行中诉请；不可删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+      },
     },
   });
   assert(
-    zhPendingActiveGuard.includes('当前仍有进行中诉请；不可删除，只能更新特定诉请的“任务安排”'),
+    zhPendingActiveGuard.includes(
+      '当前仍有进行中诉请；不可删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+    ),
     'Expected zh reminder guide to show active pending-tellask delete guard',
   );
   assert(
@@ -212,16 +219,19 @@ async function main() {
 
   const enPendingActiveGuard = formatReminderItemGuide('en', 8, 'In-flight tellask content\n', {
     meta: {
-      update: { altInstruction: 'update that specific tellask assignment only' },
+      update: {
+        altInstruction:
+          'only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+      },
       delete: {
         altInstruction:
-          'There are still in-flight Tellasks; do not delete this reminder, update that specific tellask assignment only',
+          'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
       },
     },
   });
   assert(
     enPendingActiveGuard.includes(
-      'There are still in-flight Tellasks; do not delete this reminder, update that specific tellask assignment only',
+      'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
     ),
     'Expected en reminder guide to show active pending-tellask delete guard',
   );

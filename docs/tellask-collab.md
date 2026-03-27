@@ -33,6 +33,12 @@ These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `dili
 - `Tellask Session`: `tellask({ targetAgentId: "<teammate>", sessionSlug: "<slug>", tellaskContent: "..." })`
 - `Fresh Tellask`: `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`
 
+Important addition:
+
+- Only `Tellask Session` has an assignment-update channel.
+- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient sideline and does not affect or tell the earlier owner to stop.
+- If later correction, earlier wrap-up, or scope change may be needed, do not choose `Fresh Tellask`; use `tellask` with `sessionSlug` from the start.
+
 ### 2.2 What `Tellask Session` really means
 
 - `sessionSlug` gives resumable addressing and reusable context.

@@ -62,6 +62,12 @@ function main(): void {
     'zh mainline prompt should explain active pending-tellask reminders are non-deletable',
   );
   assert.ok(
+    zhMainline.includes(
+      '只有长线诉请（`tellask` + `sessionSlug`）才有“更新任务安排”的通道；一次性诉请（`tellaskSessionless`）没有这个通道。',
+    ),
+    'zh mainline prompt should explain tellaskSessionless has no assignment-update channel',
+  );
+  assert.ok(
     !zhMainline.includes(
       '回贴文本标记由运行时在展示层自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】），不会改写正文；你无需、也不应手写标记。',
     ),
@@ -83,6 +89,12 @@ function main(): void {
       'The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface: its content is not hand-editable; while any Tellask is still active, it is not deletable, and mistaken deletion will be rejected with guidance.',
     ),
     'en mainline prompt should explain active pending-tellask reminders are non-deletable',
+  );
+  assert.ok(
+    enMainline.includes(
+      'Only a sessioned Tellask (`tellask` + `sessionSlug`) has an assignment-update channel. A one-shot Tellask (`tellaskSessionless`) has no such channel:',
+    ),
+    'en mainline prompt should explain tellaskSessionless has no assignment-update channel',
   );
   assert.ok(
     !enMainline.includes(

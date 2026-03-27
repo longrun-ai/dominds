@@ -33,6 +33,12 @@
 - 长线诉请：`tellask({ targetAgentId: "<teammate>", sessionSlug: "<slug>", tellaskContent: "..." })`，可恢复上下文的多轮协作。
 - 一次性诉请：`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`，一次性、不可恢复。
 
+关键补充：
+
+- 只有长线诉请有“更新任务安排”的通道。
+- 一次性诉请没有这个通道；后续再开一个 `tellaskSessionless` 只会创建新的瞬态支线，不会影响旧支线继续执行，更不能要求旧主理人停止。
+- 如果你后来可能需要改要求、提前收口或纠偏，就不该使用一次性诉请，而应从一开始就用带 `sessionSlug` 的长线诉请。
+
 ### 2.2 长线诉请的真实语义
 
 - `sessionSlug` 的作用是“会话寻址 + 历史复用”。

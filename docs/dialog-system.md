@@ -334,6 +334,9 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
+- **No assignment-update channel** - once emitted, it cannot be updated in place like Type B
+- Another `tellaskSessionless` creates **another new transient subdialog**; it does not update, stop, or tell the earlier Type C sideline to stop
+- If later correction, scope change, or earlier wrap-up may be needed, choose Type B `tellask` with `sessionSlug` from the start
 - The subdialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks

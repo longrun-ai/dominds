@@ -56,14 +56,14 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
 
 function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '不要手改这条系统提醒。若要改变某一路诉请，只能更新那一路诉请的“任务安排”：对长线诉请复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束；其余情况等待系统按真实诉请状态自动刷新。'
-    : 'Do not hand-edit this system reminder. If you need to change one tellask, update that tellask’s assignment instead: for a sessioned tellask, send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment; otherwise wait for system refresh from real tellask state.';
+    ? '不要手改这条系统提醒。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
+    : 'Do not hand-edit this system reminder. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient sideline and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
 function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '这条系统提醒不可删除。若要改变某一路诉请，只能更新那一路诉请的“任务安排”：对长线诉请复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束；其余情况等待系统按真实诉请状态自动刷新。'
-    : 'This system reminder is not deletable. If you need to change one tellask, update that tellask’s assignment instead: for a sessioned tellask, send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment; otherwise wait for system refresh from real tellask state.';
+    ? '这条系统提醒不可删除。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
+    : 'This system reminder is not deletable. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient sideline and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
 function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
@@ -171,8 +171,8 @@ function buildReminderContent(
 
   const summary =
     language === 'zh'
-      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面：自动维护、不可手改，且在非 0 路进行中时不可删除。若某一路诉请的要求变化，只能更新那一路诉请的“任务安排”（对长线诉请通常复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。误删会被拒绝，并返回同样的引导文案。'
-      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. If one tellask needs to change, update that tellask’s assignment instead (for a sessioned tellask, usually send another `tellask` with the same `sessionSlug`) so the responder can finish naturally under the latest assignment. Mistaken deletion will be rejected with the same guidance.';
+      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面：自动维护、不可手改，且在非 0 路进行中时不可删除。只有长线诉请（`tellask` + `sessionSlug`）才能更新“任务安排”；一次性诉请（`tellaskSessionless`）没有这个通道。新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不会影响旧支线继续执行，更不能要求旧主理人停止。若某一路长线诉请的要求变化，才可复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。误删会被拒绝，并返回同样的引导文案。'
+      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. Only a sessioned tellask (`tellask` + `sessionSlug`) has an assignment-update channel; a one-shot tellask (`tellaskSessionless`) does not. Opening another `tellaskSessionless` only creates another transient sideline; it does not affect the earlier one and cannot tell the earlier owner to stop. If a sessioned tellask needs to change, reuse the same `sessionSlug` in another `tellask` so the responder can finish naturally under the latest assignment. Mistaken deletion will be rejected with the same guidance.';
 
   const lines = pending.map((p, idx) => {
     const base =

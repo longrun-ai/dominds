@@ -196,6 +196,9 @@ tellask({
 - EN (key property): “Fresh/one-shot” is not only “new context”; it also means **no continuation semantics** — later Tellasks are not expected to resume the same session context.
 - ZH（关键性质）: “Fresh/一次性”不仅表示“新开上下文”，更表示：**没有后续续话语义** —— 后续诉请不应被期待能自动续接本次一次性诉请的上下文。
 
+- EN (operational consequence): A Fresh Tellask has **no assignment-update channel**. Another `tellaskSessionless` creates a new transient sideline; it does not update or tell the earlier one to stop.
+- ZH（操作后果）: 一次性诉请**没有任务安排更新通道**。再次发起 `tellaskSessionless` 只会新建另一条瞬态支线，不会更新、更不会要求先前那条支线停止。
+
 - EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `sessionSlug`.
 - ZH（实践建议）: 如果你在一次性诉请后还要追问，应当把追问当作全新请求并补齐必要上下文；如果你需要可迭代的追问/推进，请使用 `Tellask Session` 并提供 `sessionSlug`。
 

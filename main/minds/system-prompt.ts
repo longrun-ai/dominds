@@ -134,6 +134,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- 若被诉请者在回贴送达前因 `clear_mind` 开启新一程，同一进行中诉请默认继续有效；新一程会自然承接，直到产生回贴或明确失败。不要仅因对方换程就把该轮诉请当作失效重发。',
       '- 只有在存在明确进行中诉请时，才可声明“等待回贴/等待结果”（通常应可在“⏳ 进行中诉请（共 N 路，自动维护；仅 0 路时可手动删除）”这类提醒项中观测到）；若该提醒项不存在，或提醒项已明确“当前没有执行中的诉请”，则“等待”是错误动作，必须执行下一动作（直接诉请或本地执行）。',
       '- “⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面：内容不可手改；当存在非 0 路进行中诉请时，不可删除，误删会被拒绝并返回引导文案。若某一路诉请需要改要求、提前收口或纠偏，只能更新那一路诉请的“任务安排”（对长线诉请通常复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。',
+      '- 只有长线诉请（`tellask` + `sessionSlug`）才有“更新任务安排”的通道；一次性诉请（`tellaskSessionless`）没有这个通道。再次发起 `tellaskSessionless` 只会创建新的瞬态支线，不会更新、更不会要求旧支线主理人停止；若你后来发现可能需要改要求/提前收口，一开始就不该选择 `tellaskSessionless`。',
       '- 能由队友诉请完成的执行性工作，禁止转交 `askHuman` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 `tellask` 或 `tellaskSessionless`。',
       `- 当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：\`Dominds 会自动注入回贴标记，禁止手写标记\`；不得要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）。`,
       '- 当你处于队友诉请触发的支线且需要澄清时，必须使用 `tellaskBack` 回问上游诉请者；`tellaskBack` 不携带 `sessionSlug`。',
@@ -145,6 +146,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- If the callee starts a new course via `clear_mind` before delivering the reply, the same in-flight Tellask stays live by default; the new course naturally continues it until a reply is delivered or an explicit failure is returned. Do not re-tellask solely because the callee changed course.',
       '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists (normally observable in a “⏳ In-flight Tellasks (N total, auto-maintained; manually deletable only at zero in-flight)” reminder). If that reminder is absent, or it explicitly states there are no in-flight Tellasks, waiting is a wrong action; execute the next action now (direct Tellask or local action).',
       '- The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface: its content is not hand-editable; while any Tellask is still active, it is not deletable, and mistaken deletion will be rejected with guidance. If one Tellask needs a changed scope, earlier closure, or correction, update that Tellask’s assignment instead (for a sessioned Tellask, usually send another `tellask` with the same `sessionSlug`) so the responder can deliver a final reply naturally under the latest assignment.',
+      '- Only a sessioned Tellask (`tellask` + `sessionSlug`) has an assignment-update channel. A one-shot Tellask (`tellaskSessionless`) has no such channel: another `tellaskSessionless` creates a new transient sideline and does not update, stop, or instruct the earlier one to stop. If you may need later correction or earlier wrap-up, do not choose `tellaskSessionless` in the first place.',
       '- Do not use `askHuman` as a relay for executable teammate work. If you write “ask @X to do Y”, emit `tellask` or `tellaskSessionless` in the same response.',
       `- When you define a “reply/delivery format” inside tellask body, you must explicitly include: \`Dominds auto-injects reply markers; do not hand-write markers\`; do not require the responder to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`).`,
       '- When you are in a teammate-triggered sideline and need clarification, you MUST issue `tellaskBack` to ask back upstream; `tellaskBack` must not carry `sessionSlug`.',
@@ -236,12 +238,12 @@ function buildTellaskCollaborationProtocol(
     ...pickLocalized(language, {
       zh: [
         '- Tellask 统一走函数工具通道：`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `freshBootsReasoning`。',
-        '- 对队友诉请默认使用 `tellask` 并复用 `sessionSlug`；仅在确认一次性诉请足够时才使用 `tellaskSessionless`，且需说明理由。',
+        '- 对队友诉请默认使用 `tellask` 并复用 `sessionSlug`；仅在确认一次性诉请足够、且后续不需要更新任务安排/提前收口时才使用 `tellaskSessionless`，并需说明理由。',
         '- 例外优先级（强制）：`tellaskBack` 仅用于回问上游诉请者，不适用队友长线默认规则，也不携带 `sessionSlug`。',
       ],
       en: [
         '- Tellask must use the function-tool channel: `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `freshBootsReasoning`.',
-        '- For teammate tellasks, default to `tellask` and continue with the same `sessionSlug`; use `tellaskSessionless` only for justified one-shot calls.',
+        '- For teammate tellasks, default to `tellask` and continue with the same `sessionSlug`; use `tellaskSessionless` only when a one-shot is truly sufficient and later assignment updates / early wrap-up are not needed.',
         '- Mandatory exception precedence: `tellaskBack` is ask-back-only and outside the teammate-session default; it does not carry `sessionSlug`.',
       ],
     }),
@@ -319,14 +321,14 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
     zh: [
       '- `tellaskBack`：仅用于支线回问上游诉请者。',
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
-      '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）。',
+      '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不会建立可更新的任务安排通道，后续再次调用只会新开支线，不会影响旧支线继续执行。',
       '- `askHuman`：用于 Q4H（向人类请求必要澄清/决策/授权/缺失输入）。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [
       '- `tellaskBack`: ask back upstream from a sideline dialog only.',
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
-      '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`).',
+      '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it does not create an assignment-update channel, and later calls create new sidelines instead of affecting the earlier one.',
       '- `askHuman`: Q4H for necessary clarification/decision/authorization/missing input.',
       '- `freshBootsReasoning`: starts an FBR sideline dialog (requires `tellaskContent`, optional `effort`).',
     ],
