@@ -76,7 +76,11 @@ async function main() {
   );
 
   const zhMetaControlledUpdate = formatReminderItemGuide('zh', 7, 'Auto-managed content\n', {
-    meta: { update: { altInstruction: '等待系统自动刷新' } },
+    meta: {
+      kind: 'pending_tellask',
+      pendingCount: 0,
+      update: { altInstruction: '等待系统自动刷新' },
+    },
   });
   assert(
     zhMetaControlledUpdate.includes('等待系统自动刷新'),
@@ -85,6 +89,27 @@ async function main() {
   assert(
     !zhMetaControlledUpdate.includes('如果我要更新这条提醒项，可执行：update_reminder'),
     'Expected meta-controlled reminder not to suggest update_reminder (zh)',
+  );
+  assert(
+    zhMetaControlledUpdate.includes(
+      '如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_no": 7 })',
+    ),
+    'Expected zh zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
+  );
+
+  const zhPendingActiveGuard = formatReminderItemGuide('zh', 8, '进行中诉请内容\n', {
+    meta: {
+      update: { altInstruction: '只能更新特定诉请的“任务安排”' },
+      delete: { altInstruction: '当前仍有进行中诉请；不可删除，只能更新特定诉请的“任务安排”' },
+    },
+  });
+  assert(
+    zhPendingActiveGuard.includes('当前仍有进行中诉请；不可删除，只能更新特定诉请的“任务安排”'),
+    'Expected zh reminder guide to show active pending-tellask delete guard',
+  );
+  assert(
+    !zhPendingActiveGuard.includes('delete_reminder({ "reminder_no": 8 })'),
+    'Expected zh active pending-tellask guide not to suggest delete_reminder',
   );
 
   const zhContinuation = formatReminderItemGuide('zh', 5, '接续信息\n', {
@@ -164,7 +189,11 @@ async function main() {
   );
 
   const enMetaControlledUpdate = formatReminderItemGuide('en', 7, 'Auto-managed content\n', {
-    meta: { update: { altInstruction: 'wait for system refresh' } },
+    meta: {
+      kind: 'pending_tellask',
+      pendingCount: 0,
+      update: { altInstruction: 'wait for system refresh' },
+    },
   });
   assert(
     enMetaControlledUpdate.includes('wait for system refresh'),
@@ -173,6 +202,32 @@ async function main() {
   assert(
     !enMetaControlledUpdate.includes('If I need to update this reminder, run: update_reminder'),
     'Expected meta-controlled reminder not to suggest update_reminder (en)',
+  );
+  assert(
+    enMetaControlledUpdate.includes(
+      'If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_no": 7 })',
+    ),
+    'Expected en zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
+  );
+
+  const enPendingActiveGuard = formatReminderItemGuide('en', 8, 'In-flight tellask content\n', {
+    meta: {
+      update: { altInstruction: 'update that specific tellask assignment only' },
+      delete: {
+        altInstruction:
+          'There are still in-flight Tellasks; do not delete this reminder, update that specific tellask assignment only',
+      },
+    },
+  });
+  assert(
+    enPendingActiveGuard.includes(
+      'There are still in-flight Tellasks; do not delete this reminder, update that specific tellask assignment only',
+    ),
+    'Expected en reminder guide to show active pending-tellask delete guard',
+  );
+  assert(
+    !enPendingActiveGuard.includes('delete_reminder({ "reminder_no": 8 })'),
+    'Expected en active pending-tellask guide not to suggest delete_reminder',
   );
 
   const enContinuation = formatReminderItemGuide('en', 5, 'Continuation details\n', {

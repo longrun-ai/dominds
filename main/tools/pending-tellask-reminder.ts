@@ -25,6 +25,9 @@ type PendingTellaskReminderMeta = Readonly<{
   update: Readonly<{
     altInstruction: string;
   }>;
+  delete?: Readonly<{
+    altInstruction: string;
+  }>;
 }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,13 +44,26 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
   if (!isRecord(update)) return false;
   if (typeof update.altInstruction !== 'string' || update.altInstruction.trim() === '')
     return false;
+  const del = value.delete;
+  if (
+    del !== undefined &&
+    (!isRecord(del) || typeof del.altInstruction !== 'string' || del.altInstruction.trim() === '')
+  ) {
+    return false;
+  }
   return true;
 }
 
 function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '等待系统根据真实诉请状态自动刷新此提醒；不要手动改内容。若状态变化，靠诉请流转自然更新。'
-    : 'Wait for the system to refresh this reminder from real tellask state; do not hand-edit its content.';
+    ? '不要手改这条系统提醒。若要改变某一路诉请，只能更新那一路诉请的“任务安排”：对长线诉请复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束；其余情况等待系统按真实诉请状态自动刷新。'
+    : 'Do not hand-edit this system reminder. If you need to change one tellask, update that tellask’s assignment instead: for a sessioned tellask, send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment; otherwise wait for system refresh from real tellask state.';
+}
+
+function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
+  return language === 'zh'
+    ? '这条系统提醒不可删除。若要改变某一路诉请，只能更新那一路诉请的“任务安排”：对长线诉请复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束；其余情况等待系统按真实诉请状态自动刷新。'
+    : 'This system reminder is not deletable. If you need to change one tellask, update that tellask’s assignment instead: for a sessioned tellask, send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment; otherwise wait for system refresh from real tellask state.';
 }
 
 function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
@@ -116,6 +132,14 @@ function buildReminderMeta(
   pending: ReadonlyArray<PendingSubdialogView>,
 ): PendingTellaskReminderMeta {
   const language = getWorkLanguage();
+  const deleteMeta =
+    pending.length === 0
+      ? {}
+      : {
+          delete: {
+            altInstruction: getPendingTellaskDeleteAltInstruction(language),
+          },
+        };
   return {
     kind: 'pending_tellask',
     pendingCount: pending.length,
@@ -124,6 +148,7 @@ function buildReminderMeta(
     update: {
       altInstruction: getPendingTellaskUpdateAltInstruction(language),
     },
+    ...deleteMeta,
   };
 }
 
@@ -133,21 +158,21 @@ function buildReminderContent(
 ): string {
   const heading =
     language === 'zh'
-      ? `⏳ 进行中诉请（共 ${pending.length} 路，自动添加，手动删除）`
-      : `⏳ In-flight Tellasks (${pending.length} total, auto-added, manually deleted)`;
+      ? `⏳ 进行中诉请（共 ${pending.length} 路，自动维护${pending.length === 0 ? '，0 路时可手动删除' : '，进行中不可删除'}）`
+      : `⏳ In-flight Tellasks (${pending.length} total, auto-maintained${pending.length === 0 ? ', deletable only at zero in-flight' : ', non-deletable while active'})`;
 
   if (pending.length === 0) {
     const noneRunningText =
       language === 'zh'
-        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何 “等待” 想法和行为都是错误的；若你删除后该提醒项未再次出现，也同样表示当前无可等待事项。若已明确知晓，可删除此提醒项以免碍眼。'
-        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. If this reminder does not reappear after deletion, it likewise means there is nothing to wait for. If you clearly know this, delete this reminder to reduce noise.';
+        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何“等待”想法和行为都是错误的。该提醒项仍是系统状态窗，内容不可手改；但因为当前为 0 路进行中，若你已明确知晓这一点，可手动删除以免碍眼。后续需要推进时，只能直接执行下一步本地动作，或发起新的诉请。'
+        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. This reminder is still a system status window and its content must not be hand-edited; however, because there are currently zero in-flight Tellasks, you may delete it manually once you are sure. To continue later, take the next local action directly or issue a new Tellask.';
     return [heading, '', noneRunningText].join('\n');
   }
 
   const summary =
     language === 'zh'
-      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。此提醒会自动添加与刷新，但不会自动删除。'
-      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is auto-added/refreshed and not auto-deleted.';
+      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面：自动维护、不可手改，且在非 0 路进行中时不可删除。若某一路诉请的要求变化，只能更新那一路诉请的“任务安排”（对长线诉请通常复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。误删会被拒绝，并返回同样的引导文案。'
+      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. If one tellask needs to change, update that tellask’s assignment instead (for a sessioned tellask, usually send another `tellask` with the same `sessionSlug`) so the responder can finish naturally under the latest assignment. Mistaken deletion will be rejected with the same guidance.';
 
   const lines = pending.map((p, idx) => {
     const base =

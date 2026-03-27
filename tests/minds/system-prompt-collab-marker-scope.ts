@@ -56,6 +56,12 @@ function main(): void {
     ),
   );
   assert.ok(
+    zhMainline.includes(
+      '“⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面：内容不可手改；当存在非 0 路进行中诉请时，不可删除，误删会被拒绝并返回引导文案。',
+    ),
+    'zh mainline prompt should explain active pending-tellask reminders are non-deletable',
+  );
+  assert.ok(
     !zhMainline.includes(
       '回贴文本标记由运行时在展示层自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】），不会改写正文；你无需、也不应手写标记。',
     ),
@@ -71,6 +77,12 @@ function main(): void {
     enMainline.includes(
       `When you define a “reply/delivery format” inside tellask body, you must explicitly include: \`Dominds auto-injects reply markers; do not hand-write markers\`; do not require the responder to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`).`,
     ),
+  );
+  assert.ok(
+    enMainline.includes(
+      'The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface: its content is not hand-editable; while any Tellask is still active, it is not deletable, and mistaken deletion will be rejected with guidance.',
+    ),
+    'en mainline prompt should explain active pending-tellask reminders are non-deletable',
   );
   assert.ok(
     !enMainline.includes(

@@ -181,6 +181,11 @@ export function formatReminderItemGuide(
   const metaValue = options && 'meta' in options ? options.meta : undefined;
   const isContinuationPackageReminder =
     isRecord(metaValue) && metaValue['kind'] === 'continuation_package';
+  const isPendingTellaskReminder = isRecord(metaValue) && metaValue['kind'] === 'pending_tellask';
+  const pendingTellaskCount =
+    isPendingTellaskReminder && typeof metaValue['pendingCount'] === 'number'
+      ? metaValue['pendingCount']
+      : undefined;
   const managerValue = isRecord(metaValue) ? metaValue['manager'] : undefined;
   const managementTool =
     isRecord(managerValue) && typeof managerValue['tool'] === 'string'
@@ -207,10 +212,14 @@ export function formatReminderItemGuide(
     language === 'zh'
       ? deleteAltInstruction
         ? `如果我要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
-        : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`
+        : isPendingTellaskReminder && pendingTellaskCount === 0
+          ? `如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_no": ${index} })`
+          : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`
       : deleteAltInstruction
         ? `If I need to delete this reminder, I must not use delete_reminder; run: ${deleteAltInstruction}`
-        : `If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })`;
+        : isPendingTellaskReminder && pendingTellaskCount === 0
+          ? `If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_no": ${index} })`
+          : `If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })`;
 
   if (language === 'zh') {
     if (managementTool) {
