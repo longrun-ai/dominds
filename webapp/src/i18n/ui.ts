@@ -229,6 +229,7 @@ export type UiStrings = {
   runBadgeRunningTitle: string;
   runBadgeWaitingHumanTitle: string;
   runBadgeWaitingSubdialogsTitle: string;
+  runBadgeWaitingFbrTitle: string;
 
   connectionConnected: string;
   connectionConnecting: string;
@@ -588,6 +589,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       runBadgeRunningTitle: '正在运行',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
       runBadgeWaitingSubdialogsTitle: '等待支线对话完成',
+      runBadgeWaitingFbrTitle: '等待 FBR 收口',
 
       connectionConnected: '已连接',
       connectionConnecting: '连接中',
@@ -957,6 +959,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
     runBadgeWaitingSubdialogsTitle: 'Waiting for sideline dialogs',
+    runBadgeWaitingFbrTitle: 'Waiting for FBR',
 
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting',

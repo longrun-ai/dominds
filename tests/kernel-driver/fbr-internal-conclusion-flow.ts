@@ -299,6 +299,14 @@ async function main(): Promise<void> {
       5,
       'successful FBR should run 2 divergence rounds + 2 convergence rounds + 1 finalization round before ending',
     );
+    assert.ok(
+      successPromptings.every(
+        (msg) =>
+          !msg.content.includes('[Dominds 当前无跨对话回复义务]') &&
+          !msg.content.includes('这轮不要调用任何 `reply*`'),
+      ),
+      'FBR prompts should stay isolated from ordinary inter-dialog reply-obligation guidance',
+    );
     const successFuncCalls = successSubdialog.msgs.filter((msg) => msg.type === 'func_call_msg');
     assert.equal(
       successFuncCalls.length,
@@ -362,6 +370,14 @@ async function main(): Promise<void> {
       fallbackPromptings.length,
       6,
       'fallback FBR should run 2 divergence rounds + 2 convergence rounds + 2 finalization retries before runtime fallback',
+    );
+    assert.ok(
+      fallbackPromptings.every(
+        (msg) =>
+          !msg.content.includes('[Dominds 当前无跨对话回复义务]') &&
+          !msg.content.includes('这轮不要调用任何 `reply*`'),
+      ),
+      'fallback FBR prompts should also avoid ordinary inter-dialog reply-obligation guidance',
     );
     const fallbackFuncCalls = fallbackSubdialog.msgs.filter((msg) => msg.type === 'func_call_msg');
     assert.equal(

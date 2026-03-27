@@ -123,6 +123,14 @@ function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
   return null;
 }
 
+async function detectWaitingForFreshBootsReasoning(
+  dialogId: DialogID,
+  status: DialogStatusKind,
+): Promise<boolean> {
+  const pending = await DialogPersistence.loadPendingSubdialogs(dialogId, status);
+  return pending.some((entry) => entry.callName === 'freshBootsReasoning');
+}
+
 function buildPrimingWarningSummary(
   warnings: PrimingScriptLoadIssue[],
 ): PrimingScriptWarningSummary | undefined {
@@ -2186,6 +2194,7 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
       createdAt: string;
       lastModified: string;
       displayState?: DialogLatestFile['displayState'];
+      waitingForFreshBootsReasoning?: boolean;
       subdialogCount: number;
     }> = [];
 
@@ -2196,6 +2205,10 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
 
       // Load latest.yaml for currentCourse and lastModified timestamp
       const latest = await DialogPersistence.loadDialogLatest(new DialogID(id), status);
+      const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
+        new DialogID(id),
+        status,
+      );
 
       // Count subdialogs for this root dialog
       const rootPath = DialogPersistence.getRootDialogPath(new DialogID(id), status);
@@ -2211,6 +2224,7 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
         createdAt: meta.createdAt,
         lastModified: latest?.lastModified || meta.createdAt,
         displayState: latest?.displayState,
+        waitingForFreshBootsReasoning,
         subdialogCount,
       });
     }
@@ -2310,6 +2324,10 @@ async function handleGetDialogHierarchy(
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
       displayState: rootLatest?.displayState,
+      waitingForFreshBootsReasoning: await detectWaitingForFreshBootsReasoning(
+        new DialogID(rootId),
+        status,
+      ),
     };
 
     let subdialogs: Array<{
@@ -2325,6 +2343,7 @@ async function handleGetDialogHierarchy(
       displayState?: DialogLatestFile['displayState'];
       sessionSlug?: string;
       assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
+      waitingForFreshBootsReasoning?: boolean;
     }> = [];
 
     const dialogIds = await DialogPersistence.listAllDialogIds(status);
@@ -2338,6 +2357,10 @@ async function handleGetDialogHierarchy(
       }
 
       const subLatest = await DialogPersistence.loadDialogLatest(dialogId, status);
+      const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
+        dialogId,
+        status,
+      );
       const derivedSupdialogId =
         meta.assignmentFromSup?.callerDialogId &&
         meta.assignmentFromSup.callerDialogId.trim() !== ''
@@ -2359,6 +2382,7 @@ async function handleGetDialogHierarchy(
         displayState: subLatest?.displayState,
         sessionSlug: meta.sessionSlug,
         assignmentFromSup: meta.assignmentFromSup,
+        waitingForFreshBootsReasoning,
       });
     }
 

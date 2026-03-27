@@ -80,6 +80,7 @@ export class RunningDialogList extends HTMLElement {
     'state-blocked-q4h',
     'state-blocked-subdialogs',
     'state-blocked-both',
+    'state-blocked-fbr',
   ];
 
   constructor() {
@@ -191,7 +192,7 @@ export class RunningDialogList extends HTMLElement {
     next.selfId = existing.selfId;
 
     entry.el.dataset.dialogJson = this.encodeDialogDataset(next);
-    if (patch.displayState !== undefined) {
+    if (patch.displayState !== undefined || patch.waitingForFreshBootsReasoning !== undefined) {
       this.updateDisplayStateForEntry(entry.el, next);
     }
     if (patch.lastModified !== undefined) {
@@ -238,6 +239,16 @@ export class RunningDialogList extends HTMLElement {
     return this.dialogKey(rootId, selfId);
   }
 
+  private isWaitingForFreshBootsReasoning(dialog: ApiRootDialogResponse): boolean {
+    if (dialog.waitingForFreshBootsReasoning !== true) return false;
+    const displayState = dialog.displayState;
+    if (!displayState || displayState.kind !== 'blocked') return false;
+    return (
+      displayState.reason.kind === 'waiting_for_subdialogs' ||
+      displayState.reason.kind === 'needs_human_input_and_subdialogs'
+    );
+  }
+
   private renderRunBadge(
     className: string,
     title: string,
@@ -249,6 +260,7 @@ export class RunningDialogList extends HTMLElement {
   private renderRunBadges(dialog: ApiRootDialogResponse): string {
     const t = getUiStrings(this.props.uiLanguage);
     const visualState = runControlVisualStateFromDisplayState(dialog.displayState);
+    const waitingForFreshBootsReasoning = this.isWaitingForFreshBootsReasoning(dialog);
     const badges: string[] = [];
 
     switch (visualState.kind) {
@@ -267,13 +279,25 @@ export class RunningDialogList extends HTMLElement {
         break;
       case 'blocked_subdialogs':
         badges.push(
-          this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
+          waitingForFreshBootsReasoning
+            ? this.renderRunBadge(
+                'blocked blocked-fbr',
+                t.runBadgeWaitingFbrTitle,
+                'run-badge-fbr-icon',
+              )
+            : this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
         );
         break;
       case 'blocked_both':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         badges.push(
-          this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
+          waitingForFreshBootsReasoning
+            ? this.renderRunBadge(
+                'blocked blocked-fbr',
+                t.runBadgeWaitingFbrTitle,
+                'run-badge-fbr-icon',
+              )
+            : this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
         );
         break;
       default: {
@@ -287,17 +311,27 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private getDisplayStateClass(dialog: ApiRootDialogResponse): string {
+    const classes: string[] = [];
     const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
-    return suffix ? ` ${suffix}` : '';
+    if (suffix) {
+      classes.push(suffix);
+    }
+    if (this.isWaitingForFreshBootsReasoning(dialog)) {
+      classes.push('state-blocked-fbr');
+    }
+    return classes.length > 0 ? ` ${classes.join(' ')}` : '';
   }
 
   private updateDisplayStateForEntry(el: HTMLElement, dialog: ApiRootDialogResponse): void {
     for (const cls of RunningDialogList.RUN_STATE_CLASSES) {
       el.classList.remove(cls);
     }
-    const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
-    if (suffix) {
-      el.classList.add(suffix);
+    const classes = this.getDisplayStateClass(dialog)
+      .trim()
+      .split(/\s+/)
+      .filter((value) => value.length > 0);
+    for (const cls of classes) {
+      el.classList.add(cls);
     }
     const badgesHtml = this.renderRunBadges(dialog);
     const meta = el.querySelector('.dialog-meta-right');
@@ -1758,6 +1792,11 @@ export class RunningDialogList extends HTMLElement {
         background: color-mix(in srgb, #7c3aed 6%, var(--dominds-primary, #007acc) 5%);
       }
 
+      .dialog-item.state-blocked-fbr {
+        border-right-color: color-mix(in srgb, #c67a14 58%, transparent);
+        background: color-mix(in srgb, #f4bf75 18%, white 82%);
+      }
+
       .dialog-item.state-proceeding {
         --dialog-glow-color: var(--dominds-primary, #007acc);
         border-right-color: color-mix(in srgb, var(--dialog-glow-color) 55%, transparent);
@@ -1776,7 +1815,8 @@ export class RunningDialogList extends HTMLElement {
       .dialog-item.selected.state-interrupted,
       .dialog-item.selected.state-blocked-q4h,
       .dialog-item.selected.state-blocked-subdialogs,
-      .dialog-item.selected.state-blocked-both {
+      .dialog-item.selected.state-blocked-both,
+      .dialog-item.selected.state-blocked-fbr {
         border-right-color: transparent;
       }
 
@@ -1879,7 +1919,8 @@ export class RunningDialogList extends HTMLElement {
         box-sizing: border-box;
       }
 
-      .run-badge-icon {
+      .run-badge-icon,
+      .run-badge-fbr-icon {
         width: 12px;
         height: 12px;
         flex: 0 0 auto;
@@ -1909,6 +1950,12 @@ export class RunningDialogList extends HTMLElement {
         color: var(--dominds-primary, #007acc);
       }
 
+      .run-badge.blocked-fbr {
+        background: color-mix(in srgb, #f4bf75 30%, white 70%);
+        border-color: color-mix(in srgb, #c67a14 45%, transparent);
+        color: #9a5b09;
+      }
+
       .run-badge.proceeding .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.play};
       }
@@ -1923,6 +1970,10 @@ export class RunningDialogList extends HTMLElement {
 
       .run-badge.blocked-subdialogs .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.call};
+      }
+
+      .run-badge.blocked-fbr .run-badge-fbr-icon {
+        --icon-mask: ${ICON_MASK_URLS.brain};
       }
 
       .toggle {

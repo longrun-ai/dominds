@@ -815,6 +815,8 @@ function buildPromptContentWithExactReplyToolName(args: {
   activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
   language: 'zh' | 'en';
 }): string {
+  const isFbrSubdialog =
+    args.dlg instanceof SubDialog && args.dlg.assignmentFromSup.callName === 'freshBootsReasoning';
   const noActivePrefix =
     args.language === 'zh'
       ? '[Dominds 当前无跨对话回复义务]'
@@ -824,6 +826,9 @@ function buildPromptContentWithExactReplyToolName(args: {
   const reminderPrefixes = ['[Dominds replyTellask required]', '[Dominds 必须调用回复工具]'];
   const directive = args.activeReplyDirective;
   if (!directive) {
+    if (isFbrSubdialog) {
+      return args.prompt.content;
+    }
     if (!(args.dlg instanceof SubDialog)) {
       return args.prompt.content;
     }

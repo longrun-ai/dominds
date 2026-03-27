@@ -2245,6 +2245,49 @@ export class DomindsApp extends HTMLElement {
     return this.visibleSubdialogsByRoot.get(rootId) ?? [];
   }
 
+  private isDialogWaitingForFreshBootsReasoning(rootId: string, selfId: string): boolean {
+    const target =
+      selfId === rootId
+        ? this.getRootDialog(rootId)
+        : this.findDisplayedDialogByIds(rootId, selfId);
+    return target?.waitingForFreshBootsReasoning === true;
+  }
+
+  private setDialogWaitingForFreshBootsReasoning(
+    rootId: string,
+    selfId: string,
+    waitingForFreshBootsReasoning: boolean,
+  ): void {
+    const status = this.resolveDialogStatusByIds(rootId, selfId);
+    if (!status) return;
+
+    if (selfId === rootId) {
+      const rootDialog = this.getRootDialog(rootId);
+      if (
+        rootDialog &&
+        rootDialog.waitingForFreshBootsReasoning !== waitingForFreshBootsReasoning
+      ) {
+        this.upsertRootDialogSnapshot({ ...rootDialog, waitingForFreshBootsReasoning });
+      }
+    } else if (this.visibleSubdialogsByRoot.has(rootId)) {
+      const subdialogs = this.getVisibleSubdialogsForRoot(rootId);
+      let changed = false;
+      const updated = subdialogs.map((subdialog) => {
+        if (subdialog.selfId !== selfId) return subdialog;
+        if (subdialog.waitingForFreshBootsReasoning === waitingForFreshBootsReasoning) {
+          return subdialog;
+        }
+        changed = true;
+        return { ...subdialog, waitingForFreshBootsReasoning };
+      });
+      if (changed) {
+        this.setVisibleSubdialogsForRoot(rootId, updated);
+      }
+    }
+
+    this.patchDialogListEntry(status, { rootId, selfId }, { waitingForFreshBootsReasoning });
+  }
+
   private setVisibleSubdialogsForRoot(rootId: string, subdialogs: ApiRootDialogResponse[]): void {
     const normalized = subdialogs
       .filter((d) => d.rootId === rootId && !!d.selfId)
@@ -8066,6 +8109,7 @@ export class DomindsApp extends HTMLElement {
                 supdialogId: subdialog.supdialogId ?? rootId,
                 sessionSlug: subdialog.sessionSlug,
                 assignmentFromSup: subdialog.assignmentFromSup,
+                waitingForFreshBootsReasoning: subdialog.waitingForFreshBootsReasoning === true,
               });
             }
           }
@@ -8079,6 +8123,7 @@ export class DomindsApp extends HTMLElement {
             createdAt: h.root.createdAt,
             lastModified: h.root.lastModified,
             displayState: rootDisplayState ?? rootEntry?.displayState,
+            waitingForFreshBootsReasoning: h.root.waitingForFreshBootsReasoning === true,
             subdialogCount:
               typeof rootEntry?.subdialogCount === 'number'
                 ? rootEntry.subdialogCount
@@ -10214,7 +10259,16 @@ export class DomindsApp extends HTMLElement {
             supdialogId: node.supdialogId,
             sessionSlug: node.sessionSlug,
             assignmentFromSup: node.assignmentFromSup,
+            waitingForFreshBootsReasoning: false,
           };
+
+          if (subdialogEvent.callName === 'freshBootsReasoning') {
+            this.setDialogWaitingForFreshBootsReasoning(
+              subdialogEvent.parentDialog.rootId,
+              subdialogEvent.parentDialog.selfId,
+              true,
+            );
+          }
 
           const hadLoadedSubdialogs = this.visibleSubdialogsByRoot.has(node.rootId);
           const rootExpandedInDom =
@@ -10324,6 +10378,14 @@ export class DomindsApp extends HTMLElement {
           }
 
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          const tellaskOwnerIsWaitingForFreshBootsReasoning =
+            this.isDialogWaitingForFreshBootsReasoning(dialog.rootId, dialog.selfId);
+          if (
+            tellaskOwnerIsWaitingForFreshBootsReasoning &&
+            this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId) === 'running'
+          ) {
+            void this.loadSubdialogsForRoot(dialog.rootId, 'running');
+          }
           const ts = (message as TypedDialogEvent).timestamp;
           const status = this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId);
           this.bumpDialogLastModified(
@@ -10349,6 +10411,11 @@ export class DomindsApp extends HTMLElement {
           const rootId = dialog.rootId;
           const key = this.dialogKey(rootId, selfId);
           const typedDisplayState = displayState as DialogDisplayState;
+          const shouldClearWaitingForFreshBootsReasoning =
+            this.isDialogWaitingForFreshBootsReasoning(rootId, selfId) &&
+            (typedDisplayState.kind !== 'blocked' ||
+              (typedDisplayState.reason.kind !== 'waiting_for_subdialogs' &&
+                typedDisplayState.reason.kind !== 'needs_human_input_and_subdialogs'));
           this.dialogDisplayStatesByKey.set(key, typedDisplayState);
 
           // Update currently rendered snapshot entry if present.
@@ -10397,6 +10464,9 @@ export class DomindsApp extends HTMLElement {
             if (runningList instanceof RunningDialogList) {
               runningList.updateDialogEntry(rootId, selfId, { displayState: typedDisplayState });
             }
+          }
+          if (shouldClearWaitingForFreshBootsReasoning) {
+            this.setDialogWaitingForFreshBootsReasoning(rootId, selfId, false);
           }
           const ts = (message as TypedDialogEvent).timestamp;
           this.bumpDialogLastModified(

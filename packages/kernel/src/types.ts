@@ -48,6 +48,7 @@ export interface ApiRootDialogResponse {
   supdialogId?: string;
   sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
+  waitingForFreshBootsReasoning?: boolean;
   subdialogCount?: number;
 }
 
@@ -64,6 +65,7 @@ export interface ApiSubdialogResponse {
   displayState?: DialogDisplayState;
   sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
+  waitingForFreshBootsReasoning?: boolean;
 }
 
 export interface ApiDialogHierarchyResponse {
@@ -78,6 +80,7 @@ export interface ApiDialogHierarchyResponse {
       createdAt: string;
       lastModified: string;
       displayState?: DialogDisplayState;
+      waitingForFreshBootsReasoning?: boolean;
     };
     subdialogs: ApiSubdialogResponse[];
   };
