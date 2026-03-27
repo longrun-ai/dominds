@@ -385,7 +385,8 @@ export class DomindsTeamMembers extends HTMLElement {
       typeof member.provider === 'string' ? member.provider : t.teamMembersUnknownProvider;
     const model = typeof member.model === 'string' ? member.model : t.teamMembersUnknownModel;
     const streaming = member.streaming === true ? t.teamMembersYes : t.teamMembersNo;
-    const gofor = Array.isArray(member.gofor) ? member.gofor : [];
+    const gofor = this.getRoutingCardEntries(member.gofor);
+    const nogo = this.getRoutingCardEntries(member.nogo);
     const toolsets = Array.isArray(member.toolsets) ? member.toolsets : [];
     const tools = Array.isArray(member.tools) ? member.tools : [];
 
@@ -411,9 +412,16 @@ export class DomindsTeamMembers extends HTMLElement {
         )}</span></div>
         ${
           gofor.length > 0
-            ? `<div class="details-row"><span class="k">${t.teamMembersSpecializesLabel}</span><span class="v">${this.escapeHtml(
-                gofor.join(', '),
-              )}</span></div>`
+            ? `<div class="details-row"><span class="k">${t.teamMembersSpecializesLabel}</span><span class="v gofor-value">${gofor
+                .map((entry) => `<div>${this.escapeHtml(entry)}</div>`)
+                .join('')}</span></div>`
+            : ''
+        }
+        ${
+          nogo.length > 0
+            ? `<div class="details-row"><span class="k">${t.teamMembersNogoLabel}</span><span class="v gofor-value">${nogo
+                .map((entry) => `<div>${this.escapeHtml(entry)}</div>`)
+                .join('')}</span></div>`
             : ''
         }
         ${
@@ -582,11 +590,21 @@ export class DomindsTeamMembers extends HTMLElement {
 
     if (typeof member.provider === 'string') fields.push(member.provider);
     if (typeof member.model === 'string') fields.push(member.model);
-    if (Array.isArray(member.gofor)) fields.push(member.gofor.join(' '));
+    fields.push(this.getRoutingCardEntries(member.gofor).join(' '));
+    fields.push(this.getRoutingCardEntries(member.nogo).join(' '));
     if (Array.isArray(member.toolsets)) fields.push(member.toolsets.join(' '));
     if (Array.isArray(member.tools)) fields.push(member.tools.join(' '));
 
     return fields.some((f) => f.toLowerCase().includes(q));
+  }
+
+  private getRoutingCardEntries(card: FrontendTeamMember['gofor']): string[] {
+    if (typeof card === 'string') return [card];
+    if (Array.isArray(card)) return card;
+    if (card && typeof card === 'object') {
+      return Object.entries(card).map(([label, detail]) => `${label}: ${detail}`);
+    }
+    return [];
   }
 
   private getMemberIcon(member: FrontendTeamMember): string {
@@ -902,6 +920,12 @@ export class DomindsTeamMembers extends HTMLElement {
         min-width: 0;
         color: var(--dominds-fg, #333333);
         word-break: break-word;
+      }
+
+      .details-row .v.gofor-value {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
 
       .empty-state {

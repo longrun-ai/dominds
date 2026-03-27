@@ -262,6 +262,7 @@ export type UiStrings = {
   teamMembersModelLabel: string;
   teamMembersStreamingLabel: string;
   teamMembersSpecializesLabel: string;
+  teamMembersNogoLabel: string;
   teamMembersToolsetsLabel: string;
   teamMembersToolsLabel: string;
   teamMembersYes: string;
@@ -621,7 +622,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       teamMembersProviderLabel: '提供商',
       teamMembersModelLabel: '模型',
       teamMembersStreamingLabel: '流式',
-      teamMembersSpecializesLabel: '擅长',
+      teamMembersSpecializesLabel: '适合诉请',
+      teamMembersNogoLabel: '不要诉请',
       teamMembersToolsetsLabel: '工具集',
       teamMembersToolsLabel: '工具',
       teamMembersYes: '是',
@@ -991,7 +993,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     teamMembersProviderLabel: 'Provider',
     teamMembersModelLabel: 'Model',
     teamMembersStreamingLabel: 'Streaming',
-    teamMembersSpecializesLabel: 'Specializes',
+    teamMembersSpecializesLabel: 'Go for',
+    teamMembersNogoLabel: 'Do not go for',
     teamMembersToolsetsLabel: 'Toolsets',
     teamMembersToolsLabel: 'Tools',
     teamMembersYes: 'Yes',

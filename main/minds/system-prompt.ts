@@ -6,32 +6,37 @@ import type { ContextHealthPromptMode } from './system-prompt-parts';
 export function formatTeamIntro(team: Team, selfAgentId: string, language: LanguageCode): string {
   const callSignLabel = language === 'zh' ? '呼号' : 'Call Sign';
   const selfSuffix = language === 'zh' ? '（本人）' : ' (self)';
-  const focusLabel = language === 'zh' ? '关注' : 'Focus';
+  const goforLabel = language === 'zh' ? '对于以下事项应该找祂' : 'Go to them for';
+  const nogoLabel = language === 'zh' ? '对于以下事项不要找祂' : 'Do not go to them for';
 
   const visibleMembers = Object.values(team.members).filter((m) => m.hidden !== true);
   if (visibleMembers.length === 0) {
     return language === 'zh' ? '-（无可见队友）' : '- (no visible teammates)';
   }
 
+  const formatRoutingCard = (
+    label: string,
+    card: string | string[] | Record<string, string> | undefined,
+  ): string => {
+    if (card === undefined) return '';
+    if (typeof card === 'string') return `\n  - ${label}:\n    - ${card}`;
+    if (Array.isArray(card)) {
+      if (card.length === 0) return '';
+      const list = card.map((t) => `    - ${t}`).join('\n');
+      return `\n  - ${label}:\n${list}`;
+    }
+    const entries = Object.entries(card);
+    if (entries.length === 0) return '';
+    const list = entries.map(([k, v]) => `    - ${k}: ${v}`).join('\n');
+    return `\n  - ${label}:\n${list}`;
+  };
+
   return visibleMembers
     .map((m) => {
       const isSelf = m.id === selfAgentId ? selfSuffix : '';
-
-      const gofor = (() => {
-        if (m.gofor === undefined) return '';
-        if (typeof m.gofor === 'string') return `\n  - ${focusLabel}:\n    - ${m.gofor}`;
-        if (Array.isArray(m.gofor)) {
-          if (m.gofor.length === 0) return '';
-          const list = m.gofor.map((t) => `    - ${t}`).join('\n');
-          return `\n  - ${focusLabel}:\n${list}`;
-        }
-        const entries = Object.entries(m.gofor);
-        if (entries.length === 0) return '';
-        const list = entries.map(([k, v]) => `    - ${k}: ${v}`).join('\n');
-        return `\n  - ${focusLabel}:\n${list}`;
-      })();
-
-      return `- ${callSignLabel}: @${m.id}${isSelf} - ${m.name}${gofor}`;
+      const gofor = formatRoutingCard(goforLabel, m.gofor);
+      const nogo = formatRoutingCard(nogoLabel, m.nogo);
+      return `- ${callSignLabel}: @${m.id}${isSelf} - ${m.name}${gofor}${nogo}`;
     })
     .join('\n');
 }

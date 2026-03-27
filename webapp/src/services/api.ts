@@ -46,7 +46,8 @@ export interface FrontendTeamMember {
   name: string;
   provider?: string;
   model?: string;
-  gofor?: string[];
+  gofor?: string | string[] | Record<string, string>;
+  nogo?: string | string[] | Record<string, string>;
   toolsets?: string[];
   tools?: string[];
   icon?: string;

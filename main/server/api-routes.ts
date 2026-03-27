@@ -2151,6 +2151,7 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
       provider: m.provider,
       model: m.model,
       gofor: m.gofor,
+      nogo: m.nogo,
       toolsets: m.toolsets,
       tools: m.tools,
       icon: m.icon,

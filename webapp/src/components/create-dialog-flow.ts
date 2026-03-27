@@ -56,6 +56,15 @@ export type CreateDialogFailure = {
 
 export type CreateDialogResult = CreateDialogSuccess | CreateDialogFailure;
 
+function formatRoutingCardEntries(card: FrontendTeamMember['gofor']): string[] {
+  if (typeof card === 'string') return [card];
+  if (Array.isArray(card)) return card;
+  if (card && typeof card === 'object') {
+    return Object.entries(card).map(([label, detail]) => `${label}: ${detail}`);
+  }
+  return [];
+}
+
 type CreateDialogUiState =
   | { kind: 'idle' }
   | { kind: 'opening'; intent: CreateDialogIntent }
@@ -899,6 +908,9 @@ export class CreateDialogFlowController {
       }
       const emoji = this.getAgentEmoji(member.icon);
       const isDefault = member.id === this.deps.getDefaultResponder();
+      const t = strings();
+      const goforEntries = formatRoutingCardEntries(member.gofor);
+      const nogoEntries = formatRoutingCardEntries(member.nogo);
       teammateInfo.innerHTML = `
         <div class="teammate-details">
           <h4>${escapeHtml(`${emoji} ${member.name}${isDefault ? ' • Default' : ''}`)}</h4>
@@ -906,8 +918,13 @@ export class CreateDialogFlowController {
           <p><strong>Provider:</strong> ${escapeHtml(member.provider ?? 'Not specified')}</p>
           <p><strong>Model:</strong> ${escapeHtml(member.model ?? 'Not specified')}</p>
           ${
-            Array.isArray(member.gofor) && member.gofor.length > 0
-              ? `<p><strong>Specializes in:</strong> ${escapeHtml(member.gofor.join(', '))}</p>`
+            goforEntries.length > 0
+              ? `<p><strong>${escapeHtml(t.teamMembersSpecializesLabel)}:</strong> ${escapeHtml(goforEntries.join(' · '))}</p>`
+              : ''
+          }
+          ${
+            nogoEntries.length > 0
+              ? `<p><strong>${escapeHtml(t.teamMembersNogoLabel)}:</strong> ${escapeHtml(nogoEntries.join(' · '))}</p>`
               : ''
           }
         </div>

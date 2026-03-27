@@ -393,11 +393,17 @@ async function main(): Promise<void> {
         '  reviewer:',
         '    name: Reviewer',
         '    gofor: keep reviews focused',
+        '    nogo:',
+        '      Avoid: net-new feature implementation',
+        '      RouteTo: runtime or product specialists',
         '  listed:',
         '    name: Listed',
         '    gofor:',
         '      - Scope: triage incoming work',
         '      - Deliverables: handoff notes',
+        '    nogo:',
+        '      - Avoid: direct implementation asks',
+        '      - RouteTo: the owning specialist',
         '  bullety:',
         '    name: Bullety',
         '    gofor:',
@@ -413,9 +419,17 @@ async function main(): Promise<void> {
       Deliverables: 'planning and integration',
     });
     assert.equal(goforTeam.getMember('reviewer')?.gofor, 'keep reviews focused');
+    assert.deepEqual(goforTeam.getMember('reviewer')?.nogo, {
+      Avoid: 'net-new feature implementation',
+      RouteTo: 'runtime or product specialists',
+    });
     assert.deepEqual(goforTeam.getMember('listed')?.gofor, [
       'Scope: triage incoming work',
       'Deliverables: handoff notes',
+    ]);
+    assert.deepEqual(goforTeam.getMember('listed')?.nogo, [
+      'Avoid: direct implementation asks',
+      'RouteTo: the owning specialist',
     ]);
 
     const goforSnapshot = getProblemsSnapshot();
@@ -440,6 +454,18 @@ async function main(): Promise<void> {
       'team problem should carry zh localized detail text from backend',
     );
     assert.ok(structuredListWarning.detail.errorText.includes('Object keys are freeform'));
+    const nogoStructuredListWarning = goforSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/listed/nogo/prefer_object_for_labeled_entries',
+    );
+    assert.ok(
+      nogoStructuredListWarning && nogoStructuredListWarning.kind === 'team_workspace_config_error',
+      'structured nogo list should surface a warning problem',
+    );
+    assert.equal(nogoStructuredListWarning.severity, 'warning');
+    assert.equal(
+      nogoStructuredListWarning.messageI18n?.en,
+      'Warning in .minds/team.yaml: members.listed.nogo uses a YAML list for labeled entries.',
+    );
     assert.ok(
       goforSnapshot.problems.every(
         (p) =>

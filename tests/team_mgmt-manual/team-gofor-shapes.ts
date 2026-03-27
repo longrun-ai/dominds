@@ -25,7 +25,16 @@ async function main(): Promise<void> {
     'zh team manual should say gofor object keys are freeform',
   );
   assert.ok(
-    zh.includes('写成 `- Scope: ...` / `- Deliverables: ...` 的 YAML list，也仍然允许'),
+    zh.includes('给其他队友/人类看的“正向诉请路由卡”'),
+    'zh team manual should frame gofor as a routing card for others',
+  );
+  assert.ok(zh.includes('`members.<id>.nogo`'), 'zh team manual should mention nogo');
+  assert.ok(
+    zh.includes('不要把该成员自己的执行守则'),
+    'zh team manual should say gofor is not for the member’s own rules',
+  );
+  assert.ok(
+    zh.includes('`- When: ...` / `- Ask: ...`') && zh.includes('YAML list，也仍然允许'),
     'zh team manual should say structured gofor lists are still allowed',
   );
   assert.ok(
@@ -38,11 +47,22 @@ async function main(): Promise<void> {
     'en team manual should say gofor object keys are freeform',
   );
   assert.ok(
+    en.includes('positive routing card for other teammates/humans'),
+    'en team manual should frame gofor as a routing card for others',
+  );
+  assert.ok(en.includes('`members.<id>.nogo`'), 'en team manual should mention nogo');
+  assert.ok(
+    en.includes('do not dump the member’s own operating rules') ||
+      en.includes('operating rules, work mode, acceptance bar'),
+    'en team manual should say gofor is not for the member’s own rules',
+  );
+  assert.ok(
     en.includes('it is still accepted, but `team_mgmt_validate_team_cfg({})` will warn'),
     'en team manual should mention the warning for structured gofor lists',
   );
   assert.ok(
-    en.includes('YAML list like `- Scope: ...` / `- Deliverables: ...`'),
+    en.includes('YAML list like `- When: ...` / `- Ask: ...`') ||
+      en.includes('`- When: ...` / `- Ask: ...`'),
     'en team manual should say structured gofor lists are still allowed',
   );
 

@@ -212,6 +212,7 @@ export namespace Team {
     provider?: string;
     model?: string;
     gofor?: string | string[] | Record<string, string>;
+    nogo?: string | string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -245,6 +246,7 @@ export namespace Team {
       provider?: string;
       model?: string;
       gofor?: string | string[] | Record<string, string>;
+      nogo?: string | string[] | Record<string, string>;
       toolsets?: string[];
       tools?: string[];
       model_params?: ModelParams;
@@ -271,6 +273,7 @@ export namespace Team {
       if (params.model !== undefined) this.model = params.model;
       // Only assign provided fields; omit undefined so prototype fallback can apply
       if (params.gofor !== undefined) this.gofor = params.gofor;
+      if (params.nogo !== undefined) this.nogo = params.nogo;
       if (params.toolsets !== undefined) this.toolsets = params.toolsets;
       if (params.tools !== undefined) this.tools = params.tools;
       if (params.model_params !== undefined) this.model_params = params.model_params;
@@ -303,6 +306,7 @@ export namespace Team {
         'provider',
         'model',
         'gofor',
+        'nogo',
         'toolsets',
         'tools',
         'model_params',
@@ -355,6 +359,14 @@ export namespace Team {
         return;
       }
       this.gofor = gofor;
+    }
+
+    setNogo(nogo: string | string[] | Record<string, string> | undefined): void {
+      if (nogo === undefined) {
+        delete this.nogo;
+        return;
+      }
+      this.nogo = nogo;
     }
 
     setToolsets(toolsets: string[] | undefined): void {
@@ -1058,7 +1070,7 @@ export namespace Team {
       }
     }
 
-    function validateGoforShapeWarnings(team: Team, md: Team.Member): void {
+    function validateRoutingCardShapeWarnings(team: Team, md: Team.Member): void {
       const findStructuredGoforLabelDelimiter = (value: string): number => {
         const halfWidth = value.indexOf(':');
         const fullWidth = value.indexOf('：');
@@ -1083,22 +1095,32 @@ export namespace Team {
       const validateAt = (args: {
         idPrefix: string;
         atPrefix: string;
-        gofor: string | string[] | Record<string, string> | undefined;
+        field: 'gofor' | 'nogo';
+        card: string | string[] | Record<string, string> | undefined;
       }): void => {
-        const gofor = args.gofor;
-        if (!Array.isArray(gofor)) return;
-        if (gofor.length === 0) return;
-        if (!gofor.every(looksLikeStructuredGoforListEntry)) return;
+        const card = args.card;
+        if (!Array.isArray(card)) return;
+        if (card.length === 0) return;
+        if (!card.every(looksLikeStructuredGoforListEntry)) return;
+        const isPositive = args.field === 'gofor';
         addWarning(
-          `${args.idPrefix}/gofor/prefer_object_for_labeled_entries`,
-          `Warning in .minds/team.yaml: ${args.atPrefix}.gofor uses a YAML list for labeled entries.`,
+          `${args.idPrefix}/${args.field}/prefer_object_for_labeled_entries`,
+          `Warning in .minds/team.yaml: ${args.atPrefix}.${args.field} uses a YAML list for labeled entries.`,
           [
-            `${args.atPrefix}.gofor is allowed as string|string[]|Record<string,string>.`,
+            `${args.atPrefix}.${args.field} is allowed as string|string[]|Record<string,string>.`,
+            isPositive
+              ? `Use gofor as a routing card for other teammates/humans: write when someone should ask this teammate and what help to expect.`
+              : `Use nogo as a negative routing card for other teammates/humans: write what kinds of asks should be routed elsewhere.`,
+            `Do not dump the member's own operating rules, work mode, or full role spec into ${args.field}; those belong in .minds/team/<id>/*.md.`,
             `The current list items all look like labeled entries (for example \`Label: value\`).`,
             `If you want labeled structure, prefer YAML object form for readability:`,
-            `gofor:`,
-            `  Label: value`,
-            `  Another label: value`,
+            `${args.field}:`,
+            isPositive
+              ? `  When: when this teammate should be asked`
+              : `  Avoid: asks that should not be routed to this teammate`,
+            isPositive
+              ? `  Returns: what help/output others can expect`
+              : `  RouteTo: who/what kind of teammate should take it instead`,
             `Object keys are freeform; there is no fixed required key set.`,
             `The current YAML list form is still accepted.`,
           ].join('\n'),
@@ -1109,18 +1131,37 @@ export namespace Team {
         validateAt({
           idPrefix: 'member_defaults',
           atPrefix: 'member_defaults',
-          gofor: md.gofor,
+          field: 'gofor',
+          card: md.gofor,
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(md, 'nogo')) {
+        validateAt({
+          idPrefix: 'member_defaults',
+          atPrefix: 'member_defaults',
+          field: 'nogo',
+          card: md.nogo,
         });
       }
 
       for (const member of Object.values(team.members)) {
-        if (!Object.prototype.hasOwnProperty.call(member, 'gofor')) continue;
         const idSeg = sanitizeProblemIdSegment(member.id);
-        validateAt({
-          idPrefix: `members/${idSeg}`,
-          atPrefix: `members.${member.id}`,
-          gofor: member.gofor,
-        });
+        if (Object.prototype.hasOwnProperty.call(member, 'gofor')) {
+          validateAt({
+            idPrefix: `members/${idSeg}`,
+            atPrefix: `members.${member.id}`,
+            field: 'gofor',
+            card: member.gofor,
+          });
+        }
+        if (Object.prototype.hasOwnProperty.call(member, 'nogo')) {
+          validateAt({
+            idPrefix: `members/${idSeg}`,
+            atPrefix: `members.${member.id}`,
+            field: 'nogo',
+            card: member.nogo,
+          });
+        }
       }
     }
     const buildBootstrapTeam = async (): Promise<Team> => {
@@ -1242,7 +1283,7 @@ export namespace Team {
     // Fail-open: always keep Team usable; publish config errors to Problems panel.
     await validateResolvedProviderModelBindings(team, md);
     await validateMemberToolsetBindings(team, md);
-    validateGoforShapeWarnings(team, md);
+    validateRoutingCardShapeWarnings(team, md);
 
     finalizeProblems();
     return team;
@@ -1346,6 +1387,7 @@ export namespace Team {
     'provider',
     'model',
     'gofor',
+    'nogo',
     'toolsets',
     'tools',
     'model_params',
@@ -1560,6 +1602,7 @@ export namespace Team {
     provider?: string;
     model?: string;
     gofor?: string | string[] | Record<string, string>;
+    nogo?: string | string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -1661,6 +1704,13 @@ export namespace Team {
           asOptionalGofor(rv['gofor'], `${at}.gofor`),
           `${at}.gofor`,
         );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'nogo')) {
+      try {
+        overrides.nogo = requireDefined(asOptionalGofor(rv['nogo'], `${at}.nogo`), `${at}.nogo`);
       } catch (err: unknown) {
         errors.push(asErrorText(err));
       }
@@ -1892,6 +1942,7 @@ export namespace Team {
     if (overrides.provider !== undefined) member.setProvider(overrides.provider);
     if (overrides.model !== undefined) member.setModel(overrides.model);
     if (overrides.gofor !== undefined) member.setGofor(overrides.gofor);
+    if (overrides.nogo !== undefined) member.setNogo(overrides.nogo);
     if (overrides.toolsets !== undefined) member.setToolsets(overrides.toolsets);
     if (overrides.tools !== undefined) member.setTools(overrides.tools);
     if (overrides.model_params !== undefined) member.setModelParams(overrides.model_params);
