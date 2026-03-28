@@ -94,6 +94,7 @@ export interface DialogLatestFile {
   needsDrive?: boolean;
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
+  fbrState?: DialogFbrState;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;
 }
@@ -107,6 +108,14 @@ export type DialogExecutionMarker =
       kind: 'dead';
       reason: DialogDeadReason;
     };
+
+export type DialogFbrState = Readonly<{
+  kind: 'serial';
+  effort: number;
+  phase: 'divergence' | 'convergence' | 'finalization';
+  iteration: number;
+  promptDelivered: boolean;
+}>;
 
 export interface CourseMetadataFile {
   course: number;

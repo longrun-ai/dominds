@@ -38,6 +38,7 @@ import type {
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallingCourseNumber,
+  DialogFbrState,
   DialogLatestFile,
   DialogMetadataFile,
   FuncCallRecord,
@@ -373,6 +374,36 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (executionMarker === null) return null;
 
+  const fbrStateRaw = (value as Record<string, unknown>).fbrState;
+  const fbrState: DialogFbrState | null | undefined = (() => {
+    if (fbrStateRaw === undefined) return undefined;
+    if (!isRecord(fbrStateRaw)) return null;
+    if (fbrStateRaw.kind !== 'serial') return null;
+    if (typeof fbrStateRaw.effort !== 'number' || !Number.isInteger(fbrStateRaw.effort)) {
+      return null;
+    }
+    if (fbrStateRaw.effort < 1) return null;
+    const phase = fbrStateRaw.phase;
+    if (phase !== 'divergence' && phase !== 'convergence' && phase !== 'finalization') {
+      return null;
+    }
+    if (typeof fbrStateRaw.iteration !== 'number' || !Number.isInteger(fbrStateRaw.iteration)) {
+      return null;
+    }
+    if (fbrStateRaw.iteration < 1 || fbrStateRaw.iteration > fbrStateRaw.effort) {
+      return null;
+    }
+    if (typeof fbrStateRaw.promptDelivered !== 'boolean') return null;
+    return {
+      kind: 'serial',
+      effort: fbrStateRaw.effort,
+      phase,
+      iteration: fbrStateRaw.iteration,
+      promptDelivered: fbrStateRaw.promptDelivered,
+    };
+  })();
+  if (fbrState === null) return null;
+
   return {
     currentCourse,
     lastModified: value.lastModified,
@@ -384,6 +415,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     needsDrive: value.needsDrive,
     displayState,
     executionMarker,
+    fbrState,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };

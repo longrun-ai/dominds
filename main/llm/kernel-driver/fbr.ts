@@ -1,5 +1,8 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { DialogFbrState } from '@longrun-ai/kernel/types/storage';
 import type { Dialog } from '../../dialog';
+import { appendDistinctPerspectiveFbrBody } from '../../runtime/fbr-body';
+import { formatAssignmentFromSupdialog } from '../../runtime/inter-dialog-format';
 import type { Team } from '../../team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg } from '../client';
@@ -348,4 +351,119 @@ export function inspectFbrConclusionAttempt(
     content: parsed.content,
     genseq: call.genseq,
   };
+}
+
+export function createInitialFbrState(effort: number): DialogFbrState {
+  if (!Number.isFinite(effort) || !Number.isInteger(effort) || effort < 1) {
+    throw new Error(`Invalid FBR effort: ${String(effort)}`);
+  }
+  return {
+    kind: 'serial',
+    effort,
+    phase: 'divergence',
+    iteration: 1,
+    promptDelivered: false,
+  };
+}
+
+export function markFbrPromptDelivered(state: DialogFbrState): DialogFbrState {
+  return {
+    ...state,
+    promptDelivered: true,
+  };
+}
+
+export function isFbrFinalizationState(state: DialogFbrState): boolean {
+  return state.phase === 'finalization';
+}
+
+export function advanceFbrState(state: DialogFbrState): DialogFbrState | undefined {
+  if (state.phase === 'divergence') {
+    if (state.iteration < state.effort) {
+      return {
+        kind: 'serial',
+        effort: state.effort,
+        phase: 'divergence',
+        iteration: state.iteration + 1,
+        promptDelivered: false,
+      };
+    }
+    return {
+      kind: 'serial',
+      effort: state.effort,
+      phase: 'convergence',
+      iteration: 1,
+      promptDelivered: false,
+    };
+  }
+  if (state.phase === 'convergence') {
+    if (state.iteration < state.effort) {
+      return {
+        kind: 'serial',
+        effort: state.effort,
+        phase: 'convergence',
+        iteration: state.iteration + 1,
+        promptDelivered: false,
+      };
+    }
+    return {
+      kind: 'serial',
+      effort: state.effort,
+      phase: 'finalization',
+      iteration: 1,
+      promptDelivered: false,
+    };
+  }
+  if (state.iteration >= state.effort) {
+    return undefined;
+  }
+  return {
+    kind: 'serial',
+    effort: state.effort,
+    phase: 'finalization',
+    iteration: state.iteration + 1,
+    promptDelivered: false,
+  };
+}
+
+export function buildFbrPromptForState(args: {
+  state: DialogFbrState;
+  tellaskContent: string;
+  fromAgentId: string;
+  toAgentId: string;
+  language: LanguageCode;
+  collectiveTargets?: string[];
+}): string {
+  if (args.state.phase === 'divergence') {
+    return formatAssignmentFromSupdialog({
+      callName: 'freshBootsReasoning',
+      fromAgentId: args.fromAgentId,
+      toAgentId: args.toAgentId,
+      tellaskContent: appendDistinctPerspectiveFbrBody({
+        body: args.tellaskContent,
+        iteration: args.state.iteration,
+        total: args.state.effort,
+        language: args.language,
+        isFinalRound: args.state.iteration === args.state.effort,
+      }),
+      language: args.language,
+      collectiveTargets: args.collectiveTargets,
+      fbrRound: {
+        iteration: args.state.iteration,
+        total: args.state.effort,
+      },
+    });
+  }
+  if (args.state.phase === 'convergence') {
+    return buildFbrConvergencePrompt({
+      iteration: args.state.iteration,
+      total: args.state.effort,
+      language: args.language,
+    });
+  }
+  return buildFbrFinalizationPrompt({
+    attempt: args.state.iteration,
+    total: args.state.effort,
+    language: args.language,
+  });
 }

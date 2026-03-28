@@ -2,7 +2,6 @@ import { inspect } from 'util';
 
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
-  toCallerCourseNumber,
   toCallingCourseNumber,
   toRootGenerationAnchor,
   type HumanQuestion,
@@ -25,7 +24,6 @@ import {
   formatDomindsNoteTellaskForTeammatesOnly,
   formatRegisteredTellaskCallerUpdateNotice,
 } from '../../runtime/driver-messages';
-import { appendDistinctPerspectiveFbrBody } from '../../runtime/fbr-body';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
@@ -38,16 +36,8 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import { Team } from '../../team';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage, FuncCallMsg } from '../client';
-import {
-  buildFbrConvergencePrompt,
-  buildFbrFinalizationPrompt,
-  buildProgrammaticFbrUnreasonableSituationContent,
-  inspectFbrConclusionAttempt,
-} from './fbr';
-import {
-  supplyResponseToSupdialog,
-  supplySubdialogResponseToAssignedCallerIfPendingV2,
-} from './subdialog';
+import { buildFbrPromptForState, createInitialFbrState } from './fbr';
+import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from './subdialog';
 import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
 import type { KernelDriverDriveCallbacks, KernelDriverHumanPrompt } from './types';
 
@@ -658,76 +648,6 @@ function resolveFbrEffort(member: Team.Member | null | undefined): number {
   return raw;
 }
 
-async function driveFbrStageRound(args: {
-  callbacks: KernelDriverDriveCallbacks;
-  subdialog: SubDialog;
-  prompt: KernelDriverHumanPrompt;
-  reason: string;
-  iteration: number;
-  total: number;
-  ownerDialogId: string;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  callId: string;
-}): Promise<void> {
-  try {
-    await args.callbacks.driveDialog(args.subdialog, {
-      humanPrompt: args.prompt,
-      waitInQue: true,
-      driveOptions: {
-        source: 'kernel_driver_fbr_subdialog_round',
-        reason: args.reason,
-      },
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    log.error('FBR serial drive failed', error, {
-      rootId: args.subdialog.id.rootId,
-      ownerDialogId: args.ownerDialogId,
-      subdialogId: args.subdialog.id.selfId,
-      iteration: args.iteration,
-      total: args.total,
-      callName: args.callName,
-      callId: args.callId,
-      detail,
-      reason: args.reason,
-    });
-    throw new Error(`FBR serial round ${args.iteration}/${args.total} failed: ${detail}`);
-  }
-}
-
-async function tryExtractFbrConclusionFromLatestDrive(args: {
-  subdialog: SubDialog;
-  previousMessageCount: number;
-}): Promise<
-  | {
-      kind: 'accepted';
-      responseText: string;
-      responseGenseq: number;
-    }
-  | {
-      kind: 'none';
-    }
-> {
-  const newMessages = args.subdialog.msgs.slice(args.previousMessageCount);
-  const inspection = inspectFbrConclusionAttempt(newMessages);
-  if (inspection.kind === 'accepted') {
-    return {
-      kind: 'accepted',
-      responseText: inspection.content,
-      responseGenseq: inspection.genseq,
-    };
-  }
-  if (inspection.kind === 'rejected') {
-    const detail = `FBR conclusion attempt rejected: ${inspection.reason}`;
-    await args.subdialog.streamError(detail);
-    log.warn(detail, undefined, {
-      rootId: args.subdialog.id.rootId,
-      selfId: args.subdialog.id.selfId,
-    });
-  }
-  return { kind: 'none' };
-}
-
 type SubdialogCreateOptions = {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   originMemberId: string;
@@ -1176,7 +1096,6 @@ async function executeTellaskCall(
 
       const callerDialog = dlg;
       const originMemberId = dlg.agentId;
-      const workLanguage = getWorkLanguage();
       const collectiveTargets = options?.collectiveTargets ?? [parseResult.agentId];
 
       if (parseResult.type !== 'C') {
@@ -1207,17 +1126,7 @@ async function executeTellaskCall(
         return toolOutputs;
       }
 
-      const buildRoundBody = (iteration: number, total: number): string =>
-        appendDistinctPerspectiveFbrBody({
-          body,
-          iteration,
-          total,
-          language: workLanguage,
-          isFinalRound: iteration === total,
-        });
-
-      const firstInstanceBody = buildRoundBody(1, fbrEffort);
-      const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, firstInstanceBody, {
+      const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
         callName: subdialogCallName,
         originMemberId,
         callerDialogId: callerDialog.id.selfId,
@@ -1225,147 +1134,65 @@ async function executeTellaskCall(
         collectiveTargets,
       });
       sub.setFbrConclusionToolsEnabled(false);
-
-      for (let i = 1; i <= fbrEffort; i += 1) {
-        const initPrompt: KernelDriverHumanPrompt = {
-          content: formatAssignmentFromSupdialog({
-            callName: subdialogCallName,
-            fromAgentId: dlg.agentId,
-            toAgentId: sub.agentId,
-            mentionList,
-            tellaskContent: buildRoundBody(i, fbrEffort),
-            language: workLanguage,
-            collectiveTargets: [sub.agentId],
-            fbrRound: {
-              iteration: i,
-              total: fbrEffort,
-            },
-          }),
-          msgId: generateShortId(),
-          grammar: 'markdown',
-          origin: 'runtime',
-        };
-        await driveFbrStageRound({
-          callbacks,
-          subdialog: sub,
-          prompt: initPrompt,
-          reason: `fbr_divergence_round_${i}_of_${fbrEffort}`,
-          iteration: i,
-          total: fbrEffort,
-          ownerDialogId: callerDialog.id.selfId,
-          callName: subdialogCallName,
-          callId,
-        });
-      }
-
-      for (let i = 1; i <= fbrEffort; i += 1) {
-        const convergencePrompt: KernelDriverHumanPrompt = {
-          content: buildFbrConvergencePrompt({
-            iteration: i,
-            total: fbrEffort,
-            language: workLanguage,
-          }),
-          msgId: generateShortId(),
-          grammar: 'markdown',
-          origin: 'runtime',
-        };
-        await driveFbrStageRound({
-          callbacks,
-          subdialog: sub,
-          prompt: convergencePrompt,
-          reason: `fbr_convergence_round_${i}_of_${fbrEffort}`,
-          iteration: i,
-          total: fbrEffort,
-          ownerDialogId: callerDialog.id.selfId,
-          callName: subdialogCallName,
-          callId,
-        });
-      }
-
-      sub.setFbrConclusionToolsEnabled(true);
-
-      let finalized:
-        | {
-            responseText: string;
-            responseGenseq: number;
-          }
-        | undefined;
-
-      for (let attempt = 1; attempt <= fbrEffort; attempt += 1) {
-        const previousMessageCount = sub.msgs.length;
-        const finalizationPrompt: KernelDriverHumanPrompt = {
-          content: buildFbrFinalizationPrompt({
-            attempt,
-            total: fbrEffort,
-            language: workLanguage,
-          }),
-          msgId: generateShortId(),
-          grammar: 'markdown',
-          origin: 'runtime',
-        };
-        await driveFbrStageRound({
-          callbacks,
-          subdialog: sub,
-          prompt: finalizationPrompt,
-          reason: `fbr_finalization_attempt_${attempt}_of_${fbrEffort}`,
-          iteration: attempt,
-          total: fbrEffort,
-          ownerDialogId: callerDialog.id.selfId,
-          callName: subdialogCallName,
-          callId,
-        });
-
-        const conclusion = await tryExtractFbrConclusionFromLatestDrive({
-          subdialog: sub,
-          previousMessageCount,
-        });
-        if (conclusion.kind === 'accepted') {
-          finalized = {
-            responseText: conclusion.responseText,
-            responseGenseq: conclusion.responseGenseq,
-          };
-          break;
-        }
-      }
-
-      if (!finalized) {
-        const fallbackGenseq =
-          sub.activeGenSeqOrUndefined ??
-          sub.msgs
-            .slice()
-            .reverse()
-            .find(
-              (msg): msg is Extract<ChatMessage, { genseq: number }> =>
-                'genseq' in msg && typeof msg.genseq === 'number' && msg.genseq > 0,
-            )?.genseq ??
-          1;
-        finalized = {
-          responseText: buildProgrammaticFbrUnreasonableSituationContent({
-            language: workLanguage,
-            finalizationAttempts: fbrEffort,
-          }),
-          responseGenseq: fallbackGenseq,
-        };
-      }
-
-      await supplyResponseToSupdialog({
-        parentDialog: callerDialog,
-        subdialogId: sub.id,
-        subdialog: sub,
-        responseText: finalized.responseText,
-        callType: 'C',
+      const pendingRecord: PendingSubdialogStateRecord = {
+        subdialogId: sub.id.selfId,
+        createdAt: formatUnifiedTimestamp(new Date()),
+        callName: subdialogCallName,
+        mentionList,
+        tellaskContent: body,
+        targetAgentId: parseResult.agentId,
         callId,
-        status: 'completed',
-        calleeResponseRef: {
-          course: sub.currentCourse,
-          genseq: finalized.responseGenseq,
-        },
-        callerCourseOverride:
-          callingCourse !== undefined ? toCallerCourseNumber(callingCourse) : undefined,
-        scheduleDrive: callbacks.scheduleDrive,
+        callingCourse,
+        callType: 'C',
+      };
+      await withSubdialogTxnLock(dlg.id, async () => {
+        await DialogPersistence.appendPendingSubdialog(
+          dlg.id,
+          pendingRecord,
+          toRootGenerationAnchor({
+            rootCourse: dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+            rootGenseq:
+              dlg instanceof SubDialog
+                ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                : (dlg.activeGenSeqOrUndefined ?? 0),
+          }),
+        );
       });
-
-      sub.setFbrConclusionToolsEnabled(false);
+      const initialFbrState = createInitialFbrState(fbrEffort);
+      await DialogPersistence.mutateDialogLatest(sub.id, () => ({
+        kind: 'patch',
+        patch: {
+          generating: true,
+          displayState: { kind: 'proceeding' },
+          executionMarker: undefined,
+          fbrState: initialFbrState,
+        },
+      }));
+      await syncPendingTellaskReminderBestEffort(
+        dlg,
+        'kernel-driver:executeTellaskCall:FBR:appendPending',
+      );
+      const initPrompt: KernelDriverHumanPrompt = {
+        content: buildFbrPromptForState({
+          state: initialFbrState,
+          tellaskContent: body,
+          fromAgentId: originMemberId,
+          toAgentId: sub.agentId,
+          language: getWorkLanguage(),
+          collectiveTargets,
+        }),
+        msgId: generateShortId(),
+        grammar: 'markdown',
+        origin: 'runtime',
+      };
+      callbacks.scheduleDrive(sub, {
+        humanPrompt: initPrompt,
+        waitInQue: true,
+        driveOptions: {
+          source: 'kernel_driver_subdialog_init',
+          reason: 'fresh_boots_reasoning_subdialog_init',
+        },
+      });
       return toolOutputs;
     }
 

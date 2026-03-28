@@ -137,6 +137,10 @@ export type KernelDriverCoreResult = {
   lastAssistantSayingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
   lastAssistantReplyTarget?: KernelDriverSubdialogReplyTarget;
+  fbrConclusion?: {
+    responseText: string;
+    responseGenseq: number;
+  };
 };
 
 export function createKernelDriverRuntimeState(): KernelDriverRuntimeState {

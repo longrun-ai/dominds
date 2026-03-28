@@ -6,6 +6,7 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import {
   toRootGenerationAnchor,
+  type DialogFbrState,
   type TellaskCallAnchorRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
@@ -66,7 +67,14 @@ import {
   resolveCriticalCountdownRemaining,
 } from './context-health';
 import { emitThinkingEvents } from './events';
-import { isFbrConclusionToolName } from './fbr';
+import {
+  advanceFbrState,
+  buildFbrPromptForState,
+  buildProgrammaticFbrUnreasonableSituationContent,
+  inspectFbrConclusionAttempt,
+  isFbrFinalizationState,
+  markFbrPromptDelivered,
+} from './fbr';
 import {
   buildKernelDriverPolicy,
   resolveKernelDriverPolicyViolationKind,
@@ -127,6 +135,49 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void
     throw new KernelDriverInterruptedError({ kind: 'user_stop' });
   }
   throw new KernelDriverInterruptedError({ kind: 'system_stop', detail: 'Aborted.' });
+}
+
+function isFbrSubdialogDialog(dlg: Dialog): dlg is SubDialog {
+  return dlg instanceof SubDialog && dlg.assignmentFromSup.callName === 'freshBootsReasoning';
+}
+
+async function loadDialogFbrState(dialog: Dialog): Promise<DialogFbrState | undefined> {
+  if (!isFbrSubdialogDialog(dialog)) return undefined;
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  return latest?.fbrState;
+}
+
+async function persistDialogFbrState(
+  dialog: Dialog,
+  fbrState: DialogFbrState | undefined,
+): Promise<void> {
+  await DialogPersistence.mutateDialogLatest(dialog.id, () => ({
+    kind: 'patch',
+    patch: { fbrState },
+  }));
+}
+
+function buildKernelDriverFbrPrompt(
+  dlg: SubDialog,
+  state: DialogFbrState,
+): KernelDriverHumanPrompt {
+  const collectiveTargets =
+    dlg.assignmentFromSup.collectiveTargets && dlg.assignmentFromSup.collectiveTargets.length > 0
+      ? [...dlg.assignmentFromSup.collectiveTargets]
+      : [dlg.agentId];
+  return {
+    content: buildFbrPromptForState({
+      state,
+      tellaskContent: dlg.assignmentFromSup.tellaskContent,
+      fromAgentId: dlg.assignmentFromSup.originMemberId,
+      toAgentId: dlg.agentId,
+      language: getWorkLanguage(),
+      collectiveTargets,
+    }),
+    msgId: generateShortId(),
+    grammar: 'markdown',
+    origin: 'runtime',
+  };
 }
 
 function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[] | undefined {
@@ -1411,6 +1462,12 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
   let lastAssistantReplyTarget: KernelDriverHumanPrompt['subdialogReplyTarget'] | undefined;
+  let fbrConclusion:
+    | {
+        responseText: string;
+        responseGenseq: number;
+      }
+    | undefined;
   let pubRemindersVer = dlg.remindersVer;
 
   let pendingPrompt: KernelDriverHumanPrompt | undefined = humanPrompt;
@@ -1437,6 +1494,20 @@ export async function driveDialogStreamCore(
     for (;;) {
       genIterNo += 1;
       throwIfAborted(abortSignal, dlg);
+
+      const activeFbrState = await loadDialogFbrState(dlg);
+      if (isFbrSubdialogDialog(dlg)) {
+        dlg.setFbrConclusionToolsEnabled(
+          activeFbrState !== undefined && isFbrFinalizationState(activeFbrState),
+        );
+        if (
+          pendingPrompt === undefined &&
+          activeFbrState &&
+          activeFbrState.promptDelivered !== true
+        ) {
+          pendingPrompt = buildKernelDriverFbrPrompt(dlg, activeFbrState);
+        }
+      }
 
       const minds = await loadAgentMinds(dlg.agentId, dlg);
       const team = minds.team;
@@ -1588,6 +1659,11 @@ export async function driveDialogStreamCore(
       let llmGenModelForGen: string = model;
       const currentPrompt = pendingPrompt;
       const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
+      const currentFbrState = await loadDialogFbrState(dlg);
+      const currentPromptFromFbrState =
+        currentPrompt !== undefined &&
+        currentFbrState !== undefined &&
+        currentFbrState.promptDelivered !== true;
       pendingPrompt = undefined;
 
       await dlg.notifyGeneratingStart(currentPrompt?.msgId);
@@ -1658,6 +1734,10 @@ export async function driveDialogStreamCore(
             userLanguageCode: persistedUserLanguageCode,
             q4hAnswerCallIds,
           });
+
+          if (currentPromptFromFbrState && currentFbrState) {
+            await persistDialogFbrState(dlg, markFbrPromptDelivered(currentFbrState));
+          }
 
           // Ideal: provider SDKs should support a dedicated role='environment' for runtime
           // metadata. Today, most providers only accept user/assistant (and tool as a special
@@ -2022,16 +2102,47 @@ export async function driveDialogStreamCore(
             content: violationText,
           };
           await emitAssistantSaying(dlg, violationText);
-          await dlg.addChatMessages(...newMsgs, violationMsg);
+          newMsgs.push(violationMsg);
+          await dlg.addChatMessages(...newMsgs);
           lastAssistantSayingContent = violationText;
           lastAssistantSayingGenseq = genseq;
           lastAssistantReplyTarget = currentReplyTarget;
-          return {
-            lastAssistantSayingContent,
-            lastAssistantSayingGenseq,
-            lastFunctionCallGenseq,
-            lastAssistantReplyTarget,
+          const persistedFbrState = await loadDialogFbrState(dlg);
+          if (!persistedFbrState) {
+            return {
+              lastAssistantSayingContent,
+              lastAssistantSayingGenseq,
+              lastFunctionCallGenseq,
+              lastAssistantReplyTarget,
+            };
+          }
+          const nextFbrState = advanceFbrState(persistedFbrState);
+          if (nextFbrState) {
+            if (!isFbrSubdialogDialog(dlg)) {
+              throw new Error(
+                `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+              );
+            }
+            await persistDialogFbrState(dlg, nextFbrState);
+            dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
+            pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
+            continue;
+          }
+          fbrConclusion = {
+            responseText: buildProgrammaticFbrUnreasonableSituationContent({
+              language: getWorkLanguage(),
+              finalizationAttempts: persistedFbrState.effort,
+            }),
+            responseGenseq: genseq,
           };
+          if (!isFbrSubdialogDialog(dlg)) {
+            throw new Error(
+              `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+            );
+          }
+          await persistDialogFbrState(dlg, undefined);
+          dlg.setFbrConclusionToolsEnabled(false);
+          break;
         }
 
         for (const call of streamedFuncCalls) {
@@ -2060,16 +2171,70 @@ export async function driveDialogStreamCore(
         }
         await dlg.addChatMessages(...newMsgs);
 
-        const shouldStopAfterFbrConclusionAttempt =
-          policy.mode === 'fbr_conclusion_only' &&
-          streamedFuncCalls.some((call) => isFbrConclusionToolName(call.name));
-        if (shouldStopAfterFbrConclusionAttempt) {
-          log.debug('kernel-driver stop FBR round after conclusion function attempt', undefined, {
-            dialogId: dlg.id.valueOf(),
-            toolNames: streamedFuncCalls
-              .filter((call) => isFbrConclusionToolName(call.name))
-              .map((call) => call.name),
-          });
+        const persistedFbrState = await loadDialogFbrState(dlg);
+        if (persistedFbrState) {
+          if (persistedFbrState.phase === 'finalization') {
+            const inspection = inspectFbrConclusionAttempt(newMsgs);
+            if (inspection.kind === 'accepted') {
+              log.debug('kernel-driver accepted FBR conclusion attempt', undefined, {
+                dialogId: dlg.id.valueOf(),
+                toolName: inspection.toolName,
+                callId: inspection.callId,
+              });
+              fbrConclusion = {
+                responseText: inspection.content,
+                responseGenseq: inspection.genseq,
+              };
+              if (!isFbrSubdialogDialog(dlg)) {
+                throw new Error(
+                  `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+                );
+              }
+              await persistDialogFbrState(dlg, undefined);
+              dlg.setFbrConclusionToolsEnabled(false);
+              break;
+            }
+            if (inspection.kind === 'rejected') {
+              const detail = `FBR conclusion attempt rejected: ${inspection.reason}`;
+              await dlg.streamError(detail);
+              log.warn(detail, undefined, {
+                rootId: dlg.id.rootId,
+                selfId: dlg.id.selfId,
+              });
+            }
+          }
+
+          const nextFbrState = advanceFbrState(persistedFbrState);
+          if (nextFbrState) {
+            if (!isFbrSubdialogDialog(dlg)) {
+              throw new Error(
+                `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+              );
+            }
+            await persistDialogFbrState(dlg, nextFbrState);
+            dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
+            pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
+            continue;
+          }
+
+          fbrConclusion = {
+            responseText: buildProgrammaticFbrUnreasonableSituationContent({
+              language: getWorkLanguage(),
+              finalizationAttempts: persistedFbrState.effort,
+            }),
+            responseGenseq:
+              lastAssistantSayingGenseq ??
+              lastFunctionCallGenseq ??
+              dlg.activeGenSeqOrUndefined ??
+              1,
+          };
+          if (!isFbrSubdialogDialog(dlg)) {
+            throw new Error(
+              `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+            );
+          }
+          await persistDialogFbrState(dlg, undefined);
+          dlg.setFbrConclusionToolsEnabled(false);
           break;
         }
 
@@ -2237,5 +2402,6 @@ export async function driveDialogStreamCore(
     lastAssistantSayingGenseq,
     lastFunctionCallGenseq,
     lastAssistantReplyTarget,
+    fbrConclusion,
   };
 }

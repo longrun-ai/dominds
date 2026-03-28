@@ -675,104 +675,102 @@ export async function executeDriveRound(args: {
     dialog instanceof SubDialog &&
     driveResult &&
     !interruptedBySignal &&
-    driveResult.lastAssistantSayingContent !== null
+    (driveResult.fbrConclusion !== undefined || driveResult.lastAssistantSayingContent !== null)
   ) {
-    const hasInProgressFunctionCall =
-      typeof driveResult.lastFunctionCallGenseq === 'number' &&
-      Number.isFinite(driveResult.lastFunctionCallGenseq) &&
-      driveResult.lastFunctionCallGenseq > 0 &&
-      (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-        !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-        driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
-    if (hasInProgressFunctionCall) {
-      // Any function call means execution is still in-progress. Only supply when the callee
-      // has produced a newer assistant saying after the latest function call.
-      log.debug(
-        'kernel-driver skip subdialog response supply because latest saying is not after function calls',
-        undefined,
-        {
-          rootId: dialog.id.rootId,
-          selfId: dialog.id.selfId,
-          lastAssistantSayingGenseq: driveResult.lastAssistantSayingGenseq,
-          lastFunctionCallGenseq: driveResult.lastFunctionCallGenseq,
-        },
-      );
-    } else {
-      const hasFollowUp = followUp !== undefined;
-      const suspension = await dialog.getSuspensionStatus();
-      if (!suspension.canDrive || hasFollowUp) {
+    if (driveResult.fbrConclusion) {
+      await supplySubdialogResponseToAssignedCallerIfPendingV2({
+        subdialog: dialog,
+        responseText: driveResult.fbrConclusion.responseText,
+        responseGenseq: driveResult.fbrConclusion.responseGenseq,
+        scheduleDrive: args.scheduleDrive,
+      });
+    } else if (driveResult.lastAssistantSayingContent !== null) {
+      const hasInProgressFunctionCall =
+        typeof driveResult.lastFunctionCallGenseq === 'number' &&
+        Number.isFinite(driveResult.lastFunctionCallGenseq) &&
+        driveResult.lastFunctionCallGenseq > 0 &&
+        (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+          !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+          driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
+      if (hasInProgressFunctionCall) {
+        // Any function call means execution is still in-progress. Only supply when the callee
+        // has produced a newer assistant saying after the latest function call.
         log.debug(
-          'kernel-driver skip subdialog response supply while callee is not finalized',
+          'kernel-driver skip subdialog response supply because latest saying is not after function calls',
           undefined,
           {
             rootId: dialog.id.rootId,
             selfId: dialog.id.selfId,
-            waitingQ4H: suspension.q4h,
-            waitingSubdialogs: suspension.subdialogs,
-            hasFollowUp,
+            lastAssistantSayingGenseq: driveResult.lastAssistantSayingGenseq,
+            lastFunctionCallGenseq: driveResult.lastFunctionCallGenseq,
           },
         );
-      }
-      if (suspension.canDrive && !hasFollowUp) {
-        if (!activeTellaskReplyDirective) {
+      } else {
+        const hasFollowUp = followUp !== undefined;
+        const suspension = await dialog.getSuspensionStatus();
+        if (!suspension.canDrive || hasFollowUp) {
           log.debug(
-            'kernel-driver skip implicit subdialog reply because no active tellask reply directive is bound to this drive',
+            'kernel-driver skip subdialog response supply while callee is not finalized',
             undefined,
             {
               rootId: dialog.id.rootId,
               selfId: dialog.id.selfId,
+              waitingQ4H: suspension.q4h,
+              waitingSubdialogs: suspension.subdialogs,
+              hasFollowUp,
             },
           );
-        } else if (!activePromptWasReplyToolReminder) {
-          const language = getWorkLanguage();
-          followUp = {
-            prompt: buildReplyToolReminderPrompt({
-              directive: activeTellaskReplyDirective,
-              language,
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            origin: 'runtime',
-            userLanguageCode: language,
-            tellaskReplyDirective: activeTellaskReplyDirective,
-            subdialogReplyTarget,
-          };
-          log.debug(
-            'kernel-driver queued replyTellask reminder prompt after plain sideline reply',
-            undefined,
-            {
-              rootId: dialog.id.rootId,
-              selfId: dialog.id.selfId,
-              expectedReplyCallName: activeTellaskReplyDirective.expectedReplyCallName,
-            },
-          );
-        } else {
-          if (
-            typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-            !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-            driveResult.lastAssistantSayingGenseq <= 0
-          ) {
-            throw new Error(
-              `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
-            );
-          }
-          const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
-          const directFallbackCallId = `direct-fallback-${generateShortId()}`;
-          let supplied = false;
-          if (subdialogReplyTarget) {
-            supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
-              subdialog: dialog,
-              responseText: driveResult.lastAssistantSayingContent,
-              responseGenseq,
-              target: subdialogReplyTarget,
-              deliveryMode: 'direct_fallback',
-              replyResolution: {
-                callId: directFallbackCallId,
-                replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+        }
+        if (suspension.canDrive && !hasFollowUp) {
+          if (!activeTellaskReplyDirective) {
+            log.debug(
+              'kernel-driver skip implicit subdialog reply because no active tellask reply directive is bound to this drive',
+              undefined,
+              {
+                rootId: dialog.id.rootId,
+                selfId: dialog.id.selfId,
               },
-              scheduleDrive: args.scheduleDrive,
-            });
-            if (!supplied) {
+            );
+          } else {
+            if (
+              typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+              !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+              driveResult.lastAssistantSayingGenseq <= 0
+            ) {
+              throw new Error(
+                `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+              );
+            }
+            const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
+            const directFallbackCallId = `direct-fallback-${generateShortId()}`;
+            let supplied = false;
+            if (subdialogReplyTarget) {
+              supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
+                subdialog: dialog,
+                responseText: driveResult.lastAssistantSayingContent,
+                responseGenseq,
+                target: subdialogReplyTarget,
+                deliveryMode: 'direct_fallback',
+                replyResolution: {
+                  callId: directFallbackCallId,
+                  replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+                },
+                scheduleDrive: args.scheduleDrive,
+              });
+              if (!supplied) {
+                supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+                  subdialog: dialog,
+                  responseText: driveResult.lastAssistantSayingContent,
+                  responseGenseq,
+                  deliveryMode: 'direct_fallback',
+                  replyResolution: {
+                    callId: directFallbackCallId,
+                    replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
+                  },
+                  scheduleDrive: args.scheduleDrive,
+                });
+              }
+            } else {
               supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
                 subdialog: dialog,
                 responseText: driveResult.lastAssistantSayingContent,
@@ -785,39 +783,27 @@ export async function executeDriveRound(args: {
                 scheduleDrive: args.scheduleDrive,
               });
             }
-          } else {
-            supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-              subdialog: dialog,
-              responseText: driveResult.lastAssistantSayingContent,
-              responseGenseq,
-              deliveryMode: 'direct_fallback',
-              replyResolution: {
-                callId: directFallbackCallId,
-                replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
-              },
-              scheduleDrive: args.scheduleDrive,
-            });
-          }
 
-          if (!supplied && subdialogReplyTarget) {
-            const diagnostics = await loadPendingDiagnosticsSnapshot({
-              rootId: dialog.id.rootId,
-              ownerDialogId: subdialogReplyTarget.ownerDialogId,
-              expectedSubdialogId: dialog.id.selfId,
-              status: dialog.status,
-            });
-            log.debug(
-              'kernel-driver failed to supply subdialog response to specific caller',
-              undefined,
-              {
-                calleeId: dialog.id.valueOf(),
-                targetOwner: subdialogReplyTarget.ownerDialogId,
-                targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-                targetCallType: subdialogReplyTarget.callType,
-                targetCallId: subdialogReplyTarget.callId,
-                diagnostics,
-              },
-            );
+            if (!supplied && subdialogReplyTarget) {
+              const diagnostics = await loadPendingDiagnosticsSnapshot({
+                rootId: dialog.id.rootId,
+                ownerDialogId: subdialogReplyTarget.ownerDialogId,
+                expectedSubdialogId: dialog.id.selfId,
+                status: dialog.status,
+              });
+              log.debug(
+                'kernel-driver failed to supply subdialog response to specific caller',
+                undefined,
+                {
+                  calleeId: dialog.id.valueOf(),
+                  targetOwner: subdialogReplyTarget.ownerDialogId,
+                  targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+                  targetCallType: subdialogReplyTarget.callType,
+                  targetCallId: subdialogReplyTarget.callId,
+                  diagnostics,
+                },
+              );
+            }
           }
         }
       }
@@ -898,6 +884,7 @@ export async function executeDriveRound(args: {
             ? followUp.userLanguageCode
             : undefined,
         q4hAnswerCallIds: followUp.q4hAnswerCallIds,
+        tellaskReplyDirective: followUp.tellaskReplyDirective,
         skipTaskdoc: followUp.skipTaskdoc,
         subdialogReplyTarget: followUp.subdialogReplyTarget,
         runControl: followUp.runControl,
