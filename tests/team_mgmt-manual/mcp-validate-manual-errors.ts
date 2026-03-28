@@ -52,6 +52,10 @@ async function main(): Promise<void> {
         out.includes('servers.sdk_stdio.manual.sections'),
         'validate tool should include the precise invalid manual field path',
       );
+      assert.ok(
+        out.includes('runtime availability failures') || out.includes('当前运行时可达性问题'),
+        'validate tool should explain that MCP validation can include transient runtime-availability failures',
+      );
     },
   );
 

@@ -34,11 +34,16 @@ function printUsage(): void {
   console.log('       dominds man --list');
   console.log('Alias: dominds manual ...');
   console.log('');
+  console.log(
+    "Note: the topic list below shows common manual topics. Some toolsets (for example `team_mgmt`) expose additional toolset-specific topic keys; run `dominds man <toolsetId> --all` to see that toolset's dedicated index.",
+  );
+  console.log('');
   console.log('Examples:');
   console.log('  dominds man ws_read --lang zh --all');
   console.log('  dominds man team_mgmt --topics index,tools');
+  console.log('  dominds man team_mgmt --all');
   console.log('');
-  console.log(`Topics: ${MANUAL_TOPICS.join(', ')} (or 'all')`);
+  console.log(`Common topics: ${MANUAL_TOPICS.join(', ')} (or 'all')`);
 }
 
 function normalizeLanguage(raw?: string): LanguageCode {

@@ -50,6 +50,21 @@ function main(): void {
     'team_mgmt stdout should not fall back to generic missing-section warnings',
   );
   assert.equal(teamMgmtResult.stderr, '', 'dominds man team_mgmt should not write to stderr');
+
+  const helpResult = spawnSync(process.execPath, [tsxCli, cliEntry, 'man', '--help'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(
+    helpResult.status,
+    0,
+    `dominds man --help should exit 0.\nstderr:\n${helpResult.stderr}`,
+  );
+  assert.match(
+    helpResult.stdout,
+    /Some toolsets .* additional toolset-specific topic keys/i,
+    'man help should mention that some toolsets expose custom topic keys',
+  );
 }
 
 main();

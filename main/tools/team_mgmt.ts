@@ -4088,7 +4088,7 @@ function renderTroubleshooting(language: LanguageCode): string {
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
         '症状：提示“permission denied / forbidden / not allowed” → 原因：权限规则（目录或扩展名）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` 复核规则，并检查该成员的 `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` 配置。',
         '症状：`team.yaml` 里引用的 app toolset 缺失 / app 相关能力失效 → 原因：enabled app 未正确安装/启用、apps-host 启动失败，或 app 自身 host 模块/运行时损坏 → 步骤：`team_mgmt_validate_team_cfg({})` 仍然可用；先用它确认具体缺失项，再检查 `.minds/app.yaml`、已启用 apps 解析结果与相关 app 安装路径；必要时让持有 team_mgmt 的团队管理智能体继续用 `team_mgmt_read_file` / `team_mgmt_ripgrep_*` / `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })` 排查。',
-        '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
+        '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误。注意：该校验既可能报告永久配置问题，也可能报告“当前服务不可达/未加载”这类暂态问题；若只是 server 临时不可连，服务恢复后重跑通常即可正常。必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
   }
@@ -4101,7 +4101,7 @@ function renderTroubleshooting(language: LanguageCode): string {
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
       'Symptom: "permission denied / forbidden / not allowed" → Cause: permission rules (directory or extension) hit deny-list or are not covered by allow-list → Steps: review `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` and the member `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` config.',
       'Symptom: an app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable → Cause: enabled app not installed/enabled correctly, apps-host startup failure, or a broken app host module/runtime → Steps: `team_mgmt_validate_team_cfg({})` remains available; use it first to identify the missing binding, then inspect `.minds/app.yaml`, enabled-app resolution, and the app install path. The team manager should continue with `team_mgmt_read_file`, `team_mgmt_ripgrep_*`, and `man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })`.',
-      'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first, then use `mcp_restart` if needed; call `mcp_release` when done.',
+      'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first. Note: the validator may report both permanent config errors and transient runtime-availability issues; if the server is merely down/unreachable for now, rerunning after recovery will often clear the problem. Then use `mcp_restart` if needed; call `mcp_release` when done.',
     ])
   );
 }
@@ -5516,7 +5516,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
           ? fmtHeader('mcp.yaml 校验失败') +
             fmtList([
               `\`${MCP_YAML_REL}\`：❌ 检测到 ${totalIssues} 个问题（详见 Problems 面板）`,
-              '说明：MCP 配置问题（含 toolset manual 声明错误）会导致 server/toolset 加载失败、工具手册缺失/错误或运行时异常。',
+              '说明：本校验会同时报告两类问题：1) 静态配置/声明错误；2) 当前运行时可达性问题（例如 MCP server 暂时不可连接、尚未加载或租用状态异常）。后者通常是暂态，服务恢复后重新运行本工具即可清除。',
             ]) +
             fmtSubHeader('进行中的问题') +
             issueLines.join('\n') +
@@ -5525,7 +5525,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
           : fmtHeader('mcp.yaml Validation Failed') +
             fmtList([
               `\`${MCP_YAML_REL}\`: ❌ ${totalIssues} issue(s) detected (see Problems panel)`,
-              'Note: MCP config issues (including toolset manual declaration errors) can block server/toolset loading, produce bad/missing manual guidance, or cause runtime tool failures.',
+              'Note: this validator can report both static config/declaration errors and current runtime availability failures (for example an MCP server that is temporarily down, unreachable, not yet loaded, or stuck in a lease-related state). The runtime-availability cases are often transient and may clear once the MCP service recovers.',
             ]) +
             fmtSubHeader('Active Problems') +
             issueLines.join('\n') +

@@ -13,6 +13,7 @@
  *   read     - Read team configuration
  *   man      - Render toolset manual to stdout
  *   manual   - Alias for man
+ *   validate_team_def - Validate explicit team toolset declarations
  *   create   - Create a new runtime workspace (rtws) from a template
  *   install  - Install a Dominds App into this rtws
  *   doctor   - Diagnose Dominds App state in this rtws
@@ -44,6 +45,7 @@ import { main as readMain } from './cli/read';
 import { main as tuiMain } from './cli/tui';
 import { main as uninstallMain } from './cli/uninstall';
 import { main as updateMain } from './cli/update';
+import { main as validateTeamDefMain } from './cli/validate-team-def';
 import { main as webuiMain } from './cli/webui';
 import './tools/builtins';
 
@@ -64,6 +66,7 @@ Subcommands:
   read [options]     Read team configuration
   man [options]      Render toolset manual to stdout
   manual [options]   Alias for man
+  validate_team_def [options] Validate explicit team toolset declarations
   create [options]   Create a new runtime workspace (rtws) from a template
   install [options]  Install a Dominds App into this rtws
   doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
@@ -82,6 +85,7 @@ Examples:
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
   dominds man ws_read --lang zh --all
+  dominds validate_team_def  # Validate toolset references in .minds/team.yaml
   dominds create web-scaffold my-project   # Create rtws from a template
   dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
 
@@ -153,6 +157,7 @@ export async function main(): Promise<void> {
     (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
     (subcommand === 'run' && subcommandArgs.includes('-h')) ||
     (subcommand === 'read' && subcommandArgs.includes('-h')) ||
+    (subcommand === 'validate_team_def' && subcommandArgs.includes('-h')) ||
     (subcommand === 'man' && subcommandArgs.includes('-h')) ||
     (subcommand === 'manual' && subcommandArgs.includes('-h')) ||
     ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h')) ||
@@ -239,6 +244,9 @@ export async function main(): Promise<void> {
     case 'manual':
       await runSubcommand('manual', subcommandArgs);
       break;
+    case 'validate_team_def':
+      await runSubcommand('validate_team_def', subcommandArgs);
+      break;
     case 'create':
     case 'new':
       await runSubcommand('create', subcommandArgs);
@@ -284,6 +292,8 @@ async function runSubcommand(subcommand: string, args: string[]): Promise<void> 
       await readMain();
     } else if (subcommand === 'manual') {
       await manualMain();
+    } else if (subcommand === 'validate_team_def') {
+      await validateTeamDefMain();
     } else if (subcommand === 'create') {
       await createMain();
     } else if (subcommand === 'install') {

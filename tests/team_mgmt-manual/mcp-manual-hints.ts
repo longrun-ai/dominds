@@ -50,6 +50,8 @@ async function main(): Promise<void> {
     async () => {
       const zh = await render('zh', ['mcp']);
       const en = await render('en', ['mcp']);
+      const zhTroubleshooting = await render('zh', ['troubleshooting']);
+      const enTroubleshooting = await render('en', ['troubleshooting']);
 
       assert.ok(
         zh.includes('不影响 toolset 可用性'),
@@ -74,6 +76,16 @@ async function main(): Promise<void> {
       assert.ok(
         en.includes('confirm intent/boundaries with the human user'),
         'en mcp manual should remind team manager to confirm intent with human user',
+      );
+      assert.ok(
+        zhTroubleshooting.includes('暂态问题') ||
+          zhTroubleshooting.includes('服务恢复后重跑通常即可正常'),
+        'zh troubleshooting manual should explain that some MCP validation failures are transient',
+      );
+      assert.ok(
+        enTroubleshooting.includes('transient runtime-availability issues') ||
+          enTroubleshooting.includes('rerunning after recovery will often clear the problem'),
+        'en troubleshooting manual should explain that some MCP validation failures are transient',
       );
     },
   );

@@ -9,7 +9,12 @@ import {
   type NormalizedAppsResolutionStrategy,
 } from '../apps/configuration-file';
 import { resolveAppsGraphState, type AppsResolutionIssue } from '../apps/enabled-apps';
-import { loadRtwsDeclaredAppDependencies, type DomindsAppDependency } from '../apps/manifest';
+import {
+  DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  loadDomindsAppManifest,
+  loadRtwsDeclaredAppDependencies,
+  type DomindsAppDependency,
+} from '../apps/manifest';
 import {
   loadAppsResolutionFile,
   type AppsResolutionEntry,
@@ -116,6 +121,11 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
 }> {
   const declaredDeps = await loadRtwsDeclaredAppDependencies({ rtwsRootAbs: params.rtwsRootAbs });
   const declaredAppIds = new Set(declaredDeps.map((dep) => dep.id));
+  const loadedSelfManifest = await loadDomindsAppManifest({
+    packageRootAbs: params.rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  });
+  const selfManifest = loadedSelfManifest.kind === 'ok' ? loadedSelfManifest.manifest : null;
 
   const loadedLock = await loadAppLockFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loadedLock.kind === 'error') {
@@ -163,7 +173,9 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
   for (const appId of [...appIds].sort()) {
     if (params.appId !== null && appId !== params.appId) continue;
 
+    const isSelfTarget = appId === '.';
     const dep = declaredDeps.find((item) => item.id === appId) ?? null;
+    const declaredSelf = isSelfTarget && selfManifest !== null;
     const locked = lockById.get(appId) ?? null;
     const disabled = disabledApps.has(appId);
     const resolutionEntry = resolutionById.get(appId) ?? null;
@@ -171,7 +183,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
     const reasons: string[] = [];
     const nextActions: string[] = [];
 
-    if (!dep) {
+    if (!dep && !declaredSelf) {
       addReason(reasons, 'not declared in .minds/app.yaml dependencies');
       addNextAction(
         nextActions,
@@ -268,7 +280,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
     diagnoses.push({
       appId,
       status: reasons.length === 0 ? 'healthy' : 'degraded',
-      declared: dep !== null,
+      declared: dep !== null || declaredSelf,
       declaredAsOptional: dep?.optional === true,
       lockedPackage: locked ? formatLockedPackage(locked.name, locked.version) : null,
       disabled,
