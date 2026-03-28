@@ -237,7 +237,7 @@ Recommended user mental model:
 
 - `dominds webui`: the server startup path initializes apps runtime and re-materializes `<rtws>/.apps/resolution.yaml`.
 - `dominds tui` / `dominds run`: before entering interactive runtime, Dominds refreshes enabled-app runtime/tool proxies and re-materializes `resolution.yaml`.
-- `dominds read` / `dominds manual`: Dominds refreshes enabled app tool proxies first; if the root manifest still declares dependencies, this also re-materializes `resolution.yaml`.
+- `dominds read` / `dominds man`: Dominds refreshes enabled app tool proxies first; if the root manifest still declares dependencies, this also re-materializes `resolution.yaml`.
 
 Self-heal only works when both prerequisites hold:
 

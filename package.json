@@ -31,6 +31,7 @@
     "test": "echo 'Dominds backend: Use lint:types for type checking.'",
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "setup:pm": "corepack enable pnpm && corepack install",
+    "man": "pnpm exec tsx main/cli/manual.ts",
     "manual": "pnpm exec tsx main/cli/manual.ts",
     "release:publish-public": "node ./scripts/publish-public-packages.mjs",
     "release:publish-public:dry-run": "node ./scripts/publish-public-packages.mjs --dry-run",

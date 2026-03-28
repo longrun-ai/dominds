@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,md,json}\"",
     "rtws": "tsx cli.ts",
     "auth": "tsx auth.ts",
+    "cli-man-subcommand": "tsx cli/man-subcommand.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "skills-i18n": "tsx minds/skills-i18n.ts",
     "mindset-collab-marker-scope": "tsx minds/system-prompt-collab-marker-scope.ts",

@@ -4,20 +4,20 @@
  * Manual subcommand for dominds CLI
  *
  * Usage:
- *   dominds manual <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]
- *   dominds manual --list
+ *   dominds man <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]
+ *   dominds man --list
  *
  * Examples:
- *   dominds manual ws_read --lang zh --all
- *   dominds manual team_mgmt --topics index,tools
+ *   dominds man ws_read --lang zh --all
+ *   dominds man team_mgmt --topics index,tools
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { FuncTool } from '../tool';
 import '../tools/builtins';
-import { renderToolsetManual } from '../tools/manual/render';
 import { MANUAL_TOPICS } from '../tools/manual/spec';
 import { getToolset, getToolsetMeta, listToolsets } from '../tools/registry';
+import { renderToolsetManualContent } from '../tools/toolset-manual';
 
 type ParsedArgs = Readonly<{
   toolsetId?: string;
@@ -29,13 +29,14 @@ type ParsedArgs = Readonly<{
 
 function printUsage(): void {
   console.log(
-    'Usage: dominds manual <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]',
+    'Usage: dominds man <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]',
   );
-  console.log('       dominds manual --list');
+  console.log('       dominds man --list');
+  console.log('Alias: dominds manual ...');
   console.log('');
   console.log('Examples:');
-  console.log('  dominds manual ws_read --lang zh --all');
-  console.log('  dominds manual team_mgmt --topics index,tools');
+  console.log('  dominds man ws_read --lang zh --all');
+  console.log('  dominds man team_mgmt --topics index,tools');
   console.log('');
   console.log(`Topics: ${MANUAL_TOPICS.join(', ')} (or 'all')`);
 }
@@ -195,23 +196,14 @@ export async function main(): Promise<void> {
     }
 
     const availableToolNames = toAvailableToolNames(toolsetId);
-    const result = renderToolsetManual({
+    const content = await renderToolsetManualContent({
       toolsetId,
       language: parsed.language,
-      request: {
-        requestedTopic: parsed.topic,
-        requestedTopics: parsed.topics,
-      },
+      topic: parsed.topic,
+      topics: parsed.topics,
       availableToolNames,
     });
-
-    if (!result.foundToolset) {
-      console.error(`Error: Toolset '${toolsetId}' not found.`);
-      listAvailableToolsets();
-      process.exit(1);
-    }
-
-    console.log(result.content);
+    console.log(content);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`Error: ${message}`);

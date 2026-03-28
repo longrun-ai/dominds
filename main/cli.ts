@@ -11,7 +11,8 @@
  *   tui      - Start Text User Interface
  *   run      - Run task dialog (alias for tui)
  *   read     - Read team configuration
- *   manual   - Render toolset manual to stdout
+ *   man      - Render toolset manual to stdout
+ *   manual   - Alias for man
  *   create   - Create a new runtime workspace (rtws) from a template
  *   install  - Install a Dominds App into this rtws
  *   doctor   - Diagnose Dominds App state in this rtws
@@ -61,7 +62,8 @@ Subcommands:
   tui [options]      Start Text User Interface
   run [options]      Run task dialog (alias for tui)
   read [options]     Read team configuration
-  manual [options]   Render toolset manual to stdout
+  man [options]      Render toolset manual to stdout
+  manual [options]   Alias for man
   create [options]   Create a new runtime workspace (rtws) from a template
   install [options]  Install a Dominds App into this rtws
   doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
@@ -79,7 +81,7 @@ Examples:
   dominds tui --help         # Show TUI help
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
-  dominds manual ws_read --lang zh --all
+  dominds man ws_read --lang zh --all
   dominds create web-scaffold my-project   # Create rtws from a template
   dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
 
@@ -151,6 +153,7 @@ export async function main(): Promise<void> {
     (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
     (subcommand === 'run' && subcommandArgs.includes('-h')) ||
     (subcommand === 'read' && subcommandArgs.includes('-h')) ||
+    (subcommand === 'man' && subcommandArgs.includes('-h')) ||
     (subcommand === 'manual' && subcommandArgs.includes('-h')) ||
     ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h')) ||
     (subcommand === 'install' &&
@@ -198,10 +201,10 @@ export async function main(): Promise<void> {
 
   if (!shouldSkipRtwsSetup && shouldLoadApps) {
     try {
-      // Register toolset proxies so Team.load() can validate toolset bindings (read/manual included).
+      // Register toolset proxies so Team.load() can validate toolset bindings (read/man/manual included).
       await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
 
-      // Start apps-host only for interactive runtime commands (do not auto-start app frontends for read/manual).
+      // Start apps-host only for interactive runtime commands (do not auto-start app frontends for read/man/manual).
       const shouldStartAppsHost = subcommand === 'tui' || subcommand === 'run';
       if (shouldStartAppsHost) {
         await initAppsRuntime({
@@ -229,6 +232,9 @@ export async function main(): Promise<void> {
       break;
     case 'read':
       await runSubcommand('read', subcommandArgs);
+      break;
+    case 'man':
+      await runSubcommand('manual', subcommandArgs);
       break;
     case 'manual':
       await runSubcommand('manual', subcommandArgs);

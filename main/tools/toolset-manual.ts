@@ -13,6 +13,14 @@ type ToolsetManualResult = {
   toolNames: string[];
 };
 
+export type RenderToolsetManualContentInput = Readonly<{
+  toolsetId: string;
+  language: LanguageCode;
+  topic?: string;
+  topics?: readonly string[];
+  availableToolNames: Set<string>;
+}>;
+
 export function buildToolsetManualTools(_options: {
   toolsetNames: string[];
   existingToolNames: Set<string>;
@@ -21,6 +29,34 @@ export function buildToolsetManualTools(_options: {
   const tool: FuncTool = buildManTool();
 
   return { tools: [tool], toolNames: [tool.name] };
+}
+
+export async function renderToolsetManualContent(
+  input: RenderToolsetManualContentInput,
+): Promise<string> {
+  if (input.toolsetId === 'team_mgmt') {
+    return await renderTeamMgmtGuideViaManualRequest(input.language, {
+      topic: input.topic,
+      topics: input.topics,
+    });
+  }
+
+  const rendered = renderToolsetManual({
+    toolsetId: input.toolsetId,
+    language: input.language,
+    request: {
+      requestedTopic: input.topic,
+      requestedTopics: input.topics,
+    },
+    availableToolNames: input.availableToolNames,
+  });
+
+  if (!rendered.foundToolset) {
+    return input.language === 'zh'
+      ? `未找到 toolset '${input.toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
+      : `Toolset '${input.toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`;
+  }
+  return rendered.content;
 }
 
 function getToolsetDescription(language: LanguageCode, toolsetId: string): string {
@@ -202,26 +238,15 @@ function buildManTool(): FuncTool {
           .map((tool) => tool.name),
       );
 
-      const rendered = renderToolsetManual({
+      return await renderToolsetManualContent({
         toolsetId,
         language,
-        request: {
-          requestedTopic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
-          requestedTopics: Array.isArray(args?.topics)
-            ? (args.topics as unknown[]).filter(
-                (entry): entry is string => typeof entry === 'string',
-              )
-            : undefined,
-        },
+        topic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
+        topics: Array.isArray(args?.topics)
+          ? (args.topics as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+          : undefined,
         availableToolNames,
       });
-
-      if (!rendered.foundToolset) {
-        return language === 'zh'
-          ? `未找到 toolset '${toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
-          : `Toolset '${toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`;
-      }
-      return rendered.content;
     },
   };
 }
@@ -289,6 +314,21 @@ async function renderTeamMgmtGuideViaMan(
   language: LanguageCode,
   args: JsonObject,
 ): Promise<string> {
+  const topics = normalizeTeamMgmtGuideTopics(args);
+  return await renderTeamMgmtGuideContent(language, topics);
+}
+
+async function renderTeamMgmtGuideViaManualRequest(
+  language: LanguageCode,
+  request: Readonly<{ topic?: string; topics?: readonly string[] }>,
+): Promise<string> {
+  const args: JsonObject = {};
+  if (typeof request.topic === 'string') {
+    args['topic'] = request.topic;
+  }
+  if (Array.isArray(request.topics)) {
+    args['topics'] = [...request.topics];
+  }
   const topics = normalizeTeamMgmtGuideTopics(args);
   return await renderTeamMgmtGuideContent(language, topics);
 }

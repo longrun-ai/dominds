@@ -236,7 +236,7 @@ Install JSON 是 app 与 Kernel/CLI 之间的**安装/运行握手载荷**。它
 
 - `dominds webui`：server 启动链会初始化 apps runtime，并重新物化 `<rtws>/.apps/resolution.yaml`。
 - `dominds tui` / `dominds run`：进入交互 runtime 前会刷新已启用 app 的运行态 / 工具代理，并重新物化 `resolution.yaml`。
-- `dominds read` / `dominds manual`：会先刷新已启用 app 的工具代理；若根 manifest 仍声明依赖，也会触发 `resolution.yaml` 的重新物化。
+- `dominds read` / `dominds man`：会先刷新已启用 app 的工具代理；若根 manifest 仍声明依赖，也会触发 `resolution.yaml` 的重新物化。
 
 自愈成立的前提必须同时满足：
 
