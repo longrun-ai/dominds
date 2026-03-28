@@ -143,13 +143,13 @@ export class ArchivedDialogList extends HTMLElement {
     }
     const entry = this.dialogIndex.get(targetKey);
     if (!entry) return false;
-    const existing = this.decodeDialogDataset(entry.el);
+    const existing = this.findDialogInSnapshot(rootId, targetSelf);
     if (!existing) return false;
     const next: ApiRootDialogResponse = { ...existing, ...patch };
     next.rootId = existing.rootId;
     next.selfId = existing.selfId;
 
-    entry.el.dataset.dialogJson = this.encodeDialogDataset(next);
+    this.applyDialogDataAttributes(entry.el, next);
     if (patch.lastModified !== undefined) {
       const timeEl = entry.el.querySelector('.dialog-time');
       if (timeEl instanceof HTMLElement) {
@@ -443,8 +443,12 @@ export class ArchivedDialogList extends HTMLElement {
     this.dialogIndex.clear();
   }
 
-  private encodeDialogDataset(dialog: ApiRootDialogResponse): string {
-    return encodeURIComponent(JSON.stringify(dialog));
+  private applyDialogDataAttributes(el: HTMLElement, dialog: ApiRootDialogResponse): void {
+    const selfId = dialog.selfId ?? '';
+    el.setAttribute('data-root-id', dialog.rootId);
+    el.setAttribute('data-self-id', selfId);
+    el.setAttribute('data-dialog-key', this.getDialogKey(dialog));
+    el.setAttribute('data-updated-at-ms', String(this.parseTimestamp(dialog.lastModified)));
   }
 
   private createElementFromHtml(html: string): HTMLElement {
@@ -714,22 +718,16 @@ export class ArchivedDialogList extends HTMLElement {
     }
   }
 
-  private decodeDialogDataset(el: HTMLElement): ApiRootDialogResponse | null {
-    const raw = el.dataset.dialogJson;
-    if (!raw) return null;
-    try {
-      return JSON.parse(decodeURIComponent(raw)) as ApiRootDialogResponse;
-    } catch {
-      return null;
-    }
+  private findDialogInSnapshot(rootId: string, selfId: string): ApiRootDialogResponse | undefined {
+    const targetKey = this.dialogKey(rootId, selfId);
+    return this.snapshotDialogs.find((dialog) => this.getDialogKey(dialog) === targetKey);
   }
 
   private refreshFromDom(): void {
     if (!this.listEl) return;
     this.dialogIndex.clear();
-    const items = this.listEl.querySelectorAll<HTMLElement>('.dialog-item[data-root-id]');
+    const items = this.listEl.querySelectorAll<HTMLElement>('.dialog-item[data-dialog-key]');
     items.forEach((el) => {
-      if (!el.dataset.dialogJson) return;
       const rootId = (el.getAttribute('data-root-id') ?? '').trim();
       if (!rootId) return;
       const selfRaw = (el.getAttribute('data-self-id') ?? '').trim();
@@ -761,9 +759,10 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   private getDialogUpdatedAtMsFromElement(el: HTMLElement): number {
-    const dialog = this.decodeDialogDataset(el);
-    if (!dialog) return 0;
-    return this.parseTimestamp(dialog.lastModified);
+    const raw = el.getAttribute('data-updated-at-ms');
+    if (!raw) return 0;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   private reorderVisibleSubdialogs(rootId: string): void {
@@ -843,7 +842,7 @@ export class ArchivedDialogList extends HTMLElement {
   private getTaskMaxUpdatedAtMs(taskGroup: HTMLElement): number {
     let max = 0;
     const roots = taskGroup.querySelectorAll<HTMLElement>(
-      '.dialog-item.root-dialog[data-dialog-json]',
+      '.dialog-item.root-dialog[data-dialog-key]',
     );
     roots.forEach((row) => {
       const ts = this.getDialogUpdatedAtMsFromElement(row);
@@ -947,7 +946,7 @@ export class ArchivedDialogList extends HTMLElement {
     const dialogId = dialog.rootId;
     const updatedAt = dialog.lastModified || '';
     const dialogKey = this.getDialogKey(dialog);
-    const dialogJson = this.encodeDialogDataset(dialog);
+    const updatedAtMs = this.parseTimestamp(dialog.lastModified);
 
     return `
       <div
@@ -955,7 +954,7 @@ export class ArchivedDialogList extends HTMLElement {
         data-root-id="${dialog.rootId}"
         data-self-id=""
         data-dialog-key="${dialogKey}"
-        data-dialog-json="${dialogJson}"
+        data-updated-at-ms="${updatedAtMs}"
       >
         <div class="dialog-row">
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(this.collapsedRoots.has(dialog.rootId))}">${toggleIcon}</button>
@@ -996,7 +995,7 @@ export class ArchivedDialogList extends HTMLElement {
     const sessionSlugMark = dialog.sessionSlug ?? '';
     const callsign = this.getDialogDisplayCallsign(dialog);
     const dialogKey = this.getDialogKey(dialog);
-    const dialogJson = this.encodeDialogDataset(dialog);
+    const updatedAtMs = this.parseTimestamp(dialog.lastModified);
 
     return `
       <div
@@ -1004,7 +1003,7 @@ export class ArchivedDialogList extends HTMLElement {
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
         data-dialog-key="${dialogKey}"
-        data-dialog-json="${dialogJson}"
+        data-updated-at-ms="${updatedAtMs}"
       >
         <div class="dialog-row dialog-subrow">
           <span class="dialog-title">${callsign}</span>
@@ -1083,8 +1082,7 @@ export class ArchivedDialogList extends HTMLElement {
       if (action === 'root-create-dialog') {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
-          const rootEl = this.findDialogElement(rootId, rootId);
-          const rootDialog = rootEl ? this.decodeDialogDataset(rootEl) : null;
+          const rootDialog = this.findDialogInSnapshot(rootId, rootId);
           if (rootDialog) {
             this.emitCreateDialogAction({
               kind: 'root',
@@ -1212,10 +1210,7 @@ export class ArchivedDialogList extends HTMLElement {
     selfId: string,
     isRoot: boolean,
   ): ApiRootDialogResponse | undefined {
-    const targetSelf = isRoot ? rootId : selfId;
-    const el = this.findDialogElement(rootId, targetSelf);
-    if (!el) return undefined;
-    return this.decodeDialogDataset(el) ?? undefined;
+    return this.findDialogInSnapshot(rootId, isRoot ? rootId : selfId);
   }
 
   private isSelectedDialog(dialog: ApiRootDialogResponse, selection: SelectionState): boolean {
