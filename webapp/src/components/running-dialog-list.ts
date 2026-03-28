@@ -1706,7 +1706,6 @@ export class RunningDialogList extends HTMLElement {
         padding: 2px 8px;
         margin: 0;
         cursor: pointer;
-        border-right: 3px solid transparent;
         border-radius: 0;
         position: relative;
         box-sizing: border-box;
@@ -1744,139 +1743,25 @@ export class RunningDialogList extends HTMLElement {
         margin: 2px 0;
         border-radius: 10px 0 0 10px;
         box-shadow:
-          inset 1px 0 0 color-mix(in srgb, white 55%, transparent),
-          inset 0 1px 0 color-mix(in srgb, white 55%, transparent),
-          inset 0 -1px 0 color-mix(in srgb, white 55%, transparent),
+          inset 1px 0 0 color-mix(
+            in srgb,
+            var(--dominds-bg-secondary, #ffffff) 55%,
+            transparent
+          ),
+          inset 0 1px 0 color-mix(
+            in srgb,
+            var(--dominds-bg-secondary, #ffffff) 55%,
+            transparent
+          ),
+          inset 0 -1px 0 color-mix(
+            in srgb,
+            var(--dominds-bg-secondary, #ffffff) 55%,
+            transparent
+          ),
           inset 2px 0 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
           inset 0 2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent),
           inset 0 -2px 0 color-mix(in srgb, var(--dominds-primary, #007acc) 72%, transparent);
         z-index: var(--dominds-z-local-raised, 1);
-      }
-
-      .dialog-item.state-interrupted {
-        border-right-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 55%, transparent);
-        background: color-mix(in srgb, var(--dominds-danger, #dc3545) 10%, transparent);
-      }
-
-      .dialog-item.state-blocked-q4h {
-        border-right-color: color-mix(in srgb, #7c3aed 60%, transparent);
-        background: color-mix(in srgb, #7c3aed 9%, transparent);
-      }
-
-      .dialog-item.state-blocked-subdialogs {
-        border-right-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 7%, transparent);
-      }
-
-      .dialog-item.state-blocked-both {
-        border-right-color: color-mix(in srgb, #7c3aed 40%, var(--dominds-primary, #007acc) 40%);
-        background: color-mix(in srgb, #7c3aed 6%, var(--dominds-primary, #007acc) 5%);
-      }
-
-      .dialog-item.state-blocked-fbr {
-        border-right-color: color-mix(in srgb, #c67a14 58%, transparent);
-        background: color-mix(in srgb, #f4bf75 18%, white 82%);
-      }
-
-      .dialog-item.state-proceeding {
-        --dialog-glow-color: var(--dominds-primary, #007acc);
-        border-right-color: color-mix(in srgb, var(--dialog-glow-color) 55%, transparent);
-        background: color-mix(in srgb, var(--dialog-glow-color) 5%, transparent);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .dialog-item.state-proceeding-stop {
-        border-right-color: color-mix(in srgb, #f59e0b 60%, transparent);
-        background: color-mix(in srgb, #f59e0b 8%, transparent);
-      }
-
-      .dialog-item.selected.state-proceeding,
-      .dialog-item.selected.state-proceeding-stop,
-      .dialog-item.selected.state-interrupted,
-      .dialog-item.selected.state-blocked-q4h,
-      .dialog-item.selected.state-blocked-subdialogs,
-      .dialog-item.selected.state-blocked-both,
-      .dialog-item.selected.state-blocked-fbr {
-        border-right-color: transparent;
-      }
-
-      .dialog-item.state-proceeding::before {
-        content: '';
-        position: absolute;
-        inset: -28px;
-        z-index: var(--dominds-z-local-base, 0);
-        pointer-events: none;
-        background:
-          radial-gradient(
-            ellipse at 50% 50%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 40%, transparent)
-              0%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
-              35%,
-            transparent 70%
-          );
-        opacity: 0.12;
-        transform: scale(0.98);
-        filter: blur(12px);
-      }
-
-      .dialog-item.state-proceeding::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -120%;
-        width: 240%;
-        z-index: var(--dominds-z-local-base, 0);
-        transform: translateX(0);
-        pointer-events: none;
-        opacity: 0.5;
-        background:
-          linear-gradient(
-            90deg,
-            transparent 0%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
-              25%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 55%, transparent)
-              50%,
-            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
-              75%,
-            transparent 100%
-          );
-        filter: blur(0.5px);
-        animation: dialogScanlineSweep 1.05s ease-in-out infinite;
-      }
-
-      .dialog-item.state-proceeding > .dialog-row {
-        position: relative;
-        z-index: var(--dominds-z-local-raised, 1);
-      }
-
-      @keyframes dialogScanlineSweep {
-        0% {
-          transform: translateX(-10%);
-          opacity: 0.15;
-        }
-        35% {
-          opacity: 0.85;
-        }
-        100% {
-          transform: translateX(110%);
-          opacity: 0.15;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .dialog-item.state-proceeding::before,
-        .dialog-item.state-proceeding::after {
-          animation: none;
-        }
-
-        .dialog-item.state-proceeding::after {
-          opacity: 0.2;
-        }
-
       }
 
       .run-badges {
@@ -1886,6 +1771,13 @@ export class RunningDialogList extends HTMLElement {
       }
 
       .run-badge {
+        --run-badge-bg: var(--dominds-bg, #ffffff);
+        --run-badge-border: color-mix(
+          in srgb,
+          var(--dominds-border, #e0e0e0) 80%,
+          transparent
+        );
+        --run-badge-color: var(--dominds-muted, #666666);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1893,9 +1785,9 @@ export class RunningDialogList extends HTMLElement {
         height: 14px;
         padding: 0;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
-        background: var(--dominds-bg, #ffffff);
-        color: var(--dominds-muted, #666666);
+        border: 1px solid var(--run-badge-border);
+        background: var(--run-badge-bg);
+        color: var(--run-badge-color);
         user-select: none;
         box-sizing: border-box;
       }
@@ -1908,33 +1800,69 @@ export class RunningDialogList extends HTMLElement {
       }
 
       .run-badge.interrupted {
-        background: color-mix(in srgb, var(--dominds-danger-bg, #f8d7da) 70%, white 30%);
-        border-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 30%, transparent);
-        color: var(--dominds-danger, #721c24);
+        --run-badge-bg: var(--dominds-run-badge-interrupted-bg, var(--dominds-danger-bg, #f8d7da));
+        --run-badge-border: var(
+          --dominds-run-badge-interrupted-border,
+          color-mix(in srgb, var(--dominds-danger, #dc3545) 30%, transparent)
+        );
+        --run-badge-color: var(--dominds-run-badge-interrupted-fg, var(--dominds-danger, #721c24));
       }
 
       .run-badge.proceeding {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, white 88%);
-        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 42%, transparent);
-        color: var(--dominds-primary, #007acc);
+        --run-badge-bg: var(
+          --dominds-run-badge-running-bg,
+          color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--dominds-bg, #ffffff))
+        );
+        --run-badge-border: var(
+          --dominds-run-badge-running-border,
+          color-mix(in srgb, var(--dominds-primary, #007acc) 42%, transparent)
+        );
+        --run-badge-color: var(--dominds-run-badge-running-fg, var(--dominds-primary, #007acc));
       }
 
       .run-badge.blocked-q4h {
-        background: color-mix(in srgb, #ede9fe 70%, white 30%);
-        border-color: color-mix(in srgb, #7c3aed 35%, transparent);
-        color: #5b21b6;
+        --run-badge-bg: var(
+          --dominds-run-badge-waiting-human-bg,
+          var(--dominds-warning-bg, #fff3cd)
+        );
+        --run-badge-border: var(
+          --dominds-run-badge-waiting-human-border,
+          var(--dominds-warning-border, #ffeaa7)
+        );
+        --run-badge-color: var(
+          --dominds-run-badge-waiting-human-fg,
+          var(--dominds-warning, #856404)
+        );
       }
 
       .run-badge.blocked-subdialogs {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 10%, white 90%);
-        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
-        color: var(--dominds-primary, #007acc);
+        --run-badge-bg: var(
+          --dominds-run-badge-waiting-subdialogs-bg,
+          var(--dominds-info-bg, #e8f2ff)
+        );
+        --run-badge-border: var(
+          --dominds-run-badge-waiting-subdialogs-border,
+          var(--dominds-info-border, #bfd6f5)
+        );
+        --run-badge-color: var(
+          --dominds-run-badge-waiting-subdialogs-fg,
+          var(--dominds-info, #005fb8)
+        );
       }
 
       .run-badge.blocked-fbr {
-        background: color-mix(in srgb, #f4bf75 30%, white 70%);
-        border-color: color-mix(in srgb, #c67a14 45%, transparent);
-        color: #9a5b09;
+        --run-badge-bg: var(
+          --dominds-run-badge-waiting-fbr-bg,
+          color-mix(in srgb, var(--dominds-warning, #bb8009) 12%, var(--dominds-bg, #ffffff))
+        );
+        --run-badge-border: var(
+          --dominds-run-badge-waiting-fbr-border,
+          color-mix(in srgb, var(--dominds-warning, #bb8009) 35%, transparent)
+        );
+        --run-badge-color: var(
+          --dominds-run-badge-waiting-fbr-fg,
+          var(--dominds-warning, #bb8009)
+        );
       }
 
       .run-badge.proceeding .run-badge-icon {
