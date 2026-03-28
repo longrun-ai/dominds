@@ -37,6 +37,7 @@ import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
+import { truncateInlineText } from './output-limit';
 import { getToolsetMeta, listToolsets } from './registry';
 import {
   ripgrepCountTool,
@@ -79,6 +80,31 @@ function fail(result: string, messages?: ChatMessage[]): string {
 
 function toolCallOutputToString(output: ToolCallOutput): string {
   return typeof output === 'string' ? output : output.content;
+}
+
+const TEAM_MGMT_LIST_PROVIDERS_HARD_MAX_PROVIDERS = 80;
+const TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS = 80;
+const TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS_PER_PROVIDER = 20;
+const TEAM_MGMT_LIST_MODELS_HARD_MAX_PARAMS = 40;
+const TEAM_MGMT_PROBLEM_MESSAGE_CHAR_LIMIT = 220;
+const TEAM_MGMT_PROBLEM_DETAIL_CHAR_LIMIT = 800;
+const TEAM_MGMT_RENDERED_PROBLEM_LIMIT = 40;
+const TEAM_MGMT_MODELS_TEXT_CHAR_LIMIT = 240;
+const TEAM_MGMT_REMOVED_PROBLEM_ID_LIMIT = 50;
+
+function truncateProblemTextBlock(text: string): string {
+  return truncateInlineText(text, TEAM_MGMT_PROBLEM_DETAIL_CHAR_LIMIT);
+}
+
+function limitProblemsForRender<T>(items: readonly T[]): Readonly<{ shown: T[]; omitted: number }> {
+  const shown = items.slice(0, TEAM_MGMT_RENDERED_PROBLEM_LIMIT);
+  return { shown, omitted: Math.max(0, items.length - shown.length) };
+}
+
+function formatProblemOmittedNotice(language: LanguageCode, omitted: number): string {
+  return language === 'zh'
+    ? `（为避免输出过长，其余 ${omitted} 条问题未在本次结果中展开；可配合更精确过滤条件继续查看）\n`
+    : `(omitted ${omitted} additional problem(s) from this response to keep the output bounded; refine filters to inspect them)\n`;
 }
 
 function yamlQuote(value: string): string {
@@ -569,7 +595,7 @@ function formatProblemDetailLines(
   language: LanguageCode,
 ): string[] {
   const lines: string[] = [
-    `- [${problem.severity}] ${problem.id}: ${problem.message}`,
+    `- [${problem.severity}] ${problem.id}: ${truncateInlineText(problem.message, TEAM_MGMT_PROBLEM_MESSAGE_CHAR_LIMIT)}`,
     `  updated_at: ${getProblemUpdatedAt(problem)}`,
   ];
   if (problem.resolved === true && problem.resolvedAt) {
@@ -582,11 +608,15 @@ function formatProblemDetailLines(
   switch (problem.kind) {
     case 'team_workspace_config_error':
     case 'mcp_workspace_config_error':
-      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      lines.push(
+        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+      );
       break;
     case 'mcp_server_error':
       lines.push(`  serverId: ${problem.detail.serverId}`);
-      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      lines.push(
+        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+      );
       break;
     case 'mcp_tool_collision':
       lines.push(
@@ -609,10 +639,12 @@ function formatProblemDetailLines(
     case 'llm_provider_rejected_request':
       lines.push(`  dialogId: ${problem.detail.dialogId}`);
       lines.push(`  provider: ${problem.detail.provider}`);
-      lines.push('  ' + problem.detail.errorText.split('\n').join('\n  '));
+      lines.push(
+        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+      );
       break;
     case 'generic_problem':
-      lines.push('  ' + problem.detail.text.split('\n').join('\n  '));
+      lines.push('  ' + truncateProblemTextBlock(problem.detail.text).split('\n').join('\n  '));
       break;
   }
   return lines;
@@ -707,7 +739,10 @@ function listModelIds(models: Record<string, unknown>, maxModels: number): strin
   if (ids.length === 0) return '(none)';
   const max = maxModels > 0 ? maxModels : 30;
   const head = ids.slice(0, max);
-  return `${head.join(', ')}${ids.length > head.length ? ', ...' : ''}`;
+  return truncateInlineText(
+    `${head.join(', ')}${ids.length > head.length ? ', ...' : ''}`,
+    TEAM_MGMT_MODELS_TEXT_CHAR_LIMIT,
+  );
 }
 
 async function loadBuiltinLlmProviders(): Promise<Record<string, ProviderConfig>> {
@@ -1137,7 +1172,12 @@ export const teamMgmtListProvidersTool: FuncTool = {
       }
 
       const maxModelsValue = args['max_models'];
-      const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 30;
+      const requestedMaxModels =
+        isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 30;
+      const maxModels = Math.min(
+        requestedMaxModels,
+        TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS_PER_PROVIDER,
+      );
       if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue <= 0)) {
         throw new Error('Invalid max_models (expected positive integer)');
       }
@@ -1180,8 +1220,13 @@ export const teamMgmtListProvidersTool: FuncTool = {
             contentLines.push(language === 'zh' ? '(空)\n' : '(empty)\n');
           } else {
             const items: string[] = [];
+            let omittedCount = 0;
             for (const providerKey of keys) {
               if (!wildcardMatch(providerKey, providerPattern)) continue;
+              if (items.length >= TEAM_MGMT_LIST_PROVIDERS_HARD_MAX_PROVIDERS) {
+                omittedCount++;
+                continue;
+              }
               const providerCfg = rtwsProviders[providerKey];
               const envLine = formatProviderEnvStatusLine(providerCfg);
               const overridesBuiltin = Object.prototype.hasOwnProperty.call(
@@ -1205,6 +1250,13 @@ export const teamMgmtListProvidersTool: FuncTool = {
               );
             }
             contentLines.push(fmtList(items));
+            if (omittedCount > 0) {
+              contentLines.push(
+                language === 'zh'
+                  ? `（其余 ${omittedCount} 个 provider 未展示；请改用 provider_pattern 缩小范围）\n`
+                  : `(omitted ${omittedCount} additional provider(s); narrow with provider_pattern to inspect them)\n`,
+              );
+            }
           }
         }
       }
@@ -1222,8 +1274,13 @@ export const teamMgmtListProvidersTool: FuncTool = {
           contentLines.push(language === 'zh' ? '(空)\n' : '(empty)\n');
         } else {
           const items: string[] = [];
+          let omittedCount = 0;
           for (const providerKey of keys) {
             if (!wildcardMatch(providerKey, providerPattern)) continue;
+            if (items.length >= TEAM_MGMT_LIST_PROVIDERS_HARD_MAX_PROVIDERS) {
+              omittedCount++;
+              continue;
+            }
             const providerCfg = builtinProviders[providerKey];
             const envLine = formatProviderEnvStatusLine(providerCfg);
             const overriddenByRtws =
@@ -1246,6 +1303,13 @@ export const teamMgmtListProvidersTool: FuncTool = {
             );
           }
           contentLines.push(fmtList(items));
+          if (omittedCount > 0) {
+            contentLines.push(
+              language === 'zh'
+                ? `（其余 ${omittedCount} 个 provider 未展示；请改用 provider_pattern 缩小范围）\n`
+                : `(omitted ${omittedCount} additional provider(s); narrow with provider_pattern to inspect them)\n`,
+            );
+          }
         }
       }
 
@@ -1318,16 +1382,22 @@ export const teamMgmtListModelsTool: FuncTool = {
       }
 
       const maxModelsValue = args['max_models'];
-      const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 200;
+      const requestedMaxModels =
+        isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 200;
+      const maxModels = Math.min(requestedMaxModels, TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS);
       if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue <= 0)) {
         throw new Error('Invalid max_models (expected positive integer)');
       }
 
       const maxModelsPerProviderValue = args['max_models_per_provider'];
-      const maxModelsPerProvider =
+      const requestedMaxModelsPerProvider =
         isInteger(maxModelsPerProviderValue) && maxModelsPerProviderValue > 0
           ? maxModelsPerProviderValue
           : 50;
+      const maxModelsPerProvider = Math.min(
+        requestedMaxModelsPerProvider,
+        TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS_PER_PROVIDER,
+      );
       if (
         maxModelsPerProviderValue !== undefined &&
         (!isInteger(maxModelsPerProviderValue) || maxModelsPerProviderValue <= 0)
@@ -1336,7 +1406,9 @@ export const teamMgmtListModelsTool: FuncTool = {
       }
 
       const maxParamsValue = args['max_params'];
-      const maxParams = isInteger(maxParamsValue) && maxParamsValue > 0 ? maxParamsValue : 80;
+      const requestedMaxParams =
+        isInteger(maxParamsValue) && maxParamsValue > 0 ? maxParamsValue : 80;
+      const maxParams = Math.min(requestedMaxParams, TEAM_MGMT_LIST_MODELS_HARD_MAX_PARAMS);
       if (maxParamsValue !== undefined && (!isInteger(maxParamsValue) || maxParamsValue <= 0)) {
         throw new Error('Invalid max_params (expected positive integer)');
       }
@@ -1376,6 +1448,9 @@ export const teamMgmtListModelsTool: FuncTool = {
           `source: \`${sourceLabel}\``,
           `provider_pattern: \`${providerPattern}\``,
           `model_pattern: \`${modelPattern}\``,
+          `effective_max_models: ${maxModels}`,
+          `effective_max_models_per_provider: ${maxModelsPerProvider}`,
+          `effective_max_params: ${maxParams}`,
         ]),
       );
 
@@ -5212,6 +5287,8 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
       const teamProblems = listTeamYamlProblems(snapshot.problems);
       const { active: activeTeamProblems, resolved: resolvedTeamProblems } =
         splitProblemsByLifecycle(teamProblems);
+      const renderedActiveTeamProblems = limitProblemsForRender(activeTeamProblems);
+      const renderedResolvedTeamProblems = limitProblemsForRender(resolvedTeamProblems);
 
       if (activeTeamProblems.length === 0) {
         const msg =
@@ -5241,20 +5318,25 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
                   : '',
               ]);
         const resolvedBlock =
-          resolvedTeamProblems.length > 0
+          renderedResolvedTeamProblems.shown.length > 0
             ? fmtSubHeader(
                 language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
               ) +
-              resolvedTeamProblems
+              renderedResolvedTeamProblems.shown
                 .flatMap((p) => formatProblemDetailLines(p, language))
                 .join('\n') +
-              '\n'
+              '\n' +
+              (renderedResolvedTeamProblems.omitted > 0
+                ? formatProblemOmittedNotice(language, renderedResolvedTeamProblems.omitted)
+                : '')
             : '';
         const content = msg + resolvedBlock;
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const issueLines = activeTeamProblems.flatMap((p) => formatProblemDetailLines(p, language));
+      const issueLines = renderedActiveTeamProblems.shown.flatMap((p) =>
+        formatProblemDetailLines(p, language),
+      );
 
       const hasAppToolsetBindingProblem = activeTeamProblems.some(isLikelyAppToolsetBindingProblem);
       const followUpLines =
@@ -5272,7 +5354,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
                 : 'Suggestion: continue with `man({ "toolsetId": "team_mgmt", "topics": ["team","toolsets","troubleshooting"] })`, `team_mgmt_read_file`, and `team_mgmt_ripgrep_*` to narrow scope, then re-run this validator after fixes.',
             ];
       const resolvedIssueBlock =
-        resolvedTeamProblems.length > 0
+        renderedResolvedTeamProblems.shown.length > 0
           ? fmtSubHeader(
               language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
             ) +
@@ -5283,8 +5365,13 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
                 path: TEAM_YAML_REL,
               }),
             ]) +
-            resolvedTeamProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
-            '\n'
+            renderedResolvedTeamProblems.shown
+              .flatMap((p) => formatProblemDetailLines(p, language))
+              .join('\n') +
+            '\n' +
+            (renderedResolvedTeamProblems.omitted > 0
+              ? formatProblemOmittedNotice(language, renderedResolvedTeamProblems.omitted)
+              : '')
           : '';
 
       const msg =
@@ -5298,6 +5385,10 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
             fmtSubHeader('进行中的问题') +
             issueLines.join('\n') +
             '\n' +
+            (renderedActiveTeamProblems.omitted > 0
+              ? formatProblemOmittedNotice(language, renderedActiveTeamProblems.omitted)
+              : '') +
+            '\n' +
             resolvedIssueBlock
           : fmtHeader('team.yaml Validation Failed') +
             fmtList([
@@ -5307,6 +5398,10 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
             ]) +
             fmtSubHeader('Active Problems') +
             issueLines.join('\n') +
+            '\n' +
+            (renderedActiveTeamProblems.omitted > 0
+              ? formatProblemOmittedNotice(language, renderedActiveTeamProblems.omitted)
+              : '') +
             '\n' +
             resolvedIssueBlock;
 
@@ -5406,6 +5501,8 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
       const mcpProblems = listMcpYamlProblems(snapshot.problems);
       const { active: activeMcpProblems, resolved: resolvedMcpProblems } =
         splitProblemsByLifecycle(mcpProblems);
+      const renderedActiveMcpProblems = limitProblemsForRender(activeMcpProblems);
+      const renderedResolvedMcpProblems = limitProblemsForRender(resolvedMcpProblems);
       const fallbackOnlyInvalidServers: Array<{ serverId: string; errorText: string }> = [];
       for (const s of fallbackInvalidServers) {
         const hasMatchingProblem = activeMcpProblems.some(
@@ -5464,18 +5561,25 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
                   : '',
               ]);
         const resolvedBlock =
-          resolvedMcpProblems.length > 0
+          renderedResolvedMcpProblems.shown.length > 0
             ? fmtSubHeader(
                 language === 'zh' ? '已解决但未清理的问题' : 'Resolved But Not Yet Cleared',
               ) +
-              resolvedMcpProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
-              '\n'
+              renderedResolvedMcpProblems.shown
+                .flatMap((p) => formatProblemDetailLines(p, language))
+                .join('\n') +
+              '\n' +
+              (renderedResolvedMcpProblems.omitted > 0
+                ? formatProblemOmittedNotice(language, renderedResolvedMcpProblems.omitted)
+                : '')
             : '';
         const content = msg + resolvedBlock;
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const issueLines = activeMcpProblems.flatMap((p) => formatProblemDetailLines(p, language));
+      const issueLines = renderedActiveMcpProblems.shown.flatMap((p) =>
+        formatProblemDetailLines(p, language),
+      );
       for (const s of fallbackOnlyInvalidServers) {
         issueLines.push(`- [error] ${MCP_SERVER_PROBLEM_PREFIX}${s.serverId}/server_error`);
         issueLines.push(`  serverId: ${s.serverId}`);
@@ -5508,8 +5612,13 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
                 path: MCP_YAML_REL,
               }),
             ]) +
-            resolvedMcpProblems.flatMap((p) => formatProblemDetailLines(p, language)).join('\n') +
-            '\n'
+            renderedResolvedMcpProblems.shown
+              .flatMap((p) => formatProblemDetailLines(p, language))
+              .join('\n') +
+            '\n' +
+            (renderedResolvedMcpProblems.omitted > 0
+              ? formatProblemOmittedNotice(language, renderedResolvedMcpProblems.omitted)
+              : '')
           : '';
       const msg =
         language === 'zh'
@@ -5583,7 +5692,9 @@ export const teamMgmtListProblemsTool: FuncTool = {
         ...(problemId !== undefined ? { problemId } : {}),
         ...(resolvedFilter !== undefined ? { resolved: resolvedFilter } : {}),
       });
-      const problems = maxItems !== undefined ? matched.slice(0, maxItems) : matched;
+      const requestedMaxItems = maxItems ?? TEAM_MGMT_RENDERED_PROBLEM_LIMIT;
+      const effectiveMaxItems = Math.min(requestedMaxItems, TEAM_MGMT_RENDERED_PROBLEM_LIMIT);
+      const problems = matched.slice(0, effectiveMaxItems);
       const { active, resolved } = splitProblemsByLifecycle(problems);
       const filters: string[] = [];
       if (source !== undefined) filters.push(`source=\`${source}\``);
@@ -5591,6 +5702,7 @@ export const teamMgmtListProblemsTool: FuncTool = {
       if (problemId !== undefined) filters.push(`problem_id=\`${problemId}\``);
       filters.push(`status=\`${status}\``);
       if (maxItems !== undefined) filters.push(`max_items=\`${String(maxItems)}\``);
+      filters.push(`effective_max_items=\`${String(effectiveMaxItems)}\``);
       const header =
         language === 'zh' ? fmtHeader('Problems 查询结果') : fmtHeader('Problems Query');
       const summary =
@@ -5633,6 +5745,13 @@ export const teamMgmtListProblemsTool: FuncTool = {
             ? '当前没有匹配的问题。\n'
             : 'No matching problems.\n'
           : '';
+      const omittedMatched = Math.max(0, matched.length - problems.length);
+      const omittedBlock =
+        omittedMatched > 0
+          ? language === 'zh'
+            ? `（为避免输出过长，本次省略其余 ${omittedMatched} 条匹配问题；请改用 source/path/problem_id/max_items 缩小范围）\n`
+            : `(omitted ${omittedMatched} additional matching problem(s) to keep the output bounded; refine source/path/problem_id/max_items to inspect them)\n`
+          : '';
 
       const entries = problems.map((problem) => ({
         problem_id: problem.id,
@@ -5658,7 +5777,8 @@ export const teamMgmtListProblemsTool: FuncTool = {
           problems: entries,
         }).trimEnd(),
       );
-      const content = header + summary + emptyBlock + activeBlock + resolvedBlock + yamlBlock;
+      const content =
+        header + summary + omittedBlock + emptyBlock + activeBlock + resolvedBlock + yamlBlock;
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -5730,7 +5850,11 @@ export const teamMgmtClearProblemsTool: FuncTool = {
       if (filterPath !== undefined) filters.push(`path=\`${filterPath}\``);
       if (problemId !== undefined) filters.push(`problem_id=\`${problemId}\``);
       filters.push(`status=\`${status}\``);
-      const removedIds = before.slice(0, removedCount).map((problem) => `- ${problem.id}`);
+      const removedIds = before
+        .slice(0, removedCount)
+        .slice(0, TEAM_MGMT_REMOVED_PROBLEM_ID_LIMIT)
+        .map((problem) => `- ${problem.id}`);
+      const removedIdsOmitted = Math.max(0, removedCount - removedIds.length);
       const content =
         language === 'zh'
           ? fmtHeader('Problems 清理结果') +
@@ -5742,7 +5866,12 @@ export const teamMgmtClearProblemsTool: FuncTool = {
                 : '说明：你本次显式请求了 active/all 清理，请确认这符合预期。',
             ]) +
             (removedIds.length > 0
-              ? fmtSubHeader('已清理的问题') + removedIds.join('\n') + '\n'
+              ? fmtSubHeader('已清理的问题') +
+                removedIds.join('\n') +
+                '\n' +
+                (removedIdsOmitted > 0
+                  ? `（其余 ${removedIdsOmitted} 条已清理问题未逐条展开）\n`
+                  : '')
               : '')
           : fmtHeader('Problems Clear Result') +
             fmtList([
@@ -5753,7 +5882,12 @@ export const teamMgmtClearProblemsTool: FuncTool = {
                 : 'Note: this call explicitly requested active/all clearing; make sure that is what you intended.',
             ]) +
             (removedIds.length > 0
-              ? fmtSubHeader('Cleared Problems') + removedIds.join('\n') + '\n'
+              ? fmtSubHeader('Cleared Problems') +
+                removedIds.join('\n') +
+                '\n' +
+                (removedIdsOmitted > 0
+                  ? `(omitted ${removedIdsOmitted} additional cleared problem id(s))\n`
+                  : '')
               : '');
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {

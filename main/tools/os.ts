@@ -24,6 +24,7 @@ import type {
   ReminderUpdateResult,
   ToolArguments,
 } from '../tool';
+import { truncateToolOutputText } from './output-limit';
 
 // Scrolling buffer that maintains a fixed number of lines like a terminal
 class ScrollingBuffer {
@@ -626,12 +627,12 @@ function formatDaemonStatus(daemon: DaemonProcess, language: LanguageCode): stri
     ? language === 'zh'
       ? '（无输出）'
       : '(no output)'
-    : daemon.stdoutBuffer.getContent();
+    : truncateToolOutputText(daemon.stdoutBuffer.getContent(), { toolName: 'daemon_stdout' }).text;
   const stderrContent = daemon.stderrBuffer.isEmpty()
     ? language === 'zh'
       ? '（无 stderr 输出）'
       : '(no stderr output)'
-    : daemon.stderrBuffer.getContent();
+    : truncateToolOutputText(daemon.stderrBuffer.getContent(), { toolName: 'daemon_stderr' }).text;
   const fenceConsole = '```console';
   const fenceEnd = '```';
 
@@ -883,8 +884,12 @@ export const shellCmdTool: FuncTool = {
           scrollNotice = t.scrolledLinesNotice(scrolledLines);
         }
 
-        const stdoutContent = stdoutBuffer.getContent();
-        const stderrContent = stderrBuffer.getContent();
+        const stdoutContent = truncateToolOutputText(stdoutBuffer.getContent(), {
+          toolName: 'shell_cmd_stdout',
+        }).text;
+        const stderrContent = truncateToolOutputText(stderrBuffer.getContent(), {
+          toolName: 'shell_cmd_stderr',
+        }).text;
 
         const fenceConsole = '```console';
         const fenceEnd = '```';
@@ -1646,8 +1651,12 @@ export const readonlyShellTool: FuncTool = {
 
         let result = `${timeoutMsg}${truncationNotice}`.trimEnd();
 
-        const stdoutContent = stdoutBuffer.getContent();
-        const stderrContent = stderrBuffer.getContent();
+        const stdoutContent = truncateToolOutputText(stdoutBuffer.getContent(), {
+          toolName: 'readonly_shell_stdout',
+        }).text;
+        const stderrContent = truncateToolOutputText(stderrBuffer.getContent(), {
+          toolName: 'readonly_shell_stderr',
+        }).text;
 
         if (stdoutContent) {
           result += `\n\n${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}`;
@@ -1671,8 +1680,12 @@ export const readonlyShellTool: FuncTool = {
               : `\n⚠️  Output truncated; ~${omittedBytes} bytes omitted`
             : '';
 
-        const stdoutContent = stdoutBuffer.getContent();
-        const stderrContent = stderrBuffer.getContent();
+        const stdoutContent = truncateToolOutputText(stdoutBuffer.getContent(), {
+          toolName: 'readonly_shell_stdout',
+        }).text;
+        const stderrContent = truncateToolOutputText(stderrBuffer.getContent(), {
+          toolName: 'readonly_shell_stderr',
+        }).text;
 
         const fenceConsole = '```console';
         const fenceEnd = '```';
@@ -1799,7 +1812,9 @@ export const getDaemonOutputTool: FuncTool = {
 
     const buffer = stream === 'stdout' ? daemon.stdoutBuffer : daemon.stderrBuffer;
     const scrollInfo = buffer.getScrollInfo();
-    const content = buffer.getContent();
+    const content = truncateToolOutputText(buffer.getContent(), {
+      toolName: stream === 'stdout' ? 'get_daemon_output_stdout' : 'get_daemon_output_stderr',
+    }).text;
 
     const streamLabel = stream === 'stdout' ? 'stdout' : 'stderr';
     const fenceConsole = '```console';

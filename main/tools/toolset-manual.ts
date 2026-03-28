@@ -8,6 +8,8 @@ import { MANUAL_TOPICS, type ManualTopic } from './manual/spec';
 import { getToolsetMeta, listToolsets } from './registry';
 import { renderTeamMgmtGuideContent } from './team_mgmt';
 
+const MANUAL_OUTPUT_CHAR_LIMIT = 8_000;
+
 type ToolsetManualResult = {
   tools: FuncTool[];
   toolNames: string[];
@@ -35,10 +37,14 @@ export async function renderToolsetManualContent(
   input: RenderToolsetManualContentInput,
 ): Promise<string> {
   if (input.toolsetId === 'team_mgmt') {
-    return await renderTeamMgmtGuideViaManualRequest(input.language, {
-      topic: input.topic,
-      topics: input.topics,
-    });
+    return renderManualResult(
+      input.language,
+      input.toolsetId,
+      await renderTeamMgmtGuideViaManualRequest(input.language, {
+        topic: input.topic,
+        topics: input.topics,
+      }),
+    );
   }
 
   const rendered = renderToolsetManual({
@@ -52,11 +58,38 @@ export async function renderToolsetManualContent(
   });
 
   if (!rendered.foundToolset) {
-    return input.language === 'zh'
-      ? `未找到 toolset '${input.toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
-      : `Toolset '${input.toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`;
+    return renderManualResult(
+      input.language,
+      input.toolsetId,
+      input.language === 'zh'
+        ? `未找到 toolset '${input.toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
+        : `Toolset '${input.toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`,
+    );
   }
-  return rendered.content;
+  return renderManualResult(input.language, input.toolsetId, rendered.content);
+}
+
+function renderManualResult(language: LanguageCode, toolsetId: string, content: string): string {
+  if (content.length <= MANUAL_OUTPUT_CHAR_LIMIT) {
+    return content;
+  }
+  return language === 'zh'
+    ? [
+        '# Tool Manual',
+        '',
+        `当前请求的 \`${toolsetId}\` 手册内容过长（${content.length} chars），本次不直接截断正文，以免说明语义残缺。`,
+        '请按业务章节缩小范围后再读，例如只请求一个 topic，或改用更少的 topics。',
+        `示例：\`man({ "toolsetId": "${toolsetId}", "topic": "tools" })\``,
+        `示例：\`man({ "toolsetId": "${toolsetId}", "topics": ["principles","errors"] })\``,
+      ].join('\n')
+    : [
+        '# Tool Manual',
+        '',
+        `The requested manual content for \`${toolsetId}\` is too large (${content.length} chars). This tool does not hard-cut the prose body because that would damage the manual's meaning.`,
+        'Narrow the request by business section instead: ask for one topic, or a smaller set of topics.',
+        `Example: \`man({ "toolsetId": "${toolsetId}", "topic": "tools" })\``,
+        `Example: \`man({ "toolsetId": "${toolsetId}", "topics": ["principles","errors"] })\``,
+      ].join('\n');
 }
 
 function getToolsetDescription(language: LanguageCode, toolsetId: string): string {
@@ -225,7 +258,11 @@ function buildManTool(): FuncTool {
       }
 
       if (toolsetId === 'team_mgmt') {
-        return await renderTeamMgmtGuideViaMan(language, args);
+        return renderManualResult(
+          language,
+          toolsetId,
+          await renderTeamMgmtGuideViaMan(language, args),
+        );
       }
 
       const availableToolNames = new Set(

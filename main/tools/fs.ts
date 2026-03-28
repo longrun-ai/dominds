@@ -12,6 +12,11 @@ import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access
 import { log } from '../log';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../tool';
+import { truncateInlineText } from './output-limit';
+
+const LIST_DIR_MAX_RENDERED_ENTRIES = 120;
+const LIST_DIR_NAME_CHAR_LIMIT = 96;
+const LIST_DIR_TARGET_CHAR_LIMIT = 120;
 
 interface DirectoryEntry {
   name: string;
@@ -354,10 +359,20 @@ export const listDirTool: FuncTool = {
       if (data.length === 0) {
         markdown += labels.emptyDir;
       } else {
+        const shownEntries = data.slice(0, LIST_DIR_MAX_RENDERED_ENTRIES);
+        const omittedEntries = Math.max(0, data.length - shownEntries.length);
+
+        if (omittedEntries > 0) {
+          markdown +=
+            workLanguage === 'zh'
+              ? `⚠️ **说明：** 目录项过多；为避免输出过长，仅展示前 ${shownEntries.length} 项，省略 ${omittedEntries} 项。\n\n`
+              : `⚠️ **Note:** Directory contains many entries; to keep the output bounded, showing the first ${shownEntries.length} entries and omitting ${omittedEntries}.\n\n`;
+        }
+
         markdown += `| ${labels.table.name} | ${labels.table.type} | ${labels.table.size} | ${labels.table.lines} | ${labels.table.target} |\n`;
         markdown += '|------|------|------|-------|--------|\n';
 
-        for (const entry of data) {
+        for (const entry of shownEntries) {
           const typeIcon =
             entry.type === 'dir'
               ? '📁'
@@ -373,9 +388,12 @@ export const listDirTool: FuncTool = {
             entry.type === 'symlink' && entry.symlinkResolvedType
               ? ` (${entry.symlinkResolvedType})`
               : '';
-          const targetStr = entry.target ? `→ ${entry.target}${targetTypeStr}` : '-';
+          const renderedName = truncateInlineText(entry.name, LIST_DIR_NAME_CHAR_LIMIT);
+          const targetStr = entry.target
+            ? truncateInlineText(`→ ${entry.target}${targetTypeStr}`, LIST_DIR_TARGET_CHAR_LIMIT)
+            : '-';
 
-          markdown += `| ${typeIcon} \`${entry.name}\` | ${entry.type} | ${sizeStr} | ${linesStr} | ${targetStr} |\n`;
+          markdown += `| ${typeIcon} \`${renderedName}\` | ${entry.type} | ${sizeStr} | ${linesStr} | ${targetStr} |\n`;
         }
       }
 
