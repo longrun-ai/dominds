@@ -13,6 +13,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -27,14 +28,18 @@ async function main(): Promise<void> {
     const language = getWorkLanguage();
     const initialPrompt = 'Start a background tellask and wait for @pangu.';
     const tellaskBody = 'Please investigate in the background and report back later.';
-    const pendingSubdialogPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellaskSessionless',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      tellaskContent: tellaskBody,
+    const pendingSubdialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: tellaskBody,
+        language,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
       language,
-      collectiveTargets: ['pangu'],
     });
     const interjectPrompt = 'While waiting for @pangu, inspect one local env value.';
     const interjectFollowUp = 'I finished the local env check while @pangu is still pending.';
@@ -47,6 +52,7 @@ async function main(): Promise<void> {
       tellaskContent: tellaskBody,
       responseBody: delayedSubdialogResponse,
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
     });
     await writeMockDb(tmpRoot, [

@@ -18,6 +18,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -35,25 +36,33 @@ async function main(): Promise<void> {
     const updatedTrigger = 'Update the registered sideline while it is still running.';
     const updatedBody = 'Updated assignment';
 
-    const initialAssignmentPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      tellaskContent: initialBody,
+    const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: initialBody,
+        language,
+        sessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      sessionSlug,
-      collectiveTargets: ['pangu'],
     });
-    const updatedAssignmentPrompt = formatUpdatedAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      tellaskContent: updatedBody,
+    const updatedAssignmentPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatUpdatedAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: updatedBody,
+        language,
+        sessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      sessionSlug,
-      collectiveTargets: ['pangu'],
     });
     const expectedUpdatedResult = formatTellaskResponseContent({
       callName: 'tellask',
@@ -63,6 +72,7 @@ async function main(): Promise<void> {
       tellaskContent: updatedBody,
       responseBody: 'Updated assignment adopted.',
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
       sessionSlug,
     });

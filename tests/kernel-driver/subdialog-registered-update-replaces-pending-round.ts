@@ -18,6 +18,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -34,15 +35,19 @@ async function main(): Promise<void> {
     const initialBody = 'Initial assignment';
     const updatedTrigger = 'Update the registered sideline with newer requirements.';
 
-    const initialAssignmentPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      tellaskContent: initialBody,
+    const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: initialBody,
+        language,
+        sessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      sessionSlug,
-      collectiveTargets: ['pangu'],
     });
 
     await writeMockDb(tmpRoot, [
@@ -135,15 +140,19 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const expectedUpdatedPrompt = formatUpdatedAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      sessionSlug,
-      tellaskContent: 'Updated assignment',
+    const expectedUpdatedPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatUpdatedAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        sessionSlug,
+        tellaskContent: 'Updated assignment',
+        language,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      collectiveTargets: ['pangu'],
     });
     const subdialogEventsAfterUpdate = await DialogPersistence.loadCourseEvents(
       subdialog.id,

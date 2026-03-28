@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'yaml';
 
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
@@ -198,4 +199,29 @@ export function listTellaskResultContents(msgs: ChatMessage[]): string[] {
       return msg.type === 'tellask_result_msg';
     })
     .map((msg) => msg.content);
+}
+
+export function wrapPromptWithExpectedReplyTool(args: {
+  prompt: string;
+  expectedReplyToolName?: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  language: LanguageCode;
+}): string {
+  if (!args.expectedReplyToolName) {
+    return args.prompt;
+  }
+  const activePrefix =
+    args.language === 'zh' ? '[Dominds 当前回复工具]' : '[Dominds active reply tool]';
+  const note =
+    args.language === 'zh'
+      ? [
+          activePrefix,
+          `当前这轮若完成交付，精确应调用 \`${args.expectedReplyToolName}\`。`,
+          '不要自己判断该选哪个 `reply*`；以上述函数名为准。',
+        ].join('\n')
+      : [
+          activePrefix,
+          `If this round is ready for final delivery, the exact reply tool is \`${args.expectedReplyToolName}\`.`,
+          'Do not decide among `reply*` variants by yourself; follow that exact function name.',
+        ].join('\n');
+  return `${note}\n\n${args.prompt}`;
 }

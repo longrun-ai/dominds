@@ -9,6 +9,7 @@ import {
   createRootDialog,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -26,15 +27,19 @@ async function main(): Promise<void> {
     const language = getWorkLanguage();
     const followUpAnswer = 'I finished the local env check while @pangu is still pending.';
 
-    const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: ['@pangu'],
-      tellaskContent: tellaskBody,
+    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: tellaskBody,
+        language,
+        sessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      sessionSlug,
-      collectiveTargets: ['pangu'],
     });
 
     await writeMockDb(tmpRoot, [

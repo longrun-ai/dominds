@@ -14,6 +14,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -42,15 +43,19 @@ async function main(): Promise<void> {
     const sessionSlug = 'sticky-session';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellask',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList,
-      tellaskContent: tellaskBody,
+    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList,
+        tellaskContent: tellaskBody,
+        language,
+        sessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
       language,
-      sessionSlug,
-      collectiveTargets: ['pangu'],
     });
     const subdialogFinalResponse = '2';
     const mirroredSubdialogResponse = formatTellaskResponseContent({
@@ -61,6 +66,7 @@ async function main(): Promise<void> {
       tellaskContent: tellaskBody,
       responseBody: subdialogFinalResponse,
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
       sessionSlug,
     });

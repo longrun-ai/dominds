@@ -14,6 +14,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -28,14 +29,18 @@ async function main(): Promise<void> {
     const tellaskBody = 'Please compute 1+1.\nReturn only the number.';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellaskSessionless',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList,
-      tellaskContent: tellaskBody,
+    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList,
+        tellaskContent: tellaskBody,
+        language,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
       language,
-      collectiveTargets: ['pangu'],
     });
 
     const subdialogResponseText = '2';
@@ -47,6 +52,7 @@ async function main(): Promise<void> {
       tellaskContent: tellaskBody,
       responseBody: subdialogResponseText,
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
     });
     const rootResumeResponse =

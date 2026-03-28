@@ -13,6 +13,7 @@ import {
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
+  wrapPromptWithExpectedReplyTool,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
@@ -32,27 +33,35 @@ async function main(): Promise<void> {
       'Please solve 1+1 and continue if needed.\nReturn your current best result.';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellaskSessionless',
-      fromAgentId: 'tester',
-      toAgentId: 'pangu',
-      mentionList: rootMentionList,
-      tellaskContent: rootTellaskBody,
+    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: rootMentionList,
+        tellaskContent: rootTellaskBody,
+        language,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
       language,
-      collectiveTargets: ['pangu'],
     });
 
     const panguFirstResponse = 'Current best result is 2.';
     const panguMentionList = ['@coder'];
     const panguTellaskBody = 'Please verify that 1+1 equals 2.\nReply with exactly `2` if correct.';
-    const expectedCoderPrompt = formatAssignmentFromSupdialog({
-      callName: 'tellaskSessionless',
-      fromAgentId: 'pangu',
-      toAgentId: 'coder',
-      mentionList: panguMentionList,
-      tellaskContent: panguTellaskBody,
+    const expectedCoderPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromSupdialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'pangu',
+        toAgentId: 'coder',
+        mentionList: panguMentionList,
+        tellaskContent: panguTellaskBody,
+        language,
+        collectiveTargets: ['coder'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
       language,
-      collectiveTargets: ['coder'],
     });
     const coderReply = '2';
     const expectedCoderInjected = formatTeammateResponseContent({
@@ -63,6 +72,7 @@ async function main(): Promise<void> {
       tellaskContent: panguTellaskBody,
       responseBody: coderReply,
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
     });
     const panguFinalResponse = 'Verified. Final answer remains 2.';
@@ -74,6 +84,7 @@ async function main(): Promise<void> {
       tellaskContent: rootTellaskBody,
       responseBody: panguFinalResponse,
       status: 'completed',
+      deliveryMode: 'direct_fallback',
       language,
     });
 
