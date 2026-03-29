@@ -126,6 +126,18 @@ export namespace Team {
           '.minds/team.yaml 警告：$1 使用了带标签项的 YAML 列表。',
         ],
         [
+          /Warning in \.minds\/team\.yaml: (.+?) is null and will be ignored\./g,
+          '.minds/team.yaml 警告：$1 为 null，将被忽略。',
+        ],
+        [
+          /Warning in \.minds\/team\.yaml: (.+?) is invalid and will be ignored\./g,
+          '.minds/team.yaml 警告：$1 无效，将被忽略。',
+        ],
+        [
+          /Warning in \.minds\/team\.yaml: (.+?) sets both (.+?) and (.+?); (.+?) will be ignored\./g,
+          '.minds/team.yaml 警告：$1 同时设置了 $2 和 $3；将忽略 $4。',
+        ],
+        [
           /(.+?) is allowed as string\|string\[\]\|Record<string,string>\./g,
           '$1 允许使用 string|string[]|Record<string,string>。',
         ],
@@ -142,6 +154,22 @@ export namespace Team {
           'object key 完全 freeform，没有固定必填 key。',
         ],
         [/The current YAML list form is still accepted\./g, '当前 YAML list 形式仍然允许。'],
+        [
+          /uses YAML null\. Dominds treats this as "unset" and ignores it; delete the field or provide /g,
+          '使用了 YAML null。Dominds 会把它当作“未设置”并忽略；请删除该字段，或提供 ',
+        ],
+        [
+          /uses YAML null\. Dominds treats this as "unset" and ignores it; delete the field or provide a valid value if you want it to take effect\./g,
+          '使用了 YAML null。Dominds 会把它当作“未设置”并忽略；请删除该字段，或在需要生效时提供合法值。',
+        ],
+        [
+          /This field is optional for loading the member\. Dominds ignores the invalid value and keeps the member usable; fix or delete it\./g,
+          '该字段对成员加载而言是可选的。Dominds 会忽略这个无效值并保持成员可用；请修复或删除它。',
+        ],
+        [
+          /Both (.+?) and (.+?) are set\. Dominds keeps (.+?) and ignores (.+?); remove one for clarity\./g,
+          '$1 和 $2 同时被设置。Dominds 会保留 $3 并忽略 $4；请删除其中一个以免歧义。',
+        ],
         [/Invalid \.minds\/team\.yaml:/g, '无效的 .minds/team.yaml：'],
         [/Failed to parse \.minds\/team\.yaml\./g, '解析 .minds/team.yaml 失败。'],
         [/Failed to load \.minds\/team\.yaml\./g, '加载 .minds/team.yaml 失败。'],
@@ -1265,13 +1293,14 @@ export namespace Team {
     const def = team.getDefaultResponder();
     team.defaultResponder = def ? def.id : 'fuxi';
 
-    // Shell specialists policy is fail-open at runtime but must surface errors to Problems panel.
+    // Shell specialists policy must not make Team.load() fail, but it still surfaces Problems and
+    // may leave specific members without shell capability until the config is fixed.
     enforceShellSpecialistsPolicy(team);
     // If member_defaults provider/model are missing after parsing, try to recover from llm.yaml.
     try {
       await applyBootstrapMemberDefaults(md);
     } catch (err: unknown) {
-      // Fail open: Team must remain usable even if llm.yaml cannot be loaded.
+      // Keep loading the Team object even if llm.yaml recovery fails.
       log.warn(
         `Failed to recover missing member_defaults provider/model from llm config: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -1300,7 +1329,8 @@ export namespace Team {
     }
 
     // Validate provider/model bindings (models must exist under the selected provider's models list).
-    // Fail-open: always keep Team usable; publish config errors to Problems panel.
+    // Keep publishing Problems without crashing Team.load(), but strict parsing above may still omit
+    // specific broken members.
     await validateResolvedProviderModelBindings(team, md);
     await validateMemberToolsetBindings(team, md);
     validateRoutingCardShapeWarnings(team, md);
@@ -1684,6 +1714,142 @@ export namespace Team {
     sanitizeList('write_dirs');
   }
 
+  function normalizeSoftOptionalMemberFields(
+    pushIssue: (
+      id: string,
+      message: string,
+      errorText: string,
+      severity?: 'error' | 'warning',
+    ) => void,
+    idPrefix: string,
+    atPrefix: string,
+    raw: Record<string, unknown>,
+  ): Record<string, unknown> {
+    let normalized: Record<string, unknown> | undefined;
+
+    const getCurrent = (): Record<string, unknown> => normalized ?? raw;
+    const ensureNormalized = (): Record<string, unknown> => {
+      if (normalized === undefined) normalized = { ...raw };
+      return normalized;
+    };
+    const dropField = (field: string): void => {
+      const current = getCurrent();
+      if (!hasOwnKey(current, field)) return;
+      delete ensureNormalized()[field];
+    };
+    const warnNullField = (field: string): void => {
+      pushIssue(
+        `${idPrefix}/${sanitizeProblemIdSegment(field)}/null_ignored`,
+        `Warning in .minds/team.yaml: ${atPrefix}.${field} is null and will be ignored.`,
+        `${atPrefix}.${field} uses YAML null. Dominds treats this as "unset" and ignores it; delete the field or provide a valid value if you want it to take effect.`,
+        'warning',
+      );
+    };
+    const warnInvalidField = (field: string, errorText: string): void => {
+      pushIssue(
+        `${idPrefix}/${sanitizeProblemIdSegment(field)}/invalid_ignored`,
+        `Warning in .minds/team.yaml: ${atPrefix}.${field} is invalid and will be ignored.`,
+        `${errorText}\nThis field is optional for loading the member. Dominds ignores the invalid value and keeps the member usable; fix or delete it.`,
+        'warning',
+      );
+    };
+    const warnAliasConflict = (
+      preferredField: 'fbr-effort' | 'diligence-push-max',
+      ignoredField: 'fbr_effort' | 'diligence_push_max',
+    ): void => {
+      pushIssue(
+        `${idPrefix}/${sanitizeProblemIdSegment(preferredField)}/alias_conflict_ignored`,
+        `Warning in .minds/team.yaml: ${atPrefix} sets both ${preferredField} and ${ignoredField}; ${ignoredField} will be ignored.`,
+        `Both ${atPrefix}.${preferredField} and ${atPrefix}.${ignoredField} are set. Dominds keeps ${atPrefix}.${preferredField} and ignores ${atPrefix}.${ignoredField}; remove one for clarity.`,
+        'warning',
+      );
+    };
+    const validateFbrEffort = (value: unknown, at: string): void => {
+      const effort = requireDefined(asOptionalNumber(value, at), at);
+      if (!Number.isInteger(effort)) {
+        throw new Error(`Invalid ${at}: expected an integer (got ${effort}).`);
+      }
+      if (effort < 0) {
+        throw new Error(`Invalid ${at}: expected >= 0 (got ${effort}).`);
+      }
+      if (effort > 100) {
+        throw new Error(`Invalid ${at}: expected <= 100 (got ${effort}).`);
+      }
+    };
+    const validateOptionalField = (
+      field: string,
+      validate: (value: unknown, at: string) => void,
+    ): void => {
+      const current = getCurrent();
+      if (!hasOwnKey(current, field)) return;
+      const value = current[field];
+      if (value === null) {
+        dropField(field);
+        warnNullField(field);
+        return;
+      }
+      try {
+        validate(value, `${atPrefix}.${field}`);
+      } catch (err: unknown) {
+        dropField(field);
+        warnInvalidField(field, asErrorText(err));
+      }
+    };
+
+    if (hasOwnKey(getCurrent(), 'fbr-effort') && hasOwnKey(getCurrent(), 'fbr_effort')) {
+      dropField('fbr_effort');
+      warnAliasConflict('fbr-effort', 'fbr_effort');
+    }
+    if (
+      hasOwnKey(getCurrent(), 'diligence-push-max') &&
+      hasOwnKey(getCurrent(), 'diligence_push_max')
+    ) {
+      dropField('diligence_push_max');
+      warnAliasConflict('diligence-push-max', 'diligence_push_max');
+    }
+
+    validateOptionalField('name', (value, at) => {
+      requireDefined(asOptionalString(value, at), at);
+    });
+    validateOptionalField('gofor', (value, at) => {
+      requireDefined(asOptionalGofor(value, at), at);
+    });
+    validateOptionalField('nogo', (value, at) => {
+      requireDefined(asOptionalGofor(value, at), at);
+    });
+    validateOptionalField('toolsets', (value, at) => {
+      requireDefined(asOptionalStringArray(value, at), at);
+    });
+    validateOptionalField('tools', (value, at) => {
+      requireDefined(asOptionalStringArray(value, at), at);
+    });
+    validateOptionalField('model_params', (value, at) => {
+      requireDefined(asOptionalModelParams(value, at), at);
+    });
+    validateOptionalField('fbr-effort', validateFbrEffort);
+    validateOptionalField('fbr_effort', validateFbrEffort);
+    validateOptionalField('fbr_model_params', (value, at) => {
+      requireDefined(asOptionalModelParams(value, at), at);
+    });
+    validateOptionalField('diligence-push-max', (value, at) => {
+      requireDefined(asOptionalNumber(value, at), at);
+    });
+    validateOptionalField('diligence_push_max', (value, at) => {
+      requireDefined(asOptionalNumber(value, at), at);
+    });
+    validateOptionalField('icon', (value, at) => {
+      requireDefined(asOptionalString(value, at), at);
+    });
+    validateOptionalField('streaming', (value, at) => {
+      requireDefined(asOptionalBoolean(value, at), at);
+    });
+    validateOptionalField('hidden', (value, at) => {
+      requireDefined(asOptionalBoolean(value, at), at);
+    });
+
+    return normalized ?? raw;
+  }
+
   function parseMemberOverrides(
     rv: Record<string, unknown>,
     at: string,
@@ -2038,13 +2204,19 @@ export namespace Team {
           `Invalid member_defaults: expected an object (got ${describeValueType(rawMemberDefaults)})`,
         );
       } else {
-        validateCommonModelParamMisplacements(
+        const normalizedMemberDefaults = normalizeSoftOptionalMemberFields(
           pushIssue,
           'member_defaults',
           'member_defaults',
           rawMemberDefaults,
         );
-        const parsedMd = parseMemberOverrides(rawMemberDefaults, 'member_defaults');
+        validateCommonModelParamMisplacements(
+          pushIssue,
+          'member_defaults',
+          'member_defaults',
+          normalizedMemberDefaults,
+        );
+        const parsedMd = parseMemberOverrides(normalizedMemberDefaults, 'member_defaults');
         if (parsedMd.kind === 'ok') {
           sanitizeAllowListsForBuiltinScopes(
             pushIssue,
@@ -2134,7 +2306,8 @@ export namespace Team {
       }
 
       // Cross-app teammate reference (v0): members.<id>.from + (use|import).
-      // Fail-open: surface Problems, but keep Team usable.
+      // Surface Problems without crashing Team.load(); unresolved references keep loading other
+      // members, but this member can still be omitted later if strict fields remain invalid.
       const effectiveRaw: Record<string, unknown> = (() => {
         const memberObj = raw;
         const hasFrom = hasOwnKey(memberObj, 'from');
@@ -2229,10 +2402,21 @@ export namespace Team {
         }
         return merged;
       })();
+      const normalizedEffectiveRaw = normalizeSoftOptionalMemberFields(
+        pushIssue,
+        `members/${idSeg}`,
+        memberAt,
+        effectiveRaw,
+      );
 
-      validateCommonModelParamMisplacements(pushIssue, `members/${idSeg}`, memberAt, effectiveRaw);
+      validateCommonModelParamMisplacements(
+        pushIssue,
+        `members/${idSeg}`,
+        memberAt,
+        normalizedEffectiveRaw,
+      );
 
-      const parsedMember = parseMemberOverrides(effectiveRaw, memberAt);
+      const parsedMember = parseMemberOverrides(normalizedEffectiveRaw, memberAt);
       if (parsedMember.kind === 'error') {
         pushIssue(
           `members/${idSeg}`,

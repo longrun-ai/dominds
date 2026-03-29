@@ -34,6 +34,7 @@ async function main(): Promise<void> {
         '    toolsets: [ws_read]',
         '  bob:',
         '    name: 123',
+        '    provider: 123',
         '    toolsets: ws_read',
         '  charlie: "oops"',
         '',
@@ -70,8 +71,7 @@ async function main(): Promise<void> {
 
     const bobProblem = snapshot.problems.find((p) => p.id === 'team/team_yaml_error/members/bob');
     assert.ok(bobProblem && bobProblem.kind === 'team_workspace_config_error');
-    assert.ok(bobProblem.detail.errorText.includes('members.bob.name'));
-    assert.ok(bobProblem.detail.errorText.includes('members.bob.toolsets'));
+    assert.ok(bobProblem.detail.errorText.includes('members.bob.provider'));
 
     const charlieProblem = snapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/charlie',
@@ -160,15 +160,16 @@ async function main(): Promise<void> {
 
     const teamWebSearch = await Team.load();
     assert.equal(
-      teamWebSearch.getMember('alice'),
+      teamWebSearch.getMember('alice')?.model_params,
       undefined,
-      'alice should be omitted due to invalid codex web_search mode',
+      'invalid codex web_search mode should cause model_params to be ignored',
     );
     const snapshotWebSearch = getProblemsSnapshot();
     const aliceProblem = snapshotWebSearch.problems.find(
-      (p) => p.id === 'team/team_yaml_error/members/alice',
+      (p) => p.id === 'team/team_yaml_error/members/alice/model_params/invalid_ignored',
     );
     assert.ok(aliceProblem && aliceProblem.kind === 'team_workspace_config_error');
+    assert.equal(aliceProblem.severity, 'warning');
     assert.ok(
       aliceProblem.detail.errorText.includes('members.alice.model_params.codex.web_search'),
     );
@@ -276,7 +277,7 @@ async function main(): Promise<void> {
 
     // shell_specialists policy:
     // - must list the only members allowed to have shell tools
-    // - should surface misconfig as Problems (fail-open runtime)
+    // - should surface misconfig as Problems without breaking Team.load()
     // - at runtime, non-specialists must not receive shell tools
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
@@ -472,6 +473,137 @@ async function main(): Promise<void> {
           p.id !== 'team/team_yaml_error/members/bullety/gofor/prefer_object_for_labeled_entries',
       ),
       'plain gofor bullet lists should not warn',
+    );
+
+    // Optional routing-card fields set to YAML null should warn but must not drop the member.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: stub',
+        '  model: fake_model',
+        'default_responder: mentor',
+        'members:',
+        '  mentor:',
+        '    name: Mentor',
+        '    nogo: null',
+        '',
+      ].join('\n'),
+    );
+
+    const nullRoutingTeam = await Team.load();
+    assert.ok(nullRoutingTeam.getMember('mentor'), 'mentor should still be loaded');
+    assert.equal(
+      nullRoutingTeam.getMember('mentor')?.nogo,
+      undefined,
+      'null nogo should be ignored as unset',
+    );
+    const mentorMinds = await loadAgentMinds('mentor');
+    assert.equal(mentorMinds.agent.id, 'mentor', 'mentor should remain selectable for dialogs');
+
+    const nullRoutingSnapshot = getProblemsSnapshot();
+    const nullRoutingWarning = nullRoutingSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/mentor/nogo/null_ignored',
+    );
+    assert.ok(
+      nullRoutingWarning && nullRoutingWarning.kind === 'team_workspace_config_error',
+      'null nogo should surface a warning problem',
+    );
+    assert.equal(nullRoutingWarning.severity, 'warning');
+    assert.equal(
+      nullRoutingWarning.messageI18n?.en,
+      'Warning in .minds/team.yaml: members.mentor.nogo is null and will be ignored.',
+    );
+    assert.equal(
+      nullRoutingWarning.messageI18n?.zh,
+      '.minds/team.yaml 警告：members.mentor.nogo 为 null，将被忽略。',
+    );
+    assert.ok(
+      nullRoutingWarning.detail.errorText.includes(
+        'members.mentor.nogo uses YAML null. Dominds treats this as "unset" and ignores it;',
+      ),
+      'warning detail should explain the ignore-as-unset behavior',
+    );
+
+    // Optional display/tuning/tooling fields with bad values should warn and be ignored rather
+    // than dropping the member.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: stub',
+        '  model: fake_model',
+        '  fbr-effort: slow',
+        '  icon: {}',
+        'default_responder: helper',
+        'members:',
+        '  helper:',
+        '    name: 123',
+        '    toolsets: ws_read',
+        '    tools: shell_cmd',
+        '    model_params: nope',
+        '    fbr_model_params: nope',
+        '    diligence-push-max: nope',
+        '    streaming: nope',
+        '    hidden: nope',
+        '    icon: [robot]',
+        '',
+      ].join('\n'),
+    );
+
+    const softenedTeam = await Team.load();
+    const helper = softenedTeam.getMember('helper');
+    assert.ok(helper, 'helper should still be loaded');
+    assert.equal(helper?.name, 'helper', 'invalid name should fall back to member id');
+    assert.equal(helper?.toolsets, undefined, 'invalid toolsets should be ignored');
+    assert.equal(helper?.tools, undefined, 'invalid tools should be ignored');
+    assert.equal(helper?.model_params, undefined, 'invalid model_params should be ignored');
+    assert.equal(
+      helper?.fbr_model_params?.codex?.web_search,
+      'disabled',
+      'invalid fbr_model_params should fall back to inherited defaults',
+    );
+    assert.equal(helper?.diligence_push_max, undefined, 'invalid diligence cap should be ignored');
+    assert.equal(helper?.streaming, undefined, 'invalid streaming should be ignored');
+    assert.equal(helper?.hidden, undefined, 'invalid hidden should be ignored');
+    assert.equal(helper?.icon, undefined, 'invalid icon should be ignored');
+    assert.equal(
+      softenedTeam.memberDefaults.fbr_effort,
+      3,
+      'invalid member_defaults fbr-effort should preserve bootstrap default',
+    );
+    assert.equal(
+      softenedTeam.memberDefaults.icon,
+      undefined,
+      'invalid member_defaults icon should be ignored',
+    );
+    const helperMinds = await loadAgentMinds('helper');
+    assert.equal(helperMinds.agent.id, 'helper', 'helper should remain selectable for dialogs');
+
+    const softenedSnapshot = getProblemsSnapshot();
+    const expectedSoftWarnings = [
+      'team/team_yaml_error/member_defaults/fbr-effort/invalid_ignored',
+      'team/team_yaml_error/member_defaults/icon/invalid_ignored',
+      'team/team_yaml_error/members/helper/name/invalid_ignored',
+      'team/team_yaml_error/members/helper/toolsets/invalid_ignored',
+      'team/team_yaml_error/members/helper/tools/invalid_ignored',
+      'team/team_yaml_error/members/helper/model_params/invalid_ignored',
+      'team/team_yaml_error/members/helper/fbr_model_params/invalid_ignored',
+      'team/team_yaml_error/members/helper/diligence-push-max/invalid_ignored',
+      'team/team_yaml_error/members/helper/streaming/invalid_ignored',
+      'team/team_yaml_error/members/helper/hidden/invalid_ignored',
+      'team/team_yaml_error/members/helper/icon/invalid_ignored',
+    ];
+    for (const problemId of expectedSoftWarnings) {
+      const problem = softenedSnapshot.problems.find((p) => p.id === problemId);
+      assert.ok(problem, `expected warning problem ${problemId}`);
+      assert.equal(problem?.severity, 'warning');
+    }
+    assert.ok(
+      softenedSnapshot.problems.every((p) => p.id !== 'team/team_yaml_error/members/helper'),
+      'soft-invalid optional fields should not escalate into a member-dropping error',
     );
 
     console.log('✅ team-yaml-parsing tests passed');

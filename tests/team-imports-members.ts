@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   try {
     process.chdir(tmpRoot);
 
-    // Case 1: use+import conflict should be surfaced (fail-open).
+    // Case 1: use+import conflict should be surfaced without breaking Team.load().
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),

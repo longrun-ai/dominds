@@ -3472,7 +3472,7 @@ function renderTeamManual(language: LanguageCode): string {
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
         '重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。',
-        '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
+        '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示。这个问题不会让整个 Team.load() 崩掉，但相关成员可能缺少 shell 能力，仍应修复。',
 
         '风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。',
 
@@ -5288,8 +5288,8 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
         throw err;
       }
 
-      // Team.load() is fail-open (always returns a usable team) and publishes any team.yaml issues
-      // to the Problems panel.
+      // Team.load() keeps returning a Team object and publishes team.yaml issues to the Problems
+      // panel, but strict member errors can still omit specific members.
       await Team.load();
 
       // Non-blocking style lint (keeps team.yaml readable).
@@ -5391,7 +5391,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
           ? fmtHeader('team.yaml 校验失败') +
             fmtList([
               `\`${TEAM_YAML_REL}\`：❌ 检测到 ${activeTeamProblems.length} 个进行中的问题（详见 Problems 面板）`,
-              '说明：坏的成员配置可能会在运行时被跳过或在使用时失败（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
+              '说明：无效的可选字段可能会被忽略并给 warning；更严格的成员配置错误仍可能让该成员被跳过或在使用时失败，但不会让整个 Team.load() 崩掉。你仍应立即修复以免行为偏离预期。',
               ...followUpLines,
             ]) +
             fmtSubHeader('进行中的问题') +
@@ -5405,7 +5405,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
           : fmtHeader('team.yaml Validation Failed') +
             fmtList([
               `\`${TEAM_YAML_REL}\`: ❌ ${activeTeamProblems.length} active issue(s) detected (see Problems panel)`,
-              'Note: invalid member configs may be omitted at runtime or fail when used (to keep the Team usable), but you should fix them immediately.',
+              'Note: invalid optional fields may be ignored with warnings; stricter member config errors can still omit that member or fail when used, but they should not crash Team.load(). Fix them immediately.',
               ...followUpLines,
             ]) +
             fmtSubHeader('Active Problems') +
