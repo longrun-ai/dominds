@@ -655,15 +655,7 @@ async function restartServerNow(
       parsed.invalidServers,
       parsed.serverIdsInYamlOrder,
     );
-    upsertProblem({
-      kind: 'mcp_server_error',
-      source: 'mcp',
-      id: `${problemPrefixForServer(serverId)}server_error`,
-      severity: 'error',
-      timestamp: formatUnifiedTimestamp(new Date()),
-      message: `MCP server '${serverId}' failed to parse config`,
-      detail: { serverId, errorText: invalid.errorText },
-    });
+    upsertMcpServerConfigInvalidProblem(serverId, invalid.errorText);
     return { ok: false, errorText: invalid.errorText };
   }
 
@@ -687,15 +679,7 @@ async function restartServerNow(
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
     upsertDeclaredServerRuntimeError(serverId, res.errorText);
-    upsertProblem({
-      kind: 'mcp_server_error',
-      source: 'mcp',
-      id: `${problemPrefixForServer(serverId)}server_error`,
-      severity: 'error',
-      timestamp: formatUnifiedTimestamp(new Date()),
-      message: `MCP server '${serverId}' failed to (re)start`,
-      detail: { serverId, errorText: res.errorText },
-    });
+    upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText);
     return { ok: false, errorText: res.errorText };
   }
 
@@ -728,6 +712,30 @@ function upsertWorkspaceConfigProblem(errorText: string): void {
 
 function clearWorkspaceConfigProblem(): void {
   removeProblemsByPrefix('mcp/workspace_config_error');
+}
+
+function upsertMcpServerConfigInvalidProblem(serverId: string, errorText: string): void {
+  upsertProblem({
+    kind: 'mcp_server_error',
+    source: 'mcp',
+    id: `${problemPrefixForServer(serverId)}server_error`,
+    severity: 'error',
+    timestamp: formatUnifiedTimestamp(new Date()),
+    message: `MCP server '${serverId}' failed to parse config`,
+    detail: { serverId, errorText },
+  });
+}
+
+function upsertMcpServerRuntimeUnavailableProblem(serverId: string, errorText: string): void {
+  upsertProblem({
+    kind: 'mcp_server_error',
+    source: 'mcp',
+    id: `${problemPrefixForServer(serverId)}server_error`,
+    severity: 'info',
+    timestamp: formatUnifiedTimestamp(new Date()),
+    message: `MCP server '${serverId}' is currently unavailable`,
+    detail: { serverId, errorText },
+  });
 }
 
 function upsertMcpToolCallProblem(args: {
@@ -805,15 +813,7 @@ async function applyWorkspaceConfig(
 
   // Surface invalid server config errors (while keeping last-known-good runtimes registered).
   for (const s of invalidServers) {
-    upsertProblem({
-      kind: 'mcp_server_error',
-      source: 'mcp',
-      id: `${problemPrefixForServer(s.serverId)}server_error`,
-      severity: 'error',
-      timestamp: formatUnifiedTimestamp(new Date()),
-      message: `MCP server '${s.serverId}' failed to parse config`,
-      detail: { serverId: s.serverId, errorText: s.errorText },
-    });
+    upsertMcpServerConfigInvalidProblem(s.serverId, s.errorText);
   }
 
   // Apply desired servers independently (deterministic order).
@@ -830,15 +830,7 @@ async function applyWorkspaceConfig(
       if (!res.ok) {
         upsertDeclaredServerRuntimeError(serverId, res.errorText);
         // Keep last-known-good registration, but surface per-server error.
-        upsertProblem({
-          kind: 'mcp_server_error',
-          source: 'mcp',
-          id: `${problemPrefixForServer(serverId)}server_error`,
-          severity: 'error',
-          timestamp: formatUnifiedTimestamp(new Date()),
-          message: `MCP server '${serverId}' failed to (re)load`,
-          detail: { serverId, errorText: res.errorText },
-        });
+        upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText);
         continue;
       }
 
