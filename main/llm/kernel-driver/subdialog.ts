@@ -548,8 +548,9 @@ export async function supplyResponseToSupdialog(args: {
           waitInQue: true,
           driveOptions: {
             suppressDiligencePush: parentDialog.disableDiligencePush,
-            resolvedPendingTellaskReply: {
+            noPromptSubdialogResumeEntitlement: {
               ownerDialogId: parentDialog.id.selfId,
+              reason: 'resolved_pending_subdialog_reply',
               subdialogId: subdialogId.selfId,
               callType,
               callId: resolvedCallId,

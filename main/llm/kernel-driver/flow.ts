@@ -32,6 +32,10 @@ import {
 } from './context-health';
 import { driveDialogStreamCore } from './drive';
 import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
+import {
+  buildReplyObligationReassertionPrompt,
+  resolvePromptReplyGuidance,
+} from './reply-guidance';
 import type { ScheduleDriveFn, SubdialogReplyTarget } from './subdialog';
 import {
   supplySubdialogResponseToAssignedCallerIfPendingV2,
@@ -167,11 +171,11 @@ async function loadPendingDiagnosticsSnapshot(args: {
   }
 }
 
-function hasResolvedPendingTellaskReplyEntitlement(
+function hasNoPromptSubdialogResumeEntitlement(
   dialog: SubDialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
-  const entitlement = driveOptions?.resolvedPendingTellaskReply;
+  const entitlement = driveOptions?.noPromptSubdialogResumeEntitlement;
   if (!entitlement) {
     return false;
   }
@@ -328,7 +332,7 @@ async function inspectNoPromptSubdialogDrive(args: {
     latest?.executionMarker?.kind === 'interrupted';
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
-    hasResolvedPendingTellaskReplyEntitlement(args.dialog, args.driveOptions);
+    hasNoPromptSubdialogResumeEntitlement(args.dialog, args.driveOptions);
   if (lastEvent?.type === 'tellask_call_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
@@ -358,19 +362,57 @@ async function inspectNoPromptSubdialogDrive(args: {
   };
 }
 
-function resolveEffectivePrompt(
+async function maybeResolveDeferredReplyReassertionPrompt(
+  dialog: KernelDriverDriveArgs[0],
+): Promise<KernelDriverHumanPrompt | undefined> {
+  const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
+    dialog.id,
+    dialog.status,
+  );
+  if (!deferredReplyReassertion) {
+    return undefined;
+  }
+  const activeDirective = await loadLatestActiveTellaskReplyDirective(dialog);
+  if (
+    !activeDirective ||
+    activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
+  ) {
+    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+    return undefined;
+  }
+  await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+  const language = getWorkLanguage();
+  return {
+    content: buildReplyObligationReassertionPrompt({
+      directive: deferredReplyReassertion.directive,
+      language,
+    }),
+    msgId: generateShortId(),
+    grammar: 'markdown',
+    origin: 'runtime',
+    userLanguageCode: language,
+    tellaskReplyDirective: deferredReplyReassertion.directive,
+  };
+}
+
+async function resolveEffectivePrompt(
   dialog: KernelDriverDriveArgs[0],
   humanPrompt?: KernelDriverHumanPrompt,
-): Readonly<{
-  prompt: KernelDriverHumanPrompt | undefined;
-  fromUpNext: boolean;
-}> {
+): Promise<
+  Readonly<{
+    prompt: KernelDriverHumanPrompt | undefined;
+    fromUpNext: boolean;
+  }>
+> {
   if (humanPrompt) {
     return { prompt: humanPrompt, fromUpNext: false };
   }
   const upNext = dialog.peekUpNext() as UpNextPrompt | undefined;
   if (!upNext) {
-    return { prompt: undefined, fromUpNext: false };
+    return {
+      prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
+      fromUpNext: false,
+    };
   }
   return {
     fromUpNext: true,
@@ -625,7 +667,7 @@ export async function executeDriveRound(args: {
       healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
         ? undefined
         : (healthPrompt ?? humanPrompt);
-    const resolvedPrompt = resolveEffectivePrompt(dialog, promptForCore);
+    const resolvedPrompt = await resolveEffectivePrompt(dialog, promptForCore);
     const effectivePrompt = resolvedPrompt.prompt;
     await applyRegisteredDialogRunControlsBeforeDrive({
       dialog,
@@ -643,9 +685,11 @@ export async function executeDriveRound(args: {
       }
     }
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
-    activeTellaskReplyDirective =
-      effectivePrompt?.tellaskReplyDirective ??
-      (await loadLatestActiveTellaskReplyDirective(dialog));
+    const replyGuidance = await resolvePromptReplyGuidance({
+      dlg: dialog,
+      prompt: effectivePrompt,
+    });
+    activeTellaskReplyDirective = replyGuidance.activeReplyDirective;
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);

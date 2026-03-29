@@ -38,6 +38,7 @@ import type {
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallingCourseNumber,
+  DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogLatestFile,
   DialogMetadataFile,
@@ -615,6 +616,52 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (fbrState === null) return null;
 
+  const deferredReplyReassertionRaw = (value as Record<string, unknown>).deferredReplyReassertion;
+  const deferredReplyReassertion: DialogDeferredReplyReassertion | null | undefined = (() => {
+    if (deferredReplyReassertionRaw === undefined) return undefined;
+    if (!isRecord(deferredReplyReassertionRaw)) return null;
+    if (deferredReplyReassertionRaw.reason !== 'user_interjection_while_pending_subdialog') {
+      return null;
+    }
+    const directiveRaw = deferredReplyReassertionRaw.directive;
+    if (!isRecord(directiveRaw)) return null;
+    const expectedReplyCallName = directiveRaw.expectedReplyCallName;
+    const targetCallId = directiveRaw.targetCallId;
+    const tellaskContent = directiveRaw.tellaskContent;
+    if (
+      expectedReplyCallName !== 'replyTellask' &&
+      expectedReplyCallName !== 'replyTellaskSessionless' &&
+      expectedReplyCallName !== 'replyTellaskBack'
+    ) {
+      return null;
+    }
+    if (typeof targetCallId !== 'string' || typeof tellaskContent !== 'string') {
+      return null;
+    }
+    if (expectedReplyCallName === 'replyTellaskBack') {
+      const targetDialogId = directiveRaw.targetDialogId;
+      if (typeof targetDialogId !== 'string') return null;
+      return {
+        reason: 'user_interjection_while_pending_subdialog',
+        directive: {
+          expectedReplyCallName,
+          targetCallId,
+          targetDialogId,
+          tellaskContent,
+        },
+      };
+    }
+    return {
+      reason: 'user_interjection_while_pending_subdialog',
+      directive: {
+        expectedReplyCallName,
+        targetCallId,
+        tellaskContent,
+      },
+    };
+  })();
+  if (deferredReplyReassertion === null) return null;
+
   return {
     currentCourse,
     lastModified: value.lastModified,
@@ -627,6 +674,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     displayState,
     executionMarker,
     fbrState,
+    deferredReplyReassertion,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };
@@ -1945,6 +1993,13 @@ export class DiskFileDialogStore extends DialogStore {
       targetCallId: payload.targetCallId,
     };
     await this.appendEvent(dialog, course, record);
+    const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
+      dialog.id,
+      dialog.status,
+    );
+    if (deferredReplyReassertion?.directive.targetCallId === payload.targetCallId) {
+      await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+    }
   }
 
   /**
@@ -5903,6 +5958,26 @@ export class DialogPersistence {
   ): Promise<boolean> {
     const latest = await this.loadDialogLatest(dialogId, status);
     return latest?.needsDrive === true;
+  }
+
+  static async setDeferredReplyReassertion(
+    dialogId: DialogID,
+    deferredReplyReassertion: DialogLatestFile['deferredReplyReassertion'],
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      () => ({ kind: 'patch', patch: { deferredReplyReassertion } }),
+      status,
+    );
+  }
+
+  static async getDeferredReplyReassertion(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<DialogLatestFile['deferredReplyReassertion']> {
+    const latest = await this.loadDialogLatest(dialogId, status);
+    return latest?.deferredReplyReassertion;
   }
 
   // === FILE SYSTEM UTILITIES ===

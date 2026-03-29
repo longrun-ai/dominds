@@ -973,6 +973,13 @@ async function reviveDialogIfUnblocked(
       source: 'kernel_driver_supply_response_parent_revive',
       reason,
       suppressDiligencePush: dialog.disableDiligencePush,
+      noPromptSubdialogResumeEntitlement:
+        dialog instanceof SubDialog
+          ? {
+              ownerDialogId: dialog.id.selfId,
+              reason: 'reply_tellask_back_delivered',
+            }
+          : undefined,
     },
   });
 }

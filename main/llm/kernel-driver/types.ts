@@ -34,11 +34,12 @@ export type KernelDriverDriveSource =
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
-  resolvedPendingTellaskReply?: Readonly<{
+  noPromptSubdialogResumeEntitlement?: Readonly<{
     ownerDialogId: string;
-    subdialogId: string;
-    callType: 'A' | 'B' | 'C';
-    callId: string;
+    reason: 'resolved_pending_subdialog_reply' | 'reply_tellask_back_delivered';
+    subdialogId?: string;
+    callType?: 'A' | 'B' | 'C';
+    callId?: string;
   }>;
   runControl?: KernelDriverRunControl;
   source: KernelDriverDriveSource;

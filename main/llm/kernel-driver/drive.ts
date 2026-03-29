@@ -80,6 +80,7 @@ import {
   resolveKernelDriverPolicyViolationKind,
   validateKernelDriverPolicyInvariants,
 } from './guardrails';
+import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
   maybePrepareDiligenceAutoContinuePrompt,
   runLlmRequestWithRetry,
@@ -90,7 +91,6 @@ import {
   classifyTellaskSpecialFunctionCalls,
   executeTellaskSpecialCalls,
   isTellaskSpecialFunctionName,
-  loadLatestActiveTellaskReplyDirective,
   type TellaskSpecialFunctionName,
 } from './tellask-special';
 import type {
@@ -688,6 +688,28 @@ function parseUnifiedTimestampMs(ts: string): number | null {
   return parsed;
 }
 
+function hasSameReplyDirective(
+  left: KernelDriverHumanPrompt['tellaskReplyDirective'],
+  right: KernelDriverHumanPrompt['tellaskReplyDirective'],
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left.expectedReplyCallName !== right.expectedReplyCallName) {
+    return false;
+  }
+  if (left.targetCallId !== right.targetCallId || left.tellaskContent !== right.tellaskContent) {
+    return false;
+  }
+  if (left.expectedReplyCallName === 'replyTellaskBack') {
+    return (
+      right.expectedReplyCallName === 'replyTellaskBack' &&
+      left.targetDialogId === right.targetDialogId
+    );
+  }
+  return true;
+}
+
 function formatElapsedSecondsText(startedAtMs: number | null): string {
   const language = getWorkLanguage();
   if (startedAtMs === null) {
@@ -859,68 +881,6 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
   await dlg.sayingStart();
   await dlg.sayingChunk(content);
   await dlg.sayingFinish();
-}
-
-function buildPromptContentWithExactReplyToolName(args: {
-  dlg: Dialog;
-  prompt: KernelDriverHumanPrompt;
-  activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
-  language: 'zh' | 'en';
-}): string {
-  const isFbrSubdialog =
-    args.dlg instanceof SubDialog && args.dlg.assignmentFromSup.callName === 'freshBootsReasoning';
-  const noActivePrefix =
-    args.language === 'zh'
-      ? '[Dominds 当前无跨对话回复义务]'
-      : '[Dominds no active inter-dialog reply]';
-  const activePrefix =
-    args.language === 'zh' ? '[Dominds 当前回复工具]' : '[Dominds active reply tool]';
-  const reminderPrefixes = ['[Dominds replyTellask required]', '[Dominds 必须调用回复工具]'];
-  const directive = args.activeReplyDirective;
-  if (!directive) {
-    if (isFbrSubdialog) {
-      return args.prompt.content;
-    }
-    if (!(args.dlg instanceof SubDialog)) {
-      return args.prompt.content;
-    }
-    if (args.prompt.content.startsWith(noActivePrefix)) {
-      return args.prompt.content;
-    }
-    const note =
-      args.language === 'zh'
-        ? [
-            noActivePrefix,
-            '当前没有待完成的跨对话回复义务。',
-            '这轮不要调用任何 `reply*`；直接按当前本地对话继续即可。',
-          ].join('\n')
-        : [
-            noActivePrefix,
-            'There is no active inter-dialog reply obligation right now.',
-            'Do not call any `reply*` tool in this turn; just continue the current local conversation.',
-          ].join('\n');
-    return `${note}\n\n${args.prompt.content}`;
-  }
-  if (args.prompt.content.startsWith(activePrefix)) {
-    return args.prompt.content;
-  }
-  const toolName = directive.expectedReplyCallName;
-  if (reminderPrefixes.some((prefix) => args.prompt.content.startsWith(prefix))) {
-    return args.prompt.content;
-  }
-  const note =
-    args.language === 'zh'
-      ? [
-          activePrefix,
-          `当前这轮若完成交付，精确应调用 \`${toolName}\`。`,
-          '不要自己判断该选哪个 `reply*`；以上述函数名为准。',
-        ].join('\n')
-      : [
-          activePrefix,
-          `If this round is ready for final delivery, the exact reply tool is \`${toolName}\`.`,
-          'Do not decide among `reply*` variants by yourself; follow that exact function name.',
-        ].join('\n');
-  return `${note}\n\n${args.prompt.content}`;
 }
 
 type RoutedFunctionResult = {
@@ -1704,6 +1664,7 @@ export async function driveDialogStreamCore(
       const currentPrompt = pendingPrompt;
       const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
       const currentFbrState = await loadDialogFbrState(dlg);
+      let currentRuntimeGuideMsg: ChatMessage | undefined;
       const currentPromptFromFbrState =
         currentPrompt !== undefined &&
         currentFbrState !== undefined &&
@@ -1736,15 +1697,66 @@ export async function driveDialogStreamCore(
             persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
               ? persistedUserLanguageCode
               : getWorkLanguage();
-          const activeReplyDirective =
-            currentPrompt.tellaskReplyDirective ??
-            (await loadLatestActiveTellaskReplyDirective(dlg));
-          const promptContent = buildPromptContentWithExactReplyToolName({
+          const replyGuidance = await resolvePromptReplyGuidance({
             dlg,
             prompt: currentPrompt,
-            activeReplyDirective,
             language: promptLanguage,
           });
+          if (
+            currentPrompt.origin === 'user' &&
+            replyGuidance.suppressInterDialogReplyGuidance &&
+            replyGuidance.deferredReplyReassertionDirective !== undefined
+          ) {
+            const existingDeferredReplyReassertion =
+              await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
+            const nextDeferredReplyReassertion = {
+              reason: 'user_interjection_while_pending_subdialog' as const,
+              directive: replyGuidance.deferredReplyReassertionDirective,
+            };
+            if (
+              existingDeferredReplyReassertion === undefined ||
+              !hasSameReplyDirective(
+                existingDeferredReplyReassertion.directive,
+                nextDeferredReplyReassertion.directive,
+              )
+            ) {
+              await DialogPersistence.setDeferredReplyReassertion(
+                dlg.id,
+                nextDeferredReplyReassertion,
+                dlg.status,
+              );
+            }
+            if (existingDeferredReplyReassertion === undefined) {
+              currentRuntimeGuideMsg = replyGuidance.transientGuideContent
+                ? {
+                    type: 'transient_guide_msg',
+                    role: 'assistant',
+                    content: replyGuidance.transientGuideContent,
+                  }
+                : undefined;
+            }
+          } else if (
+            currentPrompt.origin === 'user' &&
+            !replyGuidance.suppressInterDialogReplyGuidance
+          ) {
+            await DialogPersistence.setDeferredReplyReassertion(dlg.id, undefined, dlg.status);
+          }
+          if (
+            !replyGuidance.suppressInterDialogReplyGuidance &&
+            !currentRuntimeGuideMsg &&
+            replyGuidance.transientGuideContent
+          ) {
+            currentRuntimeGuideMsg = {
+              type: 'transient_guide_msg',
+              role: 'assistant',
+              content: replyGuidance.transientGuideContent,
+            };
+          }
+          if (replyGuidance.promptContent === undefined) {
+            throw new Error(
+              `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
+            );
+          }
 
           await dlg.addChatMessages({
             type: 'prompting_msg',
@@ -1752,16 +1764,16 @@ export async function driveDialogStreamCore(
             genseq: dlg.activeGenSeq,
             msgId: currentPrompt.msgId,
             grammar: 'markdown',
-            content: promptContent,
+            content: replyGuidance.promptContent,
           });
           await dlg.persistUserMessage(
-            promptContent,
+            replyGuidance.promptContent,
             currentPrompt.msgId,
             'markdown',
             origin,
             persistedUserLanguageCode,
             q4hAnswerCallIds,
-            activeReplyDirective,
+            replyGuidance.persistedTellaskReplyDirective,
           );
 
           // Emit the live user-side boundary event for UI generation bubbles.
@@ -1772,7 +1784,7 @@ export async function driveDialogStreamCore(
             course: dlg.currentCourse,
             genseq: dlg.activeGenSeq,
             msgId: currentPrompt.msgId,
-            content: promptContent,
+            content: replyGuidance.promptContent,
             grammar: 'markdown',
             origin,
             userLanguageCode: persistedUserLanguageCode,
@@ -1826,7 +1838,9 @@ export async function driveDialogStreamCore(
             coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
             dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
           },
-          ephemeral: {},
+          ephemeral: {
+            runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : undefined,
+          },
           tail: { renderedReminders },
         });
 

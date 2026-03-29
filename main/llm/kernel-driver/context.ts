@@ -10,6 +10,7 @@ export type DriveBaseContextParts = Readonly<{
 
 export type DriveEphemeralContextParts = Readonly<{
   subdialogResponseContextMsgs?: readonly ChatMessage[];
+  runtimeGuideMsgs?: readonly ChatMessage[];
 }>;
 
 export type DriveTailContextParts = Readonly<{
@@ -36,6 +37,9 @@ export function appendDriveEphemeralContext(
     parts.subdialogResponseContextMsgs.length > 0
   ) {
     next.push(...parts.subdialogResponseContextMsgs);
+  }
+  if (Array.isArray(parts.runtimeGuideMsgs) && parts.runtimeGuideMsgs.length > 0) {
+    next.push(...parts.runtimeGuideMsgs);
   }
   return next;
 }

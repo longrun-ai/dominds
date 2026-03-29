@@ -84,6 +84,11 @@ export interface SubdialogMetadataFile {
 
 export type DialogMetadataFile = RootDialogMetadataFile | SubdialogMetadataFile;
 
+export type DialogDeferredReplyReassertion = Readonly<{
+  reason: 'user_interjection_while_pending_subdialog';
+  directive: TellaskReplyDirective;
+}>;
+
 export interface DialogLatestFile {
   currentCourse: number;
   lastModified: string;
@@ -96,6 +101,7 @@ export interface DialogLatestFile {
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
   fbrState?: DialogFbrState;
+  deferredReplyReassertion?: DialogDeferredReplyReassertion;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;
 }
