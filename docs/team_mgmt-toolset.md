@@ -335,7 +335,17 @@ Notes:
   is incomplete. Agents should continue by reading each tool’s own description/arguments.
 - Team-manager recommendation: after MCP config validation passes, carefully read each exposed tool
   description, discuss intended rtws usage with the human user, then write
-  `servers.<serverId>.manual` that captures typical usage patterns and primary intent directions.
+  `servers.<serverId>.manual` that captures typical usage patterns, primary intent directions, and
+  unavailable-case business handling rules.
+- Use a semi-structured chapter shape: high-value sections often include `When To Use`,
+  `Guardrails`, and `Business Handling When Unavailable`, but do not force every toolset into one
+  fixed template. Start from the real business goal, then decide which sections deserve depth,
+  which can stay brief, and which should be merged or renamed to fit the scenario.
+- For each MCP toolset, deliberately document unavailable-case business handling rules. At minimum,
+  answer:
+  - whether a temporarily unavailable toolset must be escalated to a coordinator or specialist
+  - whether a manual or alternate-tool fallback path is allowed
+  - which business actions must pause until the toolset recovers
 
 ### File format (template)
 
@@ -371,6 +381,7 @@ servers:
         - title: "When To Use"
           content: "Use when ..."
         Guardrails: "Avoid ..."
+        UnavailablePolicy: "If temporarily unavailable: ask @coordinator whether to switch to the fallback path; only ... may substitute, and tasks involving ... must pause until recovery."
 ```
 
 ### Tool exposure controls (whitelist / blacklist)

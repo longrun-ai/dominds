@@ -54,6 +54,22 @@ const serverStateById: Map<string, ServerState> = new Map();
 const toolOwnerByName: Map<string, { kind: 'mcp'; serverId: string }> = new Map();
 const toolsetOwnerByName: Map<string, { kind: 'mcp'; serverId: string }> = new Map();
 
+export type McpDeclaredServerRuntimeStatus = Readonly<{
+  serverId: string;
+  transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
+  status: 'loaded' | 'temporarily_unavailable' | 'config_invalid';
+  errorText?: string;
+}>;
+
+type DeclaredServerRuntimeCatalogEntry = Readonly<{
+  transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
+  configErrorText?: string;
+  runtimeErrorText?: string;
+}>;
+
+let declaredServerIdsInYamlOrder: string[] = [];
+const declaredServerRuntimeCatalogById: Map<string, DeclaredServerRuntimeCatalogEntry> = new Map();
+
 type LeaseReminderMeta = Readonly<{
   kind: 'mcp_lease';
   serverId: string;
@@ -319,6 +335,33 @@ export function releaseMcpToolsetLeaseForDialog(
   return { ok: true, released };
 }
 
+export function getMcpDeclaredServerRuntimeStatuses(): readonly McpDeclaredServerRuntimeStatus[] {
+  return declaredServerIdsInYamlOrder.map((serverId) => {
+    const catalogEntry = declaredServerRuntimeCatalogById.get(serverId);
+    if (catalogEntry?.configErrorText) {
+      return {
+        serverId,
+        transport: catalogEntry.transport,
+        status: 'config_invalid',
+        errorText: catalogEntry.configErrorText,
+      };
+    }
+    if (serverStateById.has(serverId)) {
+      return {
+        serverId,
+        transport: catalogEntry?.transport ?? 'unknown',
+        status: 'loaded',
+      };
+    }
+    return {
+      serverId,
+      transport: catalogEntry?.transport ?? 'unknown',
+      status: 'temporarily_unavailable',
+      errorText: catalogEntry?.runtimeErrorText,
+    };
+  });
+}
+
 let mindsDirWatcher: fs.FSWatcher | undefined;
 let workspaceWatcher: fs.FSWatcher | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -397,6 +440,7 @@ export function stopMcpSupervisor(): void {
   }
 
   lastSeenMcpYamlSig = undefined;
+  clearDeclaredServerRuntimeCatalog();
   supervisorStarted = false;
 }
 
@@ -557,12 +601,14 @@ async function reloadNow(reason: string): Promise<void> {
       clearWorkspaceConfigProblem();
       return;
     }
+    clearDeclaredServerRuntimeCatalog();
     upsertWorkspaceConfigProblem(`Failed to read ${MCP_YAML_PATH}: ${String(err)}`);
     return;
   }
 
   const parsed = parseMcpYaml(rawText);
   if (!parsed.ok) {
+    clearDeclaredServerRuntimeCatalog();
     upsertWorkspaceConfigProblem(parsed.errorText);
     return;
   }
@@ -604,6 +650,11 @@ async function restartServerNow(
 
   const invalid = parsed.invalidServers.find((s) => s.serverId === serverId);
   if (invalid) {
+    replaceDeclaredServerRuntimeCatalog(
+      parsed.config,
+      parsed.invalidServers,
+      parsed.serverIdsInYamlOrder,
+    );
     upsertProblem({
       kind: 'mcp_server_error',
       source: 'mcp',
@@ -627,9 +678,15 @@ async function restartServerNow(
   const desiredToolsetName = serverId;
   const fingerprint = fingerprintServerConfig(serverCfg);
   const existing = serverStateById.get(serverId);
+  replaceDeclaredServerRuntimeCatalog(
+    parsed.config,
+    parsed.invalidServers,
+    parsed.serverIdsInYamlOrder,
+  );
 
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
+    upsertDeclaredServerRuntimeError(serverId, res.errorText);
     upsertProblem({
       kind: 'mcp_server_error',
       source: 'mcp',
@@ -642,6 +699,7 @@ async function restartServerNow(
     return { ok: false, errorText: res.errorText };
   }
 
+  clearDeclaredServerRuntimeError(serverId);
   removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
 
   if (existing) {
@@ -731,6 +789,7 @@ async function applyWorkspaceConfig(
   reason: string,
 ): Promise<void> {
   log.info(`Applying MCP rtws config (${reason})`);
+  replaceDeclaredServerRuntimeCatalog(config, invalidServers, serverIdsInYamlOrder);
 
   const invalidIds = new Set(invalidServers.map((s) => s.serverId));
   const desiredIds = new Set([...Object.keys(config.servers), ...invalidIds]);
@@ -769,6 +828,7 @@ async function applyWorkspaceConfig(
     if (!existing || existing.configFingerprint !== fingerprint) {
       const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
       if (!res.ok) {
+        upsertDeclaredServerRuntimeError(serverId, res.errorText);
         // Keep last-known-good registration, but surface per-server error.
         upsertProblem({
           kind: 'mcp_server_error',
@@ -783,6 +843,7 @@ async function applyWorkspaceConfig(
       }
 
       // Successful start: replace old runtime/tools.
+      clearDeclaredServerRuntimeError(serverId);
       removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
       if (existing) {
         unregisterServer(existing);
@@ -797,6 +858,7 @@ async function applyWorkspaceConfig(
     // Config unchanged, but recompute desired tool registration to:
     // - auto-clear disappeared problems
     // - re-attempt registering tools that were previously skipped due to collisions
+    clearDeclaredServerRuntimeError(serverId);
     removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
     const rebuilt = buildToolsForServer(serverCfg, existing.dispatch, existing.listedTools);
     const next: ServerState = {
@@ -837,6 +899,61 @@ function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     if (!b.has(v)) return false;
   }
   return true;
+}
+
+function clearDeclaredServerRuntimeCatalog(): void {
+  declaredServerIdsInYamlOrder = [];
+  declaredServerRuntimeCatalogById.clear();
+}
+
+function replaceDeclaredServerRuntimeCatalog(
+  config: McpWorkspaceConfig,
+  invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>,
+  serverIdsInYamlOrder: ReadonlyArray<string>,
+): void {
+  const previousRuntimeErrors = new Map<string, string>();
+  for (const [serverId, entry] of declaredServerRuntimeCatalogById.entries()) {
+    if (typeof entry.runtimeErrorText === 'string' && entry.runtimeErrorText.trim() !== '') {
+      previousRuntimeErrors.set(serverId, entry.runtimeErrorText);
+    }
+  }
+
+  declaredServerIdsInYamlOrder = [...serverIdsInYamlOrder];
+  declaredServerRuntimeCatalogById.clear();
+
+  for (const serverId of serverIdsInYamlOrder) {
+    const cfg = config.servers[serverId];
+    if (!cfg) continue;
+    declaredServerRuntimeCatalogById.set(serverId, {
+      transport: cfg.transport,
+      runtimeErrorText: previousRuntimeErrors.get(serverId),
+    });
+  }
+
+  for (const invalid of invalidServers) {
+    declaredServerRuntimeCatalogById.set(invalid.serverId, {
+      transport: 'invalid',
+      configErrorText: invalid.errorText,
+    });
+  }
+}
+
+function upsertDeclaredServerRuntimeError(serverId: string, errorText: string): void {
+  const current = declaredServerRuntimeCatalogById.get(serverId);
+  declaredServerRuntimeCatalogById.set(serverId, {
+    transport: current?.transport ?? 'unknown',
+    configErrorText: current?.configErrorText,
+    runtimeErrorText: errorText,
+  });
+}
+
+function clearDeclaredServerRuntimeError(serverId: string): void {
+  const current = declaredServerRuntimeCatalogById.get(serverId);
+  if (!current || current.runtimeErrorText === undefined) return;
+  declaredServerRuntimeCatalogById.set(serverId, {
+    transport: current.transport,
+    configErrorText: current.configErrorText,
+  });
 }
 
 function reconcileCollisionDependentRegistrations(

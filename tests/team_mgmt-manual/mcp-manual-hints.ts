@@ -66,6 +66,18 @@ async function main(): Promise<void> {
         'zh mcp manual should remind team manager to confirm intent with human user',
       );
       assert.ok(
+        zh.includes('不可用时业务处置规约'),
+        'zh mcp manual should require unavailable-case business handling rules',
+      );
+      assert.ok(
+        zh.includes('半结构化'),
+        'zh mcp manual should recommend semi-structured chapters rather than a rigid template',
+      );
+      assert.ok(
+        zh.includes('是否必须找协调者/专员接手'),
+        'zh mcp manual should spell out escalation/fallback questions for unavailable MCP toolsets',
+      );
+      assert.ok(
         en.includes('toolset availability is unaffected'),
         'en mcp manual should explicitly say missing manual does not affect availability',
       );
@@ -76,6 +88,18 @@ async function main(): Promise<void> {
       assert.ok(
         en.includes('confirm intent/boundaries with the human user'),
         'en mcp manual should remind team manager to confirm intent with human user',
+      );
+      assert.ok(
+        en.includes('unavailable-case business handling rules'),
+        'en mcp manual should require unavailable-case business handling rules',
+      );
+      assert.ok(
+        en.includes('semi-structured chapter shape'),
+        'en mcp manual should recommend semi-structured chapters rather than a rigid template',
+      );
+      assert.ok(
+        en.includes('whether a temporarily unavailable toolset must be escalated'),
+        'en mcp manual should spell out escalation/fallback questions for unavailable MCP toolsets',
       );
       assert.ok(
         zhTroubleshooting.includes('暂态问题') ||
@@ -107,6 +131,8 @@ async function main(): Promise<void> {
       '          content: "Use this toolset when you need SDK metadata."',
       '        - title: "Guardrails"',
       '          content: "Do not mutate production systems."',
+      '        - title: "Business Handling When Unavailable"',
+      '          content: "If temporarily unavailable, ask @coordinator before using fallback paths."',
       '',
     ].join('\n'),
     async () => {
@@ -122,6 +148,14 @@ async function main(): Promise<void> {
       assert.ok(
         en.includes('Do not mutate production systems.'),
         'mcp manual should render manual.sections content',
+      );
+      assert.ok(
+        en.includes('Business Handling When Unavailable'),
+        'mcp manual should render unavailable-case business handling section titles',
+      );
+      assert.ok(
+        en.includes('ask @coordinator before using fallback paths'),
+        'mcp manual should render unavailable-case business handling section content',
       );
     },
   );

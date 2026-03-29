@@ -56,7 +56,14 @@ export type BuildSystemPromptInput = {
   policyText: string;
   intrinsicToolUsageText: string;
   toolsetManualIntro: string;
+  mcpToolsetRuntimeNote?: string;
 };
+
+export type McpToolsetRuntimeNotice = Readonly<{
+  toolsetName: string;
+  transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
+  errorText?: string;
+}>;
 
 type DialogScope = BuildSystemPromptInput['dialogScope'];
 
@@ -357,6 +364,58 @@ function buildFunctionToolRules(language: LanguageCode, funcToolRulesText: strin
   return lines.join('\n');
 }
 
+function formatTransportLabel(
+  language: LanguageCode,
+  transport: McpToolsetRuntimeNotice['transport'],
+): string {
+  if (transport === 'streamable_http') {
+    return language === 'zh' ? 'streamable_http' : 'streamable_http';
+  }
+  if (transport === 'stdio') {
+    return 'stdio';
+  }
+  if (transport === 'invalid') {
+    return language === 'zh' ? 'invalid' : 'invalid';
+  }
+  return language === 'zh' ? 'unknown' : 'unknown';
+}
+
+export function formatMcpToolsetRuntimeNote(
+  language: LanguageCode,
+  notices: readonly McpToolsetRuntimeNotice[],
+): string {
+  if (notices.length === 0) return '';
+
+  const lines =
+    language === 'zh'
+      ? [
+          '以下 MCP toolset 已配置给你，且在 `.minds/mcp.yaml` 中有声明，但当前没有加载进运行时工具注册表。',
+          '请将它们视为“当前暂时不可达”的运行时情况，例如 stdio transport 进程暂时启动失败，或 streamable HTTP transport 当前无法连接；这不代表你的权限被撤销，也不应视为系统级功能降级。',
+          ...notices.map((notice) => {
+            const reason =
+              typeof notice.errorText === 'string' && notice.errorText.trim() !== ''
+                ? `；最近错误：${notice.errorText}`
+                : '';
+            return `- \`${notice.toolsetName}\`：transport=${formatTransportLabel(language, notice.transport)}；状态=暂时不可达${reason}`;
+          }),
+          '若当前任务依赖这些能力，应明确说明对应 MCP toolset 眼下不可用，并优先继续使用其余可用工具/路径推进。',
+        ]
+      : [
+          'The following MCP toolsets are assigned to you and declared in `.minds/mcp.yaml`, but they are not currently loaded into the runtime tool registry.',
+          'Treat this as a temporary runtime-availability condition, for example a stdio transport process failing to start right now, or a streamable HTTP transport being unreachable right now. This does not mean your permission was revoked, and it should not be treated as a system-level capability downgrade.',
+          ...notices.map((notice) => {
+            const reason =
+              typeof notice.errorText === 'string' && notice.errorText.trim() !== ''
+                ? `; latest error: ${notice.errorText}`
+                : '';
+            return `- \`${notice.toolsetName}\`: transport=${formatTransportLabel(language, notice.transport)}; status=temporarily unavailable${reason}`;
+          }),
+          'If the current task depends on one of these capabilities, say that the corresponding MCP toolset is unavailable right now and continue with other available tools or paths first.',
+        ];
+
+  return lines.join('\n');
+}
+
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const collaborationProtocol = buildTellaskCollaborationProtocol(
     input.language,
@@ -425,6 +484,8 @@ ${input.skillsText}
 ## 运行环境
 
 ${input.envIntro}
+
+${input.mcpToolsetRuntimeNote ? `## MCP 工具集当前状态\n\n${input.mcpToolsetRuntimeNote}\n` : ''}
 
 **硬边界**：通用文件工具会拒绝访问以下路径（硬编码无条件拒绝）：rtws 根路径下的 \`.minds/\`（团队记忆/配置）、\`.dialogs/\`（对话记录）、任意子目录下的 \`*.tsk/\`（差遣牒）。
 
@@ -522,6 +583,8 @@ ${input.skillsText}
 ## Runtime Environment
 
 ${input.envIntro}
+
+${input.mcpToolsetRuntimeNote ? `## MCP Toolset Runtime Status\n\n${input.mcpToolsetRuntimeNote}\n` : ''}
 
 **Hard Boundaries**: Generic file tools will reject access to the following paths (hard-coded unconditional denial): rtws root \`.minds/\` (team memory/config), \`.dialogs/\` (dialog records), \`*.tsk/\` in any subdirectory (taskdocs).
 

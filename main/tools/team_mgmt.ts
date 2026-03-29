@@ -3608,7 +3608,9 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
         '可选手册字段：你可以在 `servers.<serverId>.manual` 放手册内容。支持 `content`（总说明）+ `sections`（章节列表），用于告诉智能体该 toolset 该怎么用。',
         '重要：`manual` 缺失并不代表 MCP toolset 不可用；这只是团队管理工作不足。智能体应继续依据每个工具 description/参数自行判断并使用。',
-        '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，最后把“典型用法 + 主要意图方向”沉淀到 `servers.<serverId>.manual`（`content + sections`）。',
+        '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，最后把“典型用法 + 主要意图方向 + 不可用时业务处置规约”沉淀到 `servers.<serverId>.manual`（`content + sections`）。',
+        '章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。应从真实业务目标出发，决定哪些章节需要展开、哪些只需一句话、哪些可以合并或另起更贴切的标题。',
+        '对每个 MCP toolset，团队管理者仍应刻意写明“不可用时业务处置规约”：至少回答 1) 当前 toolset 暂不可达时是否必须找协调者/专员接手；2) 是否允许走人工或其他工具链降级路径；3) 哪些业务动作在该 toolset 恢复前必须暂停，禁止擅自继续。',
         '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
@@ -3636,6 +3638,10 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '          content: |',
         '            - 不要用于 ...',
         '            - 若失败先看 ...',
+        "        - title: '不可用时业务处置'",
+        '          content: |',
+        '            - 若该 toolset 暂时不可达，先找 @coordinator（或指定协调者）确认是否改走降级路径。',
+        '            - 仅允许改用 ... 作为临时替代；若涉及 ...，必须等待该 MCP 恢复，不可继续。',
       ]) +
       fmtCodeBlock('yaml', [
         '# stdio 路径示例（最小）',
@@ -3682,7 +3688,9 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
       'Optional manual field: place guide text at `servers.<serverId>.manual`. Supported shapes: `content` (overview) + `sections` (chapter list) to explain practical usage for this toolset.',
       'Important: missing `manual` does not mean the MCP toolset is unavailable. It only indicates team-management coverage is incomplete; continue by reading each tool description/argument schema.',
-      'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write `servers.<serverId>.manual` (`content + sections`) capturing typical usage patterns and primary intent directions.',
+      'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write `servers.<serverId>.manual` (`content + sections`) capturing typical usage patterns, primary intent directions, and unavailable-case business handling rules.',
+      'Use a semi-structured chapter shape: high-value sections often include `When To Use`, `Guardrails`, and `Business Handling When Unavailable`, but do not force every toolset into one fixed template. Start from the real business goal, then decide which sections deserve depth, which can stay brief, and which should be merged or renamed to fit the scenario.',
+      'For each MCP toolset, still document unavailable-case business rules explicitly: at minimum answer 1) whether a temporarily unavailable toolset must be escalated to a coordinator or specialist, 2) whether a manual or alternate-tool fallback path is allowed, and 3) which business actions must pause until this toolset recovers.',
       'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` to confirm the LLM provider works; 2) review member directory permissions (`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
@@ -3710,6 +3718,10 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       '          content: |',
       '            - Avoid using for ...',
       '            - On failures, first inspect ...',
+      "        - title: 'Business Handling When Unavailable'",
+      '          content: |',
+      '            - If this toolset is temporarily unavailable, ask @coordinator (or the designated coordinator) whether to switch to the fallback path.',
+      '            - Only use ... as an interim fallback; if the task touches ..., wait for this MCP to recover instead of proceeding.',
     ]) +
     fmtCodeBlock('yaml', [
       '# stdio path example (minimal)',
@@ -4595,8 +4607,8 @@ function renderAutoGeneratedMcpManualDraftSection(
   lines.push(
     ...fmtList([
       language === 'zh'
-        ? '团队管理者后续动作：精读每个工具说明 -> 与人类用户确认意图与边界 -> 回写 `servers.<serverId>.manual.content + sections`。'
-        : 'Team-manager follow-up: read each tool description carefully -> confirm intent/boundaries with the human user -> write back to `servers.<serverId>.manual.content + sections`.',
+        ? '团队管理者后续动作：精读每个工具说明 -> 与人类用户确认意图与边界 -> 明确不可用时是找谁协调、允许哪些降级路径、哪些动作必须暂停 -> 回写 `servers.<serverId>.manual.content + sections`。'
+        : 'Team-manager follow-up: read each tool description carefully -> confirm intent/boundaries with the human user -> decide who coordinates when unavailable, which fallbacks are allowed, and which actions must pause -> write back to `servers.<serverId>.manual.content + sections`.',
     ])
       .trimEnd()
       .split('\n'),

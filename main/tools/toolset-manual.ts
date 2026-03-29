@@ -210,12 +210,21 @@ function buildManTool(): FuncTool {
         member: _caller,
         taskDocPath: _dlg.taskDocPath,
       });
+      const declaredMcpToolsets = await Team.readMcpDeclaredToolsets();
+      const declaredMcpToolsetNames =
+        declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.declaredServerIds : undefined;
+      const invalidMcpToolsetNames =
+        declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.invalidServerIds : undefined;
 
       // Get toolsetId from args
       const toolsetId = args?.toolsetId as string | undefined;
       if (!toolsetId) {
         // When no toolsetId is provided, show all available toolsets
-        const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
+        const availableToolsetNames = _caller.listResolvedToolsetNames({
+          dynamicToolsetNames,
+          declaredMcpToolsetNames,
+          invalidMcpToolsetNames,
+        });
         if (language === 'zh') {
           return [
             '**可用工具集**',
@@ -235,7 +244,11 @@ function buildManTool(): FuncTool {
       }
 
       // Step 1: Get available toolsets for this caller (dynamic availability)
-      const availableToolsetNames = _caller.listResolvedToolsetNames({ dynamicToolsetNames });
+      const availableToolsetNames = _caller.listResolvedToolsetNames({
+        dynamicToolsetNames,
+        declaredMcpToolsetNames,
+        invalidMcpToolsetNames,
+      });
 
       // Find closest match for fuzzy matching
       const allToolsets = Object.keys(listToolsets());
@@ -271,6 +284,8 @@ function buildManTool(): FuncTool {
             onMissingToolset: 'silent',
             onMissingTool: 'silent',
             dynamicToolsetNames,
+            declaredMcpToolsetNames,
+            invalidMcpToolsetNames,
           })
           .map((tool) => tool.name),
       );

@@ -66,6 +66,57 @@ export namespace Team {
   const TEAM_YAML_PATH = '.minds/team.yaml';
   const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
+  export type McpDeclaredToolsets =
+    | { kind: 'missing' }
+    | { kind: 'invalid'; errorText: string }
+    | {
+        kind: 'loaded';
+        declaredServerIds: ReadonlySet<string>;
+        invalidServerIds: ReadonlySet<string>;
+      };
+
+  export async function readMcpDeclaredToolsets(): Promise<McpDeclaredToolsets> {
+    const mcpPath = '.minds/mcp.yaml';
+    let raw: string;
+    try {
+      raw = await fs.readFile(mcpPath, 'utf8');
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return { kind: 'missing' };
+      }
+      return { kind: 'invalid', errorText: err instanceof Error ? err.message : String(err) };
+    }
+
+    const parsed = parseMcpYaml(raw);
+    if (!parsed.ok) {
+      return { kind: 'invalid', errorText: parsed.errorText };
+    }
+
+    return {
+      kind: 'loaded',
+      declaredServerIds: new Set(parsed.serverIdsInYamlOrder),
+      invalidServerIds: new Set(parsed.invalidServers.map((s) => s.serverId)),
+    };
+  }
+
+  export function listExplicitToolsets(member: Team.Member): string[] {
+    if (!member.toolsets) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const entry of member.toolsets) {
+      if (entry === '*' || entry.startsWith('!')) continue;
+      if (seen.has(entry)) continue;
+      seen.add(entry);
+      out.push(entry);
+    }
+    return out;
+  }
+
   function buildTeamProblemI18n(text: string): ProblemI18nText {
     const zh = (() => {
       let out = text;
@@ -513,9 +564,13 @@ export namespace Team {
     listResolvedToolsetNames(options?: {
       onMissing?: 'warn' | 'silent';
       dynamicToolsetNames?: readonly string[];
+      declaredMcpToolsetNames?: ReadonlySet<string>;
+      invalidMcpToolsetNames?: ReadonlySet<string>;
     }): string[] {
       const onMissing = options?.onMissing ?? 'warn';
       const dynamicToolsetNames = options?.dynamicToolsetNames ?? [];
+      const declaredMcpToolsetNames = options?.declaredMcpToolsetNames;
+      const invalidMcpToolsetNames = options?.invalidMcpToolsetNames;
       const staticToolsets = this.toolsets ?? [];
       if (staticToolsets.length === 0 && dynamicToolsetNames.length === 0) return [];
 
@@ -544,9 +599,19 @@ export namespace Team {
           const tools = getToolset(resolvedToolsetName);
           if (!tools) {
             if (onMissing === 'warn') {
-              log.warn(
-                `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
-              );
+              const isDeclaredMcpToolset =
+                declaredMcpToolsetNames?.has(resolvedToolsetName) === true;
+              const isInvalidDeclaredMcpToolset =
+                invalidMcpToolsetNames?.has(resolvedToolsetName) === true;
+              if (isDeclaredMcpToolset && !isInvalidDeclaredMcpToolset) {
+                log.debug(
+                  `MCP toolset '${resolvedToolsetName}' is declared but currently not loaded for member '${this.id}'`,
+                );
+              } else {
+                log.warn(
+                  `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
+                );
+              }
             }
             continue;
           }
@@ -563,17 +628,23 @@ export namespace Team {
       onMissingToolset?: 'warn' | 'silent';
       onMissingTool?: 'warn' | 'silent';
       dynamicToolsetNames?: readonly string[];
+      declaredMcpToolsetNames?: ReadonlySet<string>;
+      invalidMcpToolsetNames?: ReadonlySet<string>;
     }): Tool[] {
       const toolMap = new Map<string, Tool>();
       const seenNames = new Set<string>();
       const onMissingToolset = options?.onMissingToolset ?? 'warn';
       const onMissingTool = options?.onMissingTool ?? 'warn';
       const dynamicToolsetNames = options?.dynamicToolsetNames ?? [];
+      const declaredMcpToolsetNames = options?.declaredMcpToolsetNames;
+      const invalidMcpToolsetNames = options?.invalidMcpToolsetNames;
 
       // Process toolsets (in declaration order)
       for (const toolsetName of this.listResolvedToolsetNames({
         onMissing: onMissingToolset,
         dynamicToolsetNames,
+        declaredMcpToolsetNames,
+        invalidMcpToolsetNames,
       })) {
         const tools = getToolset(toolsetName);
         if (!tools) continue;
@@ -799,57 +870,6 @@ export namespace Team {
       }
     }
 
-    type McpDeclaredToolsets =
-      | { kind: 'missing' }
-      | { kind: 'invalid'; errorText: string }
-      | {
-          kind: 'loaded';
-          declaredServerIds: ReadonlySet<string>;
-          invalidServerIds: ReadonlySet<string>;
-        };
-
-    async function readMcpDeclaredToolsets(): Promise<McpDeclaredToolsets> {
-      const mcpPath = '.minds/mcp.yaml';
-      let raw: string;
-      try {
-        raw = await fs.readFile(mcpPath, 'utf8');
-      } catch (err: unknown) {
-        if (
-          typeof err === 'object' &&
-          err !== null &&
-          'code' in err &&
-          (err as { code?: unknown }).code === 'ENOENT'
-        ) {
-          return { kind: 'missing' };
-        }
-        return { kind: 'invalid', errorText: err instanceof Error ? err.message : String(err) };
-      }
-
-      const parsed = parseMcpYaml(raw);
-      if (!parsed.ok) {
-        return { kind: 'invalid', errorText: parsed.errorText };
-      }
-
-      return {
-        kind: 'loaded',
-        declaredServerIds: new Set(parsed.serverIdsInYamlOrder),
-        invalidServerIds: new Set(parsed.invalidServers.map((s) => s.serverId)),
-      };
-    }
-
-    function listExplicitToolsetsForValidation(member: Team.Member): string[] {
-      if (!member.toolsets) return [];
-      const out: string[] = [];
-      const seen = new Set<string>();
-      for (const entry of member.toolsets) {
-        if (entry === '*' || entry.startsWith('!')) continue;
-        if (seen.has(entry)) continue;
-        seen.add(entry);
-        out.push(entry);
-      }
-      return out;
-    }
-
     async function validateMemberToolsetBindings(team: Team, md: Team.Member): Promise<void> {
       const registeredToolsets = new Set(Object.keys(listToolsets()));
       const mcpDeclared = await readMcpDeclaredToolsets();
@@ -931,7 +951,7 @@ export namespace Team {
       validateAt({
         idPrefix: 'member_defaults',
         atPrefix: 'member_defaults',
-        toolsets: listExplicitToolsetsForValidation(md),
+        toolsets: listExplicitToolsets(md),
       });
 
       for (const member of Object.values(team.members)) {
@@ -939,7 +959,7 @@ export namespace Team {
         validateAt({
           idPrefix: `members/${idSeg}`,
           atPrefix: `members.${member.id}`,
-          toolsets: listExplicitToolsetsForValidation(member),
+          toolsets: listExplicitToolsets(member),
         });
       }
     }

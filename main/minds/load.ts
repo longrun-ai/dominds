@@ -12,6 +12,7 @@ import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { Dialog, SubDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
+import { getMcpDeclaredServerRuntimeStatuses } from '../mcp/supervisor';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadWorkspaceSkills, renderWorkspaceSkillsPrompt } from '../skills/load';
 import { Team } from '../team';
@@ -42,7 +43,12 @@ import {
   sharedScopeLabel,
   taskdocCanonicalCopy,
 } from './minds-i18n';
-import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
+import {
+  buildSystemPrompt,
+  formatMcpToolsetRuntimeNote,
+  formatTeamIntro,
+  type McpToolsetRuntimeNotice,
+} from './system-prompt';
 import {
   buildIntrinsicToolUsageText,
   buildMemorySystemPrompt,
@@ -151,6 +157,34 @@ async function readMindsTextPreferred(options: {
   return options.noFileDefault;
 }
 
+function buildAgentMcpToolsetRuntimeNotices(params: {
+  agent: Team.Member;
+  declaredToolsets: Team.McpDeclaredToolsets;
+}): McpToolsetRuntimeNotice[] {
+  if (params.declaredToolsets.kind !== 'loaded') return [];
+
+  const runtimeStatusByServerId = new Map(
+    getMcpDeclaredServerRuntimeStatuses().map((status) => [status.serverId, status]),
+  );
+  const notices: McpToolsetRuntimeNotice[] = [];
+
+  for (const toolsetName of Team.listExplicitToolsets(params.agent)) {
+    if (!params.declaredToolsets.declaredServerIds.has(toolsetName)) continue;
+    if (params.declaredToolsets.invalidServerIds.has(toolsetName)) continue;
+
+    const runtimeStatus = runtimeStatusByServerId.get(toolsetName);
+    if (runtimeStatus?.status === 'loaded') continue;
+
+    notices.push({
+      toolsetName,
+      transport: runtimeStatus?.transport ?? 'unknown',
+      errorText: runtimeStatus?.errorText,
+    });
+  }
+
+  return notices;
+}
+
 export async function loadAgentMinds(
   agentId?: string,
   dialog?: Dialog,
@@ -176,6 +210,11 @@ export async function loadAgentMinds(
   let team = await Team.load();
   const agent = agentId === undefined ? team.getDefaultResponder() : team.getMember(agentId);
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);
+  const declaredMcpToolsets = await Team.readMcpDeclaredToolsets();
+  const declaredMcpToolsetNames =
+    declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.declaredServerIds : undefined;
+  const invalidMcpToolsetNames =
+    declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.invalidServerIds : undefined;
 
   // read disk file afresh, in case the contents have changed by human or ai meanwhile
   const personaRaw = await readAgentMindPreferred({
@@ -229,6 +268,8 @@ export async function loadAgentMinds(
     const tools = agent.listTools({
       onMissingToolset: missingToolsetPolicy,
       dynamicToolsetNames,
+      declaredMcpToolsetNames,
+      invalidMcpToolsetNames,
     });
     if (agentIsShellSpecialist) return tools;
     return tools.filter(
@@ -262,7 +303,12 @@ export async function loadAgentMinds(
   })();
 
   const toolsetNames = agent
-    .listResolvedToolsetNames({ onMissing: missingToolsetPolicy, dynamicToolsetNames })
+    .listResolvedToolsetNames({
+      onMissing: missingToolsetPolicy,
+      dynamicToolsetNames,
+      declaredMcpToolsetNames,
+      invalidMcpToolsetNames,
+    })
     .filter((name) => {
       if (name === 'os') return agentIsShellSpecialist;
       return true;
@@ -348,6 +394,13 @@ export async function loadAgentMinds(
     manualTools.toolNames,
     toolsetNames,
   );
+  const mcpToolsetRuntimeNote = formatMcpToolsetRuntimeNote(
+    workingLanguage,
+    buildAgentMcpToolsetRuntimeNotices({
+      agent,
+      declaredToolsets: declaredMcpToolsets,
+    }),
+  );
   const funcToolRulesText = funcTools.length > 0 ? formatFuncToolRulesText(workingLanguage) : '';
 
   const systemPrompt = buildSystemPrompt({
@@ -365,6 +418,7 @@ export async function loadAgentMinds(
     policyText,
     intrinsicToolUsageText,
     toolsetManualIntro,
+    mcpToolsetRuntimeNote,
   });
 
   // composite this list by reading:
