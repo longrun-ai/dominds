@@ -48,6 +48,12 @@ function main(): void {
     ),
     'zh prompt should expose toolset descriptions and man call examples',
   );
+  assert.ok(
+    zh.includes('直接传 `effort: 3`') &&
+      zh.includes('`x3` 是绝对力度') &&
+      zh.includes('不是“当前 `fbr_effort` 再乘 3”'),
+    'zh prompt should clarify that FBR x3 maps to absolute effort 3 instead of multiplying the default',
+  );
 
   const en = buildPrompt(
     'en',
@@ -73,6 +79,12 @@ function main(): void {
       '`ws_read`: rtws read-only access: list directories, read files, and search code/content to gather facts safely. Details: `man({ "toolsetId": "ws_read" })`',
     ),
     'en prompt should expose toolset descriptions and man call examples',
+  );
+  assert.ok(
+    en.includes('pass `effort: 3` directly') &&
+      en.includes('`x3` is the absolute effort value') &&
+      en.includes('not “3 × current fbr_effort”'),
+    'en prompt should clarify that FBR x3 maps to absolute effort 3 instead of multiplying the default',
   );
 
   console.log('OK');

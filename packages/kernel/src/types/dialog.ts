@@ -78,6 +78,7 @@ export interface SubdialogEvent extends DialogEventBase {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
+      effectiveFbrEffort?: number;
     };
   };
   genseq?: number;

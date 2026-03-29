@@ -44,6 +44,7 @@ export class DialogFactory {
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
     initialState?: DialogInitParams['initialState'],
   ): SubDialog {
@@ -64,6 +65,7 @@ export class DialogFactory {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
+        effectiveFbrEffort: options.effectiveFbrEffort,
       },
       options.sessionSlug,
       initialState,

@@ -78,6 +78,7 @@ export interface SubdialogMetadataFile {
     callerDialogId: string;
     callId: string;
     collectiveTargets?: string[];
+    effectiveFbrEffort?: number;
   };
 }
 
@@ -679,6 +680,7 @@ export interface SubdialogCreatedRecord extends RootGenerationAnchor {
     callerDialogId: string;
     callId: string;
     collectiveTargets?: string[];
+    effectiveFbrEffort?: number;
   };
 }
 

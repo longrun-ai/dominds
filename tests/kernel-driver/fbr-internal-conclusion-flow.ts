@@ -10,6 +10,7 @@ import {
   buildProgrammaticFbrUnreasonableSituationContent,
   FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
 } from '../../main/llm/kernel-driver/fbr';
+import { DialogPersistence } from '../../main/persistence';
 import { appendDistinctPerspectiveFbrBody } from '../../main/runtime/fbr-body';
 import {
   formatAssignmentFromSupdialog,
@@ -290,6 +291,20 @@ async function main(): Promise<void> {
       .getAllDialogs()
       .find((dialog): dialog is SubDialog => dialog instanceof SubDialog);
     assert.ok(successSubdialog, 'expected FBR success subdialog to exist');
+    assert.equal(
+      successSubdialog.assignmentFromSup.effectiveFbrEffort,
+      2,
+      'successful FBR subdialog should record the effective effort on assignment metadata',
+    );
+    const successPersistedMeta = await DialogPersistence.loadDialogMetadata(
+      successSubdialog.id,
+      'running',
+    );
+    assert.equal(
+      successPersistedMeta?.assignmentFromSup?.effectiveFbrEffort,
+      2,
+      'successful FBR metadata persisted to disk should keep the effective effort',
+    );
 
     const successPromptings = successSubdialog.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
@@ -362,6 +377,11 @@ async function main(): Promise<void> {
       .getAllDialogs()
       .find((dialog): dialog is SubDialog => dialog instanceof SubDialog);
     assert.ok(fallbackSubdialog, 'expected fallback FBR subdialog to exist');
+    assert.equal(
+      fallbackSubdialog.assignmentFromSup.effectiveFbrEffort,
+      2,
+      'fallback FBR subdialog should also record the effective effort on assignment metadata',
+    );
 
     const fallbackPromptings = fallbackSubdialog.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',

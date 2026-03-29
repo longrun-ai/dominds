@@ -411,6 +411,17 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
     if (!Array.isArray(assignment.collectiveTargets)) return false;
     if (!assignment.collectiveTargets.every((item) => typeof item === 'string')) return false;
   }
+  if (assignment.effectiveFbrEffort !== undefined) {
+    if (
+      typeof assignment.effectiveFbrEffort !== 'number' ||
+      !Number.isInteger(assignment.effectiveFbrEffort)
+    ) {
+      return false;
+    }
+    if (assignment.effectiveFbrEffort < 1 || assignment.effectiveFbrEffort > 100) {
+      return false;
+    }
+  }
 
   switch (assignment.callName) {
     case 'tellask':
@@ -418,10 +429,12 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
       if (!Array.isArray(assignment.mentionList)) return false;
       if (assignment.mentionList.length < 1) return false;
       if (!assignment.mentionList.every((item) => typeof item === 'string')) return false;
+      if (assignment.effectiveFbrEffort !== undefined) return false;
       break;
     }
     case 'freshBootsReasoning': {
       if (assignment.mentionList !== undefined) return false;
+      if (assignment.effectiveFbrEffort === undefined) return false;
       break;
     }
     default:
@@ -777,6 +790,7 @@ export class DiskFileDialogStore extends DialogStore {
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
@@ -800,6 +814,7 @@ export class DiskFileDialogStore extends DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
+        effectiveFbrEffort: options.effectiveFbrEffort,
       },
       options.sessionSlug,
     );
@@ -823,6 +838,7 @@ export class DiskFileDialogStore extends DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
+        effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
@@ -848,6 +864,7 @@ export class DiskFileDialogStore extends DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
+        effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
     await this.appendEvent(supdialog, parentCourse, subdialogCreatedRecord);
@@ -908,6 +925,7 @@ export class DiskFileDialogStore extends DialogStore {
           originMemberId: options.originMemberId,
           callerDialogId: options.callerDialogId,
           callId: options.callId,
+          effectiveFbrEffort: options.effectiveFbrEffort,
         },
       },
     };

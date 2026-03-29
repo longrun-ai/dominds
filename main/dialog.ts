@@ -209,6 +209,7 @@ export interface AssignmentFromSup {
   callerDialogId: string;
   callId: string;
   collectiveTargets?: string[];
+  effectiveFbrEffort?: number;
 }
 
 /**
@@ -1662,6 +1663,7 @@ export class SubDialog extends Dialog {
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
   ): Promise<SubDialog> {
     return await this.rootDialog.createSubDialog(
@@ -1793,6 +1795,7 @@ export class RootDialog extends Dialog {
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
   ): Promise<SubDialog> {
     return await this.dlgStore.createSubDialog(
@@ -1852,6 +1855,7 @@ export abstract class DialogStore {
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
@@ -1871,6 +1875,7 @@ export abstract class DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
+        effectiveFbrEffort: options.effectiveFbrEffort,
       },
       options.sessionSlug,
     );

@@ -36,6 +36,7 @@ export interface AssignmentFromSup {
   callerDialogId: string;
   callId: string;
   collectiveTargets?: string[];
+  effectiveFbrEffort?: number;
 }
 
 // Utility function to create DialogIdent from various formats

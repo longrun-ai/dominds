@@ -795,6 +795,7 @@ type SubdialogCreateOptions = {
   callId: string;
   sessionSlug?: string;
   collectiveTargets?: string[];
+  effectiveFbrEffort?: number;
 };
 
 async function createSubDialog(
@@ -1272,6 +1273,7 @@ async function executeTellaskCall(
         callerDialogId: callerDialog.id.selfId,
         callId,
         collectiveTargets,
+        effectiveFbrEffort: fbrEffort,
       });
       sub.setFbrConclusionToolsEnabled(false);
       const pendingRecord: PendingSubdialogStateRecord = {

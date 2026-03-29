@@ -347,13 +347,13 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
   const fbrDefault = args.fbrEffortDefault;
   const fbrDefaultHint =
     fbrDefault > 0
-      ? `Runtime default for \`effort\` is current member \`fbr_effort=${fbrDefault}\` when omitted.`
+      ? `If omitted, \`effort\` defaults to current member \`fbr_effort=${fbrDefault}\`.`
       : 'Runtime default for `effort` is current member `fbr_effort=0` (FBR disabled unless reconfigured).';
   return {
     type: 'func',
     name: 'freshBootsReasoning',
     description:
-      'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”). ' +
+      'Start a tool-less FBR sideline. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
       fbrDefaultHint,
     parameters: {
       type: 'object',
@@ -361,11 +361,11 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
         tellaskContent: {
           type: 'string',
           description:
-            'Use a neutral factual body: Goal/Facts/Constraints/Evidence (optional Unknowns). Avoid dimension checklists and stepwise directives (e.g. “from the following dimensions/aspects”, “analyze in steps 1..N”, “N rounds per dimension”).',
+            'Neutral factual body only: Goal/Facts/Constraints/Evidence (optional Unknowns). Do not include dimension lists, fixed steps, or other analysis scaffolds.',
         },
         effort: {
           type: 'integer',
-          description: `Optional FBR intensity override (0..100 integer). Runtime maps intensity N to N serial FBR passes in one sideline window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
+          description: `Optional absolute FBR effort (0..100 integer). “x3” / “3x” means \`effort: 3\`, not “3 × current fbr_effort”. Runtime maps effort N to N serial FBR passes in one sideline window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
         },
       },
       required: ['tellaskContent'],

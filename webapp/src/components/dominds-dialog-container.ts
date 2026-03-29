@@ -2229,10 +2229,18 @@ export class DomindsDialogContainer extends HTMLElement {
           this.uiLanguage === 'zh' ? '诉请对象: 人类用户' : 'Target: human user';
         return;
       case 'freshBootsReasoning':
-        headlineEl.textContent =
-          this.uiLanguage === 'zh' ? '支线类型: 扪心自问（FBR）' : 'Sideline type: FBR';
+        headlineEl.textContent = this.formatFreshBootsHeadline();
         return;
     }
+  }
+
+  private formatFreshBootsHeadline(): string {
+    const effort = this.currentDialog?.assignmentFromSup?.effectiveFbrEffort;
+    const effortPrefix =
+      typeof effort === 'number' && Number.isInteger(effort) && effort > 0 ? `${effort}x ` : '';
+    return this.uiLanguage === 'zh'
+      ? `支线类型: ${effortPrefix}扪心自问（FBR）`
+      : `Sideline type: ${effortPrefix}FBR`;
   }
 
   private renderCallTiming(
