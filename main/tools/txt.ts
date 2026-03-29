@@ -176,16 +176,18 @@ function formatPreparedHunkNextStep(language: LanguageCode, hunkId: string): str
   if (language === 'zh') {
     return [
       '下一步（LLM 强约束）：',
-      `立即调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ "hunk_id": "${hunkId}" }`,
+      `请先仔细检查上面列出的 diff hunk 是否符合预期；只要确认无误，就应立即调用函数工具 \`team_mgmt_apply_file_modification\`，参数：{ "hunk_id": "${hunkId}" }。`,
       '当前改动仍只是 prepare 预览，apply 前不会落盘；现在再次读取文件只能读到旧内容。',
-      '如果只是修订这个尚未落盘的预览，可用同一 prepare 工具配合 `existing_hunk_id` 覆写该 hunk；如果想基于这次改动继续修改文件，必须先 apply 当前 hunk，再重新 read/prepare 新的改动。',
+      '如果你还要继续修改同一文件，必须先 apply 当前 hunk，再重新 read/prepare 下一步改动；否则心智模型会与文件真实内容脱节，后续判断的有效行号、上下文与改动基线都可能出错。',
+      '如果看到的 diff hunk 有任何意外，或并未完全符合编辑意图，就不要 apply；请用同一 prepare 工具配合 `existing_hunk_id` 修订输入，直到该 hunk 与预期完全一致。',
     ].join('\n');
   }
   return [
     'Next (hard rule for the LLM):',
-    `Immediately call function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`,
+    `First, inspect the diff hunk listed above carefully. As soon as you confirm it matches the intended change, you should apply it immediately by calling function tool \`team_mgmt_apply_file_modification\` with { "hunk_id": "${hunkId}" }.`,
     'This change is still only a prepared preview and is not persisted before apply; re-reading now will still return the old file content.',
-    'If you only want to revise this not-yet-persisted preview, overwrite the same hunk with the same prepare tool plus `existing_hunk_id`; if you want further edits based on this change, you must apply the current hunk first, then read/prepare the next change.',
+    'If you plan to keep editing the same file, you must apply the current hunk first, then read/prepare the next change; otherwise your mental model will drift from the real file, and the effective line numbers, context, and edit baseline used for later changes may all be wrong.',
+    'If the diff hunk shows anything unexpected or does not fully match the intended edit, do not apply it; revise the input with the same prepare tool plus `existing_hunk_id` until the hunk matches exactly.',
   ].join('\n');
 }
 
