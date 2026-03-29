@@ -73,63 +73,22 @@
   --dominds-run-badge-running-fg: var(--dominds-primary);
   --dominds-run-badge-running-bg: color-mix(
     in srgb,
-    var(--dominds-primary) 14%,
-    var(--dominds-bg-secondary) 86%
-  );
-  --dominds-run-badge-running-border: color-mix(
-    in srgb,
-    var(--dominds-primary) 36%,
-    var(--dominds-border) 64%
+    var(--dominds-fg) 92%,
+    var(--dominds-bg-secondary) 8%
   );
   --dominds-run-badge-interrupted-fg: var(--dominds-danger);
-  --dominds-run-badge-interrupted-bg: color-mix(
-    in srgb,
-    var(--dominds-danger-bg) 84%,
-    var(--dominds-bg-secondary) 16%
-  );
-  --dominds-run-badge-interrupted-border: color-mix(
-    in srgb,
-    var(--dominds-danger) 36%,
-    var(--dominds-border) 64%
-  );
+  --dominds-run-badge-interrupted-bg: var(--dominds-run-badge-running-bg);
   --dominds-run-badge-waiting-human-fg: var(--dominds-warning);
-  --dominds-run-badge-waiting-human-bg: color-mix(
-    in srgb,
-    var(--dominds-warning-bg) 84%,
-    var(--dominds-bg-secondary) 16%
-  );
-  --dominds-run-badge-waiting-human-border: color-mix(
-    in srgb,
-    var(--dominds-warning-border) 72%,
-    var(--dominds-border) 28%
-  );
+  --dominds-run-badge-waiting-human-bg: var(--dominds-run-badge-running-bg);
   --dominds-run-badge-waiting-subdialogs-fg: var(--dominds-info);
-  --dominds-run-badge-waiting-subdialogs-bg: color-mix(
-    in srgb,
-    var(--dominds-info-bg) 84%,
-    var(--dominds-bg-secondary) 16%
-  );
-  --dominds-run-badge-waiting-subdialogs-border: color-mix(
-    in srgb,
-    var(--dominds-info-border) 72%,
-    var(--dominds-border) 28%
-  );
+  --dominds-run-badge-waiting-subdialogs-bg: var(--dominds-run-badge-running-bg);
   --dominds-run-badge-fbr-accent: color-mix(
     in srgb,
     var(--dominds-warning) 58%,
     var(--dominds-primary) 42%
   );
   --dominds-run-badge-waiting-fbr-fg: var(--dominds-run-badge-fbr-accent);
-  --dominds-run-badge-waiting-fbr-bg: color-mix(
-    in srgb,
-    var(--dominds-run-badge-fbr-accent) 16%,
-    var(--dominds-bg-secondary) 84%
-  );
-  --dominds-run-badge-waiting-fbr-border: color-mix(
-    in srgb,
-    var(--dominds-run-badge-fbr-accent) 38%,
-    var(--dominds-border) 62%
-  );
+  --dominds-run-badge-waiting-fbr-bg: var(--dominds-run-badge-running-bg);
   --dominds-scrollbar-track: #f3f3f3;
   --dominds-scrollbar-thumb: #cccccc;
   --dominds-scrollbar-thumb-hover: #b1b1b1;

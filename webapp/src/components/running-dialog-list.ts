@@ -1772,11 +1772,6 @@ export class RunningDialogList extends HTMLElement {
 
       .run-badge {
         --run-badge-bg: var(--dominds-bg, #ffffff);
-        --run-badge-border: color-mix(
-          in srgb,
-          var(--dominds-border, #e0e0e0) 80%,
-          transparent
-        );
         --run-badge-color: var(--dominds-muted, #666666);
         display: inline-flex;
         align-items: center;
@@ -1785,7 +1780,7 @@ export class RunningDialogList extends HTMLElement {
         height: 14px;
         padding: 0;
         border-radius: 999px;
-        border: 1px solid var(--run-badge-border);
+        border: none;
         background: var(--run-badge-bg);
         color: var(--run-badge-color);
         user-select: none;
@@ -1801,21 +1796,17 @@ export class RunningDialogList extends HTMLElement {
 
       .run-badge.interrupted {
         --run-badge-bg: var(--dominds-run-badge-interrupted-bg, var(--dominds-danger-bg, #f8d7da));
-        --run-badge-border: var(
-          --dominds-run-badge-interrupted-border,
-          color-mix(in srgb, var(--dominds-danger, #dc3545) 30%, transparent)
-        );
         --run-badge-color: var(--dominds-run-badge-interrupted-fg, var(--dominds-danger, #721c24));
       }
 
       .run-badge.proceeding {
         --run-badge-bg: var(
           --dominds-run-badge-running-bg,
-          color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--dominds-bg, #ffffff))
-        );
-        --run-badge-border: var(
-          --dominds-run-badge-running-border,
-          color-mix(in srgb, var(--dominds-primary, #007acc) 42%, transparent)
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #0f172a) 92%,
+            var(--dominds-bg-secondary, #ffffff) 8%
+          )
         );
         --run-badge-color: var(--dominds-run-badge-running-fg, var(--dominds-primary, #007acc));
       }
@@ -1823,26 +1814,26 @@ export class RunningDialogList extends HTMLElement {
       .run-badge.blocked-q4h {
         --run-badge-bg: var(
           --dominds-run-badge-waiting-human-bg,
-          var(--dominds-warning-bg, #fff3cd)
-        );
-        --run-badge-border: var(
-          --dominds-run-badge-waiting-human-border,
-          var(--dominds-warning-border, #ffeaa7)
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #0f172a) 92%,
+            var(--dominds-bg-secondary, #ffffff) 8%
+          )
         );
         --run-badge-color: var(
           --dominds-run-badge-waiting-human-fg,
-          var(--dominds-warning, #856404)
+          var(--dominds-warning, #bb8009)
         );
       }
 
       .run-badge.blocked-subdialogs {
         --run-badge-bg: var(
           --dominds-run-badge-waiting-subdialogs-bg,
-          var(--dominds-info-bg, #e8f2ff)
-        );
-        --run-badge-border: var(
-          --dominds-run-badge-waiting-subdialogs-border,
-          var(--dominds-info-border, #bfd6f5)
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #0f172a) 92%,
+            var(--dominds-bg-secondary, #ffffff) 8%
+          )
         );
         --run-badge-color: var(
           --dominds-run-badge-waiting-subdialogs-fg,
@@ -1853,15 +1844,15 @@ export class RunningDialogList extends HTMLElement {
       .run-badge.blocked-fbr {
         --run-badge-bg: var(
           --dominds-run-badge-waiting-fbr-bg,
-          color-mix(in srgb, var(--dominds-warning, #bb8009) 12%, var(--dominds-bg, #ffffff))
-        );
-        --run-badge-border: var(
-          --dominds-run-badge-waiting-fbr-border,
-          color-mix(in srgb, var(--dominds-warning, #bb8009) 35%, transparent)
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #0f172a) 92%,
+            var(--dominds-bg-secondary, #ffffff) 8%
+          )
         );
         --run-badge-color: var(
           --dominds-run-badge-waiting-fbr-fg,
-          var(--dominds-warning, #bb8009)
+          var(--dominds-run-badge-fbr-accent, #8b5cf6)
         );
       }
 
