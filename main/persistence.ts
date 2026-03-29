@@ -4732,9 +4732,13 @@ export class DialogPersistence {
       for (const dialogIdObj of dialogIds) {
         try {
           const questions = await this.loadQuestions4HumanState(dialogIdObj, 'running');
+          if (questions.length === 0) {
+            continue;
+          }
+
           const metadata = await this.loadDialogMetadata(dialogIdObj, 'running');
 
-          if (metadata && questions.length > 0) {
+          if (metadata) {
             for (const q of questions) {
               allQuestions.push({
                 ...q,
