@@ -70,25 +70,39 @@
   --dominds-info: var(--color-info);
   --dominds-info-bg: #e8f2ff;
   --dominds-info-border: #bfd6f5;
+  /* Run badges are tiny icon-only pills on top of the dialog node surface. The badge
+   * background must first stay clearly separated from the node background; only after that
+   * do we tune the icon foreground color for each state. Do not collapse these into one
+   * neutral or low-contrast surface.
+   */
   --dominds-run-badge-running-fg: var(--dominds-primary);
   --dominds-run-badge-running-bg: color-mix(
     in srgb,
-    var(--dominds-fg) 92%,
-    var(--dominds-bg-secondary) 8%
+    var(--dominds-primary) 12%,
+    var(--dominds-bg-secondary) 88%
+  );
+  --dominds-run-badge-running-border: color-mix(
+    in srgb,
+    var(--dominds-primary) 24%,
+    var(--dominds-border) 76%
   );
   --dominds-run-badge-interrupted-fg: var(--dominds-danger);
-  --dominds-run-badge-interrupted-bg: var(--dominds-run-badge-running-bg);
+  --dominds-run-badge-interrupted-bg: var(--dominds-danger-bg);
+  --dominds-run-badge-interrupted-border: var(--dominds-danger-border);
   --dominds-run-badge-waiting-human-fg: var(--dominds-warning);
-  --dominds-run-badge-waiting-human-bg: var(--dominds-run-badge-running-bg);
+  --dominds-run-badge-waiting-human-bg: var(--dominds-warning-bg);
+  --dominds-run-badge-waiting-human-border: var(--dominds-warning-border);
   --dominds-run-badge-waiting-subdialogs-fg: var(--dominds-info);
-  --dominds-run-badge-waiting-subdialogs-bg: var(--dominds-run-badge-running-bg);
+  --dominds-run-badge-waiting-subdialogs-bg: var(--dominds-info-bg);
+  --dominds-run-badge-waiting-subdialogs-border: var(--dominds-info-border);
   --dominds-run-badge-fbr-accent: color-mix(
     in srgb,
     var(--dominds-warning) 58%,
     var(--dominds-primary) 42%
   );
-  --dominds-run-badge-waiting-fbr-fg: var(--dominds-run-badge-fbr-accent);
+  --dominds-run-badge-waiting-fbr-fg: var(--dominds-run-badge-running-fg);
   --dominds-run-badge-waiting-fbr-bg: var(--dominds-run-badge-running-bg);
+  --dominds-run-badge-waiting-fbr-border: var(--dominds-run-badge-running-border);
   --dominds-scrollbar-track: #f3f3f3;
   --dominds-scrollbar-thumb: #cccccc;
   --dominds-scrollbar-thumb-hover: #b1b1b1;
@@ -225,6 +239,41 @@
     --dominds-info: var(--color-info);
     --dominds-info-bg: #1a2d42;
     --dominds-info-border: #2e4d70;
+    --dominds-run-badge-running-fg: color-mix(in srgb, var(--dominds-primary) 62%, black 38%);
+    --dominds-run-badge-running-bg: color-mix(in srgb, var(--dominds-primary) 22%, white 78%);
+    --dominds-run-badge-running-border: color-mix(in srgb, var(--dominds-primary) 48%, white 52%);
+    --dominds-run-badge-interrupted-fg: color-mix(in srgb, var(--dominds-danger) 64%, black 36%);
+    --dominds-run-badge-interrupted-bg: color-mix(in srgb, var(--dominds-danger) 18%, white 82%);
+    --dominds-run-badge-interrupted-border: color-mix(
+      in srgb,
+      var(--dominds-danger) 42%,
+      white 58%
+    );
+    --dominds-run-badge-waiting-human-fg: color-mix(in srgb, var(--dominds-warning) 74%, black 26%);
+    --dominds-run-badge-waiting-human-bg: color-mix(in srgb, var(--dominds-warning) 26%, white 74%);
+    --dominds-run-badge-waiting-human-border: color-mix(
+      in srgb,
+      var(--dominds-warning) 54%,
+      white 46%
+    );
+    --dominds-run-badge-waiting-subdialogs-fg: color-mix(
+      in srgb,
+      var(--dominds-info) 68%,
+      black 32%
+    );
+    --dominds-run-badge-waiting-subdialogs-bg: color-mix(
+      in srgb,
+      var(--dominds-info) 18%,
+      white 82%
+    );
+    --dominds-run-badge-waiting-subdialogs-border: color-mix(
+      in srgb,
+      var(--dominds-info) 44%,
+      white 56%
+    );
+    --dominds-run-badge-waiting-fbr-fg: var(--dominds-run-badge-running-fg);
+    --dominds-run-badge-waiting-fbr-bg: var(--dominds-run-badge-running-bg);
+    --dominds-run-badge-waiting-fbr-border: var(--dominds-run-badge-running-border);
     --dominds-scrollbar-track: #1f1f1f;
     --dominds-scrollbar-thumb: #616161;
     --dominds-scrollbar-thumb-hover: #808080;
@@ -395,6 +444,29 @@
   --dominds-info: #4daafc;
   --dominds-info-bg: #1a2d42;
   --dominds-info-border: #2e4d70;
+  --dominds-run-badge-running-fg: color-mix(in srgb, var(--dominds-primary) 62%, black 38%);
+  --dominds-run-badge-running-bg: color-mix(in srgb, var(--dominds-primary) 22%, white 78%);
+  --dominds-run-badge-running-border: color-mix(in srgb, var(--dominds-primary) 48%, white 52%);
+  --dominds-run-badge-interrupted-fg: color-mix(in srgb, var(--dominds-danger) 64%, black 36%);
+  --dominds-run-badge-interrupted-bg: color-mix(in srgb, var(--dominds-danger) 18%, white 82%);
+  --dominds-run-badge-interrupted-border: color-mix(in srgb, var(--dominds-danger) 42%, white 58%);
+  --dominds-run-badge-waiting-human-fg: color-mix(in srgb, var(--dominds-warning) 74%, black 26%);
+  --dominds-run-badge-waiting-human-bg: color-mix(in srgb, var(--dominds-warning) 26%, white 74%);
+  --dominds-run-badge-waiting-human-border: color-mix(
+    in srgb,
+    var(--dominds-warning) 54%,
+    white 46%
+  );
+  --dominds-run-badge-waiting-subdialogs-fg: color-mix(in srgb, var(--dominds-info) 68%, black 32%);
+  --dominds-run-badge-waiting-subdialogs-bg: color-mix(in srgb, var(--dominds-info) 18%, white 82%);
+  --dominds-run-badge-waiting-subdialogs-border: color-mix(
+    in srgb,
+    var(--dominds-info) 44%,
+    white 56%
+  );
+  --dominds-run-badge-waiting-fbr-fg: var(--dominds-run-badge-running-fg);
+  --dominds-run-badge-waiting-fbr-bg: var(--dominds-run-badge-running-bg);
+  --dominds-run-badge-waiting-fbr-border: var(--dominds-run-badge-running-border);
   --dominds-scrollbar-track: #1f1f1f;
   --dominds-scrollbar-thumb: #616161;
   --dominds-scrollbar-thumb-hover: #808080;
