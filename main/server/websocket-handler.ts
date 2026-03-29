@@ -78,6 +78,7 @@ import {
   createProblemsSnapshotMessage,
   setProblemsBroadcaster,
 } from '../problems';
+import { recoverPendingReplyTellaskCallsForDialog } from '../recovery/reply-special';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
@@ -847,6 +848,8 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     // Create RootDialog instance with the new store
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    // display_dialog is intentionally read-only. Do not trigger replyTellask* recovery here:
+    // merely opening a dialog must not deliver persisted replies or kick off follow-up drives.
     syncDialogLanguagePreference(dialog, resolveUserLanguageCode(ws, undefined, dialog));
     globalDialogRegistry.register(dialog);
     // Setup WebSocket subscription for real-time events
@@ -1480,7 +1483,12 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   }
   globalDialogRegistry.register(rootDialog);
 
+  // This helper is intentionally for business operations that will mutate or continue execution
+  // immediately after restore (for example resume_dialog, resume_all, or dead-subdialog recovery).
+  // Because those operations are execution-oriented, we repair pending replyTellask* delivery
+  // before handing the dialog back to the caller.
   if (dialogIdObj.selfId === dialogIdObj.rootId) {
+    await recoverPendingReplyTellaskCallsForDialog(rootDialog);
     return rootDialog;
   }
 
@@ -1488,6 +1496,7 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   if (!sub) {
     throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
   }
+  await recoverPendingReplyTellaskCallsForDialog(sub);
   return sub;
 }
 

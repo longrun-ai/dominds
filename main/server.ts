@@ -15,6 +15,7 @@ import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
 import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
+import { recoverPendingReplyTellaskCallsAfterRestart } from './recovery/reply-special';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
 import { AuthConfig, computeAuthConfig } from './server/auth';
 import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
@@ -146,6 +147,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
 
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
   await reconcileDisplayStatesAfterRestart();
+  await recoverPendingReplyTellaskCallsAfterRestart();
 
   // Tests may opt out so the process can shut down cleanly without a driver stop API.
   if (startBackendDriver) {

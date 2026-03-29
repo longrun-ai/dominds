@@ -28,7 +28,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
+import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
   LlmGenerator,
@@ -37,6 +37,11 @@ import type {
   LlmStreamResult,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  findFirstToolCallAdjacencyViolation,
+  formatToolCallAdjacencyViolation,
+  normalizeToolCallPairs,
+} from './tool-call-context';
 import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
@@ -373,69 +378,6 @@ async function orphanedFuncResultToChatCompletionMessages(
   ];
 }
 
-function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
-  // Providers differ in how strictly they validate tool call/result ordering. Many
-  // ChatCompletions-compatible endpoints reject tool results unless they appear immediately
-  // after their matching tool_calls.
-  //
-  // Dominds may produce call blocks followed by result blocks (due to parallel execution). This
-  // normalizer interleaves obvious call/result runs so we can emit a valid message sequence.
-  const out: ChatMessage[] = [];
-
-  let i = 0;
-  while (i < context.length) {
-    const msg = context[i];
-    if (msg.type !== 'func_call_msg') {
-      out.push(msg);
-      i++;
-      continue;
-    }
-
-    const calls: FuncCallMsg[] = [];
-    while (i < context.length && context[i].type === 'func_call_msg') {
-      calls.push(context[i] as FuncCallMsg);
-      i++;
-    }
-
-    const results: FuncResultMsg[] = [];
-    while (i < context.length && context[i].type === 'func_result_msg') {
-      results.push(context[i] as FuncResultMsg);
-      i++;
-    }
-
-    if (results.length === 0) {
-      out.push(...calls);
-      continue;
-    }
-
-    const resultsById = new Map<string, FuncResultMsg[]>();
-    for (const result of results) {
-      const existing = resultsById.get(result.id);
-      if (existing) existing.push(result);
-      else resultsById.set(result.id, [result]);
-    }
-
-    const used = new Set<FuncResultMsg>();
-    for (const call of calls) {
-      out.push(call);
-      const queue = resultsById.get(call.id);
-      if (queue && queue.length > 0) {
-        const next = queue.shift();
-        if (next) {
-          out.push(next);
-          used.add(next);
-        }
-      }
-    }
-
-    for (const result of results) {
-      if (!used.has(result)) out.push(result);
-    }
-  }
-
-  return out;
-}
-
 function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatCompletionMessageParam[] {
   // Some proxies behave poorly with long runs of same-role messages (Dominds persists thinking/saying
   // as separate msgs). Merge adjacent user/assistant/system messages where safe.
@@ -487,6 +429,20 @@ async function buildChatCompletionMessages(
   options?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
 ): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
+  const violation = findFirstToolCallAdjacencyViolation(normalized);
+  if (violation) {
+    const detail = formatToolCallAdjacencyViolation(
+      violation,
+      'OPENAI-COMPATIBLE provider projection',
+    );
+    log.error(detail, new Error('openai_compatible_tool_call_adjacency_violation'), {
+      callId: violation.callId,
+      toolName: violation.toolName,
+      violationKind: violation.kind,
+      index: violation.index,
+    });
+    throw new Error(detail);
+  }
   const input: ChatCompletionMessageParam[] = [];
   const reasoningContentMode = options?.reasoningContentMode === true;
   const toolResultMaxChars = resolveProviderToolResultMaxChars(options?.providerConfig);
@@ -524,38 +480,26 @@ async function buildChatCompletionMessages(
     input.push({ role: 'system', content: systemPrompt.trim() });
   }
 
-  let lastFuncCallId: string | null = null;
   for (const msg of normalized) {
     if (msg.type === 'thinking_msg' && reasoningContentMode) {
       appendReasoningContent(extractThinkingReasoningText(msg));
-      lastFuncCallId = null;
       continue;
     }
 
     if (msg.type === 'func_call_msg') {
       const mapped = chatMessageToChatCompletionMessage(msg);
       input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
-      lastFuncCallId = msg.id;
       continue;
     }
 
     if (msg.type === 'func_result_msg') {
-      // Many OpenAI-compatible providers require the tool result to directly follow the matching
-      // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
-      if (lastFuncCallId === msg.id) {
-        flushPendingReasoningAsAssistantMessage();
-        input.push(...(await funcResultToChatCompletionMessages(msg, toolResultMaxChars)));
-      } else {
-        flushPendingReasoningAsAssistantMessage();
-        input.push(...(await orphanedFuncResultToChatCompletionMessages(msg, toolResultMaxChars)));
-      }
-      lastFuncCallId = null;
+      flushPendingReasoningAsAssistantMessage();
+      input.push(...(await funcResultToChatCompletionMessages(msg, toolResultMaxChars)));
       continue;
     }
 
     const mapped = chatMessageToChatCompletionMessage(msg);
     input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
-    lastFuncCallId = null;
   }
 
   flushPendingReasoningAsAssistantMessage();

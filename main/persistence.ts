@@ -70,6 +70,7 @@ import type {
   TellaskReplyDirective,
   TellaskReplyResolutionRecord,
   TellaskResponseRecord,
+  TellaskSpecialCallRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
@@ -91,6 +92,7 @@ import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
+import { getWorkLanguage } from './runtime/work-language';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 
@@ -135,6 +137,202 @@ function cloneRootGenerationAnchor(anchor: RootGenerationAnchor): RootGeneration
     rootCourse: anchor.rootCourse,
     rootGenseq: anchor.rootGenseq,
   };
+}
+
+function formatCrashRecoveredFuncResultContent(toolName: string): string {
+  if (getWorkLanguage() === 'zh') {
+    return (
+      `Function '${toolName}' execution failed: ` +
+      'Dominds 在该工具调用发出后发生了进程意外退出，原调用未能产出结果。' +
+      '这是启动恢复阶段自动补记的失败结果，请基于当前上下文判断是否需要重试。'
+    );
+  }
+  return (
+    `Function '${toolName}' execution failed: ` +
+    'Dominds exited unexpectedly after this tool call was persisted, so no tool result was produced. ' +
+    'This failure record was added automatically during startup recovery; decide whether to retry.'
+  );
+}
+
+function readPersistedTellaskStringArg(
+  arguments_: ToolArguments,
+  field: string,
+  callName: string,
+  callId: string,
+): string {
+  const value = arguments_[field];
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(
+      `tellask special persistence invariant violation: missing ${field} for ${callName} (callId=${callId})`,
+    );
+  }
+  return value;
+}
+
+function readPersistedTellaskOptionalNumberArg(
+  arguments_: ToolArguments,
+  field: string,
+  callName: string,
+  callId: string,
+): number | undefined {
+  const value = arguments_[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(
+      `tellask special persistence invariant violation: invalid ${field} for ${callName} (callId=${callId})`,
+    );
+  }
+  return value;
+}
+
+function buildTellaskSpecialCallRecord(args: {
+  id: string;
+  name:
+    | 'tellaskBack'
+    | 'tellask'
+    | 'tellaskSessionless'
+    | 'replyTellask'
+    | 'replyTellaskSessionless'
+    | 'replyTellaskBack'
+    | 'askHuman'
+    | 'freshBootsReasoning';
+  arguments_: ToolArguments;
+  genseq: number;
+}): TellaskSpecialCallRecord {
+  const base = {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'tellask_special_call_record' as const,
+    genseq: args.genseq,
+    id: args.id,
+  };
+
+  switch (args.name) {
+    case 'tellaskBack':
+      return {
+        ...base,
+        name: args.name,
+        tellaskContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'tellaskContent',
+          args.name,
+          args.id,
+        ),
+      };
+    case 'tellask':
+      return {
+        ...base,
+        name: args.name,
+        targetAgentId: readPersistedTellaskStringArg(
+          args.arguments_,
+          'targetAgentId',
+          args.name,
+          args.id,
+        ),
+        sessionSlug: readPersistedTellaskStringArg(
+          args.arguments_,
+          'sessionSlug',
+          args.name,
+          args.id,
+        ),
+        tellaskContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'tellaskContent',
+          args.name,
+          args.id,
+        ),
+      };
+    case 'tellaskSessionless':
+      return {
+        ...base,
+        name: args.name,
+        targetAgentId: readPersistedTellaskStringArg(
+          args.arguments_,
+          'targetAgentId',
+          args.name,
+          args.id,
+        ),
+        tellaskContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'tellaskContent',
+          args.name,
+          args.id,
+        ),
+      };
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack':
+      return {
+        ...base,
+        name: args.name,
+        replyContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'replyContent',
+          args.name,
+          args.id,
+        ),
+      };
+    case 'askHuman':
+      return {
+        ...base,
+        name: args.name,
+        tellaskContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'tellaskContent',
+          args.name,
+          args.id,
+        ),
+      };
+    case 'freshBootsReasoning': {
+      const effort = readPersistedTellaskOptionalNumberArg(
+        args.arguments_,
+        'effort',
+        args.name,
+        args.id,
+      );
+      return {
+        ...base,
+        name: args.name,
+        tellaskContent: readPersistedTellaskStringArg(
+          args.arguments_,
+          'tellaskContent',
+          args.name,
+          args.id,
+        ),
+        ...(effort !== undefined ? { effort } : {}),
+      };
+    }
+  }
+}
+
+function formatTellaskSpecialCallArguments(record: TellaskSpecialCallRecord): string {
+  switch (record.name) {
+    case 'tellaskBack':
+      return JSON.stringify({ tellaskContent: record.tellaskContent });
+    case 'tellask':
+      return JSON.stringify({
+        targetAgentId: record.targetAgentId,
+        sessionSlug: record.sessionSlug,
+        tellaskContent: record.tellaskContent,
+      });
+    case 'tellaskSessionless':
+      return JSON.stringify({
+        targetAgentId: record.targetAgentId,
+        tellaskContent: record.tellaskContent,
+      });
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack':
+      return JSON.stringify({ replyContent: record.replyContent });
+    case 'askHuman':
+      return JSON.stringify({ tellaskContent: record.tellaskContent });
+    case 'freshBootsReasoning':
+      return JSON.stringify({
+        tellaskContent: record.tellaskContent,
+        ...(record.effort !== undefined ? { effort: record.effort } : {}),
+      });
+  }
 }
 
 function resolveRootGenerationAnchor(dialog: Dialog): RootGenerationAnchor {
@@ -475,14 +673,6 @@ export interface Questions4Human {
 // Remove old type definitions - now using kernel/types/storage.ts
 import { generateDialogID } from './utils/id';
 
-const TELLASK_SPECIAL_FUNCTION_NAMES = new Set([
-  'tellaskBack',
-  'tellask',
-  'tellaskSessionless',
-  'askHuman',
-  'freshBootsReasoning',
-]);
-
 type ReplayTellaskSpecialCall =
   | Readonly<{
       callName: 'tellaskBack';
@@ -513,88 +703,47 @@ type ReplayTellaskSpecialCall =
       callId: string;
     }>;
 
-function isTellaskSpecialFunctionName(name: string): boolean {
-  return TELLASK_SPECIAL_FUNCTION_NAMES.has(name);
-}
-
-function readRequiredStringArgument(args: ToolArguments, field: string): string | null {
-  const value = args[field];
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
-}
-
-function readOptionalStringArgument(args: ToolArguments, field: string): string | null {
-  const value = args[field];
-  if (value === undefined) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
-}
-
-function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpecialCall | null {
-  if (!isTellaskSpecialFunctionName(record.name)) {
-    return null;
-  }
-  const tellaskContent = readRequiredStringArgument(record.arguments, 'tellaskContent');
-  if (!tellaskContent) {
-    return null;
-  }
-
+function parseReplayTellaskSpecialCall(
+  record: TellaskSpecialCallRecord,
+): ReplayTellaskSpecialCall | null {
   switch (record.name) {
-    case 'tellaskBack': {
+    case 'tellaskBack':
       return {
         callName: 'tellaskBack',
-        tellaskContent,
+        tellaskContent: record.tellaskContent,
         callId: record.id,
       };
-    }
-    case 'askHuman': {
+    case 'askHuman':
       return {
         callName: 'askHuman',
-        tellaskContent,
+        tellaskContent: record.tellaskContent,
         callId: record.id,
       };
-    }
-    case 'freshBootsReasoning': {
+    case 'freshBootsReasoning':
       return {
         callName: 'freshBootsReasoning',
-        tellaskContent,
+        tellaskContent: record.tellaskContent,
         callId: record.id,
       };
-    }
-    case 'tellask': {
-      const targetAgentId = readRequiredStringArgument(record.arguments, 'targetAgentId');
-      const sessionSlug = readRequiredStringArgument(record.arguments, 'sessionSlug');
-      if (!targetAgentId || !sessionSlug) {
-        return null;
-      }
+    case 'tellask':
       return {
         callName: 'tellask',
-        mentionList: [`@${targetAgentId}`],
-        sessionSlug,
-        tellaskContent,
+        mentionList: [`@${record.targetAgentId}`],
+        sessionSlug: record.sessionSlug,
+        tellaskContent: record.tellaskContent,
         callId: record.id,
       };
-    }
-    case 'tellaskSessionless': {
-      const targetAgentId = readRequiredStringArgument(record.arguments, 'targetAgentId');
-      if (!targetAgentId) {
-        return null;
-      }
+    case 'tellaskSessionless':
       return {
         callName: 'tellaskSessionless',
-        mentionList: [`@${targetAgentId}`],
-        tellaskContent,
+        mentionList: [`@${record.targetAgentId}`],
+        tellaskContent: record.tellaskContent,
         callId: record.id,
       };
-    }
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack':
+      return null;
     default:
       return null;
   }
@@ -774,6 +923,12 @@ export class DiskFileDialogStore extends DialogStore {
    */
   public async receiveFuncResult(dialog: Dialog, funcResult: FuncResultMsg): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const genseq = dialog.activeGenSeqOrUndefined ?? funcResult.genseq;
+    if (!Number.isFinite(genseq) || genseq <= 0) {
+      throw new Error(
+        `receiveFuncResult invariant violation: missing valid genseq for func result ${funcResult.id}`,
+      );
+    }
     // Persist function result record
     const funcResultRecord: FuncResultRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -782,7 +937,7 @@ export class DiskFileDialogStore extends DialogStore {
       name: funcResult.name,
       content: funcResult.content,
       contentItems: funcResult.contentItems,
-      genseq: dialog.activeGenSeq,
+      genseq,
     };
     await this.appendEvent(dialog, course, funcResultRecord);
 
@@ -1849,6 +2004,32 @@ export class DiskFileDialogStore extends DialogStore {
     // UI display uses func_call_requested_evt instead
   }
 
+  public async persistTellaskSpecialCall(
+    dialog: Dialog,
+    id: string,
+    name:
+      | 'tellaskBack'
+      | 'tellask'
+      | 'tellaskSessionless'
+      | 'replyTellask'
+      | 'replyTellaskSessionless'
+      | 'replyTellaskBack'
+      | 'askHuman'
+      | 'freshBootsReasoning',
+    arguments_: ToolArguments,
+    genseq: number,
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const tellaskCallEvent = buildTellaskSpecialCallRecord({
+      id,
+      name,
+      arguments_,
+      genseq,
+    });
+
+    await this.appendEvent(dialog, course, tellaskCallEvent);
+  }
+
   /**
    * Update questions for human state (exceptional overwrite pattern)
    */
@@ -2501,65 +2682,6 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'func_call_record': {
-        const specialCall = parseReplayTellaskSpecialCall(event);
-        if (specialCall) {
-          const dialogIdent = {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          };
-          const callStartEvent = (() => {
-            switch (specialCall.callName) {
-              case 'tellask':
-                if (!specialCall.sessionSlug || specialCall.sessionSlug.trim() === '') {
-                  throw new Error(
-                    `Replay tellask event invariant violation: missing sessionSlug (callId=${specialCall.callId})`,
-                  );
-                }
-                return {
-                  type: 'tellask_call_start_evt',
-                  callName: specialCall.callName,
-                  callId: specialCall.callId,
-                  mentionList: specialCall.mentionList,
-                  sessionSlug: specialCall.sessionSlug,
-                  tellaskContent: specialCall.tellaskContent,
-                  course,
-                  genseq: event.genseq,
-                  dialog: dialogIdent,
-                  timestamp: event.ts,
-                };
-              case 'tellaskSessionless':
-                return {
-                  type: 'tellask_call_start_evt',
-                  callName: specialCall.callName,
-                  callId: specialCall.callId,
-                  mentionList: specialCall.mentionList,
-                  tellaskContent: specialCall.tellaskContent,
-                  course,
-                  genseq: event.genseq,
-                  dialog: dialogIdent,
-                  timestamp: event.ts,
-                };
-              case 'tellaskBack':
-              case 'askHuman':
-              case 'freshBootsReasoning':
-                return {
-                  type: 'tellask_call_start_evt',
-                  callName: specialCall.callName,
-                  callId: specialCall.callId,
-                  tellaskContent: specialCall.tellaskContent,
-                  course,
-                  genseq: event.genseq,
-                  dialog: dialogIdent,
-                  timestamp: event.ts,
-                };
-            }
-          })();
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify(callStartEvent));
-          }
-          break;
-        }
-
         // Handle normal function call events from persistence.
         const funcCall = {
           type: 'func_call_requested_evt',
@@ -2577,6 +2699,68 @@ export class DiskFileDialogStore extends DialogStore {
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(funcCall));
+        }
+        break;
+      }
+
+      case 'tellask_special_call_record': {
+        const specialCall = parseReplayTellaskSpecialCall(event);
+        if (!specialCall) {
+          break;
+        }
+        const dialogIdent = {
+          selfId: dialog.id.selfId,
+          rootId: dialog.id.rootId,
+        };
+        const callStartEvent = (() => {
+          switch (specialCall.callName) {
+            case 'tellask':
+              if (!specialCall.sessionSlug || specialCall.sessionSlug.trim() === '') {
+                throw new Error(
+                  `Replay tellask event invariant violation: missing sessionSlug (callId=${specialCall.callId})`,
+                );
+              }
+              return {
+                type: 'tellask_call_start_evt',
+                callName: specialCall.callName,
+                callId: specialCall.callId,
+                mentionList: specialCall.mentionList,
+                sessionSlug: specialCall.sessionSlug,
+                tellaskContent: specialCall.tellaskContent,
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              };
+            case 'tellaskSessionless':
+              return {
+                type: 'tellask_call_start_evt',
+                callName: specialCall.callName,
+                callId: specialCall.callId,
+                mentionList: specialCall.mentionList,
+                tellaskContent: specialCall.tellaskContent,
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              };
+            case 'tellaskBack':
+            case 'askHuman':
+            case 'freshBootsReasoning':
+              return {
+                type: 'tellask_call_start_evt',
+                callName: specialCall.callName,
+                callId: specialCall.callId,
+                tellaskContent: specialCall.tellaskContent,
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              };
+          }
+        })();
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(callStartEvent));
         }
         break;
       }
@@ -3133,6 +3317,59 @@ type DialogLatestMutation =
  * Utility class for managing dialog persistence
  */
 export class DialogPersistence {
+  private static async repairInterruptedFunctionCallsOnRestore(args: {
+    dialogId: DialogID;
+    course: number;
+    status: 'running' | 'completed' | 'archived';
+    events: PersistedDialogRecord[];
+  }): Promise<PersistedDialogRecord[]> {
+    if (args.status !== 'running') {
+      return args.events;
+    }
+
+    const unresolvedById = new Map<string, FuncCallRecord>();
+    for (const event of args.events) {
+      if (event.type === 'func_call_record') {
+        unresolvedById.set(event.id, event);
+        continue;
+      }
+      if (event.type === 'func_result_record') {
+        unresolvedById.delete(event.id);
+      }
+    }
+    if (unresolvedById.size === 0) {
+      return args.events;
+    }
+
+    const repaired = [...args.events];
+    for (const call of unresolvedById.values()) {
+      const repairRecord: FuncResultRecord = {
+        ts: formatUnifiedTimestamp(new Date()),
+        type: 'func_result_record',
+        id: call.id,
+        name: call.name,
+        content: formatCrashRecoveredFuncResultContent(call.name),
+        genseq: call.genseq,
+      };
+      log.error(
+        'Recovered unresolved persisted func_call_record after unexpected process exit',
+        new Error('dialog_restore_recovered_func_call'),
+        {
+          rootId: args.dialogId.rootId,
+          selfId: args.dialogId.selfId,
+          course: args.course,
+          genseq: call.genseq,
+          callId: call.id,
+          toolName: call.name,
+        },
+      );
+      await this.appendEvent(args.dialogId, args.course, repairRecord, args.status);
+      repaired.push(repairRecord);
+    }
+
+    return repaired;
+  }
+
   private static readonly DIALOGS_DIR = '.dialogs';
   private static readonly RUN_DIR = 'run';
   private static readonly DONE_DIR = 'done';
@@ -5774,9 +6011,15 @@ export class DialogPersistence {
       // Only load latest course for dialog state restoration
       const currentCourse = await this.getCurrentCourseNumber(dialogId, status);
       const latestEvents = await this.readCourseEvents(dialogId, currentCourse, status);
+      const repairedEvents = await this.repairInterruptedFunctionCallsOnRestore({
+        dialogId,
+        course: currentCourse,
+        status,
+        events: latestEvents,
+      });
 
       const reconstructedState = await this.rebuildFromEvents(
-        latestEvents,
+        repairedEvents,
         metadata,
         reminders,
         currentCourse,
@@ -5875,6 +6118,17 @@ export class DialogPersistence {
             id: event.id,
             name: event.name,
             arguments: event.arguments ? JSON.stringify(event.arguments) : '{}',
+          });
+          break;
+        }
+        case 'tellask_special_call_record': {
+          messages.push({
+            type: 'func_call_msg',
+            role: 'assistant',
+            genseq: event.genseq,
+            id: event.id,
+            name: event.name,
+            arguments: formatTellaskSpecialCallArguments(event),
           });
           break;
         }

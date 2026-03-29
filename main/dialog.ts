@@ -1443,6 +1443,23 @@ export abstract class Dialog {
     return await this.dlgStore.persistFunctionCall(this, id, name, arguments_, genseq);
   }
 
+  public async persistTellaskSpecialCall(
+    id: string,
+    name:
+      | 'tellaskBack'
+      | 'tellask'
+      | 'tellaskSessionless'
+      | 'replyTellask'
+      | 'replyTellaskSessionless'
+      | 'replyTellaskBack'
+      | 'askHuman'
+      | 'freshBootsReasoning',
+    arguments_: StoredToolArguments,
+    genseq: number,
+  ): Promise<void> {
+    return await this.dlgStore.persistTellaskSpecialCall(this, id, name, arguments_, genseq);
+  }
+
   /**
    * Post subdialog completion response to this dialog.
    * Phase 14: No wait - emit immediately with virtual gen markers for Type C subdialogs
@@ -2093,6 +2110,22 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _id: string,
     _name: string,
+    _arguments: StoredToolArguments,
+    _genseq: number,
+  ): Promise<void> {}
+
+  public async persistTellaskSpecialCall(
+    _dialog: Dialog,
+    _id: string,
+    _name:
+      | 'tellaskBack'
+      | 'tellask'
+      | 'tellaskSessionless'
+      | 'replyTellask'
+      | 'replyTellaskSessionless'
+      | 'replyTellaskBack'
+      | 'askHuman'
+      | 'freshBootsReasoning',
     _arguments: StoredToolArguments,
     _genseq: number,
   ): Promise<void> {}

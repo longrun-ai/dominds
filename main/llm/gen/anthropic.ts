@@ -21,7 +21,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
+import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
   LlmGenerator,
@@ -30,6 +30,11 @@ import type {
   LlmStreamResult,
 } from '../gen';
 import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  findFirstToolCallAdjacencyViolation,
+  formatToolCallAdjacencyViolation,
+  normalizeToolCallPairs,
+} from './tool-call-context';
 import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
@@ -248,78 +253,6 @@ function parseForcedJsonToolInput(rawJson: string, fallbackInput: unknown, at: s
   throw new Error(`Invalid ${at}: ${errorText}; raw=${JSON.stringify(preview)}`);
 }
 
-/**
- * Context Reconstruction Functions
- *
- * Converts persisted messages to Anthropic SDK MessageParam[] format.
- * Relies on natural storage order - func_result always follows func_call.
- */
-
-function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
-  // Some Anthropic-compatible endpoints reject tool results unless they appear immediately after
-  // their matching tool_use. Dominds may temporarily produce call blocks followed by result blocks
-  // (due to parallel execution), so we interleave obvious runs here.
-  const out: ChatMessage[] = [];
-
-  let i = 0;
-  while (i < context.length) {
-    const msg = context[i];
-    if (msg.type !== 'func_call_msg') {
-      out.push(msg);
-      i++;
-      continue;
-    }
-
-    const calls: FuncCallMsg[] = [];
-    while (i < context.length && context[i].type === 'func_call_msg') {
-      calls.push(context[i] as FuncCallMsg);
-      i++;
-    }
-
-    const results: FuncResultMsg[] = [];
-    while (i < context.length && context[i].type === 'func_result_msg') {
-      results.push(context[i] as FuncResultMsg);
-      i++;
-    }
-
-    if (results.length === 0) {
-      out.push(...calls);
-      continue;
-    }
-
-    const resultsById = new Map<string, FuncResultMsg[]>();
-    for (const result of results) {
-      const existing = resultsById.get(result.id);
-      if (existing) {
-        existing.push(result);
-      } else {
-        resultsById.set(result.id, [result]);
-      }
-    }
-
-    const used = new Set<FuncResultMsg>();
-    for (const call of calls) {
-      out.push(call);
-      const queue = resultsById.get(call.id);
-      if (queue && queue.length > 0) {
-        const next = queue.shift();
-        if (next) {
-          out.push(next);
-          used.add(next);
-        }
-      }
-    }
-
-    for (const result of results) {
-      if (!used.has(result)) {
-        out.push(result);
-      }
-    }
-  }
-
-  return out;
-}
-
 async function funcResultToAnthropicToolResultBlock(
   chatMsg: FuncResultMsg,
   limitChars: number,
@@ -424,41 +357,22 @@ async function buildAnthropicRequestMessages(
 ): Promise<MessageParam[]> {
   // We keep the async path for func_result_msg because it may contain image artifacts.
   const normalized = normalizeToolCallPairs(context);
+  const violation = findFirstToolCallAdjacencyViolation(normalized);
+  if (violation) {
+    const detail = formatToolCallAdjacencyViolation(violation, 'ANTH provider projection');
+    log.error(detail, new Error('anthropic_tool_call_adjacency_violation'), {
+      callId: violation.callId,
+      toolName: violation.toolName,
+      violationKind: violation.kind,
+      index: violation.index,
+    });
+    throw new Error(detail);
+  }
   const messages: MessageParam[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
 
-  let lastToolUseId: string | null = null;
   for (const msg of normalized) {
-    if (msg.type === 'func_call_msg') {
-      messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
-      lastToolUseId = msg.id;
-      continue;
-    }
-
-    if (msg.type === 'func_result_msg') {
-      if (lastToolUseId === msg.id) {
-        messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
-      } else {
-        messages.push({
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: limitAnthropicToolOutputText(
-                `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
-                msg,
-                toolResultMaxChars,
-              ),
-            },
-          ],
-        });
-      }
-      lastToolUseId = null;
-      continue;
-    }
-
     messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
-    lastToolUseId = null;
   }
 
   return assembleAnthropicTurns(messages);
@@ -476,7 +390,7 @@ export async function buildAnthropicRequestMessagesWrapper(
  * Relies on natural storage order - func_result always follows func_call.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
-  return assembleAnthropicTurnsFromChatMessages(persistedMessages);
+  return buildAnthropicRequestMessagesSync(persistedMessages);
 }
 
 function contentToBlocks(content: MessageParam['content']): AnthropicContentBlock[] {
@@ -518,36 +432,26 @@ function assembleAnthropicTurns(messages: MessageParam[]): MessageParam[] {
   return turns;
 }
 
-function assembleAnthropicTurnsFromChatMessages(persistedMessages: ChatMessage[]): MessageParam[] {
-  // Turn builder (ChatMessage -> provider MessageParam[])
-  //
-  // Goals:
-  // - Preserve chronological order.
-  // - Enforce role alternation as required by strict Anthropic-compatible endpoints.
-  // - Preserve tool_use/tool_result adjacency (normalizeToolCallPairs already interleaves obvious
-  //   call/result runs by id).
-  // - Coalesce same-role messages into a single provider turn (including tool_use blocks).
-  //
-  // Ideal future: role='environment' (not supported by most providers today).
-  const normalized = normalizeToolCallPairs(persistedMessages);
-  const turns: MessageParam[] = [];
+function buildAnthropicRequestMessagesSync(context: ChatMessage[]): MessageParam[] {
+  const normalized = normalizeToolCallPairs(context);
+  const violation = findFirstToolCallAdjacencyViolation(normalized);
+  if (violation) {
+    const detail = formatToolCallAdjacencyViolation(violation, 'ANTH sync context reconstruction');
+    log.error(detail, new Error('anthropic_tool_call_adjacency_violation'), {
+      callId: violation.callId,
+      toolName: violation.toolName,
+      violationKind: violation.kind,
+      index: violation.index,
+    });
+    throw new Error(detail);
+  }
+  const messages: MessageParam[] = [];
 
   for (const msg of normalized) {
-    const contentBlocks = chatMessageToContentBlocks(msg);
-    if (contentBlocks.length === 0) continue;
-
-    const role: 'user' | 'assistant' = msg.role === 'tool' ? 'user' : msg.role;
-
-    const prev = turns.length > 0 ? turns[turns.length - 1] : null;
-    if (prev && prev.role === role) {
-      const prevBlocks = contentToBlocks(prev.content);
-      prev.content = [...prevBlocks, ...contentBlocks];
-      continue;
-    }
-
-    turns.push({ role, content: contentBlocks });
+    messages.push(chatMessageToAnthropic(msg));
   }
-  return turns;
+
+  return assembleAnthropicTurns(messages);
 }
 
 function applyInputJsonDelta(state: ActiveToolUse, partialJson: string): void {

@@ -7,6 +7,7 @@ import {
   type HumanQuestion,
   type PendingSubdialogStateRecord,
   type TellaskReplyDirective,
+  type TellaskSpecialCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -245,6 +246,13 @@ type ReplyTellaskExecutionResult = Readonly<{
   delivered: boolean;
 }>;
 
+type ReplyTellaskSpecialCallRecord = Extract<
+  TellaskSpecialCallRecord,
+  {
+    name: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  }
+>;
+
 function buildAssignmentReplyDirective(args: {
   callName: 'tellask' | 'tellaskSessionless';
   targetCallId: string;
@@ -321,6 +329,138 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     },
   );
   await reviveDialogIfUnblocked(targetDialog, args.callbacks, 'reply_tellask_back_delivered');
+}
+
+function isReplyTellaskSpecialCallRecord(
+  record: TellaskSpecialCallRecord,
+): record is ReplyTellaskSpecialCallRecord {
+  return isReplyTellaskCallName(record.name);
+}
+
+function formatReplyRecoveryFailureResult(args: {
+  callName: ReplyTellaskCallName;
+  errorText: string;
+}): string {
+  return getWorkLanguage() === 'zh'
+    ? `恢复重试 \`${args.callName}\` 失败：${args.errorText}`
+    : `Recovery retry for \`${args.callName}\` failed: ${args.errorText}`;
+}
+
+export async function recoverPendingReplyTellaskCalls(args: {
+  dlg: Dialog;
+  callbacks: KernelDriverDriveCallbacks;
+}): Promise<number> {
+  if (args.dlg.status !== 'running') {
+    return 0;
+  }
+
+  const events = await DialogPersistence.loadCourseEvents(
+    args.dlg.id,
+    args.dlg.currentCourse,
+    args.dlg.status,
+  );
+  const funcResultIds = new Set<string>();
+  const resolvedReplyCallIds = new Set<string>();
+  const replyCalls: ReplyTellaskSpecialCallRecord[] = [];
+
+  for (const event of events) {
+    if (event.type === 'func_result_record') {
+      const callId = event.id.trim();
+      if (callId !== '') {
+        funcResultIds.add(callId);
+      }
+      continue;
+    }
+    if (event.type === 'tellask_reply_resolution_record') {
+      const callId = event.callId.trim();
+      if (callId !== '') {
+        resolvedReplyCallIds.add(callId);
+      }
+      continue;
+    }
+    if (event.type !== 'tellask_special_call_record') {
+      continue;
+    }
+    if (!isReplyTellaskSpecialCallRecord(event)) {
+      continue;
+    }
+    replyCalls.push(event);
+  }
+
+  let recoveredCount = 0;
+  for (const call of replyCalls) {
+    const callId = call.id.trim();
+    if (callId === '' || funcResultIds.has(callId)) {
+      continue;
+    }
+
+    if (resolvedReplyCallIds.has(callId)) {
+      await args.dlg.receiveFuncResult({
+        type: 'func_result_msg',
+        role: 'tool',
+        genseq: call.genseq,
+        id: call.id,
+        name: call.name,
+        content: formatReplyFuncResult({
+          replyCallName: call.name,
+          replyContent: call.replyContent,
+        }),
+      });
+      funcResultIds.add(callId);
+      recoveredCount += 1;
+      continue;
+    }
+
+    try {
+      const execution = await executeReplyTellaskCall({
+        dlg: args.dlg,
+        call: {
+          callId: call.id,
+          callName: call.name,
+          replyContent: call.replyContent,
+        },
+        callbacks: args.callbacks,
+      });
+      for (const message of execution.messages) {
+        if (message.type !== 'func_result_msg') {
+          throw new Error(
+            `reply recovery invariant violation: unexpected message type ${message.type}`,
+          );
+        }
+        await args.dlg.receiveFuncResult({
+          ...message,
+          genseq: call.genseq,
+        });
+      }
+      funcResultIds.add(callId);
+      recoveredCount += 1;
+    } catch (err) {
+      const errorText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      log.error('Failed to recover pending replyTellask* call after restart', err, {
+        rootId: args.dlg.id.rootId,
+        selfId: args.dlg.id.selfId,
+        course: args.dlg.currentCourse,
+        genseq: call.genseq,
+        callId: call.id,
+        toolName: call.name,
+      });
+      await args.dlg.receiveFuncResult({
+        type: 'func_result_msg',
+        role: 'tool',
+        genseq: call.genseq,
+        id: call.id,
+        name: call.name,
+        content: formatReplyRecoveryFailureResult({
+          callName: call.name,
+          errorText,
+        }),
+      });
+      funcResultIds.add(callId);
+      recoveredCount += 1;
+    }
+  }
+
+  return recoveredCount;
 }
 
 function parseFuncCallArgsObject(call: FuncCallMsg):

@@ -77,6 +77,47 @@ async function main() {
   const userTypes = extractBlockTypes(messages[2].content);
   assert(userTypes.includes('tool_result'), 'Expected user message to include tool_result block');
 
+  const orphanedCallContext: ChatMessage[] = [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 2,
+      msgId: 'user-2',
+      grammar: 'markdown',
+      content: 'Earlier tool call was interrupted.',
+    },
+    {
+      type: 'func_call_msg',
+      role: 'assistant',
+      genseq: 2,
+      id: 'call-orphan',
+      name: 'shell_cmd',
+      arguments: JSON.stringify({ command: 'cat missing.txt' }),
+    },
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 3,
+      msgId: 'user-3',
+      grammar: 'markdown',
+      content: 'Please continue without that tool result.',
+    },
+  ];
+
+  let threw = false;
+  try {
+    reconstructAnthropicContextWrapper(orphanedCallContext);
+  } catch (err) {
+    threw = true;
+    const message = err instanceof Error ? err.message : String(err);
+    assert(
+      message.includes('unresolved persisted func_call_msg detected'),
+      'Expected explicit unresolved func_call invariant error',
+    );
+    assert(message.includes('callId=call-orphan'), 'Expected callId in invariant error');
+  }
+  assert(threw, 'Expected orphaned func_call context reconstruction to fail loudly');
+
   console.log('✓ Anthropic context normalization test passed');
 }
 

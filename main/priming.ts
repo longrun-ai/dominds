@@ -22,6 +22,7 @@ import type {
   TellaskReplyDirective,
   TellaskReplyResolutionRecord,
   TellaskResponseRecord,
+  TellaskSpecialCallRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
   WebSearchCallActionRecord,
@@ -326,6 +327,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'agent_words_record' ||
     raw === 'ui_only_markdown_record' ||
     raw === 'func_call_record' ||
+    raw === 'tellask_special_call_record' ||
     raw === 'web_search_call_record' ||
     raw === 'human_text_record' ||
     raw === 'func_result_record' ||
@@ -348,6 +350,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'ui_only_markdown_record':
     case 'human_text_record':
     case 'func_result_record':
+    case 'tellask_special_call_record':
       return 'content';
     case 'quest_for_sup_record':
       return 'tellaskContent';
@@ -784,6 +787,62 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         name: expectStringField(raw, 'name', context),
         arguments: argumentsRaw as ToolArguments,
       };
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'tellask_special_call_record': {
+      const base = {
+        ts: '',
+        type,
+        genseq: expectIntegerField(raw, 'genseq', context),
+        id: expectStringField(raw, 'id', context),
+      } as const;
+      const name = expectStringField(raw, 'name', context);
+      const content = expectStringField(raw, 'content', context, true);
+      let record: TellaskSpecialCallRecord;
+      switch (name) {
+        case 'tellaskBack':
+          record = { ...base, name, tellaskContent: content };
+          break;
+        case 'tellask':
+          record = {
+            ...base,
+            name,
+            targetAgentId: expectStringField(raw, 'targetAgentId', context),
+            sessionSlug: expectStringField(raw, 'sessionSlug', context),
+            tellaskContent: content,
+          };
+          break;
+        case 'tellaskSessionless':
+          record = {
+            ...base,
+            name,
+            targetAgentId: expectStringField(raw, 'targetAgentId', context),
+            tellaskContent: content,
+          };
+          break;
+        case 'replyTellask':
+        case 'replyTellaskSessionless':
+        case 'replyTellaskBack':
+          record = { ...base, name, replyContent: content };
+          break;
+        case 'askHuman':
+          record = { ...base, name, tellaskContent: content };
+          break;
+        case 'freshBootsReasoning': {
+          const effort = parseOptionalIntegerField(raw, 'effort', context);
+          record = {
+            ...base,
+            name,
+            tellaskContent: content,
+            ...(effort !== undefined ? { effort } : {}),
+          };
+          break;
+        }
+        default:
+          throw new Error(`${context}.name must be a supported tellask special function`);
+      }
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1742,6 +1801,7 @@ function remapRecordGenseq(
     case 'agent_words_record':
     case 'ui_only_markdown_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -1815,6 +1875,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'agent_words_record':
     case 'ui_only_markdown_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -1841,6 +1902,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'agent_words_record':
     case 'ui_only_markdown_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -1903,6 +1965,42 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         id: record.id,
         name: record.name,
         arguments: JSON.stringify(record.arguments),
+      };
+    case 'tellask_special_call_record':
+      return {
+        type: 'func_call_msg',
+        role: 'assistant',
+        genseq: record.genseq,
+        id: record.id,
+        name: record.name,
+        arguments: (() => {
+          switch (record.name) {
+            case 'tellaskBack':
+              return JSON.stringify({ tellaskContent: record.tellaskContent });
+            case 'tellask':
+              return JSON.stringify({
+                targetAgentId: record.targetAgentId,
+                sessionSlug: record.sessionSlug,
+                tellaskContent: record.tellaskContent,
+              });
+            case 'tellaskSessionless':
+              return JSON.stringify({
+                targetAgentId: record.targetAgentId,
+                tellaskContent: record.tellaskContent,
+              });
+            case 'replyTellask':
+            case 'replyTellaskSessionless':
+            case 'replyTellaskBack':
+              return JSON.stringify({ replyContent: record.replyContent });
+            case 'askHuman':
+              return JSON.stringify({ tellaskContent: record.tellaskContent });
+            case 'freshBootsReasoning':
+              return JSON.stringify({
+                tellaskContent: record.tellaskContent,
+                ...(record.effort !== undefined ? { effort: record.effort } : {}),
+              });
+          }
+        })(),
       };
     case 'func_result_record':
       return {
@@ -2142,6 +2240,39 @@ function formatScriptMarkdown(args: {
         blockBody = record.tellaskContent;
         break;
       }
+      case 'tellask_special_call_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockMeta['id'] = record.id;
+        blockMeta['name'] = record.name;
+        switch (record.name) {
+          case 'tellaskBack':
+            blockBody = record.tellaskContent;
+            break;
+          case 'tellask':
+            blockMeta['targetAgentId'] = record.targetAgentId;
+            blockMeta['sessionSlug'] = record.sessionSlug;
+            blockBody = record.tellaskContent;
+            break;
+          case 'tellaskSessionless':
+            blockMeta['targetAgentId'] = record.targetAgentId;
+            blockBody = record.tellaskContent;
+            break;
+          case 'replyTellask':
+          case 'replyTellaskSessionless':
+          case 'replyTellaskBack':
+            blockBody = record.replyContent;
+            break;
+          case 'askHuman':
+            blockBody = record.tellaskContent;
+            break;
+          case 'freshBootsReasoning':
+            if (record.effort !== undefined) blockMeta['effort'] = record.effort;
+            blockBody = record.tellaskContent;
+            break;
+        }
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        break;
+      }
       case 'tellask_call_result_record': {
         blockMeta['responderId'] = record.responderId;
         blockMeta['callName'] = record.callName;
@@ -2282,6 +2413,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'agent_words_record':
     case 'ui_only_markdown_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'func_result_record':

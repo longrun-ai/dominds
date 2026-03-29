@@ -25,7 +25,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
+import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
   LlmGenerator,
@@ -35,6 +35,11 @@ import type {
   LlmWebSearchCall,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import {
+  findFirstToolCallAdjacencyViolation,
+  formatToolCallAdjacencyViolation,
+  normalizeToolCallPairs,
+} from './tool-call-context';
 import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
@@ -371,71 +376,6 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
   }
 }
 
-function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
-  // Codex/OpenAI-compatible backends may reject `function_call_output` items unless they appear
-  // immediately after their matching `function_call`. Dominds can temporarily produce a call block
-  // followed by a result block when tools run in parallel, so we interleave obvious runs here.
-  const out: ChatMessage[] = [];
-
-  let i = 0;
-  while (i < context.length) {
-    const msg = context[i];
-    if (msg.type !== 'func_call_msg') {
-      out.push(msg);
-      i++;
-      continue;
-    }
-
-    const calls: FuncCallMsg[] = [];
-    while (i < context.length && context[i].type === 'func_call_msg') {
-      calls.push(context[i] as FuncCallMsg);
-      i++;
-    }
-
-    const results: FuncResultMsg[] = [];
-    while (i < context.length && context[i].type === 'func_result_msg') {
-      results.push(context[i] as FuncResultMsg);
-      i++;
-    }
-
-    if (results.length === 0) {
-      out.push(...calls);
-      continue;
-    }
-
-    const resultsById = new Map<string, FuncResultMsg[]>();
-    for (const result of results) {
-      const existing = resultsById.get(result.id);
-      if (existing) {
-        existing.push(result);
-      } else {
-        resultsById.set(result.id, [result]);
-      }
-    }
-
-    const used = new Set<FuncResultMsg>();
-    for (const call of calls) {
-      out.push(call);
-      const queue = resultsById.get(call.id);
-      if (queue && queue.length > 0) {
-        const next = queue.shift();
-        if (next) {
-          out.push(next);
-          used.add(next);
-        }
-      }
-    }
-
-    for (const result of results) {
-      if (!used.has(result)) {
-        out.push(result);
-      }
-    }
-  }
-
-  return out;
-}
-
 async function buildCodexFunctionCallOutput(
   msg: FuncResultMsg,
   limitChars: number,
@@ -491,10 +431,20 @@ async function buildCodexInput(
   providerConfig?: ProviderConfig,
 ): Promise<ChatGptResponseItem[]> {
   const normalized = normalizeToolCallPairs(context);
+  const violation = findFirstToolCallAdjacencyViolation(normalized);
+  if (violation) {
+    const detail = formatToolCallAdjacencyViolation(violation, 'CODEX provider projection');
+    log.error(detail, new Error('codex_tool_call_adjacency_violation'), {
+      callId: violation.callId,
+      toolName: violation.toolName,
+      violationKind: violation.kind,
+      index: violation.index,
+    });
+    throw new Error(detail);
+  }
   const input: ChatGptResponseItem[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
 
-  let lastFuncCallId: string | null = null;
   for (const msg of normalized) {
     if (msg.type === 'func_call_msg') {
       input.push({
@@ -503,30 +453,15 @@ async function buildCodexInput(
         arguments: msg.arguments,
         call_id: msg.id,
       });
-      lastFuncCallId = msg.id;
       continue;
     }
 
     if (msg.type === 'func_result_msg') {
-      if (lastFuncCallId === msg.id) {
-        input.push({
-          type: 'function_call_output',
-          call_id: msg.id,
-          output: await buildCodexFunctionCallOutput(msg, toolResultMaxChars),
-        });
-      } else {
-        input.push(
-          messageItem(
-            'user',
-            limitCodexToolOutputText(
-              `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
-              msg,
-              toolResultMaxChars,
-            ),
-          ),
-        );
-      }
-      lastFuncCallId = null;
+      input.push({
+        type: 'function_call_output',
+        call_id: msg.id,
+        output: await buildCodexFunctionCallOutput(msg, toolResultMaxChars),
+      });
       continue;
     }
 
@@ -534,7 +469,6 @@ async function buildCodexInput(
     for (const item of items) {
       input.push(item);
     }
-    lastFuncCallId = null;
   }
 
   return input;

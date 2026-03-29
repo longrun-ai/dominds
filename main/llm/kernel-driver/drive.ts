@@ -1021,6 +1021,8 @@ async function executeFunctionCalls(args: {
     }
 
     let result: FuncResultMsg;
+    let callPersisted = false;
+    let resultPersisted = false;
     if (!preparedArgs.ok) {
       log.warn('kernel-driver rejected function call arguments before execution', undefined, {
         funcName: func.name,
@@ -1054,6 +1056,7 @@ async function executeFunctionCalls(args: {
 
       await args.dlg.funcCallRequested(func.id, func.name, preparedArgs.contextArguments);
       await args.dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
+      callPersisted = true;
 
       try {
         throwIfAborted(args.abortSignal, args.dlg);
@@ -1086,12 +1089,24 @@ async function executeFunctionCalls(args: {
           genseq: callGenseq,
         };
         if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+          if (callPersisted && !resultPersisted) {
+            await args.dlg.receiveFuncResult({
+              type: 'func_result_msg',
+              id: func.id,
+              name: func.name,
+              content: `Function '${func.name}' interrupted after call was persisted: ${errText}`,
+              role: 'tool',
+              genseq: callGenseq,
+            });
+            resultPersisted = true;
+          }
           throw err;
         }
       }
     }
 
     await args.dlg.receiveFuncResult(result);
+    resultPersisted = true;
     return result;
   });
 
@@ -1135,6 +1150,7 @@ async function executeFunctionRound(args: {
   const specialCallById = new Map(
     classified.specialCalls.map((call) => [call.callId, call] as const),
   );
+  const originalCallById = new Map(args.funcCalls.map((call) => [call.id, call] as const));
 
   const toPersistedSpecialCallArgs = (
     call: ReturnType<typeof classifyTellaskSpecialFunctionCalls>['specialCalls'][number],
@@ -1180,9 +1196,9 @@ async function executeFunctionRound(args: {
     if (isReplyTellaskCallName(callMsg.name)) {
       await args.dlg.funcCallRequested(callMsg.id, callMsg.name, argumentsStr);
     }
-    await args.dlg.persistFunctionCall(
+    await args.dlg.persistTellaskSpecialCall(
       callMsg.id,
-      callMsg.name,
+      special.callName,
       toPersistedSpecialCallArgs(special),
       callMsg.genseq,
     );
@@ -1203,11 +1219,39 @@ async function executeFunctionRound(args: {
   }
 
   throwIfAborted(args.abortSignal, args.dlg);
-  const tellaskExecution = await executeTellaskSpecialCalls({
-    dlg: args.dlg,
-    calls: classified.specialCalls,
-    callbacks: args.callbacks,
-  });
+  let tellaskExecution: Awaited<ReturnType<typeof executeTellaskSpecialCalls>>;
+  try {
+    tellaskExecution = await executeTellaskSpecialCalls({
+      dlg: args.dlg,
+      calls: classified.specialCalls,
+      callbacks: args.callbacks,
+    });
+  } catch (err) {
+    const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    for (const call of classified.specialCalls) {
+      if (issueResults.some((result) => result.id === call.callId)) {
+        continue;
+      }
+      const originalCall = originalCallById.get(call.callId);
+      if (!originalCall) {
+        throw new Error(
+          `kernel-driver tellask special call invariant violation: missing original call for '${call.callId}'`,
+        );
+      }
+      await args.dlg.receiveFuncResult({
+        type: 'func_result_msg',
+        id: call.callId,
+        name: call.callName,
+        content:
+          args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError
+            ? `Special function '${call.callName}' interrupted after call was persisted: ${errText}`
+            : `Special function '${call.callName}' execution failed after call was persisted: ${errText}`,
+        role: 'tool',
+        genseq: originalCall.genseq,
+      });
+    }
+    throw err;
+  }
   const tellaskFuncResults: FuncResultMsg[] = [];
   const tellaskToolOutputs: ChatMessage[] = [];
   for (const output of tellaskExecution.toolOutputs) {

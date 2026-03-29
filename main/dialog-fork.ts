@@ -213,6 +213,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'ui_only_markdown_record':
     case 'human_text_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'func_result_record':
     case 'tellask_call_result_record':
     case 'tellask_response_record':
@@ -302,6 +303,7 @@ function rewriteRecordForFork(
     case 'agent_words_record':
     case 'ui_only_markdown_record':
     case 'func_call_record':
+    case 'tellask_special_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'quest_for_sup_record':
@@ -346,7 +348,7 @@ function countMessages(events: readonly PersistedDialogRecord[]): number {
 function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
   let count = 0;
   for (const event of events) {
-    if (event.type === 'func_call_record') {
+    if (event.type === 'func_call_record' || event.type === 'tellask_special_call_record') {
       count += 1;
     }
   }

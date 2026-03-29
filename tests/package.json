@@ -19,6 +19,8 @@
     "persistence-dialog-fork": "tsx persistence/dialog-fork.ts",
     "persistence-priming-reminders": "tsx persistence/priming-reminders.ts",
     "persistence-jsonl-tail-truncation": "tsx persistence/jsonl-tail-truncation.ts",
+    "persistence-restore-repairs-unresolved-func-call": "pnpm run rtws -- -C script-rtws persistence/restore-repairs-unresolved-func-call.ts",
+    "recovery-reply-special-after-restart": "pnpm run rtws -- -C script-rtws recovery/reply-special-after-restart.ts",
     "interruption-resumption": "tsx interruption-resumption.ts",
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-subdialog-dedupe.ts",
     "kernel-driver:context-assembly-order": "pnpm run rtws -- -C script-rtws kernel-driver/context-assembly-order.ts",

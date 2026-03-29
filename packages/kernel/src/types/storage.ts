@@ -326,6 +326,84 @@ export interface FuncCallRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
+export type TellaskSpecialCallRecord =
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'tellaskBack';
+      tellaskContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'tellask';
+      targetAgentId: string;
+      sessionSlug: string;
+      tellaskContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'tellaskSessionless';
+      targetAgentId: string;
+      tellaskContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'replyTellask';
+      replyContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'replyTellaskSessionless';
+      replyContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'replyTellaskBack';
+      replyContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'askHuman';
+      tellaskContent: string;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_special_call_record';
+      genseq: number;
+      id: string;
+      name: 'freshBootsReasoning';
+      tellaskContent: string;
+      effort?: number;
+      sourceTag?: 'priming_script';
+    });
+
 export type WebSearchCallActionRecord =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
@@ -710,6 +788,7 @@ export type PersistedDialogRecord =
   | AgentWordsRecord
   | UiOnlyMarkdownRecord
   | FuncCallRecord
+  | TellaskSpecialCallRecord
   | WebSearchCallRecord
   | HumanTextRecord
   | FuncResultRecord

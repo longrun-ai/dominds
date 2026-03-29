@@ -86,6 +86,47 @@ async function main() {
     'Expected assistant content to stay as saying',
   );
 
+  const orphanedCallContext: ChatMessage[] = [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 2,
+      msgId: 'user-2',
+      grammar: 'markdown',
+      content: 'Tool call was interrupted.',
+    },
+    {
+      type: 'func_call_msg',
+      role: 'assistant',
+      genseq: 2,
+      id: 'call-orphan',
+      name: 'shell_cmd',
+      arguments: JSON.stringify({ command: 'cat missing.txt' }),
+    },
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 3,
+      msgId: 'user-3',
+      grammar: 'markdown',
+      content: 'Continue normally.',
+    },
+  ];
+
+  let threw = false;
+  try {
+    await buildOpenAiRequestInputWrapper(orphanedCallContext);
+  } catch (err) {
+    threw = true;
+    const message = err instanceof Error ? err.message : String(err);
+    assert(
+      message.includes('unresolved persisted func_call_msg detected'),
+      'Expected explicit unresolved func_call invariant error',
+    );
+    assert(message.includes('callId=call-orphan'), 'Expected callId in invariant error');
+  }
+  assert(threw, 'Expected orphaned func_call provider projection to fail loudly');
+
   console.log('✓ OpenAI context normalization test passed');
 }
 
