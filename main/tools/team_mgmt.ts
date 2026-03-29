@@ -87,7 +87,7 @@ const TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS = 80;
 const TEAM_MGMT_LIST_MODELS_HARD_MAX_MODELS_PER_PROVIDER = 20;
 const TEAM_MGMT_LIST_MODELS_HARD_MAX_PARAMS = 40;
 const TEAM_MGMT_PROBLEM_MESSAGE_CHAR_LIMIT = 220;
-const TEAM_MGMT_PROBLEM_DETAIL_CHAR_LIMIT = 800;
+const TEAM_MGMT_PROBLEM_DETAIL_CHAR_LIMIT = 1400;
 const TEAM_MGMT_RENDERED_PROBLEM_LIMIT = 40;
 const TEAM_MGMT_MODELS_TEXT_CHAR_LIMIT = 240;
 const TEAM_MGMT_REMOVED_PROBLEM_ID_LIMIT = 50;
@@ -595,56 +595,68 @@ function formatProblemDetailLines(
   language: LanguageCode,
 ): string[] {
   const lines: string[] = [
-    `- [${problem.severity}] ${problem.id}: ${truncateInlineText(problem.message, TEAM_MGMT_PROBLEM_MESSAGE_CHAR_LIMIT)}`,
-    `  updated_at: ${getProblemUpdatedAt(problem)}`,
+    `- [${problem.severity}] ${problem.id}: ${truncateInlineText(problem.messageI18n?.[language] ?? problem.message, TEAM_MGMT_PROBLEM_MESSAGE_CHAR_LIMIT)}`,
+    `  updated: ${getProblemUpdatedAt(problem)}`,
   ];
   if (problem.resolved === true && problem.resolvedAt) {
-    lines.push(`  resolved_at: ${problem.resolvedAt}`);
+    lines.push(`  resolved: ${problem.resolvedAt}`);
   }
   const problemPath = getWorkspaceProblemPath(problem);
   if (problemPath !== null) {
-    lines.push(`  path: ${problemPath}`);
+    lines.push(`  file: ${problemPath}`);
   }
   switch (problem.kind) {
     case 'team_workspace_config_error':
     case 'mcp_workspace_config_error':
       lines.push(
-        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+        '  ' +
+          truncateProblemTextBlock(problem.detailTextI18n?.[language] ?? problem.detail.errorText)
+            .split('\n')
+            .join('\n  '),
       );
       break;
     case 'mcp_server_error':
-      lines.push(`  serverId: ${problem.detail.serverId}`);
+      lines.push(`  server: ${problem.detail.serverId}`);
       lines.push(
-        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+        '  ' +
+          truncateProblemTextBlock(problem.detailTextI18n?.[language] ?? problem.detail.errorText)
+            .split('\n')
+            .join('\n  '),
       );
       break;
     case 'mcp_tool_collision':
-      lines.push(
-        language === 'zh'
-          ? `  serverId: ${problem.detail.serverId}, toolName: ${problem.detail.toolName}, domindsToolName: ${problem.detail.domindsToolName}`
-          : `  serverId: ${problem.detail.serverId}, toolName: ${problem.detail.toolName}, domindsToolName: ${problem.detail.domindsToolName}`,
-      );
+      lines.push(`  server: ${problem.detail.serverId}`);
+      lines.push(`  tool: ${problem.detail.toolName}`);
+      lines.push(`  conflicts_with: ${problem.detail.domindsToolName}`);
       break;
     case 'mcp_tool_blacklisted':
     case 'mcp_tool_not_whitelisted':
-      lines.push(`  serverId: ${problem.detail.serverId}`);
-      lines.push(`  toolName: ${problem.detail.toolName}`);
+      lines.push(`  server: ${problem.detail.serverId}`);
+      lines.push(`  tool: ${problem.detail.toolName}`);
       lines.push(`  pattern: ${problem.detail.pattern}`);
       break;
     case 'mcp_tool_invalid_name':
-      lines.push(`  serverId: ${problem.detail.serverId}`);
-      lines.push(`  toolName: ${problem.detail.toolName}`);
+      lines.push(`  server: ${problem.detail.serverId}`);
+      lines.push(`  tool: ${problem.detail.toolName}`);
       lines.push(`  rule: ${problem.detail.rule}`);
       break;
     case 'llm_provider_rejected_request':
-      lines.push(`  dialogId: ${problem.detail.dialogId}`);
+      lines.push(`  dialog: ${problem.detail.dialogId}`);
       lines.push(`  provider: ${problem.detail.provider}`);
       lines.push(
-        '  ' + truncateProblemTextBlock(problem.detail.errorText).split('\n').join('\n  '),
+        '  ' +
+          truncateProblemTextBlock(problem.detailTextI18n?.[language] ?? problem.detail.errorText)
+            .split('\n')
+            .join('\n  '),
       );
       break;
     case 'generic_problem':
-      lines.push('  ' + truncateProblemTextBlock(problem.detail.text).split('\n').join('\n  '));
+      lines.push(
+        '  ' +
+          truncateProblemTextBlock(problem.detailTextI18n?.[language] ?? problem.detail.text)
+            .split('\n')
+            .join('\n  '),
+      );
       break;
   }
   return lines;

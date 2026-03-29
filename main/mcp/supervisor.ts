@@ -1,4 +1,4 @@
-import type { WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
+import type { ProblemI18nText, WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import * as fs from 'fs';
@@ -23,7 +23,12 @@ import {
 } from '../tools/registry';
 import type { McpServerConfig, McpStreamableHttpServerConfig, McpWorkspaceConfig } from './config';
 import { parseMcpYaml } from './config';
-import { McpSdkClient, type McpListedTool } from './sdk-client';
+import {
+  extractMcpDiagnosticTextI18n,
+  McpSdkClient,
+  type McpDiagnosticTextI18n,
+  type McpListedTool,
+} from './sdk-client';
 import { McpServerRuntime } from './server-runtime';
 import {
   applyToolNameTransforms,
@@ -679,7 +684,7 @@ async function restartServerNow(
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
     upsertDeclaredServerRuntimeError(serverId, res.errorText);
-    upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText);
+    upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText, res.detailTextI18n);
     return { ok: false, errorText: res.errorText };
   }
 
@@ -706,6 +711,10 @@ function upsertWorkspaceConfigProblem(errorText: string): void {
     severity: 'error',
     timestamp: formatUnifiedTimestamp(new Date()),
     message: 'MCP rtws config error',
+    messageI18n: {
+      en: 'MCP rtws config error',
+      zh: 'MCP rtws 配置错误',
+    },
     detail: { filePath: MCP_YAML_PATH, errorText },
   });
 }
@@ -714,7 +723,11 @@ function clearWorkspaceConfigProblem(): void {
   removeProblemsByPrefix('mcp/workspace_config_error');
 }
 
-function upsertMcpServerConfigInvalidProblem(serverId: string, errorText: string): void {
+function upsertMcpServerConfigInvalidProblem(
+  serverId: string,
+  errorText: string,
+  detailTextI18n?: ProblemI18nText,
+): void {
   upsertProblem({
     kind: 'mcp_server_error',
     source: 'mcp',
@@ -722,11 +735,20 @@ function upsertMcpServerConfigInvalidProblem(serverId: string, errorText: string
     severity: 'error',
     timestamp: formatUnifiedTimestamp(new Date()),
     message: `MCP server '${serverId}' failed to parse config`,
+    messageI18n: {
+      en: `MCP server '${serverId}' failed to parse config`,
+      zh: `MCP server '${serverId}' 解析配置失败`,
+    },
+    detailTextI18n,
     detail: { serverId, errorText },
   });
 }
 
-function upsertMcpServerRuntimeUnavailableProblem(serverId: string, errorText: string): void {
+function upsertMcpServerRuntimeUnavailableProblem(
+  serverId: string,
+  errorText: string,
+  detailTextI18n?: ProblemI18nText,
+): void {
   upsertProblem({
     kind: 'mcp_server_error',
     source: 'mcp',
@@ -734,6 +756,11 @@ function upsertMcpServerRuntimeUnavailableProblem(serverId: string, errorText: s
     severity: 'info',
     timestamp: formatUnifiedTimestamp(new Date()),
     message: `MCP server '${serverId}' is currently unavailable`,
+    messageI18n: {
+      en: `MCP server '${serverId}' is currently unavailable`,
+      zh: `MCP server '${serverId}' 当前不可用`,
+    },
+    detailTextI18n,
     detail: { serverId, errorText },
   });
 }
@@ -830,7 +857,7 @@ async function applyWorkspaceConfig(
       if (!res.ok) {
         upsertDeclaredServerRuntimeError(serverId, res.errorText);
         // Keep last-known-good registration, but surface per-server error.
-        upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText);
+        upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText, res.detailTextI18n);
         continue;
       }
 
@@ -1066,7 +1093,10 @@ async function tryBuildServerState(
   cfg: McpServerConfig,
   toolsetName: string,
   fingerprint: string,
-): Promise<{ ok: true; state: ServerState } | { ok: false; errorText: string }> {
+): Promise<
+  | { ok: true; state: ServerState }
+  | { ok: false; errorText: string; detailTextI18n?: McpDiagnosticTextI18n }
+> {
   const serverId = cfg.serverId;
 
   // Toolset-name collisions should prevent committing this server.
@@ -1130,7 +1160,11 @@ async function tryBuildServerState(
         // best-effort
       }
     }
-    return { ok: false, errorText: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      errorText: err instanceof Error ? err.message : String(err),
+      detailTextI18n: extractMcpDiagnosticTextI18n(err),
+    };
   }
 }
 

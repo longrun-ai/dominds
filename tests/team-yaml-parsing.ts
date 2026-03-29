@@ -323,6 +323,21 @@ async function main(): Promise<void> {
       }),
       'hidden members should not be validated by shell_specialists policy',
     );
+    {
+      const problem = snapshot3.problems.find(
+        (p) =>
+          p.id === 'team/team_yaml_error/shell_specialists/non_specialist_has_shell_tools/alice',
+      );
+      assert.ok(problem, 'shell-specialist policy problem should be present for alice');
+      assert.equal(
+        problem.messageI18n?.zh,
+        '无效的 .minds/team.yaml：有成员不是 shell 专员，却配置了 shell 工具。',
+      );
+      assert.ok(
+        problem.detailTextI18n?.zh?.includes('但没有列在 shell_specialists 里'),
+        'shell-specialist problem detail should be localized in zh',
+      );
+    }
 
     {
       const { systemPrompt, agentTools } = await loadAgentMinds('alice');
@@ -451,8 +466,12 @@ async function main(): Promise<void> {
       '.minds/team.yaml 警告：members.listed.gofor 使用了带标签项的 YAML 列表。',
     );
     assert.ok(
-      structuredListWarning.detailTextI18n?.zh?.includes('object key 完全 freeform'),
+      structuredListWarning.detailTextI18n?.zh?.includes('对象键名可以自由填写'),
       'team problem should carry zh localized detail text from backend',
+    );
+    assert.ok(
+      structuredListWarning.detailTextI18n?.zh?.includes('YAML 对象写法'),
+      'structured list guidance should read naturally in zh',
     );
     assert.ok(structuredListWarning.detail.errorText.includes('Object keys are freeform'));
     const nogoStructuredListWarning = goforSnapshot.problems.find(
@@ -517,13 +536,17 @@ async function main(): Promise<void> {
     );
     assert.equal(
       nullRoutingWarning.messageI18n?.zh,
-      '.minds/team.yaml 警告：members.mentor.nogo 为 null，将被忽略。',
+      '.minds/team.yaml 警告：members.mentor.nogo 写成了 null，这一项会被忽略。',
     );
     assert.ok(
       nullRoutingWarning.detail.errorText.includes(
         'members.mentor.nogo uses YAML null. Dominds treats this as "unset" and ignores it;',
       ),
       'warning detail should explain the ignore-as-unset behavior',
+    );
+    assert.equal(
+      nullRoutingWarning.detailTextI18n?.zh,
+      'members.mentor.nogo 这里写成了 YAML null。Dominds 会把它当作“没设置”，所以不会生效；请删除这个字段，或改成合法值。',
     );
 
     // Optional display/tuning/tooling fields with bad values should warn and be ignored rather
@@ -692,6 +715,14 @@ async function main(): Promise<void> {
       assert.ok(p && p.kind === 'team_workspace_config_error');
       assert.equal(p.detail.filePath, '.minds/team.yaml');
       assert.ok(p.detail.errorText.includes('providers.my_provider.models.bad_model'));
+      assert.equal(
+        p.messageI18n?.zh,
+        "无效的 .minds/team.yaml：members.alice.model 不在 provider 'my_provider' 的模型列表里。",
+      );
+      assert.ok(
+        p.detailTextI18n?.zh?.includes('已知模型 key（预览）'),
+        'provider/model problem detail should be localized in zh',
+      );
     }
 
     // Invalid providers.<k>.models shape should be reported against llm.yaml.

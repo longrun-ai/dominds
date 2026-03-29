@@ -127,107 +127,204 @@ export namespace Team {
         ],
         [
           /Warning in \.minds\/team\.yaml: (.+?) is null and will be ignored\./g,
-          '.minds/team.yaml 警告：$1 为 null，将被忽略。',
+          '.minds/team.yaml 警告：$1 写成了 null，这一项会被忽略。',
         ],
         [
           /Warning in \.minds\/team\.yaml: (.+?) is invalid and will be ignored\./g,
-          '.minds/team.yaml 警告：$1 无效，将被忽略。',
+          '.minds/team.yaml 警告：$1 写得不合法，这一项会被忽略。',
         ],
         [
           /Warning in \.minds\/team\.yaml: (.+?) sets both (.+?) and (.+?); (.+?) will be ignored\./g,
-          '.minds/team.yaml 警告：$1 同时设置了 $2 和 $3；将忽略 $4。',
+          '.minds/team.yaml 警告：$1 同时设置了 $2 和 $3；$4 会被忽略。',
         ],
         [
           /(.+?) is allowed as string\|string\[\]\|Record<string,string>\./g,
-          '$1 允许使用 string|string[]|Record<string,string>。',
+          '$1 可以写成字符串、字符串数组（string[]）或 Record<string, string>。',
         ],
         [
           /The current list items all look like labeled entries \(for example `Label: value`\)\./g,
-          '当前列表项看起来都像带标签的条目（例如 `Label: value`）。',
+          '当前这些列表项看起来都像带标签的条目（例如 `Label: value`）。',
         ],
         [
           /If you want labeled structure, prefer YAML object form for readability:/g,
-          '如果你要表达带标签的结构，建议改用 YAML object，阅读性更好：',
+          '如果你想表达带标签的结构，更推荐改成 YAML 对象写法，可读性会更好：',
         ],
         [
           /Object keys are freeform; there is no fixed required key set\./g,
-          'object key 完全 freeform，没有固定必填 key。',
+          '对象键名可以自由填写，没有固定的必填项。',
         ],
-        [/The current YAML list form is still accepted\./g, '当前 YAML list 形式仍然允许。'],
-        [
-          /uses YAML null\. Dominds treats this as "unset" and ignores it; delete the field or provide /g,
-          '使用了 YAML null。Dominds 会把它当作“未设置”并忽略；请删除该字段，或提供 ',
-        ],
+        [/The current YAML list form is still accepted\./g, '当前这种 YAML 列表写法仍然可以接受。'],
         [
           /uses YAML null\. Dominds treats this as "unset" and ignores it; delete the field or provide a valid value if you want it to take effect\./g,
-          '使用了 YAML null。Dominds 会把它当作“未设置”并忽略；请删除该字段，或在需要生效时提供合法值。',
+          '这里写成了 YAML null。Dominds 会把它当作“没设置”，所以不会生效；请删除这个字段，或改成合法值。',
+        ],
+        [
+          /uses YAML null\. Dominds treats this as "unset" and ignores it; delete the field or provide /g,
+          '这里写成了 YAML null。Dominds 会把它当作“未设置”并忽略；请删除这个字段，或提供 ',
         ],
         [
           /This field is optional for loading the member\. Dominds ignores the invalid value and keeps the member usable; fix or delete it\./g,
-          '该字段对成员加载而言是可选的。Dominds 会忽略这个无效值并保持成员可用；请修复或删除它。',
+          '这个字段不会影响成员加载。Dominds 会忽略当前这个非法值，成员仍会保留；请修复或删除它。',
         ],
         [
           /Both (.+?) and (.+?) are set\. Dominds keeps (.+?) and ignores (.+?); remove one for clarity\./g,
-          '$1 和 $2 同时被设置。Dominds 会保留 $3 并忽略 $4；请删除其中一个以免歧义。',
+          '$1 和 $2 同时被设置。Dominds 会保留 $3，忽略 $4；请删掉其中一个，避免歧义。',
+        ],
+        [
+          /member '(.+?)' has shell tools \((.+?)\) but shell_specialists is empty; set shell_specialists to include '(.+?)' or remove shell tools from that member\./g,
+          "成员 '$1' 配置了 shell 工具（$2），但 shell_specialists 为空；请把 '$3' 加入 shell_specialists，或删掉这个成员的 shell 工具。",
+        ],
+        [
+          /shell_specialists includes '(.+?)', but no such member exists in team\.members\./g,
+          "shell_specialists 里写了 '$1'，但 team.members 中没有这个成员。",
+        ],
+        [
+          /shell_specialists includes '(.+?)', but member '(.+?)' has no shell tools\. Grant toolset 'os' \(or tools (.+?)\) to '(.+?)'\./g,
+          "shell_specialists 里写了 '$1'，但成员 '$2' 并没有 shell 工具。请给 '$4' 分配 toolset 'os'（或工具 $3）。",
+        ],
+        [
+          /member '(.+?)' has shell tools \((.+?)\) but is not listed in shell_specialists\./g,
+          "成员 '$1' 配置了 shell 工具（$2），但没有列在 shell_specialists 里。",
+        ],
+        [
+          /Resolved (.+?)\.toolsets includes '(.+?)', and '(.+?)' is declared in \.minds\/mcp\.yaml\./g,
+          "解析后的 $1.toolsets 包含 '$2'，而且 '$3' 已在 .minds/mcp.yaml 中声明。",
+        ],
+        [
+          /But servers\.(.+?) failed MCP config validation; fix \.minds\/mcp\.yaml first\./g,
+          '但 servers.$1 没通过 MCP 配置校验；请先修好 .minds/mcp.yaml。',
+        ],
+        [
+          /Tip: run team_mgmt_validate_mcp_cfg\(\{\}\) to inspect MCP parse\/server errors\./g,
+          '建议运行 team_mgmt_validate_mcp_cfg({})，查看 MCP 的解析错误或服务错误。',
+        ],
+        [
+          /Resolved (.+?)\.toolsets includes '(.+?)', but this toolset is not registered in runtime registry\./g,
+          "解析后的 $1.toolsets 包含 '$2'，但当前运行时注册表里没有这个工具集。",
+        ],
+        [
+          /Cannot verify whether '(.+?)' is an MCP-declared toolset because \.minds\/mcp\.yaml is invalid\./g,
+          "由于 .minds/mcp.yaml 无效，无法确认 '$1' 是否是 MCP 声明的工具集。",
+        ],
+        [/mcp\.yaml error:/g, '.minds/mcp.yaml 报错：'],
+        [
+          /Fix \.minds\/mcp\.yaml, then run team_mgmt_validate_team_cfg\(\{\}\) and team_mgmt_validate_mcp_cfg\(\{\}\)\./g,
+          '先修好 .minds/mcp.yaml，再运行 team_mgmt_validate_team_cfg({}) 和 team_mgmt_validate_mcp_cfg({})。',
+        ],
+        [
+          /If '(.+?)' is expected from an enabled app, confirm the app is installed\/enabled in this rtws and that its contributes\.toolsets were loaded successfully\./g,
+          "如果 '$1' 本来应该由某个已启用 app 提供，请确认这个 app 已在当前 rtws 安装并启用，而且它的 contributes.toolsets 已成功加载。",
+        ],
+        [
+          /Otherwise, fix (.+?)\.toolsets to a valid built-in\/app toolset name, or declare MCP server '(.+?)' in \.minds\/mcp\.yaml\./g,
+          "否则，请把 $1.toolsets 改成合法的内置或 app 工具集名称，或者在 .minds/mcp.yaml 里声明 MCP 服务 '$2'。",
+        ],
+        [
+          /Tip: run team_mgmt_validate_mcp_cfg\(\{\}\) for MCP checks, and inspect \/ refresh enabled apps if this toolset should come from an app\./g,
+          '建议运行 team_mgmt_validate_mcp_cfg({}) 做 MCP 检查；如果这个工具集应该来自 app，再检查或刷新已启用的 app。',
         ],
         [/Invalid \.minds\/team\.yaml:/g, '无效的 .minds/team.yaml：'],
         [/Failed to parse \.minds\/team\.yaml\./g, '解析 .minds/team.yaml 失败。'],
         [/Failed to load \.minds\/team\.yaml\./g, '加载 .minds/team.yaml 失败。'],
-        [/Failed to load enabled app teammates\./g, '加载已启用 app 的队友定义失败。'],
+        [/Failed to load enabled app teammates\./g, '加载已启用 app 的成员定义失败。'],
         [
           /Failed to load enabled app toolsets while validating \.minds\/team\.yaml toolset bindings\./g,
-          '校验 .minds/team.yaml 的 toolset 绑定时，加载已启用 app 的 toolset 失败。',
+          '校验 .minds/team.yaml 的工具集绑定时，加载已启用 app 的工具集失败。',
         ],
         [
           /Failed to load LLM configuration for validating \.minds\/team\.yaml provider\/model bindings\./g,
           '校验 .minds/team.yaml 的 provider/model 绑定时，加载 LLM 配置失败。',
         ],
-        [/contains an unknown toolset\./g, '包含未知 toolset。'],
+        [/contains an unknown toolset\./g, '包含未知工具集。'],
         [
           /contains an unresolved toolset, and \.minds\/mcp\.yaml is invalid\./g,
-          '包含未解析的 toolset，且 .minds/mcp.yaml 无效。',
+          '包含无法解析的工具集，而且 .minds/mcp.yaml 本身也无效。',
         ],
         [
           /contains an MCP toolset whose server config is invalid\./g,
-          '包含一个其服务器配置无效的 MCP toolset。',
+          '包含一个 MCP 工具集，但它对应的服务器配置无效。',
         ],
-        [/contains an unknown member id\./g, '包含未知成员 id。'],
-        [/non-shell-specialist member has shell tools\./g, '非 shell 专员成员拥有 shell 工具。'],
-        [/shell specialist has no shell tools\./g, 'shell 专员成员没有 shell 工具。'],
+        [/contains an unknown member id\./g, '包含未知成员 ID。'],
+        [
+          /non-shell-specialist member has shell tools\./g,
+          '有成员不是 shell 专员，却配置了 shell 工具。',
+        ],
+        [/shell specialist has no shell tools\./g, '有 shell 专员成员却没有配置 shell 工具。'],
         [
           /shell tools are present but shell_specialists is empty\/null\./g,
-          '存在 shell 工具，但 shell_specialists 为空/null。',
+          '已经配置了 shell 工具，但 shell_specialists 为空或 null。',
         ],
         [/missing member_defaults\.provider\./g, '缺少 member_defaults.provider。'],
         [/missing member_defaults\.model\./g, '缺少 member_defaults.model。'],
-        [/default_responder does not match any member\./g, 'default_responder 没有匹配任何成员。'],
+        [/default_responder does not match any member\./g, 'default_responder 没有指向任何成员。'],
         [/must be an object\./g, '必须是对象。'],
         [/must be a string\./g, '必须是字符串。'],
-        [/must be string\|string\[\] or null\./g, '必须是 string|string[] 或 null。'],
-        [/unknown top-level fields\./g, '存在未知顶层字段。'],
-        [/has invalid fields\./g, '字段无效。'],
+        [/must be string\|string\[\] or null\./g, '必须是字符串、字符串数组（string[]）或 null。'],
+        [/unknown top-level fields\./g, '存在未知的顶层字段。'],
+        [/has invalid fields\./g, '字段里有不合法的值。'],
         [/contains unknown fields\./g, '包含未知字段。'],
         [
           /contains forbidden built-in scopes\. These entries are ignored\./g,
-          '包含被禁止的内置作用域；这些条目会被忽略。',
+          '包含不允许的内置作用域；这些条目会被忽略。',
         ],
-        [/is not allowed for Codex providers\./g, '对 Codex provider 不允许。'],
-        [/refers to an unknown provider key\./g, '引用了未知 provider key。'],
+        [/is not allowed for Codex providers\./g, 'Codex provider 不支持这个字段。'],
+        [/refers to an unknown provider key\./g, '引用了不存在的 provider key。'],
+        [/is not present in provider '(.+?)' models list\./g, "不在 provider '$1' 的模型列表里。"],
         [
-          /is not present in provider '(.+?)' models list\./g,
-          "不在 provider '$1' 的 models 列表中。",
+          /Resolved (.+?)\.provider = '(.+?)', but no such provider exists in the effective LLM config\./g,
+          "解析后的 $1.provider = '$2'，但当前生效的 LLM 配置里没有这个 provider。",
         ],
-        [/expected an object/g, '期望为对象'],
-        [/expected a boolean/g, '期望为 boolean'],
-        [/expected a number/g, '期望为 number'],
-        [/expected string\[\]/g, '期望为 string[]'],
-        [/expected string\|string\[\]/g, '期望为 string|string[]'],
-        [/expected string/g, '期望为 string'],
-        [/value required/g, '值必填'],
+        [
+          /Fix: update (.+?)\.provider to a valid provider key \(see \.minds\/llm\.yaml providers\.<providerKey>\), or add providers\.(.+?) in \.minds\/llm\.yaml\./g,
+          '请把 $1.provider 改成合法的 provider key（见 .minds/llm.yaml 的 providers.<providerKey>），或者在 .minds/llm.yaml 里补上 providers.$2。',
+        ],
+        [
+          /Tip: run team_mgmt_list_providers\(\{\}\) \/ team_mgmt_list_models\(\{ source: "effective", provider_pattern: "\*", model_pattern: "\*" \}\) to confirm keys\./g,
+          '建议运行 team_mgmt_list_providers({}) 和 team_mgmt_list_models({ source: "effective", provider_pattern: "*", model_pattern: "*" })，确认这些 key 是否存在。',
+        ],
+        [
+          /Resolved (.+?)\.provider = '(.+?)' \(apiType=codex\)\./g,
+          "解析后的 $1.provider = '$2'（apiType=codex）。",
+        ],
+        [/Resolved (.+?)\.streaming = false\./g, '解析后的 $1.streaming = false。'],
+        [
+          /Codex providers are streaming-only; set (.+?)\.streaming to true or remove it\./g,
+          'Codex provider 只支持流式输出；请把 $1.streaming 改成 true，或直接删掉这个字段。',
+        ],
+        [
+          /Tip: run team_mgmt_validate_team_cfg\(\{\}\) after fixing\./g,
+          '修好后请运行 team_mgmt_validate_team_cfg({}) 再确认一次。',
+        ],
+        [
+          /Expected providers\.(.+?)\.models to be an object mapping model keys to model info\./g,
+          'providers.$1.models 应该是一个对象，用来把模型 key 映射到模型信息。',
+        ],
+        [/Resolved (.+?)\.provider = '(.+?)'\./g, "解析后的 $1.provider = '$2'。"],
+        [
+          /Resolved (.+?)\.model = '(.+?)', but it is not defined under providers\.(.+?)\.models\./g,
+          "解析后的 $1.model = '$2'，但它没有定义在 providers.$3.models 下。",
+        ],
+        [/Known model keys \(preview\):/g, '已知模型 key（预览）：'],
+        [
+          /Fix: change (.+?)\.model to a valid key, or add providers\.(.+?)\.models\.(.+?) in \.minds\/llm\.yaml\./g,
+          '请把 $1.model 改成合法的 key，或者在 .minds/llm.yaml 里补上 providers.$2.models.$3。',
+        ],
+        [
+          /After fixing, run team_mgmt_validate_team_cfg\(\{\}\) to confirm there are no Problems panel errors\./g,
+          '修好后请运行 team_mgmt_validate_team_cfg({})，确认 Problems 面板里没有残留错误。',
+        ],
+        [/expected an object/g, '应为对象'],
+        [/expected a boolean/g, '应为布尔值'],
+        [/expected a number/g, '应为数字'],
+        [/expected string\[\]/g, '应为字符串数组（string[]）'],
+        [/expected string\|string\[\]/g, '应为字符串或字符串数组（string|string[]）'],
+        [/expected string/g, '应为字符串'],
+        [/value required/g, '这里必须提供值'],
       ];
       for (const [pattern, replacement] of replacements) {
         out = out.replace(pattern, replacement);
       }
+      out = out.replace(/： /g, '：');
       return out;
     })();
     return { en: text, zh };
