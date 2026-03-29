@@ -12,6 +12,10 @@ import type { Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import type { AssignmentFromSup, DialogIdent } from '@longrun-ai/kernel/types/wire';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { getUiStrings } from '../i18n/ui';
+import {
+  loadViewportScopedNumber,
+  saveViewportScopedNumber,
+} from '../services/viewport-size-storage';
 import { getWebSocketManager } from '../services/websocket.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
@@ -44,6 +48,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private static readonly SEND_ON_ENTER_STORAGE_KEY = 'dominds-send-on-enter';
   private static readonly INPUT_HISTORY_STORAGE_KEY = 'dominds-user-input-history-v1';
   private static readonly INPUT_HISTORY_MAX = 100;
+  private static readonly MANUAL_HEIGHT_STORAGE_KEY = 'dominds-q4h-input-height-px-v1';
 
   private questions: Q4HQuestion[] = [];
   private selectedQuestionId: string | null = null;
@@ -93,6 +98,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.setupEventListeners();
     this.updateUI();
     this.recomputeResizeBounds();
+    this.restoreManualHeightForCurrentViewport();
     this.applyManualHeight();
     // Ensure initial textarea height is stable (avoid "growing a bit" on first blur).
     this.scheduleInputUiUpdate();
@@ -127,6 +133,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private boundOnWindowResize = (): void => {
     this.recomputeResizeBounds();
+    this.restoreManualHeightForCurrentViewport();
     this.applyManualHeight();
   };
 
@@ -163,6 +170,16 @@ export class DomindsQ4HInput extends HTMLElement {
     this.manualHeightPx = clamped;
     this.style.height = `${clamped}px`;
     this.style.maxHeight = `${clamped}px`;
+  }
+
+  private restoreManualHeightForCurrentViewport(): void {
+    const storedHeightPx = loadViewportScopedNumber(DomindsQ4HInput.MANUAL_HEIGHT_STORAGE_KEY);
+    this.manualHeightPx = storedHeightPx;
+  }
+
+  private persistManualHeightForCurrentViewport(): void {
+    if (this.manualHeightPx === null) return;
+    saveViewportScopedNumber(DomindsQ4HInput.MANUAL_HEIGHT_STORAGE_KEY, this.manualHeightPx);
   }
 
   public setUiLanguage(language: LanguageCode): void {
@@ -741,6 +758,7 @@ export class DomindsQ4HInput extends HTMLElement {
           if (this.boundManualMove) {
             this.resizeHandle.removeEventListener('pointermove', this.boundManualMove);
           }
+          this.persistManualHeightForCurrentViewport();
           this.boundManualMove = undefined;
           this.boundManualUp = undefined;
         };

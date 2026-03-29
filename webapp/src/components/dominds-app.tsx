@@ -66,6 +66,12 @@ import {
   removeAuthKeyFromUrl,
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
+import {
+  loadViewportScopedNumber,
+  loadViewportScopedRectSize,
+  saveViewportScopedNumber,
+  saveViewportScopedRectSize,
+} from '../services/viewport-size-storage';
 import { getWebSocketManager } from '../services/websocket.js';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
@@ -311,6 +317,10 @@ export class DomindsApp extends HTMLElement {
   private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
+  private static readonly SIDEBAR_WIDTH_STORAGE_KEY = 'dominds-sidebar-width-px-v1';
+  private static readonly BOTTOM_PANEL_HEIGHT_STORAGE_KEY = 'dominds-bottom-panel-height-px-v2';
+  private static readonly REMINDERS_WIDGET_SIZE_STORAGE_KEY = 'dominds-reminders-widget-size-v1';
+  private static readonly TOOLS_WIDGET_SIZE_STORAGE_KEY = 'dominds-tools-widget-size-v1';
 
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
@@ -349,7 +359,7 @@ export class DomindsApp extends HTMLElement {
   private remindersWidgetVisible: boolean = false;
   private remindersWidgetX: number = 12;
   private remindersWidgetY: number = 120;
-  private remindersWidgetWidthPx: number = 320;
+  private remindersWidgetWidthPx: number = 0;
   private remindersWidgetHeightPx: number = 320;
   private activityView: ActivityView = { kind: 'running' };
   private _wsEventCancel?: () => void;
@@ -712,6 +722,11 @@ export class DomindsApp extends HTMLElement {
   private toolsWidgetY: number = 120;
   private toolsWidgetWidthPx: number = 380;
   private toolsWidgetHeightPx: number = 320;
+  private sidebarResizeCleanup: (() => void) | null = null;
+  private readonly boundOnWindowResize = (): void => {
+    this.restoreViewportScopedResizableSizes();
+    this.setupSidebarResizePersistence();
+  };
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -728,27 +743,18 @@ export class DomindsApp extends HTMLElement {
   private bottomPanelResizeStartHeight: number = 0;
   private bottomPanelResizeLastHeight: number = 0;
 
+  private getDefaultBottomPanelHeightPx(): number {
+    const min = 120;
+    const max = Math.max(min, Math.floor(window.innerHeight * 0.6));
+    return Math.max(min, Math.min(max, 280));
+  }
+
   private getStoredBottomPanelHeightPx(): number | null {
-    try {
-      const stored = localStorage.getItem('dominds-bottom-panel-height-px');
-      if (!stored) return null;
-      const parsed = Number(stored);
-      if (!Number.isFinite(parsed)) return null;
-      const asInt = Math.floor(parsed);
-      if (asInt < 50 || asInt > 5000) return null;
-      return asInt;
-    } catch (error: unknown) {
-      console.warn('Failed to read bottom panel height from localStorage', error);
-      return null;
-    }
+    return loadViewportScopedNumber(DomindsApp.BOTTOM_PANEL_HEIGHT_STORAGE_KEY);
   }
 
   private persistBottomPanelHeightPx(heightPx: number): void {
-    try {
-      localStorage.setItem('dominds-bottom-panel-height-px', String(Math.floor(heightPx)));
-    } catch (error: unknown) {
-      console.warn('Failed to persist bottom panel height to localStorage', error);
-    }
+    saveViewportScopedNumber(DomindsApp.BOTTOM_PANEL_HEIGHT_STORAGE_KEY, heightPx);
   }
 
   private autoFitBottomPanelForExpandedQ4HCard(questionId: string): void {
@@ -963,6 +969,7 @@ export class DomindsApp extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+    this.remindersWidgetWidthPx = this.getDefaultRemindersWidgetWidthPx();
 
     const storedHeight = this.getStoredBottomPanelHeightPx();
     if (storedHeight !== null) {
@@ -971,6 +978,202 @@ export class DomindsApp extends HTMLElement {
       this.bottomPanelHeightPx = Math.max(min, Math.min(max, storedHeight));
       this.bottomPanelUserResized = true;
     }
+  }
+
+  private getDefaultRemindersWidgetWidthPx(): number {
+    const minWidth = 260;
+    const margin = 12;
+    const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+    const targetWidth = Math.floor(window.innerWidth / 2);
+    return Math.max(minWidth, Math.min(maxWidth, targetWidth));
+  }
+
+  private getDefaultToolsWidgetWidthPx(): number {
+    const minWidth = 260;
+    const margin = 12;
+    const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+    return Math.max(minWidth, Math.min(maxWidth, 380));
+  }
+
+  private clampNumber(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private getSidebarWidthBoundsPx(): { minWidth: number; maxWidth: number } {
+    if (window.innerWidth <= 768) {
+      return { minWidth: 240, maxWidth: 400 };
+    }
+    return { minWidth: 200, maxWidth: 600 };
+  }
+
+  private restoreSidebarWidthForCurrentViewport(): void {
+    const sidebar = this.shadowRoot?.querySelector('.sidebar') as HTMLElement | null;
+    if (!sidebar) return;
+    const storedWidthPx = loadViewportScopedNumber(DomindsApp.SIDEBAR_WIDTH_STORAGE_KEY);
+    if (storedWidthPx === null) {
+      sidebar.style.removeProperty('width');
+      return;
+    }
+    const { minWidth, maxWidth } = this.getSidebarWidthBoundsPx();
+    const widthPx = this.clampNumber(storedWidthPx, minWidth, maxWidth);
+    sidebar.style.width = `${widthPx}px`;
+  }
+
+  private restoreBottomPanelHeightForCurrentViewport(): void {
+    const storedHeight = this.getStoredBottomPanelHeightPx();
+    const min = 120;
+    const max = Math.max(min, Math.floor(window.innerHeight * 0.6));
+    const nextHeight =
+      storedHeight === null
+        ? this.getDefaultBottomPanelHeightPx()
+        : this.clampNumber(storedHeight, min, max);
+    this.bottomPanelHeightPx = nextHeight;
+    this.bottomPanelUserResized = storedHeight !== null;
+
+    const bottomPanel = this.shadowRoot?.querySelector('#bottom-panel') as HTMLElement | null;
+    if (bottomPanel) {
+      bottomPanel.style.setProperty('--bottom-panel-height', `${this.bottomPanelHeightPx}px`);
+    }
+  }
+
+  private clampRemindersWidgetGeometryToViewport(): void {
+    const margin = 12;
+    const minWidth = 260;
+    const minHeight = 160;
+    const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+    const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
+    this.remindersWidgetWidthPx = this.clampNumber(this.remindersWidgetWidthPx, minWidth, maxWidth);
+    this.remindersWidgetHeightPx = this.clampNumber(
+      this.remindersWidgetHeightPx,
+      minHeight,
+      maxHeight,
+    );
+    const maxX = Math.max(margin, window.innerWidth - this.remindersWidgetWidthPx - margin);
+    const maxY = Math.max(margin, window.innerHeight - this.remindersWidgetHeightPx - margin);
+    this.remindersWidgetX = this.clampNumber(this.remindersWidgetX, margin, maxX);
+    this.remindersWidgetY = this.clampNumber(this.remindersWidgetY, margin, maxY);
+
+    const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
+    if (widget) {
+      this.applyRemindersWidgetGeometryStyle(widget);
+    }
+  }
+
+  private restoreRemindersWidgetSizeForCurrentViewport(): void {
+    const storedSize = loadViewportScopedRectSize(DomindsApp.REMINDERS_WIDGET_SIZE_STORAGE_KEY);
+    if (storedSize === null) {
+      this.remindersWidgetWidthPx = this.getDefaultRemindersWidgetWidthPx();
+      this.remindersWidgetHeightPx = 320;
+    } else {
+      this.remindersWidgetWidthPx = storedSize.widthPx;
+      this.remindersWidgetHeightPx = storedSize.heightPx;
+    }
+    this.clampRemindersWidgetGeometryToViewport();
+  }
+
+  private persistRemindersWidgetSizeForCurrentViewport(): void {
+    saveViewportScopedRectSize(DomindsApp.REMINDERS_WIDGET_SIZE_STORAGE_KEY, {
+      widthPx: this.remindersWidgetWidthPx,
+      heightPx: this.remindersWidgetHeightPx,
+    });
+  }
+
+  private clampToolsWidgetGeometryToViewport(): void {
+    const margin = 12;
+    const minWidth = 260;
+    const minHeight = 180;
+    const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+    const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
+    this.toolsWidgetWidthPx = this.clampNumber(this.toolsWidgetWidthPx, minWidth, maxWidth);
+    this.toolsWidgetHeightPx = this.clampNumber(this.toolsWidgetHeightPx, minHeight, maxHeight);
+    const maxX = Math.max(margin, window.innerWidth - this.toolsWidgetWidthPx - margin);
+    const maxY = Math.max(margin, window.innerHeight - this.toolsWidgetHeightPx - margin);
+    this.toolsWidgetX = this.clampNumber(this.toolsWidgetX, margin, maxX);
+    this.toolsWidgetY = this.clampNumber(this.toolsWidgetY, margin, maxY);
+
+    const widget = this.shadowRoot?.querySelector('#tools-widget') as HTMLElement | null;
+    if (widget) {
+      this.applyToolsWidgetGeometryStyle(widget);
+    }
+  }
+
+  private restoreToolsWidgetSizeForCurrentViewport(): void {
+    const storedSize = loadViewportScopedRectSize(DomindsApp.TOOLS_WIDGET_SIZE_STORAGE_KEY);
+    if (storedSize === null) {
+      this.toolsWidgetWidthPx = this.getDefaultToolsWidgetWidthPx();
+      this.toolsWidgetHeightPx = 320;
+    } else {
+      this.toolsWidgetWidthPx = storedSize.widthPx;
+      this.toolsWidgetHeightPx = storedSize.heightPx;
+    }
+    this.toolsWidgetGeometryInitialized = false;
+    this.clampToolsWidgetGeometryToViewport();
+    if (this.toolsWidgetVisible) {
+      this.initializeToolsWidgetGeometry();
+      this.updateToolsWidgetUi();
+    }
+  }
+
+  private persistToolsWidgetSizeForCurrentViewport(): void {
+    saveViewportScopedRectSize(DomindsApp.TOOLS_WIDGET_SIZE_STORAGE_KEY, {
+      widthPx: this.toolsWidgetWidthPx,
+      heightPx: this.toolsWidgetHeightPx,
+    });
+  }
+
+  private restoreViewportScopedResizableSizes(): void {
+    this.restoreSidebarWidthForCurrentViewport();
+    this.restoreBottomPanelHeightForCurrentViewport();
+    this.restoreRemindersWidgetSizeForCurrentViewport();
+    this.restoreToolsWidgetSizeForCurrentViewport();
+  }
+
+  private setupSidebarResizePersistence(): void {
+    if (this.sidebarResizeCleanup) {
+      this.sidebarResizeCleanup();
+      this.sidebarResizeCleanup = null;
+    }
+
+    const sidebar = this.shadowRoot?.querySelector('.sidebar') as HTMLElement | null;
+    if (!sidebar || window.innerWidth <= 480) return;
+
+    let pointerActive = false;
+    let resizeCandidate = false;
+    const release = (): void => {
+      if (!pointerActive || !resizeCandidate) {
+        pointerActive = false;
+        resizeCandidate = false;
+        return;
+      }
+      pointerActive = false;
+      resizeCandidate = false;
+      const { minWidth, maxWidth } = this.getSidebarWidthBoundsPx();
+      const measuredWidth = Math.floor(sidebar.getBoundingClientRect().width);
+      const widthPx = this.clampNumber(measuredWidth, minWidth, maxWidth);
+      sidebar.style.width = `${widthPx}px`;
+      saveViewportScopedNumber(DomindsApp.SIDEBAR_WIDTH_STORAGE_KEY, widthPx);
+    };
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (window.innerWidth <= 480) return;
+      const rect = sidebar.getBoundingClientRect();
+      pointerActive = true;
+      resizeCandidate = rect.right - event.clientX <= 18;
+    };
+
+    const onPointerUp = (): void => {
+      release();
+    };
+
+    sidebar.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+
+    this.sidebarResizeCleanup = () => {
+      sidebar.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
   }
 
   private applyUiLanguageToDom(): void {
@@ -1543,22 +1746,8 @@ export class DomindsApp extends HTMLElement {
       '#reminders-widget-resize-handle',
     ) as HTMLElement | null;
     if (!widget || !header) return;
-    const margin = 12;
-    const minWidth = 260;
-    const minHeight = 160;
-    const clamp = (value: number, min: number, max: number): number => {
-      return Math.max(min, Math.min(max, value));
-    };
     const syncWidgetRect = (): void => {
-      const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
-      const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
-      this.remindersWidgetWidthPx = clamp(this.remindersWidgetWidthPx, minWidth, maxWidth);
-      this.remindersWidgetHeightPx = clamp(this.remindersWidgetHeightPx, minHeight, maxHeight);
-      const maxX = Math.max(margin, window.innerWidth - this.remindersWidgetWidthPx - margin);
-      const maxY = Math.max(margin, window.innerHeight - this.remindersWidgetHeightPx - margin);
-      this.remindersWidgetX = clamp(this.remindersWidgetX, margin, maxX);
-      this.remindersWidgetY = clamp(this.remindersWidgetY, margin, maxY);
-      this.applyRemindersWidgetGeometryStyle(widget);
+      this.clampRemindersWidgetGeometryToViewport();
     };
     const initialRect = widget.getBoundingClientRect();
     if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
@@ -1600,15 +1789,18 @@ export class DomindsApp extends HTMLElement {
       let startRight = 0;
       const onResizeMove = (e: MouseEvent) => {
         if (!resizing) return;
+        const margin = 12;
+        const minWidth = 260;
+        const minHeight = 160;
         const maxWidthByViewport = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
         const maxHeightByViewport = Math.max(
           minHeight,
           Math.floor(window.innerHeight - margin * 2),
         );
         const maxLeft = Math.max(margin, startRight - minWidth);
-        const nextLeft = clamp(e.clientX, margin, maxLeft);
-        const nextWidth = clamp(startRight - nextLeft, minWidth, maxWidthByViewport);
-        const nextHeight = clamp(e.clientY - startTop, minHeight, maxHeightByViewport);
+        const nextLeft = this.clampNumber(e.clientX, margin, maxLeft);
+        const nextWidth = this.clampNumber(startRight - nextLeft, minWidth, maxWidthByViewport);
+        const nextHeight = this.clampNumber(e.clientY - startTop, minHeight, maxHeightByViewport);
         this.remindersWidgetX = Math.floor(startRight - nextWidth);
         this.remindersWidgetY = Math.floor(startTop);
         this.remindersWidgetWidthPx = Math.floor(nextWidth);
@@ -1619,6 +1811,7 @@ export class DomindsApp extends HTMLElement {
         resizing = false;
         window.removeEventListener('mousemove', onResizeMove);
         window.removeEventListener('mouseup', onResizeUp);
+        this.persistRemindersWidgetSizeForCurrentViewport();
       };
       resizeHandle.onmousedown = (e: MouseEvent) => {
         e.preventDefault();
@@ -1647,22 +1840,8 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     if (!widget || !header) return;
 
-    const margin = 12;
-    const minWidth = 260;
-    const minHeight = 180;
-    const clamp = (value: number, min: number, max: number): number => {
-      return Math.max(min, Math.min(max, value));
-    };
     const syncWidgetRect = (): void => {
-      const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
-      const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
-      this.toolsWidgetWidthPx = clamp(this.toolsWidgetWidthPx, minWidth, maxWidth);
-      this.toolsWidgetHeightPx = clamp(this.toolsWidgetHeightPx, minHeight, maxHeight);
-      const maxX = Math.max(margin, window.innerWidth - this.toolsWidgetWidthPx - margin);
-      const maxY = Math.max(margin, window.innerHeight - this.toolsWidgetHeightPx - margin);
-      this.toolsWidgetX = clamp(this.toolsWidgetX, margin, maxX);
-      this.toolsWidgetY = clamp(this.toolsWidgetY, margin, maxY);
-      this.applyToolsWidgetGeometryStyle(widget);
+      this.clampToolsWidgetGeometryToViewport();
     };
     const initialRect = widget.getBoundingClientRect();
     if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
@@ -1706,15 +1885,18 @@ export class DomindsApp extends HTMLElement {
       let startRight = 0;
       const onResizeMove = (e: MouseEvent) => {
         if (!resizing) return;
+        const margin = 12;
+        const minWidth = 260;
+        const minHeight = 180;
         const maxWidthByViewport = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
         const maxHeightByViewport = Math.max(
           minHeight,
           Math.floor(window.innerHeight - margin * 2),
         );
         const maxLeft = Math.max(margin, startRight - minWidth);
-        const nextLeft = clamp(e.clientX, margin, maxLeft);
-        const nextWidth = clamp(startRight - nextLeft, minWidth, maxWidthByViewport);
-        const nextHeight = clamp(e.clientY - startTop, minHeight, maxHeightByViewport);
+        const nextLeft = this.clampNumber(e.clientX, margin, maxLeft);
+        const nextWidth = this.clampNumber(startRight - nextLeft, minWidth, maxWidthByViewport);
+        const nextHeight = this.clampNumber(e.clientY - startTop, minHeight, maxHeightByViewport);
         this.toolsWidgetX = Math.floor(startRight - nextWidth);
         this.toolsWidgetY = Math.floor(startTop);
         this.toolsWidgetWidthPx = Math.floor(nextWidth);
@@ -1725,6 +1907,7 @@ export class DomindsApp extends HTMLElement {
         resizing = false;
         window.removeEventListener('mousemove', onResizeMove);
         window.removeEventListener('mouseup', onResizeUp);
+        this.persistToolsWidgetSizeForCurrentViewport();
       };
       resizeHandle.onmousedown = (e: MouseEvent) => {
         e.preventDefault();
@@ -1750,6 +1933,9 @@ export class DomindsApp extends HTMLElement {
     }
 
     this.initialRender();
+    this.restoreViewportScopedResizableSizes();
+    this.setupSidebarResizePersistence();
+    window.addEventListener('resize', this.boundOnWindowResize);
     this.setupEventListeners();
     void this.bootstrap();
 
@@ -1766,6 +1952,7 @@ export class DomindsApp extends HTMLElement {
   disconnectedCallback(): void {
     this.wsManager.disconnect();
     this.stopRetryPanelTicker();
+    window.removeEventListener('resize', this.boundOnWindowResize);
 
     for (const t of this.runControlRefreshTimers) {
       clearTimeout(t);
@@ -1787,6 +1974,11 @@ export class DomindsApp extends HTMLElement {
     if (this._uiLanguageMenuGlobalCancel) {
       this._uiLanguageMenuGlobalCancel();
       this._uiLanguageMenuGlobalCancel = undefined;
+    }
+
+    if (this.sidebarResizeCleanup) {
+      this.sidebarResizeCleanup();
+      this.sidebarResizeCleanup = null;
     }
   }
 
@@ -2399,6 +2591,9 @@ export class DomindsApp extends HTMLElement {
         --dominds-line-height-tight: 1.18;
         --dominds-line-height-dense: 1.24;
         --dominds-line-height-base: 1.38;
+        --dominds-sidebar-default-width: clamp(200px, 33.333vw, 600px);
+        --dominds-sidebar-mobile-width: clamp(240px, 33.333vw, 400px);
+        --dominds-reminders-widget-default-width: min(calc(100vw - 24px), max(260px, 50vw));
       }
 
       .app-container {
@@ -3287,7 +3482,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .sidebar {
-        width: 288px;
+        width: var(--dominds-sidebar-default-width);
         min-width: 200px;
         max-width: 600px;
         background: var(--dominds-sidebar-bg);
@@ -4564,7 +4759,7 @@ export class DomindsApp extends HTMLElement {
       /* Responsive design */
       @media (max-width: 768px) {
         .sidebar {
-          width: 280px;
+          width: var(--dominds-sidebar-mobile-width);
           min-width: 240px;
           max-width: 400px;
         }
@@ -4581,7 +4776,7 @@ export class DomindsApp extends HTMLElement {
       @media (max-width: 480px) {
         .sidebar {
           position: absolute;
-          left: -280px;
+          left: calc(-1 * var(--dominds-sidebar-mobile-width));
           transition: left 0.3s ease;
           z-index: var(--dominds-z-sidebar-mobile, 120);
           resize: none;
@@ -5256,7 +5451,7 @@ export class DomindsApp extends HTMLElement {
         position: fixed;
         left: var(--reminders-widget-left, 12px);
         top: var(--reminders-widget-top, 56px);
-        width: var(--reminders-widget-width, 360px);
+        width: var(--reminders-widget-width, var(--dominds-reminders-widget-default-width));
         height: var(--reminders-widget-height, 240px);
         min-width: 260px;
         min-height: 160px;
