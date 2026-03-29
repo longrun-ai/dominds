@@ -827,7 +827,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Create subdialog with automatic persistence
    */
   public async createSubDialog(
-    supdialog: RootDialog,
+    callerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -843,15 +843,24 @@ export class DiskFileDialogStore extends DialogStore {
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     const nowTs = formatUnifiedTimestamp(new Date());
-    // For subdialogs, use the supdialog's root dialog ID as the root
-    const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
+    const rootDialog =
+      callerDialog instanceof RootDialog
+        ? callerDialog
+        : callerDialog instanceof SubDialog
+          ? callerDialog.rootDialog
+          : (() => {
+              throw new Error(
+                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+              );
+            })();
+    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
 
     // Prepare subdialog store
     const subdialogStore = new DiskFileDialogStore(subdialogId);
     const subdialog = new SubDialog(
       subdialogStore,
-      supdialog,
-      supdialog.taskDocPath,
+      rootDialog,
+      callerDialog.taskDocPath,
       subdialogId,
       targetAgentId,
       {
@@ -874,9 +883,9 @@ export class DiskFileDialogStore extends DialogStore {
     const metadata: SubdialogMetadataFile = {
       id: subdialogId.selfId,
       agentId: targetAgentId,
-      taskDocPath: supdialog.taskDocPath,
+      taskDocPath: callerDialog.taskDocPath,
       createdAt: nowTs,
-      supdialogId: supdialog.id.selfId,
+      supdialogId: callerDialog.id.selfId,
       sessionSlug: options.sessionSlug,
       assignmentFromSup: {
         callName: options.callName,
@@ -892,16 +901,16 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
     await DialogPersistence.saveDialogMetadata(subdialogId, metadata);
 
-    const rootAnchor = resolveRootGenerationAnchor(supdialog);
-    const parentCourse = supdialog.activeGenCourseOrUndefined ?? supdialog.currentCourse;
+    const rootAnchor = resolveRootGenerationAnchor(callerDialog);
+    const parentCourse = callerDialog.activeGenCourseOrUndefined ?? callerDialog.currentCourse;
     const subdialogCreatedRecord: SubdialogCreatedRecord = {
       ts: nowTs,
       type: 'subdialog_created_record',
       ...cloneRootGenerationAnchor(rootAnchor),
       subdialogId: subdialogId.selfId,
-      supdialogId: supdialog.id.selfId,
+      supdialogId: callerDialog.id.selfId,
       agentId: targetAgentId,
-      taskDocPath: supdialog.taskDocPath,
+      taskDocPath: callerDialog.taskDocPath,
       createdAt: nowTs,
       sessionSlug: options.sessionSlug,
       assignmentFromSup: {
@@ -915,7 +924,7 @@ export class DiskFileDialogStore extends DialogStore {
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
-    await this.appendEvent(supdialog, parentCourse, subdialogCreatedRecord);
+    await this.appendEvent(callerDialog, parentCourse, subdialogCreatedRecord);
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
@@ -943,8 +952,8 @@ export class DiskFileDialogStore extends DialogStore {
       timestamp: new Date().toISOString(),
       course: parentCourse,
       parentDialog: {
-        selfId: supdialog.id.selfId,
-        rootId: supdialog.id.rootId,
+        selfId: callerDialog.id.selfId,
+        rootId: callerDialog.id.rootId,
       },
       subDialog: {
         selfId: subdialogId.selfId,
@@ -957,9 +966,9 @@ export class DiskFileDialogStore extends DialogStore {
       subDialogNode: {
         selfId: subdialogId.selfId,
         rootId: subdialogId.rootId,
-        supdialogId: supdialog.id.selfId,
+        supdialogId: callerDialog.id.selfId,
         agentId: targetAgentId,
-        taskDocPath: supdialog.taskDocPath,
+        taskDocPath: callerDialog.taskDocPath,
         status: 'running',
         currentCourse: 1,
         createdAt: nowTs,
@@ -979,7 +988,7 @@ export class DiskFileDialogStore extends DialogStore {
     };
     // Post subdialog_created_evt to PARENT's PubChan so frontend can receive it
     // The frontend subscribes to the parent's events, not the subdialog's
-    postDialogEvent(supdialog, subdialogCreatedEvt);
+    postDialogEvent(callerDialog, subdialogCreatedEvt);
 
     return subdialog;
   }

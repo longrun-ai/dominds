@@ -1666,7 +1666,8 @@ export class SubDialog extends Dialog {
       effectiveFbrEffort?: number;
     },
   ): Promise<SubDialog> {
-    return await this.rootDialog.createSubDialog(
+    return await this.dlgStore.createSubDialog(
+      this,
       targetAgentId,
       mentionList,
       tellaskContent,
@@ -1837,14 +1838,14 @@ export abstract class DialogStore {
    *
    * impl here serves for demo purpose only
    *
-   * @param supdialog
+   * @param callerDialog
    * @param targetAgentId
    * @param mentionList
    * @param tellaskContent
    * @returns
    */
   public async createSubDialog(
-    supdialog: RootDialog,
+    callerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -1859,12 +1860,21 @@ export abstract class DialogStore {
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
-    // For subdialogs, use the supdialog's root dialog ID as the root
-    const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
+    const rootDialog =
+      callerDialog instanceof RootDialog
+        ? callerDialog
+        : callerDialog instanceof SubDialog
+          ? callerDialog.rootDialog
+          : (() => {
+              throw new Error(
+                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+              );
+            })();
+    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
     return new SubDialog(
       this,
-      supdialog,
-      supdialog.taskDocPath,
+      rootDialog,
+      callerDialog.taskDocPath,
       subdialogId,
       targetAgentId,
       {

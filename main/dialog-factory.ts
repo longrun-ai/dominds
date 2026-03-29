@@ -32,7 +32,7 @@ export class DialogFactory {
    * Create a new SubDialog instance.
    */
   static createSubDialog(
-    supdialog: RootDialog,
+    callerDialog: Dialog,
     taskDocPath: string,
     targetAgentId: string,
     mentionList: string[] | undefined,
@@ -49,11 +49,21 @@ export class DialogFactory {
     initialState?: DialogInitParams['initialState'],
   ): SubDialog {
     const generatedId = generateDialogID();
-    const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
+    const rootDialog =
+      callerDialog instanceof RootDialog
+        ? callerDialog
+        : callerDialog instanceof SubDialog
+          ? callerDialog.rootDialog
+          : (() => {
+              throw new Error(
+                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+              );
+            })();
+    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
 
     return new SubDialog(
-      supdialog.dlgStore,
-      supdialog,
+      callerDialog.dlgStore,
+      rootDialog,
       taskDocPath,
       subdialogId,
       targetAgentId,

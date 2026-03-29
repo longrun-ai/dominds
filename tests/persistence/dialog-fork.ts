@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   await withTempCwd(async () => {
     const rootId = new DialogID('11/22/rootfork');
     const subId = new DialogID('11/22/subfork', rootId.rootId);
+    const nestedSubId = new DialogID('11/22/nestedfork', rootId.rootId);
     const createdAt = formatUnifiedTimestamp(new Date('2026-03-09T01:00:00.000Z'));
 
     const rootMeta: RootDialogMetadataFile = {
@@ -71,6 +72,24 @@ async function main(): Promise<void> {
     };
     await DialogPersistence.saveDialogMetadata(subId, subMeta);
     await writeLatest(subId, 1);
+
+    const nestedSubMeta: SubdialogMetadataFile = {
+      id: nestedSubId.selfId,
+      agentId: 'critic',
+      taskDocPath: 'plans/demo.tsk',
+      createdAt,
+      supdialogId: subId.selfId,
+      assignmentFromSup: {
+        callName: 'freshBootsReasoning',
+        tellaskContent: 'Challenge the parent sideline.',
+        originMemberId: 'scribe',
+        callerDialogId: subId.selfId,
+        callId: 'call-nested-1',
+        effectiveFbrEffort: 1,
+      },
+    };
+    await DialogPersistence.saveDialogMetadata(nestedSubId, nestedSubMeta);
+    await writeLatest(nestedSubId, 1);
 
     await DialogPersistence.appendEvent(rootId, 1, {
       ts: createdAt,
@@ -137,6 +156,24 @@ async function main(): Promise<void> {
       content: 'subdialog baseline',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
     });
+    await DialogPersistence.appendEvent(subId, 1, {
+      ts: createdAt,
+      type: 'subdialog_created_record',
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
+      subdialogId: nestedSubId.selfId,
+      supdialogId: subId.selfId,
+      agentId: 'critic',
+      taskDocPath: 'plans/demo.tsk',
+      createdAt,
+      assignmentFromSup: {
+        callName: 'freshBootsReasoning',
+        tellaskContent: 'Challenge the parent sideline.',
+        originMemberId: 'scribe',
+        callerDialogId: subId.selfId,
+        callId: 'call-nested-1',
+        effectiveFbrEffort: 1,
+      },
+    });
 
     const secondTs = formatUnifiedTimestamp(new Date('2026-03-09T01:01:00.000Z'));
     await DialogPersistence.appendEvent(rootId, 1, {
@@ -193,6 +230,13 @@ async function main(): Promise<void> {
       content: 'subdialog future answer',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
     });
+    await DialogPersistence.appendEvent(nestedSubId, 1, {
+      ts: secondTs,
+      type: 'agent_words_record',
+      genseq: 1,
+      content: 'nested future answer',
+      ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
+    });
 
     await DialogPersistence._saveReminderState(rootId, [{ content: 'beta' }]);
     await DialogPersistence._saveReminderState(subId, [{ content: 'sub reminder' }]);
@@ -216,6 +260,14 @@ async function main(): Promise<void> {
       forkedEvents.some((event) => event.type === 'subdialog_created_record'),
       true,
       'forked root must include baseline subdialog-created records',
+    );
+    assert.equal(
+      forkedEvents.some(
+        (event) =>
+          event.type === 'subdialog_created_record' && event.subdialogId === nestedSubId.selfId,
+      ),
+      false,
+      'forked root must not hoist nested subdialog-created records out of their actual parent sideline',
     );
     const forkedCreatedRecord = forkedEvents.find(
       (event): event is SubdialogCreatedRecord => event.type === 'subdialog_created_record',
@@ -262,6 +314,24 @@ async function main(): Promise<void> {
       1,
       'running',
     );
+    const forkedNestedCreatedRecord = forkedSubEvents.find(
+      (event): event is SubdialogCreatedRecord =>
+        event.type === 'subdialog_created_record' && event.subdialogId === nestedSubId.selfId,
+    );
+    assert.ok(
+      forkedNestedCreatedRecord,
+      'forked parent subdialog must keep baseline nested subdialog-created record on its own course',
+    );
+    assert.equal(
+      forkedNestedCreatedRecord?.supdialogId,
+      subId.selfId,
+      'forked nested baseline record must keep the parent sideline as supdialog',
+    );
+    assert.equal(
+      forkedNestedCreatedRecord?.assignmentFromSup.callerDialogId,
+      subId.selfId,
+      'forked nested baseline record must keep the parent sideline as caller dialog',
+    );
     assert.equal(
       forkedSubEvents.some(
         (event) =>
@@ -269,6 +339,22 @@ async function main(): Promise<void> {
       ),
       false,
       'forked subdialog must exclude transcript after cutoff root genseq',
+    );
+
+    const forkedNestedMeta = await DialogPersistence.loadDialogMetadata(
+      new DialogID(nestedSubId.selfId, forkedRootId.selfId),
+      'running',
+    );
+    assert.ok(forkedNestedMeta, 'forked nested subdialog metadata must exist');
+    assert.equal(
+      forkedNestedMeta.supdialogId,
+      subId.selfId,
+      'forked nested subdialog metadata must keep the parent sideline as supdialog',
+    );
+    assert.equal(
+      forkedNestedMeta.assignmentFromSup.callerDialogId,
+      subId.selfId,
+      'forked nested subdialog assignment must keep the parent sideline as caller dialog',
     );
 
     const forkBeforeFirst = await forkRootDialogTreeAtGeneration({

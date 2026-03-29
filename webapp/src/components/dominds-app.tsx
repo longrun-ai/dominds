@@ -2540,6 +2540,25 @@ export class DomindsApp extends HTMLElement {
     return null;
   }
 
+  private resolveSupdialogIdForSubdialog(subdialog: {
+    rootId: string;
+    selfId: string;
+    supdialogId?: string;
+    assignmentFromSup?: { callerDialogId: string } | undefined;
+  }): string {
+    const assignmentCallerId = subdialog.assignmentFromSup?.callerDialogId?.trim();
+    if (assignmentCallerId) {
+      return assignmentCallerId;
+    }
+    const explicitSupdialogId = subdialog.supdialogId?.trim();
+    if (explicitSupdialogId) {
+      return explicitSupdialogId;
+    }
+    throw new Error(
+      `Subdialog hierarchy invariant violation: missing supdialogId/callerDialogId (rootId=${subdialog.rootId}, selfId=${subdialog.selfId})`,
+    );
+  }
+
   private upsertRootDialogSnapshot(nextRoot: ApiRootDialogResponse): void {
     if (nextRoot.selfId) {
       throw new Error(
@@ -8301,7 +8320,7 @@ export class DomindsApp extends HTMLElement {
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
                 displayState: effectiveDisplayState,
-                supdialogId: subdialog.supdialogId ?? rootId,
+                supdialogId: this.resolveSupdialogIdForSubdialog(subdialog),
                 sessionSlug: subdialog.sessionSlug,
                 assignmentFromSup: subdialog.assignmentFromSup,
                 waitingForFreshBootsReasoning: subdialog.waitingForFreshBootsReasoning === true,

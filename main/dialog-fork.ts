@@ -489,38 +489,53 @@ async function collectIncludedSubdialogs(args: {
   cutoffAnchor: RootGenerationAnchor;
   targetRootId: string;
 }): Promise<IncludedSubdialog[]> {
-  const sourceRootDialogId = new DialogID(args.sourceRootId);
-  const courseNumbers = await listDialogCourseNumbers(sourceRootDialogId, args.sourceStatus);
-  const includedSelfIds = new Set<string>();
+  const queue: DialogID[] = [new DialogID(args.sourceRootId)];
+  const scannedDialogSelfIds = new Set<string>();
+  const included = new Map<string, IncludedSubdialog>();
 
-  for (const course of courseNumbers) {
-    const events = await DialogPersistence.readCourseEvents(
-      sourceRootDialogId,
-      course,
-      args.sourceStatus,
-    );
-    for (const event of events) {
-      if (event.type !== 'subdialog_created_record') continue;
-      if (!anchorAtOrBefore(event, args.cutoffAnchor)) continue;
-      includedSelfIds.add(event.subdialogId);
+  while (queue.length > 0) {
+    const ownerDialogId = queue.shift();
+    if (!ownerDialogId) break;
+    if (scannedDialogSelfIds.has(ownerDialogId.selfId)) continue;
+    scannedDialogSelfIds.add(ownerDialogId.selfId);
+
+    const courseNumbers = await listDialogCourseNumbers(ownerDialogId, args.sourceStatus);
+    for (const course of courseNumbers) {
+      const events = await DialogPersistence.readCourseEvents(
+        ownerDialogId,
+        course,
+        args.sourceStatus,
+      );
+      for (const event of events) {
+        if (event.type !== 'subdialog_created_record') continue;
+        if (!anchorAtOrBefore(event, args.cutoffAnchor)) continue;
+        if (included.has(event.subdialogId)) continue;
+
+        const sourceId = new DialogID(event.subdialogId, args.sourceRootId);
+        const metadata = await DialogPersistence.loadDialogMetadata(sourceId, args.sourceStatus);
+        if (!metadata || metadata.supdialogId === undefined) {
+          throw new Error(`Missing included subdialog metadata for ${sourceId.valueOf()}`);
+        }
+        included.set(event.subdialogId, {
+          sourceId,
+          targetId: new DialogID(event.subdialogId, args.targetRootId),
+          metadata,
+        });
+        queue.push(sourceId);
+      }
     }
   }
 
-  const included: IncludedSubdialog[] = [];
-  const orderedSelfIds = Array.from(includedSelfIds).sort();
+  const orderedSelfIds = Array.from(included.keys()).sort();
+  const orderedIncluded: IncludedSubdialog[] = [];
   for (const selfId of orderedSelfIds) {
-    const sourceId = new DialogID(selfId, args.sourceRootId);
-    const metadata = await DialogPersistence.loadDialogMetadata(sourceId, args.sourceStatus);
-    if (!metadata || metadata.supdialogId === undefined) {
-      throw new Error(`Missing included subdialog metadata for ${sourceId.valueOf()}`);
+    const item = included.get(selfId);
+    if (!item) {
+      throw new Error(`Missing ordered included subdialog for ${selfId}`);
     }
-    included.push({
-      sourceId,
-      targetId: new DialogID(selfId, args.targetRootId),
-      metadata,
-    });
+    orderedIncluded.push(item);
   }
-  return included;
+  return orderedIncluded;
 }
 
 async function buildDialogForkPlan(args: {
@@ -589,10 +604,10 @@ async function buildDialogForkPlan(args: {
 
 async function appendForkBaselineState(
   plan: ForkDialogPlan,
-  rootBaselineRecords: readonly SubdialogCreatedRecord[],
+  baselineSubdialogCreatedRecords: readonly SubdialogCreatedRecord[],
 ): Promise<void> {
   const baselineTs = formatUnifiedTimestamp(new Date());
-  for (const record of rootBaselineRecords) {
+  for (const record of baselineSubdialogCreatedRecords) {
     await DialogPersistence.appendEvent(plan.targetId, 1, record, 'running');
   }
   const remindersRecord: RemindersReconciledRecord = {
@@ -645,7 +660,7 @@ async function persistForkPlan(args: {
   sourceStatus: DialogStatusKind;
   now: string;
   action: ForkDialogAction;
-  rootBaselineRecords: readonly SubdialogCreatedRecord[];
+  baselineRecordsByParentSelfId: ReadonlyMap<string, readonly SubdialogCreatedRecord[]>;
   latestDisableDiligencePush: boolean | undefined;
   latestDiligencePushRemainingBudget: number | undefined;
 }): Promise<void> {
@@ -683,7 +698,7 @@ async function persistForkPlan(args: {
 
   await appendForkBaselineState(
     plan,
-    plan.targetId.selfId === plan.targetId.rootId ? args.rootBaselineRecords : [],
+    args.baselineRecordsByParentSelfId.get(plan.targetId.selfId) ?? [],
   );
 
   await DialogPersistence._saveReminderState(plan.targetId, [...plan.reminders], 'running');
@@ -857,26 +872,36 @@ export async function forkRootDialogTreeAtGeneration(args: {
     );
   }
 
-  const rootBaselineRecords: SubdialogCreatedRecord[] = includedSubdialogs.map((subdialog) => ({
-    ts: now,
-    type: 'subdialog_created_record',
-    ...FORK_BASELINE_ANCHOR,
-    subdialogId: subdialog.targetId.selfId,
-    supdialogId: rewriteForkTreeDialogSelfId(
+  const baselineRecordsByParentSelfId = new Map<string, SubdialogCreatedRecord[]>();
+  for (const subdialog of includedSubdialogs) {
+    const rewrittenSupdialogId = rewriteForkTreeDialogSelfId(
       subdialog.metadata.supdialogId,
       sourceRootId,
       targetRootId,
-    ),
-    agentId: subdialog.metadata.agentId,
-    taskDocPath: subdialog.metadata.taskDocPath,
-    createdAt: subdialog.metadata.createdAt,
-    sessionSlug: subdialog.metadata.sessionSlug,
-    assignmentFromSup: rewriteAssignmentFromSupForFork(
-      subdialog.metadata.assignmentFromSup,
-      sourceRootId,
-      targetRootId,
-    ),
-  }));
+    );
+    const rewrittenRecord: SubdialogCreatedRecord = {
+      ts: now,
+      type: 'subdialog_created_record',
+      ...FORK_BASELINE_ANCHOR,
+      subdialogId: subdialog.targetId.selfId,
+      supdialogId: rewrittenSupdialogId,
+      agentId: subdialog.metadata.agentId,
+      taskDocPath: subdialog.metadata.taskDocPath,
+      createdAt: subdialog.metadata.createdAt,
+      sessionSlug: subdialog.metadata.sessionSlug,
+      assignmentFromSup: rewriteAssignmentFromSupForFork(
+        subdialog.metadata.assignmentFromSup,
+        sourceRootId,
+        targetRootId,
+      ),
+    };
+    const existing = baselineRecordsByParentSelfId.get(rewrittenSupdialogId);
+    if (existing) {
+      existing.push(rewrittenRecord);
+    } else {
+      baselineRecordsByParentSelfId.set(rewrittenSupdialogId, [rewrittenRecord]);
+    }
+  }
 
   const allPlans = [rootPlan, ...subdialogPlans];
   for (const plan of allPlans) {
@@ -885,7 +910,7 @@ export async function forkRootDialogTreeAtGeneration(args: {
       sourceStatus: args.sourceStatus,
       now,
       action,
-      rootBaselineRecords,
+      baselineRecordsByParentSelfId,
       latestDisableDiligencePush: latest?.disableDiligencePush,
       latestDiligencePushRemainingBudget: latest?.diligencePushRemainingBudget,
     });
