@@ -24,6 +24,7 @@ async function main(): Promise<void> {
   assert.ok(zhSoft.includes('上下文状态：🟡 吃紧'), 'zh guide should include caution headline');
   assert.ok(zhSoft.includes('clear_mind'), 'zh guide should mention clear_mind');
   assert.ok(zhSoft.includes('update_reminder'), 'zh guide should mention update_reminder');
+  assert.ok(zhSoft.includes('add_reminder'), 'zh guide should mention add_reminder');
   assert.ok(
     zhSoft.includes('不是新的用户诉求'),
     'zh guide should say it is not a new user request',
@@ -40,6 +41,22 @@ async function main(): Promise<void> {
     !zhSoft.includes('头脑还清楚'),
     'zh guide should avoid subjective self-assessment wording',
   );
+  assert.ok(
+    zhSoft.includes('优先新增过桥提醒项'),
+    'zh guide should prefer add_reminder as the first remediation move',
+  );
+  assert.ok(
+    !zhSoft.includes('reminder_no": 1'),
+    'zh guide should not hardcode reminder #1 as the recommended target',
+  );
+  assert.ok(
+    zhSoft.includes('允许先带着一定冗余'),
+    'zh guide should allow temporary redundancy during the current course',
+  );
+  assert.ok(
+    zhSoft.includes('真正清理冗余、合并提醒项，放到新一程再做'),
+    'zh guide should defer reminder cleanup to the next course',
+  );
 
   const enSoft = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'caution',
@@ -51,6 +68,7 @@ async function main(): Promise<void> {
   );
   assert.ok(enSoft.includes('Context state: 🟡 caution'), 'en guide should include caution');
   assert.ok(enSoft.includes('update_reminder'), 'en guide should mention update_reminder');
+  assert.ok(enSoft.includes('add_reminder'), 'en guide should mention add_reminder');
   assert.ok(enSoft.includes('clear_mind'), 'en guide should mention clear_mind');
   assert.ok(
     enSoft.includes('not a new user request'),
@@ -75,6 +93,22 @@ async function main(): Promise<void> {
   assert.ok(
     enSoft.includes('that is the first step only after the system actually starts the new course'),
     'en guide should pin the mandatory review step to the system-started new course',
+  );
+  assert.ok(
+    enSoft.includes('Prefer adding a bridge reminder first'),
+    'en guide should prefer add_reminder as the first remediation move',
+  );
+  assert.ok(
+    !enSoft.includes('reminder_no": 1'),
+    'en guide should not hardcode reminder #1 as the recommended target',
+  );
+  assert.ok(
+    enSoft.includes('Some redundancy is acceptable'),
+    'en guide should allow temporary redundancy during the current course',
+  );
+  assert.ok(
+    enSoft.includes('reminder cleanup and dedup belong to the new course'),
+    'en guide should defer reminder cleanup to the new course',
   );
 
   console.log('OK');

@@ -406,13 +406,13 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
-        '行动：先尽量保住易丢信息，并优先把已经掌握的事实压缩成结构化接续包提醒项（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；若不额外继续阅读/分析就做不到，允许先记成多条粗略提醒项。',
+        '行动：先尽量保住易丢信息。当前处于吃紧处置阶段时，优先把已经掌握的事实直接记进新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
         '',
-        '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是系统真正开启新一程后的第一步。接续包只保留差遣牒未覆盖、但恢复工作会丢的信息。然后主动 clear_mind，开启新一程对话继续工作。',
+        '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是系统真正开启新一程后的第一步。当前程的目标是先把差遣牒未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
-        '- update_reminder({ "reminder_no": 1, "content": "..." })（推荐）',
-        '- add_reminder({ "content": "..." })',
+        '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
+        '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_no": <现有编号>, "content": "..." })',
       ].join('\n');
     }
 
@@ -423,14 +423,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
-      '行动：尽快保住易丢信息，然后 clear_mind。若能直接基于已掌握事实压缩成结构化接续包提醒项，就这样做；否则先保留多条粗略提醒项也可以。',
+      '行动：尽快保住易丢信息，然后 clear_mind。当前处于告急处置阶段时，优先直接新增提醒项把事实带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
       '',
       '操作：',
-      '- update_reminder({ "reminder_no": 1, "content": "..." })',
-      '- add_reminder({ "content": "..." })',
+      '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
+      '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_no": <现有编号>, "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。',
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
     ].join('\n');
   }
 
@@ -442,13 +442,13 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
-      'Action: first preserve easy-to-lose information, and prefer compressing already observed facts into a structured continuation-package reminder (next step + key pointers + run/verify info + easy-to-lose volatile details). If that cannot be done without more reading/analysis, rough multi-reminder carry-over is acceptable.',
+      'Action: first preserve easy-to-lose information. In caution remediation, prefer writing already observed facts into new bridge reminders directly (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
       '',
-      'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after the system actually starts the new course. Keep only details not already covered by Taskdoc. Then proactively clear_mind to start a new dialog course.',
+      'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after the system actually starts the new course. In the current course, the goal is to carry forward details not already covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
-      '- update_reminder({ "reminder_no": 1, "content": "..." })',
-      '- add_reminder({ "content": "..." })',
+      '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
+      '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_no": <existing number>, "content": "..." })',
     ].join('\n');
   }
 
@@ -459,14 +459,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'Action: preserve easy-to-lose information, then clear_mind. If you can compress already observed facts into one structured continuation-package reminder without more reading/analysis, do that; otherwise multiple rough reminders are acceptable as a bridge.',
+    'Action: preserve easy-to-lose information, then clear_mind. In critical remediation, prefer adding bridge reminders directly. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
     '',
     'Operations:',
-    '- update_reminder({ "reminder_no": 1, "content": "..." })',
-    '- add_reminder({ "content": "..." })',
+    '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
+    '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_no": <existing number>, "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and compressing them into high-quality reminders.',
+    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
   ].join('\n');
 }
 

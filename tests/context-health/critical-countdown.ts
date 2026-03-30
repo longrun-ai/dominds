@@ -47,6 +47,17 @@ async function main(): Promise<void> {
     'zh guide should include reminder countdown number (4) in copy',
   );
   assert.ok(!zh.includes('轮次'), 'zh guide should avoid “轮次”');
+  assert.ok(zh.includes('优先新增过桥提醒项'), 'zh guide should prefer add_reminder first');
+  assert.ok(zh.includes('add_reminder'), 'zh guide should still mention add_reminder');
+  assert.ok(zh.includes('带一定冗余'), 'zh guide should allow redundancy in bridge reminders');
+  assert.ok(
+    zh.includes('合并并压缩成高质量提醒项'),
+    'zh guide should defer merge/compression to the new course',
+  );
+  assert.ok(
+    !zh.includes('reminder_no": 1'),
+    'zh guide should not hardcode reminder #1 as the target',
+  );
 
   const en = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'critical',
@@ -64,7 +75,7 @@ async function main(): Promise<void> {
     'en guide should forbid standalone acknowledgement replies',
   );
   assert.ok(
-    en.includes('multiple rough reminders'),
+    en.includes('Multiple rough reminders'),
     'en guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
@@ -82,6 +93,23 @@ async function main(): Promise<void> {
   assert.ok(
     en.includes('remind you 0 more time'),
     'en guide should include reminder countdown number (0) in copy',
+  );
+  assert.ok(
+    en.includes('Prefer adding a bridge reminder first'),
+    'en guide should prefer add_reminder first',
+  );
+  assert.ok(en.includes('add_reminder'), 'en guide should still mention add_reminder');
+  assert.ok(
+    en.includes('including some redundancy'),
+    'en guide should allow redundancy in bridge reminders',
+  );
+  assert.ok(
+    en.includes('merging/compressing them into high-quality reminders'),
+    'en guide should defer merge/compression to the new course',
+  );
+  assert.ok(
+    !en.includes('reminder_no": 1'),
+    'en guide should not hardcode reminder #1 as the target',
   );
 
   const zhNewCoursePrompt = formatNewCourseStartPrompt('zh', {
