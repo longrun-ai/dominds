@@ -241,8 +241,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   const secondPrompt = 'Second interruption while the same sideline is still pending.';
   const firstResponse = 'Handled the first interruption.';
   const secondResponse =
-    'Handled the second interruption without repeating the long-line suppression notice.';
-  const wrongSecondResponse = 'WRONG: the suppression guide was repeated.';
+    'Handled the second interruption while keeping the previously recorded long-line suppression notice in context.';
   const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
 
   await writeMockDb(process.cwd(), [
@@ -256,11 +255,6 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
       message: secondPrompt,
       role: 'user',
       response: secondResponse,
-    },
-    {
-      message: secondPrompt,
-      role: 'user',
-      response: wrongSecondResponse,
       contextContains: [suppressionGuide],
     },
   ]);
@@ -335,6 +329,18 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   );
   await waitForAllDialogsUnlocked(root, 2_000);
   assert.equal(lastAssistantSayingContent(root.msgs), secondResponse);
+
+  const events = await DialogPersistence.loadCourseEvents(root.id, root.currentCourse, root.status);
+  const runtimeGuideRecords = events.filter(
+    (event): event is Extract<(typeof events)[number], { type: 'runtime_guide_record' }> =>
+      event.type === 'runtime_guide_record',
+  );
+  assert.equal(
+    runtimeGuideRecords.length,
+    1,
+    'repeated interjections should not append duplicate suppression runtime-guide records',
+  );
+  assert.equal(runtimeGuideRecords[0]?.content, suppressionGuide);
 
   const deferred = await DialogPersistence.getDeferredReplyReassertion(root.id, root.status);
   assert.ok(deferred, 'repeated interjections should keep the deferred long-line state armed');

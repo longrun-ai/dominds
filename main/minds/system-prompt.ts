@@ -1,5 +1,6 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getRuntimeTransferMarkers } from '../runtime/inter-dialog-format';
+import { buildSidelineCompletionRule } from '../runtime/reply-prompt-copy';
 import type { Team } from '../team';
 import type { ContextHealthPromptMode } from './system-prompt-parts';
 
@@ -218,7 +219,7 @@ function buildTellaskReplyMarkerScopePolicy(
           '- 若你在正文中给下游写“回贴格式”，必须写明“Dominds 自动注入标记，禁止手写”；不得要求下游手写任何标记。',
           '- `tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
           '- 当前支线未完成/不确定/阻塞/需要澄清时：必须调用 `tellaskBack({ tellaskContent: "..." })`，不得发普通文本中间汇报。',
-          '- 当前支线已完成并能给出最终交付时：只服从运行时程序化给出的当前指令。若运行时点名了精确 reply 函数，就调用那个函数；不要自行改选其他 `reply*` 变体，也不要再走 `tellaskBack`。',
+          `- ${buildSidelineCompletionRule('zh')}`,
           `- 仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给上游并标注 ${runtimeMarkers.finalCompleted}。`,
           '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
         ],
@@ -227,7 +228,7 @@ function buildTellaskReplyMarkerScopePolicy(
           '- If you define a reply format for downstream, you must state “Dominds auto-injects markers; do not hand-write them”; do not require downstream to hand-write any marker.',
           '- `tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
           '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call `tellaskBack({ tellaskContent: "..." })` instead of posting a plain-text progress update.',
-          '- If the current sideline is complete and can deliver the final result: follow only the current programmatic runtime instruction. If runtime names an exact reply function, call that function; do not switch among `reply*` variants yourself, and do not use `tellaskBack` for final delivery.',
+          `- ${buildSidelineCompletionRule('en')}`,
           `- Runtime marks ${runtimeMarkers.finalCompleted} and delivers upstream only when runtime currently names an exact reply function and you reply through that named function.`,
           '- If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
         ],

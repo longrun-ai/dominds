@@ -15,6 +15,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatRegisteredTellaskCalleeUpdateNotice } from './driver-messages';
 import { markdownQuote } from './markdown-format';
+import { buildSubdialogRoleHeaderCopy } from './reply-prompt-copy';
 
 export type InterDialogCallContent = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -155,14 +156,11 @@ function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
   }
   const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const expectedReplyTool = getExpectedReplyToolName(input.callName);
-  if (!expectedReplyTool) {
-    return input.language === 'zh'
-      ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。只有在需要回问上游时才调用 \`tellaskBack\`。`
-      : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). Call \`tellaskBack\` only when you need to ask back upstream.`;
-  }
-  return input.language === 'zh'
-    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。本轮精确完成回复函数名是 \`${expectedReplyTool}\`；不要自行改选其他 \`reply*\` 变体。完成任务时必须调用 \`${expectedReplyTool}\`；只有在需要回问上游时才调用 \`tellaskBack\`。`
-    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller). The exact completion reply function for this round is \`${expectedReplyTool}\`; do not switch to another \`reply*\` variant by yourself. When the task is complete, you must call \`${expectedReplyTool}\`; call \`tellaskBack\` only when you need to ask back upstream.`;
+  return buildSubdialogRoleHeaderCopy({
+    language: input.language,
+    requesterId,
+    expectedReplyTool,
+  });
 }
 
 function requireMentionLine(mentionList: string[]): string {

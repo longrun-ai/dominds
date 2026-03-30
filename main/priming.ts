@@ -15,6 +15,7 @@ import type {
   ReasoningContentItem,
   ReasoningPayload,
   ReasoningSummaryItem,
+  RuntimeGuideRecord,
   TellaskCallAnchorRecord,
   TellaskCallCarryoverRecord,
   TellaskCallResultRecord,
@@ -326,6 +327,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'agent_thought_record' ||
     raw === 'agent_words_record' ||
     raw === 'ui_only_markdown_record' ||
+    raw === 'runtime_guide_record' ||
     raw === 'func_call_record' ||
     raw === 'tellask_special_call_record' ||
     raw === 'web_search_call_record' ||
@@ -348,6 +350,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_special_call_record':
@@ -765,6 +768,17 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
     }
     case 'ui_only_markdown_record': {
       const record: UiOnlyMarkdownRecord = {
+        ts: '',
+        type,
+        genseq: expectIntegerField(raw, 'genseq', context),
+        content: expectStringField(raw, 'content', context, true),
+      };
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'runtime_guide_record': {
+      const record: RuntimeGuideRecord = {
         ts: '',
         type,
         genseq: expectIntegerField(raw, 'genseq', context),
@@ -1800,6 +1814,7 @@ function remapRecordGenseq(
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
     case 'web_search_call_record':
@@ -1874,6 +1889,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
     case 'web_search_call_record':
@@ -1901,6 +1917,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
     case 'web_search_call_record':
@@ -1946,6 +1963,12 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         type: 'ui_only_markdown_msg',
         role: 'assistant',
         genseq: record.genseq,
+        content: record.content,
+      };
+    case 'runtime_guide_record':
+      return {
+        type: 'transient_guide_msg',
+        role: 'assistant',
         content: record.content,
       };
     case 'human_text_record':
@@ -2200,6 +2223,11 @@ function formatScriptMarkdown(args: {
         blockBody = record.content;
         break;
       }
+      case 'runtime_guide_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockBody = record.content;
+        break;
+      }
       case 'web_search_call_record': {
         blockMeta['genseq'] = record.genseq;
         blockMeta['phase'] = record.phase;
@@ -2412,6 +2440,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
     case 'web_search_call_record':

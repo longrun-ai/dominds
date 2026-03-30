@@ -82,6 +82,7 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 
 ### Low-Burden Rule
 
+- Focus on doing the current task correctly first; use `reply*` only when final upstream delivery is actually ready
 - Do not memorize reply variants by yourself; follow the current assignment header and the function currently exposed by runtime
 - `reply*` tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
 - If runtime exposes only one `reply*`, that is the only correct completion path for the current state

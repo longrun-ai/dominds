@@ -32,6 +32,7 @@
 
 ### 最小使用规则
 
+- 先专注把当前任务做对；只有真到最终对上游交付时，才进入 `reply*` 收口
 - 看见哪一个 `reply*` 被 runtime 暴露，就调用哪一个；不要自行改选别的 reply 变体
 - assignment 头部若已点名 reply 函数名，以那个名字为准
 - `replyContent` 只放最终交付正文，不要再包一层“我现在调用了 replyXXX”

@@ -211,6 +211,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'human_text_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
@@ -302,6 +303,7 @@ function rewriteRecordForFork(
     case 'agent_thought_record':
     case 'agent_words_record':
     case 'ui_only_markdown_record':
+    case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_special_call_record':
     case 'web_search_call_record':

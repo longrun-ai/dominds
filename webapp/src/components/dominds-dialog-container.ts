@@ -1276,6 +1276,10 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleQueuedUserMsg(event);
         break;
 
+      case 'runtime_guide_evt':
+        this.handleRuntimeGuide(event);
+        break;
+
       case 'end_of_user_saying_evt':
         {
           // Render optional user divider/content for this generation.
@@ -1634,6 +1638,29 @@ export class DomindsDialogContainer extends HTMLElement {
         }
       }
     } else if (bubble.parentElement !== container) {
+      container.appendChild(bubble);
+    }
+    this.scrollToBottom();
+  }
+
+  private handleRuntimeGuide(
+    event: Extract<TypedDialogEvent, { type: 'runtime_guide_evt' }>,
+  ): void {
+    const content = typeof event.content === 'string' ? event.content.trim() : '';
+    if (content === '') {
+      this.handleProtocolError('runtime_guide_evt missing required field: content');
+      return;
+    }
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!container) return;
+
+    const bubble = this.createMessageElement(content, 'assistant', event.timestamp);
+    bubble.classList.add('runtime-guide');
+    const anchor = this.resolveQueuedUserInsertionAnchor(container);
+    if (anchor && anchor.parentElement === container) {
+      container.insertBefore(bubble, anchor);
+    } else {
       container.appendChild(bubble);
     }
     this.scrollToBottom();

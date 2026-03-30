@@ -33,6 +33,7 @@ import {
   formatNewCourseStartPrompt,
   formatReminderItemGuide,
 } from '../../runtime/driver-messages';
+import { isStandaloneRuntimeGuidePromptContent } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import {
@@ -1664,7 +1665,7 @@ export async function driveDialogStreamCore(
       const currentPrompt = pendingPrompt;
       const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
       const currentFbrState = await loadDialogFbrState(dlg);
-      let currentRuntimeGuideMsg: ChatMessage | undefined;
+      let currentRuntimeGuideMsg: Extract<ChatMessage, { type: 'transient_guide_msg' }> | undefined;
       const currentPromptFromFbrState =
         currentPrompt !== undefined &&
         currentFbrState !== undefined &&
@@ -1757,6 +1758,25 @@ export async function driveDialogStreamCore(
               `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
             );
           }
+          const renderPromptAsRuntimeGuideBubble =
+            origin === 'runtime' &&
+            isStandaloneRuntimeGuidePromptContent(replyGuidance.promptContent);
+
+          if (currentRuntimeGuideMsg) {
+            await dlg.addChatMessages(currentRuntimeGuideMsg);
+            await DialogPersistence.persistRuntimeGuide(
+              dlg,
+              currentRuntimeGuideMsg.content,
+              dlg.activeGenSeq,
+            );
+            postDialogEvent(dlg, {
+              type: 'runtime_guide_evt',
+              course: dlg.currentCourse,
+              genseq: dlg.activeGenSeq,
+              content: currentRuntimeGuideMsg.content,
+            });
+            currentRuntimeGuideMsg = undefined;
+          }
 
           await dlg.addChatMessages({
             type: 'prompting_msg',
@@ -1776,20 +1796,29 @@ export async function driveDialogStreamCore(
             replyGuidance.persistedTellaskReplyDirective,
           );
 
-          // Emit the live user-side boundary event for UI generation bubbles.
-          // Without this, realtime turns can miss user content + divider (<hr/>),
-          // while replay (from persisted human_text_record) still looks correct.
-          postDialogEvent(dlg, {
-            type: 'end_of_user_saying_evt',
-            course: dlg.currentCourse,
-            genseq: dlg.activeGenSeq,
-            msgId: currentPrompt.msgId,
-            content: replyGuidance.promptContent,
-            grammar: 'markdown',
-            origin,
-            userLanguageCode: persistedUserLanguageCode,
-            q4hAnswerCallIds,
-          });
+          if (renderPromptAsRuntimeGuideBubble) {
+            postDialogEvent(dlg, {
+              type: 'runtime_guide_evt',
+              course: dlg.currentCourse,
+              genseq: dlg.activeGenSeq,
+              content: replyGuidance.promptContent,
+            });
+          } else {
+            // Emit the live user-side boundary event for UI generation bubbles.
+            // Without this, realtime turns can miss user content + divider (<hr/>),
+            // while replay (from persisted human_text_record) still looks correct.
+            postDialogEvent(dlg, {
+              type: 'end_of_user_saying_evt',
+              course: dlg.currentCourse,
+              genseq: dlg.activeGenSeq,
+              msgId: currentPrompt.msgId,
+              content: replyGuidance.promptContent,
+              grammar: 'markdown',
+              origin,
+              userLanguageCode: persistedUserLanguageCode,
+              q4hAnswerCallIds,
+            });
+          }
 
           if (currentPromptFromFbrState && currentFbrState) {
             await persistDialogFbrState(dlg, markFbrPromptDelivered(currentFbrState));

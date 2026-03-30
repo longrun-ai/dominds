@@ -1,12 +1,19 @@
 import { Dialog, SubDialog } from '../../dialog';
+import {
+  ACTIVE_REPLY_TOOL_PREFIX_EN,
+  ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  REPLY_REASSERTION_PREFIX_EN,
+  REPLY_REASSERTION_PREFIX_ZH,
+  buildActiveReplyToolNote,
+  buildReplyObligationReassertionText,
+  buildReplyObligationSuppressionGuideText,
+} from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { loadLatestActiveTellaskReplyDirective } from './tellask-special';
 import type { KernelDriverHumanPrompt } from './types';
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
 const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
-const REPLY_REASSERTION_PREFIX_EN = '[Dominds long-line reminder]';
-const REPLY_REASSERTION_PREFIX_ZH = '[Dominds 长线提醒]';
 
 function buildPromptContentWithExactReplyToolName(args: {
   dlg: Dialog;
@@ -21,7 +28,7 @@ function buildPromptContentWithExactReplyToolName(args: {
       ? '[Dominds 当前无跨对话回复义务]'
       : '[Dominds no active inter-dialog reply]';
   const activePrefix =
-    args.language === 'zh' ? '[Dominds 当前回复工具]' : '[Dominds active reply tool]';
+    args.language === 'zh' ? ACTIVE_REPLY_TOOL_PREFIX_ZH : ACTIVE_REPLY_TOOL_PREFIX_EN;
   const reminderPrefixes = [
     REPLY_TOOL_REMINDER_PREFIX_EN,
     REPLY_TOOL_REMINDER_PREFIX_ZH,
@@ -60,18 +67,10 @@ function buildPromptContentWithExactReplyToolName(args: {
   if (reminderPrefixes.some((prefix) => args.prompt.content.startsWith(prefix))) {
     return args.prompt.content;
   }
-  const note =
-    args.language === 'zh'
-      ? [
-          activePrefix,
-          `当前这轮若完成交付，精确应调用 \`${toolName}\`。`,
-          '不要自己判断该选哪个 `reply*`；以上述函数名为准。',
-        ].join('\n')
-      : [
-          activePrefix,
-          `If this round is ready for final delivery, the exact reply tool is \`${toolName}\`.`,
-          'Do not decide among `reply*` variants by yourself; follow that exact function name.',
-        ].join('\n');
+  const note = buildActiveReplyToolNote({
+    language: args.language,
+    toolName,
+  });
   return `${note}\n\n${args.prompt.content}`;
 }
 
@@ -144,39 +143,15 @@ export async function resolvePromptReplyGuidance(args: {
 }
 
 export function buildReplyObligationSuppressionGuide(args: { language: 'zh' | 'en' }): string {
-  if (args.language === 'zh') {
-    return [
-      '[Dominds 先接住这轮]',
-      '先把用户刚插进来的这轮正常接住，按眼前的话题继续回答。',
-      '原来那条长线先放一放，别急着顺着它往下收口。',
-      '等相关支线结果回来后，运行时会再提醒你把那条线接回去。',
-    ].join('\n');
-  }
-  return [
-    '[Dominds handle this interjection first]',
-    "First, handle the user's interjection normally and keep answering the topic in front of you.",
-    'Set the earlier long-line thread aside for now; do not rush to close it yet.',
-    'When the related sideline result comes back, runtime will remind you to pick that thread up again.',
-  ].join('\n');
+  return buildReplyObligationSuppressionGuideText(args.language);
 }
 
 export function buildReplyObligationReassertionPrompt(args: {
   directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
 }): string {
-  const toolName = args.directive.expectedReplyCallName;
-  if (args.language === 'zh') {
-    return [
-      REPLY_REASSERTION_PREFIX_ZH,
-      '刚才为了接住用户插话，先把那条长线放在一边了。',
-      '现在把它重新记回心里，后续继续推进时别把它丢了。',
-      `等走到需要收口的时候，按 \`${toolName}\` 来处理就行；这条提醒不是在催你立刻回复。`,
-    ].join('\n');
-  }
-  return [
-    REPLY_REASSERTION_PREFIX_EN,
-    'The user interjection was handled first, so that longer thread was set aside for a moment.',
-    'Bring it back into mind now and do not lose it as you continue.',
-    `When the time comes to close that thread, use \`${toolName}\`; this reminder is not telling you to reply immediately.`,
-  ].join('\n');
+  return buildReplyObligationReassertionText({
+    language: args.language,
+    toolName: args.directive.expectedReplyCallName,
+  });
 }

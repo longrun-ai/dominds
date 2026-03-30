@@ -414,6 +414,13 @@ export interface QueueUserMsgEvent {
   userLanguageCode?: LanguageCode;
 }
 
+export interface RuntimeGuideEvent {
+  type: 'runtime_guide_evt';
+  course: number;
+  genseq: number;
+  content: string;
+}
+
 export interface CourseEvent {
   type: 'course_update';
   course: number;
@@ -488,6 +495,7 @@ export type DialogEvent =
   | TellaskCarryoverResultEvent
   | SubdialogEvent
   | QueueUserMsgEvent
+  | RuntimeGuideEvent
   | EndOfUserSayingEvent
   | FullRemindersEvent
   | CourseEvent

@@ -32,6 +32,7 @@ The **tool descriptions themselves** for these functions intentionally stay mini
 
 ### Minimal Usage Rules
 
+- Focus on doing the current task correctly first; only move into `reply*` closure when final upstream delivery is actually ready
 - Call whichever `reply*` runtime currently exposes; do not switch to another reply variant by yourself
 - If the assignment header explicitly names a reply function, follow that exact name
 - Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"

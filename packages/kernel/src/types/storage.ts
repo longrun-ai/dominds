@@ -323,6 +323,14 @@ export interface UiOnlyMarkdownRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
+export interface RuntimeGuideRecord extends RootGenerationRef {
+  ts: string;
+  type: 'runtime_guide_record';
+  genseq: number;
+  content: string;
+  sourceTag?: 'priming_script';
+}
+
 export interface FuncCallRecord extends RootGenerationRef {
   ts: string;
   type: 'func_call_record';
@@ -795,6 +803,7 @@ export type PersistedDialogRecord =
   | AgentThoughtRecord
   | AgentWordsRecord
   | UiOnlyMarkdownRecord
+  | RuntimeGuideRecord
   | FuncCallRecord
   | TellaskSpecialCallRecord
   | WebSearchCallRecord

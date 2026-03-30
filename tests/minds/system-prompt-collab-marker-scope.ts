@@ -6,6 +6,10 @@ import {
   formatTellaskResponseContent,
   getRuntimeTransferMarkers,
 } from '../../main/runtime/inter-dialog-format';
+import {
+  buildSidelineCompletionRule,
+  buildSubdialogRoleHeaderCopy,
+} from '../../main/runtime/reply-prompt-copy';
 import { Team } from '../../main/team';
 
 function buildPrompt(dialogScope: 'mainline' | 'sideline', language: LanguageCode): string {
@@ -128,11 +132,7 @@ function main(): void {
       '`tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
     ),
   );
-  assert.ok(
-    zhSideline.includes(
-      '当前支线已完成并能给出最终交付时：只服从运行时程序化给出的当前指令。若运行时点名了精确 reply 函数，就调用那个函数；不要自行改选其他 `reply*` 变体，也不要再走 `tellaskBack`。',
-    ),
-  );
+  assert.ok(zhSideline.includes(buildSidelineCompletionRule('zh')));
   assert.ok(
     zhSideline.includes(
       `仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给上游并标注 ${zhMarkers.finalCompleted}。`,
@@ -170,11 +170,7 @@ function main(): void {
       '`tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
     ),
   );
-  assert.ok(
-    enSideline.includes(
-      'If the current sideline is complete and can deliver the final result: follow only the current programmatic runtime instruction. If runtime names an exact reply function, call that function; do not switch among `reply*` variants yourself, and do not use `tellaskBack` for final delivery.',
-    ),
-  );
+  assert.ok(enSideline.includes(buildSidelineCompletionRule('en')));
   assert.ok(
     enSideline.includes(
       `Runtime marks ${enMarkers.finalCompleted} and delivers upstream only when runtime currently names an exact reply function and you reply through that named function.`,
@@ -189,14 +185,22 @@ function main(): void {
   const zhAssignment = buildAssignmentPrompt('zh');
   assert.ok(
     zhAssignment.includes(
-      '你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @caller（当前发起本次诉请）。本轮精确完成回复函数名是 `replyTellask`；不要自行改选其他 `reply*` 变体。完成任务时必须调用 `replyTellask`；只有在需要回问上游时才调用 `tellaskBack`。',
+      buildSubdialogRoleHeaderCopy({
+        language: 'zh',
+        requesterId: 'caller',
+        expectedReplyTool: 'replyTellask',
+      }),
     ),
   );
 
   const enAssignment = buildAssignmentPrompt('en');
   assert.ok(
     enAssignment.includes(
-      'You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @caller (the current caller). The exact completion reply function for this round is `replyTellask`; do not switch to another `reply*` variant by yourself. When the task is complete, you must call `replyTellask`; call `tellaskBack` only when you need to ask back upstream.',
+      buildSubdialogRoleHeaderCopy({
+        language: 'en',
+        requesterId: 'caller',
+        expectedReplyTool: 'replyTellask',
+      }),
     ),
   );
   assert.ok(

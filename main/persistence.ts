@@ -17,6 +17,7 @@ import type {
   MarkdownFinishEvent,
   MarkdownStartEvent,
   Q4HAnsweredEvent,
+  RuntimeGuideEvent,
   StreamErrorEvent,
   SubdialogEvent,
   TellaskCallAnchorEvent,
@@ -59,6 +60,7 @@ import type {
   ReminderStateFile,
   RootDialogMetadataFile,
   RootGenerationAnchor,
+  RuntimeGuideRecord,
   SubdialogCreatedRecord,
   SubdialogMetadataFile,
   SubdialogRegistryReconciledRecord,
@@ -93,6 +95,7 @@ import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
+import { isStandaloneRuntimeGuidePromptContent } from './runtime/reply-prompt-copy';
 import { getWorkLanguage } from './runtime/work-language';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
@@ -2059,6 +2062,17 @@ export class DiskFileDialogStore extends DialogStore {
     await this.appendEvent(dialog, course, ev);
   }
 
+  public async persistRuntimeGuide(dialog: Dialog, content: string, genseq: number): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const ev: RuntimeGuideRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'runtime_guide_record',
+      genseq,
+      content: content || '',
+    };
+    await this.appendEvent(dialog, course, ev);
+  }
+
   /**
    * Persist a function call to storage
    */
@@ -2512,6 +2526,27 @@ export class DiskFileDialogStore extends DialogStore {
         const origin: 'user' | 'diligence_push' | 'runtime' =
           event.origin === 'diligence_push' || event.origin === 'runtime' ? event.origin : 'user';
         const userLanguageCode = event.userLanguageCode;
+        const renderAsStandaloneRuntimeGuide =
+          origin === 'runtime' && isStandaloneRuntimeGuidePromptContent(content);
+
+        if (renderAsStandaloneRuntimeGuide) {
+          if (ws.readyState === 1) {
+            const runtimeGuideEvt: RuntimeGuideEvent = {
+              type: 'runtime_guide_evt',
+              course,
+              genseq,
+              content,
+            };
+            ws.send(
+              JSON.stringify({
+                ...runtimeGuideEvt,
+                dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                timestamp: event.ts,
+              }),
+            );
+          }
+          break;
+        }
 
         if (content) {
           if (ws.readyState === 1) {
@@ -2721,6 +2756,27 @@ export class DiskFileDialogStore extends DialogStore {
               }),
             );
           }
+        }
+        break;
+      }
+
+      case 'runtime_guide_record': {
+        const content = event.content || '';
+        if (!content.trim()) break;
+        if (ws.readyState === 1) {
+          const runtimeGuideEvt: RuntimeGuideEvent = {
+            type: 'runtime_guide_evt',
+            course,
+            genseq: event.genseq,
+            content,
+          };
+          ws.send(
+            JSON.stringify({
+              ...runtimeGuideEvt,
+              dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+              timestamp: event.ts,
+            }),
+          );
         }
         break;
       }
@@ -4081,6 +4137,17 @@ export class DialogPersistence {
     } finally {
       release();
     }
+  }
+
+  static async persistRuntimeGuide(dialog: Dialog, content: string, genseq: number): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const ev: RuntimeGuideRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'runtime_guide_record',
+      genseq,
+      content,
+    };
+    await this.appendEvent(dialog.id, course, ev, dialog.status);
   }
 
   /**
@@ -6194,6 +6261,15 @@ export class DialogPersistence {
             type: 'ui_only_markdown_msg',
             role: 'assistant',
             genseq: event.genseq,
+            content: event.content,
+          });
+          break;
+        }
+
+        case 'runtime_guide_record': {
+          messages.push({
+            type: 'transient_guide_msg',
+            role: 'assistant',
             content: event.content,
           });
           break;
