@@ -173,6 +173,7 @@ class HeadTailByteBuffer {
 interface DaemonProcess {
   pid: number;
   command: string;
+  daemonCommandLine?: string;
   shell: string;
   process?: ChildProcess;
   processGroupId?: number;
@@ -317,8 +318,8 @@ function liveProcessMatchesReminderCommand(
   actualCommandLine: string,
 ): boolean {
   const normalizedActual = normalizeProcessCommandLine(actualCommandLine);
-  const normalizedCommand = normalizeProcessCommandLine(meta.command);
-  return normalizedActual.includes(normalizedCommand);
+  const normalizedCommand = normalizeProcessCommandLine(meta.daemonCommandLine);
+  return normalizedActual === normalizedCommand;
 }
 
 function liveProcessStartTimeMatchesReminder(
@@ -347,7 +348,8 @@ async function createRestoredDaemon(
   }
   return {
     pid: meta.pid,
-    command: meta.command,
+    command: meta.initialCommandLine,
+    daemonCommandLine: actualCommandLine,
     shell: meta.shell,
     processGroupId: meta.processGroupId,
     startTime: parseStartTime(meta.startTime),
@@ -397,7 +399,8 @@ async function ensureTrackedDaemonForAgent(
 type ShellCmdReminderMeta = JsonObject & {
   kind: 'daemon';
   pid: number;
-  command: string;
+  initialCommandLine: string;
+  daemonCommandLine: string;
   shell: string;
   startTime: string;
   processGroupId?: number;
@@ -415,6 +418,40 @@ function isShellCmdReminder(reminder: Reminder): reminder is ShellCmdOwnedRemind
   return (
     reminderOwnedBy(reminder, shellCmdReminderOwner.name) && isShellCmdReminderMeta(reminder.meta)
   );
+}
+
+function buildShellCmdReminderMeta(
+  previousMeta: ShellCmdReminderMeta,
+  daemon: DaemonProcess,
+  options?: Readonly<{
+    completed?: boolean;
+    lastUpdated?: string;
+  }>,
+): JsonObject {
+  const nextMeta: JsonObject = {
+    kind: 'daemon',
+    pid: daemon.pid,
+    initialCommandLine: previousMeta.initialCommandLine,
+    shell: previousMeta.shell,
+    startTime: previousMeta.startTime,
+    delete: {
+      altInstruction: `stop_daemon({ "pid": ${daemon.pid} })`,
+    },
+  };
+  nextMeta['daemonCommandLine'] = daemon.daemonCommandLine ?? previousMeta.daemonCommandLine;
+  if (previousMeta.originDialogId !== undefined) {
+    nextMeta['originDialogId'] = previousMeta.originDialogId;
+  }
+  if (daemon.processGroupId !== undefined) {
+    nextMeta['processGroupId'] = daemon.processGroupId;
+  }
+  if (options?.completed) {
+    nextMeta['completed'] = true;
+  }
+  if (options?.lastUpdated !== undefined) {
+    nextMeta['lastUpdated'] = options.lastUpdated;
+  }
+  return nextMeta;
 }
 
 type OsToolMessages = Readonly<{
@@ -481,7 +518,8 @@ function isShellCmdReminderMeta(meta: JsonValue | undefined): meta is ShellCmdRe
     isJsonObject(meta) &&
     meta.kind === 'daemon' &&
     typeof meta.pid === 'number' &&
-    typeof meta.command === 'string' &&
+    typeof meta.initialCommandLine === 'string' &&
+    typeof meta.daemonCommandLine === 'string' &&
     typeof meta.shell === 'string' &&
     typeof meta.startTime === 'string'
   );
@@ -834,7 +872,6 @@ export const shellCmdReminderOwner: ReminderOwner = {
       return { treatment: 'keep' };
     }
 
-    const reminderMeta: JsonObject = reminder.meta;
     const pid = reminder.meta.pid;
     const daemon = await ensureTrackedDaemonFromReminder(reminder);
 
@@ -852,11 +889,10 @@ export const shellCmdReminderOwner: ReminderOwner = {
       return {
         treatment: 'update',
         updatedContent: `🏁 Process ${pid} has completed:\n\n${finalStatus}`,
-        updatedMeta: {
-          ...reminderMeta,
+        updatedMeta: buildShellCmdReminderMeta(reminder.meta, daemon, {
           completed: true,
           lastUpdated: formatUnifiedTimestamp(new Date()),
-        },
+        }),
       };
     }
 
@@ -876,10 +912,9 @@ export const shellCmdReminderOwner: ReminderOwner = {
     return {
       treatment: 'update',
       updatedContent,
-      updatedMeta: {
-        ...reminderMeta,
+      updatedMeta: buildShellCmdReminderMeta(reminder.meta, daemon, {
         lastUpdated: formatUnifiedTimestamp(daemon.lastUpdateTime),
-      },
+      }),
     };
   },
 
@@ -992,68 +1027,76 @@ export const shellCmdTool: FuncTool = {
 
       // Set up timeout
       const timeoutHandle = setTimeout(() => {
-        // Process didn't exit within timeout - treat as daemon
-        const daemon: DaemonProcess = {
-          pid,
-          command,
-          shell: spawnSpec.shellLabel,
-          process: childProcess,
-          processGroupId: process.platform === 'win32' ? undefined : pid,
-          startTime,
-          stdoutBuffer,
-          stderrBuffer,
-          outputAvailable: true,
-          isRunning: true,
-          lastUpdateTime: new Date(),
-        };
+        void (async () => {
+          // Process didn't exit within timeout - treat as daemon
+          const observedDaemonCommandLine = await readProcessCommandLine(pid);
+          if (observedDaemonCommandLine === undefined || observedDaemonCommandLine.trim() === '') {
+            throw new Error(`failed to capture daemon command line from OS for pid ${String(pid)}`);
+          }
+          const daemonCommandLine = observedDaemonCommandLine;
+          const daemon: DaemonProcess = {
+            pid,
+            command,
+            daemonCommandLine,
+            shell: spawnSpec.shellLabel,
+            process: childProcess,
+            processGroupId: process.platform === 'win32' ? undefined : pid,
+            startTime,
+            stdoutBuffer,
+            stderrBuffer,
+            outputAvailable: true,
+            isRunning: true,
+            lastUpdateTime: new Date(),
+          };
 
-        daemonProcesses.set(pid, daemon);
-        childProcess.unref();
+          daemonProcesses.set(pid, daemon);
+          childProcess.unref();
 
-        const reminderMeta: JsonObject = {
-          kind: 'daemon',
-          pid,
-          command,
-          shell: spawnSpec.shellLabel,
-          startTime: formatUnifiedTimestamp(startTime),
-          originDialogId: dlg.id.selfId,
-          delete: {
-            altInstruction: `stop_daemon({ "pid": ${pid} })`,
-          },
-        };
-        if (process.platform !== 'win32') {
-          reminderMeta['processGroupId'] = pid;
-        }
+          const reminderSeedMeta: ShellCmdReminderMeta = {
+            kind: 'daemon',
+            pid,
+            initialCommandLine: command,
+            daemonCommandLine,
+            shell: spawnSpec.shellLabel,
+            startTime: formatUnifiedTimestamp(startTime),
+            originDialogId: dlg.id.selfId,
+          };
+          if (process.platform !== 'win32') {
+            reminderSeedMeta.processGroupId = pid;
+          }
 
-        const reminder = materializeReminder({
-          content: `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`,
-          owner: shellCmdReminderOwner,
-          meta: reminderMeta,
-          scope: 'agent_shared',
-        });
+          const reminderMeta = buildShellCmdReminderMeta(reminderSeedMeta, daemon);
 
-        void mutateAgentSharedReminders(dlg.agentId, (reminders) => {
-          reminders.push(reminder);
-        })
-          .then(() => {
-            dlg.touchReminders();
-            resolve(t.daemonStarted(pid, timeoutSeconds, command));
-          })
-          .catch((error: unknown) => {
-            daemonProcesses.delete(pid);
+          const reminder = materializeReminder({
+            content: `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`,
+            owner: shellCmdReminderOwner,
+            meta: reminderMeta,
+            scope: 'agent_shared',
+          });
+
+          await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+            reminders.push(reminder);
+          });
+          dlg.touchReminders();
+          resolve(t.daemonStarted(pid, timeoutSeconds, command));
+        })().catch((error: unknown) => {
+          const daemon = daemonProcesses.get(pid);
+          daemonProcesses.delete(pid);
+          if (daemon) {
             try {
               process.kill(resolveBestEffortDaemonSignalTarget(daemon), 'SIGTERM');
             } catch {
               // best effort only; surface the persistence failure below
             }
-            resolve(
-              t.failedToExecute(
-                error instanceof Error
-                  ? `daemon reminder persistence failed: ${error.message}`
-                  : `daemon reminder persistence failed: ${String(error)}`,
-              ),
-            );
-          });
+          }
+          resolve(
+            t.failedToExecute(
+              error instanceof Error
+                ? `daemon reminder persistence failed: ${error.message}`
+                : `daemon reminder persistence failed: ${String(error)}`,
+            ),
+          );
+        });
       }, timeoutSeconds * 1000);
 
       // Handle process completion

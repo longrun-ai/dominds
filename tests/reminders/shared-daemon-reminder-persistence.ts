@@ -88,6 +88,9 @@ async function main(): Promise<void> {
       assert.match(raw, /"kind": "daemon"/);
       assert.match(raw, /"scope": "agent_shared"/);
       assert.match(raw, /"ownerName": "shellCmd"/);
+      assert.match(raw, /"initialCommandLine": /);
+      assert.match(raw, /"daemonCommandLine": /);
+      assert.doesNotMatch(raw, /"command": /);
 
       const dialogB = createDialog('tester');
       const visibleB = await dialogB.listVisibleReminders();

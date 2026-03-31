@@ -101,7 +101,12 @@ async function main(): Promise<void> {
           ? (parsed['meta'] as Record<string, unknown>)
           : null;
       assert.notEqual(parsedMeta, null, 'Expected persisted daemon reminder meta to exist');
-      parsedMeta['command'] = 'echo definitely-not-the-original-command';
+      assert.equal(
+        typeof parsedMeta['daemonCommandLine'],
+        'string',
+        'Expected persisted daemon reminder to record daemonCommandLine',
+      );
+      parsedMeta['daemonCommandLine'] = 'echo definitely-not-the-original-command';
       await fs.writeFile(sharedReminderPath, `${JSON.stringify(parsed, null, 2)}\n`, 'utf-8');
 
       resetTrackedDaemonsForTests();
