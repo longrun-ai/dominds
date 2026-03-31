@@ -27,13 +27,13 @@ add_reminder({
 
 // 任务完成后更新
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content: '已完成: 创建 i18n 手册 [完成]',
 });
 
 // 删除已完成的提醒
 delete_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
 });
 ```
 

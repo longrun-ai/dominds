@@ -51,9 +51,11 @@ import {
 } from './runtime/driver-messages';
 import { formatAssignmentFromSupdialog } from './runtime/inter-dialog-format';
 import { getWorkLanguage } from './runtime/work-language';
+import { loadAgentSharedReminders, replaceAgentSharedReminders } from './shared-reminders';
 import type { JsonValue } from './tool';
 import {
-  computeReminderNoByIndex,
+  cloneReminder,
+  materializeReminder,
   Reminder,
   reminderEchoBackEnabled,
   ReminderOptions,
@@ -198,6 +200,19 @@ export interface DialogInitParams {
   };
 }
 
+export type VisibleReminderTarget =
+  | Readonly<{
+      source: 'dialog';
+      index: number;
+      reminder: Reminder;
+    }>
+  | Readonly<{
+      source: 'agent_shared';
+      index: number;
+      reminder: Reminder;
+      agentId: string;
+    }>;
+
 /**
  * Assignment from supdialog for subdialogs
  */
@@ -335,6 +350,11 @@ export abstract class Dialog {
 
   public get remindersVer() {
     return this._remindersVer;
+  }
+
+  public touchReminders(): void {
+    this._updatedAt = formatUnifiedTimestamp(new Date());
+    this._remindersVer++;
   }
 
   public get supdialog(): Dialog | undefined {
@@ -579,13 +599,14 @@ export abstract class Dialog {
     meta?: JsonValue,
     position?: number,
     options?: ReminderOptions,
-  ): void {
-    const reminder: Reminder = {
+  ): Reminder {
+    const reminder = materializeReminder({
       content,
       owner,
       meta,
       echoback: options?.echoback,
-    };
+      scope: options?.scope ?? 'dialog',
+    });
     const insertIndex = position !== undefined ? position : this.reminders.length;
     if (insertIndex < 0 || insertIndex > this.reminders.length) {
       throw new Error(
@@ -593,10 +614,8 @@ export abstract class Dialog {
       );
     }
     this.reminders.splice(insertIndex, 0, reminder);
-    this._updatedAt = formatUnifiedTimestamp(new Date());
-
-    // Increment version for conditional event emission in driver
-    this._remindersVer++;
+    this.touchReminders();
+    return reminder;
   }
 
   public deleteReminder(index: number): Reminder {
@@ -606,10 +625,7 @@ export abstract class Dialog {
       );
     }
     const deleted = this.reminders.splice(index, 1)[0];
-    this._updatedAt = formatUnifiedTimestamp(new Date());
-
-    // Increment version for conditional event emission in driver
-    this._remindersVer++;
+    this.touchReminders();
 
     return deleted;
   }
@@ -626,41 +642,72 @@ export abstract class Dialog {
       );
     }
     const oldReminder = this.reminders[index];
-    const updatedReminder: Reminder = {
+    const updatedReminder = materializeReminder({
+      id: oldReminder.id,
       content,
       owner: oldReminder.owner,
       meta: meta !== undefined ? meta : oldReminder.meta,
       echoback: options?.echoback ?? oldReminder.echoback,
-    };
+      scope: oldReminder.scope,
+      createdAt: oldReminder.createdAt,
+      priority: oldReminder.priority,
+    });
     this.reminders[index] = updatedReminder;
-    this._updatedAt = formatUnifiedTimestamp(new Date());
-
-    // Increment version for conditional event emission in driver
-    this._remindersVer++;
+    this.touchReminders();
 
     return oldReminder;
   }
 
   public clearReminders(): void {
     this.reminders.length = 0;
-    this._updatedAt = formatUnifiedTimestamp(new Date());
-
-    // Increment version for conditional event emission in driver
-    this._remindersVer++;
+    this.touchReminders();
   }
 
-  /**
-   * Process reminder updates before LLM generation.
-   * Calls updateReminder on each tool that owns reminders to allow them to update/drop/keep their reminders.
-   * Returns reminder contents with metadata for the frontend.
-   */
-  public async processReminderUpdates(): Promise<ReminderContent[]> {
+  public async listVisibleReminderTargets(): Promise<VisibleReminderTarget[]> {
+    const targets: VisibleReminderTarget[] = this.reminders.map((reminder, index) => ({
+      source: 'dialog',
+      index,
+      reminder,
+    }));
+    const sharedReminders = await loadAgentSharedReminders(this.agentId);
+    for (let index = 0; index < sharedReminders.length; index += 1) {
+      const reminder = sharedReminders[index];
+      if (!reminder) continue;
+      targets.push({
+        source: 'agent_shared',
+        index,
+        reminder,
+        agentId: this.agentId,
+      });
+    }
+    return targets;
+  }
+
+  public async listVisibleReminders(): Promise<Reminder[]> {
+    return (await this.listVisibleReminderTargets()).map((target) => target.reminder);
+  }
+
+  public async resolveReminderTargetById(
+    reminderId: string,
+  ): Promise<VisibleReminderTarget | null> {
+    const trimmed = reminderId.trim();
+    if (trimmed === '') return null;
+    const visibleTargets = await this.listVisibleReminderTargets();
+    for (const target of visibleTargets) {
+      if (target.reminder.id === trimmed) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  private async processReminderCollection(reminders: Reminder[]): Promise<boolean> {
+    let changed = false;
     const indicesToRemove: number[] = [];
 
-    for (let i = 0; i < this.reminders.length; i++) {
-      const reminder = this.reminders[i];
+    for (let i = 0; i < reminders.length; i++) {
+      const reminder = reminders[i];
 
-      // Skip if the reminder has no owner or the owner doesn't have an updateReminder method
       if (!reminder.owner || !reminder.owner.updateReminder) {
         continue;
       }
@@ -671,35 +718,55 @@ export abstract class Dialog {
         switch (result.treatment) {
           case 'drop':
             indicesToRemove.push(i);
+            changed = true;
             break;
-          case 'update':
-            if (result.updatedContent !== undefined) {
-              const updatedReminder: Reminder = {
-                content: result.updatedContent,
-                owner: reminder.owner,
-                meta: result.updatedMeta !== undefined ? result.updatedMeta : reminder.meta,
-                echoback: reminder.echoback,
-              };
-              this.reminders[i] = updatedReminder;
+          case 'update': {
+            const nextContent = result.updatedContent ?? reminder.content;
+            const nextMeta = result.updatedMeta !== undefined ? result.updatedMeta : reminder.meta;
+            const updatedReminder = materializeReminder({
+              id: reminder.id,
+              content: nextContent,
+              owner: reminder.owner,
+              meta: nextMeta,
+              echoback: reminder.echoback,
+              scope: reminder.scope,
+              createdAt: reminder.createdAt,
+              priority: reminder.priority,
+            });
+            const contentChanged = updatedReminder.content !== reminder.content;
+            const metaChanged = updatedReminder.meta !== reminder.meta;
+            if (contentChanged || metaChanged) {
+              reminders[i] = updatedReminder;
+              changed = true;
             }
             break;
+          }
           case 'keep':
-            // No action needed
             break;
         }
       } catch (error) {
         log.error(`Error updating reminder from tool ${reminder.owner}:`, error);
-        // Continue processing other reminders even if one fails
       }
     }
 
-    // Remove reminders marked for deletion (in reverse order to maintain indices)
     for (let i = indicesToRemove.length - 1; i >= 0; i--) {
-      this.reminders.splice(indicesToRemove[i], 1);
+      reminders.splice(indicesToRemove[i], 1);
     }
 
-    if (indicesToRemove.length > 0) {
-      this._updatedAt = formatUnifiedTimestamp(new Date());
+    return changed;
+  }
+
+  /**
+   * Process reminder updates before LLM generation.
+   * Calls updateReminder on each tool that owns reminders to allow them to update/drop/keep their reminders.
+   * Returns reminder contents with metadata for the frontend.
+   */
+  public async processReminderUpdates(): Promise<ReminderContent[]> {
+    const sharedReminders = await loadAgentSharedReminders(this.agentId);
+    const localChanged = await this.processReminderCollection(this.reminders);
+    const sharedChanged = await this.processReminderCollection(sharedReminders);
+    if (localChanged || sharedChanged) {
+      this.touchReminders();
     }
 
     // Centralized persistence - called when emitting event.
@@ -709,12 +776,23 @@ export abstract class Dialog {
     } catch (err) {
       log.warn('Failed to persist reminders', err, { dialogId: this.id.valueOf() });
     }
+    try {
+      await replaceAgentSharedReminders(this.agentId, sharedReminders);
+    } catch (err) {
+      log.warn('Failed to persist agent-shared reminders', err, {
+        dialogId: this.id.valueOf(),
+        agentId: this.agentId,
+      });
+    }
 
-    const reminderNoByIndex = computeReminderNoByIndex(this.reminders);
-    const reminders: ReminderContent[] = this.reminders.map((r: Reminder, index) => ({
+    const visibleReminders = [
+      ...this.reminders.map((reminder) => cloneReminder(reminder)),
+      ...sharedReminders,
+    ];
+    const reminders: ReminderContent[] = visibleReminders.map((r: Reminder) => ({
       content: r.content,
       meta: r.meta as Record<string, unknown> | undefined,
-      reminder_no: reminderNoByIndex.get(index),
+      reminder_id: r.id,
       echoback: reminderEchoBackEnabled(r),
     }));
 

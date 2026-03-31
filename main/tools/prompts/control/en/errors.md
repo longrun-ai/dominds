@@ -107,4 +107,4 @@ A: There's no strict limit, but it's recommended to keep the number of reminders
 
 ### Q: How do I view all current reminders?
 
-A: The agent can access all numbered reminders during response generation. You can directly ask the agent what reminders it currently has.
+A: The agent can access all current reminders by `reminder_id` during response generation. You can directly ask the agent what reminders it currently has.

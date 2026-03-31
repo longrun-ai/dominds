@@ -18,9 +18,11 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
       altInstruction: expectedSubstring,
     },
   });
+  const reminderId = dlg.reminders[0]?.id;
+  assert.equal(typeof reminderId, 'string');
 
   const output = await updateReminderTool.call(dlg, {} as Team.Member, {
-    reminder_no: 1,
+    reminder_id: reminderId,
     content: 'manually edited content',
   });
 

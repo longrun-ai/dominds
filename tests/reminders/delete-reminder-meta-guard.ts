@@ -18,8 +18,10 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
       altInstruction: 'stop_daemon({ "pid": 123 })',
     },
   });
+  const reminderId = dlg.reminders[0]?.id;
+  assert.equal(typeof reminderId, 'string');
 
-  const output = await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_no: 1 });
+  const output = await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_id: reminderId });
 
   assert.ok(
     output.includes(expectedSubstring),

@@ -168,7 +168,7 @@ export function formatDiligenceAutoContinuePrompt(
 
 export function formatReminderItemGuide(
   language: LanguageCode,
-  index: number,
+  reminderId: string,
   content: string,
   options?: { meta?: unknown },
 ): string {
@@ -213,19 +213,19 @@ export function formatReminderItemGuide(
       ? deleteAltInstruction
         ? `如果我要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_no": ${index} })`
-          : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_no": ${index} })`
+          ? `如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
       : deleteAltInstruction
         ? `If I need to delete this reminder, I must not use delete_reminder; run: ${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_no": ${index} })`
-          : `If I need to delete this reminder, run: delete_reminder({ "reminder_no": ${index} })`;
+          ? `If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `If I need to delete this reminder, run: delete_reminder({ "reminder_id": "${reminderId}" })`;
 
   if (language === 'zh') {
     if (managementTool) {
       const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
       return [
-        `提醒项 #${index}（工具状态）`,
+        `提醒项 [${reminderId}]（工具状态）`,
         '',
         '我把这条当作工具维护的状态参考。默认不在对外回复里专门确认、复述或总结它；只有它实际改变当前判断、计划或风险时，我才提炼真正相关的部分。',
         '',
@@ -240,7 +240,7 @@ export function formatReminderItemGuide(
     }
     if (updateInstruction) {
       return [
-        `提醒项 #${index}`,
+        `提醒项 [${reminderId}]`,
         '',
         '这是带有 meta 控制更新规则的提醒项。我仍把它当作状态参考，但不要用 update_reminder 直接改写内容。',
         '',
@@ -253,13 +253,13 @@ export function formatReminderItemGuide(
     }
     if (isContinuationPackageReminder) {
       return [
-        `提醒项 #${index}（换程接续信息）`,
+        `提醒项 [${reminderId}]（换程接续信息）`,
         '',
         '我把这条当作换程后快速恢复工作的接续包，不把它自动当成当前必须立刻执行的指令。',
         '',
         '我应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后我必须尽快收敛。',
         '',
-        `如果我要更新这份接续包，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+        `如果我要更新这份接续包，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
         deleteInstruction,
         '',
         '---',
@@ -267,13 +267,13 @@ export function formatReminderItemGuide(
       ].join('\n');
     }
     return [
-      `提醒项 #${index}`,
+      `提醒项 [${reminderId}]`,
       '',
       '这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。',
       '',
       '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
       '',
-      `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+      `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
       deleteInstruction,
       '',
       '---',
@@ -283,7 +283,7 @@ export function formatReminderItemGuide(
 
   if (managementTool) {
     const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
-    return `REMINDER ITEM #${index} (TOOL STATE)
+    return `REMINDER [${reminderId}] (TOOL STATE)
 
 I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
 
@@ -295,7 +295,7 @@ ${deleteInstruction}
 ${content}`;
   }
   if (updateInstruction) {
-    return `REMINDER ITEM #${index}
+    return `REMINDER [${reminderId}]
 
 This reminder has a meta-controlled update path. I should still treat it as state/reference, and I must not rewrite it directly with update_reminder.
 
@@ -305,24 +305,24 @@ ${deleteInstruction}
 ${content}`;
   }
   if (isContinuationPackageReminder) {
-    return `REMINDER ITEM #${index} (CONTINUATION PACKAGE)
+    return `REMINDER [${reminderId}] (CONTINUATION PACKAGE)
 
 I treat this as resume information for the next course, not as an automatic must-do command.
 
 I should keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. I should not duplicate Taskdoc content. In the new course, my first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, I should reconcile it early in the new course.
 
-If I need to update this package, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If I need to update this package, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;
   }
-  return `REMINDER ITEM #${index}
+  return `REMINDER [${reminderId}]
 
 This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.
 
 I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.
 
-If I need to update this reminder, run: update_reminder({ "reminder_no": ${index}, "content": "..." })
+If I need to update this reminder, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;
@@ -412,7 +412,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '操作：',
         '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
-        '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_no": <现有编号>, "content": "..." })',
+        '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       ].join('\n');
     }
 
@@ -427,7 +427,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       '操作：',
       '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
-      '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_no": <现有编号>, "content": "..." })',
+      '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
       '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
@@ -448,7 +448,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Operations:',
       '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
-      '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_no": <existing number>, "content": "..." })',
+      '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     ].join('\n');
   }
 
@@ -463,7 +463,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     'Operations:',
     '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
-    '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_no": <existing number>, "content": "..." })',
+    '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     '- clear_mind({})',
     '',
     'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',

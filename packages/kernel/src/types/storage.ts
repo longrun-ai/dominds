@@ -254,10 +254,17 @@ export function toRootGenerationAnchor(args: {
 }
 
 export interface ReminderSnapshotItem {
+  id: string;
   content: string;
+  // Stable serialized route for re-binding the reminder to its owner after reload.
+  // Storage/runtime code may use this to look up the owner, but must not infer owner
+  // semantics from `meta` when `ownerName` is absent or unknown.
   ownerName?: string;
+  // Opaque owner-defined payload. The framework persists it verbatim and must treat it
+  // as a black box outside the resolved owner implementation.
   meta?: JsonValue;
   echoback?: boolean;
+  scope?: 'dialog' | 'agent_shared';
   createdAt: string;
   priority: 'high' | 'medium' | 'low';
 }
@@ -735,6 +742,7 @@ export interface ReminderStateFile {
     ownerName?: string;
     meta?: JsonValue;
     echoback?: boolean;
+    scope?: 'dialog' | 'agent_shared';
     createdAt: string;
     priority: 'high' | 'medium' | 'low';
   }>;

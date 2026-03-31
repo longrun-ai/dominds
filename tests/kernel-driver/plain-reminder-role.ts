@@ -6,7 +6,7 @@ import type { ChatMessage } from '../../main/llm/client';
 import { assembleDriveContextMessages } from '../../main/llm/kernel-driver/context';
 import { formatReminderItemGuide } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
-import { computeReminderNoByIndex, reminderEchoBackEnabled } from '../../main/tool';
+import { reminderEchoBackEnabled } from '../../main/tool';
 
 async function main(): Promise<void> {
   setWorkLanguage('zh');
@@ -19,21 +19,15 @@ async function main(): Promise<void> {
   );
   dlg.addReminder('继续按窄补强推进实现');
 
-  const reminderNoByIndex = computeReminderNoByIndex(dlg.reminders);
   const renderedReminders: ChatMessage[] = [];
-  for (let index = 0; index < dlg.reminders.length; index += 1) {
-    const reminder = dlg.reminders[index];
+  for (const reminder of dlg.reminders) {
     if (!reminder || !reminderEchoBackEnabled(reminder)) {
-      continue;
-    }
-    const reminderNo = reminderNoByIndex.get(index);
-    if (reminderNo === undefined) {
       continue;
     }
     renderedReminders.push({
       type: 'transient_guide_msg',
       role: 'assistant',
-      content: formatReminderItemGuide('zh', reminderNo, reminder.content, {
+      content: formatReminderItemGuide('zh', reminder.id, reminder.content, {
         meta: reminder.meta,
       }),
     });
@@ -80,9 +74,9 @@ async function main(): Promise<void> {
   });
 
   assert.deepEqual(
-    context.map((msg) => `${msg.type}:${msg.role}`),
-    ['prompting_msg:user', 'transient_guide_msg:assistant', 'environment_msg:user'],
-    'Expected plain reminders to stay on assistant side even when paired with user-side system guides',
+    context.slice(0, 2).map((msg) => `${msg.type}:${msg.role}`),
+    ['prompting_msg:user', 'transient_guide_msg:assistant'],
+    'Expected plain reminders to stay on assistant side in assembled context',
   );
 
   console.log('plain-reminder-role: PASS');

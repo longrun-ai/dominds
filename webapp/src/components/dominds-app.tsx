@@ -6128,7 +6128,10 @@ export class DomindsApp extends HTMLElement {
 
     this.shadowRoot.addEventListener('reminder-text', (e: Event) => {
       const ce = e as CustomEvent<{ index: number; content: string }>;
-      this.toolbarReminders[ce.detail.index] = { content: ce.detail.content };
+      this.toolbarReminders[ce.detail.index] = {
+        reminder_id: `transient-${String(ce.detail.index)}`,
+        content: ce.detail.content,
+      };
       this.updateRemindersWidget();
     });
 
@@ -11011,16 +11014,14 @@ export class DomindsApp extends HTMLElement {
       const numberedItems = numberedReminders
         .map((r, i) => {
           if (!r || !r.content) {
-            return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
+            return `<div class="rem-item"><div class="rem-item-number">${this.escapeHtml(`pending-${String(i + 1)}`)}</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
           }
-          const reminderNo =
-            typeof r.reminder_no === 'number' &&
-            Number.isInteger(r.reminder_no) &&
-            r.reminder_no > 0
-              ? r.reminder_no
-              : i + 1;
+          const reminderId =
+            typeof r.reminder_id === 'string' && r.reminder_id.trim() !== ''
+              ? r.reminder_id
+              : `pending-${String(i + 1)}`;
           const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-          return `<div class="rem-item"><div class="rem-item-number">${reminderNo}.</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+          return `<div class="rem-item"><div class="rem-item-number">${this.escapeHtml(reminderId)}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
         })
         .join('');
       const virtualItemsArray = virtualReminders.map((r) => {

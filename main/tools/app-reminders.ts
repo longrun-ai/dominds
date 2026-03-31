@@ -11,7 +11,6 @@ import type { ChatMessage } from '../llm/client';
 import { formatReminderItemGuide } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import {
-  computeReminderNoByIndex,
   reminderEchoBackEnabled,
   type JsonValue,
   type Reminder,
@@ -209,12 +208,12 @@ function findOwnedReminderEntries(
   return entries;
 }
 
-function fallbackRenderedReminder(reminder: Reminder, reminderNo: number): ChatMessage {
+function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
   const language = getWorkLanguage();
   return {
     type: 'transient_guide_msg',
     role: 'assistant',
-    content: formatReminderItemGuide(language, reminderNo, reminder.content, {
+    content: formatReminderItemGuide(language, reminder.id, reminder.content, {
       meta: reminder.meta,
     }),
   };
@@ -222,11 +221,10 @@ function fallbackRenderedReminder(reminder: Reminder, reminderNo: number): ChatM
 
 async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
   await dlg.dlgStore.persistReminders(dlg, dlg.reminders);
-  const reminderNoByIndex = computeReminderNoByIndex(dlg.reminders);
-  const reminders: ReminderContent[] = dlg.reminders.map((reminder, index) => ({
+  const reminders: ReminderContent[] = dlg.reminders.map((reminder) => ({
     content: reminder.content,
     meta: isRecord(reminder.meta) ? reminder.meta : undefined,
-    reminder_no: reminderNoByIndex.get(index),
+    reminder_id: reminder.id,
     echoback: reminderEchoBackEnabled(reminder),
   }));
   const evt: FullRemindersEvent = { type: 'full_reminders_update', reminders };
@@ -266,20 +264,20 @@ function createAppReminderOwner(params: {
         return { treatment: 'keep' };
       }
     },
-    async renderReminder(dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage> {
+    async renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
       if (reminder.owner !== owner || !isAppReminderMeta(reminder.meta)) {
-        return fallbackRenderedReminder(reminder, index + 1);
+        return fallbackRenderedReminder(reminder);
       }
       try {
         const client = await resolveHostClient();
         return await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
           dialogId: dlg.id.selfId,
           reminder: toReminderState(reminder),
-          reminderNo: index + 1,
+          reminderId: reminder.id,
           workLanguage: getWorkLanguage(),
         });
       } catch {
-        return fallbackRenderedReminder(reminder, index + 1);
+        return fallbackRenderedReminder(reminder);
       }
     },
   };

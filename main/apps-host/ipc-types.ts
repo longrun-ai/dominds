@@ -111,7 +111,7 @@ export type AppsHostKernelReminderRenderMessage = Readonly<{
   ctx: Readonly<{
     dialogId: string;
     reminder: DomindsAppReminderState;
-    reminderNo: number;
+    reminderId: string;
     workLanguage: LanguageCode;
   }>;
 }>;
@@ -528,15 +528,11 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     if (!ownerRef) throw new Error('Invalid reminder_render message: ownerRef required');
     if (!isRecord(ctx)) throw new Error('Invalid reminder_render message: ctx must be object');
     const dialogId = asString(ctx['dialogId']);
-    const reminderNoRaw = ctx['reminderNo'];
-    const reminderNo =
-      typeof reminderNoRaw === 'number' && Number.isFinite(reminderNoRaw)
-        ? Math.floor(reminderNoRaw)
-        : null;
+    const reminderId = asString(ctx['reminderId']);
     const workLanguage = asLanguageCode(ctx['workLanguage']);
     if (!dialogId) throw new Error('Invalid reminder_render message: ctx.dialogId required');
-    if (reminderNo === null || reminderNo <= 0) {
-      throw new Error('Invalid reminder_render message: ctx.reminderNo must be positive integer');
+    if (!reminderId) {
+      throw new Error('Invalid reminder_render message: ctx.reminderId required');
     }
     if (!workLanguage) throw new Error('Invalid reminder_render message: ctx.workLanguage invalid');
     return {
@@ -547,7 +543,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       ctx: {
         dialogId,
         reminder: parseReminderState(ctx['reminder'], 'reminder_render.ctx.reminder'),
-        reminderNo,
+        reminderId,
         workLanguage,
       },
     };

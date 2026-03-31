@@ -284,7 +284,7 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
     return { treatment: 'update', updatedContent, updatedMeta };
   },
 
-  async renderReminder(_dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage> {
+  async renderReminder(_dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
     const language = getWorkLanguage();
     const prefix = formatSystemNoticePrefix(language);
     if (reminder.owner !== pendingTellaskReminderOwner) {
@@ -293,8 +293,8 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
         role: 'user',
         content:
           language === 'zh'
-            ? `${prefix} 自动维护诉请状态提醒 #${index + 1}\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-            : `${prefix} Auto-maintained tellask status reminder #${index + 1}\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
+            ? `${prefix} 自动维护诉请状态提醒 [${reminder.id}]\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+            : `${prefix} Auto-maintained tellask status reminder [${reminder.id}]\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
       };
     }
     return {
@@ -302,8 +302,8 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
       role: 'user',
       content:
         language === 'zh'
-          ? `${prefix} 自动维护诉请状态提醒 #${index + 1}\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-          : `${prefix} Auto-maintained tellask status reminder #${index + 1}\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
+          ? `${prefix} 自动维护诉请状态提醒 [${reminder.id}]\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+          : `${prefix} Auto-maintained tellask status reminder [${reminder.id}]\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
     };
   },
 };

@@ -51,7 +51,7 @@ import { DialogID } from './dialog';
 import type { ChatMessage } from './llm/client';
 import { parseMarkdownFrontmatter } from './markdown/frontmatter';
 import { DialogPersistence } from './persistence';
-import type { Reminder } from './tool';
+import { materializeReminder, type Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 
 const PRIMING_ROOT_DIR = path.resolve(process.cwd(), '.minds', 'priming');
@@ -89,10 +89,12 @@ type ParsedPrimingScript = {
 type PrimingReminderPriority = 'high' | 'medium' | 'low';
 
 type PrimingReminderSnapshot = {
+  id?: string;
   content: string;
   ownerName?: string;
   meta?: JsonValue;
   echoback?: boolean;
+  scope?: 'dialog' | 'agent_shared';
   createdAt?: string;
   priority?: PrimingReminderPriority;
 };
@@ -252,6 +254,10 @@ function parseReminderSnapshots(
     if (content.trim() === '') {
       throw new Error(`${context}.content must be a non-empty string`);
     }
+    const id = item['id'];
+    if (id !== undefined && typeof id !== 'string') {
+      throw new Error(`${context}.id must be a string when provided`);
+    }
     const ownerName = item['ownerName'];
     if (ownerName !== undefined && (typeof ownerName !== 'string' || ownerName.trim() === '')) {
       throw new Error(`${context}.ownerName must be a non-empty string when provided`);
@@ -264,16 +270,22 @@ function parseReminderSnapshots(
     if (echoback !== undefined && typeof echoback !== 'boolean') {
       throw new Error(`${context}.echoback must be a boolean when provided`);
     }
+    const scope = item['scope'];
+    if (scope !== undefined && scope !== 'dialog' && scope !== 'agent_shared') {
+      throw new Error(`${context}.scope must be "dialog" or "agent_shared" when provided`);
+    }
     const createdAt = item['createdAt'];
     if (createdAt !== undefined && typeof createdAt !== 'string') {
       throw new Error(`${context}.createdAt must be a string when provided`);
     }
     const priority = parseReminderPriority(item['priority'], context);
     reminders.push({
+      id: typeof id === 'string' ? id : undefined,
       content,
       ownerName: typeof ownerName === 'string' ? ownerName.trim() : undefined,
       meta,
       echoback,
+      scope: scope === 'dialog' || scope === 'agent_shared' ? scope : undefined,
       createdAt: typeof createdAt === 'string' ? createdAt : undefined,
       priority,
     });
@@ -283,17 +295,15 @@ function parseReminderSnapshots(
 }
 
 function reminderToSnapshot(reminder: Reminder): PrimingReminderSnapshot {
-  const persistedReminder = reminder as Reminder & {
-    createdAt?: string;
-    priority?: PrimingReminderPriority;
-  };
   return {
+    id: reminder.id,
     content: reminder.content,
     ownerName: reminder.owner?.name,
     meta: reminder.meta,
     echoback: reminder.echoback,
-    createdAt: persistedReminder.createdAt,
-    priority: persistedReminder.priority,
+    scope: reminder.scope,
+    createdAt: reminder.createdAt,
+    priority: reminder.priority,
   };
 }
 
@@ -308,18 +318,16 @@ function materializeReminderSnapshot(snapshot: PrimingReminderSnapshot, context:
           }
           return resolved;
         })();
-  const reminder: Reminder & {
-    createdAt?: string;
-    priority?: PrimingReminderPriority;
-  } = {
+  return materializeReminder({
+    id: snapshot.id,
     content: snapshot.content,
     owner,
     meta: snapshot.meta,
     echoback: snapshot.echoback,
-  };
-  if (snapshot.createdAt !== undefined) reminder.createdAt = snapshot.createdAt;
-  if (snapshot.priority !== undefined) reminder.priority = snapshot.priority;
-  return reminder;
+    scope: snapshot.scope,
+    createdAt: snapshot.createdAt,
+    priority: snapshot.priority,
+  });
 }
 
 function isPrimingRecordType(raw: string): raw is PrimingRecordType {

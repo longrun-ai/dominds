@@ -67,7 +67,7 @@ export type ReminderOwnerHandler = Readonly<{
     ctx: Readonly<{
       dialogId: string;
       reminder: ReminderState;
-      reminderNo: number;
+      reminderId: string;
       workLanguage: 'zh' | 'en';
     }>,
   ) => Promise<Readonly<{ content: string }>>;

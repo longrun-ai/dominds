@@ -274,7 +274,7 @@ export type TellaskCallAnchorEvent =
 export interface ReminderContent {
   content: string;
   meta?: Record<string, unknown>;
-  reminder_no?: number;
+  reminder_id: string;
   echoback?: boolean;
 }
 

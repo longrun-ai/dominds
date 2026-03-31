@@ -13,6 +13,7 @@ import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
+import { loadAgentSharedReminders, mutateAgentSharedReminders } from '../shared-reminders';
 import { Team } from '../team';
 import type {
   FuncTool,
@@ -24,6 +25,7 @@ import type {
   ReminderUpdateResult,
   ToolArguments,
 } from '../tool';
+import { materializeReminder, reminderOwnedBy } from '../tool';
 import { truncateToolOutputText } from './output-limit';
 
 // Scrolling buffer that maintains a fixed number of lines like a terminal
@@ -169,11 +171,12 @@ interface DaemonProcess {
   pid: number;
   command: string;
   shell: string;
-  process: ChildProcess;
+  process?: ChildProcess;
   processGroupId?: number;
   startTime: Date;
   stdoutBuffer: ScrollingBuffer;
   stderrBuffer: ScrollingBuffer;
+  outputAvailable: boolean;
   isRunning: boolean;
   exitCode?: number;
   exitSignal?: string;
@@ -183,8 +186,9 @@ interface DaemonProcess {
 // Global registry for daemon processes
 const daemonProcesses = new Map<number, DaemonProcess>();
 
-let trackedDaemonShutdownSigtermSent = false;
-let trackedDaemonShutdownSigkillSent = false;
+export function resetTrackedDaemonsForTests(): void {
+  daemonProcesses.clear();
+}
 
 // Shell command arguments interface
 interface ShellCmdArgs {
@@ -224,58 +228,98 @@ function resolveBestEffortDaemonSignalTarget(daemon: DaemonProcess): number {
   return daemon.pid;
 }
 
-function signalTrackedDaemonsForProcessShutdown(signal: NodeJS.Signals): void {
-  const alreadySent =
-    signal === 'SIGTERM' ? trackedDaemonShutdownSigtermSent : trackedDaemonShutdownSigkillSent;
-  if (alreadySent) return;
-
-  if (signal === 'SIGTERM') {
-    trackedDaemonShutdownSigtermSent = true;
-  } else {
-    trackedDaemonShutdownSigkillSent = true;
+function parseStartTime(value: string): Date {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    throw new Error(`Invalid daemon startTime '${value}'`);
   }
+  return parsed;
+}
 
-  for (const daemon of daemonProcesses.values()) {
-    const signalTarget = resolveBestEffortDaemonSignalTarget(daemon);
-    try {
-      process.kill(signalTarget, signal);
-    } catch (error: unknown) {
-      console.error('[os] failed to signal tracked daemon during process shutdown', {
-        pid: daemon.pid,
-        processGroupId: daemon.processGroupId ?? null,
-        signal,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  if (signal === 'SIGKILL') {
-    daemonProcesses.clear();
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-process.once('beforeExit', () => {
-  signalTrackedDaemonsForProcessShutdown('SIGTERM');
-});
+function createRestoredDaemon(meta: ShellCmdReminderMeta): DaemonProcess | undefined {
+  if (!isProcessAlive(meta.pid)) {
+    return undefined;
+  }
+  return {
+    pid: meta.pid,
+    command: meta.command,
+    shell: meta.shell,
+    processGroupId: meta.processGroupId,
+    startTime: parseStartTime(meta.startTime),
+    stdoutBuffer: new ScrollingBuffer(1),
+    stderrBuffer: new ScrollingBuffer(1),
+    outputAvailable: false,
+    isRunning: true,
+    lastUpdateTime: new Date(),
+  };
+}
 
-process.once('exit', () => {
-  signalTrackedDaemonsForProcessShutdown('SIGTERM');
-  signalTrackedDaemonsForProcessShutdown('SIGKILL');
-});
+function ensureTrackedDaemonFromReminder(
+  reminder: ShellCmdOwnedReminder,
+): DaemonProcess | undefined {
+  if (!isShellCmdReminderMeta(reminder.meta)) {
+    return undefined;
+  }
+  const existing = daemonProcesses.get(reminder.meta.pid);
+  if (existing) {
+    return existing;
+  }
+  const restored = createRestoredDaemon(reminder.meta);
+  if (!restored) {
+    return undefined;
+  }
+  daemonProcesses.set(restored.pid, restored);
+  return restored;
+}
 
-process.once('SIGINT', () => {
-  signalTrackedDaemonsForProcessShutdown('SIGTERM');
-});
-
-process.once('SIGTERM', () => {
-  signalTrackedDaemonsForProcessShutdown('SIGTERM');
-});
+async function ensureTrackedDaemonForAgent(
+  agentId: string,
+  pid: number,
+): Promise<DaemonProcess | undefined> {
+  const existing = daemonProcesses.get(pid);
+  if (existing) {
+    return existing;
+  }
+  const reminders = await loadAgentSharedReminders(agentId);
+  for (const reminder of reminders) {
+    if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
+      return ensureTrackedDaemonFromReminder(reminder);
+    }
+  }
+  return undefined;
+}
 
 type ShellCmdReminderMeta = JsonObject & {
+  kind: 'daemon';
   pid: number;
+  command: string;
+  shell: string;
+  startTime: string;
+  processGroupId?: number;
+  originDialogId?: string;
   completed?: boolean;
   lastUpdated?: string;
 };
+
+type ShellCmdOwnedReminder = Reminder & {
+  owner: ReminderOwner;
+  meta: ShellCmdReminderMeta;
+};
+
+function isShellCmdReminder(reminder: Reminder): reminder is ShellCmdOwnedReminder {
+  return (
+    reminderOwnedBy(reminder, shellCmdReminderOwner.name) && isShellCmdReminderMeta(reminder.meta)
+  );
+}
 
 type OsToolMessages = Readonly<{
   daemonStarted: (pid: number, timeoutSeconds: number, command: string) => string;
@@ -334,8 +378,17 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Private schema for reminders owned by `shellCmdReminderOwner` only.
+// Framework code must first route by owner before interpreting this payload.
 function isShellCmdReminderMeta(meta: JsonValue | undefined): meta is ShellCmdReminderMeta {
-  return isJsonObject(meta) && typeof meta.pid === 'number';
+  return (
+    isJsonObject(meta) &&
+    meta.kind === 'daemon' &&
+    typeof meta.pid === 'number' &&
+    typeof meta.command === 'string' &&
+    typeof meta.shell === 'string' &&
+    typeof meta.startTime === 'string'
+  );
 }
 
 function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
@@ -622,6 +675,12 @@ function formatDaemonStatus(daemon: DaemonProcess, language: LanguageCode): stri
         ? `\n注意：已有 ${scrolledLines} 行滚出当前保留缓冲区`
         : `\nNote: ${scrolledLines} lines have scrolled out of the retained buffer`;
   }
+  if (!daemon.outputAvailable) {
+    scrollNotice +=
+      language === 'zh'
+        ? '\n注意：该守护进程是在 Dominds 重启后重新识别到的，旧 stdout/stderr 捕获缓冲区不可恢复。'
+        : '\nNote: this daemon was rediscovered after a Dominds restart, so previously captured stdout/stderr buffers are unavailable.';
+  }
 
   const stdoutContent = daemon.stdoutBuffer.isEmpty()
     ? language === 'zh'
@@ -675,12 +734,13 @@ ${fenceEnd}`;
 export const shellCmdReminderOwner: ReminderOwner = {
   name: 'shellCmd',
   async updateReminder(dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult> {
-    if (reminder.owner !== shellCmdReminderOwner || !isShellCmdReminderMeta(reminder.meta)) {
+    if (!isShellCmdReminder(reminder)) {
       return { treatment: 'keep' };
     }
 
+    const reminderMeta: JsonObject = reminder.meta;
     const pid = reminder.meta.pid;
-    const daemon = daemonProcesses.get(pid);
+    const daemon = ensureTrackedDaemonFromReminder(reminder);
 
     if (!daemon) {
       // Daemon process no longer exists
@@ -697,7 +757,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
         treatment: 'update',
         updatedContent: `🏁 Process ${pid} has completed:\n\n${finalStatus}`,
         updatedMeta: {
-          ...reminder.meta,
+          ...reminderMeta,
           completed: true,
           lastUpdated: formatUnifiedTimestamp(new Date()),
         },
@@ -708,9 +768,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
     daemon.lastUpdateTime = new Date();
 
     // Check if process is still actually running
-    try {
-      process.kill(pid, 0); // Signal 0 checks if process exists
-    } catch (error) {
+    if (!isProcessAlive(pid)) {
       // Process no longer exists
       daemon.isRunning = false;
       daemon.exitCode = -1;
@@ -723,27 +781,27 @@ export const shellCmdReminderOwner: ReminderOwner = {
       treatment: 'update',
       updatedContent,
       updatedMeta: {
-        ...reminder.meta,
+        ...reminderMeta,
         lastUpdated: formatUnifiedTimestamp(daemon.lastUpdateTime),
       },
     };
   },
 
-  async renderReminder(dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage> {
+  async renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
     const language = getWorkLanguage();
     const prefix = formatSystemNoticePrefix(language);
-    if (reminder.owner !== shellCmdReminderOwner || !isShellCmdReminderMeta(reminder.meta)) {
+    if (!isShellCmdReminder(reminder)) {
       // Fallback to default rendering if this reminder doesn't belong to this tool
       return {
         type: 'environment_msg',
         role: 'user',
         content:
           language === 'zh'
-            ? `${prefix} 后台进程状态提醒 #${index + 1}
+            ? `${prefix} 后台进程状态提醒 [${reminder.id}]
 这是系统维护的后台进程状态快照。把它当成环境信号，不是你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒会随进程生命周期自动更新或删除。
 ---
 ${reminder.content}`
-            : `${prefix} Background process status reminder #${index + 1}
+            : `${prefix} Background process status reminder [${reminder.id}]
 This is a system-maintained background process snapshot. Treat it as an environment signal, not a self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); only reflect it inside the next substantive reply when it actually affects the next action. This reminder will update or disappear automatically with the process lifecycle.
 ---
 ${reminder.content}`,
@@ -751,7 +809,7 @@ ${reminder.content}`,
     }
 
     const pid = reminder.meta.pid;
-    const daemon = daemonProcesses.get(pid);
+    const daemon = ensureTrackedDaemonFromReminder(reminder);
 
     if (!daemon) {
       // Daemon no longer exists, render as completed
@@ -760,9 +818,9 @@ ${reminder.content}`,
         role: 'user',
         content:
           language === 'zh'
-            ? `${prefix} 进程生命周期提醒 #${index + 1} - 后台进程已结束（PID ${pid}）
+            ? `${prefix} 进程生命周期提醒 [${reminder.id}] - 后台进程已结束（PID ${pid}）
 该后台进程的生命周期已经结束，当前不再运行。这条提醒应当很快自动消失；你也可以直接忽略它。`
-            : `${prefix} Process lifecycle reminder #${index + 1} - daemon terminated (PID ${pid})
+            : `${prefix} Process lifecycle reminder [${reminder.id}] - daemon terminated (PID ${pid})
 This daemon process has finished its lifecycle and is no longer running. This reminder should disappear automatically soon, and you may also ignore it.`,
       };
     }
@@ -783,12 +841,12 @@ This daemon process has finished its lifecycle and is no longer running. This re
       role: 'user',
       content:
         language === 'zh'
-          ? `🔄 ${prefix} 运行中后台进程状态 #${index + 1} - PID ${pid}（已运行 ${uptimeStr}）
+          ? `🔄 ${prefix} 运行中后台进程状态 [${reminder.id}] - PID ${pid}（已运行 ${uptimeStr}）
 这是系统维护的状态快照，不是新的用户诉求，也不是默认需要单独汇报的事项。若下面的信息没有实质改变你的判断、计划、风险，且不需要调用守护进程相关工具，则禁止做任何用户可见回应；若它有实质影响，只在下一条有实质内容的回复中体现，禁止单独发送“静默吸收”“已收到”等占位语句。
 
 **状态快照：**
 ${statusInfo}`
-          : `🔄 ${prefix} Active daemon state #${index + 1} - PID ${pid} (uptime: ${uptimeStr})
+          : `🔄 ${prefix} Active daemon state [${reminder.id}] - PID ${pid} (uptime: ${uptimeStr})
 This is a system-maintained snapshot, not a new user request and not something that normally deserves a standalone mention. If the information below does not materially change your judgment, plan, risk, or require a daemon-management action, make no user-visible reply at all; if it does matter, reflect it only inside the next substantive reply instead of sending filler like “silently noted” or “received”.
 
 **State snapshot:**
@@ -848,26 +906,58 @@ export const shellCmdTool: FuncTool = {
           startTime,
           stdoutBuffer,
           stderrBuffer,
+          outputAvailable: true,
           isRunning: true,
           lastUpdateTime: new Date(),
         };
 
         daemonProcesses.set(pid, daemon);
+        childProcess.unref();
 
-        // Add reminder for daemon process
-        const reminderContent = `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`;
-        dlg.addReminder(reminderContent, shellCmdReminderOwner, {
+        const reminderMeta: JsonObject = {
           kind: 'daemon',
           pid,
           command,
           shell: spawnSpec.shellLabel,
           startTime: formatUnifiedTimestamp(startTime),
+          originDialogId: dlg.id.selfId,
           delete: {
             altInstruction: `stop_daemon({ "pid": ${pid} })`,
           },
+        };
+        if (process.platform !== 'win32') {
+          reminderMeta['processGroupId'] = pid;
+        }
+
+        const reminder = materializeReminder({
+          content: `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`,
+          owner: shellCmdReminderOwner,
+          meta: reminderMeta,
+          scope: 'agent_shared',
         });
 
-        resolve(t.daemonStarted(pid, timeoutSeconds, command));
+        void mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+          reminders.push(reminder);
+        })
+          .then(() => {
+            dlg.touchReminders();
+            resolve(t.daemonStarted(pid, timeoutSeconds, command));
+          })
+          .catch((error: unknown) => {
+            daemonProcesses.delete(pid);
+            try {
+              process.kill(resolveBestEffortDaemonSignalTarget(daemon), 'SIGTERM');
+            } catch {
+              // best effort only; surface the persistence failure below
+            }
+            resolve(
+              t.failedToExecute(
+                error instanceof Error
+                  ? `daemon reminder persistence failed: ${error.message}`
+                  : `daemon reminder persistence failed: ${String(error)}`,
+              ),
+            );
+          });
       }, timeoutSeconds * 1000);
 
       // Handle process completion
@@ -1726,7 +1816,7 @@ export const stopDaemonTool: FuncTool = {
     const t = getOsToolMessages(language);
     const { pid, entirePg } = parseStopDaemonArgs(args);
 
-    const daemon = daemonProcesses.get(pid);
+    const daemon = await ensureTrackedDaemonForAgent(dlg.agentId, pid);
     if (!daemon) {
       return t.noDaemonFound(pid);
     }
@@ -1760,15 +1850,11 @@ export const stopDaemonTool: FuncTool = {
       daemon.exitCode = -1;
       daemon.exitSignal = 'SIGTERM';
 
-      // Remove associated reminders
+      // Remove legacy local reminders plus current shared reminders for this agent.
       const indicesToRemove: number[] = [];
       for (let i = 0; i < dlg.reminders.length; i++) {
         const reminder = dlg.reminders[i];
-        if (
-          reminder.owner === shellCmdReminderOwner &&
-          isShellCmdReminderMeta(reminder.meta) &&
-          reminder.meta.pid === pid
-        ) {
+        if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
           indicesToRemove.push(i);
         }
       }
@@ -1777,6 +1863,15 @@ export const stopDaemonTool: FuncTool = {
       for (let i = indicesToRemove.length - 1; i >= 0; i--) {
         dlg.deleteReminder(indicesToRemove[i]);
       }
+      await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+        for (let i = reminders.length - 1; i >= 0; i--) {
+          const reminder = reminders[i];
+          if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
+            reminders.splice(i, 1);
+          }
+        }
+      });
+      dlg.touchReminders();
 
       // Clean up daemon tracking
       daemonProcesses.delete(pid);
@@ -1805,9 +1900,15 @@ export const getDaemonOutputTool: FuncTool = {
     const t = getOsToolMessages(language);
     const { pid, stream = 'stdout' } = parseGetDaemonOutputArgs(args);
 
-    const daemon = daemonProcesses.get(pid);
+    const daemon = await ensureTrackedDaemonForAgent(dlg.agentId, pid);
     if (!daemon) {
       return t.noDaemonFound(pid);
+    }
+
+    if (!daemon.outputAvailable) {
+      return language === 'zh'
+        ? `⚠️ 守护进程 ${pid} 仍在运行，但这是 Dominds 重启后重新识别到的进程；旧 stdout/stderr 捕获缓冲区已经丢失，无法再读取历史输出。`
+        : `⚠️ Daemon ${pid} is still running, but it was rediscovered after a Dominds restart; previously captured stdout/stderr buffers are unavailable.`;
     }
 
     const buffer = stream === 'stdout' ? daemon.stdoutBuffer : daemon.stderrBuffer;

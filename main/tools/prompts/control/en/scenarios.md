@@ -27,13 +27,13 @@ add_reminder({
 
 // Update after task completion
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content: 'Completed: Creating i18n manual [Done]',
 });
 
 // Delete completed reminder
 delete_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
 });
 ```
 

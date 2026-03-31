@@ -121,7 +121,7 @@ export type DomindsAppReminderOwnerUpdateContext = Readonly<{
 export type DomindsAppReminderOwnerRenderContext = Readonly<{
   dialogId: string;
   reminder: DomindsAppReminderState;
-  reminderNo: number;
+  reminderId: string;
   workLanguage: LanguageCode;
 }>;
 

@@ -56,7 +56,7 @@
 
 ```yaml
 status: ok|error
-reminder_no: <提醒编号>
+reminder_id: <提醒 id>
 content: <提醒内容>
 position: <插入位置>
 created_at: <创建时间戳>
@@ -68,13 +68,13 @@ created_at: <创建时间戳>
 
 **参数：**
 
-- `reminder_no`（必需）：提醒编号（1-based）
+- `reminder_id`（必需）：提醒 id
 
 **返回：**
 
 ```yaml
 status: ok|error
-reminder_no: <提醒编号>
+reminder_id: <提醒 id>
 deleted_at: <删除时间戳>
 ```
 
@@ -94,14 +94,14 @@ deleted_at: <删除时间戳>
 
 **参数：**
 
-- `reminder_no`（必需）：提醒编号（1-based）
+- `reminder_id`（必需）：提醒 id
 - `content`（必需）：新的提醒内容
 
 **返回：**
 
 ```yaml
 status: ok|error
-reminder_no: <提醒编号>
+reminder_id: <提醒 id>
 content: <新提醒内容>
 updated_at: <更新时间戳>
 ```
@@ -184,7 +184,7 @@ retrieved_at: <读取时间戳>
 
 ```typescript
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content: '下一程先跑 smoke，再对照端口注入配置复核发布脚本。',
 });
 
@@ -212,7 +212,7 @@ add_reminder({
 
 ```typescript
 delete_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
 });
 ```
 
@@ -220,7 +220,7 @@ delete_reminder({
 
 ```typescript
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content: '等待 @fullstack 确认 API 设计 [已确认]',
 });
 ```

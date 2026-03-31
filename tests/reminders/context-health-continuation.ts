@@ -69,8 +69,10 @@ async function main(): Promise<void> {
   });
 
   cautionDialog.setLastContextHealth(CRITICAL_SNAPSHOT);
+  const cautionReminderId = cautionDialog.reminders[0]?.id;
+  assert.equal(typeof cautionReminderId, 'string');
   await updateReminderTool.call(cautionDialog, {} as Team.Member, {
-    reminder_no: 1,
+    reminder_id: cautionReminderId,
     content: 'Carry this across the course boundary, then reconcile immediately.',
   });
   assert.deepEqual(cautionDialog.reminders[0]?.meta, {
@@ -101,8 +103,10 @@ async function main(): Promise<void> {
     contextHealthLevel: 'caution',
   });
   recoveredDialog.setLastContextHealth(HEALTHY_SNAPSHOT);
+  const recoveredReminderId = recoveredDialog.reminders[0]?.id;
+  assert.equal(typeof recoveredReminderId, 'string');
   await updateReminderTool.call(recoveredDialog, {} as Team.Member, {
-    reminder_no: 1,
+    reminder_id: recoveredReminderId,
     content: 'Now rewritten under healthy context.',
   });
   assert.equal(

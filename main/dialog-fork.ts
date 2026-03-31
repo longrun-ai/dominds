@@ -24,7 +24,7 @@ import type { DialogStatusKind } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from './dialog';
 import { DialogPersistence } from './persistence';
-import type { Reminder } from './tool';
+import { materializeReminder, type Reminder } from './tool';
 import { generateDialogID } from './utils/id';
 
 type ForkDialogAction =
@@ -100,12 +100,16 @@ function anchorAtOrBefore(candidate: RootGenerationAnchor, cutoff: RootGeneratio
 }
 
 function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): Reminder {
-  return {
+  return materializeReminder({
+    id: snapshot.id,
     content: snapshot.content,
     owner: undefined,
     meta: snapshot.meta,
     echoback: snapshot.echoback,
-  } as Reminder;
+    scope: snapshot.scope ?? 'dialog',
+    createdAt: snapshot.createdAt,
+    priority: snapshot.priority,
+  });
 }
 
 function cloneQuestions(questions: readonly HumanQuestion[]): HumanQuestion[] {
@@ -617,13 +621,14 @@ async function appendForkBaselineState(
     type: 'reminders_reconciled_record',
     ...FORK_BASELINE_ANCHOR,
     reminders: plan.reminders.map((reminder) => ({
+      id: reminder.id,
       content: reminder.content,
       ownerName: reminder.owner?.name,
       meta: reminder.meta,
       echoback: reminder.echoback,
-      createdAt: (reminder as Reminder & { createdAt?: string }).createdAt ?? baselineTs,
-      priority:
-        (reminder as Reminder & { priority?: 'high' | 'medium' | 'low' }).priority ?? 'medium',
+      scope: reminder.scope ?? 'dialog',
+      createdAt: reminder.createdAt ?? baselineTs,
+      priority: reminder.priority ?? 'medium',
     })),
   };
   const q4hRecord: Questions4HumanReconciledRecord = {

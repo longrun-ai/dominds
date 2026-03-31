@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     const renderedReminder = await fixture.reminderOwner.renderReminder({
       dialogId: fixture.observerCtx.dialogId,
       reminder: observerReminder,
-      reminderNo: 1,
+      reminderId: 'observer-reminder',
       workLanguage: 'en',
     });
     assert.match(renderedReminder.content, /role=observer/);

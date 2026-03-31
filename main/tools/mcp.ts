@@ -177,7 +177,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
     return { treatment: 'keep' };
   },
 
-  async renderReminder(dlg: Dialog, reminder: Reminder, index: number) {
+  async renderReminder(dlg: Dialog, reminder: Reminder) {
     const workLanguage = getWorkLanguage();
     const prefix = formatSystemNoticePrefix(workLanguage);
     if (reminder.owner !== mcpLeaseReminderOwner || !isMcpLeaseReminderMeta(reminder.meta)) {
@@ -186,8 +186,8 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
         role: 'user',
         content:
           workLanguage === 'zh'
-            ? `${prefix} MCP 工具集租约提醒 #${index + 1}\n你正在查看系统维护的 MCP 租约状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-            : `${prefix} MCP toolset lease reminder #${index + 1}\nYou are looking at system-maintained MCP lease state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
+            ? `${prefix} MCP 工具集租约提醒 [${reminder.id}]\n你正在查看系统维护的 MCP 租约状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
+            : `${prefix} MCP toolset lease reminder [${reminder.id}]\nYou are looking at system-maintained MCP lease state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
       };
     }
 
@@ -198,7 +198,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
       content:
         workLanguage === 'zh'
           ? [
-              `${prefix} MCP 工具集租约 #${index + 1}: \`${serverId}\``,
+              `${prefix} MCP 工具集租约 [${reminder.id}]: \`${serverId}\``,
               '',
               `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；此对话已租用一个专用的 MCP client 实例。`,
               '',
@@ -208,7 +208,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
               `如果另一个对话同时使用同一个 MCP 工具集，Dominds 会为那个对话启动一个独立的 MCP client 实例。`,
             ].join('\n')
           : [
-              `${prefix} MCP toolset lease #${index + 1}: \`${serverId}\``,
+              `${prefix} MCP toolset lease [${reminder.id}]: \`${serverId}\``,
               '',
               `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and a dedicated MCP client instance is leased to this dialog.`,
               '',

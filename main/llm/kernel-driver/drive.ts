@@ -37,7 +37,6 @@ import { isStandaloneRuntimeGuidePromptContent } from '../../runtime/reply-promp
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import {
-  computeReminderNoByIndex,
   reminderEchoBackEnabled,
   type FuncTool,
   type Tool,
@@ -649,27 +648,22 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
 }
 
 async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
-  if (dlg.reminders.length === 0) return [];
+  const reminders = await dlg.listVisibleReminders();
+  if (reminders.length === 0) return [];
   const language = getWorkLanguage();
-  const reminderNoByIndex = computeReminderNoByIndex(dlg.reminders);
   const rendered: ChatMessage[] = [];
-  for (let index = 0; index < dlg.reminders.length; index += 1) {
-    const reminder = dlg.reminders[index];
+  for (const reminder of reminders) {
     if (!reminder || !reminderEchoBackEnabled(reminder)) {
       continue;
     }
-    const reminderNo = reminderNoByIndex.get(index);
-    if (reminderNo === undefined) {
-      continue;
-    }
     if (reminder.owner) {
-      rendered.push(await reminder.owner.renderReminder(dlg, reminder, reminderNo - 1));
+      rendered.push(await reminder.owner.renderReminder(dlg, reminder));
       continue;
     }
     rendered.push({
       type: 'transient_guide_msg',
       role: 'assistant',
-      content: formatReminderItemGuide(language, reminderNo, reminder.content, {
+      content: formatReminderItemGuide(language, reminder.id, reminder.content, {
         meta: reminder.meta,
       }),
     });

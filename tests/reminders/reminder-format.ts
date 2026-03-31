@@ -5,8 +5,8 @@ function assert(condition: boolean, message: string): void {
 }
 
 async function main() {
-  const zh = formatReminderItemGuide('zh', 2, '保持缩进：\n  - A\n  - B\n');
-  assert(zh.includes('提醒项 #2'), 'Expected zh reminder guide to include index');
+  const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
+  assert(zh.includes('提醒项 [rem02abc]'), 'Expected zh reminder guide to include reminder id');
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
   assert(zh.includes('\n  - A\n'), 'Expected zh reminder guide to preserve whitespace');
   assert(
@@ -27,7 +27,7 @@ async function main() {
     'Expected zh reminder guide to use conditional update wording',
   );
 
-  const zhToolManaged = formatReminderItemGuide('zh', 1, 'Managed content\n', {
+  const zhToolManaged = formatReminderItemGuide('zh', 'rem01abc', 'Managed content\n', {
     meta: { manager: { tool: 'some_tool' } },
   });
   assert(
@@ -47,7 +47,7 @@ async function main() {
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
   );
 
-  const zhPlanManager = formatReminderItemGuide('zh', 3, 'Managed content\n', {
+  const zhPlanManager = formatReminderItemGuide('zh', 'rem03abc', 'Managed content\n', {
     meta: { kind: 'plan', manager: { tool: 'some_tool' } },
   });
   assert(
@@ -55,7 +55,7 @@ async function main() {
     'Expected reminder meta manager.tool to be used (zh)',
   );
 
-  const zhUpdateInstruction = formatReminderItemGuide('zh', 4, 'Managed content\n', {
+  const zhUpdateInstruction = formatReminderItemGuide('zh', 'rem04abc', 'Managed content\n', {
     meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
   });
   assert(
@@ -63,7 +63,7 @@ async function main() {
     'Expected reminder meta update.altInstruction to be used (zh)',
   );
 
-  const zhDeleteExample = formatReminderItemGuide('zh', 6, 'Managed content\n', {
+  const zhDeleteExample = formatReminderItemGuide('zh', 'rem06abc', 'Managed content\n', {
     meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
   });
   assert(
@@ -71,17 +71,22 @@ async function main() {
     'Expected reminder meta delete.altInstruction to be used (zh)',
   );
   assert(
-    !zhDeleteExample.includes('delete_reminder({ "reminder_no": 6 })'),
+    !zhDeleteExample.includes('delete_reminder({ "reminder_id": "rem06abc" })'),
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (zh)',
   );
 
-  const zhMetaControlledUpdate = formatReminderItemGuide('zh', 7, 'Auto-managed content\n', {
-    meta: {
-      kind: 'pending_tellask',
-      pendingCount: 0,
-      update: { altInstruction: '等待系统自动刷新' },
+  const zhMetaControlledUpdate = formatReminderItemGuide(
+    'zh',
+    'rem07abc',
+    'Auto-managed content\n',
+    {
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 0,
+        update: { altInstruction: '等待系统自动刷新' },
+      },
     },
-  });
+  );
   assert(
     zhMetaControlledUpdate.includes('等待系统自动刷新'),
     'Expected reminder meta update.altInstruction to work without manager.tool (zh)',
@@ -92,12 +97,12 @@ async function main() {
   );
   assert(
     zhMetaControlledUpdate.includes(
-      '如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_no": 7 })',
+      '如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "rem07abc" })',
     ),
     'Expected zh zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
   );
 
-  const zhPendingActiveGuard = formatReminderItemGuide('zh', 8, '进行中诉请内容\n', {
+  const zhPendingActiveGuard = formatReminderItemGuide('zh', 'rem08abc', '进行中诉请内容\n', {
     meta: {
       update: {
         altInstruction: '只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
@@ -115,11 +120,11 @@ async function main() {
     'Expected zh reminder guide to show active pending-tellask delete guard',
   );
   assert(
-    !zhPendingActiveGuard.includes('delete_reminder({ "reminder_no": 8 })'),
+    !zhPendingActiveGuard.includes('delete_reminder({ "reminder_id": "rem08abc" })'),
     'Expected zh active pending-tellask guide not to suggest delete_reminder',
   );
 
-  const zhContinuation = formatReminderItemGuide('zh', 5, '接续信息\n', {
+  const zhContinuation = formatReminderItemGuide('zh', 'rem05abc', '接续信息\n', {
     meta: { kind: 'continuation_package', createdBy: 'clear_mind' },
   });
   assert(
@@ -135,8 +140,8 @@ async function main() {
     'Expected continuation reminder to require new-course first-step cleanup (zh)',
   );
 
-  const en = formatReminderItemGuide('en', 2, 'Keep indentation:\n  - A\n  - B\n');
-  assert(en.includes('REMINDER ITEM #2'), 'Expected en reminder guide to include index');
+  const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');
+  assert(en.includes('REMINDER [rem02abc]'), 'Expected en reminder guide to include reminder id');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
   assert(
     en.includes('my conspicuous self-reminder'),
@@ -155,7 +160,7 @@ async function main() {
     'Expected en reminder guide to use conditional update wording',
   );
 
-  const enToolManaged = formatReminderItemGuide('en', 3, 'Managed content\n', {
+  const enToolManaged = formatReminderItemGuide('en', 'rem03abc', 'Managed content\n', {
     meta: { manager: { tool: 'some_tool' } },
   });
   assert(
@@ -175,7 +180,7 @@ async function main() {
     'Expected en tool-managed reminder to use tool-state framing',
   );
 
-  const enUpdateInstruction = formatReminderItemGuide('en', 4, 'Managed content\n', {
+  const enUpdateInstruction = formatReminderItemGuide('en', 'rem04abc', 'Managed content\n', {
     meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
   });
   assert(
@@ -183,7 +188,7 @@ async function main() {
     'Expected reminder meta update.altInstruction to be used (en)',
   );
 
-  const enDeleteExample = formatReminderItemGuide('en', 6, 'Managed content\n', {
+  const enDeleteExample = formatReminderItemGuide('en', 'rem06abc', 'Managed content\n', {
     meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
   });
   assert(
@@ -191,17 +196,22 @@ async function main() {
     'Expected reminder meta delete.altInstruction to be used (en)',
   );
   assert(
-    !enDeleteExample.includes('delete_reminder({ "reminder_no": 6 })'),
+    !enDeleteExample.includes('delete_reminder({ "reminder_id": "rem06abc" })'),
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (en)',
   );
 
-  const enMetaControlledUpdate = formatReminderItemGuide('en', 7, 'Auto-managed content\n', {
-    meta: {
-      kind: 'pending_tellask',
-      pendingCount: 0,
-      update: { altInstruction: 'wait for system refresh' },
+  const enMetaControlledUpdate = formatReminderItemGuide(
+    'en',
+    'rem07abc',
+    'Auto-managed content\n',
+    {
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 0,
+        update: { altInstruction: 'wait for system refresh' },
+      },
     },
-  });
+  );
   assert(
     enMetaControlledUpdate.includes('wait for system refresh'),
     'Expected reminder meta update.altInstruction to work without manager.tool (en)',
@@ -212,23 +222,28 @@ async function main() {
   );
   assert(
     enMetaControlledUpdate.includes(
-      'If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_no": 7 })',
+      'If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_id": "rem07abc" })',
     ),
     'Expected en zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
   );
 
-  const enPendingActiveGuard = formatReminderItemGuide('en', 8, 'In-flight tellask content\n', {
-    meta: {
-      update: {
-        altInstruction:
-          'only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
-      },
-      delete: {
-        altInstruction:
-          'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+  const enPendingActiveGuard = formatReminderItemGuide(
+    'en',
+    'rem08abc',
+    'In-flight tellask content\n',
+    {
+      meta: {
+        update: {
+          altInstruction:
+            'only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+        },
+        delete: {
+          altInstruction:
+            'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+        },
       },
     },
-  });
+  );
   assert(
     enPendingActiveGuard.includes(
       'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
@@ -236,11 +251,11 @@ async function main() {
     'Expected en reminder guide to show active pending-tellask delete guard',
   );
   assert(
-    !enPendingActiveGuard.includes('delete_reminder({ "reminder_no": 8 })'),
+    !enPendingActiveGuard.includes('delete_reminder({ "reminder_id": "rem08abc" })'),
     'Expected en active pending-tellask guide not to suggest delete_reminder',
   );
 
-  const enContinuation = formatReminderItemGuide('en', 5, 'Continuation details\n', {
+  const enContinuation = formatReminderItemGuide('en', 'rem05abc', 'Continuation details\n', {
     meta: { kind: 'continuation_package', createdBy: 'clear_mind' },
   });
   assert(

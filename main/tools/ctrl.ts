@@ -10,7 +10,7 @@
  *
  * INTRINSIC TOOLS:
  * - add_reminder: Add a reminder
- * - delete_reminder: Delete a reminder by number
+ * - delete_reminder: Delete a reminder by id
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new course, optionally add a reminder
  * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
@@ -21,7 +21,7 @@
  * both ways treated the same
  *
  * reminder items with `echoback !== false` are injected into llm input;
- * virtual reminders are UI-only and do not consume reminder_no numbering
+ * virtual reminders are UI-only and do not appear in reminder_id-targeted operations
  * agents should see hints of reminder manip syntax
  * humans should better have clickable UI widgets to draft reminder manips
  */
@@ -30,14 +30,15 @@ import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-hea
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Dialog } from '../dialog';
+import type { Dialog, VisibleReminderTarget } from '../dialog';
 import { SubDialog } from '../dialog';
 import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
+import { mutateAgentSharedReminders } from '../shared-reminders';
 import type { Team } from '../team';
 import {
-  reminderIsNumbered,
+  reminderIsListed,
   type FuncTool,
   type JsonObject,
   type JsonValue,
@@ -53,10 +54,10 @@ import {
 
 type CtrlMessages = Readonly<{
   invalidFormatDelete: string;
-  reminderDoesNotExist: (reminderNoHuman: string, total: number) => string;
+  reminderDoesNotExist: (reminderId: string) => string;
   invalidFormatAdd: string;
   reminderContentEmpty: string;
-  invalidReminderPosition: (reminderNoHuman: string, totalPlusOne: number) => string;
+  invalidReminderPosition: (positionHuman: string, totalPlusOne: number) => string;
   invalidFormatUpdate: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
@@ -158,33 +159,17 @@ function formatManualUpdateBlockedError(language: LanguageCode, altInstruction: 
     : `Error: This reminder cannot be edited via update_reminder. Follow instead: ${altInstruction}`;
 }
 
-function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
+function listListedReminderIndices(reminders: readonly Reminder[]): number[] {
   const indices: number[] = [];
   for (let index = 0; index < reminders.length; index += 1) {
     const reminder = reminders[index];
-    if (!reminder || !reminderIsNumbered(reminder)) {
+    if (!reminder || !reminderIsListed(reminder)) {
       continue;
     }
     indices.push(index);
   }
   return indices;
 }
-
-function listNumberedReminders(reminders: readonly Reminder[]): Reminder[] {
-  const numbered: Reminder[] = [];
-  for (const reminder of reminders) {
-    if (!reminder || !reminderIsNumbered(reminder)) {
-      continue;
-    }
-    numbered.push(reminder);
-  }
-  return numbered;
-}
-
-type ReminderRoundSnapshot = Readonly<{
-  genseq: number;
-  numberedReminders: readonly Reminder[];
-}>;
 
 type ContinuationPackageReminderMeta = Readonly<{
   kind: 'continuation_package';
@@ -193,9 +178,6 @@ type ContinuationPackageReminderMeta = Readonly<{
 }>;
 
 type ContinuationPackageContextHealthLevel = 'caution' | 'critical';
-
-const reminderRoundSnapshots = new WeakMap<Dialog, ReminderRoundSnapshot>();
-
 function getContinuationPackageContextHealthLevel(
   snapshot: ContextHealthSnapshot | undefined,
 ): ContinuationPackageContextHealthLevel | undefined {
@@ -263,40 +245,33 @@ function removeContinuationPackageReminderMeta(existingMeta: unknown): {
   return { changed: true, nextMeta };
 }
 
-function getNumberedRemindersForLookup(dlg: Dialog): readonly Reminder[] {
-  const genseq = dlg.activeGenSeqOrUndefined;
-  if (typeof genseq !== 'number') {
-    return listNumberedReminders(dlg.reminders);
+async function resolveReminderTarget(
+  dlg: Dialog,
+  reminderIdRaw: unknown,
+): Promise<{ ok: true; target: VisibleReminderTarget } | { ok: false; reminderId: string }> {
+  const reminderId = typeof reminderIdRaw === 'string' ? reminderIdRaw.trim() : '';
+  if (reminderId === '') {
+    return { ok: false, reminderId: String(reminderIdRaw ?? '') };
   }
-
-  const existing = reminderRoundSnapshots.get(dlg);
-  if (existing && existing.genseq === genseq) {
-    return existing.numberedReminders;
+  const target = await dlg.resolveReminderTargetById(reminderId);
+  if (!target) {
+    return { ok: false, reminderId };
   }
-
-  const snapshot: ReminderRoundSnapshot = {
-    genseq,
-    numberedReminders: listNumberedReminders(dlg.reminders),
-  };
-  reminderRoundSnapshots.set(dlg, snapshot);
-  return snapshot.numberedReminders;
+  return { ok: true, target };
 }
 
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
-      invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_no: number })',
-      reminderDoesNotExist: (reminderNoHuman, total) =>
-        total > 0
-          ? `提醒 #${reminderNoHuman} 不存在。现有提醒：1-${total}`
-          : `提醒 #${reminderNoHuman} 不存在。当前没有提醒。`,
+      invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_id: string })',
+      reminderDoesNotExist: (reminderId) => `提醒项 '${reminderId}' 不存在。`,
       invalidFormatAdd:
         '参数格式不对。用法：add_reminder({ content: string, position: number })（position=0 表示追加）',
       reminderContentEmpty: '提醒内容不能为空',
-      invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
-        `位置 ${reminderNoHuman} 无效。有效范围：1-${totalPlusOne}`,
+      invalidReminderPosition: (positionHuman, totalPlusOne) =>
+        `位置 ${positionHuman} 无效。有效范围：1-${totalPlusOne}`,
       invalidFormatUpdate:
-        '参数格式不对。用法：update_reminder({ reminder_no: number, content: string })',
+        '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
       invalidFormatChangeMind:
         '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       tooManyArgsChangeMind:
@@ -335,18 +310,15 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
   }
 
   return {
-    invalidFormatDelete: 'Error: Invalid args. Use: delete_reminder({ reminder_no: number })',
-    reminderDoesNotExist: (reminderNoHuman, total) =>
-      total > 0
-        ? `Error: Reminder number ${reminderNoHuman} does not exist. Available reminders: 1-${total}`
-        : `Error: Reminder number ${reminderNoHuman} does not exist. There are no reminders.`,
+    invalidFormatDelete: 'Error: Invalid args. Use: delete_reminder({ reminder_id: string })',
+    reminderDoesNotExist: (reminderId) => `Error: Reminder '${reminderId}' does not exist.`,
     invalidFormatAdd:
       'Error: Invalid args. Use: add_reminder({ content: string, position: number }) (position=0 means append).',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
-    invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
-      `Error: Invalid reminder position ${reminderNoHuman}. Valid range: 1-${totalPlusOne}`,
+    invalidReminderPosition: (positionHuman, totalPlusOne) =>
+      `Error: Invalid reminder position ${positionHuman}. Valid range: 1-${totalPlusOne}`,
     invalidFormatUpdate:
-      'Error: Invalid args. Use: update_reminder({ reminder_no: number, content: string })',
+      'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
     invalidFormatChangeMind:
       'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
     tooManyArgsChangeMind:
@@ -388,46 +360,46 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
 export const deleteReminderTool: FuncTool = {
   type: 'func',
   name: 'delete_reminder',
-  description: 'Delete a reminder by its 1-based number.',
+  description: 'Delete a reminder by its reminder_id.',
   descriptionI18n: {
-    en: 'Delete a reminder by its 1-based number.',
-    zh: '按 1-based 编号删除提醒。',
+    en: 'Delete a reminder by its reminder_id.',
+    zh: '按 reminder_id 删除提醒。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['reminder_no'],
+    required: ['reminder_id'],
     properties: {
-      reminder_no: { type: 'integer', description: 'Reminder number (1-based).' },
+      reminder_id: { type: 'string', description: 'Stable reminder id.' },
     },
   },
   argsValidation: 'dominds',
   async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
-    const reminderNoValue = args['reminder_no'];
-    if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
-      return t.invalidFormatDelete;
+    const resolved = await resolveReminderTarget(dlg, args['reminder_id']);
+    if (!resolved.ok) {
+      const reminderId = resolved.reminderId.trim();
+      if (reminderId === '') return t.invalidFormatDelete;
+      return t.reminderDoesNotExist(reminderId);
     }
-    const numberedReminders = getNumberedRemindersForLookup(dlg);
-    const reminderNo = reminderNoValue - 1; // Convert to 0-based index
-    if (reminderNo < 0 || reminderNo >= numberedReminders.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
-    const targetReminder = numberedReminders[reminderNo];
-    if (!targetReminder) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
-    const targetIndex = dlg.reminders.indexOf(targetReminder);
-    if (targetIndex < 0) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
+    const targetReminder = resolved.target.reminder;
     const deleteAltInstruction = getDeleteAltInstruction(targetReminder.meta);
     if (deleteAltInstruction !== undefined) {
       return formatManualDeleteBlockedError(language, deleteAltInstruction);
     }
-    dlg.deleteReminder(targetIndex);
-    return formatToolActionResult(language, 'deleted');
+    if (resolved.target.source === 'dialog') {
+      dlg.deleteReminder(resolved.target.index);
+      return formatToolActionResult(language, 'deleted');
+    }
+    if (resolved.target.source === 'agent_shared') {
+      await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
+        reminders.splice(resolved.target.index, 1);
+      });
+      dlg.touchReminders();
+      return formatToolActionResult(language, 'deleted');
+    }
+    return t.invalidFormatDelete;
   },
 };
 
@@ -456,7 +428,7 @@ export const addReminderTool: FuncTool = {
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return t.reminderContentEmpty;
 
-    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
+    const listedIndices = listListedReminderIndices(dlg.reminders);
     const positionValue = args['position'];
     let insertIndex = dlg.reminders.length;
     if (positionValue !== undefined) {
@@ -464,13 +436,13 @@ export const addReminderTool: FuncTool = {
         return t.invalidFormatAdd;
       }
       const position = positionValue - 1;
-      if (position < 0 || position > numberedIndices.length) {
-        return t.invalidReminderPosition(String(positionValue), numberedIndices.length + 1);
+      if (position < 0 || position > listedIndices.length) {
+        return t.invalidReminderPosition(String(positionValue), listedIndices.length + 1);
       }
-      if (position < numberedIndices.length) {
-        const targetIndex = numberedIndices[position];
+      if (position < listedIndices.length) {
+        const targetIndex = listedIndices[position];
         if (targetIndex === undefined) {
-          return t.invalidReminderPosition(String(positionValue), numberedIndices.length + 1);
+          return t.invalidReminderPosition(String(positionValue), listedIndices.length + 1);
         }
         insertIndex = targetIndex;
       }
@@ -492,17 +464,17 @@ export const addReminderTool: FuncTool = {
 export const updateReminderTool: FuncTool = {
   type: 'func',
   name: 'update_reminder',
-  description: 'Update an existing reminder by its 1-based number.',
+  description: 'Update an existing reminder by its reminder_id.',
   descriptionI18n: {
-    en: 'Update an existing reminder by its 1-based number.',
-    zh: '按 1-based 编号更新提醒内容。',
+    en: 'Update an existing reminder by its reminder_id.',
+    zh: '按 reminder_id 更新提醒内容。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['reminder_no', 'content'],
+    required: ['reminder_id', 'content'],
     properties: {
-      reminder_no: { type: 'integer', description: 'Reminder number (1-based).' },
+      reminder_id: { type: 'string', description: 'Stable reminder id.' },
       content: { type: 'string', description: 'New reminder content.' },
     },
   },
@@ -510,25 +482,13 @@ export const updateReminderTool: FuncTool = {
   async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
-    const reminderNoValue = args['reminder_no'];
-    if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
-      return t.invalidFormatUpdate;
+    const resolved = await resolveReminderTarget(dlg, args['reminder_id']);
+    if (!resolved.ok) {
+      const reminderId = resolved.reminderId.trim();
+      if (reminderId === '') return t.invalidFormatUpdate;
+      return t.reminderDoesNotExist(reminderId);
     }
-    const numberedReminders = getNumberedRemindersForLookup(dlg);
-    const reminderNo = reminderNoValue - 1;
-    if (reminderNo < 0 || reminderNo >= numberedReminders.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
-    const targetReminder = numberedReminders[reminderNo];
-    if (!targetReminder) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
-    const targetIndex = dlg.reminders.indexOf(targetReminder);
-    if (targetIndex < 0) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
-    }
-
-    const reminder = dlg.reminders[targetIndex];
+    const reminder = resolved.target.reminder;
     // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
     // may attach arbitrary metadata for reminder ownership/management.
     const meta = reminder?.meta;
@@ -551,10 +511,31 @@ export const updateReminderTool: FuncTool = {
     if (contextHealthLevel === undefined) {
       const stripResult = removeContinuationPackageReminderMeta(reminder?.meta);
       if (stripResult.changed) {
-        dlg.updateReminder(targetIndex, reminderContent, stripResult.nextMeta);
+        if (resolved.target.source === 'dialog') {
+          dlg.updateReminder(resolved.target.index, reminderContent, stripResult.nextMeta);
+        } else {
+          await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
+            reminders[resolved.target.index] = {
+              ...reminders[resolved.target.index],
+              content: reminderContent,
+              meta: stripResult.nextMeta,
+            };
+          });
+          dlg.touchReminders();
+        }
         return formatToolActionResult(language, 'updated');
       }
-      dlg.updateReminder(targetIndex, reminderContent);
+      if (resolved.target.source === 'dialog') {
+        dlg.updateReminder(resolved.target.index, reminderContent);
+      } else {
+        await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
+          reminders[resolved.target.index] = {
+            ...reminders[resolved.target.index],
+            content: reminderContent,
+          };
+        });
+        dlg.touchReminders();
+      }
       return formatToolActionResult(language, 'updated');
     }
 
@@ -564,7 +545,18 @@ export const updateReminderTool: FuncTool = {
       contextHealthLevel,
     });
 
-    dlg.updateReminder(targetIndex, reminderContent, reminderMeta);
+    if (resolved.target.source === 'dialog') {
+      dlg.updateReminder(resolved.target.index, reminderContent, reminderMeta);
+    } else {
+      await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
+        reminders[resolved.target.index] = {
+          ...reminders[resolved.target.index],
+          content: reminderContent,
+          meta: reminderMeta,
+        };
+      });
+      dlg.touchReminders();
+    }
     return formatToolActionResult(language, 'updated');
   },
 };

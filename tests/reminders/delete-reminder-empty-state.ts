@@ -13,7 +13,9 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     undefined,
     'tester',
   );
-  const output = await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_no: 1 });
+  const output = await deleteReminderTool.call(dlg, {} as Team.Member, {
+    reminder_id: 'missing-id',
+  });
 
   assert.ok(
     output.includes(expectedSubstring),
@@ -23,8 +25,8 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
 }
 
 async function main(): Promise<void> {
-  await runCase('zh', '当前没有提醒');
-  await runCase('en', 'There are no reminders');
+  await runCase('zh', "提醒项 'missing-id' 不存在");
+  await runCase('en', "Reminder 'missing-id' does not exist");
   console.log('✓ delete_reminder empty-state message test passed');
 }
 

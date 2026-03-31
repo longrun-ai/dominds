@@ -3,12 +3,12 @@ import type { DialogStore } from '../../main/dialog';
 import { RootDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
-import { reminderIsNumbered } from '../../main/tool';
+import { reminderIsListed } from '../../main/tool';
 import { deleteReminderTool } from '../../main/tools/ctrl';
 
 function numberedContents(dlg: RootDialog): string[] {
   return dlg.reminders
-    .filter((reminder) => reminderIsNumbered(reminder))
+    .filter((reminder) => reminderIsListed(reminder))
     .map((reminder) => reminder.content);
 }
 
@@ -24,30 +24,30 @@ async function main(): Promise<void> {
   dlg.addReminder('A');
   dlg.addReminder('B');
   dlg.addReminder('C');
+  const reminderAId = dlg.reminders[0]?.id;
+  const reminderCId = dlg.reminders[2]?.id;
+  assert.equal(typeof reminderAId, 'string');
+  assert.equal(typeof reminderCId, 'string');
 
-  // Simulate one generation (same genseq) so lookups share a stable snapshot.
-  (dlg as unknown as { _activeGenSeq?: number })._activeGenSeq = 1;
-  await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_no: 1 });
-  await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_no: 3 });
+  await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_id: reminderAId });
+  await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_id: reminderCId });
 
   assert.deepEqual(
     numberedContents(dlg),
     ['B'],
-    'Expected same-genseq deletes (#1 and #3) to resolve against the same snapshot',
+    'Expected reminder-id deletes to remain stable even after earlier deletions reshuffle indices',
   );
 
-  // Next generation (new genseq) must rebuild snapshot from current reminders.
-  (dlg as unknown as { _activeGenSeq?: number })._activeGenSeq = 2;
   const secondRoundError = await deleteReminderTool.call(dlg, {} as Team.Member, {
-    reminder_no: 2,
+    reminder_id: reminderCId,
   });
 
   assert.ok(
-    secondRoundError.includes('Available reminders: 1-1'),
-    `Expected genseq-local snapshot reset; got: ${secondRoundError}`,
+    secondRoundError.includes(`Reminder '${reminderCId}' does not exist`),
+    `Expected deleted reminder id to stay invalid after removal; got: ${secondRoundError}`,
   );
 
-  console.log('✓ delete_reminder genseq-snapshot test passed');
+  console.log('✓ delete_reminder reminder-id stability test passed');
 }
 
 void main().catch((err: unknown) => {

@@ -5,6 +5,7 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import type { Reminder } from '../../main/tool';
 import { shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from '../../main/tools/os';
+import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
 
 function createDialog(): RootDialog {
   return new RootDialog(
@@ -37,33 +38,39 @@ function requireDaemonPid(reminder: Reminder | undefined): number {
 
 async function main(): Promise<void> {
   setWorkLanguage('zh');
-  const dialog = createDialog();
-  const caller = {} as Team.Member;
-
-  await shellCmdTool.call(dialog, caller, {
-    command: `node -e "console.log('daemon-ready'); setInterval(() => {}, 10000)"`,
-    timeoutSeconds: 1,
-  });
-
-  const reminder = dialog.reminders[0];
-  const pid = requireDaemonPid(reminder);
-
+  registerReminderOwner(shellCmdReminderOwner);
   try {
-    assert.equal(reminder?.owner, shellCmdReminderOwner);
-    const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder!, 0);
-    assert.equal(rendered.type, 'environment_msg');
-    assert.equal(rendered.role, 'user');
-    assert.match(rendered.content, /运行中后台进程状态 #1/);
-    assert.match(rendered.content, /状态快照/);
-    assert.match(rendered.content, /stdout 缓冲区快照/);
-    assert.match(rendered.content, /daemon-ready/);
-    assert.match(rendered.content, /禁止做任何用户可见回应/);
-    assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
-    assert.doesNotMatch(rendered.content, /请按需要检查/);
-    assert.doesNotMatch(rendered.content, /Latest stdout/);
-    assert.doesNotMatch(rendered.content, /Use stop_daemon/);
+    const dialog = createDialog();
+    const caller = {} as Team.Member;
+
+    await shellCmdTool.call(dialog, caller, {
+      command: `node -e "console.log('daemon-ready'); setInterval(() => {}, 10000)"`,
+      timeoutSeconds: 1,
+    });
+
+    const reminder = (await dialog.listVisibleReminders()).find(
+      (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
+    );
+    const pid = requireDaemonPid(reminder);
+
+    try {
+      const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder!);
+      assert.equal(rendered.type, 'environment_msg');
+      assert.equal(rendered.role, 'user');
+      assert.match(rendered.content, /运行中后台进程状态 \[/);
+      assert.match(rendered.content, /状态快照/);
+      assert.match(rendered.content, /stdout 缓冲区快照/);
+      assert.match(rendered.content, /daemon-ready/);
+      assert.match(rendered.content, /禁止做任何用户可见回应/);
+      assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
+      assert.doesNotMatch(rendered.content, /请按需要检查/);
+      assert.doesNotMatch(rendered.content, /Latest stdout/);
+      assert.doesNotMatch(rendered.content, /Use stop_daemon/);
+    } finally {
+      await stopDaemonTool.call(dialog, caller, { pid });
+    }
   } finally {
-    await stopDaemonTool.call(dialog, caller, { pid });
+    unregisterReminderOwner(shellCmdReminderOwner.name);
   }
 }
 

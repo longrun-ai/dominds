@@ -18,6 +18,7 @@ import type {
   ToolCallOutput as KernelToolCallOutput,
 } from '@longrun-ai/kernel/app-json';
 import type { I18nText } from '@longrun-ai/kernel/types/i18n';
+import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
 import { Team } from './team';
@@ -57,13 +58,26 @@ export type ToolCallOutput = KernelToolCallOutput;
 
 export interface ReminderOptions {
   readonly echoback?: boolean;
+  readonly scope?: ReminderScope;
 }
+
+export type ReminderScope = 'dialog' | 'agent_shared';
+
+export type ReminderPriority = 'high' | 'medium' | 'low';
 
 // Reminder-related interfaces
 export interface Reminder extends ReminderOptions {
+  readonly id: string;
   readonly content: string;
+  // `owner.name` is the only stable identity that survives persistence and rehydration.
+  // Framework code may route by owner name, but must not depend on owner object identity.
   readonly owner?: ReminderOwner;
+  // Owner metadata is an opaque black box to Dominds framework code.
+  // The framework may persist/transport it, but must not inspect or reinterpret it
+  // unless it has first established that the reminder belongs to that owner.
   readonly meta?: JsonValue;
+  readonly createdAt?: string;
+  readonly priority?: ReminderPriority;
 }
 
 export function reminderEchoBackEnabled(reminder: Reminder): boolean {
@@ -74,22 +88,67 @@ export function reminderIsVirtual(reminder: Reminder): boolean {
   return !reminderEchoBackEnabled(reminder);
 }
 
-export function reminderIsNumbered(reminder: Reminder): boolean {
+export function reminderIsListed(reminder: Reminder): boolean {
   return reminderEchoBackEnabled(reminder);
 }
 
-export function computeReminderNoByIndex(reminders: readonly Reminder[]): Map<number, number> {
-  const reminderNoByIndex = new Map<number, number>();
-  let reminderNo = 0;
-  for (let index = 0; index < reminders.length; index += 1) {
-    const reminder = reminders[index];
-    if (!reminder || !reminderIsNumbered(reminder)) {
-      continue;
-    }
-    reminderNo += 1;
-    reminderNoByIndex.set(index, reminderNo);
+export function generateReminderId(): string {
+  let id = '';
+  while (id.length < 8) {
+    id += generateShortId();
   }
-  return reminderNoByIndex;
+  return id.slice(0, 8);
+}
+
+function ensureReminderId(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : generateReminderId();
+}
+
+export function materializeReminder(
+  input: Readonly<{
+    id?: string;
+    content: string;
+    owner?: ReminderOwner;
+    meta?: JsonValue;
+    echoback?: boolean;
+    scope?: ReminderScope;
+    createdAt?: string;
+    priority?: ReminderPriority;
+  }>,
+): Reminder {
+  return {
+    id: ensureReminderId(input.id),
+    content: input.content,
+    owner: input.owner,
+    meta: input.meta,
+    echoback: input.echoback,
+    scope: input.scope ?? 'dialog',
+    createdAt: input.createdAt,
+    priority: input.priority,
+  };
+}
+
+export function cloneReminder(reminder: Reminder): Reminder {
+  return materializeReminder({
+    id: reminder.id,
+    content: reminder.content,
+    owner: reminder.owner,
+    meta: reminder.meta,
+    echoback: reminder.echoback,
+    scope: reminder.scope,
+    createdAt: reminder.createdAt,
+    priority: reminder.priority,
+  });
+}
+
+export function getReminderOwnerName(reminder: Pick<Reminder, 'owner'>): string | undefined {
+  return reminder.owner?.name;
+}
+
+export function reminderOwnedBy(reminder: Reminder, owner: ReminderOwner | string): boolean {
+  const ownerName = typeof owner === 'string' ? owner : owner.name;
+  return getReminderOwnerName(reminder) === ownerName;
 }
 
 export type ReminderTreatment = 'drop' | 'keep' | 'update';
@@ -98,10 +157,12 @@ export type ReminderUpdateResult = KernelReminderUpdateResult;
 
 export interface ReminderOwner {
   readonly name: string;
+  // Reminder owners own the full meaning of their reminder metadata. Framework code must
+  // treat owner metadata as opaque and only route by `owner.name`.
   // Called before LLM generation to update reminders owned by this tool
   updateReminder(dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult>;
   // Called to render a reminder from a dialog as a ChatMessage to show to ai
-  renderReminder(dlg: Dialog, reminder: Reminder, index: number): Promise<ChatMessage>;
+  renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage>;
 }
 
 export function validateArgs(

@@ -97,7 +97,7 @@ import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import { isStandaloneRuntimeGuidePromptContent } from './runtime/reply-prompt-copy';
 import { getWorkLanguage } from './runtime/work-language';
-import { Reminder } from './tool';
+import { materializeReminder, Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 
 function getErrorCode(error: unknown): string | undefined {
@@ -111,26 +111,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {
-  const persistedReminder = reminder as Reminder & {
-    createdAt?: string;
-    priority?: 'high' | 'medium' | 'low';
-  };
   return {
+    id: reminder.id,
     content: reminder.content,
     ownerName: reminder.owner?.name,
     meta: reminder.meta,
     echoback: reminder.echoback,
-    createdAt: persistedReminder.createdAt ?? formatUnifiedTimestamp(new Date()),
-    priority: persistedReminder.priority ?? 'medium',
+    scope: reminder.scope ?? 'dialog',
+    createdAt: reminder.createdAt ?? formatUnifiedTimestamp(new Date()),
+    priority: reminder.priority ?? 'medium',
   };
 }
 
 function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): ReminderSnapshotItem {
   return {
+    id: snapshot.id,
     content: snapshot.content,
     ownerName: snapshot.ownerName,
     meta: snapshot.meta,
     echoback: snapshot.echoback,
+    scope: snapshot.scope,
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
   };
@@ -4360,14 +4360,15 @@ export class DialogPersistence {
       const remindersFilePath = path.join(dialogPath, 'reminders.json');
 
       const reminderState: ReminderStateFile = {
-        reminders: reminders.map((r, index) => ({
-          id: `reminder-${index}`,
+        reminders: reminders.map((r) => ({
+          id: r.id,
           content: r.content,
           ownerName: r.owner ? r.owner.name : undefined,
           meta: r.meta,
           echoback: r.echoback,
-          createdAt: formatUnifiedTimestamp(new Date()),
-          priority: 'medium',
+          scope: r.scope ?? 'dialog',
+          createdAt: r.createdAt ?? formatUnifiedTimestamp(new Date()),
+          priority: r.priority ?? 'medium',
         })),
         updatedAt: formatUnifiedTimestamp(new Date()),
       };
@@ -4402,17 +4403,18 @@ export class DialogPersistence {
         const reminderState: ReminderStateFile = JSON.parse(content);
         return reminderState.reminders.map((r) => {
           const ownerNameFromFile = typeof r.ownerName === 'string' ? r.ownerName : undefined;
+          // Reminder metadata is owner-private. Rebind strictly through persisted ownerName.
           const owner = ownerNameFromFile ? getReminderOwner(ownerNameFromFile) : undefined;
-
-          return {
+          return materializeReminder({
             id: r.id,
             content: r.content,
             owner,
             meta: r.meta,
             echoback: r.echoback,
+            scope: r.scope ?? 'dialog',
             createdAt: r.createdAt,
             priority: r.priority,
-          };
+          });
         });
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {

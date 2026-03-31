@@ -56,7 +56,7 @@ Use when:
 
 ```yaml
 status: ok|error
-reminder_no: <reminder number>
+reminder_id: <reminder id>
 content: <reminder content>
 position: <insert position>
 created_at: <creation timestamp>
@@ -68,13 +68,13 @@ Delete specified reminder.
 
 **Parameters:**
 
-- `reminder_no` (required): Reminder number (1-based)
+- `reminder_id` (required): Reminder id
 
 **Returns:**
 
 ```yaml
 status: ok|error
-reminder_no: <reminder number>
+reminder_id: <reminder id>
 deleted_at: <deletion timestamp>
 ```
 
@@ -94,14 +94,14 @@ Use when:
 
 **Parameters:**
 
-- `reminder_no` (required): Reminder number (1-based)
+- `reminder_id` (required): Reminder id
 - `content` (required): New reminder content
 
 **Returns:**
 
 ```yaml
 status: ok|error
-reminder_no: <reminder number>
+reminder_id: <reminder id>
 content: <new reminder content>
 updated_at: <update timestamp>
 ```
@@ -184,7 +184,7 @@ retrieved_at: <retrieval timestamp>
 
 ```typescript
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content:
     'In the next course, run smoke first, then re-check the release script against port-injection config.',
 });
@@ -214,7 +214,7 @@ add_reminder({
 
 ```typescript
 delete_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
 });
 ```
 
@@ -222,7 +222,7 @@ delete_reminder({
 
 ```typescript
 update_reminder({
-  reminder_no: 1,
+  reminder_id: 'abc123de',
   content: 'Waiting for @fullstack to confirm API design [Confirmed]',
 });
 ```
