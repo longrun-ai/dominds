@@ -5538,8 +5538,9 @@ export class DomindsApp extends HTMLElement {
       /* Reminder widget items */
       .rem-item {
         display: flex;
-        align-items: flex-start;
-        gap: 6px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
         padding: 4px 6px;
         margin-bottom: 3px;
         background: var(--dominds-hover, #f8f9fa);
@@ -5557,17 +5558,34 @@ export class DomindsApp extends HTMLElement {
       }
 
       .rem-item-number {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 1px 6px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 88%, transparent);
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 78%, var(--dominds-hover, #f8f9fa) 22%);
+        color: color-mix(in srgb, var(--dominds-primary, #007acc) 82%, var(--dominds-fg, #333333) 18%);
+        font-family:
+          var(--dominds-font-family-mono, 'SFMono-Regular', 'SF Mono', ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace);
+        font-size: 11px;
         font-weight: 600;
-        color: var(--dominds-primary, #007acc);
-        min-width: 16px;
-        flex-shrink: 0;
-        margin-top: 1px;
+        letter-spacing: 0.02em;
+        line-height: 1.35;
+        font-variant-numeric: tabular-nums lining-nums;
+        font-feature-settings: 'zero' 1, 'tnum' 1, 'liga' 0, 'calt' 0;
+        text-rendering: geometricPrecision;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .rem-item-content {
         flex: 1;
         white-space: pre-wrap;
         word-break: break-word;
+        min-width: 0;
       }
 
       .rem-item-content-loading {
@@ -11014,14 +11032,15 @@ export class DomindsApp extends HTMLElement {
       const numberedItems = numberedReminders
         .map((r, i) => {
           if (!r || !r.content) {
-            return `<div class="rem-item"><div class="rem-item-number">${this.escapeHtml(`pending-${String(i + 1)}`)}</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
+            const pendingId = `pending-${String(i + 1)}`;
+            return `<div class="rem-item"><div class="rem-item-number" title="${this.escapeHtml(pendingId)}">${this.escapeHtml(pendingId)}</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
           }
           const reminderId =
             typeof r.reminder_id === 'string' && r.reminder_id.trim() !== ''
               ? r.reminder_id
               : `pending-${String(i + 1)}`;
           const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-          return `<div class="rem-item"><div class="rem-item-number">${this.escapeHtml(reminderId)}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+          return `<div class="rem-item"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
         })
         .join('');
       const virtualItemsArray = virtualReminders.map((r) => {
