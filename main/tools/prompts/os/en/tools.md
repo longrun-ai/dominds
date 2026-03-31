@@ -27,7 +27,7 @@ Execute Shell command.
 
 - `command` (required): Command to execute
 - `shell` (optional): Shell to use for execution (default: `bash` on Linux/macOS, `cmd.exe` on Windows)
-- `bufferSize` (optional): Maximum number of lines to keep in scrolling buffer
+- `scrollbackLines` (optional): Number of recent output lines to retain in scrollback
 - `timeoutSeconds` (optional): Timeout in seconds before switching to daemon tracking
 
 **Returns:**

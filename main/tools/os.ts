@@ -198,7 +198,7 @@ export function resetTrackedDaemonsForTests(): void {
 interface ShellCmdArgs {
   command: string;
   shell?: string;
-  bufferSize?: number;
+  scrollbackLines?: number;
   timeoutSeconds?: number;
 }
 
@@ -536,9 +536,9 @@ function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
     throw new Error('shell_cmd.shell must be a string if provided');
   }
 
-  const bufferSize = args.bufferSize;
-  if (bufferSize !== undefined && typeof bufferSize !== 'number') {
-    throw new Error('shell_cmd.bufferSize must be a number if provided');
+  const scrollbackLines = args.scrollbackLines;
+  if (scrollbackLines !== undefined && typeof scrollbackLines !== 'number') {
+    throw new Error('shell_cmd.scrollbackLines must be a number if provided');
   }
 
   const timeoutSeconds = args.timeoutSeconds;
@@ -549,16 +549,16 @@ function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
   return {
     command,
     shell: typeof shell === 'string' && shell.trim() !== '' ? shell : undefined,
-    bufferSize:
-      bufferSize === 0
+    scrollbackLines:
+      scrollbackLines === 0
         ? undefined
-        : bufferSize === undefined
+        : scrollbackLines === undefined
           ? undefined
-          : Number.isInteger(bufferSize) && bufferSize > 0
-            ? bufferSize
+          : Number.isInteger(scrollbackLines) && scrollbackLines > 0
+            ? scrollbackLines
             : (() => {
                 throw new Error(
-                  'shell_cmd.bufferSize must be a positive integer (or 0 for default)',
+                  'shell_cmd.scrollbackLines must be a positive integer (or 0 for default)',
                 );
               })(),
     timeoutSeconds:
@@ -721,9 +721,9 @@ const shellCmdSchema: JsonSchema = {
       type: 'string',
       description: 'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows)',
     },
-    bufferSize: {
+    scrollbackLines: {
       type: 'number',
-      description: 'Maximum number of lines to keep in scrolling buffer (default: 500)',
+      description: 'Number of recent output lines to retain in scrollback (default: 500)',
     },
     timeoutSeconds: {
       type: 'number',
@@ -1001,11 +1001,11 @@ export const shellCmdTool: FuncTool = {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const parsedArgs = parseShellCmdArgs(args);
-    const { command, shell, bufferSize = 500, timeoutSeconds = 5 } = parsedArgs;
+    const { command, shell, scrollbackLines = 500, timeoutSeconds = 5 } = parsedArgs;
     const spawnSpec = resolveShellCmdSpawnSpec(command, shell);
 
-    const stdoutBuffer = new ScrollingBuffer(bufferSize);
-    const stderrBuffer = new ScrollingBuffer(bufferSize);
+    const stdoutBuffer = new ScrollingBuffer(scrollbackLines);
+    const stderrBuffer = new ScrollingBuffer(scrollbackLines);
 
     return new Promise((resolve) => {
       const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
