@@ -410,10 +410,20 @@ async function sleepWithAbort(ms: number, abortSignal?: AbortSignal): Promise<vo
   if (abortSignal?.aborted) {
     throw new Error('AbortError');
   }
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-  if (abortSignal?.aborted) {
-    throw new Error('AbortError');
-  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      abortSignal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      abortSignal?.removeEventListener('abort', onAbort);
+      reject(new Error('AbortError'));
+    };
+
+    abortSignal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function normalizeRetryInitialDelayMs(value: number): number {

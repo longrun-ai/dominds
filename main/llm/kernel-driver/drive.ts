@@ -109,10 +109,10 @@ type KernelDriverRetryPolicy = Readonly<{
 }>;
 
 const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
-  maxRetries: 5,
+  maxRetries: 99, // long total retry window to survive major down-time by llm providers
   initialDelayMs: 1000,
-  backoffMultiplier: 2,
-  maxDelayMs: 30_000,
+  backoffMultiplier: 1.5,
+  maxDelayMs: 30 * 60 * 1000, // 30 minutes
 };
 
 const KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
