@@ -50,7 +50,8 @@ Use when:
 **Parameters:**
 
 - `content` (required): Reminder content
-- `position` (optional): Insert position (1-based, default append)
+- `position` (optional): Insert position (1-based, default append; dialog scope only)
+- `scope` (optional): `dialog` or `personal`; default is `dialog`. Use `personal` only when you should keep seeing this reminder in all later dialogs you lead; otherwise keep it `dialog`.
 
 **Returns:**
 
@@ -80,7 +81,7 @@ deleted_at: <deletion timestamp>
 
 **Errors:**
 
-- `REMINDER_NOT_FOUND`: Reminder number does not exist
+- `REMINDER_NOT_FOUND`: Reminder id does not exist
 
 ### 3. update_reminder
 
@@ -108,7 +109,7 @@ updated_at: <update timestamp>
 
 **Errors:**
 
-- `REMINDER_NOT_FOUND`: Reminder number does not exist
+- `REMINDER_NOT_FOUND`: Reminder id does not exist
 
 ### 4. clear_mind
 

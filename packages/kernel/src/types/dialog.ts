@@ -276,6 +276,7 @@ export interface ReminderContent {
   meta?: Record<string, unknown>;
   reminder_id: string;
   echoback?: boolean;
+  scope?: 'dialog' | 'personal' | 'agent_shared';
 }
 
 export interface FullRemindersEvent {

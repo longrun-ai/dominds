@@ -215,6 +215,7 @@ function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
     role: 'assistant',
     content: formatReminderItemGuide(language, reminder.id, reminder.content, {
       meta: reminder.meta,
+      scope: reminder.scope,
     }),
   };
 }
@@ -226,6 +227,7 @@ async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
     meta: isRecord(reminder.meta) ? reminder.meta : undefined,
     reminder_id: reminder.id,
     echoback: reminderEchoBackEnabled(reminder),
+    scope: reminder.scope,
   }));
   const evt: FullRemindersEvent = { type: 'full_reminders_update', reminders };
   postDialogEvent(dlg, evt);

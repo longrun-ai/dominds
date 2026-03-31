@@ -26,7 +26,7 @@
 
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
-- **Reminder management**: Dialog-local working set; usually keep it small, prefer continuation-package cleanup before `clear_mind`, but rough multi-reminder carry-over is allowed when context is already degraded
+- **Reminder management**: Two reminder scopes. Default to dialog-local working set; use `personal` only for responsibility-linked notes that you should keep seeing in all later dialogs you lead
 - **Taskdoc operations**: Update task contracts (goals/constraints/progress)
 - **Context maintenance**: Reduce cognitive load without losing key resume state
 - **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in sideline / ask-back flows
@@ -51,12 +51,17 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 
 ### Reminder
 
-Reminders are **session-level** temporary working-set information for:
+Reminders are temporary working-set information for:
 
 - Marking pending tasks
 - Tracking current next steps / blockers
 - Recording blocking issues
 - Holding continuation-package bridge notes before `clear_mind`
+
+Scope rule:
+
+- `dialog`: current-dialog working set
+- `personal`: responsibility-related reminders that you should keep seeing in all later dialogs you lead
 
 ### Taskdoc
 

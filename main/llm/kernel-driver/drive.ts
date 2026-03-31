@@ -665,6 +665,7 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
       role: 'assistant',
       content: formatReminderItemGuide(language, reminder.id, reminder.content, {
         meta: reminder.meta,
+        scope: reminder.scope,
       }),
     });
   }

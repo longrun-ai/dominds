@@ -170,7 +170,7 @@ export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
   content: string,
-  options?: { meta?: unknown },
+  options?: { meta?: unknown; scope?: 'dialog' | 'personal' | 'agent_shared' },
 ): string {
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -179,6 +179,7 @@ export function formatReminderItemGuide(
   // `options.meta` is persisted JSON coming from tools. Runtime shape checks are unavoidable here
   // to keep reminder ownership/management loosely coupled and extensible.
   const metaValue = options && 'meta' in options ? options.meta : undefined;
+  const scope = options?.scope;
   const isContinuationPackageReminder =
     isRecord(metaValue) && metaValue['kind'] === 'continuation_package';
   const isPendingTellaskReminder = isRecord(metaValue) && metaValue['kind'] === 'pending_tellask';
@@ -267,11 +268,15 @@ export function formatReminderItemGuide(
       ].join('\n');
     }
     return [
-      `提醒项 [${reminderId}]`,
+      `提醒项 [${reminderId}]${scope === 'personal' ? '（个人范围）' : ''}`,
       '',
-      '这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。',
+      scope === 'personal'
+        ? '这是我给自己的个人范围显眼提示；在所有由我主理的后续对话里都会看到它。我不把它自动当成系统下发的下一步动作。'
+        : '这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。',
       '',
-      '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
+      scope === 'personal'
+        ? '我应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒而不是长期堆在个人范围里。'
+        : '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
       '',
       `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
       deleteInstruction,
@@ -316,11 +321,19 @@ ${deleteInstruction}
 ---
 ${content}`;
   }
-  return `REMINDER [${reminderId}]
+  return `REMINDER [${reminderId}]${scope === 'personal' ? ' (PERSONAL SCOPE)' : ''}
 
-This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.
+${
+  scope === 'personal'
+    ? 'This is my conspicuous personal-scope reminder. I will keep seeing it in all later dialogs I lead, and I do not treat it as an automatically assigned next action.'
+    : 'This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.'
+}
 
-I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.
+${
+  scope === 'personal'
+    ? 'I should keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, I should rewrite it into dialog scope instead of letting personal scope accumulate noise.'
+    : 'I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.'
+}
 
 If I need to update this reminder, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}

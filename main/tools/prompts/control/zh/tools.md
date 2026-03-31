@@ -50,7 +50,8 @@
 **参数：**
 
 - `content`（必需）：提醒内容
-- `position`（可选）：插入位置（1-based，默认追加）
+- `position`（可选）：插入位置（1-based，默认追加；仅 `dialog` 范围支持）
+- `scope`（可选）：`dialog` 或 `personal`；默认 `dialog`。只有在所有由你主理的后续对话里也应该继续看到这条提醒时才用 `personal`；否则保持 `dialog`。
 
 **返回：**
 
@@ -80,7 +81,7 @@ deleted_at: <删除时间戳>
 
 **错误：**
 
-- `REMINDER_NOT_FOUND`：提醒编号不存在
+- `REMINDER_NOT_FOUND`：提醒 id 不存在
 
 ### 3. update_reminder
 
@@ -108,7 +109,7 @@ updated_at: <更新时间戳>
 
 **错误：**
 
-- `REMINDER_NOT_FOUND`：提醒编号不存在
+- `REMINDER_NOT_FOUND`：提醒 id 不存在
 
 ### 4. clear_mind
 

@@ -280,6 +280,9 @@ export type UiStrings = {
   daemonLabel: string;
   commandLabel: string;
   unknownCommand: string;
+  dialogReminderScope: string;
+  personalReminderScope: string;
+  sharedReminderScope: string;
 
   // /setup
   setupTitle: string;
@@ -641,6 +644,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       daemonLabel: '守护进程',
       commandLabel: '命令',
       unknownCommand: '未知命令',
+      dialogReminderScope: '对话范围提醒',
+      personalReminderScope: '个人范围提醒',
+      sharedReminderScope: '共享范围提醒',
 
       setupTitle: '设置',
       setupRefresh: '刷新',
@@ -1012,6 +1018,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     daemonLabel: 'Daemon',
     commandLabel: 'Command',
     unknownCommand: 'unknown command',
+    dialogReminderScope: 'Dialog-scope reminder',
+    personalReminderScope: 'Personal-scope reminder',
+    sharedReminderScope: 'Shared-scope reminder',
 
     setupTitle: 'Setup',
     setupRefresh: 'Refresh',

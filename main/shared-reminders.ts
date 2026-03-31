@@ -4,7 +4,12 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
-import { cloneReminder, materializeReminder, type Reminder } from './tool';
+import {
+  cloneReminder,
+  compareReminderDisplayOrder,
+  materializeReminder,
+  type Reminder,
+} from './tool';
 import { getReminderOwner } from './tools/registry';
 
 const sharedReminderLocks = new Map<string, AsyncFifoMutex>();
@@ -70,15 +75,6 @@ function cloneReminderList(reminders: readonly Reminder[]): Reminder[] {
   return reminders.map((reminder) => cloneReminder(reminder));
 }
 
-function compareSharedReminders(a: Reminder, b: Reminder): number {
-  const aCreatedAt = a.createdAt ?? '';
-  const bCreatedAt = b.createdAt ?? '';
-  if (aCreatedAt !== bCreatedAt) {
-    return aCreatedAt.localeCompare(bCreatedAt);
-  }
-  return a.id.localeCompare(b.id);
-}
-
 async function writeReminderSnapshotFile(
   filePath: string,
   snapshot: ReminderSnapshotItem,
@@ -116,7 +112,7 @@ async function readSharedRemindersUnlocked(agentId: string): Promise<Reminder[]>
       return materializeStoredReminder(JSON.parse(raw) as ReminderSnapshotItem);
     }),
   );
-  reminders.sort(compareSharedReminders);
+  reminders.sort(compareReminderDisplayOrder);
   return reminders;
 }
 

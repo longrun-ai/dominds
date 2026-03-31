@@ -14,16 +14,16 @@
 
 ### REMINDER_NOT_FOUND
 
-**Description:** Reminder number does not exist.
+**Description:** Reminder id does not exist.
 
 **Cause:**
 
-- The reminder number you're trying to access doesn't exist
+- The reminder id you're trying to access doesn't exist
 - The reminder has been deleted
 
 **Solution:**
 
-- Use the correct reminder number
+- Use the correct reminder id
 - First use `add_reminder` to create a reminder
 
 ### REMINDER_INVALID_POSITION
@@ -85,9 +85,13 @@
 
 ## Frequently Asked Questions
 
-### Q: What's the difference between reminders and memory?
+### Q: What's the difference between dialog reminders, personal reminders, and memory?
 
-A: Reminders are session-level temporary information, automatically cleared after dialog ends; memory is persisted and saved to disk.
+A: `dialog` reminders are only for the current dialog. `personal` reminders stay visible in all later dialogs you lead, but still belong to the active working set rather than long-term knowledge. `personal_memory` is for durable facts and reusable knowledge saved to disk.
+
+### Q: How do I choose `personal` vs `dialog`?
+
+A: Use `personal` only for responsibility-related reminders that you should keep seeing in all later dialogs you lead. Everything else should default to `dialog`.
 
 ### Q: Does change_mind reset dialog rounds?
 
@@ -107,4 +111,4 @@ A: There's no strict limit, but it's recommended to keep the number of reminders
 
 ### Q: How do I view all current reminders?
 
-A: The agent can access all current reminders by `reminder_id` during response generation. You can directly ask the agent what reminders it currently has.
+A: The agent can access all visible reminders by `reminder_id` during response generation. That includes current-dialog reminders plus any visible personal/shared reminders available to you.

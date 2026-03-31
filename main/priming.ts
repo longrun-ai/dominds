@@ -94,7 +94,7 @@ type PrimingReminderSnapshot = {
   ownerName?: string;
   meta?: JsonValue;
   echoback?: boolean;
-  scope?: 'dialog' | 'agent_shared';
+  scope?: 'dialog' | 'personal' | 'agent_shared';
   createdAt?: string;
   priority?: PrimingReminderPriority;
 };
@@ -271,8 +271,15 @@ function parseReminderSnapshots(
       throw new Error(`${context}.echoback must be a boolean when provided`);
     }
     const scope = item['scope'];
-    if (scope !== undefined && scope !== 'dialog' && scope !== 'agent_shared') {
-      throw new Error(`${context}.scope must be "dialog" or "agent_shared" when provided`);
+    if (
+      scope !== undefined &&
+      scope !== 'dialog' &&
+      scope !== 'personal' &&
+      scope !== 'agent_shared'
+    ) {
+      throw new Error(
+        `${context}.scope must be "dialog", "personal", or "agent_shared" when provided`,
+      );
     }
     const createdAt = item['createdAt'];
     if (createdAt !== undefined && typeof createdAt !== 'string') {
@@ -285,7 +292,8 @@ function parseReminderSnapshots(
       ownerName: typeof ownerName === 'string' ? ownerName.trim() : undefined,
       meta,
       echoback,
-      scope: scope === 'dialog' || scope === 'agent_shared' ? scope : undefined,
+      scope:
+        scope === 'dialog' || scope === 'personal' || scope === 'agent_shared' ? scope : undefined,
       createdAt: typeof createdAt === 'string' ? createdAt : undefined,
       priority,
     });

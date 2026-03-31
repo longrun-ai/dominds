@@ -264,7 +264,7 @@ export interface ReminderSnapshotItem {
   // as a black box outside the resolved owner implementation.
   meta?: JsonValue;
   echoback?: boolean;
-  scope?: 'dialog' | 'agent_shared';
+  scope?: 'dialog' | 'personal' | 'agent_shared';
   createdAt: string;
   priority: 'high' | 'medium' | 'low';
 }
@@ -742,7 +742,7 @@ export interface ReminderStateFile {
     ownerName?: string;
     meta?: JsonValue;
     echoback?: boolean;
-    scope?: 'dialog' | 'agent_shared';
+    scope?: 'dialog' | 'personal' | 'agent_shared';
     createdAt: string;
     priority: 'high' | 'medium' | 'low';
   }>;

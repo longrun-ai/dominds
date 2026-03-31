@@ -25,6 +25,13 @@ add_reminder({
   content: '当前任务: 创建 i18n 手册 [进行中]',
 });
 
+// 只有因为这是一条职责相关提示，且在所有由你主理的后续对话里也应继续看到，
+// 才把它写成 personal
+add_reminder({
+  content: '常用部署自检命令：pnpm -C dominds run lint:types',
+  scope: 'personal',
+});
+
 // 任务完成后更新
 update_reminder({
   reminder_id: 'abc123de',
@@ -36,6 +43,12 @@ delete_reminder({
   reminder_id: 'abc123de',
 });
 ```
+
+### 关键点
+
+- 当前任务进度、临时阻塞、一次性线索默认都用 `dialog`
+- 只有职责相关、且在所有由你主理的后续对话里也应继续看到的提醒才用 `personal`
+- 如果内容本质上是长期知识而不是当前工作集提示，应改存到 `personal_memory`
 
 ## 场景 2：支线已完成，按 assignment 头部要求调用 replyTellask
 

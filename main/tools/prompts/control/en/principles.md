@@ -27,22 +27,39 @@
 
 ### 1. Reminder
 
-Reminders are **session-level** temporary working-set information for tracking pending items and resume clues in the current dialog.
+Reminders are temporary working-set notes with two scopes:
+
+- `dialog`: current-dialog only
+- `personal`: visible in all later dialogs you lead
+
+Default to `dialog`. Use `personal` only when you should keep seeing that note in all later dialogs you lead while carrying the same responsibility.
 
 **Characteristics:**
 
-- Valid only in current dialog
-- Automatically cleared after dialog ends
+- `dialog` reminders stay in the current dialog only
+- `personal` reminders stay visible in all later dialogs you lead
 - Can be added, modified, or deleted at any time
 - Should stay compact, scannable, and directly actionable by default
 - Before `clear_mind`, default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable
 
 **Difference from memory:**
-| Feature | reminder | memory |
-|---------|----------|--------|
-| Persistence | Session-level | Permanent |
-| Visibility | Current dialog | Current agent |
-| Capacity | No strict limit | No strict limit |
+| Feature | dialog reminder | personal reminder | personal memory |
+|---------|-----------------|-------------------|-----------------|
+| Persistence | Current dialog only | Across all later dialogs you lead | Long-term / file-backed |
+| Visibility | Current dialog | Current responder agent | Current agent |
+| Best for | Current next step, blocker, volatile clue | Responsibility-linked operating cue | Stable facts / reusable knowledge |
+
+### 1.1 Scope Choice Rule
+
+- Use `personal` for responsibility-related reminders:
+  - a preferred smoke-check command this agent should keep using in similar dialogs
+  - a recurring safety check this agent should keep applying
+  - an operating watchpoint that should survive dialog boundaries for you
+- Use `dialog` for everything else:
+  - current blockers
+  - temporary paths, ids, commands, sample inputs
+  - bridge notes that matter only for this dialog / current course
+- If the content is a durable fact or knowledge asset rather than an active working-set cue, it likely belongs in `personal_memory`, not in either reminder scope.
 
 ### 2. Taskdoc
 
@@ -95,6 +112,7 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 - **Current working set**: next step, blockers, key pointers
 - **Easy-to-lose details**: temporary paths, ids, commands, sample inputs
 - **Course transition**: continuation-package notes before `clear_mind`, including rough multi-reminder carry-over when already degraded
+- **Responsibility-linked carry-over**: if you should keep seeing the note in all later dialogs you lead, use `personal`
 
 ### 2. Taskdoc Update Timing
 
@@ -111,7 +129,8 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 
 ## Limitations and Notes
 
-1. Reminders are not persisted after dialog ends
+1. `dialog` reminders end with the dialog; `personal` reminders stay visible in all later dialogs you lead
 2. Taskdoc updates use full section replacement, ensure to merge existing content
 3. `change_mind` does not reset dialog rounds
 4. A continuation-package reminder should keep only details not already covered by Taskdoc but easy to lose during resume
+5. Do not turn `personal` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

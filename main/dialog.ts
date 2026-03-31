@@ -55,6 +55,7 @@ import { loadAgentSharedReminders, replaceAgentSharedReminders } from './shared-
 import type { JsonValue } from './tool';
 import {
   cloneReminder,
+  compareReminderDisplayOrder,
   materializeReminder,
   Reminder,
   reminderEchoBackEnabled,
@@ -212,6 +213,13 @@ export type VisibleReminderTarget =
       reminder: Reminder;
       agentId: string;
     }>;
+
+function compareVisibleReminderTargetOrder(
+  a: VisibleReminderTarget,
+  b: VisibleReminderTarget,
+): number {
+  return compareReminderDisplayOrder(a.reminder, b.reminder);
+}
 
 /**
  * Assignment from supdialog for subdialogs
@@ -680,6 +688,9 @@ export abstract class Dialog {
         agentId: this.agentId,
       });
     }
+    // Visible reminders are always merged into a single newest-first stream regardless of
+    // storage scope, so UI rendering, reminder injection, and reminder-id targeting agree.
+    targets.sort(compareVisibleReminderTargetOrder);
     return targets;
   }
 
@@ -789,11 +800,13 @@ export abstract class Dialog {
       ...this.reminders.map((reminder) => cloneReminder(reminder)),
       ...sharedReminders,
     ];
+    visibleReminders.sort(compareReminderDisplayOrder);
     const reminders: ReminderContent[] = visibleReminders.map((r: Reminder) => ({
       content: r.content,
       meta: r.meta as Record<string, unknown> | undefined,
       reminder_id: r.id,
       echoback: reminderEchoBackEnabled(r),
+      scope: r.scope,
     }));
 
     // Emit full_reminders_update event with complete reminder list including metadata

@@ -61,7 +61,7 @@ export interface ReminderOptions {
   readonly scope?: ReminderScope;
 }
 
-export type ReminderScope = 'dialog' | 'agent_shared';
+export type ReminderScope = 'dialog' | 'personal' | 'agent_shared';
 
 export type ReminderPriority = 'high' | 'medium' | 'low';
 
@@ -140,6 +140,18 @@ export function cloneReminder(reminder: Reminder): Reminder {
     createdAt: reminder.createdAt,
     priority: reminder.priority,
   });
+}
+
+// Reminder presentation order is a framework-level concern distinct from owner semantics.
+// Keep it centralized so dialog-local reminders and agent-shared reminders stay in the same
+// newest-first order everywhere they are merged, rendered, or injected.
+export function compareReminderDisplayOrder(a: Reminder, b: Reminder): number {
+  const aCreatedAt = a.createdAt ?? '';
+  const bCreatedAt = b.createdAt ?? '';
+  if (aCreatedAt !== bCreatedAt) {
+    return bCreatedAt.localeCompare(aCreatedAt);
+  }
+  return b.id.localeCompare(a.id);
 }
 
 export function getReminderOwnerName(reminder: Pick<Reminder, 'owner'>): string | undefined {

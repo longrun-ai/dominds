@@ -49,7 +49,7 @@
  *
  * // Turn 2: Tool error (func_result_msg with role='tool'), LLM self-corrects
  * # docs/e2e-story-test/reminders.md: Tool syntax error recovery
- * - message: "Error: Invalid args. Use: add_reminder({ content: string, position: number }) (position=0 means append)."
+ * - message: "Error: Invalid args. Use: add_reminder({ content: string, position?: number, scope?: \"dialog\" | \"personal\" }) (omit position to append)."
  *   role: "tool"
  *   response: "Call the function tool `add_reminder` with {\"content\":\"Goals...\",\"position\":1}"
  */

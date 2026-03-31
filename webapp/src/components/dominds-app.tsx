@@ -5581,6 +5581,44 @@ export class DomindsApp extends HTMLElement {
         text-overflow: ellipsis;
       }
 
+      .rem-item-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+
+      .rem-item-scope {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 84%, transparent);
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 74%, var(--dominds-hover, #f8f9fa) 26%);
+        color: color-mix(in srgb, var(--dominds-primary, #007acc) 68%, var(--dominds-fg, #333333) 32%);
+        flex: 0 0 auto;
+      }
+
+      .rem-item-scope .icon-mask {
+        width: 11px;
+        height: 11px;
+      }
+
+      .rem-item-scope-dialog {
+        --icon-mask: ${ICON_MASK_URLS.bookmark};
+      }
+
+      .rem-item-scope-personal {
+        --icon-mask: ${ICON_MASK_URLS.pin};
+      }
+
+      .rem-item-scope-agent-shared {
+        --icon-mask: ${ICON_MASK_URLS.link};
+      }
+
       .rem-item-content {
         flex: 1;
         white-space: pre-wrap;
@@ -11033,14 +11071,15 @@ export class DomindsApp extends HTMLElement {
         .map((r, i) => {
           if (!r || !r.content) {
             const pendingId = `pending-${String(i + 1)}`;
-            return `<div class="rem-item"><div class="rem-item-number" title="${this.escapeHtml(pendingId)}">${this.escapeHtml(pendingId)}</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
+            return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(pendingId)}">${this.escapeHtml(pendingId)}</div></div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
           }
           const reminderId =
             typeof r.reminder_id === 'string' && r.reminder_id.trim() !== ''
               ? r.reminder_id
               : `pending-${String(i + 1)}`;
           const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-          return `<div class="rem-item"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+          const scopeBadgeHtml = this.renderReminderScopeBadgeHtml(r.scope);
+          return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
         })
         .join('');
       const virtualItemsArray = virtualReminders.map((r) => {
@@ -11072,6 +11111,17 @@ export class DomindsApp extends HTMLElement {
     }
 
     widgetContent.innerHTML = contentHTML;
+  }
+
+  private renderReminderScopeBadgeHtml(scope: ReminderContent['scope'] | undefined): string {
+    const t = getUiStrings(this.uiLanguage);
+    if (scope === 'personal') {
+      return `<span class="rem-item-scope rem-item-scope-personal" title="${this.escapeHtml(t.personalReminderScope)}" aria-label="${this.escapeHtml(t.personalReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+    }
+    if (scope === 'agent_shared') {
+      return `<span class="rem-item-scope rem-item-scope-agent-shared" title="${this.escapeHtml(t.sharedReminderScope)}" aria-label="${this.escapeHtml(t.sharedReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+    }
+    return `<span class="rem-item-scope rem-item-scope-dialog" title="${this.escapeHtml(t.dialogReminderScope)}" aria-label="${this.escapeHtml(t.dialogReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
   }
 
   private formatReminderDisplayContent(

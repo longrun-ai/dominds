@@ -25,6 +25,13 @@ add_reminder({
   content: 'Current task: Creating i18n manual [In Progress]',
 });
 
+// Add a personal reminder only because this is a responsibility-linked cue
+// that you should keep seeing in all later dialogs you lead
+add_reminder({
+  content: 'Preferred deploy smoke-check command: pnpm -C dominds run lint:types',
+  scope: 'personal',
+});
+
 // Update after task completion
 update_reminder({
   reminder_id: 'abc123de',
@@ -36,6 +43,12 @@ delete_reminder({
   reminder_id: 'abc123de',
 });
 ```
+
+### Key Points
+
+- Default to `dialog` for current-task progress and temporary blockers
+- Use `personal` only when you should still see the note in all later dialogs you lead
+- If the note is durable knowledge rather than an active working-set cue, move it to `personal_memory` instead
 
 ## Scenario 2: Sideline is complete, and the assignment header requires replyTellask
 

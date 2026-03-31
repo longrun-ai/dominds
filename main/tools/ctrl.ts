@@ -38,11 +38,13 @@ import { getWorkLanguage } from '../runtime/work-language';
 import { mutateAgentSharedReminders } from '../shared-reminders';
 import type { Team } from '../team';
 import {
+  materializeReminder,
   reminderIsListed,
   type FuncTool,
   type JsonObject,
   type JsonValue,
   type Reminder,
+  type ReminderScope,
   type ToolArguments,
 } from '../tool';
 import {
@@ -56,6 +58,7 @@ type CtrlMessages = Readonly<{
   invalidFormatDelete: string;
   reminderDoesNotExist: (reminderId: string) => string;
   invalidFormatAdd: string;
+  personalPositionUnsupported: string;
   reminderContentEmpty: string;
   invalidReminderPosition: (positionHuman: string, totalPlusOne: number) => string;
   invalidFormatUpdate: string;
@@ -76,6 +79,17 @@ type CtrlMessages = Readonly<{
   taskDocSectionMissing: (relativePath: string) => string;
   clearedCoursePrompt: (nextCourse: number) => string;
 }>;
+
+class InvalidReminderPositionError extends Error {
+  public readonly positionHuman: string;
+  public readonly totalPlusOne: number;
+
+  constructor(positionHuman: string, totalPlusOne: number) {
+    super(`Invalid reminder position ${positionHuman} (max ${String(totalPlusOne)})`);
+    this.positionHuman = positionHuman;
+    this.totalPlusOne = totalPlusOne;
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -160,15 +174,49 @@ function formatManualUpdateBlockedError(language: LanguageCode, altInstruction: 
 }
 
 function listListedReminderIndices(reminders: readonly Reminder[]): number[] {
+  return listListedReminderIndicesBy(reminders, () => true);
+}
+
+function listListedReminderIndicesBy(
+  reminders: readonly Reminder[],
+  predicate: (reminder: Reminder) => boolean,
+): number[] {
   const indices: number[] = [];
   for (let index = 0; index < reminders.length; index += 1) {
     const reminder = reminders[index];
-    if (!reminder || !reminderIsListed(reminder)) {
+    if (!reminder || !reminderIsListed(reminder) || !predicate(reminder)) {
       continue;
     }
     indices.push(index);
   }
   return indices;
+}
+
+function computeReminderInsertIndex(
+  reminders: readonly Reminder[],
+  positionValue: unknown,
+  predicate: (reminder: Reminder) => boolean,
+): number {
+  const listedIndices = listListedReminderIndicesBy(reminders, predicate);
+  let insertIndex = reminders.length;
+  if (positionValue === undefined) {
+    return insertIndex;
+  }
+  if (typeof positionValue !== 'number' || !Number.isInteger(positionValue)) {
+    throw new Error('invalid_add_position_format');
+  }
+  const position = positionValue - 1;
+  if (position < 0 || position > listedIndices.length) {
+    throw new InvalidReminderPositionError(String(positionValue), listedIndices.length + 1);
+  }
+  if (position < listedIndices.length) {
+    const targetIndex = listedIndices[position];
+    if (targetIndex === undefined) {
+      throw new InvalidReminderPositionError(String(positionValue), listedIndices.length + 1);
+    }
+    insertIndex = targetIndex;
+  }
+  return insertIndex;
 }
 
 type ContinuationPackageReminderMeta = Readonly<{
@@ -266,7 +314,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_id: string })',
       reminderDoesNotExist: (reminderId) => `提醒项 '${reminderId}' 不存在。`,
       invalidFormatAdd:
-        '参数格式不对。用法：add_reminder({ content: string, position: number })（position=0 表示追加）',
+        '参数格式不对。用法：add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" })（省略 position 表示追加）',
+      personalPositionUnsupported: 'personal 范围提醒当前只支持追加，不能指定 position。',
       reminderContentEmpty: '提醒内容不能为空',
       invalidReminderPosition: (positionHuman, totalPlusOne) =>
         `位置 ${positionHuman} 无效。有效范围：1-${totalPlusOne}`,
@@ -313,7 +362,9 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     invalidFormatDelete: 'Error: Invalid args. Use: delete_reminder({ reminder_id: string })',
     reminderDoesNotExist: (reminderId) => `Error: Reminder '${reminderId}' does not exist.`,
     invalidFormatAdd:
-      'Error: Invalid args. Use: add_reminder({ content: string, position: number }) (position=0 means append).',
+      'Error: Invalid args. Use: add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" }) (omit position to append).',
+    personalPositionUnsupported:
+      'Error: personal-scope reminders currently support append only; do not pass position.',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
     invalidReminderPosition: (positionHuman, totalPlusOne) =>
       `Error: Invalid reminder position ${positionHuman}. Valid range: 1-${totalPlusOne}`,
@@ -406,10 +457,11 @@ export const deleteReminderTool: FuncTool = {
 export const addReminderTool: FuncTool = {
   type: 'func',
   name: 'add_reminder',
-  description: 'Add a reminder, optionally inserting at a 1-based position.',
+  description:
+    'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
   descriptionI18n: {
-    en: 'Add a reminder, optionally inserting at a 1-based position.',
-    zh: '添加提醒，可选指定 1-based 插入位置。',
+    en: 'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
+    zh: '添加提醒，可选指定 1-based 插入位置，并可选择对话或个人范围。',
   },
   parameters: {
     type: 'object',
@@ -418,6 +470,11 @@ export const addReminderTool: FuncTool = {
     properties: {
       content: { type: 'string', description: 'Reminder content.' },
       position: { type: 'integer', description: 'Insert position (1-based). Defaults to append.' },
+      scope: {
+        type: 'string',
+        enum: ['dialog', 'personal'],
+        description: 'Reminder visibility scope. Defaults to dialog.',
+      },
     },
   },
   argsValidation: 'dominds',
@@ -428,26 +485,18 @@ export const addReminderTool: FuncTool = {
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return t.reminderContentEmpty;
 
-    const listedIndices = listListedReminderIndices(dlg.reminders);
-    const positionValue = args['position'];
-    let insertIndex = dlg.reminders.length;
-    if (positionValue !== undefined) {
-      if (typeof positionValue !== 'number' || !Number.isInteger(positionValue)) {
-        return t.invalidFormatAdd;
-      }
-      const position = positionValue - 1;
-      if (position < 0 || position > listedIndices.length) {
-        return t.invalidReminderPosition(String(positionValue), listedIndices.length + 1);
-      }
-      if (position < listedIndices.length) {
-        const targetIndex = listedIndices[position];
-        if (targetIndex === undefined) {
-          return t.invalidReminderPosition(String(positionValue), listedIndices.length + 1);
-        }
-        insertIndex = targetIndex;
-      }
+    const scopeValue = args['scope'];
+    const reminderScope: 'dialog' | 'personal' | null =
+      scopeValue === undefined
+        ? 'dialog'
+        : scopeValue === 'dialog' || scopeValue === 'personal'
+          ? scopeValue
+          : null;
+    if (reminderScope === null) {
+      return t.invalidFormatAdd;
     }
 
+    const positionValue = args['position'];
     const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
     const reminderMeta =
       contextHealthLevel === undefined
@@ -456,8 +505,49 @@ export const addReminderTool: FuncTool = {
             createdBy: 'context_health',
             contextHealthLevel,
           });
-    dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex);
-    return formatToolActionResult(language, 'added');
+
+    if (reminderScope === 'dialog') {
+      try {
+        const insertIndex = computeReminderInsertIndex(dlg.reminders, positionValue, () => true);
+        dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex, { scope: 'dialog' });
+        return formatToolActionResult(language, 'added');
+      } catch (error: unknown) {
+        if (error instanceof InvalidReminderPositionError) {
+          return t.invalidReminderPosition(error.positionHuman, error.totalPlusOne);
+        }
+        if (error instanceof Error && error.message === 'invalid_add_position_format') {
+          return t.invalidFormatAdd;
+        }
+        throw error;
+      }
+    }
+
+    try {
+      await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+        if (positionValue !== undefined) {
+          throw new Error('personal_add_position_unsupported');
+        }
+        const reminder = materializeReminder({
+          content: reminderContent,
+          meta: reminderMeta,
+          scope: 'personal' satisfies ReminderScope,
+        });
+        reminders.push(reminder);
+      });
+      dlg.touchReminders();
+      return formatToolActionResult(language, 'added');
+    } catch (error: unknown) {
+      if (error instanceof InvalidReminderPositionError) {
+        return t.invalidReminderPosition(error.positionHuman, error.totalPlusOne);
+      }
+      if (error instanceof Error && error.message === 'invalid_add_position_format') {
+        return t.invalidFormatAdd;
+      }
+      if (error instanceof Error && error.message === 'personal_add_position_unsupported') {
+        return t.personalPositionUnsupported;
+      }
+      throw error;
+    }
   },
 };
 

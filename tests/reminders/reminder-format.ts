@@ -27,6 +27,18 @@ async function main() {
     'Expected zh reminder guide to use conditional update wording',
   );
 
+  const zhPersonal = formatReminderItemGuide('zh', 'rem09abc', '记住常用部署命令\n', {
+    scope: 'personal',
+  });
+  assert(
+    zhPersonal.includes('个人范围'),
+    'Expected zh personal reminder guide to mark personal scope',
+  );
+  assert(
+    zhPersonal.includes('会跨同一 responder agent 的多个对话保留'),
+    'Expected zh personal reminder guide to explain cross-dialog persistence',
+  );
+
   const zhToolManaged = formatReminderItemGuide('zh', 'rem01abc', 'Managed content\n', {
     meta: { manager: { tool: 'some_tool' } },
   });
@@ -158,6 +170,18 @@ async function main() {
   assert(
     en.includes('If I need to update this reminder'),
     'Expected en reminder guide to use conditional update wording',
+  );
+
+  const enPersonal = formatReminderItemGuide('en', 'rem09abc', 'Remember the deploy command\n', {
+    scope: 'personal',
+  });
+  assert(
+    enPersonal.includes('PERSONAL SCOPE'),
+    'Expected en personal reminder guide to mark personal scope',
+  );
+  assert(
+    enPersonal.includes('persists across dialogs for the same responder agent'),
+    'Expected en personal reminder guide to explain cross-dialog persistence',
   );
 
   const enToolManaged = formatReminderItemGuide('en', 'rem03abc', 'Managed content\n', {
