@@ -11133,11 +11133,14 @@ export class DomindsApp extends HTMLElement {
     }
     const metaPid = typeof meta.pid === 'number' ? meta.pid : undefined;
     const metaKind = typeof meta.kind === 'string' ? meta.kind : undefined;
-    const metaCommand = typeof meta.command === 'string' ? meta.command : undefined;
+    const metaInitialCommand =
+      typeof meta.initialCommandLine === 'string' ? meta.initialCommandLine : undefined;
+    const metaDaemonCommand =
+      typeof meta.daemonCommandLine === 'string' ? meta.daemonCommandLine : undefined;
     if (metaKind === 'daemon' && metaPid) {
       const t = getUiStrings(this.uiLanguage);
       const pidStr = String(metaPid);
-      const commandStr = metaCommand || t.unknownCommand;
+      const commandStr = metaInitialCommand || metaDaemonCommand || t.unknownCommand;
       return `🔄 ${t.daemonLabel} (PID: ${pidStr})\n${t.commandLabel}: ${commandStr}`;
     }
     return content;
