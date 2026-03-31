@@ -7,8 +7,9 @@
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, execFile, spawn } from 'child_process';
 import path from 'path';
+import { promisify } from 'util';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
@@ -27,6 +28,8 @@ import type {
 } from '../tool';
 import { materializeReminder, reminderOwnedBy } from '../tool';
 import { truncateToolOutputText } from './output-limit';
+
+const execFileAsync = promisify(execFile);
 
 // Scrolling buffer that maintains a fixed number of lines like a terminal
 class ScrollingBuffer {
@@ -245,8 +248,101 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function createRestoredDaemon(meta: ShellCmdReminderMeta): DaemonProcess | undefined {
+function normalizeProcessCommandLine(commandLine: string): string {
+  return commandLine.trim().replace(/['"`]/g, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function readProcessCommandLine(pid: number): Promise<string | undefined> {
+  try {
+    if (process.platform === 'win32') {
+      const command = `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { [Console]::Out.Write($p.CommandLine) }`;
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', command],
+        {
+          windowsHide: true,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+      const trimmed = stdout.trim();
+      return trimmed === '' ? undefined : trimmed;
+    }
+
+    const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'args='], {
+      maxBuffer: 1024 * 1024,
+    });
+    const trimmed = stdout.trim();
+    return trimmed === '' ? undefined : trimmed;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readProcessStartTime(pid: number): Promise<Date | undefined> {
+  try {
+    if (process.platform === 'win32') {
+      const command = `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { [Console]::Out.Write($p.CreationDate.ToString('o')) }`;
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', command],
+        {
+          windowsHide: true,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+      const trimmed = stdout.trim();
+      if (trimmed === '') {
+        return undefined;
+      }
+      const parsed = new Date(trimmed);
+      return Number.isNaN(parsed.valueOf()) ? undefined : parsed;
+    }
+
+    const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'lstart='], {
+      maxBuffer: 1024 * 1024,
+    });
+    const trimmed = stdout.trim();
+    if (trimmed === '') {
+      return undefined;
+    }
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.valueOf()) ? undefined : parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function liveProcessMatchesReminderCommand(
+  meta: ShellCmdReminderMeta,
+  actualCommandLine: string,
+): boolean {
+  const normalizedActual = normalizeProcessCommandLine(actualCommandLine);
+  const normalizedCommand = normalizeProcessCommandLine(meta.command);
+  return normalizedActual.includes(normalizedCommand);
+}
+
+function liveProcessStartTimeMatchesReminder(
+  meta: ShellCmdReminderMeta,
+  actualStartTime: Date,
+): boolean {
+  const expectedStartTime = parseStartTime(meta.startTime);
+  return Math.abs(actualStartTime.getTime() - expectedStartTime.getTime()) <= 10_000;
+}
+
+async function createRestoredDaemon(
+  meta: ShellCmdReminderMeta,
+): Promise<DaemonProcess | undefined> {
   if (!isProcessAlive(meta.pid)) {
+    return undefined;
+  }
+  const actualCommandLine = await readProcessCommandLine(meta.pid);
+  const actualStartTime = await readProcessStartTime(meta.pid);
+  if (
+    actualCommandLine === undefined ||
+    actualStartTime === undefined ||
+    !liveProcessMatchesReminderCommand(meta, actualCommandLine) ||
+    !liveProcessStartTimeMatchesReminder(meta, actualStartTime)
+  ) {
     return undefined;
   }
   return {
@@ -263,9 +359,9 @@ function createRestoredDaemon(meta: ShellCmdReminderMeta): DaemonProcess | undef
   };
 }
 
-function ensureTrackedDaemonFromReminder(
+async function ensureTrackedDaemonFromReminder(
   reminder: ShellCmdOwnedReminder,
-): DaemonProcess | undefined {
+): Promise<DaemonProcess | undefined> {
   if (!isShellCmdReminderMeta(reminder.meta)) {
     return undefined;
   }
@@ -273,7 +369,7 @@ function ensureTrackedDaemonFromReminder(
   if (existing) {
     return existing;
   }
-  const restored = createRestoredDaemon(reminder.meta);
+  const restored = await createRestoredDaemon(reminder.meta);
   if (!restored) {
     return undefined;
   }
@@ -292,7 +388,7 @@ async function ensureTrackedDaemonForAgent(
   const reminders = await loadAgentSharedReminders(agentId);
   for (const reminder of reminders) {
     if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
-      return ensureTrackedDaemonFromReminder(reminder);
+      return await ensureTrackedDaemonFromReminder(reminder);
     }
   }
   return undefined;
@@ -740,7 +836,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
 
     const reminderMeta: JsonObject = reminder.meta;
     const pid = reminder.meta.pid;
-    const daemon = ensureTrackedDaemonFromReminder(reminder);
+    const daemon = await ensureTrackedDaemonFromReminder(reminder);
 
     if (!daemon) {
       // Daemon process no longer exists
@@ -809,7 +905,7 @@ ${reminder.content}`,
     }
 
     const pid = reminder.meta.pid;
-    const daemon = ensureTrackedDaemonFromReminder(reminder);
+    const daemon = await ensureTrackedDaemonFromReminder(reminder);
 
     if (!daemon) {
       // Daemon no longer exists, render as completed
