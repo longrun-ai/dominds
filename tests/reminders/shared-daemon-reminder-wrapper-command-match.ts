@@ -86,28 +86,14 @@ async function main(): Promise<void> {
       const dialog = createDialog('tester');
 
       const update = await shellCmdReminderOwner.updateReminder(dialog, reminder);
-      assert.notEqual(
+      assert.equal(
         update.treatment,
         'drop',
-        'Expected wrapper-backed daemon reminder not to be dropped after restart-style restore',
+        'Expected legacy wrapper-backed daemon reminder without runner metadata to be dropped',
       );
-      assert.equal(update.treatment, 'update');
-      const updatedMeta =
-        update.updatedMeta &&
-        typeof update.updatedMeta === 'object' &&
-        !Array.isArray(update.updatedMeta)
-          ? (update.updatedMeta as Record<string, unknown>)
-          : null;
-      assert.notEqual(
-        updatedMeta,
-        null,
-        'Expected wrapper restore to rewrite daemon reminder meta',
-      );
-      assert.equal(updatedMeta['initialCommandLine'], 'pnpm dev');
-      assert.equal(updatedMeta['daemonCommandLine'], actualCommandLine);
 
       const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder);
-      assert.match(rendered.content, /PID/);
+      assert.match(rendered.content, /terminated|已结束/);
     } finally {
       try {
         process.kill(process.platform === 'win32' ? pid : -pid, 'SIGTERM');

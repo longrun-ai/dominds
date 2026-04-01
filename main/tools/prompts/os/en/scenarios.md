@@ -145,6 +145,8 @@ Start and manage daemon processes.
 // Get daemon process status
 get_daemon_output({
   pid: 12345,
+  stdout: true,
+  stderr: true,
 });
 
 // Stop daemon process

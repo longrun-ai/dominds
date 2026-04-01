@@ -7,6 +7,7 @@ import type { DialogStore } from '../../main/dialog';
 import { RootDialog } from '../../main/dialog';
 import type { Team } from '../../main/team';
 import {
+  getDaemonOutputTool,
   resetTrackedDaemonsForTests,
   shellCmdReminderOwner,
   shellCmdTool,
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
       const caller = {} as Team.Member;
 
       await shellCmdTool.call(dialogA, caller, {
-        command: `node -e "setInterval(() => {}, 10000)"`,
+        command: `node -e "console.log('daemon-ready'); console.error('daemon-err'); setInterval(() => {}, 10000)"`,
         timeoutSeconds: 1,
       });
 
@@ -88,6 +89,8 @@ async function main(): Promise<void> {
       assert.match(raw, /"kind": "daemon"/);
       assert.match(raw, /"scope": "agent_shared"/);
       assert.match(raw, /"ownerName": "shellCmd"/);
+      assert.match(raw, /"runnerPid": /);
+      assert.match(raw, /"runnerEndpoint": /);
       assert.match(raw, /"initialCommandLine": /);
       assert.match(raw, /"daemonCommandLine": /);
       assert.doesNotMatch(raw, /"command": /);
@@ -114,6 +117,13 @@ async function main(): Promise<void> {
       );
       const rendered = await shellCmdReminderOwner.renderReminder(dialogB, reminderAfterRestart!);
       assert.match(rendered.content, /PID/);
+      assert.match(rendered.content, /daemon-ready/);
+
+      const outputAfterRestart = await getDaemonOutputTool.call(dialogB, caller, { pid });
+      assert.match(outputAfterRestart, /stdout/);
+      assert.match(outputAfterRestart, /stderr/);
+      assert.match(outputAfterRestart, /daemon-ready/);
+      assert.match(outputAfterRestart, /daemon-err/);
 
       const stopOutput = await stopDaemonTool.call(dialogB, caller, { pid });
       assert.match(stopOutput, /stopped|已停止/);

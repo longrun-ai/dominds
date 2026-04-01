@@ -7,7 +7,10 @@
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { ChildProcess, execFile, spawn } from 'child_process';
+import { ChildProcess, execFile, fork, spawn } from 'child_process';
+import fsSync from 'fs';
+import { createRequire } from 'module';
+import net from 'net';
 import path from 'path';
 import { promisify } from 'util';
 import type { Dialog } from '../dialog';
@@ -27,9 +30,17 @@ import type {
   ToolArguments,
 } from '../tool';
 import { materializeReminder, reminderOwnedBy } from '../tool';
+import {
+  parseCmdRunnerInitialIpcMessage,
+  parseCmdRunnerResponseLine,
+  type CmdRunnerInitMessage,
+  type CmdRunnerInitialIpcMessage,
+  type CmdRunnerResponse,
+} from './cmd-runner-protocol';
 import { truncateToolOutputText } from './output-limit';
 
 const execFileAsync = promisify(execFile);
+const requireFn = createRequire(__filename);
 
 // Scrolling buffer that maintains a fixed number of lines like a terminal
 class ScrollingBuffer {
@@ -216,7 +227,8 @@ interface StopDaemonArgs {
 // Get daemon output arguments interface
 interface GetDaemonOutputArgs {
   pid: number;
-  stream?: 'stdout' | 'stderr';
+  stdout: boolean;
+  stderr: boolean;
 }
 
 type ShellSpawnSpec = Readonly<{
@@ -399,6 +411,8 @@ async function ensureTrackedDaemonForAgent(
 type ShellCmdReminderMeta = JsonObject & {
   kind: 'daemon';
   pid: number;
+  runnerPid?: number;
+  runnerEndpoint?: string;
   initialCommandLine: string;
   daemonCommandLine: string;
   shell: string;
@@ -422,7 +436,7 @@ function isShellCmdReminder(reminder: Reminder): reminder is ShellCmdOwnedRemind
 
 function buildShellCmdReminderMeta(
   previousMeta: ShellCmdReminderMeta,
-  daemon: DaemonProcess,
+  daemon: RunnerBackedDaemon,
   options?: Readonly<{
     completed?: boolean;
     lastUpdated?: string;
@@ -438,7 +452,9 @@ function buildShellCmdReminderMeta(
       altInstruction: `stop_daemon({ "pid": ${daemon.pid} })`,
     },
   };
-  nextMeta['daemonCommandLine'] = daemon.daemonCommandLine ?? previousMeta.daemonCommandLine;
+  nextMeta['daemonCommandLine'] = daemon.daemonCommandLine;
+  nextMeta['runnerPid'] = daemon.runnerPid;
+  nextMeta['runnerEndpoint'] = daemon.runnerEndpoint;
   if (previousMeta.originDialogId !== undefined) {
     nextMeta['originDialogId'] = previousMeta.originDialogId;
   }
@@ -507,6 +523,142 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
   };
 }
 
+type SpawnedCmdRunner = Readonly<{
+  runnerProcess: ChildProcess;
+  initialMessage: CmdRunnerInitialIpcMessage;
+}>;
+
+function disconnectRunnerProcess(runnerProcess: ChildProcess): void {
+  try {
+    if (runnerProcess.connected) {
+      runnerProcess.disconnect();
+    }
+  } catch {
+    // Best effort only.
+  }
+  runnerProcess.unref();
+}
+
+async function spawnCmdRunner(init: CmdRunnerInitMessage): Promise<SpawnedCmdRunner> {
+  const entry = resolveCmdRunnerEntrypointAbs();
+  if (!entry.ok) {
+    throw new Error(entry.errorText);
+  }
+
+  const runnerProcess = fork(entry.scriptAbs, [], {
+    execArgv: entry.execArgv,
+    detached: process.platform !== 'win32',
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+  });
+  if (typeof runnerProcess.send !== 'function') {
+    throw new Error('Failed to start cmd_runner: child process has no IPC channel');
+  }
+
+  return await new Promise<SpawnedCmdRunner>((resolve, reject) => {
+    let settled = false;
+    const timeoutHandle = setTimeout(
+      () => {
+        if (settled) return;
+        settled = true;
+        try {
+          runnerProcess.kill('SIGTERM');
+        } catch {
+          // Best effort only.
+        }
+        reject(new Error('cmd_runner init timed out waiting for initial result'));
+      },
+      (init.timeoutSeconds + 10) * 1000,
+    );
+
+    const finalize = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      fn();
+    };
+
+    runnerProcess.once('exit', (code, signal) => {
+      finalize(() => {
+        reject(
+          new Error(
+            `cmd_runner exited before returning initial result (code=${code ?? 'null'} signal=${signal ?? 'null'})`,
+          ),
+        );
+      });
+    });
+
+    runnerProcess.on('message', (raw: unknown) => {
+      finalize(() => {
+        try {
+          resolve({
+            runnerProcess,
+            initialMessage: parseCmdRunnerInitialIpcMessage(raw),
+          });
+        } catch (error: unknown) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    });
+
+    runnerProcess.send(init);
+  });
+}
+
+function formatCompletedShellCommandOutput(
+  message: Extract<CmdRunnerInitialIpcMessage, { type: 'completed' }>,
+  t: OsToolMessages,
+): string {
+  const stdoutHasScrolled = message.stdout.linesScrolledOut > 0;
+  const stderrHasScrolled = message.stderr.linesScrolledOut > 0;
+  let scrollNotice = '';
+  if (stdoutHasScrolled || stderrHasScrolled) {
+    scrollNotice = t.scrolledLinesNotice(
+      message.stdout.linesScrolledOut + message.stderr.linesScrolledOut,
+    );
+  }
+
+  const stdoutContent = truncateToolOutputText(message.stdout.content, {
+    toolName: 'shell_cmd_stdout',
+  }).text;
+  const stderrContent = truncateToolOutputText(message.stderr.content, {
+    toolName: 'shell_cmd_stderr',
+  }).text;
+
+  const fenceConsole = '```console';
+  const fenceEnd = '```';
+  let result = t.commandCompleted(message.exitCode, scrollNotice);
+
+  if (stdoutContent !== '') {
+    result += `${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
+  }
+  if (stderrContent !== '') {
+    result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
+  }
+  return result.trim();
+}
+
+async function removeDaemonRemindersForPid(dlg: Dialog, pid: number): Promise<void> {
+  const indicesToRemove: number[] = [];
+  for (let i = 0; i < dlg.reminders.length; i++) {
+    const reminder = dlg.reminders[i];
+    if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
+      indicesToRemove.push(i);
+    }
+  }
+  for (let i = indicesToRemove.length - 1; i >= 0; i--) {
+    dlg.deleteReminder(indicesToRemove[i]);
+  }
+  await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+    for (let i = reminders.length - 1; i >= 0; i--) {
+      const reminder = reminders[i];
+      if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
+        reminders.splice(i, 1);
+      }
+    }
+  });
+  dlg.touchReminders();
+}
+
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -518,6 +670,8 @@ function isShellCmdReminderMeta(meta: JsonValue | undefined): meta is ShellCmdRe
     isJsonObject(meta) &&
     meta.kind === 'daemon' &&
     typeof meta.pid === 'number' &&
+    (meta.runnerPid === undefined || typeof meta.runnerPid === 'number') &&
+    (meta.runnerEndpoint === undefined || typeof meta.runnerEndpoint === 'string') &&
     typeof meta.initialCommandLine === 'string' &&
     typeof meta.daemonCommandLine === 'string' &&
     typeof meta.shell === 'string' &&
@@ -646,12 +800,20 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
     throw new Error('get_daemon_output.pid must be a number');
   }
 
-  const stream = args.stream;
-  if (stream !== undefined && stream !== '' && stream !== 'stdout' && stream !== 'stderr') {
-    throw new Error('get_daemon_output.stream must be "stdout" or "stderr" if provided');
+  const stdoutRaw = args.stdout;
+  if (stdoutRaw !== undefined && typeof stdoutRaw !== 'boolean') {
+    throw new Error('get_daemon_output.stdout must be a boolean if provided');
   }
-
-  return { pid, stream: stream === '' ? undefined : stream };
+  const stderrRaw = args.stderr;
+  if (stderrRaw !== undefined && typeof stderrRaw !== 'boolean') {
+    throw new Error('get_daemon_output.stderr must be a boolean if provided');
+  }
+  const stdout = stdoutRaw ?? true;
+  const stderr = stderrRaw ?? true;
+  if (!stdout && !stderr) {
+    throw new Error('get_daemon_output requires at least one of stdout/stderr to be true');
+  }
+  return { pid, stdout, stderr };
 }
 
 function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): ShellSpawnSpec {
@@ -707,6 +869,294 @@ function resolveReadonlyShellSpawnSpec(
     return { command: 'cmd.exe', args: ['/d', '/s', '/c', command] };
   }
   return { command: 'bash', args: ['-c', command] };
+}
+
+type RunnerBackedDaemon = Readonly<{
+  pid: number;
+  runnerPid: number;
+  runnerEndpoint: string;
+  command: string;
+  daemonCommandLine: string;
+  shell: string;
+  processGroupId?: number;
+  startTime: Date;
+  stdoutContent: string;
+  stdoutLinesScrolledOut: number;
+  stderrContent: string;
+  stderrLinesScrolledOut: number;
+  isRunning: boolean;
+  exitCode: number | null;
+  exitSignal: string | null;
+  lastUpdateTime: Date;
+}>;
+
+type ResolveRunnerBackedDaemonResult =
+  | Readonly<{ kind: 'live'; daemon: RunnerBackedDaemon }>
+  | Readonly<{ kind: 'gone' }>
+  | Readonly<{ kind: 'error'; errorText: string }>;
+
+type CmdRunnerEntrypointResolution =
+  | Readonly<{ ok: true; scriptAbs: string; execArgv: string[] }>
+  | Readonly<{ ok: false; errorText: string }>;
+
+function resolveCmdRunnerEntrypointAbs(): CmdRunnerEntrypointResolution {
+  const distCandidate = path.resolve(__dirname, 'cmd-runner.js');
+  if (fsSync.existsSync(distCandidate)) {
+    return { ok: true, scriptAbs: distCandidate, execArgv: [] };
+  }
+  const tsCandidate = path.resolve(__dirname, 'cmd-runner.ts');
+  if (fsSync.existsSync(tsCandidate)) {
+    const tsxLoaderAbs = requireFn.resolve('tsx');
+    return { ok: true, scriptAbs: tsCandidate, execArgv: ['--import', tsxLoaderAbs] };
+  }
+  return {
+    ok: false,
+    errorText: `Cannot find cmd_runner entrypoint at ${distCandidate} or ${tsCandidate}`,
+  };
+}
+
+function buildRunnerBackedDaemon(
+  meta: ShellCmdReminderMeta,
+  response: Extract<CmdRunnerResponse, { ok: true }>,
+): RunnerBackedDaemon {
+  return {
+    pid: response.daemonPid,
+    runnerPid: response.runnerPid,
+    runnerEndpoint: response.endpoint,
+    command: meta.initialCommandLine,
+    daemonCommandLine: response.daemonCommandLine,
+    shell: response.shell,
+    processGroupId: response.processGroupId,
+    startTime: parseStartTime(response.startTime),
+    stdoutContent: response.stdout.content,
+    stdoutLinesScrolledOut: response.stdout.linesScrolledOut,
+    stderrContent: response.stderr.content,
+    stderrLinesScrolledOut: response.stderr.linesScrolledOut,
+    isRunning: response.isRunning,
+    exitCode: response.exitCode,
+    exitSignal: response.exitSignal,
+    lastUpdateTime: new Date(),
+  };
+}
+
+function runnerResponseMatchesReminder(
+  meta: ShellCmdReminderMeta,
+  response: Extract<CmdRunnerResponse, { ok: true }>,
+): boolean {
+  if (response.daemonPid !== meta.pid) {
+    return false;
+  }
+  if (!liveProcessMatchesReminderCommand(meta, response.daemonCommandLine)) {
+    return false;
+  }
+  return liveProcessStartTimeMatchesReminder(meta, parseStartTime(response.startTime));
+}
+
+async function callRunner(
+  endpoint: string,
+  request: Readonly<Record<string, unknown>>,
+  timeoutMs = 5_000,
+): Promise<CmdRunnerResponse> {
+  return await new Promise<CmdRunnerResponse>((resolve, reject) => {
+    const socket = net.createConnection(endpoint);
+    let settled = false;
+    let buffer = '';
+
+    const finalize = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      socket.destroy();
+      fn();
+    };
+
+    const timeoutHandle = setTimeout(() => {
+      finalize(() => {
+        reject(new Error(`cmd_runner request timed out for endpoint ${endpoint}`));
+      });
+    }, timeoutMs);
+
+    socket.setEncoding('utf8');
+    socket.once('error', (error) => {
+      finalize(() => {
+        reject(error);
+      });
+    });
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      const newlineIndex = buffer.indexOf('\n');
+      if (newlineIndex === -1) {
+        return;
+      }
+      const line = buffer.slice(0, newlineIndex);
+      finalize(() => {
+        try {
+          resolve(parseCmdRunnerResponseLine(line));
+        } catch (error: unknown) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    });
+    socket.once('connect', () => {
+      socket.write(`${JSON.stringify(request)}\n`);
+    });
+  });
+}
+
+async function bestEffortKillDaemonProcessGroup(
+  meta: ShellCmdReminderMeta,
+  options?: Readonly<{ includeEntirePg: boolean }>,
+): Promise<void> {
+  const includeEntirePg = options?.includeEntirePg ?? true;
+  if (includeEntirePg && process.platform !== 'win32' && meta.processGroupId !== undefined) {
+    try {
+      process.kill(-meta.processGroupId, 'SIGTERM');
+    } catch {
+      // Best effort only.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    try {
+      process.kill(-meta.processGroupId, 'SIGKILL');
+    } catch {
+      // Best effort only.
+    }
+  }
+  try {
+    process.kill(meta.pid, 'SIGTERM');
+  } catch {
+    // Best effort only.
+  }
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  try {
+    process.kill(meta.pid, 'SIGKILL');
+  } catch {
+    // Best effort only.
+  }
+}
+
+async function resolveDaemonFromMeta(
+  meta: ShellCmdReminderMeta,
+): Promise<ResolveRunnerBackedDaemonResult> {
+  if (meta.runnerEndpoint !== undefined && meta.runnerEndpoint.trim() !== '') {
+    try {
+      const response = await callRunner(meta.runnerEndpoint, { type: 'get_status' });
+      if (response.ok && runnerResponseMatchesReminder(meta, response)) {
+        return { kind: 'live', daemon: buildRunnerBackedDaemon(meta, response) };
+      }
+    } catch {
+      // Fall through to stale-or-gone detection.
+    }
+  }
+
+  if (!isProcessAlive(meta.pid)) {
+    return { kind: 'gone' };
+  }
+
+  const actualCommandLine = await readProcessCommandLine(meta.pid);
+  const actualStartTime = await readProcessStartTime(meta.pid);
+  if (
+    actualCommandLine === undefined ||
+    actualStartTime === undefined ||
+    !liveProcessMatchesReminderCommand(meta, actualCommandLine) ||
+    !liveProcessStartTimeMatchesReminder(meta, actualStartTime)
+  ) {
+    return { kind: 'gone' };
+  }
+
+  try {
+    await bestEffortKillDaemonProcessGroup(meta);
+    return { kind: 'gone' };
+  } catch (error: unknown) {
+    return {
+      kind: 'error',
+      errorText:
+        error instanceof Error
+          ? `stale daemon cleanup failed for pid ${String(meta.pid)}: ${error.message}`
+          : `stale daemon cleanup failed for pid ${String(meta.pid)}: ${String(error)}`,
+    };
+  }
+}
+
+function formatRunnerBackedDaemonStatus(
+  daemon: RunnerBackedDaemon,
+  language: LanguageCode,
+): string {
+  const uptime = Math.floor((Date.now() - daemon.startTime.getTime()) / 1000);
+  const status =
+    language === 'zh'
+      ? daemon.isRunning
+        ? '运行中'
+        : `已退出（code: ${daemon.exitCode}, signal: ${daemon.exitSignal}）`
+      : daemon.isRunning
+        ? 'running'
+        : `exited (code: ${daemon.exitCode}, signal: ${daemon.exitSignal})`;
+
+  const stdoutNotice =
+    daemon.stdoutLinesScrolledOut > 0
+      ? language === 'zh'
+        ? `\n注意：stdout 已有 ${daemon.stdoutLinesScrolledOut} 行滚出当前保留缓冲区`
+        : `\nNote: stdout has ${daemon.stdoutLinesScrolledOut} lines scrolled out of the retained buffer`
+      : '';
+  const stderrNotice =
+    daemon.stderrLinesScrolledOut > 0
+      ? language === 'zh'
+        ? `\n注意：stderr 已有 ${daemon.stderrLinesScrolledOut} 行滚出当前保留缓冲区`
+        : `\nNote: stderr has ${daemon.stderrLinesScrolledOut} lines scrolled out of the retained buffer`
+      : '';
+  const stdoutContent =
+    daemon.stdoutContent === ''
+      ? language === 'zh'
+        ? '（无输出）'
+        : '(no output)'
+      : truncateToolOutputText(daemon.stdoutContent, { toolName: 'daemon_stdout' }).text;
+  const stderrContent =
+    daemon.stderrContent === ''
+      ? language === 'zh'
+        ? '（无 stderr 输出）'
+        : '(no stderr output)'
+      : truncateToolOutputText(daemon.stderrContent, { toolName: 'daemon_stderr' }).text;
+  const fenceConsole = '```console';
+  const fenceEnd = '```';
+
+  return language === 'zh'
+    ? `后台进程 PID: ${daemon.pid}
+命令: ${daemon.command}
+Shell: ${daemon.shell}
+生命周期状态: ${status}
+已运行: ${uptime}s
+启动时间: ${formatUnifiedTimestamp(daemon.startTime)}${stdoutNotice}${stderrNotice}
+
+stdout 缓冲区快照：
+${fenceConsole}
+${stdoutContent}
+${fenceEnd}
+
+stderr 缓冲区快照：
+${fenceConsole}
+${stderrContent}
+${fenceEnd}`
+    : `Daemon PID: ${daemon.pid}
+Command: ${daemon.command}
+Shell: ${daemon.shell}
+Lifecycle status: ${status}
+Uptime: ${uptime}s
+Started at: ${formatUnifiedTimestamp(daemon.startTime)}${stdoutNotice}${stderrNotice}
+
+Stdout buffer snapshot:
+${fenceConsole}
+${stdoutContent}
+${fenceEnd}
+
+Stderr buffer snapshot:
+${fenceConsole}
+${stderrContent}
+${fenceEnd}`;
+}
+
+function formatRunnerRecoveryError(pid: number, errorText: string, language: LanguageCode): string {
+  return language === 'zh'
+    ? `⚠️ 守护进程 ${pid} 的 runner 恢复失败：${errorText}`
+    : `⚠️ Failed to recover runner for daemon ${pid}: ${errorText}`;
 }
 
 // JSON Schema for shell_cmd parameters
@@ -777,9 +1227,15 @@ const getDaemonOutputSchema: JsonSchema = {
       type: 'number',
       description: 'Process ID of the daemon to query',
     },
-    stream: {
-      type: 'string',
-      description: 'Output stream to retrieve - "stdout" or "stderr" (default: stdout)',
+    stdout: {
+      type: 'boolean',
+      description:
+        'Whether to include stdout output (default: true unless stderr is explicitly set)',
+    },
+    stderr: {
+      type: 'boolean',
+      description:
+        'Whether to include stderr output (default: true unless stdout is explicitly set)',
     },
   },
   required: ['pid'],
@@ -873,22 +1329,29 @@ export const shellCmdReminderOwner: ReminderOwner = {
     }
 
     const pid = reminder.meta.pid;
-    const daemon = await ensureTrackedDaemonFromReminder(reminder);
+    const resolved = await resolveDaemonFromMeta(reminder.meta);
 
-    if (!daemon) {
-      // Daemon process no longer exists
+    if (resolved.kind === 'gone') {
       return { treatment: 'drop' };
     }
 
-    // Check if process has exited
-    if (!daemon.isRunning) {
-      // Process has exited, provide final status and drop reminder
-      const finalStatus = formatDaemonStatus(daemon, getWorkLanguage());
-      daemonProcesses.delete(pid);
-
+    if (resolved.kind === 'error') {
       return {
         treatment: 'update',
-        updatedContent: `🏁 Process ${pid} has completed:\n\n${finalStatus}`,
+        updatedContent: formatRunnerRecoveryError(pid, resolved.errorText, getWorkLanguage()),
+        updatedMeta: {
+          ...(reminder.meta as JsonObject),
+          lastUpdated: formatUnifiedTimestamp(new Date()),
+        },
+      };
+    }
+
+    const daemon = resolved.daemon;
+
+    if (!daemon.isRunning) {
+      return {
+        treatment: 'update',
+        updatedContent: `🏁 Process ${pid} has completed:\n\n${formatRunnerBackedDaemonStatus(daemon, getWorkLanguage())}`,
         updatedMeta: buildShellCmdReminderMeta(reminder.meta, daemon, {
           completed: true,
           lastUpdated: formatUnifiedTimestamp(new Date()),
@@ -896,22 +1359,9 @@ export const shellCmdReminderOwner: ReminderOwner = {
       };
     }
 
-    // Update daemon status
-    daemon.lastUpdateTime = new Date();
-
-    // Check if process is still actually running
-    if (!isProcessAlive(pid)) {
-      // Process no longer exists
-      daemon.isRunning = false;
-      daemon.exitCode = -1;
-      daemon.exitSignal = 'UNKNOWN';
-    }
-
-    // Update the reminder with current daemon status
-    const updatedContent = formatDaemonStatus(daemon, getWorkLanguage());
     return {
       treatment: 'update',
-      updatedContent,
+      updatedContent: formatRunnerBackedDaemonStatus(daemon, getWorkLanguage()),
       updatedMeta: buildShellCmdReminderMeta(reminder.meta, daemon, {
         lastUpdated: formatUnifiedTimestamp(daemon.lastUpdateTime),
       }),
@@ -940,10 +1390,9 @@ ${reminder.content}`,
     }
 
     const pid = reminder.meta.pid;
-    const daemon = await ensureTrackedDaemonFromReminder(reminder);
+    const resolved = await resolveDaemonFromMeta(reminder.meta);
 
-    if (!daemon) {
-      // Daemon no longer exists, render as completed
+    if (resolved.kind === 'gone') {
       return {
         type: 'environment_msg',
         role: 'user',
@@ -956,7 +1405,16 @@ This daemon process has finished its lifecycle and is no longer running. This re
       };
     }
 
-    // Render with current daemon status - fully dynamic
+    if (resolved.kind === 'error') {
+      return {
+        type: 'environment_msg',
+        role: 'user',
+        content: formatRunnerRecoveryError(pid, resolved.errorText, language),
+      };
+    }
+
+    const daemon = resolved.daemon;
+
     const uptime = Math.floor((Date.now() - daemon.startTime.getTime()) / 1000);
     const uptimeStr =
       uptime < 60
@@ -965,7 +1423,7 @@ This daemon process has finished its lifecycle and is no longer running. This re
           ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
           : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
 
-    const statusInfo = formatDaemonStatus(daemon, language);
+    const statusInfo = formatRunnerBackedDaemonStatus(daemon, language);
 
     return {
       type: 'environment_msg',
@@ -1003,143 +1461,86 @@ export const shellCmdTool: FuncTool = {
     const parsedArgs = parseShellCmdArgs(args);
     const { command, shell, scrollbackLines = 500, timeoutSeconds = 5 } = parsedArgs;
     const spawnSpec = resolveShellCmdSpawnSpec(command, shell);
-
-    const stdoutBuffer = new ScrollingBuffer(scrollbackLines);
-    const stderrBuffer = new ScrollingBuffer(scrollbackLines);
-
-    return new Promise((resolve) => {
-      const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: process.platform !== 'win32',
+    try {
+      const { runnerProcess, initialMessage } = await spawnCmdRunner({
+        type: 'init',
+        initialCommandLine: command,
+        spawnSpec: {
+          command: spawnSpec.command,
+          args: spawnSpec.args,
+          shellLabel: spawnSpec.shellLabel,
+        },
+        timeoutSeconds,
+        scrollbackLines,
       });
 
-      const pid = childProcess.pid!;
-      const startTime = new Date();
+      if (initialMessage.type === 'completed') {
+        return formatCompletedShellCommandOutput(initialMessage, t);
+      }
 
-      // Set up data handlers
-      childProcess.stdout?.on('data', (data: Buffer) => {
-        stdoutBuffer.addText(data.toString());
+      if (initialMessage.type === 'failed') {
+        disconnectRunnerProcess(runnerProcess);
+        return t.failedToExecute(initialMessage.errorText);
+      }
+
+      const daemon: RunnerBackedDaemon = {
+        pid: initialMessage.daemonPid,
+        runnerPid: initialMessage.runnerPid,
+        runnerEndpoint: initialMessage.endpoint,
+        command,
+        daemonCommandLine: initialMessage.daemonCommandLine,
+        shell: initialMessage.shell,
+        processGroupId: initialMessage.processGroupId,
+        startTime: parseStartTime(initialMessage.startTime),
+        stdoutContent: '',
+        stdoutLinesScrolledOut: 0,
+        stderrContent: '',
+        stderrLinesScrolledOut: 0,
+        isRunning: true,
+        exitCode: null,
+        exitSignal: null,
+        lastUpdateTime: new Date(),
+      };
+      const reminderSeedMeta: ShellCmdReminderMeta = {
+        kind: 'daemon',
+        pid: initialMessage.daemonPid,
+        runnerPid: initialMessage.runnerPid,
+        runnerEndpoint: initialMessage.endpoint,
+        initialCommandLine: command,
+        daemonCommandLine: initialMessage.daemonCommandLine,
+        shell: initialMessage.shell,
+        startTime: initialMessage.startTime,
+        originDialogId: dlg.id.selfId,
+      };
+      if (initialMessage.processGroupId !== undefined) {
+        reminderSeedMeta.processGroupId = initialMessage.processGroupId;
+      }
+      const reminderMeta = buildShellCmdReminderMeta(reminderSeedMeta, daemon);
+      const reminder = materializeReminder({
+        content: `[Daemon PID ${initialMessage.daemonPid} - This content should not be visible, check dynamic rendering]`,
+        owner: shellCmdReminderOwner,
+        meta: reminderMeta,
+        scope: 'agent_shared',
       });
-
-      childProcess.stderr?.on('data', (data: Buffer) => {
-        stderrBuffer.addText(data.toString());
-      });
-
-      // Set up timeout
-      const timeoutHandle = setTimeout(() => {
-        void (async () => {
-          // Process didn't exit within timeout - treat as daemon
-          const observedDaemonCommandLine = await readProcessCommandLine(pid);
-          if (observedDaemonCommandLine === undefined || observedDaemonCommandLine.trim() === '') {
-            throw new Error(`failed to capture daemon command line from OS for pid ${String(pid)}`);
-          }
-          const daemonCommandLine = observedDaemonCommandLine;
-          const daemon: DaemonProcess = {
-            pid,
-            command,
-            daemonCommandLine,
-            shell: spawnSpec.shellLabel,
-            process: childProcess,
-            processGroupId: process.platform === 'win32' ? undefined : pid,
-            startTime,
-            stdoutBuffer,
-            stderrBuffer,
-            outputAvailable: true,
-            isRunning: true,
-            lastUpdateTime: new Date(),
-          };
-
-          daemonProcesses.set(pid, daemon);
-          childProcess.unref();
-
-          const reminderSeedMeta: ShellCmdReminderMeta = {
-            kind: 'daemon',
-            pid,
-            initialCommandLine: command,
-            daemonCommandLine,
-            shell: spawnSpec.shellLabel,
-            startTime: formatUnifiedTimestamp(startTime),
-            originDialogId: dlg.id.selfId,
-          };
-          if (process.platform !== 'win32') {
-            reminderSeedMeta.processGroupId = pid;
-          }
-
-          const reminderMeta = buildShellCmdReminderMeta(reminderSeedMeta, daemon);
-
-          const reminder = materializeReminder({
-            content: `[Daemon PID ${pid} - This content should not be visible, check dynamic rendering]`,
-            owner: shellCmdReminderOwner,
-            meta: reminderMeta,
-            scope: 'agent_shared',
-          });
-
-          await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
-            reminders.push(reminder);
-          });
-          dlg.touchReminders();
-          resolve(t.daemonStarted(pid, timeoutSeconds, command));
-        })().catch((error: unknown) => {
-          const daemon = daemonProcesses.get(pid);
-          daemonProcesses.delete(pid);
-          if (daemon) {
-            try {
-              process.kill(resolveBestEffortDaemonSignalTarget(daemon), 'SIGTERM');
-            } catch {
-              // best effort only; surface the persistence failure below
-            }
-          }
-          resolve(
-            t.failedToExecute(
-              error instanceof Error
-                ? `daemon reminder persistence failed: ${error.message}`
-                : `daemon reminder persistence failed: ${String(error)}`,
-            ),
-          );
+      try {
+        await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+          reminders.push(reminder);
         });
-      }, timeoutSeconds * 1000);
-
-      // Handle process completion
-      childProcess.on('close', (code, signal) => {
-        clearTimeout(timeoutHandle);
-
-        // Process completed within timeout - return full output
-        const stdoutInfo = stdoutBuffer.getScrollInfo();
-        const stderrInfo = stderrBuffer.getScrollInfo();
-
-        let scrollNotice = '';
-        if (stdoutInfo.hasScrolledContent || stderrInfo.hasScrolledContent) {
-          const scrolledLines = stdoutInfo.linesScrolledOut + stderrInfo.linesScrolledOut;
-          scrollNotice = t.scrolledLinesNotice(scrolledLines);
-        }
-
-        const stdoutContent = truncateToolOutputText(stdoutBuffer.getContent(), {
-          toolName: 'shell_cmd_stdout',
-        }).text;
-        const stderrContent = truncateToolOutputText(stderrBuffer.getContent(), {
-          toolName: 'shell_cmd_stderr',
-        }).text;
-
-        const fenceConsole = '```console';
-        const fenceEnd = '```';
-        let result = t.commandCompleted(code, scrollNotice);
-
-        if (stdoutContent) {
-          result += `${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
-        }
-
-        if (stderrContent) {
-          result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
-        }
-
-        resolve(result.trim());
-      });
-
-      childProcess.on('error', (error) => {
-        clearTimeout(timeoutHandle);
-        resolve(t.failedToExecute(error.message));
-      });
-    });
+        dlg.touchReminders();
+      } catch (error: unknown) {
+        await bestEffortKillDaemonProcessGroup(reminderSeedMeta);
+        disconnectRunnerProcess(runnerProcess);
+        return t.failedToExecute(
+          error instanceof Error
+            ? `daemon reminder persistence failed: ${error.message}`
+            : `daemon reminder persistence failed: ${String(error)}`,
+        );
+      }
+      disconnectRunnerProcess(runnerProcess);
+      return t.daemonStarted(initialMessage.daemonPid, timeoutSeconds, command);
+    } catch (error: unknown) {
+      return t.failedToExecute(error instanceof Error ? error.message : String(error));
+    }
   },
 };
 
@@ -1954,70 +2355,52 @@ export const stopDaemonTool: FuncTool = {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const { pid, entirePg } = parseStopDaemonArgs(args);
-
-    const daemon = await ensureTrackedDaemonForAgent(dlg.agentId, pid);
-    if (!daemon) {
+    const reminders = await loadAgentSharedReminders(dlg.agentId);
+    const reminder = reminders.find(
+      (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
+    );
+    if (!reminder || !isShellCmdReminder(reminder)) {
       return t.noDaemonFound(pid);
     }
 
     try {
-      let signalTarget = pid;
-      if (entirePg) {
-        if (daemon.processGroupId === undefined) {
-          throw new Error(
-            'daemon has no isolated process group; rerun it after this update, or retry with entire_pg=false',
+      const resolved = await resolveDaemonFromMeta(reminder.meta);
+      if (resolved.kind === 'gone') {
+        await removeDaemonRemindersForPid(dlg, pid);
+        return t.noDaemonFound(pid);
+      }
+      if (resolved.kind === 'error') {
+        return t.failedToStop(pid, resolved.errorText);
+      }
+
+      if (
+        reminder.meta.runnerEndpoint !== undefined &&
+        reminder.meta.runnerEndpoint.trim() !== ''
+      ) {
+        try {
+          const stopResponse = await callRunner(
+            reminder.meta.runnerEndpoint,
+            { type: 'stop' },
+            10_000,
           );
-        }
-        signalTarget = -daemon.processGroupId;
-      }
-
-      // Kill the tracked process or its entire process group.
-      process.kill(signalTarget, 'SIGTERM');
-
-      // Wait a bit for graceful shutdown
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Force kill if still running
-      try {
-        process.kill(signalTarget, 'SIGKILL');
-      } catch (e) {
-        // Process already terminated
-      }
-
-      // Update daemon status
-      daemon.isRunning = false;
-      daemon.exitCode = -1;
-      daemon.exitSignal = 'SIGTERM';
-
-      // Remove legacy local reminders plus current shared reminders for this agent.
-      const indicesToRemove: number[] = [];
-      for (let i = 0; i < dlg.reminders.length; i++) {
-        const reminder = dlg.reminders[i];
-        if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
-          indicesToRemove.push(i);
-        }
-      }
-
-      // Remove reminders in reverse order to maintain indices
-      for (let i = indicesToRemove.length - 1; i >= 0; i--) {
-        dlg.deleteReminder(indicesToRemove[i]);
-      }
-      await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
-        for (let i = reminders.length - 1; i >= 0; i--) {
-          const reminder = reminders[i];
-          if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
-            reminders.splice(i, 1);
+          if (stopResponse.ok && runnerResponseMatchesReminder(reminder.meta, stopResponse)) {
+            if (stopResponse.isRunning) {
+              await bestEffortKillDaemonProcessGroup(reminder.meta, { includeEntirePg: entirePg });
+            }
+          } else {
+            await removeDaemonRemindersForPid(dlg, pid);
+            return t.noDaemonFound(pid);
           }
+        } catch {
+          await bestEffortKillDaemonProcessGroup(reminder.meta, { includeEntirePg: entirePg });
         }
-      });
-      dlg.touchReminders();
+      } else {
+        await bestEffortKillDaemonProcessGroup(reminder.meta, { includeEntirePg: entirePg });
+      }
 
-      // Clean up daemon tracking
-      daemonProcesses.delete(pid);
-
-      return t.daemonStopped(pid, daemon.command);
+      await removeDaemonRemindersForPid(dlg, pid);
+      return t.daemonStopped(pid, reminder.meta.initialCommandLine);
     } catch (error) {
-      daemonProcesses.delete(pid); // Clean up tracking even if kill failed
       return t.failedToStop(pid, error instanceof Error ? error.message : String(error));
     }
   },
@@ -2028,48 +2411,64 @@ export const getDaemonOutputTool: FuncTool = {
   type: 'func',
   name: 'get_daemon_output',
   description:
-    'Retrieve captured stdout/stderr output from a tracked daemon process by PID. Call this to check what a daemon has logged since it started. Returns (no output) if nothing has been written yet.',
+    'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Returns (no output) if a requested stream has not produced output yet.',
   descriptionI18n: {
-    en: 'Retrieve captured stdout/stderr output from a tracked daemon process by PID. Call this to check what a daemon has logged since it started. Returns (no output) if nothing has been written yet.',
-    zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。用于查看守护进程自启动以来产生的日志；如果尚无输出则返回 (no output)。',
+    en: 'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Returns (no output) if a requested stream has not produced output yet.',
+    zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。默认会同时返回两个流，也可显式关闭其中一个；若所请求的流尚无输出，则返回 (no output)。',
   },
   parameters: getDaemonOutputSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
-    const { pid, stream = 'stdout' } = parseGetDaemonOutputArgs(args);
+    const { pid, stdout, stderr } = parseGetDaemonOutputArgs(args);
 
-    const daemon = await ensureTrackedDaemonForAgent(dlg.agentId, pid);
-    if (!daemon) {
+    const reminders = await loadAgentSharedReminders(dlg.agentId);
+    const reminder = reminders.find(
+      (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
+    );
+    if (!reminder || !isShellCmdReminder(reminder)) {
       return t.noDaemonFound(pid);
     }
 
-    if (!daemon.outputAvailable) {
-      return language === 'zh'
-        ? `⚠️ 守护进程 ${pid} 仍在运行，但这是 Dominds 重启后重新识别到的进程；旧 stdout/stderr 捕获缓冲区已经丢失，无法再读取历史输出。`
-        : `⚠️ Daemon ${pid} is still running, but it was rediscovered after a Dominds restart; previously captured stdout/stderr buffers are unavailable.`;
+    const resolved = await resolveDaemonFromMeta(reminder.meta);
+    if (resolved.kind === 'gone') {
+      await removeDaemonRemindersForPid(dlg, pid);
+      return t.noDaemonFound(pid);
+    }
+    if (resolved.kind === 'error') {
+      return formatRunnerRecoveryError(pid, resolved.errorText, language);
     }
 
-    const buffer = stream === 'stdout' ? daemon.stdoutBuffer : daemon.stderrBuffer;
-    const scrollInfo = buffer.getScrollInfo();
-    const content = truncateToolOutputText(buffer.getContent(), {
-      toolName: stream === 'stdout' ? 'get_daemon_output_stdout' : 'get_daemon_output_stderr',
-    }).text;
-
-    const streamLabel = stream === 'stdout' ? 'stdout' : 'stderr';
+    const daemon = resolved.daemon;
+    let result = '';
     const fenceConsole = '```console';
     const fenceEnd = '```';
 
-    let result = t.daemonOutputHeader(pid, streamLabel);
-
-    if (content) {
-      result += `${fenceConsole}\n${content}\n${fenceEnd}`;
-    } else {
-      result += t.noOutput;
+    if (stdout) {
+      const stdoutContent = truncateToolOutputText(daemon.stdoutContent, {
+        toolName: 'get_daemon_output_stdout',
+      }).text;
+      result += t.daemonOutputHeader(pid, 'stdout');
+      result +=
+        stdoutContent === '' ? t.noOutput : `${fenceConsole}\n${stdoutContent}\n${fenceEnd}`;
+      if (daemon.stdoutLinesScrolledOut > 0) {
+        result += t.scrolledOutNotice(daemon.stdoutLinesScrolledOut);
+      }
     }
 
-    if (scrollInfo.hasScrolledContent) {
-      result += t.scrolledOutNotice(scrollInfo.linesScrolledOut);
+    if (stderr) {
+      if (result !== '') {
+        result += '\n\n';
+      }
+      const stderrContent = truncateToolOutputText(daemon.stderrContent, {
+        toolName: 'get_daemon_output_stderr',
+      }).text;
+      result += t.daemonOutputHeader(pid, 'stderr');
+      result +=
+        stderrContent === '' ? t.noOutput : `${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
+      if (daemon.stderrLinesScrolledOut > 0) {
+        result += t.scrolledOutNotice(daemon.stderrLinesScrolledOut);
+      }
     }
 
     return result;

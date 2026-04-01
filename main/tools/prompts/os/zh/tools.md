@@ -70,14 +70,14 @@ stopped_at: <停止时间戳>
 **参数：**
 
 - `pid`（必需）：守护进程 PID（数字）
+- `stdout`（可选）：是否包含 stdout 输出（默认 `true`）
+- `stderr`（可选）：是否包含 stderr 输出（默认 `true`）
 
 **返回：**
 
 ```yaml
-status: ok|error
-pid: <守护进程 PID>
-output: <进程输出>
-retrieved_at: <获取时间戳>
+stdout: <请求时返回 stdout 输出>
+stderr: <请求时返回 stderr 输出>
 ```
 
 ### 4. env_get
@@ -165,6 +165,12 @@ stop_daemon({
 ```typescript
 get_daemon_output({
   pid: 12345,
+});
+
+get_daemon_output({
+  pid: 12345,
+  stdout: true,
+  stderr: false,
 });
 ```
 

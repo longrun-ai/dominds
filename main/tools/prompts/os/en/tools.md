@@ -70,14 +70,14 @@ Get daemon process output.
 **Parameters:**
 
 - `pid` (required): Daemon process ID (number)
+- `stdout` (optional): Whether to include stdout output (default: `true`)
+- `stderr` (optional): Whether to include stderr output (default: `true`)
 
 **Returns:**
 
 ```yaml
-status: ok|error
-pid: <daemon process id>
-output: <process output>
-retrieved_at: <retrieval timestamp>
+stdout: <stdout output when requested>
+stderr: <stderr output when requested>
 ```
 
 ### 4. env_get
@@ -165,6 +165,12 @@ stop_daemon({
 ```typescript
 get_daemon_output({
   pid: 12345,
+});
+
+get_daemon_output({
+  pid: 12345,
+  stdout: true,
+  stderr: false,
 });
 ```
 

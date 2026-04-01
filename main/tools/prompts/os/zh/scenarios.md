@@ -145,6 +145,8 @@ shell_cmd({
 // 获取守护进程状态
 get_daemon_output({
   pid: 12345,
+  stdout: true,
+  stderr: true,
 });
 
 // 停止守护进程
