@@ -31,12 +31,14 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
+  LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
   formatToolCallAdjacencyViolation,
@@ -609,6 +611,10 @@ function chatCompletionToChatMessages(response: ChatCompletion, genseq: number):
 export class OpenAiCompatibleGen implements LlmGenerator {
   get apiType(): string {
     return 'openai-compatible';
+  }
+
+  classifyFailure(error: unknown): LlmFailureDisposition | undefined {
+    return classifyOpenAiLikeFailure(error);
   }
 
   async genToReceiver(

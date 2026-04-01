@@ -15,6 +15,18 @@ export interface LlmBatchResult {
   llmGenModel?: string;
 }
 
+export type LlmRetryStrategy = 'aggressive' | 'conservative';
+
+export type LlmFailureDisposition = {
+  kind: 'retriable' | 'rejected' | 'fatal';
+  message: string;
+  status?: number;
+  code?: string;
+  retryStrategy?: LlmRetryStrategy;
+};
+
+export type LlmFailureClassifier = (error: unknown) => LlmFailureDisposition | undefined;
+
 export interface LlmRequestContext {
   dialogSelfId: string;
   dialogRootId: string;
@@ -50,6 +62,7 @@ export interface LlmStreamReceiver {
 
 export interface LlmGenerator {
   readonly apiType: string;
+  classifyFailure?: LlmFailureClassifier;
 
   genToReceiver: (
     providerConfig: ProviderConfig,

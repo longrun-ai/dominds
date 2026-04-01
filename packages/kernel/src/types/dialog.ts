@@ -95,10 +95,12 @@ export type LlmRetryEvent = LlmGenDlgEvent & {
   type: 'llm_retry_evt';
   phase: 'waiting' | 'running' | 'exhausted';
   provider: string;
+  retryStrategy: 'aggressive' | 'conservative';
+  retryForever: boolean;
   attempt: number;
   totalAttempts: number;
   maxRetries: number;
-  retriesRemaining: number;
+  retriesRemaining?: number;
   backoffMs?: number;
   failureKind: 'retriable' | 'rejected' | 'fatal';
   status?: number;

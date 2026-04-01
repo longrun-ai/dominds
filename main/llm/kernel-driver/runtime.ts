@@ -20,6 +20,7 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../../tool';
 import { validateArgs } from '../../tool';
 import { generateDialogID } from '../../utils/id';
+import type { LlmFailureClassifier, LlmFailureDisposition, LlmRetryStrategy } from '../gen';
 import type { KernelDriverHumanPrompt } from './types';
 
 function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
@@ -256,6 +257,7 @@ type ClassifiedLlmFailure = {
   message: string;
   status?: number;
   code?: string;
+  retryStrategy?: LlmRetryStrategy;
 };
 
 const RETRIABLE_LLM_ERROR_CODES = new Set<string>([
@@ -302,19 +304,6 @@ function isRetriableLlmErrorCode(code: string | undefined): boolean {
   return RETRIABLE_LLM_ERROR_CODES.has(code);
 }
 
-function isOpenAiRetriableProcessingFailureMessage(lowerMessage: string): boolean {
-  if (!lowerMessage.includes('processing your request')) {
-    return false;
-  }
-  if (
-    lowerMessage.includes('you can retry your request') ||
-    lowerMessage.includes('please retry your request')
-  ) {
-    return true;
-  }
-  return lowerMessage.includes('help.openai.com') && lowerMessage.includes('request id');
-}
-
 function isRetriableLlmMessage(message: string): boolean {
   const lower = message.toLowerCase();
   if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
@@ -326,13 +315,31 @@ function isRetriableLlmMessage(message: string): boolean {
   if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
     return true;
   }
-  if (isOpenAiRetriableProcessingFailureMessage(lower)) {
-    return true;
-  }
   return false;
 }
 
-function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
+function normalizeFailureDisposition(
+  err: unknown,
+  disposition: LlmFailureDisposition,
+): ClassifiedLlmFailure {
+  const fallbackMessage =
+    err instanceof Error
+      ? err.message || err.name
+      : typeof err === 'string'
+        ? err
+        : JSON.stringify(err);
+  const errCode = readErrorCode(err);
+  const causeCode = readErrorCode(readErrorCause(err));
+  return {
+    kind: disposition.kind,
+    message: disposition.message.trim().length > 0 ? disposition.message : fallbackMessage,
+    status: disposition.status,
+    code: disposition.code ?? errCode ?? causeCode,
+    retryStrategy: disposition.retryStrategy,
+  };
+}
+
+function classifyGenericLlmFailure(err: unknown): ClassifiedLlmFailure {
   const fallbackMessage =
     err instanceof Error
       ? err.message || err.name
@@ -348,10 +355,20 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
   }
 
   if (isRetriableLlmErrorCode(errCode)) {
-    return { kind: 'retriable', code: errCode, message: fallbackMessage };
+    return {
+      kind: 'retriable',
+      code: errCode,
+      message: fallbackMessage,
+      retryStrategy: 'aggressive',
+    };
   }
   if (isRetriableLlmErrorCode(causeCode)) {
-    return { kind: 'retriable', code: causeCode, message: fallbackMessage };
+    return {
+      kind: 'retriable',
+      code: causeCode,
+      message: fallbackMessage,
+      retryStrategy: 'aggressive',
+    };
   }
 
   {
@@ -365,7 +382,12 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
           : undefined;
     if (typeof msg === 'string' && msg.length > 0) {
       if (isRetriableLlmMessage(msg)) {
-        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
+        return {
+          kind: 'retriable',
+          code: errCode ?? causeCode,
+          message: msg,
+          retryStrategy: 'aggressive',
+        };
       }
     }
   }
@@ -387,7 +409,12 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
 
     if (typeof status === 'number') {
       if (status === 408 || status === 429 || status >= 500) {
-        return { kind: 'retriable', status, message: msg };
+        return {
+          kind: 'retriable',
+          status,
+          message: msg,
+          retryStrategy: status === 503 || status === 529 ? 'conservative' : 'aggressive',
+        };
       }
       if (status >= 400 && status < 500) {
         return { kind: 'rejected', status, message: msg };
@@ -395,15 +422,31 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
     }
 
     if (isRetriableLlmErrorCode(code)) {
-      return { kind: 'retriable', code, message: msg };
+      return { kind: 'retriable', code, message: msg, retryStrategy: 'aggressive' };
     }
 
     if (isRetriableLlmMessage(msg)) {
-      return { kind: 'retriable', code: code ?? causeCode, message: msg };
+      return {
+        kind: 'retriable',
+        code: code ?? causeCode,
+        message: msg,
+        retryStrategy: 'aggressive',
+      };
     }
   }
 
   return { kind: 'fatal', message: fallbackMessage };
+}
+
+function classifyLlmFailure(
+  err: unknown,
+  classifyFailure?: LlmFailureClassifier,
+): ClassifiedLlmFailure {
+  const providerDisposition = classifyFailure?.(err);
+  if (providerDisposition) {
+    return normalizeFailureDisposition(err, providerDisposition);
+  }
+  return classifyGenericLlmFailure(err);
 }
 
 async function sleepWithAbort(ms: number, abortSignal?: AbortSignal): Promise<void> {
@@ -432,6 +475,13 @@ function normalizeRetryInitialDelayMs(value: number): number {
   return normalized >= 0 ? normalized : 1000;
 }
 
+function normalizeRetryConservativeDelayMs(value: number, fallbackMin: number): number {
+  if (!Number.isFinite(value)) return Math.max(30_000, fallbackMin);
+  const normalized = Math.floor(value);
+  if (normalized < 0) return Math.max(30_000, fallbackMin);
+  return Math.max(fallbackMin, normalized);
+}
+
 function normalizeRetryBackoffMultiplier(value: number): number {
   if (!Number.isFinite(value)) return 2;
   return value >= 1 ? value : 2;
@@ -448,10 +498,12 @@ function emitLlmRetryEventBestEffort(args: {
   dlg: Dialog;
   phase: 'waiting' | 'running' | 'exhausted';
   provider: string;
+  retryStrategy: LlmRetryStrategy;
+  retryForever: boolean;
   attempt: number;
   totalAttempts: number;
   maxRetries: number;
-  retriesRemaining: number;
+  retriesRemaining?: number;
   backoffMs?: number;
   failure: ClassifiedLlmFailure;
   errorText: string;
@@ -468,6 +520,8 @@ function emitLlmRetryEventBestEffort(args: {
     genseq: Math.floor(rawGenseq),
     phase: args.phase,
     provider: args.provider,
+    retryStrategy: args.retryStrategy,
+    retryForever: args.retryForever,
     attempt: args.attempt,
     totalAttempts: args.totalAttempts,
     maxRetries: args.maxRetries,
@@ -487,18 +541,27 @@ export async function runLlmRequestWithRetry<T>(params: {
   abortSignal?: AbortSignal;
   maxRetries: number;
   retryInitialDelayMs: number;
+  retryConservativeDelayMs: number;
   retryBackoffMultiplier: number;
   retryMaxDelayMs: number;
+  classifyFailure?: LlmFailureClassifier;
   canRetry: () => boolean;
   onRetry?: () => Promise<void> | void;
   onGiveUp?: () => Promise<void> | void;
   doRequest: () => Promise<T>;
 }): Promise<T> {
   const providerProblemId = `llm/provider_rejected/${params.dlg.id.valueOf()}`;
-  const totalAttempts = params.maxRetries + 1;
+  const aggressiveTotalAttempts = params.maxRetries + 1;
   const retryInitialDelayMs = normalizeRetryInitialDelayMs(params.retryInitialDelayMs);
+  const retryConservativeDelayMs = normalizeRetryConservativeDelayMs(
+    params.retryConservativeDelayMs,
+    retryInitialDelayMs,
+  );
   const retryBackoffMultiplier = normalizeRetryBackoffMultiplier(params.retryBackoffMultiplier);
-  const retryMaxDelayMs = normalizeRetryMaxDelayMs(params.retryMaxDelayMs, retryInitialDelayMs);
+  const retryMaxDelayMs = normalizeRetryMaxDelayMs(
+    params.retryMaxDelayMs,
+    Math.max(retryInitialDelayMs, retryConservativeDelayMs),
+  );
   const retryFlowStartedAtMs = Date.now();
   let activeRetryContext:
     | {
@@ -507,17 +570,21 @@ export async function runLlmRequestWithRetry<T>(params: {
       }
     | undefined;
 
-  for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     try {
       if (attempt > 0 && activeRetryContext) {
+        const retryStrategy = activeRetryContext.failure.retryStrategy ?? 'aggressive';
+        const retryForever = retryStrategy === 'conservative';
         emitLlmRetryEventBestEffort({
           dlg: params.dlg,
           phase: 'running',
           provider: params.provider,
+          retryStrategy,
+          retryForever,
           attempt: attempt + 1,
-          totalAttempts,
+          totalAttempts: retryForever ? 0 : aggressiveTotalAttempts,
           maxRetries: params.maxRetries,
-          retriesRemaining: Math.max(0, params.maxRetries - attempt),
+          retriesRemaining: retryForever ? undefined : Math.max(0, params.maxRetries - attempt),
           failure: activeRetryContext.failure,
           errorText: activeRetryContext.errorText,
         });
@@ -530,7 +597,7 @@ export async function runLlmRequestWithRetry<T>(params: {
         throw err;
       }
 
-      const failure = classifyLlmFailure(err);
+      const failure = classifyLlmFailure(err, params.classifyFailure);
       const detail = extractErrorDetails(err).message;
       const errorCode = readErrorCode(err);
       const cause = readErrorCause(err);
@@ -538,13 +605,18 @@ export async function runLlmRequestWithRetry<T>(params: {
       const causeMessage =
         cause === undefined || cause === null ? undefined : extractErrorDetails(cause).message;
       const attemptNo = attempt + 1;
-      const retriesRemaining = Math.max(0, params.maxRetries - attempt);
+      const retryStrategy = failure.retryStrategy ?? 'aggressive';
+      const retryForever = retryStrategy === 'conservative';
+      const retriesRemaining = retryForever ? undefined : Math.max(0, params.maxRetries - attempt);
+      const totalAttempts = retryForever ? 0 : aggressiveTotalAttempts;
 
       log.warn('LLM request attempt failed', err, {
         provider: params.provider,
         dialogId: params.dlg.id.valueOf(),
         rootId: params.dlg.id.rootId,
         selfId: params.dlg.id.selfId,
+        retryStrategy,
+        retryForever,
         attempt: attemptNo,
         totalAttempts,
         retriesRemaining,
@@ -580,17 +652,19 @@ export async function runLlmRequestWithRetry<T>(params: {
       }
 
       const canRetry = failure.kind === 'retriable' && params.canRetry();
-      const isLastAttempt = attempt >= params.maxRetries;
+      const isLastAttempt = retryForever ? false : attempt >= params.maxRetries;
       if (!canRetry || isLastAttempt) {
         if (params.onGiveUp) {
           await params.onGiveUp();
         }
         if (failure.kind === 'retriable') {
-          const suggestion = `Consider increasing providers.${params.provider}.llm_retry_max_retries / llm_retry_initial_delay_ms / llm_retry_backoff_multiplier / llm_retry_max_delay_ms in .minds/llm.yaml, and verify provider/network stability.`;
+          const suggestion = `Consider adjusting providers.${params.provider}.llm_retry_max_retries / llm_retry_initial_delay_ms / llm_retry_conservative_delay_ms / llm_retry_backoff_multiplier / llm_retry_max_delay_ms in .minds/llm.yaml, and verify provider/network stability.`;
           emitLlmRetryEventBestEffort({
             dlg: params.dlg,
             phase: 'exhausted',
             provider: params.provider,
+            retryStrategy,
+            retryForever,
             attempt: attemptNo,
             totalAttempts,
             maxRetries: params.maxRetries,
@@ -604,10 +678,13 @@ export async function runLlmRequestWithRetry<T>(params: {
             dialogId: params.dlg.id.valueOf(),
             rootId: params.dlg.id.rootId,
             selfId: params.dlg.id.selfId,
+            retryStrategy,
+            retryForever,
             attempt: attemptNo,
             totalAttempts,
             maxRetries: params.maxRetries,
             retryInitialDelayMs,
+            retryConservativeDelayMs,
             retryBackoffMultiplier,
             retryMaxDelayMs,
             errorText: detail,
@@ -627,6 +704,7 @@ export async function runLlmRequestWithRetry<T>(params: {
             maxRetries: params.maxRetries,
             elapsedMs: Date.now() - retryFlowStartedAtMs,
             retryInitialDelayMs,
+            retryConservativeDelayMs,
             retryBackoffMultiplier,
             retryMaxDelayMs,
             errorText: detail,
@@ -636,14 +714,28 @@ export async function runLlmRequestWithRetry<T>(params: {
         throw new Error(`LLM failed: ${failure.message}`);
       }
 
-      const backoffMs = Math.min(
-        retryMaxDelayMs,
-        Math.max(0, Math.floor(retryInitialDelayMs * retryBackoffMultiplier ** attempt)),
-      );
+      const conservativeRampAttempt = Math.max(0, Math.floor(attempt / 10));
+      const backoffMs =
+        retryStrategy === 'conservative'
+          ? Math.min(
+              retryMaxDelayMs,
+              Math.max(
+                0,
+                Math.floor(
+                  retryConservativeDelayMs * retryBackoffMultiplier ** conservativeRampAttempt,
+                ),
+              ),
+            )
+          : Math.min(
+              retryMaxDelayMs,
+              Math.max(0, Math.floor(retryInitialDelayMs * retryBackoffMultiplier ** attempt)),
+            );
       emitLlmRetryEventBestEffort({
         dlg: params.dlg,
         phase: 'waiting',
         provider: params.provider,
+        retryStrategy,
+        retryForever,
         attempt: attemptNo,
         totalAttempts,
         maxRetries: params.maxRetries,
@@ -658,9 +750,12 @@ export async function runLlmRequestWithRetry<T>(params: {
       };
       log.warn(`Retrying LLM request after retriable error`, undefined, {
         provider: params.provider,
+        retryStrategy,
+        retryForever,
         attempt: attemptNo,
         backoffMs,
         retryInitialDelayMs,
+        retryConservativeDelayMs,
         retryBackoffMultiplier,
         retryMaxDelayMs,
         failure,
@@ -704,6 +799,7 @@ function formatLlmRetryExhaustedInterruptionDetail(args: {
   maxRetries: number;
   elapsedMs: number;
   retryInitialDelayMs: number;
+  retryConservativeDelayMs: number;
   retryBackoffMultiplier: number;
   retryMaxDelayMs: number;
   errorText: string;
@@ -717,11 +813,13 @@ function formatLlmRetryExhaustedInterruptionDetail(args: {
       `（初始请求 1 次 + 重试 ${args.maxRetries} 次），总耗时 ${durationText}。` +
       `当前重试配置：llm_retry_max_retries=${args.maxRetries}，` +
       `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}，` +
+      `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}，` +
       `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}，` +
       `llm_retry_max_delay_ms=${args.retryMaxDelayMs}。` +
       `若想增加重试次数或拉长重试间隔，请编辑 \`.minds/llm.yaml\` 中的 ` +
       `\`${providerPath}.llm_retry_max_retries\`、` +
       `\`${providerPath}.llm_retry_initial_delay_ms\`、` +
+      `\`${providerPath}.llm_retry_conservative_delay_ms\`、` +
       `\`${providerPath}.llm_retry_backoff_multiplier\`、` +
       `\`${providerPath}.llm_retry_max_delay_ms\`，并检查 provider / network 稳定性。` +
       `最后错误：${trimmedError}`
@@ -733,11 +831,13 @@ function formatLlmRetryExhaustedInterruptionDetail(args: {
     `(1 initial request + ${args.maxRetries} retries), elapsed ${durationText}. ` +
     `Current retry config: llm_retry_max_retries=${args.maxRetries}, ` +
     `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}, ` +
+    `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}, ` +
     `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}, ` +
     `llm_retry_max_delay_ms=${args.retryMaxDelayMs}. ` +
     `If you want more retries or longer retry intervals, edit ` +
     `\`.minds/llm.yaml\`: \`${providerPath}.llm_retry_max_retries\`, ` +
     `\`${providerPath}.llm_retry_initial_delay_ms\`, ` +
+    `\`${providerPath}.llm_retry_conservative_delay_ms\`, ` +
     `\`${providerPath}.llm_retry_backoff_multiplier\`, ` +
     `\`${providerPath}.llm_retry_max_delay_ms\`, and verify provider/network stability. ` +
     `Last error: ${trimmedError}`

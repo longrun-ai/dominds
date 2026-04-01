@@ -8727,7 +8727,8 @@ export class DomindsApp extends HTMLElement {
     state: DialogViewportRetryPanelState & { kind: 'retry-waiting' },
   ): string {
     const t = getUiStrings(this.uiLanguage);
-    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${state.totalAttempts}${t.retryPanelAttemptSuffix}`;
+    const totalAttemptsText = state.retryForever ? '∞' : String(state.totalAttempts);
+    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${totalAttemptsText}${t.retryPanelAttemptSuffix}`;
     const providerText = state.provider.trim();
     const failureText =
       providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;

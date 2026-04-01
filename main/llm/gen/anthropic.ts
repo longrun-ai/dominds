@@ -24,12 +24,14 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
+  LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
 } from '../gen';
 import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { classifyAnthropicFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
   formatToolCallAdjacencyViolation,
@@ -1032,6 +1034,10 @@ export async function reconstructAnthropicContextWrapperAsync(
 export class AnthropicGen implements LlmGenerator {
   get apiType() {
     return 'anthropic';
+  }
+
+  classifyFailure(error: unknown): LlmFailureDisposition | undefined {
+    return classifyAnthropicFailure(error);
   }
 
   async genToReceiver(

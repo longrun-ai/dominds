@@ -103,6 +103,7 @@ import type {
 type KernelDriverRetryPolicy = Readonly<{
   maxRetries: number;
   initialDelayMs: number;
+  conservativeDelayMs: number;
   backoffMultiplier: number;
   maxDelayMs: number;
 }>;
@@ -110,6 +111,7 @@ type KernelDriverRetryPolicy = Readonly<{
 const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
   maxRetries: 99, // long total retry window to survive major down-time by llm providers
   initialDelayMs: 1000,
+  conservativeDelayMs: 30_000,
   backoffMultiplier: 1.5,
   maxDelayMs: 30 * 60 * 1000, // 30 minutes
 };
@@ -234,6 +236,17 @@ function resolveRetryBackoffMultiplier(raw: number | undefined): number {
   return raw;
 }
 
+function resolveRetryConservativeDelayMs(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.conservativeDelayMs;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.conservativeDelayMs;
+  }
+  return normalized;
+}
+
 function resolveRetryMaxDelayMs(raw: number | undefined): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
     return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxDelayMs;
@@ -248,14 +261,18 @@ function resolveRetryMaxDelayMs(raw: number | undefined): number {
 function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriverRetryPolicy {
   const maxRetries = resolveRetryMaxRetries(providerCfg.llm_retry_max_retries);
   const initialDelayMs = resolveRetryInitialDelayMs(providerCfg.llm_retry_initial_delay_ms);
+  const conservativeDelayMs = resolveRetryConservativeDelayMs(
+    providerCfg.llm_retry_conservative_delay_ms,
+  );
   const backoffMultiplier = resolveRetryBackoffMultiplier(providerCfg.llm_retry_backoff_multiplier);
   const maxDelayMs = resolveRetryMaxDelayMs(providerCfg.llm_retry_max_delay_ms);
 
   return {
     maxRetries,
     initialDelayMs,
+    conservativeDelayMs: Math.max(initialDelayMs, conservativeDelayMs),
     backoffMultiplier,
-    maxDelayMs: Math.max(initialDelayMs, maxDelayMs),
+    maxDelayMs: Math.max(initialDelayMs, conservativeDelayMs, maxDelayMs),
   };
 }
 
@@ -1883,8 +1900,10 @@ export async function driveDialogStreamCore(
               abortSignal,
               maxRetries: retryPolicy.maxRetries,
               retryInitialDelayMs: retryPolicy.initialDelayMs,
+              retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
               retryBackoffMultiplier: retryPolicy.backoffMultiplier,
               retryMaxDelayMs: retryPolicy.maxDelayMs,
+              classifyFailure: llmGen.classifyFailure?.bind(llmGen),
               canRetry: () => true,
               doRequest: async () => {
                 const batchResult = await llmGen.genMoreMessages(
@@ -2060,8 +2079,10 @@ export async function driveDialogStreamCore(
             abortSignal,
             maxRetries: retryPolicy.maxRetries,
             retryInitialDelayMs: retryPolicy.initialDelayMs,
+            retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
             retryBackoffMultiplier: retryPolicy.backoffMultiplier,
             retryMaxDelayMs: retryPolicy.maxDelayMs,
+            classifyFailure: llmGen.classifyFailure?.bind(llmGen),
             canRetry: () => true,
             onRetry: rollbackStreamAttempt,
             onGiveUp: rollbackStreamAttempt,

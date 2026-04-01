@@ -28,6 +28,7 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchResult,
+  LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
@@ -35,6 +36,7 @@ import type {
   LlmWebSearchCall,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
   formatToolCallAdjacencyViolation,
@@ -528,6 +530,10 @@ async function buildCodexRequest(
 export class CodexGen implements LlmGenerator {
   get apiType(): string {
     return 'codex';
+  }
+
+  classifyFailure(error: unknown): LlmFailureDisposition | undefined {
+    return classifyOpenAiLikeFailure(error);
   }
 
   async genToReceiver(

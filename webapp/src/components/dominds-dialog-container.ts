@@ -172,6 +172,7 @@ type RetryPanelState =
       genseq: number;
       attempt: number;
       totalAttempts: number;
+      retryForever: boolean;
       provider: string;
       failureLabel: string;
       error: string;
@@ -182,6 +183,7 @@ type RetryPanelState =
       genseq: number;
       attempt: number;
       totalAttempts: number;
+      retryForever: boolean;
       provider: string;
       failureLabel: string;
       error: string;
@@ -4277,6 +4279,7 @@ export class DomindsDialogContainer extends HTMLElement {
         genseq: event.genseq,
         attempt: event.attempt,
         totalAttempts: event.totalAttempts,
+        retryForever: event.retryForever,
         provider: event.provider,
         failureLabel,
         error: errorText,
@@ -4288,6 +4291,7 @@ export class DomindsDialogContainer extends HTMLElement {
         genseq: event.genseq,
         attempt: event.attempt,
         totalAttempts: event.totalAttempts,
+        retryForever: event.retryForever,
         provider: event.provider,
         failureLabel,
         error: errorText,

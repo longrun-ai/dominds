@@ -93,6 +93,7 @@ export type ProviderConfig = {
   // maxRetries means "extra retries after initial attempt". For example, 5 => up to 6 attempts total.
   llm_retry_max_retries?: number;
   llm_retry_initial_delay_ms?: number;
+  llm_retry_conservative_delay_ms?: number;
   llm_retry_backoff_multiplier?: number;
   llm_retry_max_delay_ms?: number;
   tech_spec_url?: string;
