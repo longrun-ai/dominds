@@ -3312,17 +3312,47 @@ export class DomindsDialogContainer extends HTMLElement {
     el.setAttribute('data-origin-course', String(Math.floor(event.originCourse)));
     const safeTimestamp = this.escapeHtml(event.timestamp ?? '');
     const originCourse = Math.floor(event.originCourse);
-    const titleText =
+    const responderLabel =
+      event.agentId && event.agentId.trim() !== ''
+        ? this.formatAgentLabel(event.agentId)
+        : this.formatAgentLabel(event.responderId);
+    const requesterLabel =
+      event.originMemberId && event.originMemberId.trim() !== ''
+        ? this.formatAgentLabel(event.originMemberId)
+        : this.currentDialog?.agentId && this.currentDialog.agentId.trim() !== ''
+          ? this.formatAgentLabel(this.currentDialog.agentId)
+          : 'Assistant';
+    const carryoverLabel =
       this.uiLanguage === 'zh'
-        ? `旧程诉请结果补入 · C ${String(originCourse)}`
-        : `Carry-over tellask result · C ${String(originCourse)}`;
+        ? `旧程结果补入 · C${String(originCourse)}`
+        : `Carry-over result · C${String(originCourse)}`;
+    const normalizedSessionSlug = (() => {
+      switch (event.callName) {
+        case 'tellask':
+          return event.sessionSlug.trim();
+        case 'tellaskSessionless':
+        case 'freshBootsReasoning':
+          return '';
+      }
+    })();
+    const sessionSlugHtml =
+      normalizedSessionSlug === ''
+        ? ''
+        : `<span class="teammate-session-slug">· ${this.escapeHtml(normalizedSessionSlug)}</span>`;
+    const visibleResponse = event.response;
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
           <div class="bubble-title">
             <div class="title-row">
               <div class="title-left">
-                <span class="author-name">${this.escapeHtml(titleText)}</span>
+                <span class="teammate-kind-label">${this.escapeHtml(carryoverLabel)}</span>
+                <span class="teammate-meta">
+                  <span class="requester-name">${this.escapeHtml(requesterLabel)}</span>
+                  <span class="response-arrow" aria-hidden="true">←</span>
+                  <span class="author-name">${this.escapeHtml(responderLabel)}</span>
+                </span>
+                ${sessionSlugHtml}
               </div>
               <div class="title-right">
                 <div class="bubble-title-actions" data-call-id="${this.escapeHtml(event.callId)}">
@@ -3352,7 +3382,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const contentEl = el.querySelector('.teammate-content');
     if (contentEl) {
       const md = this.createMarkdownSection();
-      md.setRawMarkdown(event.content);
+      md.setRawMarkdown(visibleResponse);
       contentEl.appendChild(md);
     }
 
