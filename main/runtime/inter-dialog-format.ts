@@ -16,6 +16,7 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatRegisteredTellaskCalleeUpdateNotice } from './driver-messages';
 import { markdownQuote } from './markdown-format';
 import { buildSubdialogRoleHeaderCopy } from './reply-prompt-copy';
+import { getTellaskKindLabel } from './tellask-labels';
 
 export type InterDialogCallContent = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -92,14 +93,14 @@ export type RuntimeTransferMarkers = Readonly<{
 export function getRuntimeTransferMarkers(language: LanguageCode): RuntimeTransferMarkers {
   if (language === 'zh') {
     return {
-      tellaskBack: '【回问诉请】',
+      tellaskBack: getTellaskKindLabel({ language, name: 'tellaskBack', bracketed: true }),
       finalCompleted: '【最终完成】',
       fbrDirectReply: '【FBR-直接回复】',
       fbrReasoningOnly: '【FBR-仅推理】',
     };
   }
   return {
-    tellaskBack: '【TellaskBack】',
+    tellaskBack: getTellaskKindLabel({ language, name: 'tellaskBack', bracketed: true }),
     finalCompleted: '【Completed】',
     fbrDirectReply: '【FBR-Direct Reply】',
     fbrReasoningOnly: '【FBR-Reasoning Only】',
@@ -181,6 +182,19 @@ function stripMentionPrefix(value: string): string {
   return trimmed.startsWith('@') ? trimmed.slice(1).trim() : trimmed;
 }
 
+function formatQuotedRequestBlock(args: {
+  title: string;
+  mentionLine?: string;
+  body: string;
+}): string {
+  const lines = [args.title, ''];
+  if (args.mentionLine && args.mentionLine.trim() !== '') {
+    lines.push(markdownQuote(args.mentionLine));
+  }
+  lines.push(markdownQuote(requireNonEmpty(args.body, 'body')));
+  return lines.join('\n');
+}
+
 export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
   const runtimeMarkers = getRuntimeTransferMarkers(language);
@@ -245,13 +259,17 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   const greeting =
     language === 'zh'
       ? sessionSlug === ''
-        ? '现在：'
-        : `现在（${sessionSlug}）：`
+        ? '诉请内容：'
+        : `诉请内容（${sessionSlug}）：`
       : sessionSlug === ''
-        ? 'Now:'
-        : `Now (${sessionSlug}):`;
+        ? 'Request:'
+        : `Request (${sessionSlug}):`;
 
-  return `${roleHeader}\n\n${markerProtocolNote}\n\n${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
+  return `${roleHeader}\n\n${markerProtocolNote}\n\n${formatQuotedRequestBlock({
+    title: greeting,
+    mentionLine,
+    body: tellaskContent,
+  })}\n`;
 }
 
 export function formatUpdatedAssignmentFromSupdialog(
@@ -275,30 +293,46 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
       input.supdialogAssignment.callName === 'tellask' ||
       input.supdialogAssignment.callName === 'tellaskSessionless'
     ) {
-      return markdownQuote(requireMentionLine(input.supdialogAssignment.mentionList ?? []));
+      return requireMentionLine(input.supdialogAssignment.mentionList ?? []);
     }
     return '';
   })();
-  const hello =
-    language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理 ${supMention} 以下任务期间（如下引文）：`
-      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, while working on the following original task of ${supMention} (quoted following):`;
-  const asking =
-    language === 'zh'
-      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
-      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
+  const fromAgentId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  const toAgentId = requireNonEmpty(input.toAgentId, 'toAgentId');
+  const askBackLabel = getTellaskKindLabel({ language, name: 'tellaskBack', bracketed: true });
 
   const subMention = (() => {
     if (
       input.subdialogRequest.callName === 'tellask' ||
       input.subdialogRequest.callName === 'tellaskSessionless'
     ) {
-      return markdownQuote(requireMentionLine(input.subdialogRequest.mentionList ?? []));
+      return requireMentionLine(input.subdialogRequest.mentionList ?? []);
     }
     return '';
   })();
+  const intro =
+    language === 'zh'
+      ? `@${fromAgentId} 发来一条 ${askBackLabel} 给 @${toAgentId}。`
+      : `@${fromAgentId} sent a ${askBackLabel} to @${toAgentId}.`;
+  const originalTitle = language === 'zh' ? '原诉请：' : 'Original request:';
+  const askBackTitle = language === 'zh' ? '回问内容：' : 'Ask-back content:';
 
-  return `${hello}\n\n${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${subMention ? `${subMention}\n` : ''}${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
+  return [
+    intro,
+    '',
+    formatQuotedRequestBlock({
+      title: originalTitle,
+      mentionLine: supMention,
+      body: requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'),
+    }),
+    '',
+    formatQuotedRequestBlock({
+      title: askBackTitle,
+      mentionLine: subMention,
+      body: requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'),
+    }),
+    '',
+  ].join('\n');
 }
 
 export function formatTellaskResponseContent(input: TellaskResponseFormatInput): string {

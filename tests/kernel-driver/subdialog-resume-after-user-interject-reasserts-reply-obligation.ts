@@ -28,24 +28,7 @@ async function main(): Promise<void> {
     };
     const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
     const interjectResponse = 'Handled the local interruption only.';
-    const reassertionPrompt = buildReplyObligationReassertionPrompt({
-      directive: assignmentDirective,
-      language: 'en',
-    });
     const finalResponse = 'Nested work is back, so I can now finalize the parent sideline.';
-
-    await writeMockDb(process.cwd(), [
-      {
-        message: interjectPrompt,
-        role: 'user',
-        response: interjectResponse,
-      },
-      {
-        message: reassertionPrompt,
-        role: 'user',
-        response: finalResponse,
-      },
-    ]);
 
     const root = await createRootDialog('tester');
     root.disableDiligencePush = true;
@@ -63,6 +46,28 @@ async function main(): Promise<void> {
       },
     );
     subdialog.disableDiligencePush = true;
+
+    const reassertionPrompt = await buildReplyObligationReassertionPrompt({
+      dlg: subdialog,
+      directive: assignmentDirective,
+      language: 'en',
+    });
+    assert.match(reassertionPrompt, /@tester's 【Fresh Tellask】 is still waiting for your reply/u);
+    assert.match(reassertionPrompt, /call `replyTellaskSessionless` to deliver it/u);
+    assert.match(reassertionPrompt, /not asking you to reply immediately/u);
+
+    await writeMockDb(process.cwd(), [
+      {
+        message: interjectPrompt,
+        role: 'user',
+        response: interjectResponse,
+      },
+      {
+        message: reassertionPrompt,
+        role: 'user',
+        response: finalResponse,
+      },
+    ]);
 
     await DialogPersistence.appendPendingSubdialog(root.id, {
       subdialogId: subdialog.id.selfId,

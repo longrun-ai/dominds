@@ -4,6 +4,7 @@ import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { DialogPersistence } from '../persistence';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import { getTellaskKindLabel } from '../runtime/tellask-labels';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
@@ -68,28 +69,10 @@ function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
 
 function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
   if (view.callType === 'A') {
-    return language === 'zh' ? '回问诉请' : 'TellaskBack';
+    return getTellaskKindLabel({ language, name: 'tellaskBack' });
   }
 
-  if (language === 'zh') {
-    switch (view.callName) {
-      case 'tellask':
-        return '长线诉请';
-      case 'tellaskSessionless':
-        return '一次性诉请';
-      case 'freshBootsReasoning':
-        return '扪心自问（FBR）';
-    }
-  }
-
-  switch (view.callName) {
-    case 'tellask':
-      return 'Tellask Session';
-    case 'tellaskSessionless':
-      return 'Fresh Tellask';
-    case 'freshBootsReasoning':
-      return 'Fresh Boots Reasoning (FBR)';
-  }
+  return getTellaskKindLabel({ language, name: view.callName });
 }
 
 function pendingTargetLabel(language: LanguageCode, view: PendingSubdialogView): string {

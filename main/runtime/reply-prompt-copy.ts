@@ -1,4 +1,6 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import { getTellaskKindLabel } from './tellask-labels';
 
 export const ACTIVE_REPLY_TOOL_PREFIX_EN = '[Dominds active reply tool]';
 export const ACTIVE_REPLY_TOOL_PREFIX_ZH = '[Dominds 当前回复工具]';
@@ -6,6 +8,45 @@ export const REPLY_REASSERTION_PREFIX_EN = '[Dominds long-line reminder]';
 export const REPLY_REASSERTION_PREFIX_ZH = '[Dominds 长线提醒]';
 export const REPLY_SUPPRESSION_PREFIX_EN = '[Dominds handle this interjection first]';
 export const REPLY_SUPPRESSION_PREFIX_ZH = '[Dominds 先接住这轮]';
+
+type ReplyObligationCopyArgs = {
+  language: LanguageCode;
+  directive: TellaskReplyDirective;
+  replyTargetAgentId?: string;
+};
+
+function formatReplyTargetAgentId(agentId: string | undefined, language: LanguageCode): string {
+  if (agentId && agentId.trim() !== '') {
+    return `@${agentId}`;
+  }
+  return language === 'zh' ? '对方' : 'the other dialog';
+}
+
+function buildReplyObligationReassertionLine(args: ReplyObligationCopyArgs): string {
+  const toolName = args.directive.expectedReplyCallName;
+  const replyTarget = formatReplyTargetAgentId(args.replyTargetAgentId, args.language);
+  const kindLabel = getTellaskKindLabel({
+    language: args.language,
+    name: args.directive.expectedReplyCallName,
+    bracketed: true,
+  });
+  return args.language === 'zh'
+    ? `${replyTarget} 的${kindLabel}还在等你的回复。等你准备好回复内容后，调用 \`${toolName}\` 完成回复。这里不是催你立刻回复。`
+    : `${replyTarget}'s ${kindLabel} is still waiting for your reply. Once your reply content is ready, call \`${toolName}\` to deliver it. This is not asking you to reply immediately.`;
+}
+
+function buildReplyToolReminderLine(args: ReplyObligationCopyArgs): string {
+  const toolName = args.directive.expectedReplyCallName;
+  const replyTarget = formatReplyTargetAgentId(args.replyTargetAgentId, args.language);
+  const kindLabel = getTellaskKindLabel({
+    language: args.language,
+    name: args.directive.expectedReplyCallName,
+    bracketed: true,
+  });
+  return args.language === 'zh'
+    ? `${replyTarget} 的${kindLabel}还在等你的回复。请现在调用 \`${toolName}({ replyContent })\` 完成回复。`
+    : `${replyTarget}'s ${kindLabel} is still waiting for your reply. Call \`${toolName}({ replyContent })\` now to deliver it.`;
+}
 
 export function buildActiveReplyToolNote(args: {
   language: LanguageCode;
@@ -36,14 +77,20 @@ export function buildSubdialogRoleHeaderCopy(args: {
   requesterId: string;
   expectedReplyTool?: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' | undefined;
 }): string {
+  const requester = `@${args.requesterId}`;
   if (args.expectedReplyTool === undefined) {
     return args.language === 'zh'
-      ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${args.requesterId}（当前发起本次诉请）。只有在需要回问上游时才调用 \`tellaskBack\`。`
-      : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${args.requesterId} (the current caller). Call \`tellaskBack\` only when you need to ask back upstream.`;
+      ? `${requester} 的诉请已交给你处理。只有需要回问时，才调用 \`tellaskBack\`。`
+      : `You are handling ${requester}'s request. Call \`tellaskBack\` only when you truly need to ask back.`;
   }
+  const kindLabel = getTellaskKindLabel({
+    language: args.language,
+    name: args.expectedReplyTool,
+    bracketed: true,
+  });
   return args.language === 'zh'
-    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${args.requesterId}（当前发起本次诉请）。先把当前任务做对；若本轮最终需要对上游完成交付，必须精确调用 \`${args.expectedReplyTool}\` 收口，不要改选其他 \`reply*\`。只有在需要回问上游时才调用 \`tellaskBack\`。`
-    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${args.requesterId} (the current caller). First, do the current task correctly; if this round ultimately needs final delivery back upstream, you must close with \`${args.expectedReplyTool}\` exactly and must not switch to another \`reply*\` variant. Call \`tellaskBack\` only when you need to ask back upstream.`;
+    ? `${requester} 的${kindLabel}已交给你处理。等你准备好回复内容后，调用 \`${args.expectedReplyTool}\` 完成回复。只有需要回问时，才调用 \`tellaskBack\`。`
+    : `${requester}'s ${kindLabel} is now assigned to you. Once your reply content is ready, call \`${args.expectedReplyTool}\` to deliver it. Call \`tellaskBack\` only when you truly need to ask back.`;
 }
 
 export function buildReplyObligationSuppressionGuideText(language: LanguageCode): string {
@@ -63,24 +110,47 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
   ].join('\n');
 }
 
-export function buildReplyObligationReassertionText(args: {
+export function buildReplyObligationReassertionText(args: ReplyObligationCopyArgs): string {
+  return args.language === 'zh'
+    ? [
+        REPLY_REASSERTION_PREFIX_ZH,
+        '',
+        '刚才那轮插话已经处理完了，现在继续原来的长线任务。',
+        '',
+        buildReplyObligationReassertionLine(args),
+      ].join('\n')
+    : [
+        REPLY_REASSERTION_PREFIX_EN,
+        '',
+        'The interjection has been handled. Now continue the original longer-running task.',
+        '',
+        buildReplyObligationReassertionLine(args),
+      ].join('\n');
+}
+
+export function buildReplyToolReminderText(args: {
   language: LanguageCode;
-  toolName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  directive: TellaskReplyDirective;
+  prefix: string;
+  replyTargetAgentId?: string;
 }): string {
-  if (args.language === 'zh') {
-    return [
-      REPLY_REASSERTION_PREFIX_ZH,
-      '刚才那轮用户插话已经先接住了，现在继续原来那条长线任务本身。',
-      '继续做该做的事，别只盯着 `reply*` 工具名。',
-      `真走到需要对上游完成交付的时候，再精确调用 \`${args.toolName}\`；这条提醒不是在催你立刻收口。`,
-    ].join('\n');
-  }
-  return [
-    REPLY_REASSERTION_PREFIX_EN,
-    'The user interjection has already been handled first; now continue the original longer-running task itself.',
-    'Keep doing the actual work instead of fixating on the `reply*` tool name.',
-    `Only when that work truly reaches final delivery upstream should you call \`${args.toolName}\`; this reminder is not asking you to close immediately.`,
-  ].join('\n');
+  return args.language === 'zh'
+    ? [
+        args.prefix,
+        '',
+        `你刚才已经写了正文，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
+        '',
+        buildReplyToolReminderLine(args),
+        '如果你再次直接输出最终消息而仍不调用该工具，运行时当前会暂按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
+      ].join('\n')
+    : [
+        args.prefix,
+        '',
+        `You already wrote the reply body, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
+        '',
+        buildReplyToolReminderLine(args),
+        'If you still emit a plain final message without the tool, runtime will currently deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
+      ].join('\n');
 }
 
 export function isStandaloneRuntimeGuidePromptContent(content: string): boolean {

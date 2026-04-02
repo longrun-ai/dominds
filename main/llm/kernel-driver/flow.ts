@@ -4,7 +4,7 @@ import {
   applyRegisteredAppDialogRunControls,
   renderAppRunControlBlockForPreDrive,
 } from '../../apps/run-control';
-import { DialogID, SubDialog } from '../../dialog';
+import { DialogID, SubDialog, type Dialog } from '../../dialog';
 import {
   clearActiveRun,
   createActiveRun,
@@ -20,6 +20,7 @@ import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatNewCourseStartPrompt,
 } from '../../runtime/driver-messages';
+import { buildReplyToolReminderText } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { LlmConfig } from '../client';
 import {
@@ -35,6 +36,7 @@ import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from '.
 import {
   buildReplyObligationReassertionPrompt,
   resolvePromptReplyGuidance,
+  resolveReplyTargetAgentId,
 } from './reply-guidance';
 import type { ScheduleDriveFn, SubdialogReplyTarget } from './subdialog';
 import {
@@ -86,27 +88,20 @@ function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
   return type === 'tellask_reply_resolution_record' || type === 'gen_finish_record';
 }
 
-function buildReplyToolReminderPrompt(args: {
+async function buildReplyToolReminderPrompt(args: {
+  dlg: Dialog;
   directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
-}): string {
-  const toolName = args.directive.expectedReplyCallName;
-  if (args.language === 'zh') {
-    return [
-      REPLY_TOOL_REMINDER_PREFIX_ZH,
-      '',
-      `你刚才给出了正文，但尚未调用必需的 \`${toolName}\`。`,
-      `请现在立刻调用 \`${toolName}({ replyContent })\` 完成本次对话间回贴，不要再直接输出最终消息。`,
-      '如果你再次直接输出最终消息而仍不调用该工具，运行时当前会暂按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
-    ].join('\n');
-  }
-  return [
-    REPLY_TOOL_REMINDER_PREFIX_EN,
-    '',
-    `You produced a reply body but did not call the required \`${toolName}\` tool.`,
-    `Call \`${toolName}({ replyContent })\` now to deliver this inter-dialog reply. Do not emit another plain final message.`,
-    'If you still emit a plain final message without the tool, runtime will currently deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
-  ].join('\n');
+}): Promise<string> {
+  return buildReplyToolReminderText({
+    language: args.language,
+    directive: args.directive,
+    prefix: args.language === 'zh' ? REPLY_TOOL_REMINDER_PREFIX_ZH : REPLY_TOOL_REMINDER_PREFIX_EN,
+    replyTargetAgentId: await resolveReplyTargetAgentId({
+      dlg: args.dlg,
+      directive: args.directive,
+    }),
+  });
 }
 
 type PendingDiagnosticsSnapshot =
@@ -383,7 +378,8 @@ async function maybeResolveDeferredReplyReassertionPrompt(
   await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
   const language = getWorkLanguage();
   return {
-    content: buildReplyObligationReassertionPrompt({
+    content: await buildReplyObligationReassertionPrompt({
+      dlg: dialog,
       directive: deferredReplyReassertion.directive,
       language,
     }),
@@ -873,7 +869,8 @@ export async function executeDriveRound(args: {
       if (!activePromptWasReplyToolReminder) {
         const language = getWorkLanguage();
         followUp = {
-          prompt: buildReplyToolReminderPrompt({
+          prompt: await buildReplyToolReminderPrompt({
+            dlg: dialog,
             directive: activeTellaskReplyDirective,
             language,
           }),

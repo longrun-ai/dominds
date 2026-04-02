@@ -1,4 +1,6 @@
-import { Dialog, SubDialog } from '../../dialog';
+import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
+import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
@@ -14,6 +16,33 @@ import type { KernelDriverHumanPrompt } from './types';
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
 const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
+
+export async function resolveReplyTargetAgentId(args: {
+  dlg: Dialog;
+  directive: TellaskReplyDirective;
+}): Promise<string | undefined> {
+  switch (args.directive.expectedReplyCallName) {
+    case 'replyTellaskBack': {
+      const rootDialog =
+        args.dlg instanceof RootDialog
+          ? args.dlg
+          : args.dlg instanceof SubDialog
+            ? args.dlg.rootDialog
+            : undefined;
+      if (!rootDialog) {
+        return undefined;
+      }
+      const targetDialogId = new DialogID(args.directive.targetDialogId, rootDialog.id.rootId);
+      const targetDialog =
+        rootDialog.lookupDialog(targetDialogId.selfId) ??
+        (await ensureDialogLoaded(rootDialog, targetDialogId, rootDialog.status));
+      return targetDialog?.agentId;
+    }
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+      return args.dlg instanceof SubDialog ? args.dlg.assignmentFromSup.originMemberId : undefined;
+  }
+}
 
 function buildPromptContentWithExactReplyToolName(args: {
   dlg: Dialog;
@@ -63,13 +92,12 @@ function buildPromptContentWithExactReplyToolName(args: {
   if (args.prompt.content.startsWith(activePrefix)) {
     return args.prompt.content;
   }
-  const toolName = directive.expectedReplyCallName;
   if (reminderPrefixes.some((prefix) => args.prompt.content.startsWith(prefix))) {
     return args.prompt.content;
   }
   const note = buildActiveReplyToolNote({
     language: args.language,
-    toolName,
+    toolName: directive.expectedReplyCallName,
   });
   return `${note}\n\n${args.prompt.content}`;
 }
@@ -146,12 +174,17 @@ export function buildReplyObligationSuppressionGuide(args: { language: 'zh' | 'e
   return buildReplyObligationSuppressionGuideText(args.language);
 }
 
-export function buildReplyObligationReassertionPrompt(args: {
+export async function buildReplyObligationReassertionPrompt(args: {
+  dlg: Dialog;
   directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
-}): string {
+}): Promise<string> {
   return buildReplyObligationReassertionText({
     language: args.language,
-    toolName: args.directive.expectedReplyCallName,
+    directive: args.directive,
+    replyTargetAgentId: await resolveReplyTargetAgentId({
+      dlg: args.dlg,
+      directive: args.directive,
+    }),
   });
 }
