@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import type { FuncCallRecord } from '@longrun-ai/kernel/types/storage';
+import type { FuncCallRecord, FuncResultRecord } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 import { DialogPersistence } from '../../main/persistence';
@@ -88,6 +88,45 @@ async function main(): Promise<void> {
       repairedNewSpecialResult,
       undefined,
       'expected tellask-special records to stay out of ordinary crash-repair func_result synthesis',
+    );
+
+    const orphanedDlg = await createRootDialog('tester');
+    const orphanedResult: FuncResultRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'func_result_record',
+      genseq: 1,
+      id: 'call-orphaned',
+      name: 'readonly_shell',
+      content: 'Invalid arguments: Unexpected field: timeoutSeconds',
+    };
+    await DialogPersistence.appendEvent(orphanedDlg.id, 1, orphanedResult, 'running');
+
+    const restoredWithOrphanedResult = await DialogPersistence.restoreDialog(
+      orphanedDlg.id,
+      'running',
+    );
+    assert(restoredWithOrphanedResult, 'expected restoreDialog to repair orphaned func_result');
+
+    const orphanedCallIndex = restoredWithOrphanedResult.messages.findIndex(
+      (msg) => msg.type === 'func_call_msg' && msg.id === 'call-orphaned',
+    );
+    const orphanedResultIndex = restoredWithOrphanedResult.messages.findIndex(
+      (msg) => msg.type === 'func_result_msg' && msg.id === 'call-orphaned',
+    );
+    assert.notEqual(
+      orphanedCallIndex,
+      -1,
+      'expected restoreDialog to synthesize missing func_call_msg for orphaned result',
+    );
+    assert.notEqual(
+      orphanedResultIndex,
+      -1,
+      'expected restored dialog state to retain orphaned func_result_msg',
+    );
+    assert.equal(
+      orphanedCallIndex + 1,
+      orphanedResultIndex,
+      'expected synthesized func_call_msg to be adjacent to repaired orphaned result',
     );
   });
 

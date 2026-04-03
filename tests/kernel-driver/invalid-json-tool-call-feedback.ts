@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 
 import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
 
@@ -66,6 +67,34 @@ async function main(): Promise<void> {
       funcResults[0]?.content,
       toolError,
       'malformed JSON should surface as a function call failure result',
+    );
+
+    const persistedEvents = await DialogPersistence.loadCourseEvents(dlg.id, 1, 'running');
+    const persistedCall = persistedEvents.find(
+      (event) => event.type === 'func_call_record' && event.id === funcCalls[0]?.id,
+    );
+    assert(persistedCall, 'expected malformed tool call to persist a func_call_record');
+    if (persistedCall.type !== 'func_call_record') {
+      throw new Error('expected persisted malformed tool call to be a func_call_record');
+    }
+    assert.deepEqual(
+      persistedCall.arguments,
+      {},
+      'malformed JSON should persist normalized empty call arguments for restoration',
+    );
+
+    const restored = await DialogPersistence.restoreDialog(dlg.id, 'running');
+    assert(restored, 'expected restoreDialog to succeed after malformed tool call');
+    const restoredCall = restored.messages.find(
+      (msg) => msg.type === 'func_call_msg' && msg.id === funcCalls[0]?.id,
+    );
+    assert(restoredCall, 'expected restored dialog state to include the malformed tool call');
+    const restoredResult = restored.messages.find(
+      (msg) => msg.type === 'func_result_msg' && msg.id === funcCalls[0]?.id,
+    );
+    assert(
+      restoredResult,
+      'expected restored dialog state to include the malformed tool failure result',
     );
 
     const assistantSayings = dlg.msgs.filter(

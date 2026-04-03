@@ -976,6 +976,10 @@ async function executeFunctionCalls(args: {
     const argsStr =
       typeof func.arguments === 'string' ? func.arguments : JSON.stringify(func.arguments ?? {});
     const preparedArgs = prepareFuncCallArguments(argsStr);
+    const persistedArguments: ToolArguments = preparedArgs.ok ? preparedArgs.raw : {};
+
+    await args.dlg.funcCallRequested(func.id, func.name, preparedArgs.contextArguments);
+    await args.dlg.persistFunctionCall(func.id, func.name, persistedArguments, callGenseq);
 
     const tool = args.agentTools.find(
       (t): t is FuncTool => t.type === 'func' && t.name === func.name,
@@ -994,7 +998,6 @@ async function executeFunctionCalls(args: {
     }
 
     let result: FuncResultMsg;
-    let callPersisted = false;
     let resultPersisted = false;
     if (!preparedArgs.ok) {
       log.warn('kernel-driver rejected function call arguments before execution', undefined, {
@@ -1027,10 +1030,6 @@ async function executeFunctionCalls(args: {
 
       const argsObj: ToolArguments = argsValidation.args;
 
-      await args.dlg.funcCallRequested(func.id, func.name, preparedArgs.contextArguments);
-      await args.dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
-      callPersisted = true;
-
       try {
         throwIfAborted(args.abortSignal, args.dlg);
         const output: ToolCallOutput = await tool.call(args.dlg, args.agent, argsObj);
@@ -1062,7 +1061,7 @@ async function executeFunctionCalls(args: {
           genseq: callGenseq,
         };
         if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-          if (callPersisted && !resultPersisted) {
+          if (!resultPersisted) {
             await args.dlg.receiveFuncResult({
               type: 'func_result_msg',
               id: func.id,

@@ -3461,25 +3461,54 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived';
     events: PersistedDialogRecord[];
   }): Promise<PersistedDialogRecord[]> {
-    if (args.status !== 'running') {
-      return args.events;
-    }
-
+    const repaired: PersistedDialogRecord[] = [];
     const unresolvedById = new Map<string, FuncCallRecord>();
     for (const event of args.events) {
       if (event.type === 'func_call_record') {
         unresolvedById.set(event.id, event);
+        repaired.push(event);
         continue;
       }
       if (event.type === 'func_result_record') {
-        unresolvedById.delete(event.id);
+        if (!unresolvedById.has(event.id)) {
+          const repairCall: FuncCallRecord = {
+            ts: event.ts,
+            type: 'func_call_record',
+            genseq: event.genseq,
+            id: event.id,
+            name: event.name,
+            arguments: {},
+          };
+          log.error(
+            'Recovered orphaned persisted func_result_record by synthesizing missing func_call_record during dialog restore',
+            new Error('dialog_restore_recovered_orphaned_func_result'),
+            {
+              rootId: args.dialogId.rootId,
+              selfId: args.dialogId.selfId,
+              course: args.course,
+              genseq: event.genseq,
+              callId: event.id,
+              toolName: event.name,
+            },
+          );
+          repaired.push(repairCall);
+        } else {
+          unresolvedById.delete(event.id);
+        }
+        repaired.push(event);
+        continue;
       }
-    }
-    if (unresolvedById.size === 0) {
-      return args.events;
+      repaired.push(event);
     }
 
-    const repaired = [...args.events];
+    if (args.status !== 'running') {
+      return repaired;
+    }
+
+    if (unresolvedById.size === 0) {
+      return repaired;
+    }
+
     for (const call of unresolvedById.values()) {
       const repairRecord: FuncResultRecord = {
         ts: formatUnifiedTimestamp(new Date()),
