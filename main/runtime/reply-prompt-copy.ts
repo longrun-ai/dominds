@@ -80,8 +80,8 @@ export function buildSubdialogRoleHeaderCopy(args: {
   const requester = `@${args.requesterId}`;
   if (args.expectedReplyTool === undefined) {
     return args.language === 'zh'
-      ? `${requester} 的诉请已交给你处理。只有需要回问时，才调用 \`tellaskBack\`。`
-      : `You are handling ${requester}'s request. Call \`tellaskBack\` only when you truly need to ask back.`;
+      ? `${requester} 已通过诉请安排你处理下述诉请内容。只有需要回问时，才调用 \`tellaskBack\`。`
+      : `${requester} has assigned you to handle the request content below. Call \`tellaskBack\` only when you truly need to ask back.`;
   }
   const kindLabel = getTellaskKindLabel({
     language: args.language,
@@ -89,8 +89,8 @@ export function buildSubdialogRoleHeaderCopy(args: {
     bracketed: true,
   });
   return args.language === 'zh'
-    ? `${requester} 的${kindLabel}已交给你处理。等你准备好回复内容后，调用 \`${args.expectedReplyTool}\` 完成回复。只有需要回问时，才调用 \`tellaskBack\`。`
-    : `${requester}'s ${kindLabel} is now assigned to you. Once your reply content is ready, call \`${args.expectedReplyTool}\` to deliver it. Call \`tellaskBack\` only when you truly need to ask back.`;
+    ? `${requester} 已通过${kindLabel}安排你处理下述诉请内容。等你准备好回复内容后，调用 \`${args.expectedReplyTool}\` 完成回复。只有需要回问时，才调用 \`tellaskBack\`。`
+    : `${requester} has assigned you, via this ${kindLabel}, to handle the request content below. Once your reply content is ready, call \`${args.expectedReplyTool}\` to deliver it. Call \`tellaskBack\` only when you truly need to ask back.`;
 }
 
 export function buildReplyObligationSuppressionGuideText(language: LanguageCode): string {
