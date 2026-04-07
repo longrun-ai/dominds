@@ -6033,6 +6033,10 @@ export async function renderTeamMgmtGuideContent(
               '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
               'member_defaults.provider/model 需要引用这里的 key。',
               '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
+              '`apiQuirks` 可选：写在 `providers.<providerKey>.apiQuirks`，类型是 `string|string[]`。它是 provider 级 transport / 网关兼容开关，用来描述“这个供应商/网关的 API 有非标准行为”，不是 `.minds/team.yaml` 的成员参数，也不是 `model_params`。',
+              '使用原则：只有在你确认某个上游网关确实偏离了标准协议，而且 Dominds 已为这个偏差实现了命名 quirk 时才配置；不要把它当作随意调参入口。当前实现里，未知 quirk 值通常不会报错，但也不会带来任何效果。',
+              '当前已知示例：OpenAI Responses 包装层支持 `apiQuirks: xcode.best`（或数组里包含它），用于把供应商额外发出的 `keepalive` 流事件识别为 heartbeat，而不是当作异常事件处理。最小示例：\n```yaml\nproviders:\n  my_gateway:\n    apiType: openai\n    baseUrl: https://example.invalid/v1\n    apiKeyEnvVar: MY_GATEWAY_API_KEY\n    apiQuirks: xcode.best\n    models:\n      my_model: { name: \"upstream-model-id\" }\n```',
+              '边界提醒：`apiQuirks` 只影响实现里显式消费它的 provider/generator。就当前实现看，至少 OpenAI Responses 路径会读取它；不要假设所有 `apiType` 都支持或需要它。若配置后行为仍异常，应继续检查上游网关文档、抓流事件类型，并结合 `team_mgmt_check_provider(...)` / 运行日志排查。',
             ])
         : fmtHeader('.minds/llm.yaml') +
             fmtList([
@@ -6045,6 +6049,10 @@ export async function renderTeamMgmtGuideContent(
               'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
               'member_defaults.provider/model must reference these keys.',
               'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',
+              '`apiQuirks` is optional under `providers.<providerKey>.apiQuirks`, with type `string|string[]`. It is a provider-level transport / gateway compatibility switch for non-standard upstream API behavior. It is not a `.minds/team.yaml` member field and not part of `model_params`.',
+              'Use it only when you have confirmed that an upstream gateway deviates from the expected protocol and Dominds has an explicitly named quirk for that deviation. Do not treat it as a generic tuning field. In the current implementation, unknown quirk values are usually ignored rather than rejected, so a typo may silently do nothing.',
+              'Known current example: the OpenAI Responses wrapper supports `apiQuirks: xcode.best` (or an array containing it) to treat vendor-emitted `keepalive` stream events as heartbeat events instead of unexpected protocol noise. Minimal example:\n```yaml\nproviders:\n  my_gateway:\n    apiType: openai\n    baseUrl: https://example.invalid/v1\n    apiKeyEnvVar: MY_GATEWAY_API_KEY\n    apiQuirks: xcode.best\n    models:\n      my_model: { name: \"upstream-model-id\" }\n```',
+              'Boundary reminder: `apiQuirks` only affects providers/generators that explicitly read it in code. In the current implementation, at least the OpenAI Responses path consumes it; do not assume every `apiType` supports or needs it. If behavior is still wrong after setting it, continue with upstream gateway docs, raw stream event inspection, and `team_mgmt_check_provider(...)` / runtime logs.',
             ]);
     }
     if (want('mcp')) {
