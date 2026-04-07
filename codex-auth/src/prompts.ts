@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 const promptCache = new Map<string, string>();
+const BUILTIN_PROMPT_DIRECTIVE = '@codex-system-prompt';
+const BUILTIN_PROMPT_DIRECTIVE_PATTERN =
+  /^([ \t]*)@codex-system-prompt(?::([A-Za-z0-9._-]+))?([ \t]*)$/gm;
 
 export function resolveCodexPromptFilename(model: string): string {
   if (model.startsWith('gpt-5.4')) {
@@ -101,4 +104,38 @@ export function loadCodexPromptSync(model: string): string | null {
   }
 
   return null;
+}
+
+function resolveBundledPromptOrThrow(model: string): string {
+  const prompt = loadCodexPromptSync(model);
+  if (prompt === null) {
+    throw new Error(`Bundled Codex prompt template not found for model: ${model}`);
+  }
+  return prompt;
+}
+
+export function resolveCodexPromptTemplateSync(template: string, defaultModel: string): string {
+  let replaced = false;
+  const resolved = template.replace(
+    BUILTIN_PROMPT_DIRECTIVE_PATTERN,
+    (_match: string, leading: string, overrideModel: string | undefined, trailing: string) => {
+      const selectedModel = overrideModel ?? defaultModel;
+      const prompt = resolveBundledPromptOrThrow(selectedModel);
+      replaced = true;
+      return `${leading}${prompt}${trailing}`;
+    },
+  );
+
+  if (!replaced) {
+    return template;
+  }
+
+  return resolved;
+}
+
+export function builtinCodexPromptDirective(model?: string): string {
+  if (model === undefined || model.length === 0) {
+    return BUILTIN_PROMPT_DIRECTIVE;
+  }
+  return `${BUILTIN_PROMPT_DIRECTIVE}:${model}`;
 }

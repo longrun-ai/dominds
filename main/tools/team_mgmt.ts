@@ -3483,6 +3483,8 @@ function renderTeamManual(language: LanguageCode): string {
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 是给其他队友/人类看的“正向诉请路由卡”（建议 5 行内）：写什么时候应该找这个队友、适合把什么问题交给 TA、以及可以期待什么帮助/产出。\n`members.<id>.nogo` 是可选的“反向路由卡”：写哪些事项不要找这个队友、应改找哪类队友/路径。两者都只服务外部路由；不要把该成员自己的执行守则、工作模式、验收标准或完整职责文档堆在这里；这些应写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md`。它们都支持三种形态：string（单句）、YAML list（普通 bullet）、YAML object（带标签的结构化摘要，object key 完全 freeform，value 必须是 string）。\n示例（gofor / nogo）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - 适合在发布前需要回归把关时找 TA\n      - 适合让 TA 梳理高风险改动与手工核验点\n      - 可以期待 TA 返回回归结论、风险清单与建议动作\n    nogo:\n      - 不要找 TA 做主实现或新功能开发\n      - 若是产品文案/信息架构问题，应改找对应实现或设计角色\n```\n示例（gofor, object；按 YAML key 顺序渲染，key freeform）：\n```yaml\nmembers:\n  coordinator:\n    name: 协调者\n    gofor:\n      When: 当你需要协调跨成员推进、拆分任务或收口结果时\n      Ask: 让 TA 负责诉请路由、任务拆分与结果集成\n      Returns: 可期待计划主线、委派方案与验收结论\n    nogo:\n      Avoid: 不要把具体实现、测试细节或文档落地直接塞给 TA\n      RouteTo: 这些应改找对应专职队友\n      Note: 若要写该成员自己的执行守则，请改写进 persona/knowledge/lessons\n```\n如果你把这类结构化内容写成 `- When: ...` / `- Ask: ...` 或 `- Avoid: ...` / `- RouteTo: ...` 的 YAML list，也仍然允许；但 `team_mgmt_validate_team_cfg({})` 会给 warning，建议改用 object，因为可读性更好。',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
+        'Codex provider 专属能力：若成员使用 `provider: codex`，可在 `.minds/team/<id>/persona.*.md` 中单独写一行 `@codex-system-prompt`，显式引入该成员当前模型对应的 stock Codex 内置系统提示；若要固定某个模板版本，可写成 `@codex-system-prompt:<model>`。本地角色边界、交付要求、团队规则继续写在这行后面即可。',
+        '若团队需要一个行为接近 stock Codex 的显在队友，可新增如 `members.codex` 这样的成员，保持 `provider: codex`，默认授予 `ws_read` / `ws_mod` / `codex_style_tools`（除非人类明确要求其他组合），并在该成员 persona 文件开头先写 `@codex-system-prompt`，再补 Dominds 团队自己的约束。',
         '重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。',
         '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示。这个问题不会让整个 Team.load() 崩掉，但相关成员可能缺少 shell 能力，仍应修复。',
 
@@ -3559,6 +3561,8 @@ function renderTeamManual(language: LanguageCode): string {
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a positive routing card for other teammates/humans (≤ 5 lines): write when someone should ask this teammate, what kinds of asks fit, and what help/output to expect.\n`members.<id>.nogo` is an optional negative routing card: write what should not be routed to this teammate and what kind of teammate/path should take it instead. Both fields are external routing metadata; do not dump the member’s own operating rules, work mode, acceptance bar, or full role spec here. Those belong in `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nBoth fields support three shapes: string (single sentence), YAML list (plain bullets), and YAML object (structured labeled summary; object keys are fully freeform and values must be strings).\nExample (`gofor` / `nogo`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Go to this teammate for pre-release regression gating\n      - Ask this teammate to map high-risk changes and manual checks\n      - Expect a regression verdict, risk list, and recommended next actions\n    nogo:\n      - Do not route net-new feature implementation here\n      - For product copy or information architecture, ask the relevant implementer/designer instead\n```\nExample (object form; rendered in YAML key order, freeform keys):\n```yaml\nmembers:\n  coordinator:\n    name: Coordinator\n    gofor:\n      When: when you need cross-member coordination, task breakdown, or result convergence\n      Ask: route requests, split work, and integrate outcomes\n      Returns: an execution plan, delegation decisions, and acceptance conclusions\n    nogo:\n      Avoid: do not route concrete implementation, test-authoring, or doc-writing directly here\n      RouteTo: send those asks to the relevant specialist teammate instead\n      Note: put the member’s own operating rules in persona/knowledge/lessons instead\n```\nIf you write the same structured content as a YAML list like `- When: ...` / `- Ask: ...` or `- Avoid: ...` / `- RouteTo: ...`, it is still accepted, but `team_mgmt_validate_team_cfg({})` will warn and suggest YAML object form for readability.',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
+        'Codex-provider-specific capability: if a teammate uses `provider: codex`, you may place a standalone `@codex-system-prompt` line inside `.minds/team/<id>/persona.*.md` to splice in the stock Codex built-in system prompt for that member’s current model. Use `@codex-system-prompt:<model>` to pin a specific bundled prompt variant. Keep local role boundaries, delivery rules, and team guidance below that line.',
+        'If you want a visible teammate that behaves close to stock Codex, a practical pattern is to add a member such as `members.codex`, keep `provider: codex`, grant the normal coding toolsets (`ws_read` / `ws_mod` / `codex_style_tools` unless the human explicitly asks otherwise), and start that teammate persona file with `@codex-system-prompt` before your Dominds-specific addenda.',
         'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
         windowsHost
           ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_style_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
@@ -3838,6 +3842,7 @@ function renderMindsManual(language: LanguageCode): string {
         'knowledge.*.md：领域知识（可维护）。',
         'lessons.*.md：经验教训（可维护）。',
         '写法约束：`persona/knowledge/lessons` 文件里不要再写重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。',
+        'Codex provider 专属能力：若该成员使用 `provider: codex`，可在 `persona.*.md` 中单独写一行 `@codex-system-prompt`，把 stock Codex 内置系统提示拼接进当前 persona；需要固定某个模板版本时写 `@codex-system-prompt:<model>`。建议把这行放在文件最前面，再继续写本团队自己的角色边界与交付要求。',
         '语言文件命名：优先按工作语言提供 `persona.zh.md` / `persona.en.md` 等；是否回退到 `persona.md`/其他语言版本，以当前实现为准。',
       ]) +
       fmtCodeBlock('text', [
@@ -3849,6 +3854,8 @@ function renderMindsManual(language: LanguageCode): string {
         '      lessons.zh.md',
       ]) +
       fmtCodeBlock('markdown', [
+        '@codex-system-prompt',
+        '',
         '### 核心身份',
         '- 专业程序员，负责按规格完成代码开发。',
         '### 工作边界',
@@ -3873,6 +3880,7 @@ function renderMindsManual(language: LanguageCode): string {
       'knowledge.*.md: domain knowledge (maintainable).',
       'lessons.*.md: lessons learned (maintainable).',
       'Authoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`).',
+      'Codex-provider-specific capability: if this member uses `provider: codex`, you may place a standalone `@codex-system-prompt` line inside `persona.*.md` to splice the stock Codex built-in system prompt into the current persona. Use `@codex-system-prompt:<model>` to pin a specific bundled prompt variant. Put that line near the top, then continue with your team-specific role boundaries and delivery rules.',
       'Language variants: prefer working-language files like `persona.en.md` / `persona.zh.md`; whether it falls back to `persona.md` or other languages follows current implementation.',
     ]) +
     fmtCodeBlock('text', [
@@ -3884,6 +3892,8 @@ function renderMindsManual(language: LanguageCode): string {
       '      lessons.en.md',
     ]) +
     fmtCodeBlock('markdown', [
+      '@codex-system-prompt',
+      '',
       '### Core Identity',
       '- Professional programmer responsible for implementing approved development specs.',
       '### Work Boundaries',

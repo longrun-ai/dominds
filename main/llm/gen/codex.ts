@@ -51,6 +51,8 @@ import {
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
+const CODEX_SYSTEM_PROMPT_DIRECTIVE_PATTERN =
+  /^([ \t]*)@codex-system-prompt(?::([A-Za-z0-9._-]+))?([ \t]*)$/gm;
 
 export function resolveCodexServiceTier(
   serviceTier: ChatGptResponsesRequest['service_tier'] | undefined,
@@ -120,8 +122,6 @@ function limitCodexToolOutputItems(
   return limited;
 }
 
-type CodexPromptLoader = (model: string) => Promise<string | null>;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -138,23 +138,44 @@ function tryExtractApiReturnedModel(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-async function resolveCodexInstructions(
-  model: string,
+export function spliceCodexBuiltinPrompt(params: {
+  template: string;
+  defaultModel: string;
+  loadPrompt: (model: string) => string | null;
+}): string {
+  let replaced = false;
+  const resolved = params.template.replace(
+    CODEX_SYSTEM_PROMPT_DIRECTIVE_PATTERN,
+    (_match: string, leading: string, overrideModel: string | undefined, trailing: string) => {
+      const selectedModel = overrideModel ?? params.defaultModel;
+      const prompt = params.loadPrompt(selectedModel);
+      if (prompt === null) {
+        throw new Error(`Bundled Codex prompt template not found for model: ${selectedModel}`);
+      }
+      replaced = true;
+      return `${leading}${prompt}${trailing}`;
+    },
+  );
+  return replaced ? resolved : params.template;
+}
+
+export function resolveCodexInstructions(
   systemPrompt: string,
-  loadPrompt: CodexPromptLoader,
-): Promise<{ instructions: string; assistantPrelude: string | null }> {
-  const basePrompt = await loadPrompt(model);
-  const trimmedSystemPrompt = systemPrompt.trim();
-  if (!basePrompt) {
-    return {
-      instructions: trimmedSystemPrompt.length > 0 ? systemPrompt : codexFallbackInstructions,
-      assistantPrelude: null,
-    };
+  options?: {
+    defaultModel?: string;
+    loadPrompt?: (model: string) => string | null;
+  },
+): string {
+  const baseInstructions =
+    systemPrompt.trim().length > 0 ? systemPrompt : codexFallbackInstructions;
+  if (options?.defaultModel === undefined || options.loadPrompt === undefined) {
+    return baseInstructions;
   }
-  return {
-    instructions: basePrompt,
-    assistantPrelude: trimmedSystemPrompt.length > 0 ? trimmedSystemPrompt : null,
-  };
+  return spliceCodexBuiltinPrompt({
+    template: baseInstructions,
+    defaultModel: options.defaultModel,
+    loadPrompt: options.loadPrompt,
+  });
 }
 
 function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
@@ -481,7 +502,6 @@ async function buildCodexRequest(
   providerConfig: ProviderConfig,
   agent: Team.Member,
   instructions: string,
-  assistantPrelude: string | null,
   funcTools: FuncTool[],
   requestContext: LlmRequestContext,
   context: ChatMessage[],
@@ -490,12 +510,7 @@ async function buildCodexRequest(
     throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
   }
 
-  const input: ChatGptResponseItem[] = [];
-  if (assistantPrelude) {
-    // Codex backend rejects system messages; pass extra instructions as prior assistant context.
-    input.push(messageItem('assistant', assistantPrelude));
-  }
-  input.push(...(await buildCodexInput(context, providerConfig)));
+  const input = await buildCodexInput(context, providerConfig);
 
   // Provider isolation rule: request construction must only read Codex-native params here.
   const codexParams = agent.model_params?.codex;
@@ -565,16 +580,14 @@ export class CodexGen implements LlmGenerator {
     if (!agent.model) {
       throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
     }
-    const resolvedInstructions = await resolveCodexInstructions(
-      agent.model,
-      systemPrompt,
-      codexAuth.loadCodexPrompt,
-    );
+    const instructions = resolveCodexInstructions(systemPrompt, {
+      defaultModel: agent.model,
+      loadPrompt: codexAuth.loadCodexPromptSync,
+    });
     const payload = await buildCodexRequest(
       providerConfig,
       agent,
-      resolvedInstructions.instructions,
-      resolvedInstructions.assistantPrelude,
+      instructions,
       funcTools,
       requestContext,
       context,

@@ -35,7 +35,7 @@ import {
 } from '../llm/chatgpt.js';
 import { tryRefreshToken } from '../oauth/refresh.js';
 import { parseIdToken } from '../oauth/tokenParsing.js';
-import { loadCodexPromptSync } from '../prompts.js';
+import { builtinCodexPromptDirective, resolveCodexPromptTemplateSync } from '../prompts.js';
 
 interface DoctorOptions {
   codexHome?: string;
@@ -49,9 +49,13 @@ interface DoctorOptions {
   model?: string;
   chatgptBaseUrl?: string;
   chatgptModel?: string;
+  instructions?: string;
+  instructionsFile?: string;
+  builtinInstructions: boolean;
 }
 
 const UTF8_ENCODER = new TextEncoder();
+const DEFAULT_DOCTOR_INSTRUCTIONS = 'You are Codex CLI.';
 
 function parseArgs(argv: string[]): DoctorOptions {
   const options: DoctorOptions = {
@@ -62,6 +66,7 @@ function parseArgs(argv: string[]): DoctorOptions {
     probeModels: true,
     probeReasoning: false,
     probeFuncResult: false,
+    builtinInstructions: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -133,6 +138,20 @@ function parseArgs(argv: string[]): DoctorOptions {
       i += 1;
       continue;
     }
+    if (arg === '--instructions') {
+      options.instructions = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--instructions-file') {
+      options.instructionsFile = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === '--builtin-instructions') {
+      options.builtinInstructions = true;
+      continue;
+    }
     if (arg === '--codex-home') {
       options.codexHome = argv[i + 1];
       i += 1;
@@ -156,6 +175,7 @@ function printHelp(): void {
 
 Usage:
   codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-models] [--probe-reasoning] [--probe-func-result]
+             [--instructions TEXT | --instructions-file PATH | --builtin-instructions]
 
 Options:
   --codex-home PATH   Override CODEX_HOME
@@ -172,6 +192,12 @@ Options:
   --base-url URL      Alias for --chatgpt-base-url
   --chatgpt-base-url URL  Override ChatGPT base URL
   --chatgpt-model NAME    Override ChatGPT model used for the chat probe
+  --instructions TEXT     Use custom instructions text for verification/probe requests.
+                          The special token ${builtinCodexPromptDirective()} (or ${builtinCodexPromptDirective('MODEL')})
+                          may be embedded in TEXT to splice in a bundled Codex prompt.
+  --instructions-file PATH  Read instructions text from a file. Supports the same
+                          ${builtinCodexPromptDirective()} directive syntax as --instructions.
+  --builtin-instructions Use the bundled Codex prompt for the selected model.
   --no-verify         Skip the LLM verification request
   -h, --help          Show this help
 `);
@@ -265,6 +291,15 @@ interface FuncResultProbeResult {
   preflights?: FetchPreflight[];
 }
 
+type InstructionSource = 'default' | 'inline' | 'file' | 'builtin';
+
+interface ChatGptSelection {
+  model: string;
+  instructions: string;
+  instructionSource: InstructionSource;
+  instructionSourceDetail?: string;
+}
+
 interface StreamCollectionResult {
   ok: boolean;
   status?: number;
@@ -340,8 +375,76 @@ function extractModelFromToml(raw: string): string | undefined {
   return undefined;
 }
 
-function resolveLocalInstructions(model: string): string | undefined {
-  return loadCodexPromptSync(model) ?? undefined;
+function readRequiredTextFile(filePath: string, label: string): string {
+  const raw = readFileSync(filePath, 'utf8');
+  if (raw.trim().length === 0) {
+    throw new Error(`${label} is empty: ${filePath}`);
+  }
+  return raw;
+}
+
+function resolveInstructionTemplate(template: string, model: string): string {
+  const resolved = resolveCodexPromptTemplateSync(template, model);
+  if (resolved.trim().length === 0) {
+    throw new Error('Resolved instructions are empty.');
+  }
+  return resolved;
+}
+
+function validateInstructionOptionCombination(options: DoctorOptions): void {
+  const customSources = [
+    options.instructions !== undefined,
+    options.instructionsFile !== undefined,
+    options.builtinInstructions,
+  ].filter(Boolean).length;
+  if (customSources > 1) {
+    throw new Error(
+      'Choose only one of --instructions, --instructions-file, or --builtin-instructions. To compose custom text with a bundled prompt, use the @codex-system-prompt directive inside the custom instructions content.',
+    );
+  }
+}
+
+function resolveInstructionsSelection(
+  options: DoctorOptions,
+  model: string,
+): {
+  instructions: string;
+  instructionSource: InstructionSource;
+  instructionSourceDetail?: string;
+} {
+  validateInstructionOptionCombination(options);
+
+  if (options.builtinInstructions) {
+    return {
+      instructions: resolveInstructionTemplate(builtinCodexPromptDirective(), model),
+      instructionSource: 'builtin',
+      instructionSourceDetail: model,
+    };
+  }
+
+  if (options.instructionsFile !== undefined) {
+    const instructionsFile = path.resolve(options.instructionsFile);
+    return {
+      instructions: resolveInstructionTemplate(
+        readRequiredTextFile(instructionsFile, 'instructions file'),
+        model,
+      ),
+      instructionSource: 'file',
+      instructionSourceDetail: instructionsFile,
+    };
+  }
+
+  if (options.instructions !== undefined) {
+    return {
+      instructions: resolveInstructionTemplate(options.instructions, model),
+      instructionSource: 'inline',
+    };
+  }
+
+  return {
+    instructions: DEFAULT_DOCTOR_INSTRUCTIONS,
+    instructionSource: 'default',
+  };
 }
 
 function summarizeErrorBody(body: string): string {
@@ -794,9 +897,7 @@ async function collectResponseStream(args: {
   }
 }
 
-function selectChatGptModel(
-  options: DoctorOptions,
-): { model: string; instructions: string } | undefined {
+function selectChatGptModel(options: DoctorOptions): ChatGptSelection {
   const override =
     options.chatgptModel ??
     options.model ??
@@ -804,24 +905,16 @@ function selectChatGptModel(
     configModelOverride ??
     undefined;
   if (override) {
-    const localInstructions = resolveLocalInstructions(override);
     return {
       model: override,
-      instructions: localInstructions ?? 'You are Codex CLI.',
+      ...resolveInstructionsSelection(options, override),
     };
   }
 
   const fallbackModels = ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2'];
-  for (const model of fallbackModels) {
-    const instructions = resolveLocalInstructions(model);
-    if (instructions) {
-      return { model, instructions };
-    }
-  }
-
   return {
     model: 'gpt-5.4',
-    instructions: 'You are Codex CLI.',
+    ...resolveInstructionsSelection(options, fallbackModels[0]),
   };
 }
 
@@ -1039,7 +1132,7 @@ async function verifyChatGptConversation(
   options: DoctorOptions,
   codexHome: string,
   auth: AuthDotJson | null,
-  selection: { model: string; instructions: string } | undefined,
+  selection: ChatGptSelection,
 ): Promise<VerifyResult> {
   if (!options.verify) {
     return { ok: false, skipped: true };
@@ -1047,10 +1140,6 @@ async function verifyChatGptConversation(
   if (!auth) {
     return { ok: false, error: 'auth.json missing' };
   }
-  if (!selection) {
-    return { ok: false, skipped: true };
-  }
-
   const accessToken = auth.tokens?.access_token;
   const accountId = getAccountId(auth);
   if (!accessToken) {
@@ -1129,7 +1218,7 @@ async function probeChatGptReasoningStream(
   options: DoctorOptions,
   codexHome: string,
   auth: AuthDotJson | null,
-  selection: { model: string; instructions: string } | undefined,
+  selection: ChatGptSelection,
 ): Promise<StreamProbeResult> {
   if (!options.verify || !options.probeReasoning) {
     return { ok: false, skipped: true };
@@ -1137,10 +1226,6 @@ async function probeChatGptReasoningStream(
   if (!auth) {
     return { ok: false, error: 'auth.json missing' };
   }
-  if (!selection) {
-    return { ok: false, skipped: true };
-  }
-
   const accessToken = auth.tokens?.access_token;
   const accountId = getAccountId(auth);
   if (!accessToken) {
@@ -1313,7 +1398,7 @@ async function probeChatGptFuncResultReplacement(
   options: DoctorOptions,
   codexHome: string,
   auth: AuthDotJson | null,
-  selection: { model: string; instructions: string } | undefined,
+  selection: ChatGptSelection,
 ): Promise<FuncResultProbeResult> {
   if (!options.verify || !options.probeFuncResult) {
     return { ok: false, skipped: true };
@@ -1321,10 +1406,6 @@ async function probeChatGptFuncResultReplacement(
   if (!auth) {
     return { ok: false, error: 'auth.json missing' };
   }
-  if (!selection) {
-    return { ok: false, skipped: true };
-  }
-
   const accessToken = auth.tokens?.access_token;
   const accountId = getAccountId(auth);
   if (!accessToken) {
@@ -1633,8 +1714,9 @@ async function main(): Promise<void> {
   let chatgptModelsProbe: ModelsProbeResult | undefined;
   let chatgptReasoningProbe: StreamProbeResult | undefined;
   let chatgptFuncResultProbe: FuncResultProbeResult | undefined;
+  let selection: ChatGptSelection | undefined;
   try {
-    const selection = selectChatGptModel(options);
+    selection = selectChatGptModel(options);
     chatgptModelsProbe = await probeChatGptModels(options, codexHome, auth);
     chatgptVerify = await verifyChatGptConversation(options, codexHome, auth, selection);
     chatgptReasoningProbe = await probeChatGptReasoningStream(options, codexHome, auth, selection);
@@ -1647,6 +1729,14 @@ async function main(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     chatgptVerify = { ok: false, error: message };
+  }
+  if (selection) {
+    report.chatgpt_instruction_selection = {
+      model: selection.model,
+      source: selection.instructionSource,
+      source_detail: selection.instructionSourceDetail,
+      instructions: summarizeText(selection.instructions, 120),
+    };
   }
   report.chatgpt_models_probe = chatgptModelsProbe;
   report.chatgpt_verify = chatgptVerify;
@@ -1709,6 +1799,13 @@ async function main(): Promise<void> {
   if (typeof report.tokens_stale === 'boolean') {
     console.log(`- tokens stale: ${report.tokens_stale ? 'yes' : 'no'}`);
   }
+  if (selection) {
+    console.log(`- chatgpt verify model: ${selection.model}`);
+    console.log(`- chatgpt instructions source: ${selection.instructionSource}`);
+    if (selection.instructionSourceDetail) {
+      console.log(`- chatgpt instructions source detail: ${selection.instructionSourceDetail}`);
+    }
+  }
 
   if (chatgptVerify) {
     if (chatgptVerify.skipped) {
@@ -1761,9 +1858,7 @@ async function main(): Promise<void> {
           console.log(`- gpt-5.4-mini context_window: ${mini.context_window}`);
         }
         if (typeof mini.auto_compact_token_limit === 'number') {
-          console.log(
-            `- gpt-5.4-mini auto_compact_token_limit: ${mini.auto_compact_token_limit}`,
-          );
+          console.log(`- gpt-5.4-mini auto_compact_token_limit: ${mini.auto_compact_token_limit}`);
         }
         if (typeof mini.effective_context_window_percent === 'number') {
           console.log(

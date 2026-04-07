@@ -111,8 +111,36 @@ await runDeviceCodeLogin({
 The package ships a CLI that inspects `auth.json` and reports status.
 It runs a ChatGPT chat probe unless `--no-verify` is used.
 
+Bundled Codex prompt templates are opt-in for `auth-doctor`.
+By default the verification probe uses a minimal instruction string instead of
+auto-loading a model-specific bundled prompt.
+
 ```sh
 npx @longrun-ai/codex-auth --json
+```
+
+Use custom instructions text directly:
+
+```sh
+npx @longrun-ai/codex-auth --instructions "Reply with exactly OK."
+```
+
+Use custom instructions from a file:
+
+```sh
+npx @longrun-ai/codex-auth --instructions-file ./doctor-prompt.md
+```
+
+Opt into the bundled Codex prompt for the selected model:
+
+```sh
+npx @longrun-ai/codex-auth --builtin-instructions
+```
+
+Compose your own prompt around the bundled one with the `@codex-system-prompt` directive:
+
+```sh
+npx @longrun-ai/codex-auth --instructions $'@codex-system-prompt\n\nThen answer in one short sentence.'
 ```
 
 Refresh tokens (if available):
@@ -162,6 +190,9 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 
 - Default `CODEX_HOME` is `~/.codex` unless overridden.
 - The CLI uses the same file schema as Codex Rust.
+- `@codex-system-prompt` and `@codex-system-prompt:<model>` are reserved directives understood by
+  `auth-doctor` instruction parsing. Use them inside `--instructions` text or an
+  `--instructions-file` to splice in a bundled Codex prompt explicitly.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
 - Reusing the same `conversationId` across turns also reuses the same `prompt_cache_key`.
