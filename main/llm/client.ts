@@ -83,6 +83,9 @@ export type ProviderApiType = 'codex' | 'anthropic' | 'mock' | 'openai' | 'opena
 export type ProviderConfig = {
   name: string;
   apiType: ProviderApiType;
+  // Optional gateway-specific behavior switches for non-standard transport quirks. Accept either a
+  // single string shorthand or a string array in YAML.
+  apiQuirks?: string | string[];
   baseUrl: string;
   apiKeyEnvVar: string;
   // Transport-level cap for a single tool result text payload before provider projection.

@@ -456,6 +456,55 @@ export interface WebSearchCallRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
+export type NativeToolCallSourceRecord = 'openai_responses';
+
+export type NativeToolCallItemTypeRecord =
+  | 'file_search_call'
+  | 'code_interpreter_call'
+  | 'image_generation_call'
+  | 'mcp_call'
+  | 'mcp_list_tools'
+  | 'mcp_approval_request'
+  | 'custom_tool_call';
+
+export type NonCustomNativeToolCallItemTypeRecord = Exclude<
+  NativeToolCallItemTypeRecord,
+  'custom_tool_call'
+>;
+
+export interface NonCustomNativeToolCallRecord extends RootGenerationRef {
+  ts: string;
+  type: 'native_tool_call_record';
+  genseq: number;
+  source?: NativeToolCallSourceRecord;
+  itemType: NonCustomNativeToolCallItemTypeRecord;
+  phase: 'added' | 'done';
+  itemId: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+  sourceTag?: 'priming_script';
+}
+
+export interface CustomNativeToolCallRecord extends RootGenerationRef {
+  ts: string;
+  type: 'native_tool_call_record';
+  genseq: number;
+  source?: NativeToolCallSourceRecord;
+  itemType: 'custom_tool_call';
+  phase: 'added' | 'done';
+  callId: string;
+  itemId?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+  sourceTag?: 'priming_script';
+}
+
+export type NativeToolCallRecord = NonCustomNativeToolCallRecord | CustomNativeToolCallRecord;
+
 export interface HumanTextRecord extends RootGenerationRef {
   ts: string;
   type: 'human_text_record';
@@ -793,6 +842,7 @@ export type PersistedDialogRecord =
   | TellaskCallRecord
   | TellaskResultRecord
   | WebSearchCallRecord
+  | NativeToolCallRecord
   | HumanTextRecord
   | FuncResultRecord
   | QuestForSupRecord

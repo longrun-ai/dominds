@@ -222,7 +222,10 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'tellask_result_record':
     case 'tellask_carryover_record':
       return true;
+    // UI-only timeline records belong to the retained transcript for replay/forking, but they do
+    // not contribute to message-count / context reconstruction semantics.
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'quest_for_sup_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
@@ -307,7 +310,10 @@ function rewriteRecordForFork(
     case 'runtime_guide_record':
     case 'func_call_record':
     case 'tellask_call_record':
+    // UI-only transcript records are safe to copy verbatim into the forked transcript. They are
+    // not part of baseline state reconciliation and must not make forking fail.
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'human_text_record':
     case 'quest_for_sup_record':
     case 'tellask_result_record':

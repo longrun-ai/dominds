@@ -330,6 +330,8 @@ export namespace Team {
     return { en: text, zh };
   }
 
+  // Provider-isolated parameter namespaces. Same-looking field names across providers do not imply
+  // shared semantics, shared defaults, or wrapper-level fallback.
   type CodexModelParams = {
     temperature?: number; // 0-2, controls randomness
     max_tokens?: number; // Maximum tokens to generate
@@ -368,12 +370,12 @@ export namespace Team {
     max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
     json_response?: boolean; // Force JSON response mode (provider-agnostic, provider-specific overrides when set).
 
-    // Codex provider (apiType: codex) parameters.
-    // Codex provider (apiType: codex) parameters.
-    // Preferred for `provider: codex` in `.minds/team.yaml`.
+    // Codex-only parameters for the `codex` wrapper.
+    // Do not expect `openai.*` to fallback here even when fields have similar names.
     codex?: CodexModelParams;
 
-    // OpenAI Responses / Chat Completions parameters.
+    // OpenAI-only parameters for the OpenAI/OpenAI-compatible wrappers.
+    // Do not expect `codex.*` to fallback here even when fields have similar names.
     openai?: OpenAiModelParams;
     // Anthropic specific parameters
     anthropic?: {

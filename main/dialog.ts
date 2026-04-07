@@ -16,6 +16,7 @@ import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-hea
 import type {
   DialogEvent,
   FullRemindersEvent,
+  NativeToolCallPayload,
   ReminderContent,
   TellaskResultEvent,
   WebSearchCallAction,
@@ -1627,6 +1628,10 @@ export abstract class Dialog {
     await this.dlgStore.webSearchCall(this, payload);
   }
 
+  public async nativeToolCall(payload: NativeToolCallPayload): Promise<void> {
+    await this.dlgStore.nativeToolCall(this, payload);
+  }
+
   // Tellask-special call lifecycle events
   public async callingStart(payload: {
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -2350,6 +2355,8 @@ export abstract class DialogStore {
       action?: WebSearchCallAction;
     },
   ): Promise<void> {}
+
+  public async nativeToolCall(_dialog: Dialog, _payload: NativeToolCallPayload): Promise<void> {}
 
   /**
    * Load current course number from persisted metadata

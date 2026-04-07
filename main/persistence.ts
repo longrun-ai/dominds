@@ -16,6 +16,8 @@ import type {
   MarkdownChunkEvent,
   MarkdownFinishEvent,
   MarkdownStartEvent,
+  NativeToolCallEvent,
+  NativeToolCallPayload,
   Q4HAnsweredEvent,
   RuntimeGuideEvent,
   StreamErrorEvent,
@@ -44,6 +46,7 @@ import type {
   FuncResultRecord,
   HumanQuestion,
   HumanTextRecord,
+  NativeToolCallRecord,
   PendingSubdialogsReconciledRecord,
   PendingSubdialogStateRecord,
   PersistedDialogRecord,
@@ -1746,6 +1749,128 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
+  public async nativeToolCall(dialog: Dialog, payload: NativeToolCallPayload): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const itemId =
+      'itemId' in payload && typeof payload.itemId === 'string' ? payload.itemId.trim() : undefined;
+    let record: NativeToolCallRecord;
+    let evt: NativeToolCallEvent;
+    if (payload.itemType === 'custom_tool_call') {
+      const callId = payload.callId.trim();
+      if (callId === '') {
+        log.error(
+          'Protocol violation: custom nativeToolCall called without callId; dropping event',
+          new Error('native_tool_call_empty_call_id'),
+          {
+            dialog,
+            itemType: payload.itemType,
+            phase: payload.phase,
+            itemId: payload.itemId,
+            status: payload.status,
+          },
+        );
+        return;
+      }
+      if (itemId !== undefined && itemId === '') {
+        log.error(
+          'Protocol violation: custom nativeToolCall called with empty optional itemId; dropping event',
+          new Error('native_tool_call_empty_optional_item_id'),
+          {
+            dialog,
+            itemType: payload.itemType,
+            phase: payload.phase,
+            callId,
+            status: payload.status,
+          },
+        );
+        return;
+      }
+      record = {
+        ts: formatUnifiedTimestamp(new Date()),
+        type: 'native_tool_call_record',
+        genseq: dialog.activeGenSeq,
+        source: payload.source,
+        itemType: payload.itemType,
+        phase: payload.phase,
+        callId,
+        ...(itemId !== undefined && itemId !== '' ? { itemId } : {}),
+        status: payload.status,
+        title: payload.title,
+        summary: payload.summary,
+        detail: payload.detail,
+      };
+      evt = {
+        type: 'native_tool_call_evt',
+        course,
+        genseq: dialog.activeGenSeq,
+        source: payload.source,
+        itemType: payload.itemType,
+        phase: payload.phase,
+        callId,
+        ...(itemId !== undefined && itemId !== '' ? { itemId } : {}),
+        status: payload.status,
+        title: payload.title,
+        summary: payload.summary,
+        detail: payload.detail,
+      };
+    } else {
+      if ('callId' in payload) {
+        log.error(
+          'Protocol violation: non-custom nativeToolCall called with unexpected callId; dropping event',
+          new Error('native_tool_call_unexpected_call_id'),
+          {
+            dialog,
+            itemType: payload.itemType,
+            phase: payload.phase,
+            status: payload.status,
+          },
+        );
+        return;
+      }
+      if (itemId === undefined || itemId === '') {
+        log.error(
+          'Protocol violation: non-custom nativeToolCall called without itemId; dropping event',
+          new Error('native_tool_call_empty_item_id'),
+          {
+            dialog,
+            itemType: payload.itemType,
+            phase: payload.phase,
+            status: payload.status,
+          },
+        );
+        return;
+      }
+      record = {
+        ts: formatUnifiedTimestamp(new Date()),
+        type: 'native_tool_call_record',
+        genseq: dialog.activeGenSeq,
+        source: payload.source,
+        itemType: payload.itemType,
+        phase: payload.phase,
+        itemId,
+        status: payload.status,
+        title: payload.title,
+        summary: payload.summary,
+        detail: payload.detail,
+      };
+      evt = {
+        type: 'native_tool_call_evt',
+        course,
+        genseq: dialog.activeGenSeq,
+        source: payload.source,
+        itemType: payload.itemType,
+        phase: payload.phase,
+        itemId,
+        status: payload.status,
+        title: payload.title,
+        summary: payload.summary,
+        detail: payload.detail,
+      };
+    }
+    await this.appendEvent(dialog, course, record);
+    postDialogEvent(dialog, evt);
+  }
+
   /**
    * Emit stream error for current generation lifecycle (uses active genseq when present)
    */
@@ -2878,6 +3003,7 @@ export class DiskFileDialogStore extends DialogStore {
         }
         const webSearchCall = {
           type: 'web_search_call_evt',
+          source: event.source,
           phase: event.phase,
           itemId,
           status: event.status,
@@ -2893,6 +3019,118 @@ export class DiskFileDialogStore extends DialogStore {
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(webSearchCall));
+        }
+        break;
+      }
+
+      case 'native_tool_call_record': {
+        let nativeToolCall: Record<string, unknown>;
+        if (event.itemType === 'custom_tool_call') {
+          const callId = typeof event.callId === 'string' ? event.callId.trim() : '';
+          if (callId === '') {
+            log.error(
+              'Protocol violation: persisted custom native_tool_call_record missing callId; skipping WS event',
+              new Error('persisted_native_tool_call_record_missing_call_id'),
+              {
+                dialog,
+                course,
+                genseq: event.genseq,
+                itemType: event.itemType,
+                phase: event.phase,
+                itemId: event.itemId,
+              },
+            );
+            break;
+          }
+          if (typeof event.itemId === 'string' && event.itemId.trim() === '') {
+            log.error(
+              'Protocol violation: persisted custom native_tool_call_record carried empty optional itemId; skipping WS event',
+              new Error('persisted_native_tool_call_record_empty_optional_item_id'),
+              {
+                dialog,
+                course,
+                genseq: event.genseq,
+                itemType: event.itemType,
+                phase: event.phase,
+                callId,
+              },
+            );
+            break;
+          }
+          nativeToolCall = {
+            type: 'native_tool_call_evt',
+            source: event.source,
+            itemType: event.itemType,
+            phase: event.phase,
+            callId,
+            ...(typeof event.itemId === 'string' && event.itemId.trim() !== ''
+              ? { itemId: event.itemId.trim() }
+              : {}),
+            status: event.status,
+            title: event.title,
+            summary: event.summary,
+            detail: event.detail,
+            course,
+            genseq: event.genseq,
+            dialog: {
+              selfId: dialog.id.selfId,
+              rootId: dialog.id.rootId,
+            },
+            timestamp: event.ts,
+          };
+        } else {
+          if ('callId' in event) {
+            log.error(
+              'Protocol violation: persisted non-custom native_tool_call_record carried unexpected callId; skipping WS event',
+              new Error('persisted_native_tool_call_record_unexpected_call_id'),
+              {
+                dialog,
+                course,
+                genseq: event.genseq,
+                itemType: event.itemType,
+                phase: event.phase,
+                callId: event.callId,
+              },
+            );
+            break;
+          }
+          const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+          if (itemId === '') {
+            log.error(
+              'Protocol violation: persisted native_tool_call_record missing itemId; skipping WS event',
+              new Error('persisted_native_tool_call_record_missing_item_id'),
+              {
+                dialog,
+                course,
+                genseq: event.genseq,
+                itemType: event.itemType,
+                phase: event.phase,
+              },
+            );
+            break;
+          }
+          nativeToolCall = {
+            type: 'native_tool_call_evt',
+            source: event.source,
+            itemType: event.itemType,
+            phase: event.phase,
+            itemId,
+            status: event.status,
+            title: event.title,
+            summary: event.summary,
+            detail: event.detail,
+            course,
+            genseq: event.genseq,
+            dialog: {
+              selfId: dialog.id.selfId,
+              rootId: dialog.id.rootId,
+            },
+            timestamp: event.ts,
+          };
+        }
+
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(nativeToolCall));
         }
         break;
       }
@@ -6071,6 +6309,10 @@ export class DialogPersistence {
         }
         case 'web_search_call_record':
           // UI-only timeline event for native web_search tool call visualization.
+          // Must not be injected into LLM context reconstruction.
+          break;
+        case 'native_tool_call_record':
+          // UI-only timeline event for OpenAI Responses native tool visualization.
           // Must not be injected into LLM context reconstruction.
           break;
 

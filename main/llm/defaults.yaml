@@ -4,6 +4,8 @@
 # - llm_retry_conservative_delay_ms: base delay for provider-classified conservative retries (default 30000; fixed for first 10 retries, then ramps by x1.5 with the normal max-delay cap).
 # - llm_retry_backoff_multiplier: exponential factor between retries (default 1.5).
 # - llm_retry_max_delay_ms: upper bound for retry delay (default 1800000 / 30m).
+# - apiQuirks: optional provider/gateway quirk profile(s) for non-standard transport behavior
+#   and retry classification. Example: `apiQuirks: xcode.best`.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -27,6 +29,9 @@ providers:
           min: 1
           description: Maximum tokens to generate (provider-agnostic override).
       codex:
+        # Isolation principle:
+        # - These hints describe the Codex wrapper only.
+        # - Same-looking fields under `openai` are not aliases and are not fallback-compatible.
         reasoning_effort:
           prominent: true
           default: high
@@ -710,6 +715,9 @@ providers:
           min: 1
           description: Maximum tokens to generate (provider-agnostic override).
       openai:
+        # Isolation principle:
+        # - These hints describe the OpenAI Responses wrapper only.
+        # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.
         reasoning_effort:
           prominent: true
           default: high

@@ -54,7 +54,13 @@ import type {
   ThinkingMsg,
 } from '../client';
 import { LlmConfig } from '../client';
-import type { LlmStreamReceiver, LlmWebSearchCall } from '../gen';
+import type {
+  LlmBatchOutput,
+  LlmBatchResult,
+  LlmStreamReceiver,
+  LlmWebSearchCall,
+  OpenAiResponsesNativeToolCall,
+} from '../gen';
 import { getLlmGenerator } from '../gen/registry';
 import {
   formatToolCallAdjacencyViolation,
@@ -121,6 +127,9 @@ const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
 
 const KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
 
+// Wrapper isolation boundary:
+// - Wrappers emit provider-native web-search events.
+// - The driver is the first place allowed to project them into a narrower shared dialog shape.
 function projectLlmWebSearchCall(call: LlmWebSearchCall): {
   source: 'codex' | 'openai_responses';
   phase: 'added' | 'done';
@@ -335,8 +344,24 @@ function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriv
   };
 }
 
-function hasMeaningfulBatchOutput(messages: readonly ChatMessage[]): boolean {
-  for (const msg of messages) {
+function hasMeaningfulBatchOutput(batch: Pick<LlmBatchResult, 'messages' | 'outputs'>): boolean {
+  if (Array.isArray(batch.outputs) && batch.outputs.length > 0) {
+    for (const output of batch.outputs) {
+      if (output.kind !== 'message') {
+        return true;
+      }
+      const msg = output.message;
+      if (msg.type === 'func_call_msg') {
+        return true;
+      }
+      if ((msg.type === 'saying_msg' || msg.type === 'thinking_msg') && msg.content.trim() !== '') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  for (const msg of batch.messages) {
     if (msg.type === 'func_call_msg') {
       return true;
     }
@@ -1825,12 +1850,42 @@ export async function driveDialogStreamCore(
 
         const newMsgs: ChatMessage[] = [];
         const streamedFuncCalls: FuncCallMsg[] = [];
+        let sawWebSearchSideChannelOutput = false;
+        let sawNativeToolSideChannelOutput = false;
 
         const streamOrBatch = async (): Promise<{
           usage: LlmUsageStats;
           llmGenModel?: string;
           batchMessages?: ChatMessage[];
+          batchOutputs?: LlmBatchOutput[];
         }> => {
+          let batchAttemptCourse: number | undefined;
+          let batchAttemptCheckpointOffset: number | undefined;
+          const rollbackBatchAttempt = async (): Promise<void> => {
+            if (batchAttemptCourse === undefined || batchAttemptCheckpointOffset === undefined) {
+              throw new Error(
+                `kernel-driver batch retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+              );
+            }
+            await DialogPersistence.rollbackCourseFileToOffset(
+              dlg.id,
+              batchAttemptCourse,
+              batchAttemptCheckpointOffset,
+              dlg.status,
+            );
+            postDialogEvent(dlg, {
+              type: 'genseq_discard_evt',
+              course: batchAttemptCourse,
+              genseq: dlg.activeGenSeq,
+              reason: 'retry',
+            });
+
+            sawWebSearchSideChannelOutput = false;
+            sawNativeToolSideChannelOutput = false;
+            streamedFuncCalls.length = 0;
+            newMsgs.length = 0;
+          };
+
           if (agent.streaming === false) {
             const batch = await runLlmRequestWithRetry({
               dlg,
@@ -1843,7 +1898,19 @@ export async function driveDialogStreamCore(
               retryMaxDelayMs: retryPolicy.maxDelayMs,
               classifyFailure: llmGen.classifyFailure?.bind(llmGen),
               canRetry: () => true,
+              onRetry: rollbackBatchAttempt,
+              onGiveUp: rollbackBatchAttempt,
               doRequest: async () => {
+                batchAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+                batchAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
+                  dlg.id,
+                  batchAttemptCourse,
+                  dlg.status,
+                );
+                sawWebSearchSideChannelOutput = false;
+                sawNativeToolSideChannelOutput = false;
+                streamedFuncCalls.length = 0;
+                newMsgs.length = 0;
                 const batchResult = await llmGen.genMoreMessages(
                   providerCfg,
                   agent,
@@ -1858,7 +1925,7 @@ export async function driveDialogStreamCore(
                   dlg.activeGenSeq,
                   abortSignal,
                 );
-                if (!hasMeaningfulBatchOutput(batchResult.messages)) {
+                if (!hasMeaningfulBatchOutput(batchResult)) {
                   throw {
                     status: 503,
                     code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
@@ -1872,6 +1939,7 @@ export async function driveDialogStreamCore(
               usage: batch.usage,
               llmGenModel: batch.llmGenModel,
               batchMessages: batch.messages,
+              batchOutputs: batch.outputs,
             };
           }
 
@@ -1882,7 +1950,6 @@ export async function driveDialogStreamCore(
           let streamAttemptCheckpointOffset: number | undefined;
           let streamAttemptSayingContent: string | undefined;
           let streamAttemptSayingGenseq: number | undefined;
-          let streamSawWebSearchCall = false;
           type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
           let streamActive: StreamActiveState = { kind: 'idle' };
           const rollbackStreamAttempt = async (): Promise<void> => {
@@ -1910,7 +1977,8 @@ export async function driveDialogStreamCore(
             currentSayingContent = '';
             streamAttemptSayingContent = undefined;
             streamAttemptSayingGenseq = undefined;
-            streamSawWebSearchCall = false;
+            sawWebSearchSideChannelOutput = false;
+            sawNativeToolSideChannelOutput = false;
             streamedFuncCalls.length = 0;
             newMsgs.length = 0;
           };
@@ -2006,8 +2074,13 @@ export async function driveDialogStreamCore(
             },
             webSearchCall: async (call) => {
               throwIfAborted(abortSignal, dlg);
-              streamSawWebSearchCall = true;
+              sawWebSearchSideChannelOutput = true;
               await dlg.webSearchCall(projectLlmWebSearchCall(call));
+            },
+            nativeToolCall: async (call: OpenAiResponsesNativeToolCall) => {
+              throwIfAborted(abortSignal, dlg);
+              sawNativeToolSideChannelOutput = true;
+              await dlg.nativeToolCall(call);
             },
           };
 
@@ -2037,7 +2110,8 @@ export async function driveDialogStreamCore(
               currentSayingContent = '';
               streamAttemptSayingContent = undefined;
               streamAttemptSayingGenseq = undefined;
-              streamSawWebSearchCall = false;
+              sawWebSearchSideChannelOutput = false;
+              sawNativeToolSideChannelOutput = false;
               streamedFuncCalls.length = 0;
               newMsgs.length = 0;
               const streamResult = await llmGen.genToReceiver(
@@ -2062,7 +2136,8 @@ export async function driveDialogStreamCore(
                 !hasThinkingContent &&
                 !hasSayingContent &&
                 !hasFunctionCall &&
-                !streamSawWebSearchCall
+                !sawWebSearchSideChannelOutput &&
+                !sawNativeToolSideChannelOutput
               ) {
                 throw {
                   status: 503,
@@ -2094,26 +2169,50 @@ export async function driveDialogStreamCore(
         });
         dlg.setLastContextHealth(contextHealthForGen);
 
-        if (Array.isArray(llmOutput.batchMessages)) {
-          const assistantMsgs = llmOutput.batchMessages.filter(
-            (m): m is SayingMsg | ThinkingMsg =>
-              m.type === 'saying_msg' || m.type === 'thinking_msg',
-          );
-          for (const msg of assistantMsgs) {
-            newMsgs.push(msg);
-            if (msg.type === 'thinking_msg') {
-              await emitThinkingEvents(dlg, msg.content, msg.reasoning);
-            } else if (msg.type === 'saying_msg') {
-              lastAssistantSayingContent = msg.content;
-              lastAssistantSayingGenseq = msg.genseq;
-              lastAssistantReplyTarget = currentReplyTarget;
-              await emitAssistantSaying(dlg, msg.content);
+        const batchOutputs =
+          Array.isArray(llmOutput.batchOutputs) && llmOutput.batchOutputs.length > 0
+            ? llmOutput.batchOutputs
+            : Array.isArray(llmOutput.batchMessages)
+              ? llmOutput.batchMessages.map(
+                  (message): LlmBatchOutput => ({ kind: 'message', message }),
+                )
+              : [];
+        for (const output of batchOutputs) {
+          switch (output.kind) {
+            case 'message': {
+              const msg = output.message;
+              if (msg.type === 'thinking_msg' || msg.type === 'saying_msg') {
+                newMsgs.push(msg);
+                if (msg.type === 'thinking_msg') {
+                  await emitThinkingEvents(dlg, msg.content, msg.reasoning);
+                } else {
+                  lastAssistantSayingContent = msg.content;
+                  lastAssistantSayingGenseq = msg.genseq;
+                  lastAssistantReplyTarget = currentReplyTarget;
+                  await emitAssistantSaying(dlg, msg.content);
+                }
+                break;
+              }
+              if (msg.type === 'func_call_msg') {
+                streamedFuncCalls.push(msg);
+              }
+              break;
+            }
+            case 'web_search_call': {
+              sawWebSearchSideChannelOutput = true;
+              await dlg.webSearchCall(projectLlmWebSearchCall(output.call));
+              break;
+            }
+            case 'native_tool_call': {
+              sawNativeToolSideChannelOutput = true;
+              await dlg.nativeToolCall(output.call);
+              break;
+            }
+            default: {
+              const _exhaustive: never = output;
+              throw new Error(`Unhandled batch output kind: ${String(_exhaustive)}`);
             }
           }
-          const funcCalls = llmOutput.batchMessages.filter(
-            (m): m is FuncCallMsg => m.type === 'func_call_msg',
-          );
-          streamedFuncCalls.push(...funcCalls);
         }
 
         const tellaskCallCount = policy.allowTellaskFunctions
@@ -2314,6 +2413,9 @@ export async function driveDialogStreamCore(
           break;
         }
 
+        // Continue only when this round produced new context that must be fed back into the next
+        // LLM turn. Provider-native side-channel UI events are meaningful output, but they are not
+        // transcript/context inputs and therefore must not trigger another generation round.
         const shouldContinue =
           streamedFuncCalls.length > 0 ||
           routed.pairedMessages.length > 0 ||

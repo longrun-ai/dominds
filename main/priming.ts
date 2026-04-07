@@ -10,6 +10,7 @@ import type {
   GenStartRecord,
   HumanTextRecord,
   JsonValue,
+  NativeToolCallRecord,
   PersistedDialogRecord,
   QuestForSupRecord,
   ReasoningContentItem,
@@ -375,6 +376,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
       return 'response';
     case 'func_call_record':
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -874,8 +876,8 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       }
       const itemId = raw['itemId'];
       const status = raw['status'];
-      if (itemId !== undefined && typeof itemId !== 'string') {
-        throw new Error(`${context}.itemId must be a string when provided`);
+      if (typeof itemId !== 'string' || itemId.trim() === '') {
+        throw new Error(`${context}.itemId must be a non-empty string`);
       }
       if (status !== undefined && typeof status !== 'string') {
         throw new Error(`${context}.status must be a string when provided`);
@@ -888,9 +890,98 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         phase,
       };
       if (source !== undefined) record.source = source;
-      if (itemId !== undefined) record.itemId = itemId;
+      record.itemId = itemId.trim();
       if (status !== undefined) record.status = status;
       if (action !== undefined) record.action = action;
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'native_tool_call_record': {
+      const phase = raw['phase'];
+      const source = raw['source'];
+      const itemType = raw['itemType'];
+      if (phase !== 'added' && phase !== 'done') {
+        throw new Error(`${context}.phase must be added | done`);
+      }
+      if (source !== undefined && source !== 'openai_responses') {
+        throw new Error(`${context}.source must be openai_responses when provided`);
+      }
+      switch (itemType) {
+        case 'file_search_call':
+        case 'code_interpreter_call':
+        case 'image_generation_call':
+        case 'mcp_call':
+        case 'mcp_list_tools':
+        case 'mcp_approval_request':
+        case 'custom_tool_call':
+          break;
+        default:
+          throw new Error(`${context}.itemType must be a supported native tool call type`);
+      }
+      const itemId = raw['itemId'];
+      const callId = raw['callId'];
+      const status = raw['status'];
+      const title = raw['title'];
+      const summary = raw['summary'];
+      const detail = raw['detail'];
+      if (itemId !== undefined && typeof itemId !== 'string') {
+        throw new Error(`${context}.itemId must be a string when provided`);
+      }
+      if (callId !== undefined && typeof callId !== 'string') {
+        throw new Error(`${context}.callId must be a string when provided`);
+      }
+      if (status !== undefined && typeof status !== 'string') {
+        throw new Error(`${context}.status must be a string when provided`);
+      }
+      if (title !== undefined && typeof title !== 'string') {
+        throw new Error(`${context}.title must be a string when provided`);
+      }
+      if (summary !== undefined && typeof summary !== 'string') {
+        throw new Error(`${context}.summary must be a string when provided`);
+      }
+      if (detail !== undefined && typeof detail !== 'string') {
+        throw new Error(`${context}.detail must be a string when provided`);
+      }
+      let record: NativeToolCallRecord;
+      const genseq = expectIntegerField(raw, 'genseq', context);
+      if (itemType === 'custom_tool_call') {
+        if (typeof callId !== 'string' || callId.trim() === '') {
+          throw new Error(`${context}.callId must be a non-empty string for custom_tool_call`);
+        }
+        if (typeof itemId === 'string' && itemId.trim() === '') {
+          throw new Error(`${context}.itemId must be non-empty when provided for custom_tool_call`);
+        }
+        record = {
+          ts: '',
+          type,
+          genseq,
+          itemType,
+          phase,
+          callId: callId.trim(),
+        };
+        if (typeof itemId === 'string' && itemId.trim() !== '') record.itemId = itemId.trim();
+      } else {
+        if (callId !== undefined) {
+          throw new Error(`${context}.callId is not allowed for non-custom native tool calls`);
+        }
+        if (typeof itemId !== 'string' || itemId.trim() === '') {
+          throw new Error(`${context}.itemId must be a non-empty string for ${String(itemType)}`);
+        }
+        record = {
+          ts: '',
+          type,
+          genseq,
+          itemType,
+          phase,
+          itemId: itemId.trim(),
+        };
+      }
+      if (source !== undefined) record.source = source;
+      if (status !== undefined) record.status = status;
+      if (title !== undefined) record.title = title;
+      if (summary !== undefined) record.summary = summary;
+      if (detail !== undefined) record.detail = detail;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1856,6 +1947,7 @@ function remapRecordGenseq(
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'quest_for_sup_record':
@@ -1873,7 +1965,6 @@ function remapRecordGenseq(
             : undefined,
       };
     case 'tellask_reply_resolution_record':
-      return { ...record, genseq: mapGenseq(record.genseq) };
     case 'tellask_carryover_record':
       return { ...record, genseq: mapGenseq(record.genseq) };
     default: {
@@ -1922,6 +2013,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
@@ -1955,6 +2047,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
     case 'tellask_carryover_record':
+    case 'native_tool_call_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ts, ...record };
@@ -2090,6 +2183,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         ...(record.calleeGenseq !== undefined ? { calleeGenseq: record.calleeGenseq } : {}),
       };
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'quest_for_sup_record':
     case 'tellask_call_anchor_record':
     case 'tellask_reply_resolution_record':
@@ -2239,6 +2333,7 @@ function formatScriptMarkdown(args: {
       case 'web_search_call_record': {
         blockMeta['genseq'] = record.genseq;
         blockMeta['phase'] = record.phase;
+        if (record.source !== undefined) blockMeta['source'] = record.source;
         if (record.itemId !== undefined) blockMeta['itemId'] = record.itemId;
         if (record.status !== undefined) blockMeta['status'] = record.status;
         if (record.action !== undefined) blockMeta['action'] = record.action;
@@ -2367,6 +2462,20 @@ function formatScriptMarkdown(args: {
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
+      case 'native_tool_call_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockMeta['itemType'] = record.itemType;
+        blockMeta['phase'] = record.phase;
+        if (record.source !== undefined) blockMeta['source'] = record.source;
+        if (record.itemId !== undefined) blockMeta['itemId'] = record.itemId;
+        if (record.itemType === 'custom_tool_call') blockMeta['callId'] = record.callId;
+        if (record.status !== undefined) blockMeta['status'] = record.status;
+        if (record.title !== undefined) blockMeta['title'] = record.title;
+        if (record.summary !== undefined) blockMeta['summary'] = record.summary;
+        if (record.detail !== undefined) blockMeta['detail'] = record.detail;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        break;
+      }
       default: {
         const _exhaustive: never = record;
         throw new Error(`Unhandled priming record in formatScriptMarkdown: ${String(_exhaustive)}`);
@@ -2396,6 +2505,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':

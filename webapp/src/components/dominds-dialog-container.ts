@@ -6,6 +6,7 @@ import type {
   EndOfUserSayingEvent,
   FullRemindersEvent,
   FuncCallStartEvent,
+  NativeToolCallEvent,
   SubdialogEvent,
   TypedDialogEvent,
   WebSearchCallEvent,
@@ -259,6 +260,8 @@ export class DomindsDialogContainer extends HTMLElement {
   private callTimingTicker: number | null = null;
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
+  private nativeToolSectionByIdentity = new Map<string, HTMLElement>();
+  private nativeToolSectionBySeq = new Map<number, HTMLElement>();
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
@@ -1125,6 +1128,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.nativeToolSectionByIdentity.clear();
+    this.nativeToolSectionBySeq.clear();
     this.queuedUserBubbleByMsgId.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
@@ -1152,6 +1157,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.nativeToolSectionByIdentity.clear();
+    this.nativeToolSectionBySeq.clear();
     this.queuedUserBubbleByMsgId.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
@@ -1388,6 +1395,9 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       case 'web_search_call_evt':
         this.handleWebSearchCall(event);
+        break;
+      case 'native_tool_call_evt':
+        this.handleNativeToolCall(event);
         break;
 
       // Function results
@@ -1820,12 +1830,19 @@ export class DomindsDialogContainer extends HTMLElement {
 
     this.tellaskCallingSectionBySeq.delete(seq);
     this.webSearchSectionBySeq.delete(seq);
+    this.nativeToolSectionBySeq.delete(seq);
     this.pendingTellaskCallAnchorByGenseq.delete(seq);
 
     for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
       const sectionSeq = section.getAttribute('data-genseq');
       if (sectionSeq === String(seq) || !section.isConnected) {
         this.webSearchSectionByItemId.delete(itemId);
+      }
+    }
+    for (const [identityKey, section] of this.nativeToolSectionByIdentity.entries()) {
+      const sectionSeq = section.getAttribute('data-genseq');
+      if (sectionSeq === String(seq) || !section.isConnected) {
+        this.nativeToolSectionByIdentity.delete(identityKey);
       }
     }
 
@@ -2010,13 +2027,6 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     if (!section) {
-      const fromSeq = this.webSearchSectionBySeq.get(event.genseq);
-      if (fromSeq && fromSeq.isConnected && !fromSeq.classList.contains('completed')) {
-        section = fromSeq;
-      }
-    }
-
-    if (!section) {
       section = this.createWebSearchSection();
       section.setAttribute('data-genseq', String(event.genseq));
       const body = bubble.querySelector('.bubble-body');
@@ -2056,6 +2066,147 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  private handleNativeToolCall(
+    event: Extract<TypedDialogEvent, { type: 'native_tool_call_evt' }>,
+  ): void {
+    const bubble = this.ensureGenerationBubbleForSeq(event.genseq, event.timestamp);
+    if (!bubble) {
+      console.warn('native_tool_call_evt received without generation bubble, skipping');
+      return;
+    }
+
+    const identityKey = this.getNativeToolIdentityKey(event);
+    if (identityKey === null) {
+      return;
+    }
+
+    let section: HTMLElement | undefined;
+    const fromIdentity = this.nativeToolSectionByIdentity.get(identityKey);
+    if (fromIdentity && fromIdentity.isConnected) {
+      section = fromIdentity;
+    }
+
+    if (!section) {
+      section = this.createNativeToolSection();
+      section.setAttribute('data-genseq', String(event.genseq));
+      const body = bubble.querySelector('.bubble-body');
+      (body || bubble).appendChild(section);
+    }
+
+    section.setAttribute('data-native-tool-identity-key', identityKey);
+    this.nativeToolSectionByIdentity.set(identityKey, section);
+    this.nativeToolSectionBySeq.set(event.genseq, section);
+
+    this.renderNativeToolSection(section, event);
+    this.scrollToBottom();
+  }
+
+  private nativeToolTypeLabel(itemType: NativeToolCallEvent['itemType']): string {
+    const zh = this.uiLanguage === 'zh';
+    switch (itemType) {
+      case 'file_search_call':
+        return zh ? '文件检索' : 'File Search';
+      case 'code_interpreter_call':
+        return zh ? '代码解释器' : 'Code Interpreter';
+      case 'image_generation_call':
+        return zh ? '图像生成' : 'Image Generation';
+      case 'mcp_call':
+        return zh ? 'MCP 工具调用' : 'MCP Tool Call';
+      case 'mcp_list_tools':
+        return zh ? 'MCP 工具发现' : 'MCP Tool Discovery';
+      case 'mcp_approval_request':
+        return zh ? 'MCP 审批请求' : 'MCP Approval Request';
+      case 'custom_tool_call':
+        return zh ? '自定义工具调用' : 'Custom Tool Call';
+      default: {
+        const _exhaustive: never = itemType;
+        throw new Error(`Unhandled native tool itemType: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  private renderNativeToolSection(
+    section: HTMLElement,
+    event: Extract<TypedDialogEvent, { type: 'native_tool_call_evt' }>,
+  ): void {
+    const stateEl = section.querySelector('.native-tool-state') as HTMLElement | null;
+    const titleEl = section.querySelector('.native-tool-title') as HTMLElement | null;
+    const summaryEl = section.querySelector('.native-tool-summary') as HTMLElement | null;
+    const detailsEl = section.querySelector('.native-tool-details') as HTMLElement | null;
+    if (!stateEl || !titleEl || !summaryEl || !detailsEl) return;
+
+    const status = typeof event.status === 'string' ? event.status.trim() : '';
+    const phase = event.phase;
+    const itemId = 'itemId' in event && typeof event.itemId === 'string' ? event.itemId.trim() : '';
+    const callId = 'callId' in event && typeof event.callId === 'string' ? event.callId.trim() : '';
+    const title = typeof event.title === 'string' && event.title.trim() !== '' ? event.title : '';
+    const summary =
+      typeof event.summary === 'string' && event.summary.trim() !== '' ? event.summary : '';
+    const detail =
+      typeof event.detail === 'string' && event.detail.trim() !== '' ? event.detail : '';
+    const phaseLabel =
+      phase === 'done'
+        ? this.uiLanguage === 'zh'
+          ? '已完成'
+          : 'Done'
+        : this.uiLanguage === 'zh'
+          ? '进行中'
+          : 'Running';
+    titleEl.textContent = title !== '' ? title : this.nativeToolTypeLabel(event.itemType);
+    stateEl.textContent =
+      status !== ''
+        ? this.uiLanguage === 'zh'
+          ? `状态：${status}`
+          : `Status: ${status}`
+        : phaseLabel;
+    stateEl.classList.toggle('is-completed', phase === 'done' || status === 'completed');
+    stateEl.classList.toggle('is-failed', status === 'failed');
+    section.classList.toggle('completed', phase === 'done');
+
+    if (summary !== '') {
+      summaryEl.textContent = summary;
+      summaryEl.classList.remove('is-empty');
+    } else {
+      summaryEl.textContent = this.nativeToolTypeLabel(event.itemType);
+      summaryEl.classList.add('is-empty');
+    }
+
+    const metaParts = [
+      `type: ${event.itemType}`,
+      ...(event.itemType === 'custom_tool_call'
+        ? [`call: ${this.compactWebSearchItemId(callId)}`]
+        : [`item: ${this.compactWebSearchItemId(itemId)}`]),
+      ...(event.itemType === 'custom_tool_call' && itemId !== ''
+        ? [`item: ${this.compactWebSearchItemId(itemId)}`]
+        : []),
+      ...(detail !== '' ? [detail] : []),
+    ];
+    detailsEl.title =
+      event.itemType === 'custom_tool_call'
+        ? `callId: ${callId}${itemId !== '' ? `\nitemId: ${itemId}` : ''}`
+        : `itemId: ${itemId}`;
+    detailsEl.textContent = metaParts.join(' · ');
+  }
+
+  private getNativeToolIdentityKey(
+    event: Extract<TypedDialogEvent, { type: 'native_tool_call_evt' }>,
+  ): string | null {
+    if (event.itemType === 'custom_tool_call') {
+      const callId = event.callId.trim();
+      if (callId === '') {
+        console.warn('custom native_tool_call_evt missing callId, ignoring');
+        return null;
+      }
+      return `custom_tool_call:${callId}`;
+    }
+    const itemId = event.itemId.trim();
+    if (itemId === '') {
+      console.warn('native_tool_call_evt missing itemId, ignoring');
+      return null;
+    }
+    return `${event.itemType}:${itemId}`;
+  }
+
   private resetGenerationBubbleForRetry(bubble: HTMLElement): void {
     bubble.classList.remove('completed');
     bubble.classList.add('generating');
@@ -2068,6 +2219,17 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     if (!body) return;
+
+    // Retry reset semantics:
+    // - If this bubble contains a user-side divider, preserve the divider + user-side content and
+    //   delete only the assistant-side sections after it.
+    // - If there is no divider, this generation had no user-side payload in the bubble (for
+    //   example tool-only / assistant-only turns), so the entire body must be cleared. Leaving the
+    //   old assistant-side DOM behind would duplicate sections when the retried stream re-renders.
+    if (!body.querySelector('.user-response-divider')) {
+      body.replaceChildren();
+      return;
+    }
 
     let sawDivider = false;
     for (const child of Array.from(body.children)) {
@@ -3935,7 +4097,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // If assistant-only nodes already exist when this optional event arrives, report it loudly and
     // still append the divider at the current position (arrival order).
     const assistantOnlyAlreadyStarted = body.querySelector(
-      '.thinking-section, .func-call-section, .web-search-section',
+      '.thinking-section, .func-call-section, .web-search-section, .native-tool-section',
     );
     if (assistantOnlyAlreadyStarted) {
       this.handleProtocolError(
@@ -4183,6 +4345,23 @@ export class DomindsDialogContainer extends HTMLElement {
       </div>
       <div class="web-search-summary"></div>
       <div class="web-search-details"></div>
+    `;
+    return el;
+  }
+
+  private createNativeToolSection(): HTMLElement {
+    const title = this.uiLanguage === 'zh' ? '原生工具' : 'Native Tool';
+    const running = this.uiLanguage === 'zh' ? '进行中' : 'Running';
+    const el = document.createElement('div');
+    el.className = 'native-tool-section';
+    el.innerHTML = `
+      <div class="native-tool-header">
+        <span class="native-tool-icon icon-mask dc-icon-tools" aria-hidden="true"></span>
+        <span class="native-tool-title">${this.escapeHtml(title)}</span>
+        <span class="native-tool-state">${this.escapeHtml(running)}</span>
+      </div>
+      <div class="native-tool-summary"></div>
+      <div class="native-tool-details"></div>
     `;
     return el;
   }
@@ -5252,6 +5431,10 @@ export class DomindsDialogContainer extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.globe};
       }
 
+      .dc-icon-tools {
+        --icon-mask: ${ICON_MASK_URLS.tools};
+      }
+
       .dc-icon-warning {
         --icon-mask: ${ICON_MASK_URLS.warning};
       }
@@ -5509,6 +5692,85 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .web-search-details {
+        margin: 0;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-size: var(--dominds-font-size-xs, 11px);
+        line-height: 1.35;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        font-family: inherit;
+      }
+
+      .native-tool-section {
+        margin: 4px 0;
+        padding: 2px 3px 2px 6px;
+        border-radius: 6px;
+        background: var(--color-bg-tertiary, #f1f5f9);
+        border-left: 3px solid var(--color-warning, #f59e0b);
+      }
+
+      .native-tool-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 3px;
+      }
+
+      .native-tool-icon {
+        width: 14px;
+        height: 14px;
+        color: var(--color-warning, #f59e0b);
+      }
+
+      .native-tool-title {
+        font-weight: 600;
+        color: var(--color-warning, #f59e0b);
+        font-size: var(--dominds-font-size-sm, 12px);
+      }
+
+      .native-tool-state {
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: var(--dominds-font-size-xs, 11px);
+        line-height: 1.4;
+        margin-left: auto;
+        background: color-mix(in srgb, var(--color-warning, #f59e0b) 14%, transparent);
+        color: var(--color-warning, #f59e0b);
+      }
+
+      .native-tool-state.is-completed {
+        background: color-mix(in srgb, var(--color-success, #10b981) 14%, transparent);
+        color: var(--color-success, #10b981);
+      }
+
+      .native-tool-state.is-failed {
+        background: color-mix(in srgb, var(--color-danger, #ef4444) 14%, transparent);
+        color: var(--color-danger, #ef4444);
+      }
+
+      .native-tool-summary {
+        padding: 2px 3px;
+        border-radius: 6px;
+        background: var(--color-bg-secondary, #ffffff);
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+        font-size: var(--dominds-font-size-sm, 12px);
+        font-weight: 600;
+        line-height: 1.45;
+        margin-bottom: 3px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .native-tool-summary.is-empty {
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-weight: 500;
+        font-style: italic;
+      }
+
+      .native-tool-details {
         margin: 0;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         font-size: var(--dominds-font-size-xs, 11px);

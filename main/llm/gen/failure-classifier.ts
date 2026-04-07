@@ -125,6 +125,25 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
   const status = readErrorStatus(error);
   const code = readErrorCode(error);
 
+  if (code === 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM') {
+    return {
+      kind: 'fatal',
+      message,
+      status,
+      code,
+    };
+  }
+
+  if (code === 'XCODE_BEST_STREAM_INTERNAL_ERROR') {
+    return {
+      kind: 'retriable',
+      message,
+      status,
+      code,
+      retryStrategy: 'aggressive',
+    };
+  }
+
   if (status === 503 || status === 529 || isConservativeRetryMessage(lowerMessage)) {
     return {
       kind: 'retriable',

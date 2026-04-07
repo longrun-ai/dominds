@@ -2,6 +2,8 @@
  * Module: llm/gen/codex
  *
  * ChatGPT Codex responses integration (streaming-only).
+ * Isolation principle: this wrapper owns Codex-native request/stream semantics and must not reuse
+ * OpenAI Responses parameter namespaces or event interpretations.
  */
 import type {
   ChatGptEventReceiver,
@@ -27,13 +29,13 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
+  CodexLlmWebSearchCall,
   LlmBatchResult,
   LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
-  LlmWebSearchCall,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
@@ -201,7 +203,8 @@ function buildCodexNativeTools(agent: Team.Member): ChatGptTool[] {
 }
 
 function buildCodexTextControls(agent: Team.Member): ChatGptTextControls | undefined {
-  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  // Provider isolation rule: the Codex wrapper only consumes `model_params.codex.*`.
+  const codexParams = agent.model_params?.codex;
   const text: ChatGptTextControls = {};
   if (codexParams && codexParams.verbosity) {
     text.verbosity = codexParams.verbosity;
@@ -218,7 +221,8 @@ function buildCodexTextControls(agent: Team.Member): ChatGptTextControls | undef
 }
 
 function buildCodexReasoning(agent: Team.Member): ChatGptResponsesRequest['reasoning'] | null {
-  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  // Provider isolation rule: do not borrow OpenAI Responses params inside the Codex wrapper.
+  const codexParams = agent.model_params?.codex;
   if (codexParams?.reasoning_effort === undefined && codexParams?.reasoning_summary === undefined) {
     return null;
   }
@@ -259,7 +263,7 @@ function toLlmWebSearchCall(
   item: ChatGptWebSearchCallItem,
   itemId: string,
   phase: 'added' | 'done',
-): LlmWebSearchCall {
+): CodexLlmWebSearchCall {
   return {
     source: 'codex',
     phase,
@@ -493,7 +497,8 @@ async function buildCodexRequest(
   }
   input.push(...(await buildCodexInput(context, providerConfig)));
 
-  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  // Provider isolation rule: request construction must only read Codex-native params here.
+  const codexParams = agent.model_params?.codex;
   const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
   const reasoning = buildCodexReasoning(agent);
   const include: ChatGptResponsesRequest['include'] =

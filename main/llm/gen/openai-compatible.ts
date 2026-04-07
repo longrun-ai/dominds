@@ -7,6 +7,8 @@
  * - Many "OpenAI-compatible" providers implement the Chat Completions API but not the newer
  *   Responses API. Dominds' `apiType: openai` uses the Responses API; this generator targets
  *   chat-completions-only providers (e.g. Volcano Engine Ark `.../api/v3`).
+ * - Isolation principle: this wrapper may reuse the `model_params.openai.*` namespace, but it
+ *   still owns Chat Completions semantics and must not inherit Codex-specific request meanings.
  */
 
 import OpenAI from 'openai';

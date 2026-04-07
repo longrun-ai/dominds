@@ -198,6 +198,50 @@ export type WebSearchCallEvent = LlmGenDlgEvent & {
   action?: WebSearchCallAction;
 };
 
+export type NativeToolCallSource = 'openai_responses';
+
+export type NativeToolCallItemType =
+  | 'file_search_call'
+  | 'code_interpreter_call'
+  | 'image_generation_call'
+  | 'mcp_call'
+  | 'mcp_list_tools'
+  | 'mcp_approval_request'
+  | 'custom_tool_call';
+
+export type NonCustomNativeToolCallItemType = Exclude<NativeToolCallItemType, 'custom_tool_call'>;
+
+export type NonCustomNativeToolCallEvent = LlmGenDlgEvent & {
+  type: 'native_tool_call_evt';
+  source?: NativeToolCallSource;
+  itemType: NonCustomNativeToolCallItemType;
+  phase: 'added' | 'done';
+  itemId: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+export type CustomNativeToolCallEvent = LlmGenDlgEvent & {
+  type: 'native_tool_call_evt';
+  source?: NativeToolCallSource;
+  itemType: 'custom_tool_call';
+  phase: 'added' | 'done';
+  callId: string;
+  itemId?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+export type NativeToolCallEvent = NonCustomNativeToolCallEvent | CustomNativeToolCallEvent;
+
+export type NativeToolCallPayload =
+  | Omit<NonCustomNativeToolCallEvent, 'type' | 'course' | 'genseq' | 'dialog' | 'timestamp'>
+  | Omit<CustomNativeToolCallEvent, 'type' | 'course' | 'genseq' | 'dialog' | 'timestamp'>;
+
 export type GenerationDiscardEvent = LlmGenDlgEvent & {
   type: 'genseq_discard_evt';
   reason: 'retry';
@@ -500,6 +544,7 @@ export type DialogEvent =
   | FuncCallStartEvent
   | FunctionResultEvent
   | WebSearchCallEvent
+  | NativeToolCallEvent
   | GenerationDiscardEvent
   | TellaskCallStartEvent
   | TellaskResultEvent

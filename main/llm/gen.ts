@@ -9,8 +9,16 @@ export interface LlmStreamResult {
   llmGenModel?: string;
 }
 
+export type LlmBatchOutput =
+  | { kind: 'message'; message: ChatMessage }
+  | { kind: 'web_search_call'; call: LlmWebSearchCall }
+  | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall };
+
 export interface LlmBatchResult {
   messages: ChatMessage[];
+  // Ordered non-streaming projection. Generators should populate this when batch mode can emit
+  // provider-native side-channel outputs whose semantics would be lost if we returned messages only.
+  outputs?: LlmBatchOutput[];
   usage: LlmUsageStats;
   llmGenModel?: string;
 }
@@ -33,6 +41,9 @@ export interface LlmRequestContext {
   promptCacheKey?: string;
 }
 
+// Provider-isolated wrapper event types.
+// Keep provider-native semantics inside each wrapper and only converge at the driver boundary via
+// this discriminated union. Wrapper code must not read or synthesize another provider's variant.
 export type CodexLlmWebSearchAction =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
@@ -43,21 +54,69 @@ export type OpenAiResponsesLlmWebSearchAction =
   | { type: 'open_page'; url?: string }
   | { type: 'find_in_page'; url?: string; pattern?: string };
 
-export type LlmWebSearchCall =
-  | {
-      source: 'codex';
-      phase: 'added' | 'done';
-      itemId: string;
-      status?: string;
-      action?: CodexLlmWebSearchAction;
-    }
-  | {
-      source: 'openai_responses';
-      phase: 'added' | 'done';
-      itemId: string;
-      status?: string;
-      action?: OpenAiResponsesLlmWebSearchAction;
-    };
+export type CodexLlmWebSearchCall = {
+  source: 'codex';
+  phase: 'added' | 'done';
+  itemId: string;
+  status?: string;
+  action?: CodexLlmWebSearchAction;
+};
+
+export type OpenAiResponsesLlmWebSearchCall = {
+  source: 'openai_responses';
+  phase: 'added' | 'done';
+  itemId: string;
+  status?: string;
+  action?: OpenAiResponsesLlmWebSearchAction;
+};
+
+// This union is the cross-wrapper transport boundary only. Do not treat it as evidence that the
+// underlying provider payloads are interchangeable.
+export type LlmWebSearchCall = CodexLlmWebSearchCall | OpenAiResponsesLlmWebSearchCall;
+
+export type OpenAiResponsesNativeToolItemType =
+  | 'file_search_call'
+  | 'code_interpreter_call'
+  | 'image_generation_call'
+  | 'mcp_call'
+  | 'mcp_list_tools'
+  | 'mcp_approval_request'
+  | 'custom_tool_call';
+
+export type OpenAiResponsesNonCustomNativeToolItemType = Exclude<
+  OpenAiResponsesNativeToolItemType,
+  'custom_tool_call'
+>;
+
+export type OpenAiResponsesNonCustomNativeToolCall = {
+  source: 'openai_responses';
+  itemType: OpenAiResponsesNonCustomNativeToolItemType;
+  phase: 'added' | 'done';
+  // Responses-native tool lifecycle events are item-driven for these tool families.
+  itemId: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+export type OpenAiResponsesCustomToolCall = {
+  source: 'openai_responses';
+  itemType: 'custom_tool_call';
+  phase: 'added' | 'done';
+  // Official custom_tool_call semantics are call-driven. `itemId` may arrive later as a platform
+  // item identifier, but `callId` is the stable business identity from the start.
+  callId: string;
+  itemId?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+export type OpenAiResponsesNativeToolCall =
+  | OpenAiResponsesNonCustomNativeToolCall
+  | OpenAiResponsesCustomToolCall;
 
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
@@ -68,6 +127,7 @@ export interface LlmStreamReceiver {
   sayingFinish: () => Promise<void>;
   funcCall: (callId: string, name: string, args: string) => Promise<void>;
   webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
+  nativeToolCall?: (call: OpenAiResponsesNativeToolCall) => Promise<void>;
 
   // Optional hook for generators to surface protocol/streaming anomalies (e.g. overlap) via the runtime.
   // Used only for debugging; generators should still attempt best-effort recovery.

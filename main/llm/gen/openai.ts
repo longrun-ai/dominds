@@ -1,7 +1,9 @@
 /**
  * Module: llm/gen/openai
  *
- * OpenAI-compatible Responses API integration implementing streaming and batch generation.
+ * OpenAI Responses API integration implementing streaming and batch generation.
+ * Isolation principle: this wrapper owns OpenAI Responses request/stream semantics and must not
+ * inherit Codex-specific abstractions or parameter aliases.
  */
 
 import OpenAI from 'openai';
@@ -27,13 +29,18 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
+  LlmBatchOutput,
   LlmBatchResult,
   LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
-  LlmWebSearchCall,
+  OpenAiResponsesLlmWebSearchAction,
+  OpenAiResponsesLlmWebSearchCall,
+  OpenAiResponsesNativeToolCall,
+  OpenAiResponsesNativeToolItemType,
+  OpenAiResponsesNonCustomNativeToolItemType,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
@@ -48,6 +55,22 @@ import {
 } from './tool-output-limit';
 
 const log = createLogger('llm/openai');
+
+const OPENAI_API_QUIRK_VENDOR_HEARTBEAT_EVENT_TYPES: Record<string, readonly string[]> = {
+  'xcode.best': ['keepalive'],
+};
+
+const OPENAI_NATIVE_TOOL_ITEM_TYPES = new Set<OpenAiResponsesNativeToolItemType>([
+  'file_search_call',
+  'code_interpreter_call',
+  'image_generation_call',
+  'mcp_call',
+  'mcp_list_tools',
+  'mcp_approval_request',
+  'custom_tool_call',
+]);
+
+const OPENAI_MALFORMED_BATCH_OUTPUT_ITEM_ERROR_CODE = 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM';
 
 function limitOpenAiToolOutputText(text: string, msg: FuncResultMsg, limitChars: number): string {
   const limited = truncateProviderToolOutputText(text, limitChars);
@@ -108,6 +131,69 @@ function limitOpenAiToolOutputItems(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readEventType(value: unknown): string | null {
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    return null;
+  }
+  return value.type;
+}
+
+function normalizeProviderApiQuirks(providerConfig: ProviderConfig): Set<string> {
+  const raw = providerConfig.apiQuirks;
+  if (typeof raw === 'string') {
+    return raw.trim().length > 0 ? new Set([raw.trim()]) : new Set();
+  }
+  if (Array.isArray(raw)) {
+    return new Set(
+      raw.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== ''),
+    );
+  }
+  return new Set();
+}
+
+function resolveOpenAiVendorHeartbeatEventTypes(providerConfig: ProviderConfig): Set<string> {
+  const eventTypes = new Set<string>();
+  for (const quirk of normalizeProviderApiQuirks(providerConfig)) {
+    const vendorEventTypes = OPENAI_API_QUIRK_VENDOR_HEARTBEAT_EVENT_TYPES[quirk];
+    if (!vendorEventTypes) continue;
+    for (const eventType of vendorEventTypes) {
+      eventTypes.add(eventType);
+    }
+  }
+  return eventTypes;
+}
+
+function maybeAnnotateOpenAiQuirkFailure(providerConfig: ProviderConfig, error: unknown): unknown {
+  const quirks = normalizeProviderApiQuirks(providerConfig);
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : isRecord(error) && typeof error.message === 'string'
+          ? error.message
+          : '';
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    quirks.has('xcode.best') &&
+    lowerMessage.includes('stream error:') &&
+    lowerMessage.includes('internal_error') &&
+    lowerMessage.includes('received from peer')
+  ) {
+    if (error instanceof Error) {
+      const out = error as Error & { code?: string };
+      out.code = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
+      return out;
+    }
+    const out = new Error(message.length > 0 ? message : 'xcode.best stream internal error');
+    (out as Error & { code?: string }).code = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
+    return out;
+  }
+
+  return error;
 }
 
 function tryExtractApiReturnedModel(value: unknown): string | undefined {
@@ -480,9 +566,9 @@ function toOpenAiLlmWebSearchCall(
   item: Record<string, unknown>,
   itemId: string,
   phase: 'added' | 'done',
-): LlmWebSearchCall {
+): OpenAiResponsesLlmWebSearchCall {
   const rawAction = isRecord(item.action) ? item.action : null;
-  let action: LlmWebSearchCall['action'];
+  let action: OpenAiResponsesLlmWebSearchAction | undefined;
   if (rawAction?.type === 'search') {
     const queries =
       Array.isArray(rawAction.queries) &&
@@ -518,6 +604,418 @@ function toOpenAiLlmWebSearchCall(
   };
 }
 
+function buildOpenAiWebSearchProgressCall(
+  itemId: string,
+  phase: 'added' | 'done',
+  status: string,
+  action?: OpenAiResponsesLlmWebSearchAction,
+): OpenAiResponsesLlmWebSearchCall {
+  return {
+    source: 'openai_responses',
+    phase,
+    itemId,
+    status,
+    ...(action !== undefined ? { action } : {}),
+  };
+}
+
+function throwOpenAiMalformedBatchOutputItem(itemType: string, detail: string): never {
+  const message = `OPENAI malformed batch output item ${itemType}: ${detail}`;
+  const error = new Error(message) as Error & { code?: string };
+  error.code = OPENAI_MALFORMED_BATCH_OUTPUT_ITEM_ERROR_CODE;
+  log.error(message, error);
+  throw error;
+}
+
+async function throwOpenAiMalformedStreamEvent(
+  receiver: LlmStreamReceiver,
+  eventType: string,
+  detail: string,
+): Promise<never> {
+  const message = `OPENAI malformed stream event ${eventType}: ${detail}`;
+  log.error(message, new Error('openai_malformed_stream_event'));
+  if (receiver.streamError) {
+    await receiver.streamError(message);
+  }
+  throw new Error(message);
+}
+
+type OpenAiItemNativeToolState = {
+  itemType: OpenAiResponsesNonCustomNativeToolItemType;
+  itemId: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+type OpenAiCustomToolState = {
+  itemType: 'custom_tool_call';
+  callId: string;
+  itemId?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+type OpenAiNativeToolState = OpenAiItemNativeToolState | OpenAiCustomToolState;
+
+type OpenAiItemNativeToolSeed = {
+  itemType: OpenAiResponsesNonCustomNativeToolItemType;
+  itemId: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+type OpenAiCustomToolSeed = {
+  itemType: 'custom_tool_call';
+  callId: string;
+  itemId?: string;
+  status?: string;
+  title?: string;
+  summary?: string;
+  detail?: string;
+};
+
+type OpenAiNativeToolSeed = OpenAiItemNativeToolSeed | OpenAiCustomToolSeed;
+
+function buildOpenAiNativeToolCallFromState(
+  state: OpenAiNativeToolState,
+  phase: 'added' | 'done',
+): OpenAiResponsesNativeToolCall {
+  if (state.itemType === 'custom_tool_call') {
+    return {
+      source: 'openai_responses',
+      itemType: state.itemType,
+      phase,
+      callId: state.callId,
+      ...(state.itemId !== undefined ? { itemId: state.itemId } : {}),
+      ...(state.status !== undefined ? { status: state.status } : {}),
+      ...(state.title !== undefined ? { title: state.title } : {}),
+      ...(state.summary !== undefined ? { summary: state.summary } : {}),
+      ...(state.detail !== undefined ? { detail: state.detail } : {}),
+    };
+  }
+  return {
+    source: 'openai_responses',
+    itemType: state.itemType,
+    phase,
+    itemId: state.itemId,
+    ...(state.status !== undefined ? { status: state.status } : {}),
+    ...(state.title !== undefined ? { title: state.title } : {}),
+    ...(state.summary !== undefined ? { summary: state.summary } : {}),
+    ...(state.detail !== undefined ? { detail: state.detail } : {}),
+  };
+}
+
+function mergeOpenAiNativeToolSeedIntoState(
+  state: OpenAiNativeToolState,
+  seed: OpenAiNativeToolSeed,
+): OpenAiNativeToolState {
+  if (state.itemType !== seed.itemType) {
+    throw new Error(
+      `OPENAI native tool tracker invariant violation: itemType mismatch (${state.itemType} !== ${seed.itemType})`,
+    );
+  }
+  if (state.itemType === 'custom_tool_call' && seed.itemType === 'custom_tool_call') {
+    if (state.callId !== seed.callId) {
+      throw new Error(
+        `OPENAI native tool tracker invariant violation: custom callId mismatch (${state.callId} !== ${seed.callId})`,
+      );
+    }
+    if (seed.itemId !== undefined && seed.itemId.trim() !== '') {
+      const normalizedItemId = seed.itemId.trim();
+      if (state.itemId !== undefined && state.itemId !== normalizedItemId) {
+        throw new Error(
+          `OPENAI native tool tracker invariant violation: custom itemId mismatch (${state.itemId} !== ${normalizedItemId})`,
+        );
+      }
+      state.itemId = normalizedItemId;
+    }
+  } else if (state.itemType !== 'custom_tool_call' && seed.itemType !== 'custom_tool_call') {
+    if (state.itemId !== seed.itemId) {
+      throw new Error(
+        `OPENAI native tool tracker invariant violation: item tool itemId mismatch (${state.itemId} !== ${seed.itemId})`,
+      );
+    }
+  }
+  if (seed.status !== undefined) {
+    state.status = seed.status;
+  }
+  if (seed.title !== undefined) {
+    state.title = seed.title;
+  }
+  if (seed.summary !== undefined) {
+    state.summary = seed.summary;
+  }
+  if (seed.detail !== undefined) {
+    state.detail = seed.detail;
+  }
+  return state;
+}
+
+class OpenAiNativeToolTracker {
+  private readonly itemToolByItemId = new Map<string, OpenAiItemNativeToolState>();
+  private readonly customToolByCallId = new Map<string, OpenAiCustomToolState>();
+  private readonly customCallIdByItemId = new Map<string, string>();
+
+  private upsertItemTool(seed: OpenAiItemNativeToolSeed): OpenAiItemNativeToolState {
+    const existing = this.itemToolByItemId.get(seed.itemId);
+    const state =
+      existing ??
+      ({
+        itemType: seed.itemType,
+        itemId: seed.itemId,
+      } satisfies OpenAiItemNativeToolState);
+    mergeOpenAiNativeToolSeedIntoState(state, seed);
+    if (!existing) {
+      this.itemToolByItemId.set(seed.itemId, state);
+    }
+    return state;
+  }
+
+  private upsertCustomTool(seed: OpenAiCustomToolSeed): OpenAiCustomToolState {
+    const existing = this.customToolByCallId.get(seed.callId);
+    const state =
+      existing ??
+      ({
+        itemType: 'custom_tool_call',
+        callId: seed.callId,
+      } satisfies OpenAiCustomToolState);
+    if (seed.itemId !== undefined && seed.itemId.trim() !== '') {
+      const normalizedItemId = seed.itemId.trim();
+      const existingCallId = this.customCallIdByItemId.get(normalizedItemId);
+      if (existingCallId !== undefined && existingCallId !== seed.callId) {
+        throw new Error(
+          `OPENAI native tool tracker invariant violation: custom itemId ${normalizedItemId} already bound to a different callId`,
+        );
+      }
+    }
+    mergeOpenAiNativeToolSeedIntoState(state, seed);
+    if (!existing) {
+      this.customToolByCallId.set(seed.callId, state);
+    }
+    if (state.itemId !== undefined) {
+      this.customCallIdByItemId.set(state.itemId, state.callId);
+    }
+    return state;
+  }
+
+  public claimCustomToolByItemId(itemId: string): OpenAiCustomToolState {
+    const mappedCallId = this.customCallIdByItemId.get(itemId);
+    if (mappedCallId !== undefined) {
+      const existing = this.customToolByCallId.get(mappedCallId);
+      if (!existing) {
+        throw new Error(
+          `OPENAI native tool tracker invariant violation: missing custom tool state for mapped itemId=${itemId}`,
+        );
+      }
+      return existing;
+    }
+    const unresolved = Array.from(this.customToolByCallId.values()).filter(
+      (state) => state.itemId === undefined,
+    );
+    if (unresolved.length === 1) {
+      const claimed = unresolved[0]!;
+      claimed.itemId = itemId;
+      this.customCallIdByItemId.set(itemId, claimed.callId);
+      return claimed;
+    }
+    if (unresolved.length === 0) {
+      throw new Error(
+        `OPENAI native tool tracker invariant violation: missing unresolved custom tool state for itemId=${itemId}`,
+      );
+    }
+    throw new Error(
+      `OPENAI native tool tracker invariant violation: ambiguous custom tool itemId correlation for itemId=${itemId}`,
+    );
+  }
+
+  public upsert(seed: OpenAiNativeToolSeed): OpenAiNativeToolState {
+    return seed.itemType === 'custom_tool_call'
+      ? this.upsertCustomTool(seed)
+      : this.upsertItemTool(seed);
+  }
+}
+
+function summarizeCodeInterpreterOutputs(value: unknown): string | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const parts: string[] = [];
+  let imageCount = 0;
+  for (const output of value) {
+    if (!isRecord(output) || typeof output.type !== 'string') continue;
+    if (output.type === 'logs' && typeof output.logs === 'string' && output.logs.trim() !== '') {
+      parts.push(output.logs.trim());
+      continue;
+    }
+    if (output.type === 'image') {
+      imageCount += 1;
+    }
+  }
+  if (imageCount > 0) {
+    parts.push(`images=${String(imageCount)}`);
+  }
+  return parts.length > 0 ? parts.join('\n') : undefined;
+}
+
+function buildOpenAiNativeToolSeed(
+  item: Record<string, unknown>,
+  itemId?: string,
+): OpenAiNativeToolSeed | null {
+  if (
+    typeof item.type !== 'string' ||
+    !OPENAI_NATIVE_TOOL_ITEM_TYPES.has(item.type as OpenAiResponsesNativeToolItemType)
+  ) {
+    return null;
+  }
+
+  const itemType = item.type as OpenAiResponsesNativeToolItemType;
+  if (itemType === 'custom_tool_call') {
+    const callId = typeof item.call_id === 'string' ? item.call_id.trim() : '';
+    if (callId === '') {
+      throwOpenAiMalformedBatchOutputItem(itemType, 'missing call_id');
+    }
+    const base = {
+      itemType,
+      callId,
+      ...(typeof itemId === 'string' && itemId.trim() !== '' ? { itemId: itemId.trim() } : {}),
+    } satisfies OpenAiCustomToolSeed;
+    const namespace = typeof item.namespace === 'string' ? item.namespace.trim() : '';
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const summary =
+      namespace !== '' && name !== ''
+        ? `${namespace}:${name}`
+        : namespace !== ''
+          ? namespace
+          : name;
+    return {
+      ...base,
+      title: 'Custom Tool Call',
+      ...(summary !== '' ? { summary } : {}),
+      ...(typeof item.input === 'string' && item.input.trim() !== ''
+        ? { detail: item.input.trim() }
+        : {}),
+    };
+  }
+
+  if (typeof itemId !== 'string' || itemId.trim() === '') {
+    throwOpenAiMalformedBatchOutputItem(itemType, 'missing itemId');
+  }
+  const base = {
+    itemType,
+    itemId: itemId.trim(),
+  } satisfies OpenAiItemNativeToolSeed;
+  switch (itemType) {
+    case 'file_search_call': {
+      const queries =
+        Array.isArray(item.queries) && item.queries.every((entry) => typeof entry === 'string')
+          ? item.queries
+          : [];
+      const results = Array.isArray(item.results) ? item.results.length : 0;
+      return {
+        ...base,
+        ...(typeof item.status === 'string' ? { status: item.status } : {}),
+        title: 'File Search',
+        ...(queries.length > 0 ? { summary: queries.join('\n') } : {}),
+        ...(results > 0 ? { detail: `results=${String(results)}` } : {}),
+      };
+    }
+    case 'code_interpreter_call': {
+      return {
+        ...base,
+        ...(typeof item.status === 'string' ? { status: item.status } : {}),
+        title: 'Code Interpreter',
+        ...(typeof item.code === 'string' && item.code.trim() !== ''
+          ? { summary: item.code.trim() }
+          : {}),
+        ...(typeof item.container_id === 'string' && item.container_id.trim() !== ''
+          ? {
+              detail: `container=${item.container_id.trim()}${summarizeCodeInterpreterOutputs(item.outputs) ? `\n${summarizeCodeInterpreterOutputs(item.outputs)}` : ''}`,
+            }
+          : summarizeCodeInterpreterOutputs(item.outputs)
+            ? { detail: summarizeCodeInterpreterOutputs(item.outputs) }
+            : {}),
+      };
+    }
+    case 'image_generation_call': {
+      return {
+        ...base,
+        ...(typeof item.status === 'string' ? { status: item.status } : {}),
+        title: 'Image Generation',
+        summary:
+          typeof item.result === 'string' && item.result.length > 0
+            ? 'image_ready'
+            : 'image_pending',
+      };
+    }
+    case 'mcp_call': {
+      const serverLabel = typeof item.server_label === 'string' ? item.server_label.trim() : '';
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      const summary =
+        serverLabel !== '' && name !== ''
+          ? `${serverLabel}: ${name}`
+          : serverLabel !== ''
+            ? serverLabel
+            : name;
+      const detailParts = [
+        typeof item.arguments === 'string' && item.arguments.trim() !== ''
+          ? item.arguments.trim()
+          : '',
+        typeof item.output === 'string' && item.output.trim() !== '' ? item.output.trim() : '',
+        typeof item.error === 'string' && item.error.trim() !== ''
+          ? `error=${item.error.trim()}`
+          : '',
+      ].filter((part) => part.length > 0);
+      return {
+        ...base,
+        ...(typeof item.status === 'string' ? { status: item.status } : {}),
+        title: 'MCP Tool Call',
+        ...(summary !== '' ? { summary } : {}),
+        ...(detailParts.length > 0 ? { detail: detailParts.join('\n') } : {}),
+      };
+    }
+    case 'mcp_list_tools': {
+      const serverLabel = typeof item.server_label === 'string' ? item.server_label.trim() : '';
+      const toolNames = Array.isArray(item.tools)
+        ? item.tools
+            .filter((entry): entry is Record<string, unknown> => isRecord(entry))
+            .map((entry) => (typeof entry.name === 'string' ? entry.name.trim() : ''))
+            .filter((entry) => entry.length > 0)
+        : [];
+      const error = typeof item.error === 'string' ? item.error.trim() : '';
+      return {
+        ...base,
+        title: 'MCP Tool Discovery',
+        ...(serverLabel !== '' ? { summary: serverLabel } : {}),
+        ...(toolNames.length > 0 || error !== ''
+          ? { detail: [...toolNames, ...(error !== '' ? [`error=${error}`] : [])].join('\n') }
+          : {}),
+      };
+    }
+    case 'mcp_approval_request': {
+      const serverLabel = typeof item.server_label === 'string' ? item.server_label.trim() : '';
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      return {
+        ...base,
+        title: 'MCP Approval Request',
+        ...(serverLabel !== '' || name !== ''
+          ? { summary: [serverLabel, name].filter(Boolean).join(': ') }
+          : {}),
+        ...(typeof item.arguments === 'string' && item.arguments.trim() !== ''
+          ? { detail: item.arguments.trim() }
+          : {}),
+      };
+    }
+    default: {
+      const _exhaustive: never = itemType;
+      return _exhaustive;
+    }
+  }
+}
+
 export async function buildOpenAiRequestInputWrapper(
   context: ChatMessage[],
   providerConfig?: ProviderConfig,
@@ -530,14 +1028,25 @@ function extractOutputMessageText(item: ResponseOutputItem): string {
   const content = item.content;
   if (!Array.isArray(content)) return '';
   let text = '';
-  for (const part of content) {
-    if (!isRecord(part) || typeof part.type !== 'string') continue;
-    if (part.type === 'output_text' && typeof part.text === 'string') {
-      text += part.text;
+  let transcript = '';
+  let sawOutputText = false;
+  for (const rawPart of content as unknown[]) {
+    if (!isRecord(rawPart) || typeof rawPart.type !== 'string') continue;
+    if (rawPart.type === 'output_text' && typeof rawPart.text === 'string') {
+      sawOutputText = true;
+      text += rawPart.text;
     }
-    if (part.type === 'refusal' && typeof part.refusal === 'string') {
-      text += part.refusal;
+    if (rawPart.type === 'output_audio' && typeof rawPart.transcript === 'string') {
+      transcript += rawPart.transcript;
     }
+    if (rawPart.type === 'refusal' && typeof rawPart.refusal === 'string') {
+      text += rawPart.refusal;
+    }
+  }
+  // Keep batch-mode message extraction aligned with streaming semantics: transcript text is only a
+  // fallback when the response item did not already carry canonical output_text content.
+  if (!sawOutputText && transcript.length > 0) {
+    text += transcript;
   }
   return text;
 }
@@ -588,10 +1097,11 @@ function extractReasoningPayload(item: ResponseOutputItem): ReasoningPayload | n
   return out;
 }
 
-function openAiResponseToChatMessages(response: Response, genseq: number): ChatMessage[] {
-  const messages: ChatMessage[] = [];
+function openAiResponseToBatchOutputs(response: Response, genseq: number): LlmBatchOutput[] {
+  const outputs: LlmBatchOutput[] = [];
   const output = response.output;
-  if (!Array.isArray(output)) return messages;
+  if (!Array.isArray(output)) return outputs;
+  const nativeToolTracker = new OpenAiNativeToolTracker();
 
   for (const item of output) {
     if (!isRecord(item) || typeof item.type !== 'string') continue;
@@ -600,12 +1110,15 @@ function openAiResponseToChatMessages(response: Response, genseq: number): ChatM
       const reasoning = extractReasoningPayload(item as unknown as ResponseOutputItem);
       const content = extractReasoningText(item as unknown as ResponseOutputItem);
       if (content.length > 0 || reasoning !== null) {
-        messages.push({
-          type: 'thinking_msg',
-          role: 'assistant',
-          genseq,
-          content,
-          reasoning: reasoning ?? undefined,
+        outputs.push({
+          kind: 'message',
+          message: {
+            type: 'thinking_msg',
+            role: 'assistant',
+            genseq,
+            content,
+            reasoning: reasoning ?? undefined,
+          },
         });
       }
       continue;
@@ -614,11 +1127,14 @@ function openAiResponseToChatMessages(response: Response, genseq: number): ChatM
     if (item.type === 'message') {
       const content = extractOutputMessageText(item as unknown as ResponseOutputItem);
       if (content.length > 0) {
-        messages.push({
-          type: 'saying_msg',
-          role: 'assistant',
-          genseq,
-          content,
+        outputs.push({
+          kind: 'message',
+          message: {
+            type: 'saying_msg',
+            role: 'assistant',
+            genseq,
+            content,
+          },
         });
       }
       continue;
@@ -629,20 +1145,47 @@ function openAiResponseToChatMessages(response: Response, genseq: number): ChatM
       const name = typeof item.name === 'string' ? item.name : '';
       const args = typeof item.arguments === 'string' ? item.arguments : '';
       if (callId.length > 0 && name.length > 0) {
-        messages.push({
-          type: 'func_call_msg',
-          role: 'assistant',
-          genseq,
-          id: callId,
-          name,
-          arguments: args,
+        outputs.push({
+          kind: 'message',
+          message: {
+            type: 'func_call_msg',
+            role: 'assistant',
+            genseq,
+            id: callId,
+            name,
+            arguments: args,
+          },
         });
       }
       continue;
     }
+
+    if (item.type === 'web_search_call') {
+      const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+      if (itemId.length === 0) {
+        throwOpenAiMalformedBatchOutputItem(item.type, 'missing itemId');
+      }
+      outputs.push({
+        kind: 'web_search_call',
+        call: toOpenAiLlmWebSearchCall(item, itemId, 'done'),
+      });
+      continue;
+    }
+
+    if (OPENAI_NATIVE_TOOL_ITEM_TYPES.has(item.type as OpenAiResponsesNativeToolItemType)) {
+      const itemId = typeof item.id === 'string' ? item.id.trim() : undefined;
+      const seed = buildOpenAiNativeToolSeed(item, itemId);
+      if (seed) {
+        const state = nativeToolTracker.upsert(seed);
+        outputs.push({
+          kind: 'native_tool_call',
+          call: buildOpenAiNativeToolCallFromState(state, 'done'),
+        });
+      }
+    }
   }
 
-  return messages;
+  return outputs;
 }
 
 export class OpenAiGen implements LlmGenerator {
@@ -690,6 +1233,7 @@ export class OpenAiGen implements LlmGenerator {
     const nativeTools = buildOpenAiNativeTools(openAiParams);
     const include = buildOpenAiInclude(requestInput, reasoning, openAiParams);
     const tools = [...funcTools.map(funcToolToOpenAiTool), ...nativeTools];
+    const vendorHeartbeatEventTypes = resolveOpenAiVendorHeartbeatEventTypes(providerConfig);
 
     const payload: ResponseCreateParamsStreaming = {
       model: agent.model,
@@ -718,6 +1262,7 @@ export class OpenAiGen implements LlmGenerator {
     let currentThinkingContent = '';
     let finishedThinkingFromDelta = false;
     let sawOutputText = false;
+    let currentAudioTranscript = '';
     type ActiveStream = 'idle' | 'thinking' | 'saying';
     let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
@@ -730,6 +1275,40 @@ export class OpenAiGen implements LlmGenerator {
       argsJson: string;
       emitted: boolean;
     };
+
+    type ActiveWebSearchCall = {
+      itemId: string;
+      action?: OpenAiResponsesLlmWebSearchAction;
+    };
+
+    const nativeToolTracker = new OpenAiNativeToolTracker();
+
+    function claimNativeToolStateByEventItemId(
+      itemId: string,
+      itemType: OpenAiResponsesNativeToolItemType,
+      title: string,
+    ): Promise<OpenAiNativeToolState> | OpenAiNativeToolState {
+      try {
+        if (itemType === 'custom_tool_call') {
+          const existing = nativeToolTracker.claimCustomToolByItemId(itemId);
+          if (existing.title === undefined || existing.title.trim() === '') {
+            existing.title = title;
+          }
+          return existing;
+        }
+        return nativeToolTracker.upsert({
+          itemType,
+          itemId,
+          title,
+        });
+      } catch (error: unknown) {
+        const detail =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : `failed to resolve native tool state for ${itemType}`;
+        return throwOpenAiMalformedStreamEvent(receiver, itemType, detail);
+      }
+    }
 
     function applyArgsDelta(state: ActiveFuncCall, chunk: string): void {
       if (chunk.length === 0) return;
@@ -760,7 +1339,16 @@ export class OpenAiGen implements LlmGenerator {
       await receiver_.funcCall(state.callId, state.name, args);
     }
 
+    async function emitNativeToolCall(
+      state: OpenAiNativeToolState,
+      phase: 'added' | 'done',
+    ): Promise<void> {
+      if (!receiver.nativeToolCall) return;
+      await receiver.nativeToolCall(buildOpenAiNativeToolCallFromState(state, phase));
+    }
+
     const activeFuncCallsByItemId = new Map<string, ActiveFuncCall>();
+    const activeWebSearchCallsByItemId = new Map<string, ActiveWebSearchCall>();
 
     function readOptionalEventString(value: unknown): string {
       return typeof value === 'string' ? value : '';
@@ -772,12 +1360,15 @@ export class OpenAiGen implements LlmGenerator {
       field: string,
     ): Promise<string> {
       if (typeof value === 'string') return value;
-      const detail = `OPENAI malformed stream event ${eventType}: missing string ${field}`;
-      log.error(detail, new Error('openai_malformed_stream_event'));
-      if (receiver.streamError) {
-        await receiver.streamError(detail);
+      return await throwOpenAiMalformedStreamEvent(receiver, eventType, `missing string ${field}`);
+    }
+
+    async function requireNonEmptyEventItemId(value: unknown, eventType: string): Promise<string> {
+      const itemId = (await requireEventString(value, eventType, 'item_id')).trim();
+      if (itemId.length === 0) {
+        await throwOpenAiMalformedStreamEvent(receiver, eventType, 'empty item_id');
       }
-      throw new Error(detail);
+      return itemId;
     }
 
     try {
@@ -789,6 +1380,14 @@ export class OpenAiGen implements LlmGenerator {
         if (abortSignal?.aborted) {
           throw new Error('AbortError');
         }
+        const providerEvent: unknown = event;
+        const providerEventType = readEventType(providerEvent);
+        if (providerEventType !== null && vendorHeartbeatEventTypes.has(providerEventType)) {
+          // Some Responses-compatible gateways emit out-of-band heartbeat frames to keep idle
+          // streams alive. They are not part of the official OpenAI event taxonomy and carry no
+          // model semantics, so the OpenAI wrapper ignores them locally.
+          continue;
+        }
 
         switch (event.type) {
           case 'response.created':
@@ -799,6 +1398,15 @@ export class OpenAiGen implements LlmGenerator {
               returnedModel = tryExtractApiReturnedModel(event.response);
             }
             if (event.type === 'response.completed') {
+              if (!sawOutputText && currentAudioTranscript.trim().length > 0) {
+                if (!sayingStarted) {
+                  await receiver.sayingStart();
+                }
+                await receiver.sayingChunk(currentAudioTranscript);
+                await receiver.sayingFinish();
+                sayingStarted = false;
+                sawOutputText = true;
+              }
               if (thinkingStarted) {
                 await receiver.thinkingFinish(
                   buildReasoningPayloadFromText(currentThinkingContent),
@@ -977,6 +1585,16 @@ export class OpenAiGen implements LlmGenerator {
             break;
           }
 
+          case 'response.audio.delta':
+          case 'response.audio.done':
+            break;
+          case 'response.audio.transcript.delta': {
+            currentAudioTranscript += await requireEventString(event.delta, event.type, 'delta');
+            break;
+          }
+          case 'response.audio.transcript.done':
+            break;
+
           case 'response.output_item.done': {
             const item = event.item;
 
@@ -1013,18 +1631,37 @@ export class OpenAiGen implements LlmGenerator {
 
             if (isRecord(item) && item.type === 'web_search_call' && receiver.webSearchCall) {
               const itemId = typeof item.id === 'string' ? item.id.trim() : '';
-              if (itemId.length > 0) {
-                await receiver.webSearchCall(toOpenAiLlmWebSearchCall(item, itemId, 'done'));
-              } else {
-                const detail =
-                  'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
-                log.error(detail, new Error('openai_web_search_call_missing_item_id'), {
-                  status: item.status,
-                  action: item.action,
-                });
-                if (receiver.streamError) {
-                  await receiver.streamError(detail);
-                }
+              if (itemId.length === 0) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing itemId');
+              }
+              const call = toOpenAiLlmWebSearchCall(item, itemId, 'done');
+              activeWebSearchCallsByItemId.set(itemId, {
+                itemId,
+                action: call.action,
+              });
+              await receiver.webSearchCall(call);
+              break;
+            }
+
+            if (
+              isRecord(item) &&
+              typeof item.type === 'string' &&
+              OPENAI_NATIVE_TOOL_ITEM_TYPES.has(item.type as OpenAiResponsesNativeToolItemType)
+            ) {
+              const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+              if (item.type !== 'custom_tool_call' && itemId.length === 0) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing itemId');
+              }
+              if (
+                item.type === 'custom_tool_call' &&
+                !(typeof item.call_id === 'string' && item.call_id.trim().length > 0)
+              ) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing call_id');
+              }
+              const seed = buildOpenAiNativeToolSeed(item, itemId.length > 0 ? itemId : undefined);
+              if (seed) {
+                const state = nativeToolTracker.upsert(seed);
+                await emitNativeToolCall(state, 'done');
               }
               break;
             }
@@ -1130,20 +1767,243 @@ export class OpenAiGen implements LlmGenerator {
             }
             if (isRecord(item) && item.type === 'web_search_call' && receiver.webSearchCall) {
               const itemId = typeof item.id === 'string' ? item.id.trim() : '';
-              if (itemId.length > 0) {
-                await receiver.webSearchCall(toOpenAiLlmWebSearchCall(item, itemId, 'added'));
-              } else {
-                const detail =
-                  'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
-                log.error(detail, new Error('openai_web_search_call_missing_item_id'), {
-                  status: item.status,
-                  action: item.action,
-                });
-                if (receiver.streamError) {
-                  await receiver.streamError(detail);
-                }
+              if (itemId.length === 0) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing itemId');
+              }
+              const call = toOpenAiLlmWebSearchCall(item, itemId, 'added');
+              activeWebSearchCallsByItemId.set(itemId, {
+                itemId,
+                action: call.action,
+              });
+              await receiver.webSearchCall(call);
+            }
+            if (
+              isRecord(item) &&
+              typeof item.type === 'string' &&
+              OPENAI_NATIVE_TOOL_ITEM_TYPES.has(item.type as OpenAiResponsesNativeToolItemType)
+            ) {
+              const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+              if (item.type !== 'custom_tool_call' && itemId.length === 0) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing itemId');
+              }
+              if (
+                item.type === 'custom_tool_call' &&
+                !(typeof item.call_id === 'string' && item.call_id.trim().length > 0)
+              ) {
+                await throwOpenAiMalformedStreamEvent(receiver, item.type, 'missing call_id');
+              }
+              const seed = buildOpenAiNativeToolSeed(item, itemId.length > 0 ? itemId : undefined);
+              if (seed) {
+                const state = nativeToolTracker.upsert(seed);
+                await emitNativeToolCall(state, 'added');
               }
             }
+            break;
+          }
+          case 'response.web_search_call.in_progress':
+          case 'response.web_search_call.searching':
+          case 'response.web_search_call.completed': {
+            if (!receiver.webSearchCall) {
+              break;
+            }
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = activeWebSearchCallsByItemId.get(itemId);
+            const status =
+              event.type === 'response.web_search_call.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.web_search_call.searching'
+                  ? 'searching'
+                  : 'completed';
+            const phase = event.type === 'response.web_search_call.completed' ? 'done' : 'added';
+            await receiver.webSearchCall(
+              buildOpenAiWebSearchProgressCall(itemId, phase, status, existing?.action),
+            );
+            break;
+          }
+          case 'response.file_search_call.in_progress':
+          case 'response.file_search_call.searching':
+          case 'response.file_search_call.completed': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'file_search_call',
+              'File Search',
+            );
+            existing.status =
+              event.type === 'response.file_search_call.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.file_search_call.searching'
+                  ? 'searching'
+                  : 'completed';
+            await emitNativeToolCall(
+              existing,
+              event.type === 'response.file_search_call.completed' ? 'done' : 'added',
+            );
+            break;
+          }
+          case 'response.code_interpreter_call.in_progress':
+          case 'response.code_interpreter_call.interpreting':
+          case 'response.code_interpreter_call.completed': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'code_interpreter_call',
+              'Code Interpreter',
+            );
+            existing.status =
+              event.type === 'response.code_interpreter_call.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.code_interpreter_call.interpreting'
+                  ? 'interpreting'
+                  : 'completed';
+            await emitNativeToolCall(
+              existing,
+              event.type === 'response.code_interpreter_call.completed' ? 'done' : 'added',
+            );
+            break;
+          }
+          case 'response.code_interpreter_call_code.delta': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const delta = await requireEventString(event.delta, event.type, 'delta');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'code_interpreter_call',
+              'Code Interpreter',
+            );
+            existing.summary = `${existing.summary ?? ''}${delta}`;
+            break;
+          }
+          case 'response.code_interpreter_call_code.done': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const code = await requireEventString(event.code, event.type, 'code');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'code_interpreter_call',
+              'Code Interpreter',
+            );
+            existing.summary = code;
+            await emitNativeToolCall(existing, 'added');
+            break;
+          }
+          case 'response.image_generation_call.in_progress':
+          case 'response.image_generation_call.generating':
+          case 'response.image_generation_call.completed': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'image_generation_call',
+              'Image Generation',
+            );
+            existing.status =
+              event.type === 'response.image_generation_call.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.image_generation_call.generating'
+                  ? 'generating'
+                  : 'completed';
+            await emitNativeToolCall(
+              existing,
+              event.type === 'response.image_generation_call.completed' ? 'done' : 'added',
+            );
+            break;
+          }
+          case 'response.image_generation_call.partial_image': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'image_generation_call',
+              'Image Generation',
+            );
+            const currentIndex =
+              typeof event.partial_image_index === 'number' ? event.partial_image_index + 1 : 1;
+            existing.detail = `partial_images=${String(currentIndex)}`;
+            break;
+          }
+          case 'response.mcp_call.in_progress':
+          case 'response.mcp_call.failed':
+          case 'response.mcp_call.completed': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'mcp_call',
+              'MCP Tool Call',
+            );
+            existing.status =
+              event.type === 'response.mcp_call.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.mcp_call.failed'
+                  ? 'failed'
+                  : 'completed';
+            await emitNativeToolCall(
+              existing,
+              event.type === 'response.mcp_call.completed' ? 'done' : 'added',
+            );
+            break;
+          }
+          case 'response.mcp_call_arguments.delta': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const delta = await requireEventString(event.delta, event.type, 'delta');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'mcp_call',
+              'MCP Tool Call',
+            );
+            existing.detail = `${existing.detail ?? ''}${delta}`;
+            break;
+          }
+          case 'response.mcp_call_arguments.done': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const args = await requireEventString(event.arguments, event.type, 'arguments');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'mcp_call',
+              'MCP Tool Call',
+            );
+            existing.detail = args;
+            await emitNativeToolCall(existing, 'added');
+            break;
+          }
+          case 'response.mcp_list_tools.in_progress':
+          case 'response.mcp_list_tools.failed':
+          case 'response.mcp_list_tools.completed': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'mcp_list_tools',
+              'MCP Tool Discovery',
+            );
+            existing.status =
+              event.type === 'response.mcp_list_tools.in_progress'
+                ? 'in_progress'
+                : event.type === 'response.mcp_list_tools.failed'
+                  ? 'failed'
+                  : 'completed';
+            await emitNativeToolCall(
+              existing,
+              event.type === 'response.mcp_list_tools.completed' ? 'done' : 'added',
+            );
+            break;
+          }
+          case 'response.custom_tool_call_input.delta': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const delta = await requireEventString(event.delta, event.type, 'delta');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'custom_tool_call',
+              'Custom Tool Call',
+            );
+            existing.detail = `${existing.detail ?? ''}${delta}`;
+            break;
+          }
+          case 'response.custom_tool_call_input.done': {
+            const itemId = await requireNonEmptyEventItemId(event.item_id, event.type);
+            const input = await requireEventString(event.input, event.type, 'input');
+            const existing = await claimNativeToolStateByEventItemId(
+              itemId,
+              'custom_tool_call',
+              'Custom Tool Call',
+            );
+            existing.detail = input;
+            await emitNativeToolCall(existing, 'added');
             break;
           }
           case 'response.content_part.added':
@@ -1236,8 +2096,9 @@ export class OpenAiGen implements LlmGenerator {
         throw new Error(detail);
       }
     } catch (error: unknown) {
-      log.warn('OPENAI streaming error', error);
-      throw error;
+      const annotatedError = maybeAnnotateOpenAiQuirkFailure(providerConfig, error);
+      log.warn('OPENAI streaming error', annotatedError);
+      throw annotatedError;
     } finally {
       if (thinkingStarted) {
         await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
@@ -1317,9 +2178,16 @@ export class OpenAiGen implements LlmGenerator {
 
     const returnedModel = typeof response.model === 'string' ? response.model : undefined;
     const usage = parseOpenAiUsage(response.usage);
+    const outputs = openAiResponseToBatchOutputs(response, genseq);
 
     return {
-      messages: openAiResponseToChatMessages(response, genseq),
+      messages: outputs
+        .filter(
+          (entry): entry is Extract<LlmBatchOutput, { kind: 'message' }> =>
+            entry.kind === 'message',
+        )
+        .map((entry) => entry.message),
+      outputs,
       usage,
       llmGenModel: returnedModel,
     };
