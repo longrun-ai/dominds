@@ -99,12 +99,35 @@ interface ApiError extends Error {
   response?: unknown;
 }
 
+type ApiErrorPayload = {
+  error?: string;
+  message?: string;
+};
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
   body?: unknown;
   timeout?: number;
 };
+
+function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const error = record['error'];
+  const message = record['message'];
+  if (error !== undefined && typeof error !== 'string') return false;
+  if (message !== undefined && typeof message !== 'string') return false;
+  return true;
+}
+
+function getApiErrorMessage(status: number, statusText: string, data: unknown): string {
+  if (isApiErrorPayload(data)) {
+    if (typeof data.error === 'string' && data.error.trim() !== '') return data.error;
+    if (typeof data.message === 'string' && data.message.trim() !== '') return data.message;
+  }
+  return `HTTP ${status}: ${statusText}`;
+}
 
 export class ApiClient {
   private baseURL: string;
@@ -172,7 +195,9 @@ export class ApiClient {
       }
 
       if (!response.ok) {
-        const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as ApiError;
+        const error = new Error(
+          getApiErrorMessage(response.status, response.statusText, data),
+        ) as ApiError;
         error.status = response.status;
         error.response = data;
         throw error;
@@ -193,6 +218,14 @@ export class ApiClient {
 
       const apiError: ApiError =
         error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
+
+      console.error('API request failed', {
+        method,
+        url,
+        status: apiError.status ?? null,
+        error: apiError.message,
+        response: apiError.response,
+      });
 
       return {
         success: false,
