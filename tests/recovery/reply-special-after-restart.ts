@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import { deliverTellaskBackReplyFromDirective } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import {
   recoverPendingReplyTellaskCallsAfterRestart,
@@ -13,6 +14,31 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot);
+
+    const liveRoot = await createRootDialog('tester');
+    await deliverTellaskBackReplyFromDirective({
+      dlg: liveRoot,
+      directive: {
+        expectedReplyCallName: 'replyTellaskBack',
+        targetDialogId: liveRoot.id.selfId,
+        targetCallId: 'live-reply-target',
+        tellaskContent: 'Need an immediate upstream answer.',
+      },
+      replyContent: 'Live reply delivered.',
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+    });
+    assert(
+      liveRoot.msgs.some(
+        (msg) =>
+          msg.type === 'tellask_result_msg' &&
+          msg.callId === 'live-reply-target' &&
+          msg.callName === 'tellaskBack',
+      ),
+      'expected live replyTellaskBack delivery to mirror tellask result into target dialog msgs',
+    );
 
     const root = await createRootDialog('tester');
     const tellaskContent = 'Need a final upstream answer.';
@@ -34,10 +60,10 @@ async function main(): Promise<void> {
       directive,
     );
 
-    await root.persistTellaskSpecialCall(
+    await root.persistTellaskCall(
       'reply-call',
       'replyTellaskBack',
-      { replyContent: 'Final answer delivered.' },
+      '{"replyContent":"Final answer delivered."}',
       1,
     );
 
@@ -60,11 +86,14 @@ async function main(): Promise<void> {
 
     const deliveredResponse = rootEvents.find(
       (event) =>
-        event.type === 'tellask_response_record' &&
+        event.type === 'tellask_result_record' &&
         event.callId === targetCallId &&
         event.callName === 'tellaskBack',
     );
-    assert(deliveredResponse, 'expected restart recovery to deliver reply to the caller dialog');
+    assert(
+      deliveredResponse,
+      'expected restart recovery to deliver tellask result to the caller dialog',
+    );
 
     const resolutionOnlyRoot = await createRootDialog('tester');
     const resolutionDirective: TellaskReplyDirective = {
@@ -82,10 +111,10 @@ async function main(): Promise<void> {
       undefined,
       resolutionDirective,
     );
-    await resolutionOnlyRoot.persistTellaskSpecialCall(
+    await resolutionOnlyRoot.persistTellaskCall(
       'reply-back-call',
       'replyTellaskBack',
-      { replyContent: 'Final answer delivered.' },
+      '{"replyContent":"Final answer delivered."}',
       1,
     );
     await resolutionOnlyRoot.appendTellaskReplyResolution({
@@ -125,10 +154,10 @@ async function main(): Promise<void> {
       undefined,
       concurrentDirective,
     );
-    await concurrentRoot.persistTellaskSpecialCall(
+    await concurrentRoot.persistTellaskCall(
       'reply-back-call-concurrent',
       'replyTellaskBack',
-      { replyContent: 'Recovered exactly once.' },
+      '{"replyContent":"Recovered exactly once."}',
       1,
     );
 
@@ -161,12 +190,12 @@ async function main(): Promise<void> {
     assert.equal(
       concurrentEvents.filter(
         (event) =>
-          event.type === 'tellask_response_record' &&
+          event.type === 'tellask_result_record' &&
           event.callId === 'tellask-back-target-concurrent' &&
           event.callName === 'tellaskBack',
       ).length,
       1,
-      'expected concurrent recovery to deliver exactly one tellask_response_record',
+      'expected concurrent recovery to deliver exactly one tellask_result_record',
     );
   });
 

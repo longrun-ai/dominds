@@ -73,7 +73,7 @@ export type TellaskReplacementNoticeFormatInput = {
 
 export type TellaskCarryoverResultFormatInput = {
   originCourse: number;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   responderId: string;
   mentionList?: string[];
   sessionSlug?: string;
@@ -496,7 +496,7 @@ export function formatTellaskCarryoverResultContent(
     '',
     markdownQuote(responseBody),
     '',
-    'Note: this is not a new user request or a newly initiated function call in the current course; it is the asynchronous completion of an older pending tellask.',
+    'Note: this is not a new user request or a newly initiated function call in the current course; it is the canonical current-course carryover of an older pending tellask completion.',
     '',
   ];
   return lines.join('\n');

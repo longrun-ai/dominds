@@ -1371,6 +1371,9 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'markdown_finish_evt':
         this.handleMarkdownFinish(event.genseq);
         break;
+      case 'ui_only_markdown_evt':
+        this.handleUiOnlyMarkdown(event);
+        break;
 
       // === TELLASK CALL EVENTS (function-tool channel) ===
       case 'tellask_call_start_evt':
@@ -1402,22 +1405,16 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       // Teammate-call lifecycle updates (call site timing + status)
-      case 'tellask_call_result_evt':
-        this.handleToolCallResponse(event);
-        break;
-      case 'tellask_call_carryover_evt':
-        this.handleTellaskCallCarryover(event);
+      case 'tellask_result_evt':
+        this.handleTellaskResult(event);
         break;
       case 'tellask_call_anchor_evt':
         this.handleTellaskCallAnchor(event);
         break;
 
       // Teammate responses (separate bubble)
-      case 'tellask_response_evt':
-        this.handleTellaskResponse(event);
-        break;
-      case 'tellask_carryover_result_evt':
-        this.handleTellaskCarryoverResult(event);
+      case 'tellask_carryover_evt':
+        this.handleTellaskCarryover(event);
         break;
 
       // Subdialog events
@@ -1948,6 +1945,27 @@ export class DomindsDialogContainer extends HTMLElement {
     // Complete the markdown section
     this.markdownSection.classList.add('completed');
     this.markdownSection = undefined;
+  }
+
+  private handleUiOnlyMarkdown(
+    event: Extract<TypedDialogEvent, { type: 'ui_only_markdown_evt' }>,
+  ): void {
+    const content = typeof event.content === 'string' ? event.content.trim() : '';
+    if (content === '') {
+      this.handleProtocolError(
+        `ui_only_markdown_evt missing content ${JSON.stringify({
+          course: event.course,
+          genseq: event.genseq,
+        })}`,
+      );
+      return;
+    }
+    const container = this.shadowRoot?.querySelector('.messages');
+    if (!container) return;
+    const bubble = this.createUiOnlyMarkdownBubble(event);
+    container.appendChild(bubble);
+    this.setupUiOnlyMarkdownProgressiveExpand(bubble);
+    this.scrollToBottom();
   }
 
   // === FUNCTION CALL EVENTS (Non-streaming mode) ===
@@ -2538,6 +2556,16 @@ export class DomindsDialogContainer extends HTMLElement {
     this.setupProgressiveExpand({ target, footer, button });
   }
 
+  private setupUiOnlyMarkdownProgressiveExpand(section: HTMLElement): void {
+    const target = section.querySelector('.ui-only-markdown-content') as HTMLElement | null;
+    const footer = section.querySelector('.ui-only-markdown-expand-footer') as HTMLElement | null;
+    const button = section.querySelector(
+      '.ui-only-markdown-expand-btn',
+    ) as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    this.setupProgressiveExpand({ target, footer, button });
+  }
+
   private handleToolCallStart(
     event: Extract<TypedDialogEvent, { type: 'tellask_call_start_evt' }>,
   ): void {
@@ -2742,124 +2770,6 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  // === TELLASK CALL RESULT HANDLER ===
-  // Final response body is shown in a separate teammate bubble.
-  // Call site only tracks lifecycle status/timing.
-  //
-  // Call Type Distinction:
-  private handleToolCallResponse(
-    event: Extract<TypedDialogEvent, { type: 'tellask_call_result_evt' }>,
-  ): void {
-    if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
-      this.handleProtocolError(
-        `tellask_call_result_evt course mismatch ${JSON.stringify({
-          eventCourse: event.course,
-          currentCourse: this.currentCourse,
-          callId: event.callId,
-        })}`,
-      );
-      return;
-    }
-
-    const callId = String(event.callId || '').trim();
-    if (!callId) {
-      const mentionListForLog =
-        event.callName === 'tellask' || event.callName === 'tellaskSessionless'
-          ? event.mentionList
-          : undefined;
-      this.handleProtocolError(
-        `tellask_call_result_evt missing callId ${JSON.stringify({
-          responderId: event.responderId,
-          mentionList: mentionListForLog,
-          tellaskContent: event.tellaskContent,
-          calling_genseq: event.calling_genseq,
-        })}`,
-      );
-      return;
-    }
-
-    const callingSection = this.callingSectionByCallId.get(callId);
-    if (!callingSection) {
-      this.handleProtocolError(
-        `tellask_call_result_evt received before tellask_call_start_evt ${JSON.stringify({
-          callId,
-          course: event.course,
-          calling_genseq: event.calling_genseq,
-          responderId: event.responderId,
-        })}`,
-      );
-      return;
-    }
-
-    const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
-    const isSupersededNotice =
-      event.status === 'failed' && isSystemNoticeMarkdownContent(String(event.result || ''));
-    if (isSupersededNotice) {
-      this.markCallSiteSuperseded(callId, endedAtMs);
-      return;
-    }
-
-    this.markCallSiteSettled(callId, event.status, endedAtMs);
-    if (event.status === 'failed') {
-      const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-      const t = getUiStrings(this.uiLanguage);
-      host?.dispatchEvent(
-        new CustomEvent('ui-toast', {
-          detail: {
-            message: String(event.result || t.teammateCallFailedToast),
-            kind: 'error',
-          },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    }
-  }
-
-  private handleTellaskCallCarryover(
-    event: Extract<TypedDialogEvent, { type: 'tellask_call_carryover_evt' }>,
-  ): void {
-    if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
-      this.handleProtocolError(
-        `tellask_call_carryover_evt course mismatch ${JSON.stringify({
-          eventCourse: event.course,
-          currentCourse: this.currentCourse,
-          callId: event.callId,
-          carryoverCourse: event.carryoverCourse,
-        })}`,
-      );
-      return;
-    }
-
-    const callId = String(event.callId || '').trim();
-    if (!callId) {
-      this.handleProtocolError(
-        `tellask_call_carryover_evt missing callId ${JSON.stringify({
-          responderId: event.responderId,
-          course: event.course,
-          carryoverCourse: event.carryoverCourse,
-        })}`,
-      );
-      return;
-    }
-
-    const callingSection = this.callingSectionByCallId.get(callId);
-    if (!callingSection) {
-      this.handleProtocolError(
-        `tellask_call_carryover_evt received before tellask_call_start_evt ${JSON.stringify({
-          callId,
-          course: event.course,
-          responderId: event.responderId,
-          carryoverCourse: event.carryoverCourse,
-        })}`,
-      );
-      return;
-    }
-
-    const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
-    this.markCallSiteCarriedOver(callId, event.status, event.carryoverCourse, endedAtMs);
-  }
-
   private parseOptionalPositiveInt(value: unknown): number | undefined {
     if (typeof value !== 'number') {
       return undefined;
@@ -2941,6 +2851,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callerCourse = this.parseOptionalPositiveInt(event.callerCourse);
     const callerDialogId =
       typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
+
     let anchorMeta: TellaskCallAnchorMeta;
     switch (rawAnchorRole) {
       case 'assignment':
@@ -2989,6 +2900,7 @@ export class DomindsDialogContainer extends HTMLElement {
         };
         break;
     }
+
     const genseq = Math.floor(event.genseq);
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     const bubble = messages
@@ -3004,98 +2916,91 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingTellaskCallAnchorByGenseq.set(genseq, anchorMeta);
   }
 
-  // === TEAMMATE RESPONSE HANDLER ===
-  // Handles responses for @agentName calls - displays result in SEPARATE bubble
-  // Now includes full response and agentId from subdialog completion
+  // === TELLASK CALL RESULT HANDLER ===
+  // Final response body is shown in a separate teammate bubble.
+  // Call site only tracks lifecycle status/timing.
   //
   // Call Type Distinction:
-  // - Teammate tellask function calls (tellask/tellaskSessionless)
-  //   - Result displays in SEPARATE bubble (subdialog or supdialog response)
-  //   - Uses calleeDialogId for correlation (event.calleeDialogId)
-  //   - Uses this handler (handleTellaskResponse)
-  //
-  // - Parent Call: subdialog responding to @parentAgentId from within
-  //   - Result displays INLINE in parent's bubble
-  //   - Uses callId for correlation
-  //   - Uses handleToolCallResponse() instead
-  private handleTellaskResponse(
-    event: Extract<TypedDialogEvent, { type: 'tellask_response_evt' }>,
+  private handleTellaskResult(
+    event: Extract<TypedDialogEvent, { type: 'tellask_result_evt' }>,
   ): void {
-    const normalizedCallId = String(event.callId || '').trim();
-    const isSupersededNotice =
-      event.status === 'failed' && isSystemNoticeMarkdownContent(event.response);
-    if (normalizedCallId !== '') {
-      const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
-      const hasCallSite = this.callingSectionByCallId.has(normalizedCallId);
-      if (!hasCallSite) {
-        this.handleProtocolError(
-          `tellask_response_evt received before tellask_call_start_evt ${JSON.stringify({
-            callId: normalizedCallId,
-            course: event.course,
-            calling_genseq: event.calling_genseq,
-            responderId: event.responderId,
-            status: event.status,
-          })}`,
-        );
-      } else {
-        if (isSupersededNotice) {
-          this.markCallSiteSuperseded(normalizedCallId, endedAtMs);
-        } else {
-          this.markCallSiteSettled(normalizedCallId, event.status, endedAtMs);
-        }
-      }
-    }
-    // Validate calleeDialogId is present
-    if (!event.calleeDialogId) {
-      console.error('handleTellaskResponse: Missing calleeDialogId', {
-        responderId: event.responderId,
-        response: event.response?.substring(0, 100),
-      });
+    if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
+      this.handleProtocolError(
+        `tellask_result_evt course mismatch ${JSON.stringify({
+          eventCourse: event.course,
+          currentCourse: this.currentCourse,
+          callId: event.callId,
+        })}`,
+      );
       return;
     }
 
-    // Create separate bubble for teammate response
-    // The calleeDialogId (event.calleeDialogId) can refer to either:
-    // - A subdialog (for @agentName calls from parent)
-    // - A supdialog (for @parentAgentId calls from subdialog)
-
-    // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
-    const agentId = event.agentId || event.responderId;
-    const requesterId = event.originMemberId;
-    if (!requesterId || requesterId.trim() === '') {
-      throw new Error('handleTellaskResponse: Missing originMemberId (requesterId)');
-    }
-    if (typeof event.response !== 'string') {
-      throw new Error('handleTellaskResponse: Missing response payload');
+    const callId = String(event.callId || '').trim();
+    if (!callId) {
+      this.handleProtocolError(
+        `tellask_result_evt missing callId ${JSON.stringify({
+          responderId: event.responder.responderId,
+          mentionList: 'mentionList' in event.call ? event.call.mentionList : undefined,
+          tellaskContent: event.call.tellaskContent,
+          calling_genseq: event.calling_genseq,
+        })}`,
+      );
+      return;
     }
 
-    const responseNarr = event.response;
-    const sessionSlug = (() => {
-      switch (event.callName) {
-        case 'tellask':
-          return event.sessionSlug;
-        case 'tellaskSessionless':
-        case 'tellaskBack':
-        case 'freshBootsReasoning':
-          return undefined;
+    const callingSection = this.callingSectionByCallId.get(callId);
+    if (!callingSection) {
+      this.handleProtocolError(
+        `tellask_result_evt received before tellask_call_start_evt ${JSON.stringify({
+          callId,
+          course: event.course,
+          calling_genseq: event.calling_genseq,
+          responderId: event.responder.responderId,
+        })}`,
+      );
+    }
+
+    const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
+    const isSupersededNotice =
+      event.status === 'failed' && isSystemNoticeMarkdownContent(String(event.content || ''));
+    if (callingSection) {
+      if (isSupersededNotice) {
+        this.markCallSiteSuperseded(callId, endedAtMs);
+      } else if (event.status !== 'pending') {
+        this.markCallSiteSettled(callId, event.status, endedAtMs);
       }
-    })();
+    }
 
-    // callId is used for navigation between call site ↔ response bubble.
-
-    // Create teammate bubble with the response
+    if (event.status === 'failed') {
+      const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
+      const t = getUiStrings(this.uiLanguage);
+      host?.dispatchEvent(
+        new CustomEvent('ui-toast', {
+          detail: {
+            message: String(event.content || t.teammateCallFailedToast),
+            kind: 'error',
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+    const agentId = event.responder.agentId || event.responder.responderId;
+    const requesterId = event.responder.originMemberId;
+    const sessionSlug = event.callName === 'tellask' ? event.call.sessionSlug : undefined;
+    const calleeDialogId = event.route?.calleeDialogId;
     const messageEl = this.createTellaskResponseBubble(
-      event.calleeDialogId,
+      calleeDialogId,
       agentId,
-      responseNarr,
+      event.content,
       event.calling_genseq,
       event.callId,
-      event.originMemberId,
+      requesterId,
       event.callName,
       event.timestamp,
       sessionSlug,
-      typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
-        ? toCalleeCourseNumber(event.calleeCourse)
+      typeof event.route?.calleeCourse === 'number' && Number.isFinite(event.route.calleeCourse)
+        ? toCalleeCourseNumber(event.route.calleeCourse)
         : undefined,
       isSupersededNotice ? 'superseded_notice' : 'standard',
     );
@@ -3103,13 +3008,35 @@ export class DomindsDialogContainer extends HTMLElement {
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
       container.appendChild(messageEl);
+      this.setupTellaskResponseProgressiveExpand(messageEl);
       this.scrollToBottom();
     }
   }
 
-  private handleTellaskCarryoverResult(
-    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_result_evt' }>,
+  private handleTellaskCarryover(
+    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_evt' }>,
   ): void {
+    if (typeof event.content !== 'string' || event.content.trim() === '') {
+      this.handleProtocolError(
+        `tellask_carryover_evt missing canonical content ${JSON.stringify({
+          callId: event.callId,
+          course: event.course,
+          responderId: event.responderId,
+        })}`,
+      );
+      return;
+    }
+    const callId = String(event.callId || '').trim();
+    if (callId !== '') {
+      const callingSection = this.callingSectionByCallId.get(callId);
+      if (callingSection) {
+        const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
+        this.markCallSiteCarriedOver(callId, event.status, event.carryoverCourse, endedAtMs);
+      }
+      // Cross-course carryover legitimately has no current-course call-site bubble. The carryover
+      // bubble itself is the canonical rendering in that case, so missing call-site state is not a
+      // protocol violation.
+    }
     const container = this.shadowRoot?.querySelector('.messages');
     if (!container) {
       return;
@@ -3156,13 +3083,18 @@ export class DomindsDialogContainer extends HTMLElement {
   // Create teammate bubble for subagent responses
   // calleeDialogId: ID of the callee dialog (subdialog OR supdialog)
   private createTellaskResponseBubble(
-    calleeDialogId: string,
+    calleeDialogId: string | undefined,
     agentId: string | undefined,
     responseNarr: string,
     callSiteId?: CallingGenerationSeqNumber,
     callId?: string,
     originMemberId?: string,
-    callName?: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+    callName?:
+      | 'tellaskBack'
+      | 'tellask'
+      | 'tellaskSessionless'
+      | 'askHuman'
+      | 'freshBootsReasoning',
     timestamp?: string,
     sessionSlug?: string,
     calleeCourse?: CalleeCourseNumber,
@@ -3171,7 +3103,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
     el.className = 'message teammate';
-    el.setAttribute('data-callee-dialog-id', calleeDialogId);
+    if (calleeDialogId) {
+      el.setAttribute('data-callee-dialog-id', calleeDialogId);
+    }
     if (typeof callSiteId === 'number') {
       el.setAttribute('data-call-site-id', String(callSiteId));
     }
@@ -3305,7 +3239,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private createTellaskCarryoverBubble(
-    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_result_evt' }>,
+    event: Extract<TypedDialogEvent, { type: 'tellask_carryover_evt' }>,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
@@ -3333,6 +3267,7 @@ export class DomindsDialogContainer extends HTMLElement {
         case 'tellask':
           return event.sessionSlug.trim();
         case 'tellaskSessionless':
+        case 'askHuman':
         case 'freshBootsReasoning':
           return '';
       }
@@ -3341,7 +3276,7 @@ export class DomindsDialogContainer extends HTMLElement {
       normalizedSessionSlug === ''
         ? ''
         : `<span class="teammate-session-slug">· ${this.escapeHtml(normalizedSessionSlug)}</span>`;
-    const visibleResponse = event.response;
+    const visibleResponse = event.content;
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
@@ -3423,6 +3358,44 @@ export class DomindsDialogContainer extends HTMLElement {
       });
     }
 
+    return el;
+  }
+
+  private createUiOnlyMarkdownBubble(
+    event: Extract<TypedDialogEvent, { type: 'ui_only_markdown_evt' }>,
+  ): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'message system ui-only-markdown';
+    const safeTimestamp = this.escapeHtml(event.timestamp ?? '');
+    const title = this.uiLanguage === 'zh' ? '系统提示' : 'System notice';
+    el.innerHTML = `
+      <div class="bubble-content">
+        <div class="bubble-header">
+          <div class="bubble-title">
+            <div class="title-row">
+              <div class="title-left">
+                <span class="ui-only-markdown-label">${this.escapeHtml(title)}</span>
+              </div>
+              <div class="title-right">
+                <div class="timestamp">${safeTimestamp}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bubble-body">
+          <div class="ui-only-markdown-content"></div>
+          <div class="ui-only-markdown-expand-footer progressive-expand-footer is-hidden">
+            <button type="button" class="ui-only-markdown-expand-btn progressive-expand-btn"></button>
+          </div>
+        </div>
+      </div>
+    `;
+    const contentEl = el.querySelector('.ui-only-markdown-content');
+    if (contentEl) {
+      const md = this.createMarkdownSection();
+      md.setRawMarkdown(event.content);
+      contentEl.appendChild(md);
+    }
     return el;
   }
 
@@ -3770,23 +3743,15 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
-  private normalizeQ4HAnswerCallIds(raw: unknown): string[] {
-    if (!Array.isArray(raw)) {
-      return [];
+  private normalizeQ4HAnswerCallId(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') {
+      return undefined;
     }
-    const seen = new Set<string>();
-    const normalized: string[] = [];
-    for (const value of raw) {
-      if (typeof value !== 'string') continue;
-      const callId = value.trim();
-      if (callId === '' || seen.has(callId)) continue;
-      seen.add(callId);
-      normalized.push(callId);
-    }
-    return normalized;
+    const callId = raw.trim();
+    return callId !== '' ? callId : undefined;
   }
 
-  private upsertUserAnswerCallSiteLinks(bubble: HTMLElement, callIds: readonly string[]): void {
+  private upsertUserAnswerCallSiteLink(bubble: HTMLElement, callId: string | undefined): void {
     const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
     if (!headerRight) return;
     let actions = headerRight.querySelector('.bubble-anchor-actions') as HTMLElement | null;
@@ -3801,23 +3766,19 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
     const existing = actions.querySelector('.user-answer-callsite-actions') as HTMLElement | null;
-    if (callIds.length === 0) {
+    if (!callId) {
       existing?.remove();
-      bubble.removeAttribute('data-q4h-answer-call-ids');
+      bubble.removeAttribute('data-q4h-answer-call-id');
       return;
     }
 
-    bubble.setAttribute('data-q4h-answer-call-ids', callIds.join(','));
+    bubble.setAttribute('data-q4h-answer-call-id', callId);
     const t = getUiStrings(this.uiLanguage);
-    const html = callIds
-      .map((callId, index) => {
-        const label = `#${String(index + 1)}`;
-        const safeCallId = this.escapeHtml(callId);
-        const safeLabel = this.escapeHtml(label);
-        const safeTitle = this.escapeHtml(`${t.q4hGoToCallSiteTitle} ${label}`);
-        return `<button type="button" class="user-answer-callsite-link-btn" data-call-id="${safeCallId}" aria-label="${safeTitle}" title="${safeTitle}">${safeLabel}</button>`;
-      })
-      .join('');
+    const safeCallId = this.escapeHtml(callId);
+    const safeTitle = this.escapeHtml(t.q4hGoToCallSiteTitle);
+    const html = `<button type="button" class="user-answer-callsite-link-btn" data-call-id="${safeCallId}" aria-label="${safeTitle}" title="${safeTitle}">
+      <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
+    </button>`;
     if (existing) {
       existing.innerHTML = html;
       return;
@@ -3955,8 +3916,8 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
       bubble.setAttribute('data-user-msg-origin', event.origin);
-      const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
-      this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
+      const q4hAnswerCallId = this.normalizeQ4HAnswerCallId(event.q4hAnswerCallId);
+      this.upsertUserAnswerCallSiteLink(bubble, q4hAnswerCallId);
       if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
         bubble.setAttribute('data-user-language-code', event.userLanguageCode);
       } else {
@@ -3992,8 +3953,8 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     bubble.setAttribute('data-user-msg-origin', event.origin);
-    const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
-    this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
+    const q4hAnswerCallId = this.normalizeQ4HAnswerCallId(event.q4hAnswerCallId);
+    this.upsertUserAnswerCallSiteLink(bubble, q4hAnswerCallId);
     if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
       bubble.setAttribute('data-user-language-code', event.userLanguageCode);
     } else {
@@ -4628,6 +4589,14 @@ export class DomindsDialogContainer extends HTMLElement {
       .message.calling { border-left: 4px solid var(--dominds-info, var(--color-info, #06b6d4)); }
       .message.system { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
       .message.subdialog { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
+      .message.system.ui-only-markdown {
+        border-left-color: var(--color-warning, #f59e0b);
+        background: color-mix(
+          in srgb,
+          var(--color-warning, #f59e0b) 8%,
+          var(--color-bg-tertiary, #f1f5f9)
+        );
+      }
       
       /* New generation bubble styles */
       .generation-bubble { 
@@ -4823,6 +4792,11 @@ export class DomindsDialogContainer extends HTMLElement {
       .call-context {
         font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+      }
+
+      .ui-only-markdown-label {
+        font-weight: 600;
+        color: var(--color-warning, #b45309);
       }
       
       .bubble-header { 

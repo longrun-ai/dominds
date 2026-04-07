@@ -5,7 +5,7 @@ import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { executeTellaskSpecialCalls } from '../../main/llm/kernel-driver/tellask-special';
+import { executeTellaskCalls } from '../../main/llm/kernel-driver/tellask-special';
 import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 import {
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
       directive,
     );
 
-    const wrongReply = await executeTellaskSpecialCalls({
+    const wrongReply = await executeTellaskCalls({
       dlg: subdialog,
       calls: [
         {
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
       targetCallId: callId,
     });
 
-    const staleReply = await executeTellaskSpecialCalls({
+    const staleReply = await executeTellaskCalls({
       dlg: subdialog,
       calls: [
         {

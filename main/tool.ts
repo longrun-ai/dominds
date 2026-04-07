@@ -56,6 +56,26 @@ export type Tool = FuncTool;
 
 export type ToolCallOutput = KernelToolCallOutput;
 
+type PreparedRawToolArguments =
+  | Readonly<{
+      ok: true;
+      raw: ToolArguments;
+      contextArguments: string;
+      persistedArguments: ToolArguments;
+    }>
+  | Readonly<{
+      ok: false;
+      error: string;
+      contextArguments: string;
+      persistedArguments: ToolArguments;
+    }>;
+
+const FUNC_TOOL_ARG_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  readonly_shell: {
+    timeout: 'timeout_ms',
+  },
+};
+
 export interface ReminderOptions {
   readonly echoback?: boolean;
   readonly scope?: ReminderScope;
@@ -232,6 +252,124 @@ export function validateArgs(
   }
 
   return { ok: true };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeFuncToolArguments(
+  toolName: string,
+  args: Record<string, unknown>,
+): ToolArguments {
+  const aliases = FUNC_TOOL_ARG_ALIASES[toolName];
+  if (!aliases) return args as ToolArguments;
+  let normalized: Record<string, unknown> | undefined;
+
+  for (const [aliasKey, canonicalKey] of Object.entries(aliases)) {
+    if (!(aliasKey in args)) continue;
+    if (!normalized) normalized = { ...args };
+    if (!(canonicalKey in normalized)) {
+      normalized[canonicalKey] = normalized[aliasKey];
+    }
+    delete normalized[aliasKey];
+  }
+
+  return (normalized ?? args) as ToolArguments;
+}
+
+export function formatToolArgumentsForContext(arguments_: ToolArguments): string {
+  return JSON.stringify(arguments_ ?? {});
+}
+
+export function prepareRawToolArguments(argumentsStr: string): PreparedRawToolArguments {
+  if (argumentsStr.trim() === '') {
+    return {
+      ok: true,
+      raw: {},
+      contextArguments: '{}',
+      persistedArguments: {},
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argumentsStr);
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Arguments must be valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      contextArguments: '{}',
+      persistedArguments: {},
+    };
+  }
+
+  if (!isPlainObject(parsed)) {
+    return {
+      ok: false,
+      error: 'Arguments must be an object',
+      contextArguments: '{}',
+      persistedArguments: {},
+    };
+  }
+
+  return {
+    ok: true,
+    raw: parsed as ToolArguments,
+    contextArguments: argumentsStr,
+    persistedArguments: parsed as ToolArguments,
+  };
+}
+
+export type FuncToolInvocationResolution =
+  | Readonly<{
+      ok: true;
+      args: ToolArguments;
+      contextArguments: string;
+      persistedArguments: ToolArguments;
+    }>
+  | Readonly<{
+      ok: false;
+      error: string;
+      contextArguments: string;
+      persistedArguments: ToolArguments;
+    }>;
+
+export function resolveFuncToolInvocationArguments(
+  tool: FuncTool,
+  argumentsStr: string,
+): FuncToolInvocationResolution {
+  const prepared = prepareRawToolArguments(argumentsStr);
+  if (!prepared.ok) {
+    return prepared;
+  }
+
+  const normalizedArgs = normalizeFuncToolArguments(tool.name, prepared.raw);
+  if (tool.argsValidation === 'passthrough') {
+    return {
+      ok: true,
+      args: normalizedArgs,
+      contextArguments: formatToolArgumentsForContext(normalizedArgs),
+      persistedArguments: normalizedArgs,
+    };
+  }
+
+  const validation = validateArgs(tool.parameters, normalizedArgs);
+  if (!validation.ok) {
+    return {
+      ok: false,
+      error: validation.error,
+      contextArguments: formatToolArgumentsForContext(normalizedArgs),
+      persistedArguments: normalizedArgs,
+    };
+  }
+
+  return {
+    ok: true,
+    args: normalizedArgs,
+    contextArguments: formatToolArgumentsForContext(normalizedArgs),
+    persistedArguments: normalizedArgs,
+  };
 }
 
 function isJsonPrimitiveValue(value: unknown): value is JsonPrimitive {

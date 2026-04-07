@@ -57,8 +57,8 @@ async function main(): Promise<void> {
     assert.equal(funcCalls[0]?.name, 'env_get');
     assert.equal(
       funcCalls[0]?.arguments,
-      '{}',
-      'invalid function call arguments should be normalized before being fed back to the model',
+      badArguments,
+      'invalid function call arguments should preserve the original raw string in dialog history',
     );
 
     const funcResults = dlg.msgs.filter((msg) => msg.type === 'func_result_msg');
@@ -77,10 +77,10 @@ async function main(): Promise<void> {
     if (persistedCall.type !== 'func_call_record') {
       throw new Error('expected persisted malformed tool call to be a func_call_record');
     }
-    assert.deepEqual(
-      persistedCall.arguments,
-      {},
-      'malformed JSON should persist normalized empty call arguments for restoration',
+    assert.equal(
+      persistedCall.rawArgumentsText,
+      badArguments,
+      'malformed JSON should persist the original raw argument string for restoration',
     );
 
     const restored = await DialogPersistence.restoreDialog(dlg.id, 'running');
@@ -89,6 +89,11 @@ async function main(): Promise<void> {
       (msg) => msg.type === 'func_call_msg' && msg.id === funcCalls[0]?.id,
     );
     assert(restoredCall, 'expected restored dialog state to include the malformed tool call');
+    assert.equal(
+      restoredCall.arguments,
+      badArguments,
+      'expected restored malformed tool call to preserve original raw arguments',
+    );
     const restoredResult = restored.messages.find(
       (msg) => msg.type === 'func_result_msg' && msg.id === funcCalls[0]?.id,
     );

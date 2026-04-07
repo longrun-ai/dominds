@@ -257,8 +257,7 @@ export interface Q4HStateResponse {
     taskDocPath: string;
     tellaskContent: string;
     askedAt: string;
-    callId?: string;
-    remainingCallIds?: string[];
+    callId: string;
     callSiteRef: {
       course: number;
       messageIndex: number;

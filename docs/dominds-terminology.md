@@ -91,6 +91,23 @@
 - EN: A Tellask is not casual chat; it is a collaboration action that Dominds can drive, route, and coordinate (including suspend/resume).
 - ZH: Tellask 不是随意聊天，而是一种可被 Dominds 驱动、路由、并由系统协调（包括挂起/恢复）的协作动作。
 
+### Tellask Carryover（诉请补全）
+
+- EN: **Tellask carryover** is the canonical way to represent, in the **latest/current course**, the completion of a Tellask that was originally asked in an older course.
+- ZH: **Tellask carryover（诉请补全）** 是把“旧 course 中发起、但对当前推进仍然重要的诉请完成结果”规范化写入 **最新/当前 course** 的方式。
+
+- EN: The LLM reads only the latest/current course during normal restore/drive. Carryover exists specifically so the latest course can still see the old request context plus its resolved result without reloading the older course transcript.
+- ZH: 正常的 restore/drive 中，LLM 只读取最新/当前 course。carryover 的存在，就是为了让最新 course 在**不重新加载旧 course transcript** 的前提下，仍能看到旧提问的必要上下文及其完成结果。
+
+- EN: `originCourse` is provenance only: it tells you where the original Tellask was issued.
+- ZH: `originCourse` 只表示来源（provenance）：原始诉请是在哪个 course 发起的。
+
+- EN: `carryoverCourse` and event `course` are owner-course fields: they tell you which current/latest course now contains the usable context.
+- ZH: `carryoverCourse` 和事件里的 `course` 表示归属 course：当前哪一个最新 course 持有这段可直接使用的上下文。
+
+- EN: Carryover is **not** a technical tool-result pair for the old call. It is ordinary current-course context that happens to preserve the semantics of an older Tellask completion.
+- ZH: carryover **不是** 旧 call 的技术性 tool-result 配对；它是当前 course 中的普通规范化上下文，只是语义上保留了那次旧诉请的完成结果。
+
 #### Tellask headline（诉请头）
 
 - EN: The first line of a Tellask block, starting with `tellaskSessionless({ targetAgentId: "<name>", tellaskContent: "..." })`.

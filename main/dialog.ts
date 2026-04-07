@@ -17,7 +17,7 @@ import type {
   DialogEvent,
   FullRemindersEvent,
   ReminderContent,
-  TellaskResponseEvent,
+  TellaskResultEvent,
   WebSearchCallAction,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
@@ -35,14 +35,14 @@ import type {
   HumanQuestion,
   ProviderData,
   ReasoningPayload,
-  ToolArguments as StoredToolArguments,
+  TellaskCallRecordName,
   TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
-import { ChatMessage, FuncResultMsg } from './llm/client';
+import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
@@ -79,7 +79,7 @@ type UpNextPromptState = {
   grammar?: 'markdown';
   userLanguageCode?: LanguageCode;
   origin: 'user' | 'diligence_push' | 'runtime';
-  q4hAnswerCallIds?: string[];
+  q4hAnswerCallId?: string;
   tellaskReplyDirective?: TellaskReplyDirective;
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;
@@ -926,7 +926,7 @@ export abstract class Dialog {
       grammar: prompt.grammar,
       userLanguageCode: prompt.userLanguageCode,
       origin: prompt.origin,
-      q4hAnswerCallIds: prompt.q4hAnswerCallIds,
+      q4hAnswerCallId: prompt.q4hAnswerCallId,
       tellaskReplyDirective: prompt.tellaskReplyDirective,
       skipTaskdoc: prompt.skipTaskdoc,
       subdialogReplyTarget: prompt.subdialogReplyTarget,
@@ -957,7 +957,7 @@ export abstract class Dialog {
           msgId: nextPrompt.msgId,
           grammar: nextPrompt.grammar ?? 'markdown',
           userLanguageCode: nextPrompt.userLanguageCode,
-          q4hAnswerCallIds: nextPrompt.q4hAnswerCallIds,
+          q4hAnswerCallId: nextPrompt.q4hAnswerCallId,
           tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
           skipTaskdoc: nextPrompt.skipTaskdoc,
           subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
@@ -998,25 +998,25 @@ export abstract class Dialog {
     return normalized;
   }
 
-  private mergePromptQ4HAnswerCallIds(
-    existing: string[] | undefined,
-    incoming: string[] | undefined,
-  ): string[] | undefined {
-    if (!existing || existing.length === 0) {
-      return incoming && incoming.length > 0 ? [...incoming] : undefined;
+  private mergePromptQ4HAnswerCallId(
+    existing: string | undefined,
+    incoming: string | undefined,
+  ): string | undefined {
+    const normalizedExisting = typeof existing === 'string' ? existing.trim() : '';
+    const normalizedIncoming = typeof incoming === 'string' ? incoming.trim() : '';
+    if (normalizedExisting === '') {
+      return normalizedIncoming !== '' ? normalizedIncoming : undefined;
     }
-    if (!incoming || incoming.length === 0) {
-      return [...existing];
+    if (normalizedIncoming === '') {
+      return normalizedExisting;
     }
-    const seen = new Set<string>();
-    const merged: string[] = [];
-    for (const raw of [...existing, ...incoming]) {
-      const callId = raw.trim();
-      if (callId === '' || seen.has(callId)) continue;
-      seen.add(callId);
-      merged.push(callId);
+    if (normalizedExisting !== normalizedIncoming) {
+      throw new Error(
+        `Q4H answer continuation invariant violation: conflicting callIds cannot be merged ` +
+          `(dialog=${this.id.valueOf()} existing=${normalizedExisting} incoming=${normalizedIncoming})`,
+      );
     }
-    return merged.length > 0 ? merged : undefined;
+    return normalizedExisting;
   }
 
   private enqueueQueuedPromptState(state: UpNextPromptState): void {
@@ -1029,7 +1029,7 @@ export abstract class Dialog {
         grammar: state.grammar ?? 'markdown',
         userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
         origin: state.origin,
-        q4hAnswerCallIds: state.q4hAnswerCallIds,
+        q4hAnswerCallId: state.q4hAnswerCallId,
         tellaskReplyDirective: state.tellaskReplyDirective,
         skipTaskdoc: state.skipTaskdoc,
         subdialogReplyTarget: state.subdialogReplyTarget,
@@ -1051,7 +1051,7 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
-    q4hAnswerCallIds?: string[];
+    q4hAnswerCallId?: string;
   }): UpNextPromptState {
     const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
@@ -1067,7 +1067,7 @@ export abstract class Dialog {
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
         origin: 'user',
-        q4hAnswerCallIds: options.q4hAnswerCallIds,
+        q4hAnswerCallId: options.q4hAnswerCallId,
       };
       this.enqueueQueuedPromptState(created);
       return created;
@@ -1079,9 +1079,9 @@ export abstract class Dialog {
       grammar: options.grammar,
       userLanguageCode:
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
-      q4hAnswerCallIds: this.mergePromptQ4HAnswerCallIds(
-        existing.q4hAnswerCallIds,
-        options.q4hAnswerCallIds,
+      q4hAnswerCallId: this.mergePromptQ4HAnswerCallId(
+        existing.q4hAnswerCallId,
+        options.q4hAnswerCallId,
       ),
     };
     this.replaceQueuedPromptState(existing.msgId, merged);
@@ -1094,12 +1094,14 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
-    q4hAnswerCallIds?: string[];
+    q4hAnswerCallId?: string;
   }): UpNextPromptState {
     const trimmed = options.prompt.trim();
     if (!trimmed) {
-      throw new Error('Prompt is required to queue deferred Q4H answer');
+      throw new Error('Continuation input is required to queue deferred Q4H answer');
     }
+    // This queue item only carries the already-answered askHuman call correlation into the next
+    // resumed drive. The answer itself has already been persisted as tellask result/carryover.
     const created: UpNextPromptState = {
       kind: 'deferred_q4h_answer',
       prompt: trimmed,
@@ -1107,7 +1109,7 @@ export abstract class Dialog {
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
       origin: 'user',
-      q4hAnswerCallIds: options.q4hAnswerCallIds,
+      q4hAnswerCallId: options.q4hAnswerCallId,
       runControl: undefined,
     };
     this.enqueueQueuedPromptState(created);
@@ -1119,7 +1121,7 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
-    q4hAnswerCallIds?: string[];
+    q4hAnswerCallId?: string;
     tellaskReplyDirective?: TellaskReplyDirective;
     skipTaskdoc?: boolean;
     subdialogReplyTarget?: DialogSubdialogReplyTarget;
@@ -1138,7 +1140,7 @@ export abstract class Dialog {
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
         origin: 'runtime',
-        q4hAnswerCallIds: options.q4hAnswerCallIds,
+        q4hAnswerCallId: options.q4hAnswerCallId,
         tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
         subdialogReplyTarget: options.subdialogReplyTarget,
@@ -1155,9 +1157,9 @@ export abstract class Dialog {
       grammar: options.grammar,
       userLanguageCode:
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
-      q4hAnswerCallIds: this.mergePromptQ4HAnswerCallIds(
-        existing.q4hAnswerCallIds,
-        options.q4hAnswerCallIds,
+      q4hAnswerCallId: this.mergePromptQ4HAnswerCallId(
+        existing.q4hAnswerCallId,
+        options.q4hAnswerCallId,
       ),
       tellaskReplyDirective: options.tellaskReplyDirective ?? existing.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
@@ -1298,6 +1300,228 @@ export abstract class Dialog {
     return await this.dlgStore.receiveFuncResult(this, result);
   }
 
+  public async receiveTellaskResult(result: TellaskResultMsg): Promise<void> {
+    return await this.dlgStore.receiveTellaskResult(this, result);
+  }
+
+  public async receiveTellaskCarryover(result: TellaskCarryoverMsg): Promise<void> {
+    return await this.dlgStore.receiveTellaskCarryover(this, result);
+  }
+
+  public async receiveTellaskCallResult(
+    responderId: string,
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
+    tellaskContent: string,
+    result: string,
+    status: 'completed' | 'failed',
+    callId: string,
+  ): Promise<void> {
+    const tellaskResult: TellaskResultMsg =
+      callName === 'tellask'
+        ? {
+            type: 'tellask_result_msg',
+            role: 'tool',
+            genseq: this.activeGenSeqOrUndefined ?? 1,
+            callId,
+            callName,
+            status,
+            content: result,
+            call: {
+              tellaskContent,
+              mentionList: mentionList ?? [],
+            },
+            responder: {
+              responderId,
+            },
+          }
+        : callName === 'tellaskSessionless'
+          ? {
+              type: 'tellask_result_msg',
+              role: 'tool',
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              callId,
+              callName,
+              status,
+              content: result,
+              call: {
+                tellaskContent,
+                mentionList: mentionList ?? [],
+              },
+              responder: {
+                responderId,
+              },
+            }
+          : {
+              type: 'tellask_result_msg',
+              role: 'tool',
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              callId,
+              callName,
+              status,
+              content: result,
+              call: {
+                tellaskContent,
+              },
+              responder: {
+                responderId,
+              },
+            };
+    await this.receiveTellaskResult(tellaskResult);
+  }
+
+  public async receiveTellaskResponse(
+    responderId: string,
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
+    tellaskContent: string,
+    status: 'completed' | 'failed',
+    subdialogId: DialogID | undefined,
+    options: {
+      response: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      originCourse?: CallingCourseNumber;
+      carryoverContent?: string;
+      sessionSlug?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+    },
+  ): Promise<TellaskResultMsg | TellaskCarryoverMsg> {
+    const currentCourse = this.activeGenCourseOrUndefined ?? this.currentCourse;
+    const resultRoute = {
+      ...(subdialogId ? { calleeDialogId: subdialogId.selfId } : {}),
+      ...(typeof options.calleeCourse === 'number' ? { calleeCourse: options.calleeCourse } : {}),
+      ...(typeof options.calleeGenseq === 'number' ? { calleeGenseq: options.calleeGenseq } : {}),
+    };
+
+    const carryoverOriginCourse = options.originCourse;
+    const isCrossCourseResponse =
+      carryoverOriginCourse !== undefined && carryoverOriginCourse !== currentCourse;
+
+    if (isCrossCourseResponse) {
+      // Cross-course completion is not represented as a tool-result pair in the latest course.
+      // Instead we write a canonical current-course carryover message that restates the older
+      // tellask plus its resolution so the latest-course LLM context can read it directly.
+      if (typeof options.carryoverContent !== 'string') {
+        throw new Error(
+          `receiveTellaskResponse invariant violation: missing carryover content for cross-course response ` +
+            `(callId=${options.callId}, callName=${callName}, originCourse=${options.originCourse}, currentCourse=${currentCourse})`,
+        );
+      }
+      if (options.carryoverContent.trim() === '') {
+        throw new Error(
+          `receiveTellaskResponse invariant violation: empty carryover content ` +
+            `(callId=${options.callId}, callName=${callName})`,
+        );
+      }
+      if (options.response.trim() === '') {
+        throw new Error(
+          `receiveTellaskResponse invariant violation: empty carryover response body ` +
+            `(callId=${options.callId}, callName=${callName})`,
+        );
+      }
+      if (callName === 'tellaskBack') {
+        throw new Error(
+          `receiveTellaskResponse invariant violation: tellaskBack does not support carryover (callId=${options.callId})`,
+        );
+      }
+      const carryoverResult: TellaskCarryoverMsg = {
+        type: 'tellask_carryover_msg',
+        role: 'user',
+        genseq: this.activeGenSeqOrUndefined ?? 1,
+        content: options.carryoverContent,
+        originCourse: carryoverOriginCourse,
+        carryoverCourse: currentCourse,
+        responderId,
+        callName,
+        tellaskContent,
+        status,
+        response: options.response,
+        agentId: options.agentId,
+        callId: options.callId,
+        originMemberId: options.originMemberId,
+        ...(callName === 'tellask'
+          ? {
+              mentionList: mentionList ?? [],
+              sessionSlug: options.sessionSlug,
+            }
+          : callName === 'tellaskSessionless'
+            ? {
+                mentionList: mentionList ?? [],
+              }
+            : {}),
+        ...resultRoute,
+      };
+      await this.receiveTellaskCarryover(carryoverResult);
+      return carryoverResult;
+    }
+
+    const tellaskResult: TellaskResultMsg =
+      callName === 'tellask'
+        ? {
+            type: 'tellask_result_msg',
+            role: 'tool',
+            genseq: this.activeGenSeqOrUndefined ?? 1,
+            callId: options.callId,
+            callName,
+            status,
+            content: options.response,
+            call: {
+              tellaskContent,
+              mentionList: mentionList ?? [],
+              ...(options.sessionSlug ? { sessionSlug: options.sessionSlug } : {}),
+            },
+            responder: {
+              responderId,
+              agentId: options.agentId,
+              originMemberId: options.originMemberId,
+            },
+            route: resultRoute,
+          }
+        : callName === 'tellaskSessionless'
+          ? {
+              type: 'tellask_result_msg',
+              role: 'tool',
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              callId: options.callId,
+              callName,
+              status,
+              content: options.response,
+              call: {
+                tellaskContent,
+                mentionList: mentionList ?? [],
+              },
+              responder: {
+                responderId,
+                agentId: options.agentId,
+                originMemberId: options.originMemberId,
+              },
+              route: resultRoute,
+            }
+          : {
+              type: 'tellask_result_msg',
+              role: 'tool',
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              callId: options.callId,
+              callName,
+              status,
+              content: options.response,
+              call: {
+                tellaskContent,
+              },
+              responder: {
+                responderId,
+                agentId: options.agentId,
+                originMemberId: options.originMemberId,
+              },
+              route: resultRoute,
+            };
+    await this.receiveTellaskResult(tellaskResult);
+    return tellaskResult;
+  }
+
   public async notifyGeneratingStart(msgId?: string): Promise<void> {
     // Capture the generation's starting course so any events emitted during this generation
     // remain attributed to the correct course even if a tool mutates dialog.currentCourse
@@ -1414,64 +1638,6 @@ export abstract class Dialog {
     await this.dlgStore.callingStart(this, payload);
   }
 
-  /**
-   * Receive call result with callId for inline correlation
-   */
-  public async receiveTellaskCallResult(
-    responderId: string,
-    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
-    mentionList: string[] | undefined,
-    tellaskContent: string,
-    result: string,
-    status: 'completed' | 'failed',
-    callId: string,
-  ): Promise<void> {
-    return await this.dlgStore.receiveTellaskCallResult(
-      this,
-      responderId,
-      callName,
-      mentionList,
-      tellaskContent,
-      result,
-      status,
-      callId,
-    );
-  }
-
-  /**
-   * Receive tellask response (separate bubble for tellask sideline replies)
-   */
-  public async receiveTellaskResponse(
-    responderId: string,
-    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
-    mentionList: string[] | undefined,
-    tellaskContent: string,
-    status: 'completed' | 'failed',
-    subdialogId: DialogID | undefined,
-    options: {
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      originCourse?: CallingCourseNumber;
-      carryoverContent?: string;
-      sessionSlug?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-    },
-  ): Promise<void> {
-    return await this.dlgStore.receiveTellaskResponse(
-      this,
-      responderId,
-      callName,
-      mentionList,
-      tellaskContent,
-      status,
-      subdialogId,
-      options,
-    );
-  }
-
   public async updateQuestions4Human(questions: HumanQuestion[]): Promise<void> {
     return await this.dlgStore.updateQuestions4Human(this, questions);
   }
@@ -1482,7 +1648,7 @@ export abstract class Dialog {
     grammar: 'markdown',
     origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
-    q4hAnswerCallIds?: string[],
+    q4hAnswerCallId?: string,
     tellaskReplyDirective?: TellaskReplyDirective,
   ): Promise<void> {
     return await this.dlgStore.persistUserMessage(
@@ -1492,9 +1658,32 @@ export abstract class Dialog {
       grammar,
       origin,
       userLanguageCode,
-      q4hAnswerCallIds,
+      q4hAnswerCallId,
       tellaskReplyDirective,
     );
+  }
+
+  public async receiveHumanReply(args: {
+    content: string;
+    userLanguageCode?: LanguageCode;
+    q4hAnswerCallId: string;
+  }): Promise<void> {
+    if (args.content.trim() === '') {
+      throw new Error(
+        `receiveHumanReply invariant violation: empty human reply content ` +
+          `(rootId=${this.id.rootId} selfId=${this.id.selfId})`,
+      );
+    }
+    const callId = args.q4hAnswerCallId.trim();
+    if (callId === '') {
+      throw new Error(
+        `receiveHumanReply invariant violation: empty q4hAnswerCallId ` +
+          `(rootId=${this.id.rootId} selfId=${this.id.selfId})`,
+      );
+    }
+    if (args.userLanguageCode === 'zh' || args.userLanguageCode === 'en') {
+      this.setLastUserLanguageCode(args.userLanguageCode);
+    }
   }
 
   public async appendTellaskReplyResolution(payload: {
@@ -1529,27 +1718,57 @@ export abstract class Dialog {
   public async persistFunctionCall(
     id: string,
     name: string,
-    arguments_: StoredToolArguments,
+    rawArgumentsText: string,
     genseq: number,
   ): Promise<void> {
-    return await this.dlgStore.persistFunctionCall(this, id, name, arguments_, genseq);
+    return await this.dlgStore.persistFunctionCall(this, id, name, rawArgumentsText, genseq);
   }
 
-  public async persistTellaskSpecialCall(
+  public async persistTellaskCall(
     id: string,
-    name:
-      | 'tellaskBack'
-      | 'tellask'
-      | 'tellaskSessionless'
-      | 'replyTellask'
-      | 'replyTellaskSessionless'
-      | 'replyTellaskBack'
-      | 'askHuman'
-      | 'freshBootsReasoning',
-    arguments_: StoredToolArguments,
+    name: TellaskCallRecordName,
+    rawArgumentsText: string,
     genseq: number,
+    options?: {
+      deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+    },
   ): Promise<void> {
-    return await this.dlgStore.persistTellaskSpecialCall(this, id, name, arguments_, genseq);
+    return await this.dlgStore.persistTellaskCall(
+      this,
+      id,
+      name,
+      rawArgumentsText,
+      genseq,
+      options,
+    );
+  }
+
+  public async persistFunctionCallResultPair(
+    id: string,
+    name: string,
+    rawArgumentsText: string,
+    genseq: number,
+    result: FuncResultMsg,
+  ): Promise<void> {
+    return await this.dlgStore.persistFunctionCallResultPair(
+      this,
+      id,
+      name,
+      rawArgumentsText,
+      genseq,
+      result,
+    );
+  }
+
+  public async persistTellaskCallResultPair(args: {
+    id: string;
+    name: TellaskCallRecordName;
+    rawArgumentsText: string;
+    genseq: number;
+    result: TellaskResultMsg | FuncResultMsg;
+    deliveryMode: 'tellask_call_start' | 'func_call_requested';
+  }): Promise<void> {
+    return await this.dlgStore.persistTellaskCallResultPair(this, args);
   }
 
   /**
@@ -1612,8 +1831,8 @@ export abstract class Dialog {
 
       const rawResponse = response;
 
-      // Emit TellaskResponseEvent
-      const evt: TellaskResponseEvent = (() => {
+      // Emit TellaskResultEvent
+      const evt: TellaskResultEvent = (() => {
         switch (callName) {
           case 'tellask':
             if (!sessionSlug) {
@@ -1623,48 +1842,69 @@ export abstract class Dialog {
               );
             }
             return {
-              type: 'tellask_response_evt',
-              responderId,
-              calleeDialogId: subdialogId.selfId,
+              type: 'tellask_result_evt',
               callName,
-              sessionSlug,
-              mentionList: mentionList ?? [],
-              tellaskContent,
+              call: {
+                sessionSlug,
+                mentionList: mentionList ?? [],
+                tellaskContent,
+              },
               status: 'completed',
               course: this.currentCourse,
-              response: rawResponse,
-              agentId: responderAgentId ?? responderId,
               callId,
-              originMemberId,
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              content: rawResponse,
+              responder: {
+                responderId,
+                agentId: responderAgentId ?? responderId,
+                originMemberId,
+              },
+              route: {
+                calleeDialogId: subdialogId.selfId,
+              },
             };
           case 'tellaskSessionless':
             return {
-              type: 'tellask_response_evt',
-              responderId,
-              calleeDialogId: subdialogId.selfId,
+              type: 'tellask_result_evt',
               callName,
-              mentionList: mentionList ?? [],
-              tellaskContent,
+              call: {
+                mentionList: mentionList ?? [],
+                tellaskContent,
+              },
               status: 'completed',
               course: this.currentCourse,
-              response: rawResponse,
-              agentId: responderAgentId ?? responderId,
               callId,
-              originMemberId,
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              content: rawResponse,
+              responder: {
+                responderId,
+                agentId: responderAgentId ?? responderId,
+                originMemberId,
+              },
+              route: {
+                calleeDialogId: subdialogId.selfId,
+              },
             };
           case 'freshBootsReasoning':
             return {
-              type: 'tellask_response_evt',
-              responderId,
-              calleeDialogId: subdialogId.selfId,
+              type: 'tellask_result_evt',
               callName,
-              tellaskContent,
+              call: {
+                tellaskContent,
+              },
               status: 'completed',
               course: this.currentCourse,
-              response: rawResponse,
-              agentId: responderAgentId ?? responderId,
               callId,
-              originMemberId,
+              genseq: this.activeGenSeqOrUndefined ?? 1,
+              content: rawResponse,
+              responder: {
+                responderId,
+                agentId: responderAgentId ?? responderId,
+                originMemberId,
+              },
+              route: {
+                calleeDialogId: subdialogId.selfId,
+              },
             };
         }
       })();
@@ -1673,7 +1913,7 @@ export abstract class Dialog {
       // Emit virtual generating_finish_evt
       await this.notifyGeneratingFinish();
     } catch (err) {
-      log.warn('Failed to post tellask_response_evt event', undefined, {
+      log.warn('Failed to post tellask_result_evt event', undefined, {
         error: err,
         message: err instanceof Error ? err.message : String(err),
       });
@@ -2015,47 +2255,14 @@ export abstract class DialogStore {
 
   public async receiveFuncResult(_dialog: Dialog, _funcResult: FuncResultMsg): Promise<void> {}
 
-  /**
-   * Receive call result with callId for inline correlation
-   */
-  public async receiveTellaskCallResult(
+  public async receiveTellaskResult(
     _dialog: Dialog,
-    _responderId: string,
-    _callName:
-      | 'tellaskBack'
-      | 'tellask'
-      | 'tellaskSessionless'
-      | 'askHuman'
-      | 'freshBootsReasoning',
-    _mentionList: string[] | undefined,
-    _tellaskContent: string,
-    _result: string,
-    _status: 'completed' | 'failed',
-    _callId: string,
+    _funcResult: TellaskResultMsg,
   ): Promise<void> {}
 
-  /**
-   * Receive tellask response (separate bubble for tellask sideline replies)
-   */
-  public async receiveTellaskResponse(
+  public async receiveTellaskCarryover(
     _dialog: Dialog,
-    _responderId: string,
-    _callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
-    _mentionList: string[] | undefined,
-    _tellaskContent: string,
-    _status: 'completed' | 'failed',
-    _subdialogId: DialogID | undefined,
-    _options: {
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      originCourse?: CallingCourseNumber;
-      carryoverContent?: string;
-      sessionSlug?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-    },
+    _result: TellaskCarryoverMsg,
   ): Promise<void> {}
 
   public async updateQuestions4Human(_dialog: Dialog, _questions: HumanQuestion[]): Promise<void> {}
@@ -2174,7 +2381,7 @@ export abstract class DialogStore {
     _grammar: 'markdown',
     _origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     _userLanguageCode?: LanguageCode,
-    _q4hAnswerCallIds?: string[],
+    _q4hAnswerCallId?: string,
     _tellaskReplyDirective?: TellaskReplyDirective,
   ): Promise<void> {}
 
@@ -2216,24 +2423,40 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _id: string,
     _name: string,
-    _arguments: StoredToolArguments,
+    _rawArgumentsText: string,
     _genseq: number,
   ): Promise<void> {}
 
-  public async persistTellaskSpecialCall(
+  public async persistTellaskCall(
     _dialog: Dialog,
     _id: string,
-    _name:
-      | 'tellaskBack'
-      | 'tellask'
-      | 'tellaskSessionless'
-      | 'replyTellask'
-      | 'replyTellaskSessionless'
-      | 'replyTellaskBack'
-      | 'askHuman'
-      | 'freshBootsReasoning',
-    _arguments: StoredToolArguments,
+    _name: TellaskCallRecordName,
+    _rawArgumentsText: string,
     _genseq: number,
+    _options?: {
+      deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+    },
+  ): Promise<void> {}
+
+  public async persistFunctionCallResultPair(
+    _dialog: Dialog,
+    _id: string,
+    _name: string,
+    _rawArgumentsText: string,
+    _genseq: number,
+    _result: FuncResultMsg,
+  ): Promise<void> {}
+
+  public async persistTellaskCallResultPair(
+    _dialog: Dialog,
+    _args: {
+      id: string;
+      name: TellaskCallRecordName;
+      rawArgumentsText: string;
+      genseq: number;
+      result: TellaskResultMsg | FuncResultMsg;
+      deliveryMode: 'tellask_call_start' | 'func_call_requested';
+    },
   ): Promise<void> {}
 
   /**

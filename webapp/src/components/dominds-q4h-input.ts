@@ -887,14 +887,11 @@ export class DomindsQ4HInput extends HTMLElement {
       const restoreFocus = active === this.textInput || active === this.sendButton;
 
       if (answeredQuestion !== null) {
-        this.wsManager.sendRaw({
-          type: 'drive_dialog_by_user_answer',
-          dialog: targetDialog,
+        this.sendHumanReply({
+          targetDialog,
           content,
           msgId,
           questionId: answeredQuestion.id,
-          continuationType: 'answer',
-          userLanguageCode: this.uiLanguage,
         });
         this.scheduleQ4HStateRefresh();
       } else {
@@ -953,6 +950,23 @@ export class DomindsQ4HInput extends HTMLElement {
       this.showError(errorMessage);
       throw error;
     }
+  }
+
+  private sendHumanReply(args: {
+    targetDialog: DialogIdent;
+    content: string;
+    msgId: string;
+    questionId: string;
+  }): void {
+    this.wsManager.sendRaw({
+      type: 'drive_dialog_by_user_answer',
+      dialog: args.targetDialog,
+      content: args.content,
+      msgId: args.msgId,
+      questionId: args.questionId,
+      continuationType: 'answer',
+      userLanguageCode: this.uiLanguage,
+    });
   }
 
   private scheduleQ4HStateRefresh(): void {

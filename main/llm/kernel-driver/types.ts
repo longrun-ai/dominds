@@ -57,7 +57,7 @@ export interface KernelDriverHumanPrompt {
   msgId: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
-  q4hAnswerCallIds?: string[];
+  q4hAnswerCallId?: string;
   tellaskReplyDirective?: TellaskReplyDirective;
   origin: 'user' | 'diligence_push' | 'runtime';
   skipTaskdoc?: boolean;

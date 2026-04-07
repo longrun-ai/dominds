@@ -6,8 +6,8 @@ import {
   toRootGenerationAnchor,
   type HumanQuestion,
   type PendingSubdialogStateRecord,
+  type TellaskCallRecord,
   type TellaskReplyDirective,
-  type TellaskSpecialCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -36,7 +36,13 @@ import {
 import { getWorkLanguage } from '../../runtime/work-language';
 import { Team } from '../../team';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
-import type { ChatMessage, FuncCallMsg } from '../client';
+import type {
+  ChatMessage,
+  FuncCallMsg,
+  FuncResultMsg,
+  TellaskCarryoverMsg,
+  TellaskResultMsg,
+} from '../client';
 import { buildFbrPromptForState, createInitialFbrState } from './fbr';
 import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from './subdialog';
 import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
@@ -68,9 +74,9 @@ const TELLASK_SPECIAL_FUNCTION_NAMES = [
   'freshBootsReasoning',
 ] as const;
 
-export type TellaskSpecialFunctionName = (typeof TELLASK_SPECIAL_FUNCTION_NAMES)[number];
+export type TellaskCallFunctionName = (typeof TELLASK_SPECIAL_FUNCTION_NAMES)[number];
 
-export type TellaskSpecialCall =
+export type TellaskCall =
   | Readonly<{
       callId: string;
       callName: 'tellaskBack';
@@ -118,15 +124,24 @@ export type TellaskSpecialCall =
       effort?: number;
     }>;
 
-export type TellaskSpecialCallParseIssue = Readonly<{
-  call: FuncCallMsg;
+export type ResolvedTellaskFunctionCall = Readonly<{
+  originalCall: FuncCallMsg;
+  call: TellaskCall;
+}>;
+
+export type InvalidTellaskFunctionCall = Readonly<{
+  originalCall: FuncCallMsg;
   error: string;
+  rawArgumentsText: string;
+  contextArguments: string;
 }>;
 
 type ReplyTellaskCallName = 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
-type NonReplyTellaskCallName = Exclude<TellaskSpecialCall['callName'], ReplyTellaskCallName>;
+type NonReplyTellaskCallName = Exclude<TellaskCall['callName'], ReplyTellaskCallName>;
+const MULTIPLE_ASKHUMAN_CALLS_ERROR =
+  '不允许一轮多次调用 askHuman，必须单次调用问所有问题。 Do not call askHuman multiple times in one round; ask all questions in a single askHuman call.';
 
-export function isTellaskSpecialFunctionName(name: string): name is TellaskSpecialFunctionName {
+export function isTellaskCallFunctionName(name: string): name is TellaskCallFunctionName {
   return (TELLASK_SPECIAL_FUNCTION_NAMES as readonly string[]).includes(name);
 }
 
@@ -246,12 +261,7 @@ type ReplyTellaskExecutionResult = Readonly<{
   delivered: boolean;
 }>;
 
-type ReplyTellaskSpecialCallRecord = Extract<
-  TellaskSpecialCallRecord,
-  {
-    name: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
-  }
->;
+type ReplyTellaskCallRecord = TellaskCallRecord & { name: ReplyTellaskCallName };
 
 function buildAssignmentReplyDirective(args: {
   callName: 'tellask' | 'tellaskSessionless';
@@ -314,7 +324,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     deliveryMode: args.deliveryMode,
     language: getWorkLanguage(),
   });
-  await targetDialog.receiveTellaskResponse(
+  const replyMirror = await targetDialog.receiveTellaskResponse(
     args.dlg.agentId,
     'tellaskBack',
     undefined,
@@ -328,13 +338,42 @@ export async function deliverTellaskBackReplyFromDirective(args: {
       originMemberId: targetDialog.agentId,
     },
   );
+  await targetDialog.addChatMessages(replyMirror);
   await reviveDialogIfUnblocked(targetDialog, args.callbacks, 'reply_tellask_back_delivered');
 }
 
-function isReplyTellaskSpecialCallRecord(
-  record: TellaskSpecialCallRecord,
-): record is ReplyTellaskSpecialCallRecord {
+function isReplyTellaskCallRecord(record: TellaskCallRecord): record is ReplyTellaskCallRecord {
   return isReplyTellaskCallName(record.name);
+}
+
+function parseReplyTellaskCallRecord(record: ReplyTellaskCallRecord): {
+  callId: string;
+  callName: ReplyTellaskCallName;
+  replyContent: string;
+} {
+  const parsed = parseTellaskCall({
+    type: 'func_call_msg',
+    role: 'assistant',
+    genseq: record.genseq,
+    id: record.id,
+    name: record.name,
+    arguments: record.rawArgumentsText,
+  });
+  if (!parsed.ok) {
+    throw new Error(
+      `reply recovery invariant violation: invalid persisted raw arguments for ${record.name} (callId=${record.id})`,
+    );
+  }
+  switch (parsed.value.callName) {
+    case 'replyTellask':
+    case 'replyTellaskSessionless':
+    case 'replyTellaskBack':
+      return parsed.value;
+    default:
+      throw new Error(
+        `reply recovery invariant violation: unexpected persisted call type ${parsed.value.callName} (callId=${record.id})`,
+      );
+  }
 }
 
 function formatReplyRecoveryFailureResult(args: {
@@ -361,11 +400,11 @@ export async function recoverPendingReplyTellaskCalls(args: {
   );
   const funcResultIds = new Set<string>();
   const resolvedReplyCallIds = new Set<string>();
-  const replyCalls: ReplyTellaskSpecialCallRecord[] = [];
+  const replyCalls: ReplyTellaskCallRecord[] = [];
 
   for (const event of events) {
-    if (event.type === 'func_result_record') {
-      const callId = event.id.trim();
+    if (event.type === 'func_result_record' || event.type === 'tellask_result_record') {
+      const callId = event.type === 'func_result_record' ? event.id.trim() : event.callId.trim();
       if (callId !== '') {
         funcResultIds.add(callId);
       }
@@ -378,10 +417,10 @@ export async function recoverPendingReplyTellaskCalls(args: {
       }
       continue;
     }
-    if (event.type !== 'tellask_special_call_record') {
+    if (event.type !== 'tellask_call_record') {
       continue;
     }
-    if (!isReplyTellaskSpecialCallRecord(event)) {
+    if (!isReplyTellaskCallRecord(event)) {
       continue;
     }
     replyCalls.push(event);
@@ -393,6 +432,7 @@ export async function recoverPendingReplyTellaskCalls(args: {
     if (callId === '' || funcResultIds.has(callId)) {
       continue;
     }
+    const parsedCall = parseReplyTellaskCallRecord(call);
 
     if (resolvedReplyCallIds.has(callId)) {
       await args.dlg.receiveFuncResult({
@@ -403,7 +443,7 @@ export async function recoverPendingReplyTellaskCalls(args: {
         name: call.name,
         content: formatReplyFuncResult({
           replyCallName: call.name,
-          replyContent: call.replyContent,
+          replyContent: parsedCall.replyContent,
         }),
       });
       funcResultIds.add(callId);
@@ -414,11 +454,7 @@ export async function recoverPendingReplyTellaskCalls(args: {
     try {
       const execution = await executeReplyTellaskCall({
         dlg: args.dlg,
-        call: {
-          callId: call.id,
-          callName: call.name,
-          replyContent: call.replyContent,
-        },
+        call: parsedCall,
         callbacks: args.callbacks,
       });
       for (const message of execution.messages) {
@@ -428,8 +464,13 @@ export async function recoverPendingReplyTellaskCalls(args: {
           );
         }
         await args.dlg.receiveFuncResult({
-          ...message,
+          type: 'func_result_msg',
+          role: 'tool',
           genseq: call.genseq,
+          id: message.id,
+          name: message.name,
+          content: message.content,
+          contentItems: message.contentItems,
         });
       }
       funcResultIds.add(callId);
@@ -569,10 +610,10 @@ function normalizeTeammateTargetAgentId(rawTarget: string):
   return { ok: true, value: withoutAt };
 }
 
-function parseTellaskSpecialCall(
+function parseTellaskCall(
   call: FuncCallMsg,
-): { ok: true; value: TellaskSpecialCall } | { ok: false; error: string } {
-  if (!isTellaskSpecialFunctionName(call.name)) {
+): { ok: true; value: TellaskCall } | { ok: false; error: string } {
+  if (!isTellaskCallFunctionName(call.name)) {
     return { ok: false, error: `unsupported tellask special function '${call.name}'` };
   }
 
@@ -709,21 +750,25 @@ function parseTellaskSpecialCall(
   }
 }
 
-export function classifyTellaskSpecialFunctionCalls(
+function getRawArgumentsText(call: FuncCallMsg): string {
+  return typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
+}
+
+export function resolveTellaskFunctionCalls(
   funcCalls: readonly FuncCallMsg[],
-  options?: { allowedSpecials?: ReadonlySet<TellaskSpecialFunctionName> },
+  options?: { allowedSpecials?: ReadonlySet<TellaskCallFunctionName> },
 ): {
-  specialCalls: TellaskSpecialCall[];
+  validCalls: ResolvedTellaskFunctionCall[];
+  invalidCalls: InvalidTellaskFunctionCall[];
   normalCalls: FuncCallMsg[];
-  parseIssues: TellaskSpecialCallParseIssue[];
 } {
-  const specialCalls: TellaskSpecialCall[] = [];
+  const validCalls: ResolvedTellaskFunctionCall[] = [];
+  const invalidCalls: InvalidTellaskFunctionCall[] = [];
   const normalCalls: FuncCallMsg[] = [];
-  const parseIssues: TellaskSpecialCallParseIssue[] = [];
   const allowed = options?.allowedSpecials ?? null;
 
   for (const call of funcCalls) {
-    if (!isTellaskSpecialFunctionName(call.name)) {
+    if (!isTellaskCallFunctionName(call.name)) {
       normalCalls.push(call);
       continue;
     }
@@ -731,15 +776,202 @@ export function classifyTellaskSpecialFunctionCalls(
       normalCalls.push(call);
       continue;
     }
-    const parsed = parseTellaskSpecialCall(call);
+    const rawArgumentsText = getRawArgumentsText(call);
+    const parsed = parseTellaskCall(call);
     if (!parsed.ok) {
-      parseIssues.push({ call, error: parsed.error });
+      invalidCalls.push({
+        originalCall: call,
+        error: parsed.error,
+        rawArgumentsText,
+        contextArguments: rawArgumentsText,
+      });
       continue;
     }
-    specialCalls.push(parsed.value);
+    validCalls.push({
+      originalCall: call,
+      call: parsed.value,
+    });
   }
 
-  return { specialCalls, normalCalls, parseIssues };
+  return { validCalls, invalidCalls, normalCalls };
+}
+
+export function formatTellaskInvalidCallResult(args: {
+  call: FuncCallMsg;
+  error: string;
+}): FuncResultMsg {
+  return {
+    type: 'func_result_msg',
+    id: args.call.id,
+    name: args.call.name,
+    content:
+      args.call.name === 'askHuman' && args.error === MULTIPLE_ASKHUMAN_CALLS_ERROR
+        ? args.error
+        : `Invalid arguments for tellask special function '${args.call.name}': ${args.error}`,
+    role: 'tool',
+    genseq: args.call.genseq,
+  };
+}
+
+export function formatPendingTellaskFuncResultContent(
+  name: TellaskCallFunctionName,
+  startedAtMs: number | null,
+): string {
+  const language = getWorkLanguage();
+  const elapsed = (() => {
+    if (startedAtMs === null) {
+      return language === 'zh' ? '未知时长' : 'unknown elapsed time';
+    }
+    const elapsedMs = Math.max(0, Date.now() - startedAtMs);
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+    return language === 'zh' ? `${elapsedSec} 秒` : `${elapsedSec}s`;
+  })();
+  if (name === 'askHuman') {
+    return language === 'zh'
+      ? `Q4H 仍在等待人类回复，已持续 ${elapsed}。`
+      : `Q4H is still waiting for human reply (elapsed ${elapsed}).`;
+  }
+  return language === 'zh'
+    ? `支线对话仍在进行中，已持续 ${elapsed}。`
+    : `Sideline dialog is still running (elapsed ${elapsed}).`;
+}
+
+export function formatResolvedAskHumanResultContent(): string {
+  return getWorkLanguage() === 'zh'
+    ? 'Q4H 已结束等待状态，请参考 askHuman 结果气泡。'
+    : 'Q4H wait is resolved; refer to the askHuman result bubble.';
+}
+
+function buildPendingTellaskFuncResult(args: {
+  callId: string;
+  callName: TellaskCallFunctionName;
+  genseq: number;
+}): FuncResultMsg {
+  return {
+    type: 'func_result_msg',
+    role: 'tool',
+    genseq: args.genseq,
+    id: args.callId,
+    name: args.callName,
+    content: formatPendingTellaskFuncResultContent(args.callName, null),
+  };
+}
+
+async function persistTellaskFuncResult(dlg: Dialog, result: FuncResultMsg): Promise<void> {
+  if (!isTellaskCallFunctionName(result.name)) {
+    throw new Error(
+      `persistTellaskFuncResult invariant violation: ${result.name} is not tellask special`,
+    );
+  }
+  await dlg.receiveFuncResult(result);
+}
+
+function buildTellaskResultToolOutput(args: {
+  genseq: number;
+  callId: string;
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  content: string;
+  status: 'pending' | 'completed' | 'failed';
+  responderId: string;
+  tellaskContent: string;
+  mentionList?: string[];
+  sessionSlug?: string;
+  agentId?: string;
+  originMemberId?: string;
+  calleeDialogId?: string;
+  calleeCourse?: number;
+  calleeGenseq?: number;
+}): TellaskResultMsg {
+  return {
+    type: 'tellask_result_msg',
+    role: 'tool',
+    genseq: args.genseq,
+    callId: args.callId,
+    callName: args.callName,
+    status: args.status,
+    content: args.content,
+    call:
+      args.callName === 'tellask'
+        ? {
+            tellaskContent: args.tellaskContent,
+            mentionList: args.mentionList ?? [],
+            ...(args.sessionSlug ? { sessionSlug: args.sessionSlug } : {}),
+          }
+        : args.callName === 'tellaskSessionless'
+          ? {
+              tellaskContent: args.tellaskContent,
+              mentionList: args.mentionList ?? [],
+            }
+          : {
+              tellaskContent: args.tellaskContent,
+            },
+    responder: {
+      responderId: args.responderId,
+      ...(args.agentId ? { agentId: args.agentId } : {}),
+      ...(args.originMemberId ? { originMemberId: args.originMemberId } : {}),
+    },
+    ...(args.calleeDialogId !== undefined ||
+    args.calleeCourse !== undefined ||
+    args.calleeGenseq !== undefined
+      ? {
+          route: {
+            ...(args.calleeDialogId ? { calleeDialogId: args.calleeDialogId } : {}),
+            ...(typeof args.calleeCourse === 'number' ? { calleeCourse: args.calleeCourse } : {}),
+            ...(typeof args.calleeGenseq === 'number' ? { calleeGenseq: args.calleeGenseq } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function buildTellaskCarryoverToolOutput(args: {
+  genseq: number;
+  content: string;
+  originCourse: number;
+  carryoverCourse: number;
+  responderId: string;
+  callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  tellaskContent: string;
+  status: 'completed' | 'failed';
+  response: string;
+  agentId: string;
+  callId: string;
+  originMemberId: string;
+  mentionList?: string[];
+  sessionSlug?: string;
+  calleeDialogId?: string;
+  calleeCourse?: number;
+  calleeGenseq?: number;
+}): TellaskCarryoverMsg {
+  return {
+    type: 'tellask_carryover_msg',
+    role: 'user',
+    genseq: args.genseq,
+    content: args.content,
+    originCourse: args.originCourse,
+    carryoverCourse: args.carryoverCourse,
+    responderId: args.responderId,
+    callName: args.callName,
+    tellaskContent: args.tellaskContent,
+    status: args.status,
+    response: args.response,
+    agentId: args.agentId,
+    callId: args.callId,
+    originMemberId: args.originMemberId,
+    ...(args.callName === 'tellask'
+      ? {
+          mentionList: args.mentionList ?? [],
+          sessionSlug: args.sessionSlug ?? '',
+        }
+      : args.callName === 'tellaskSessionless'
+        ? {
+            mentionList: args.mentionList ?? [],
+          }
+        : {}),
+    ...(args.calleeDialogId ? { calleeDialogId: args.calleeDialogId } : {}),
+    ...(typeof args.calleeCourse === 'number' ? { calleeCourse: args.calleeCourse } : {}),
+    ...(typeof args.calleeGenseq === 'number' ? { calleeGenseq: args.calleeGenseq } : {}),
+  };
 }
 
 function showErrorToAi(err: unknown): string {
@@ -930,27 +1162,37 @@ async function finishRegisteredTellaskReplacement(args: {
 
   const immediateMirror: ChatMessage =
     carryoverContent !== undefined
-      ? {
-          type: 'tellask_carryover_result_msg',
-          role: 'user',
+      ? buildTellaskCarryoverToolOutput({
+          genseq: ownerDialog.activeGenSeqOrUndefined ?? 1,
           content: carryoverContent,
           originCourse: carryoverOriginCourse!,
+          carryoverCourse: ownerDialog.currentCourse,
           responderId: subdialog.agentId,
           callName: pendingRecord.callName,
           tellaskContent: pendingRecord.tellaskContent,
           status: 'failed',
+          response,
+          agentId: subdialog.agentId,
           callId: pendingRecord.callId,
-        }
-      : {
-          type: 'tellask_result_msg',
-          role: 'tool',
-          responderId: subdialog.agentId,
+          originMemberId: requesterId,
           mentionList: pendingRecord.mentionList,
-          tellaskContent: pendingRecord.tellaskContent,
-          status: 'failed',
+          sessionSlug: pendingRecord.sessionSlug,
+          calleeDialogId: subdialog.id.selfId,
+        })
+      : buildTellaskResultToolOutput({
+          genseq: ownerDialog.activeGenSeqOrUndefined ?? 1,
           callId: pendingRecord.callId,
+          callName: pendingRecord.callName,
           content: response,
-        };
+          status: 'failed',
+          responderId: subdialog.agentId,
+          tellaskContent: pendingRecord.tellaskContent,
+          mentionList: pendingRecord.mentionList,
+          sessionSlug: pendingRecord.sessionSlug,
+          agentId: subdialog.agentId,
+          originMemberId: requesterId,
+          calleeDialogId: subdialog.id.selfId,
+        });
   await ownerDialog.addChatMessages(immediateMirror);
 }
 
@@ -1030,7 +1272,6 @@ async function executeTellaskCall(
     parseResult: TellaskRoutingParseResult | null;
     targetForError?: string;
     collectiveTargets?: string[];
-    q4hRemainingCallIds?: string[];
     fbrEffortOverride?: number;
   },
 ): Promise<ChatMessage[]> {
@@ -1053,20 +1294,11 @@ async function executeTellaskCall(
         );
       }
       const questionId = `q4h-${dlg.id.rootId}-${dlg.id.selfId}-c${dlg.currentCourse}-${normalizedCallId}`;
-      const normalizedRemainingCallIds = Array.from(
-        new Set(
-          (options?.q4hRemainingCallIds ?? [])
-            .map((value) => value.trim())
-            .filter((value) => value !== '' && value !== normalizedCallId),
-        ),
-      );
       const question: HumanQuestion = {
         id: questionId,
         tellaskContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
         callId: normalizedCallId,
-        remainingCallIds:
-          normalizedRemainingCallIds.length > 0 ? normalizedRemainingCallIds : undefined,
         callSiteRef: {
           course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
@@ -1083,7 +1315,6 @@ async function executeTellaskCall(
           tellaskContent: question.tellaskContent,
           askedAt: question.askedAt,
           callId: question.callId,
-          remainingCallIds: question.remainingCallIds,
           callSiteRef: question.callSiteRef,
           rootId: dlg.id.rootId,
           agentId: dlg.agentId,
@@ -1110,16 +1341,20 @@ async function executeTellaskCall(
 
       const msg = formatDomindsNoteQ4HRegisterFailed(getWorkLanguage(), { error: errMsg });
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-      toolOutputs.push({
-        type: 'tellask_result_msg',
-        role: 'tool',
-        responderId: 'dominds',
-        mentionList: normalizedMentionList,
-        tellaskContent: body,
-        status: 'failed',
-        callId,
-        content: msg,
-      });
+      toolOutputs.push(
+        buildTellaskResultToolOutput({
+          genseq: dlg.activeGenSeqOrUndefined ?? 1,
+          callId,
+          callName,
+          content: msg,
+          status: 'failed',
+          responderId: 'dominds',
+          tellaskContent: body,
+          mentionList: normalizedMentionList,
+          agentId: 'dominds',
+          originMemberId: dlg.agentId,
+        }),
+      );
       await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
@@ -1153,16 +1388,20 @@ async function executeTellaskCall(
         firstMention: firstMentionForError,
       });
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-      toolOutputs.push({
-        type: 'tellask_result_msg',
-        role: 'tool',
-        responderId: 'dominds',
-        mentionList: normalizedMentionList,
-        tellaskContent: body,
-        status: 'failed',
-        callId,
-        content: msg,
-      });
+      toolOutputs.push(
+        buildTellaskResultToolOutput({
+          genseq: dlg.activeGenSeqOrUndefined ?? 1,
+          callId,
+          callName,
+          content: msg,
+          status: 'failed',
+          responderId: 'dominds',
+          tellaskContent: body,
+          mentionList: normalizedMentionList,
+          agentId: 'dominds',
+          originMemberId: dlg.agentId,
+        }),
+      );
       await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
@@ -1181,16 +1420,20 @@ async function executeTellaskCall(
       if (memberFbrEffort < 1) {
         const msg = formatDomindsNoteFbrDisabled(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-        toolOutputs.push({
-          type: 'tellask_result_msg',
-          role: 'tool',
-          responderId: 'dominds',
-          mentionList: normalizedMentionList,
-          tellaskContent: body,
-          status: 'failed',
-          callId,
-          content: msg,
-        });
+        toolOutputs.push(
+          buildTellaskResultToolOutput({
+            genseq: dlg.activeGenSeqOrUndefined ?? 1,
+            callId,
+            callName,
+            content: msg,
+            status: 'failed',
+            responderId: 'dominds',
+            tellaskContent: body,
+            mentionList: normalizedMentionList,
+            agentId: 'dominds',
+            originMemberId: dlg.agentId,
+          }),
+        );
         await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
@@ -1219,16 +1462,20 @@ async function executeTellaskCall(
       if (fbrEffort < 1) {
         const msg = formatDomindsNoteFbrDisabled(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-        toolOutputs.push({
-          type: 'tellask_result_msg',
-          role: 'tool',
-          responderId: 'dominds',
-          mentionList: normalizedMentionList,
-          tellaskContent: body,
-          status: 'failed',
-          callId,
-          content: msg,
-        });
+        toolOutputs.push(
+          buildTellaskResultToolOutput({
+            genseq: dlg.activeGenSeqOrUndefined ?? 1,
+            callId,
+            callName,
+            content: msg,
+            status: 'failed',
+            responderId: 'dominds',
+            tellaskContent: body,
+            mentionList: normalizedMentionList,
+            agentId: 'dominds',
+            originMemberId: dlg.agentId,
+          }),
+        );
         await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
@@ -1251,16 +1498,20 @@ async function executeTellaskCall(
           kind: 'internal_error',
         });
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-        toolOutputs.push({
-          type: 'tellask_result_msg',
-          role: 'tool',
-          responderId: 'dominds',
-          mentionList: normalizedMentionList,
-          tellaskContent: body,
-          status: 'failed',
-          callId,
-          content: msg,
-        });
+        toolOutputs.push(
+          buildTellaskResultToolOutput({
+            genseq: dlg.activeGenSeqOrUndefined ?? 1,
+            callId,
+            callName,
+            content: msg,
+            status: 'failed',
+            responderId: 'dominds',
+            tellaskContent: body,
+            mentionList: normalizedMentionList,
+            agentId: 'dominds',
+            originMemberId: dlg.agentId,
+          }),
+        );
         await dlg.receiveTellaskCallResult(
           'dominds',
           callName,
@@ -1349,16 +1600,20 @@ async function executeTellaskCall(
     if (isDirectSelfCall) {
       const msg = formatDomindsNoteDirectSelfCall(getWorkLanguage());
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-      toolOutputs.push({
-        type: 'tellask_result_msg',
-        role: 'tool',
-        responderId: 'dominds',
-        mentionList: normalizedMentionList,
-        tellaskContent: body,
-        status: 'failed',
-        callId,
-        content: msg,
-      });
+      toolOutputs.push(
+        buildTellaskResultToolOutput({
+          genseq: dlg.activeGenSeqOrUndefined ?? 1,
+          callId,
+          callName,
+          content: msg,
+          status: 'failed',
+          responderId: 'dominds',
+          tellaskContent: body,
+          mentionList: normalizedMentionList,
+          agentId: 'dominds',
+          originMemberId: dlg.agentId,
+        }),
+      );
       await dlg.receiveTellaskCallResult(
         'dominds',
         callName,
@@ -1427,16 +1682,21 @@ async function executeTellaskCall(
 
           dlg.setSuspensionState('resumed');
 
-          toolOutputs.push({
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: parseResult.agentId,
-            mentionList,
-            tellaskContent: body,
-            status: 'completed',
-            callId,
-            content: responseContent,
-          });
+          toolOutputs.push(
+            buildTellaskResultToolOutput({
+              genseq: dlg.activeGenSeqOrUndefined ?? 1,
+              callId,
+              callName,
+              content: responseContent,
+              status: 'completed',
+              responderId: parseResult.agentId,
+              tellaskContent: body,
+              mentionList,
+              agentId: parseResult.agentId,
+              originMemberId: dlg.agentId,
+              calleeDialogId: supdialog.id.selfId,
+            }),
+          );
           await dlg.receiveTellaskResponse(
             parseResult.agentId,
             callName,
@@ -1465,16 +1725,21 @@ async function executeTellaskCall(
             status: 'failed',
             language: getWorkLanguage(),
           });
-          toolOutputs.push({
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: parseResult.agentId,
-            mentionList,
-            tellaskContent: body,
-            status: 'failed',
-            callId,
-            content: errorContent,
-          });
+          toolOutputs.push(
+            buildTellaskResultToolOutput({
+              genseq: dlg.activeGenSeqOrUndefined ?? 1,
+              callId,
+              callName,
+              content: errorContent,
+              status: 'failed',
+              responderId: parseResult.agentId,
+              tellaskContent: body,
+              mentionList,
+              agentId: parseResult.agentId,
+              originMemberId: dlg.agentId,
+              calleeDialogId: supdialog.id.selfId,
+            }),
+          );
           await dlg.receiveTellaskResponse(
             parseResult.agentId,
             callName,
@@ -1827,7 +2092,7 @@ async function executeTellaskCall(
               msgId: resumePrompt.msgId,
               grammar: resumePrompt.grammar,
               userLanguageCode: resumePrompt.userLanguageCode,
-              q4hAnswerCallIds: resumePrompt.q4hAnswerCallIds,
+              q4hAnswerCallId: resumePrompt.q4hAnswerCallId,
               tellaskReplyDirective: resumePrompt.tellaskReplyDirective,
               skipTaskdoc: resumePrompt.skipTaskdoc,
               subdialogReplyTarget: resumePrompt.subdialogReplyTarget,
@@ -1977,16 +2242,20 @@ async function executeTellaskCall(
       firstMention: options.targetForError ?? 'unknown',
     });
     toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-    toolOutputs.push({
-      type: 'tellask_result_msg',
-      role: 'tool',
-      responderId: 'dominds',
-      mentionList: normalizedMentionList,
-      tellaskContent: body,
-      status: 'failed',
-      callId,
-      content: msg,
-    });
+    toolOutputs.push(
+      buildTellaskResultToolOutput({
+        genseq: dlg.activeGenSeqOrUndefined ?? 1,
+        callId,
+        callName,
+        content: msg,
+        status: 'failed',
+        responderId: 'dominds',
+        tellaskContent: body,
+        mentionList: normalizedMentionList,
+        agentId: 'dominds',
+        originMemberId: dlg.agentId,
+      }),
+    );
     await dlg.receiveTellaskCallResult(
       'dominds',
       callName,
@@ -2002,7 +2271,7 @@ async function executeTellaskCall(
   return toolOutputs;
 }
 
-async function emitTellaskSpecialCallEvents(args: {
+async function emitTellaskCallEvents(args: {
   dlg: Dialog;
   callName: NonReplyTellaskCallName;
   mentionList?: string[];
@@ -2172,7 +2441,6 @@ type ExecutableValidTellaskCall =
       callId: string;
       targetAgentId: string;
       sessionSlug: string;
-      q4hRemainingCallIds?: string[];
     }>
   | Readonly<{
       callName: 'tellaskSessionless';
@@ -2180,13 +2448,11 @@ type ExecutableValidTellaskCall =
       tellaskContent: string;
       callId: string;
       targetAgentId: string;
-      q4hRemainingCallIds?: string[];
     }>
   | Readonly<{
       callName: 'tellaskBack';
       tellaskContent: string;
       callId: string;
-      q4hRemainingCallIds?: string[];
     }>
   | Readonly<{
       callName: 'replyTellask';
@@ -2207,17 +2473,15 @@ type ExecutableValidTellaskCall =
       callName: 'askHuman';
       tellaskContent: string;
       callId: string;
-      q4hRemainingCallIds?: string[];
     }>
   | Readonly<{
       callName: 'freshBootsReasoning';
       tellaskContent: string;
       callId: string;
       effort?: number;
-      q4hRemainingCallIds?: string[];
     }>;
 
-function toExecutableValidTellaskCall(call: TellaskSpecialCall): ExecutableValidTellaskCall {
+function toExecutableValidTellaskCall(call: TellaskCall): ExecutableValidTellaskCall {
   switch (call.callName) {
     case 'tellaskBack':
       return {
@@ -2266,80 +2530,14 @@ function toExecutableValidTellaskCall(call: TellaskSpecialCall): ExecutableValid
   }
 }
 
-function normalizeQ4HCalls(
-  calls: readonly ExecutableValidTellaskCall[],
-  dlg: Dialog,
-): ExecutableValidTellaskCall[] {
-  const q4hCalls = calls.filter((call) => call.callName === 'askHuman');
-  const nonQ4HCalls = calls
-    .filter((call) => call.callName !== 'askHuman')
-    .map((call) => {
-      switch (call.callName) {
-        case 'tellask':
-        case 'tellaskSessionless':
-          return { ...call, mentionList: [...call.mentionList] };
-        case 'tellaskBack':
-        case 'replyTellask':
-        case 'replyTellaskSessionless':
-        case 'replyTellaskBack':
-        case 'freshBootsReasoning':
-          return { ...call };
-      }
-    });
-  if (q4hCalls.length <= 1) {
-    return q4hCalls.length === 1 ? [...nonQ4HCalls, { ...q4hCalls[0]! }] : nonQ4HCalls;
-  }
-
-  const primary = q4hCalls[0]!;
-  const remainingCallIds = q4hCalls
-    .slice(1)
-    .map((call) => call.callId.trim())
-    .filter((callId) => callId !== '');
-  const language = getWorkLanguage();
-  const intro =
-    language === 'zh'
-      ? `我这次有 ${q4hCalls.length} 个问题，想请你一次性回复：`
-      : `I have ${q4hCalls.length} questions this round. Please answer them in one response:`;
-  const mergedBody = [
-    intro,
-    ...q4hCalls.map((call, index) => {
-      const body = call.tellaskContent.trim();
-      const normalizedBody =
-        body !== ''
-          ? body
-          : language === 'zh'
-            ? '请结合当前上下文补充这一项。'
-            : 'Please provide this item based on the current context.';
-      return language === 'zh'
-        ? `问题 ${index + 1}：\n${normalizedBody}`
-        : `Question ${index + 1}:\n${normalizedBody}`;
-    }),
-  ].join('\n\n');
-  const mergedQ4HCall: ExecutableValidTellaskCall = {
-    callName: 'askHuman',
-    callId: primary.callId,
-    tellaskContent: mergedBody,
-    q4hRemainingCallIds: remainingCallIds.length > 0 ? remainingCallIds : undefined,
-  };
-  log.debug('Q4H multi-question normalized into a single prompt', undefined, {
-    rootId: dlg.id.rootId,
-    selfId: dlg.id.selfId,
-    mergedCount: q4hCalls.length,
-    primaryCallId: primary.callId,
-    remainingCallIds,
-  });
-  return [...nonQ4HCalls, mergedQ4HCall];
-}
-
 async function executeValidTellaskCalls(args: {
   dlg: Dialog;
   calls: readonly ExecutableValidTellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
 }): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
-  const executionCalls = normalizeQ4HCalls(args.calls, args.dlg);
   const results: ChatMessage[][] = [];
   const successfulReplyCallIds: string[] = [];
-  for (const call of executionCalls) {
+  for (const call of args.calls) {
     const runtimeMentionList = (() => {
       switch (call.callName) {
         case 'tellask':
@@ -2358,7 +2556,7 @@ async function executeValidTellaskCalls(args: {
       const nonReplyCall = call as Exclude<ExecutableValidTellaskCall, { replyContent: string }>;
       const sessionSlug =
         nonReplyCall.callName === 'tellask' ? nonReplyCall.sessionSlug : undefined;
-      await emitTellaskSpecialCallEvents({
+      await emitTellaskCallEvents({
         dlg: args.dlg,
         callName: nonReplyCall.callName,
         mentionList: runtimeMentionList,
@@ -2443,7 +2641,6 @@ async function executeValidTellaskCalls(args: {
         callName: call.callName,
         parseResult,
         targetForError,
-        q4hRemainingCallIds: call.q4hRemainingCallIds,
         fbrEffortOverride: call.callName === 'freshBootsReasoning' ? call.effort : undefined,
       },
     );
@@ -2456,9 +2653,9 @@ async function executeValidTellaskCalls(args: {
   };
 }
 
-export async function executeTellaskSpecialCalls(args: {
+export async function executeTellaskCalls(args: {
   dlg: Dialog;
-  calls: readonly TellaskSpecialCall[];
+  calls: readonly TellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
 }): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   if (args.calls.length === 0) {
@@ -2470,4 +2667,237 @@ export async function executeTellaskSpecialCalls(args: {
     calls: args.calls.map((call) => toExecutableValidTellaskCall(call)),
     callbacks: args.callbacks,
   });
+}
+
+export type TellaskFunctionRoundResult = Readonly<{
+  normalCalls: readonly FuncCallMsg[];
+  tellaskCallMessages: readonly FuncCallMsg[];
+  tellaskResults: readonly FuncResultMsg[];
+  toolOutputs: readonly ChatMessage[];
+  handledCallIds: readonly string[];
+  shouldStopAfterReplyTool: boolean;
+}>;
+
+export async function processTellaskFunctionRound(args: {
+  dlg: Dialog;
+  funcCalls: readonly FuncCallMsg[];
+  allowedSpecials: ReadonlySet<TellaskCallFunctionName>;
+  callbacks: KernelDriverDriveCallbacks;
+}): Promise<TellaskFunctionRoundResult> {
+  type OrderedTellaskDisposition =
+    | Readonly<{ kind: 'valid'; handled: ResolvedTellaskFunctionCall }>
+    | Readonly<{ kind: 'invalid'; issue: InvalidTellaskFunctionCall }>;
+  const multiAskHumanCalls = args.funcCalls.filter(
+    (call) => call.name === 'askHuman' && args.allowedSpecials.has('askHuman'),
+  );
+  const funcCallsForResolution =
+    multiAskHumanCalls.length > 1
+      ? args.funcCalls.filter((call) => call.name !== 'askHuman')
+      : args.funcCalls;
+  const resolvedTellask = resolveTellaskFunctionCalls(funcCallsForResolution, {
+    allowedSpecials: args.allowedSpecials,
+  });
+  const validByCallId = new Map(
+    resolvedTellask.validCalls.map((handled) => [handled.originalCall.id, handled] as const),
+  );
+  const invalidByCallId = new Map(
+    resolvedTellask.invalidCalls.map((issue) => [issue.originalCall.id, issue] as const),
+  );
+  const orderedSpecialDispositions: OrderedTellaskDisposition[] = [];
+  for (const originalCall of args.funcCalls) {
+    if (
+      !isTellaskCallFunctionName(originalCall.name) ||
+      !args.allowedSpecials.has(originalCall.name)
+    ) {
+      continue;
+    }
+    if (multiAskHumanCalls.length > 1 && originalCall.name === 'askHuman') {
+      orderedSpecialDispositions.push({
+        kind: 'invalid',
+        issue: {
+          originalCall,
+          error: MULTIPLE_ASKHUMAN_CALLS_ERROR,
+          rawArgumentsText: getRawArgumentsText(originalCall),
+          contextArguments: getRawArgumentsText(originalCall),
+        },
+      });
+      continue;
+    }
+    const handled = validByCallId.get(originalCall.id);
+    if (handled) {
+      orderedSpecialDispositions.push({ kind: 'valid', handled });
+      continue;
+    }
+    const issue = invalidByCallId.get(originalCall.id);
+    if (issue) {
+      orderedSpecialDispositions.push({ kind: 'invalid', issue });
+      continue;
+    }
+    throw new Error(
+      `kernel-driver tellask special call invariant violation: unresolved tellask disposition for '${originalCall.id}' (${originalCall.name})`,
+    );
+  }
+  const orderedValidCalls = orderedSpecialDispositions.flatMap((entry) =>
+    entry.kind === 'valid' ? [entry.handled] : [],
+  );
+  const orderedInvalidCalls = orderedSpecialDispositions.flatMap((entry) =>
+    entry.kind === 'invalid' ? [entry.issue] : [],
+  );
+  const specialCallById = new Map(
+    orderedValidCalls.map(({ call }) => [call.callId, call] as const),
+  );
+  const originalCallById = new Map(args.funcCalls.map((call) => [call.id, call] as const));
+  const tellaskCallMessages: FuncCallMsg[] = [];
+  const issueResults: FuncResultMsg[] = [];
+  for (const disposition of orderedSpecialDispositions) {
+    if (disposition.kind === 'valid') {
+      const handled = disposition.handled;
+      await args.dlg.persistTellaskCall(
+        handled.originalCall.id,
+        handled.call.callName,
+        getRawArgumentsText(handled.originalCall),
+        handled.originalCall.genseq,
+        {
+          deliveryMode: isReplyTellaskCallName(handled.call.callName)
+            ? 'func_call_requested'
+            : 'tellask_call_start',
+        },
+      );
+      tellaskCallMessages.push({
+        type: 'func_call_msg',
+        role: 'assistant',
+        genseq: handled.originalCall.genseq,
+        id: handled.originalCall.id,
+        name: handled.call.callName,
+        arguments: getRawArgumentsText(handled.originalCall),
+      });
+      continue;
+    }
+
+    const issue = disposition.issue;
+    await args.dlg.funcCallRequested(
+      issue.originalCall.id,
+      issue.originalCall.name,
+      issue.contextArguments,
+    );
+    const result = formatTellaskInvalidCallResult({
+      call: issue.originalCall,
+      error: issue.error,
+    });
+    await args.dlg.persistTellaskCallResultPair({
+      id: issue.originalCall.id,
+      name: issue.originalCall.name as TellaskCallFunctionName,
+      rawArgumentsText: issue.rawArgumentsText,
+      genseq: issue.originalCall.genseq,
+      result,
+      deliveryMode: 'func_call_requested',
+    });
+    tellaskCallMessages.push({
+      type: 'func_call_msg',
+      role: 'assistant',
+      genseq: issue.originalCall.genseq,
+      id: issue.originalCall.id,
+      name: issue.originalCall.name,
+      arguments: issue.rawArgumentsText,
+    });
+    issueResults.push(result);
+  }
+
+  let tellaskExecution: Awaited<ReturnType<typeof executeTellaskCalls>>;
+  try {
+    tellaskExecution = await executeTellaskCalls({
+      dlg: args.dlg,
+      calls: orderedValidCalls.map((handled) => handled.call),
+      callbacks: args.callbacks,
+    });
+  } catch (err) {
+    const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    for (const { call } of orderedValidCalls) {
+      if (issueResults.some((result) => result.id === call.callId)) {
+        continue;
+      }
+      const originalCall = originalCallById.get(call.callId);
+      if (!originalCall) {
+        throw new Error(
+          `kernel-driver tellask special call invariant violation: missing original call for '${call.callId}'`,
+        );
+      }
+      await persistTellaskFuncResult(args.dlg, {
+        type: 'func_result_msg',
+        id: call.callId,
+        name: call.callName,
+        content: `Special function '${call.callName}' execution failed: ${errText}`,
+        role: 'tool',
+        genseq: originalCall.genseq,
+      });
+    }
+    throw err;
+  }
+
+  const tellaskFuncResults: FuncResultMsg[] = [];
+  const tellaskFuncResultByCallId = new Map<string, FuncResultMsg>();
+  const tellaskToolOutputs: ChatMessage[] = [];
+  for (const output of tellaskExecution.toolOutputs) {
+    if (output.type === 'func_result_msg') {
+      const result: FuncResultMsg = output;
+      tellaskFuncResultByCallId.set(result.id, result);
+      tellaskFuncResults.push(result);
+      continue;
+    }
+    if (output.type === 'tellask_result_msg') {
+      const callId = typeof output.callId === 'string' ? output.callId : '';
+      if (callId === '') {
+        tellaskToolOutputs.push(output);
+        continue;
+      }
+      const originatingCall = specialCallById.get(callId);
+      if (originatingCall) {
+        const originalCall = originalCallById.get(callId);
+        const result: FuncResultMsg = {
+          type: 'func_result_msg',
+          role: 'tool',
+          genseq: originalCall?.genseq ?? 1,
+          id: callId,
+          name: originatingCall.callName,
+          content: output.content,
+        };
+        tellaskFuncResultByCallId.set(callId, result);
+        tellaskFuncResults.push(result);
+      }
+      continue;
+    }
+    tellaskToolOutputs.push(output);
+  }
+
+  for (const { call } of orderedValidCalls) {
+    if (tellaskFuncResultByCallId.has(call.callId)) {
+      continue;
+    }
+    const originalCall = originalCallById.get(call.callId);
+    if (!originalCall) {
+      throw new Error(
+        `kernel-driver tellask call invariant violation: missing original call for '${call.callId}'`,
+      );
+    }
+    const pendingResult = buildPendingTellaskFuncResult({
+      callId: call.callId,
+      callName: call.callName,
+      genseq: originalCall.genseq,
+    });
+    tellaskFuncResultByCallId.set(call.callId, pendingResult);
+    tellaskFuncResults.push(pendingResult);
+  }
+
+  for (const result of tellaskFuncResults) {
+    await persistTellaskFuncResult(args.dlg, result);
+  }
+
+  return {
+    normalCalls: resolvedTellask.normalCalls,
+    tellaskCallMessages,
+    tellaskResults: [...issueResults, ...tellaskFuncResults],
+    toolOutputs: tellaskToolOutputs,
+    handledCallIds: orderedValidCalls.map(({ call }) => call.callId),
+    shouldStopAfterReplyTool: tellaskExecution.successfulReplyCallIds.length > 0,
+  };
 }

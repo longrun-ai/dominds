@@ -158,6 +158,11 @@ export type MarkdownFinishEvent = LlmGenDlgEvent & {
   type: 'markdown_finish_evt';
 };
 
+export type UiOnlyMarkdownEvent = LlmGenDlgEvent & {
+  type: 'ui_only_markdown_evt';
+  content: string;
+};
+
 export type FuncCallStartEvent = LlmGenDlgEvent & {
   type: 'func_call_requested_evt';
   funcName: string;
@@ -218,39 +223,48 @@ export type TellaskCallStartEvent =
       tellaskContent: string;
     });
 
-export type TellaskCallResultEvent =
-  | {
-      type: 'tellask_call_result_evt';
-      course: number;
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      callName: 'tellask' | 'tellaskSessionless';
-      mentionList: string[];
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      result: string;
-      callId: string;
-    }
-  | {
-      type: 'tellask_call_result_evt';
-      course: number;
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      result: string;
-      callId: string;
-    };
-
-export interface TellaskCallCarryoverEvent {
-  type: 'tellask_call_carryover_evt';
+type TellaskResultEventBase = {
+  type: 'tellask_result_evt';
   course: number;
-  responderId: string;
-  status: 'completed' | 'failed';
+  genseq: number;
+  calling_genseq?: CallingGenerationSeqNumber;
   callId: string;
-  carryoverCourse: DialogCourseNumber;
-}
+  status: 'pending' | 'completed' | 'failed';
+  content: string;
+  responder: {
+    responderId: string;
+    agentId?: string;
+    originMemberId?: string;
+  };
+  route?: {
+    calleeDialogId?: string;
+    calleeCourse?: CalleeCourseNumber;
+    calleeGenseq?: CalleeGenerationSeqNumber;
+  };
+};
+
+export type TellaskResultEvent =
+  | (TellaskResultEventBase & {
+      callName: 'tellask';
+      call: {
+        tellaskContent: string;
+        mentionList: string[];
+        sessionSlug: string;
+      };
+    })
+  | (TellaskResultEventBase & {
+      callName: 'tellaskSessionless';
+      call: {
+        tellaskContent: string;
+        mentionList: string[];
+      };
+    })
+  | (TellaskResultEventBase & {
+      callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
+      call: {
+        tellaskContent: string;
+      };
+    });
 
 type TellaskCallAnchorEventBase = {
   type: 'tellask_call_anchor_evt';
@@ -286,71 +300,25 @@ export interface FullRemindersEvent {
   reminders: ReminderContent[];
 }
 
-export type TellaskResponseEvent =
+export type TellaskCarryoverEvent =
   | {
-      type: 'tellask_response_evt';
+      type: 'tellask_carryover_evt';
       course: number;
-      calling_genseq?: CallingGenerationSeqNumber;
+      genseq: number;
       responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellask';
-      sessionSlug: string;
-      mentionList: string[];
-      tellaskContent: string;
       status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-    }
-  | {
-      type: 'tellask_response_evt';
-      course: number;
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellaskSessionless';
-      mentionList: string[];
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-    }
-  | {
-      type: 'tellask_response_evt';
-      course: number;
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellaskBack' | 'freshBootsReasoning';
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-    };
-
-export type TellaskCarryoverResultEvent =
-  | {
-      type: 'tellask_carryover_result_evt';
-      course: number;
+      // Provenance only: where the original tellask call was issued.
       originCourse: CallingCourseNumber;
-      responderId: string;
+      // Ownership: the latest/current course that now carries the usable context.
+      carryoverCourse: DialogCourseNumber;
       callName: 'tellask';
       sessionSlug: string;
       mentionList: string[];
       tellaskContent: string;
-      status: 'completed' | 'failed';
       response: string;
+      // Canonical latest-course carryover payload. UI should render this instead of `response`,
+      // and LLM context should read it as ordinary current-course user context rather than as a
+      // tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -360,15 +328,21 @@ export type TellaskCarryoverResultEvent =
       calleeGenseq?: CalleeGenerationSeqNumber;
     }
   | {
-      type: 'tellask_carryover_result_evt';
+      type: 'tellask_carryover_evt';
       course: number;
-      originCourse: CallingCourseNumber;
+      genseq: number;
       responderId: string;
-      callName: 'tellaskSessionless';
-      mentionList: string[];
-      tellaskContent: string;
       status: 'completed' | 'failed';
+      // Provenance only: where the original tellask call was issued.
+      originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now carries the usable context.
+      carryoverCourse: DialogCourseNumber;
+      callName: 'askHuman';
+      tellaskContent: string;
       response: string;
+      // Canonical latest-course carryover payload. UI should render this instead of `response`,
+      // and LLM context should read it as ordinary current-course user context rather than as a
+      // tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -378,14 +352,46 @@ export type TellaskCarryoverResultEvent =
       calleeGenseq?: CalleeGenerationSeqNumber;
     }
   | {
-      type: 'tellask_carryover_result_evt';
+      type: 'tellask_carryover_evt';
       course: number;
-      originCourse: CallingCourseNumber;
+      genseq: number;
       responderId: string;
+      status: 'completed' | 'failed';
+      // Provenance only: where the original tellask call was issued.
+      originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now carries the usable context.
+      carryoverCourse: DialogCourseNumber;
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      response: string;
+      // Canonical latest-course carryover payload. UI should render this instead of `response`,
+      // and LLM context should read it as ordinary current-course user context rather than as a
+      // tool-result pair for an older-course call.
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+    }
+  | {
+      type: 'tellask_carryover_evt';
+      course: number;
+      genseq: number;
+      responderId: string;
+      status: 'completed' | 'failed';
+      // Provenance only: where the original tellask call was issued.
+      originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now carries the usable context.
+      carryoverCourse: DialogCourseNumber;
       callName: 'freshBootsReasoning';
       tellaskContent: string;
-      status: 'completed' | 'failed';
       response: string;
+      // Canonical latest-course carryover payload. UI should render this instead of `response`,
+      // and LLM context should read it as ordinary current-course user context rather than as a
+      // tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -404,7 +410,9 @@ export interface EndOfUserSayingEvent {
   grammar: 'markdown';
   origin: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
-  q4hAnswerCallIds?: string[];
+  // Technical correlation for a resumed round after askHuman; not a signal that a new prompt fact
+  // should be created from the same human answer.
+  q4hAnswerCallId?: string;
 }
 
 export interface QueueUserMsgEvent {
@@ -437,8 +445,7 @@ export interface NewQ4HAskedEvent {
     selfId: string;
     tellaskContent: string;
     askedAt: string;
-    callId?: string;
-    remainingCallIds?: string[];
+    callId: string;
     callSiteRef: {
       course: number;
       messageIndex: number;
@@ -486,16 +493,15 @@ export type DialogEvent =
   | MarkdownStartEvent
   | MarkdownChunkEvent
   | MarkdownFinishEvent
+  | UiOnlyMarkdownEvent
   | FuncCallStartEvent
   | FunctionResultEvent
   | WebSearchCallEvent
   | GenerationDiscardEvent
   | TellaskCallStartEvent
-  | TellaskCallResultEvent
-  | TellaskCallCarryoverEvent
+  | TellaskResultEvent
   | TellaskCallAnchorEvent
-  | TellaskResponseEvent
-  | TellaskCarryoverResultEvent
+  | TellaskCarryoverEvent
   | SubdialogEvent
   | QueueUserMsgEvent
   | RuntimeGuideEvent

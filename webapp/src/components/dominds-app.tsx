@@ -7389,7 +7389,7 @@ export class DomindsApp extends HTMLElement {
     selfId: string;
     course: number;
     messageIndex: number;
-    callId?: string;
+    callId: string;
   } | null {
     for (const ctx of this.q4hDialogContexts) {
       for (const q of ctx.questions) {
@@ -10642,12 +10642,13 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'tellask_call_result_evt': {
+        case 'tellask_result_evt':
+        case 'tellask_carryover_evt': {
           const dialogContainer = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
           if (!dialogContainer) {
-            console.warn('Dialog container not found; dropping tellask_call_result_evt');
+            console.warn(`Dialog container not found; dropping ${message.type}`);
             break;
           }
 

@@ -115,7 +115,6 @@ function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): Reminder {
 function cloneQuestions(questions: readonly HumanQuestion[]): HumanQuestion[] {
   return questions.map((question) => ({
     ...question,
-    remainingCallIds: question.remainingCallIds ? [...question.remainingCallIds] : undefined,
     callSiteRef: { ...question.callSiteRef },
   }));
 }
@@ -218,16 +217,14 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'runtime_guide_record':
     case 'human_text_record':
     case 'func_call_record':
-    case 'tellask_special_call_record':
+    case 'tellask_call_record':
     case 'func_result_record':
-    case 'tellask_call_result_record':
-    case 'tellask_response_record':
-    case 'tellask_carryover_result_record':
+    case 'tellask_result_record':
+    case 'tellask_carryover_record':
       return true;
     case 'web_search_call_record':
     case 'quest_for_sup_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -309,16 +306,14 @@ function rewriteRecordForFork(
     case 'ui_only_markdown_record':
     case 'runtime_guide_record':
     case 'func_call_record':
-    case 'tellask_special_call_record':
+    case 'tellask_call_record':
     case 'web_search_call_record':
     case 'human_text_record':
     case 'quest_for_sup_record':
-    case 'tellask_call_result_record':
+    case 'tellask_result_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_carryover_record':
     case 'tellask_call_anchor_record':
-    case 'tellask_response_record':
-    case 'tellask_carryover_result_record':
+    case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return record;
@@ -354,7 +349,7 @@ function countMessages(events: readonly PersistedDialogRecord[]): number {
 function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
   let count = 0;
   for (const event of events) {
-    if (event.type === 'func_call_record' || event.type === 'tellask_special_call_record') {
+    if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
       count += 1;
     }
   }

@@ -496,25 +496,77 @@ export async function supplyResponseToSupdialog(args: {
     const immediateMirror: ChatMessage =
       carryoverContent !== undefined
         ? {
-            type: 'tellask_carryover_result_msg',
+            type: 'tellask_carryover_msg',
             role: 'user',
+            genseq: parentDialog.activeGenSeqOrUndefined ?? 1,
             content: carryoverContent,
             originCourse: carryoverOriginCourse!,
+            carryoverCourse: parentDialog.currentCourse,
             responderId: result.responderId,
             callName: result.callName,
             tellaskContent: result.tellaskContent,
             status,
+            response: upstreamResponseText,
+            agentId: result.responderAgentId ?? result.responderId,
             callId: resolvedCallId,
+            originMemberId: requesterId,
+            ...(result.callName === 'tellask'
+              ? {
+                  mentionList: result.mentionList ?? [],
+                  sessionSlug: result.sessionSlug,
+                }
+              : result.callName === 'tellaskSessionless'
+                ? {
+                    mentionList: result.mentionList ?? [],
+                  }
+                : {}),
+            ...(calleeResponseRef !== undefined
+              ? {
+                  calleeDialogId: subdialogId.selfId,
+                  calleeCourse: calleeResponseRef.course,
+                  calleeGenseq: calleeResponseRef.genseq,
+                }
+              : {
+                  calleeDialogId: subdialogId.selfId,
+                }),
           }
         : {
             type: 'tellask_result_msg',
             role: 'tool',
-            responderId: result.responderId,
-            mentionList: result.mentionList,
-            tellaskContent: result.tellaskContent,
-            status,
+            genseq: parentDialog.activeGenSeqOrUndefined ?? 1,
             callId: resolvedCallId,
+            callName: result.callName,
+            status,
             content: upstreamResponseText,
+            call:
+              result.callName === 'tellask'
+                ? {
+                    tellaskContent: result.tellaskContent,
+                    mentionList: result.mentionList ?? [],
+                    ...(result.sessionSlug ? { sessionSlug: result.sessionSlug } : {}),
+                  }
+                : result.callName === 'tellaskSessionless'
+                  ? {
+                      tellaskContent: result.tellaskContent,
+                      mentionList: result.mentionList ?? [],
+                    }
+                  : {
+                      tellaskContent: result.tellaskContent,
+                    },
+            responder: {
+              responderId: result.responderId,
+              agentId: result.responderAgentId ?? result.responderId,
+              originMemberId: requesterId,
+            },
+            route: {
+              calleeDialogId: subdialogId.selfId,
+              ...(calleeResponseRef !== undefined
+                ? {
+                    calleeCourse: calleeResponseRef.course,
+                    calleeGenseq: calleeResponseRef.genseq,
+                  }
+                : {}),
+            },
           };
     await parentDialog.addChatMessages(immediateMirror);
 

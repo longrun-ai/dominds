@@ -347,12 +347,11 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
       return [messageItem('user', msg.content)];
     case 'transient_guide_msg':
     case 'saying_msg':
-    case 'ui_only_markdown_msg':
       return [messageItem('assistant', msg.content)];
     case 'thinking_msg':
       return [thinkingMessageToCodexReasoningItem(msg)];
     case 'tellask_result_msg':
-    case 'tellask_carryover_result_msg':
+    case 'tellask_carryover_msg':
       return [messageItem('user', msg.content)];
     case 'func_call_msg':
       return [

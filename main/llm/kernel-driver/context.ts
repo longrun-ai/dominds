@@ -50,7 +50,7 @@ function hasUserPromptLikeAnchor(source: readonly ChatMessage[]): boolean {
     if (
       (msg.type === 'prompting_msg' ||
         msg.type === 'environment_msg' ||
-        msg.type === 'tellask_carryover_result_msg') &&
+        msg.type === 'tellask_carryover_msg') &&
       msg.role === 'user'
     ) {
       return true;

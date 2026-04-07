@@ -58,8 +58,8 @@ async function dialogNeedsReplyRecovery(dialogId: DialogID): Promise<boolean> {
   const events = await DialogPersistence.loadCourseEvents(dialogId, currentCourse, 'running');
   const funcResultIds = new Set<string>();
   for (const event of events) {
-    if (event.type === 'func_result_record') {
-      const callId = event.id.trim();
+    if (event.type === 'func_result_record' || event.type === 'tellask_result_record') {
+      const callId = event.type === 'func_result_record' ? event.id.trim() : event.callId.trim();
       if (callId !== '') {
         funcResultIds.add(callId);
       }
@@ -67,7 +67,7 @@ async function dialogNeedsReplyRecovery(dialogId: DialogID): Promise<boolean> {
     }
   }
   return events.some((event) => {
-    if (event.type !== 'tellask_special_call_record') {
+    if (event.type !== 'tellask_call_record') {
       return false;
     }
     if (

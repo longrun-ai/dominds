@@ -20,7 +20,7 @@ export type KernelDriverPolicyState = Readonly<{
   effectiveAgentTools: readonly Tool[];
   prependedContextMessages: readonly ChatMessage[];
   tellaskPolicy: KernelDriverTellaskPolicy;
-  allowTellaskSpecialFunctions: boolean;
+  allowTellaskFunctions: boolean;
   allowFunctionCalls: boolean;
 }>;
 
@@ -62,7 +62,7 @@ export function buildKernelDriverPolicy(args: {
       effectiveAgentTools: agentTools,
       prependedContextMessages: [],
       tellaskPolicy: 'allow_any',
-      allowTellaskSpecialFunctions: true,
+      allowTellaskFunctions: true,
       allowFunctionCalls: true,
     };
   }
@@ -87,7 +87,7 @@ export function buildKernelDriverPolicy(args: {
       },
     ],
     tellaskPolicy: 'deny_all',
-    allowTellaskSpecialFunctions: false,
+    allowTellaskFunctions: false,
     allowFunctionCalls: isConclusionPhase,
   };
 }
@@ -102,8 +102,8 @@ export function validateKernelDriverPolicyInvariants(
   if (policy.tellaskPolicy !== 'deny_all') {
     return { ok: false, detail: 'FBR tellaskPolicy must be deny_all.' };
   }
-  if (policy.allowTellaskSpecialFunctions) {
-    return { ok: false, detail: 'FBR allowTellaskSpecialFunctions must be false.' };
+  if (policy.allowTellaskFunctions) {
+    return { ok: false, detail: 'FBR allowTellaskFunctions must be false.' };
   }
   if (policy.prependedContextMessages.length !== 1) {
     return { ok: false, detail: 'FBR must prepend exactly one no-tools notice message.' };

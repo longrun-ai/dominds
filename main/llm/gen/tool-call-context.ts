@@ -1,5 +1,16 @@
 import type { ChatMessage, FuncCallMsg, FuncResultMsg } from '../client';
 
+type ToolCallMsg = FuncCallMsg;
+type ToolResultMsg = FuncResultMsg;
+
+function isToolCallMsg(msg: ChatMessage | undefined): msg is ToolCallMsg {
+  return msg?.type === 'func_call_msg';
+}
+
+function isToolResultMsg(msg: ChatMessage | undefined): msg is ToolResultMsg {
+  return msg?.type === 'func_result_msg';
+}
+
 export function normalizeToolCallPairs(context: readonly ChatMessage[]): ChatMessage[] {
   // Providers differ in how strictly they validate tool call/result ordering. Dominds can
   // temporarily produce a block of calls followed by a block of results when tools run in
@@ -9,21 +20,21 @@ export function normalizeToolCallPairs(context: readonly ChatMessage[]): ChatMes
   let i = 0;
   while (i < context.length) {
     const msg = context[i];
-    if (msg.type !== 'func_call_msg') {
+    if (!isToolCallMsg(msg)) {
       out.push(msg);
       i += 1;
       continue;
     }
 
-    const calls: FuncCallMsg[] = [];
-    while (i < context.length && context[i].type === 'func_call_msg') {
-      calls.push(context[i] as FuncCallMsg);
+    const calls: ToolCallMsg[] = [];
+    while (i < context.length && isToolCallMsg(context[i])) {
+      calls.push(context[i] as ToolCallMsg);
       i += 1;
     }
 
-    const results: FuncResultMsg[] = [];
-    while (i < context.length && context[i].type === 'func_result_msg') {
-      results.push(context[i] as FuncResultMsg);
+    const results: ToolResultMsg[] = [];
+    while (i < context.length && isToolResultMsg(context[i])) {
+      results.push(context[i] as ToolResultMsg);
       i += 1;
     }
 
@@ -32,7 +43,7 @@ export function normalizeToolCallPairs(context: readonly ChatMessage[]): ChatMes
       continue;
     }
 
-    const resultsById = new Map<string, FuncResultMsg[]>();
+    const resultsById = new Map<string, ToolResultMsg[]>();
     for (const result of results) {
       const existing = resultsById.get(result.id);
       if (existing) {
@@ -42,7 +53,7 @@ export function normalizeToolCallPairs(context: readonly ChatMessage[]): ChatMes
       }
     }
 
-    const used = new Set<FuncResultMsg>();
+    const used = new Set<ToolResultMsg>();
     for (const call of calls) {
       out.push(call);
       const queue = resultsById.get(call.id);
@@ -71,9 +82,7 @@ export function hasAdjacentMatchingToolResult(
 ): boolean {
   const current = context[index];
   const next = context[index + 1];
-  return (
-    current?.type === 'func_call_msg' && next?.type === 'func_result_msg' && current.id === next.id
-  );
+  return isToolCallMsg(current) && isToolResultMsg(next) && current.id === next.id;
 }
 
 export function hasAdjacentMatchingToolCall(
@@ -82,14 +91,10 @@ export function hasAdjacentMatchingToolCall(
 ): boolean {
   const previous = context[index - 1];
   const current = context[index];
-  return (
-    previous?.type === 'func_call_msg' &&
-    current?.type === 'func_result_msg' &&
-    previous.id === current.id
-  );
+  return isToolCallMsg(previous) && isToolResultMsg(current) && previous.id === current.id;
 }
 
-export function formatUnresolvedToolCallText(call: FuncCallMsg): string {
+export function formatUnresolvedToolCallText(call: ToolCallMsg): string {
   const argumentsText = call.arguments.trim();
   if (argumentsText.length === 0 || argumentsText === '{}') {
     return `[unresolved_tool_call:${call.name}:${call.id}]`;
@@ -97,7 +102,7 @@ export function formatUnresolvedToolCallText(call: FuncCallMsg): string {
   return `[unresolved_tool_call:${call.name}:${call.id}] arguments=${argumentsText}`;
 }
 
-type ToolCallAdjacencyViolation =
+export type ToolCallAdjacencyViolation =
   | Readonly<{
       kind: 'unresolved_call';
       index: number;
@@ -116,7 +121,7 @@ export function findFirstToolCallAdjacencyViolation(
 ): ToolCallAdjacencyViolation | null {
   for (let index = 0; index < context.length; index += 1) {
     const msg = context[index];
-    if (msg.type === 'func_call_msg' && !hasAdjacentMatchingToolResult(context, index)) {
+    if (isToolCallMsg(msg) && !hasAdjacentMatchingToolResult(context, index)) {
       return {
         kind: 'unresolved_call',
         index,
@@ -124,7 +129,7 @@ export function findFirstToolCallAdjacencyViolation(
         toolName: msg.name,
       };
     }
-    if (msg.type === 'func_result_msg' && !hasAdjacentMatchingToolCall(context, index)) {
+    if (isToolResultMsg(msg) && !hasAdjacentMatchingToolCall(context, index)) {
       return {
         kind: 'orphaned_result',
         index,
@@ -136,6 +141,51 @@ export function findFirstToolCallAdjacencyViolation(
   return null;
 }
 
+export function sanitizeToolContextForProvider(context: readonly ChatMessage[]): Readonly<{
+  messages: ChatMessage[];
+  droppedViolations: ToolCallAdjacencyViolation[];
+}> {
+  const normalized = normalizeToolCallPairs(context);
+  const sanitized: ChatMessage[] = [];
+  const droppedViolations: ToolCallAdjacencyViolation[] = [];
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const msg = normalized[index];
+    if (isToolCallMsg(msg)) {
+      const next = normalized[index + 1];
+      if (isToolResultMsg(next) && next.id === msg.id) {
+        sanitized.push(msg, next);
+        index += 1;
+        continue;
+      }
+      droppedViolations.push({
+        kind: 'unresolved_call',
+        index,
+        callId: msg.id,
+        toolName: msg.name,
+      });
+      continue;
+    }
+
+    if (isToolResultMsg(msg)) {
+      droppedViolations.push({
+        kind: 'orphaned_result',
+        index,
+        callId: msg.id,
+        toolName: msg.name,
+      });
+      continue;
+    }
+
+    sanitized.push(msg);
+  }
+
+  return {
+    messages: sanitized,
+    droppedViolations,
+  };
+}
+
 export function formatToolCallAdjacencyViolation(
   violation: ToolCallAdjacencyViolation,
   location: string,
@@ -143,15 +193,15 @@ export function formatToolCallAdjacencyViolation(
   switch (violation.kind) {
     case 'unresolved_call':
       return (
-        `${location}: unresolved persisted func_call_msg detected ` +
+        `${location}: unresolved persisted tool call message detected ` +
         `(callId=${violation.callId}, tool=${violation.toolName}, index=${violation.index}). ` +
-        'This means a tool call was persisted without a matching func_result_msg.'
+        'This means a tool call was persisted without a matching tool result message.'
       );
     case 'orphaned_result':
       return (
-        `${location}: orphaned persisted func_result_msg detected ` +
+        `${location}: orphaned persisted tool result message detected ` +
         `(callId=${violation.callId}, tool=${violation.toolName}, index=${violation.index}). ` +
-        'This means a tool result was restored without the immediately preceding func_call_msg.'
+        'This means a tool result was restored without the immediately preceding tool call message.'
       );
   }
 }

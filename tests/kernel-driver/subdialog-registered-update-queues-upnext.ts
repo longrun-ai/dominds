@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import type { TellaskResponseRecord } from '@longrun-ai/kernel/types/storage';
+import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/runtime/driver-messages';
@@ -210,8 +210,8 @@ async function main(): Promise<void> {
       root.status,
     );
     const updatedRoundResponse = rootEvents.find(
-      (event): event is TellaskResponseRecord =>
-        event.type === 'tellask_response_record' && event.callId === 'call-updated-round',
+      (event): event is TellaskResultRecord =>
+        event.type === 'tellask_result_record' && event.callId === 'call-updated-round',
     );
     assert.ok(updatedRoundResponse, 'expected updated round to receive the completed result');
   });

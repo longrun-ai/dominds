@@ -10,11 +10,10 @@ export type {
   FuncResultMsg,
   PromptingMsg,
   SayingMsg,
-  TellaskCallResultMsg,
-  TellaskCarryoverResultMsg,
+  TellaskCarryoverMsg,
+  TellaskResultMsg,
   ThinkingMsg,
   TransientGuideMsg,
-  UiOnlyMarkdownMsg,
 } from '@longrun-ai/kernel/types/chat-message';
 
 export interface ModelInfo {

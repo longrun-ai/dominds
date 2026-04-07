@@ -28,7 +28,8 @@ export type DialogPrompt = Readonly<{
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
   origin: 'user' | 'diligence_push' | 'runtime';
-  q4hAnswerCallIds?: string[];
+  // When present, this prompt is only continuation glue for an already-persisted askHuman answer.
+  q4hAnswerCallId?: string;
   tellaskReplyDirective?: TellaskReplyDirective;
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;

@@ -2,15 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
-import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import type { HumanQuestion } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog } from '../../dialog';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
-import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
 import {
   formatDiligenceAutoContinuePrompt,
@@ -19,7 +16,6 @@ import {
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../../tool';
 import { validateArgs } from '../../tool';
-import { generateDialogID } from '../../utils/id';
 import type { LlmFailureClassifier, LlmFailureDisposition, LlmRetryStrategy } from '../gen';
 import type { KernelDriverHumanPrompt } from './types';
 
@@ -171,36 +167,18 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
   maxInjectCount: number;
 }): Promise<void> {
   const { dlg, maxInjectCount } = options;
-  const questionId = `q4h-${generateDialogID()}`;
   const language = dlg.getLastUserLanguageCode();
-  const question: HumanQuestion = {
-    id: questionId,
-    tellaskContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
-    askedAt: formatUnifiedTimestamp(new Date()),
-    callSiteRef: {
-      course: dlg.currentCourse,
-      messageIndex: dlg.msgs.length,
-    },
-  };
-
-  await DialogPersistence.appendQuestion4HumanState(dlg.id, question);
-
-  const newQuestionEvent: NewQ4HAskedEvent = {
-    type: 'new_q4h_asked',
-    question: {
-      id: question.id,
-      selfId: dlg.id.selfId,
-      tellaskContent: question.tellaskContent,
-      askedAt: question.askedAt,
-      callId: question.callId,
-      remainingCallIds: question.remainingCallIds,
-      callSiteRef: question.callSiteRef,
-      rootId: dlg.id.rootId,
-      agentId: dlg.agentId,
-      taskDocPath: dlg.taskDocPath,
-    },
-  };
-  postDialogEvent(dlg, newQuestionEvent);
+  const content = formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount });
+  const genseq = dlg.activeGenSeqOrUndefined ?? 1;
+  // This is informational only: it stops further automatic diligence pushes, but does not create
+  // a Q4H wait state and does not participate in revive gating.
+  await dlg.persistUiOnlyMarkdown(content, genseq);
+  postDialogEvent(dlg, {
+    type: 'ui_only_markdown_evt',
+    content,
+    course: dlg.currentCourse,
+    genseq,
+  });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

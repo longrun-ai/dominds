@@ -159,7 +159,6 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
       };
     case 'transient_guide_msg':
     case 'saying_msg':
-    case 'ui_only_markdown_msg':
       return {
         type: 'message',
         role: 'assistant',
@@ -168,7 +167,7 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
     case 'thinking_msg':
       return thinkingMessageToOpenAiReasoningItem(msg);
     case 'tellask_result_msg':
-    case 'tellask_carryover_result_msg':
+    case 'tellask_carryover_msg':
       return {
         type: 'message',
         role: 'user',

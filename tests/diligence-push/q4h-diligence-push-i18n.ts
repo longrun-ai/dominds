@@ -6,24 +6,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
+import type { UiOnlyMarkdownRecord } from '@longrun-ai/kernel/types/storage';
 import { DialogID, RootDialog } from '../../main/dialog';
-import { setQ4HBroadcaster } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
   await fs.promises.writeFile(filePath, content, 'utf-8');
 }
 
-async function driveToDiligencePushBudgetExhaustedQ4H(options: {
+async function driveToDiligencePushBudgetExhaustedNotice(options: {
   baseDir: string;
   dialogId: string;
   userLanguageCode: 'zh' | 'en';
-  received: TypedDialogEvent[];
 }): Promise<string> {
-  const { baseDir, dialogId, userLanguageCode, received } = options;
+  const { baseDir, dialogId, userLanguageCode } = options;
 
   await writeFileEnsuringDir(
     path.join(baseDir, '.minds', 'team.yaml'),
@@ -76,67 +74,59 @@ async function driveToDiligencePushBudgetExhaustedQ4H(options: {
     userLanguageCode,
   });
 
-  const deadlineAt = Date.now() + 5000;
-  while (Date.now() < deadlineAt) {
-    const ev = received.find((entry) => {
-      return (
-        entry.type === 'new_q4h_asked' &&
-        entry.dialog.rootId === dlgId.rootId &&
-        entry.dialog.selfId === dlgId.selfId
-      );
-    });
-    if (ev && ev.type === 'new_q4h_asked') {
-      return ev.question.tellaskContent;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  const courseEvents = await DialogPersistence.loadCourseEvents(
+    dlg.id,
+    dlg.currentCourse,
+    dlg.status,
+  );
+  const notice = courseEvents.find(
+    (event): event is UiOnlyMarkdownRecord => event.type === 'ui_only_markdown_record',
+  );
+  if (notice) {
+    return notice.content;
   }
 
-  throw new Error('Timed out waiting for diligence_push_budget_exhausted new_q4h_asked');
+  throw new Error('Expected diligence_push_budget_exhausted ui_only_markdown_record');
 }
 
 async function main(): Promise<void> {
   const originalCwd = process.cwd();
-  const tmpBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dominds-q4h-i18n-'));
+  const tmpBase = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), 'dominds-diligence-exhaustion-i18n-'),
+  );
   process.chdir(tmpBase);
-  const received: TypedDialogEvent[] = [];
-  setQ4HBroadcaster((evt) => {
-    received.push(evt);
-  });
 
   try {
-    const zhBody = await driveToDiligencePushBudgetExhaustedQ4H({
+    const zhBody = await driveToDiligencePushBudgetExhaustedNotice({
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-zh',
       userLanguageCode: 'zh',
-      received,
     });
     if (!zhBody.includes('已经鞭策了') || !zhBody.includes('智能体仍不听劝')) {
       throw new Error(
-        `Expected zh Q4H body to contain current diligence exhaustion wording, got:\n${zhBody}`,
+        `Expected zh notice body to contain current diligence exhaustion wording, got:\n${zhBody}`,
       );
     }
 
-    const enBody = await driveToDiligencePushBudgetExhaustedQ4H({
+    const enBody = await driveToDiligencePushBudgetExhaustedNotice({
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-en',
       userLanguageCode: 'en',
-      received,
     });
     if (!enBody.includes('Diligence Push attempts') || !enBody.includes('still not moved')) {
       throw new Error(
-        `Expected en Q4H body to contain current diligence exhaustion wording, got:\n${enBody}`,
+        `Expected en notice body to contain current diligence exhaustion wording, got:\n${enBody}`,
       );
     }
 
-    console.log('q4h diligence push i18n: PASS');
+    console.log('diligence push exhaustion notice i18n: PASS');
   } finally {
-    setQ4HBroadcaster(null);
     process.chdir(originalCwd);
   }
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`q4h diligence push i18n: FAIL\n${message}`);
+  console.error(`diligence push exhaustion notice i18n: FAIL\n${message}`);
   process.exit(1);
 });

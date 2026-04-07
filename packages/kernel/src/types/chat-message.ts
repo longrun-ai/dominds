@@ -29,13 +29,6 @@ export type SayingMsg = Readonly<{
   provider_data?: ProviderData;
 }>;
 
-export type UiOnlyMarkdownMsg = Readonly<{
-  type: 'ui_only_markdown_msg';
-  role: 'assistant';
-  genseq: number;
-  content: string;
-}>;
-
 export type ThinkingMsg = Readonly<{
   type: 'thinking_msg';
   role: 'assistant';
@@ -65,27 +58,66 @@ export type FuncResultMsg = Readonly<{
   contentItems?: FuncResultContentItem[];
 }>;
 
-export type TellaskCallResultMsg = Readonly<{
+export type TellaskResultMsg = Readonly<{
   type: 'tellask_result_msg';
   role: 'tool';
-  responderId: string;
-  mentionList?: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
+  genseq: number;
+  callId: string;
+  callName: string;
+  status: 'pending' | 'completed' | 'failed';
   content: string;
-  callId?: string;
+  responderId?: string;
+  mentionList?: string[];
+  tellaskContent?: string;
+  agentId?: string;
+  originMemberId?: string;
+  sessionSlug?: string;
+  calleeDialogId?: string;
+  calleeCourse?: number;
+  calleeGenseq?: number;
+  calling_genseq?: number;
+  call?: Readonly<{
+    tellaskContent: string;
+    mentionList?: string[];
+    sessionSlug?: string;
+  }>;
+  responder?: Readonly<{
+    responderId: string;
+    agentId?: string;
+    originMemberId?: string;
+  }>;
+  route?: Readonly<{
+    calleeDialogId?: string;
+    calleeCourse?: number;
+    calleeGenseq?: number;
+  }>;
 }>;
 
-export type TellaskCarryoverResultMsg = Readonly<{
-  type: 'tellask_carryover_result_msg';
+export type TellaskCarryoverMsg = Readonly<{
+  type: 'tellask_carryover_msg';
   role: 'user';
+  genseq: number;
+  // Canonical latest-course carryover context. UI and LLM should read this directly when the
+  // original tellask call lived in an older course and is therefore absent from current context.
   content: string;
+  // Provenance only: where the original tellask call was issued.
   originCourse: number;
+  // Ownership: the current/latest course that now contains the usable carryover context.
+  carryoverCourse: number;
   responderId: string;
-  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   tellaskContent: string;
   status: 'completed' | 'failed';
+  // Raw tellask response body before it is wrapped into current-course carryover narration.
+  response: string;
+  agentId: string;
   callId: string;
+  originMemberId: string;
+  mentionList?: string[];
+  sessionSlug?: string;
+  calleeDialogId?: string;
+  calleeCourse?: number;
+  calleeGenseq?: number;
 }>;
 
 export type ChatMessage =
@@ -93,9 +125,8 @@ export type ChatMessage =
   | TransientGuideMsg
   | PromptingMsg
   | SayingMsg
-  | UiOnlyMarkdownMsg
   | ThinkingMsg
   | FuncCallMsg
   | FuncResultMsg
-  | TellaskCallResultMsg
-  | TellaskCarryoverResultMsg;
+  | TellaskResultMsg
+  | TellaskCarryoverMsg;

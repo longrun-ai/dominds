@@ -66,7 +66,7 @@ type UpNextPrompt = {
   grammar?: KernelDriverHumanPrompt['grammar'];
   userLanguageCode?: string;
   origin: KernelDriverHumanPrompt['origin'];
-  q4hAnswerCallIds?: string[];
+  q4hAnswerCallId?: string;
   tellaskReplyDirective?: KernelDriverHumanPrompt['tellaskReplyDirective'];
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: KernelDriverHumanPrompt['subdialogReplyTarget'];
@@ -210,7 +210,7 @@ function resolveAppRunControlSource(args: {
   if (!prompt) {
     return null;
   }
-  return Array.isArray(prompt.q4hAnswerCallIds) && prompt.q4hAnswerCallIds.length > 0
+  return typeof prompt.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== ''
     ? 'drive_dialog_by_user_answer'
     : 'drive_dlg_by_user_msg';
 }
@@ -421,7 +421,7 @@ async function resolveEffectivePrompt(
         upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
           ? upNext.userLanguageCode
           : undefined,
-      q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+      q4hAnswerCallId: upNext.q4hAnswerCallId,
       tellaskReplyDirective: upNext.tellaskReplyDirective,
       skipTaskdoc: upNext.skipTaskdoc,
       subdialogReplyTarget: upNext.subdialogReplyTarget,
@@ -924,7 +924,7 @@ export async function executeDriveRound(args: {
           followUp.userLanguageCode === 'zh' || followUp.userLanguageCode === 'en'
             ? followUp.userLanguageCode
             : undefined,
-        q4hAnswerCallIds: followUp.q4hAnswerCallIds,
+        q4hAnswerCallId: followUp.q4hAnswerCallId,
         tellaskReplyDirective: followUp.tellaskReplyDirective,
         skipTaskdoc: followUp.skipTaskdoc,
         subdialogReplyTarget: followUp.subdialogReplyTarget,

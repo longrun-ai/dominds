@@ -344,86 +344,97 @@ export interface FuncCallRecord extends RootGenerationRef {
   genseq: number;
   id: string;
   name: string;
-  arguments: ToolArguments;
+  rawArgumentsText: string;
   sourceTag?: 'priming_script';
 }
 
-export type TellaskSpecialCallRecord =
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'tellaskBack';
-      tellaskContent: string;
-      sourceTag?: 'priming_script';
+export type TellaskCallRecordName =
+  | 'tellaskBack'
+  | 'tellask'
+  | 'tellaskSessionless'
+  | 'replyTellask'
+  | 'replyTellaskSessionless'
+  | 'replyTellaskBack'
+  | 'askHuman'
+  | 'freshBootsReasoning';
+
+export interface TellaskCallRecord extends RootGenerationRef {
+  ts: string;
+  type: 'tellask_call_record';
+  genseq: number;
+  id: string;
+  name: TellaskCallRecordName;
+  rawArgumentsText: string;
+  deliveryMode: 'tellask_call_start' | 'func_call_requested';
+  sourceTag?: 'priming_script';
+}
+
+type TellaskResultRecordBase = RootGenerationRef & {
+  ts: string;
+  type: 'tellask_result_record';
+  genseq: number;
+  callId: string;
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  status: 'pending' | 'completed' | 'failed';
+  content: string;
+  calling_genseq?: CallingGenerationSeqNumber;
+  call: {
+    tellaskContent: string;
+    mentionList?: string[];
+    sessionSlug?: string;
+  };
+  responder: {
+    responderId: string;
+    agentId?: string;
+    originMemberId?: string;
+  };
+  route?: {
+    calleeDialogId?: string;
+    calleeCourse?: CalleeCourseNumber;
+    calleeGenseq?: CalleeGenerationSeqNumber;
+  };
+  sourceTag?: 'priming_script';
+};
+
+export type TellaskResultRecord =
+  | (TellaskResultRecordBase & {
+      callName: 'tellask';
+      call: {
+        tellaskContent: string;
+        mentionList: string[];
+        sessionSlug: string;
+      };
+      responder: {
+        responderId: string;
+        agentId?: string;
+        originMemberId?: string;
+      };
     })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'tellask';
-      targetAgentId: string;
-      sessionSlug: string;
-      tellaskContent: string;
-      sourceTag?: 'priming_script';
+  | (TellaskResultRecordBase & {
+      callName: 'tellaskSessionless';
+      call: {
+        tellaskContent: string;
+        mentionList: string[];
+        sessionSlug?: undefined;
+      };
+      responder: {
+        responderId: string;
+        agentId?: string;
+        originMemberId?: string;
+      };
     })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'tellaskSessionless';
-      targetAgentId: string;
-      tellaskContent: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'replyTellask';
-      replyContent: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'replyTellaskSessionless';
-      replyContent: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'replyTellaskBack';
-      replyContent: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'askHuman';
-      tellaskContent: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_special_call_record';
-      genseq: number;
-      id: string;
-      name: 'freshBootsReasoning';
-      tellaskContent: string;
-      effort?: number;
-      sourceTag?: 'priming_script';
+  | (TellaskResultRecordBase & {
+      callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
+      call: {
+        tellaskContent: string;
+        mentionList?: undefined;
+        sessionSlug?: undefined;
+      };
+      responder: {
+        responderId: string;
+        agentId?: string;
+        originMemberId?: string;
+      };
     });
 
 export type WebSearchCallActionRecord =
@@ -452,7 +463,9 @@ export interface HumanTextRecord extends RootGenerationRef {
   origin?: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
   sourceTag?: 'priming_script';
-  q4hAnswerCallIds?: string[];
+  // Technical continuation marker for a resumed round after askHuman is answered. The canonical
+  // answer fact lives in tellask result/carryover records instead of this human_text_record.
+  q4hAnswerCallId?: string;
   tellaskReplyDirective?: TellaskReplyDirective;
 }
 
@@ -495,20 +508,6 @@ export interface QuestForSupRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-export interface TellaskCallResultRecord extends RootGenerationRef {
-  ts: string;
-  type: 'tellask_call_result_record';
-  calling_genseq?: CallingGenerationSeqNumber;
-  responderId: string;
-  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
-  mentionList?: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  result: string;
-  callId: string;
-  sourceTag?: 'priming_script';
-}
-
 export interface TellaskReplyResolutionRecord extends RootGenerationRef {
   ts: string;
   type: 'tellask_reply_resolution_record';
@@ -516,16 +515,6 @@ export interface TellaskReplyResolutionRecord extends RootGenerationRef {
   callId: string;
   replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
   targetCallId: string;
-  sourceTag?: 'priming_script';
-}
-
-export interface TellaskCallCarryoverRecord extends RootGenerationRef {
-  ts: string;
-  type: 'tellask_call_carryover_record';
-  responderId: string;
-  status: 'completed' | 'failed';
-  callId: string;
-  carryoverCourse: DialogCourseNumber;
   sourceTag?: 'priming_script';
 }
 
@@ -553,67 +542,15 @@ export type TellaskCallAnchorRecord =
       callerCourse: CallerCourseNumber;
     });
 
-export type TellaskResponseRecord =
+export type TellaskCarryoverRecord =
   | (RootGenerationRef & {
       ts: string;
-      type: 'tellask_response_record';
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellask';
-      sessionSlug: string;
-      mentionList: string[];
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_response_record';
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellaskSessionless';
-      mentionList: string[];
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      sourceTag?: 'priming_script';
-    })
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_response_record';
-      calling_genseq?: CallingGenerationSeqNumber;
-      responderId: string;
-      calleeDialogId?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-      callName: 'tellaskBack' | 'freshBootsReasoning';
-      tellaskContent: string;
-      status: 'completed' | 'failed';
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      sourceTag?: 'priming_script';
-    });
-
-export type TellaskCarryoverResultRecord =
-  | (RootGenerationRef & {
-      ts: string;
-      type: 'tellask_carryover_result_record';
+      type: 'tellask_carryover_record';
+      genseq: number;
+      // Provenance only: where the original tellask call was issued.
       originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now stores the canonical carryover context.
+      carryoverCourse: DialogCourseNumber;
       responderId: string;
       callName: 'tellask';
       sessionSlug: string;
@@ -621,6 +558,8 @@ export type TellaskCarryoverResultRecord =
       tellaskContent: string;
       status: 'completed' | 'failed';
       response: string;
+      // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
+      // treating it as a tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -632,14 +571,19 @@ export type TellaskCarryoverResultRecord =
     })
   | (RootGenerationRef & {
       ts: string;
-      type: 'tellask_carryover_result_record';
+      type: 'tellask_carryover_record';
+      genseq: number;
+      // Provenance only: where the original tellask call was issued.
       originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now stores the canonical carryover context.
+      carryoverCourse: DialogCourseNumber;
       responderId: string;
-      callName: 'tellaskSessionless';
-      mentionList: string[];
+      callName: 'askHuman';
       tellaskContent: string;
       status: 'completed' | 'failed';
       response: string;
+      // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
+      // treating it as a tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -651,13 +595,44 @@ export type TellaskCarryoverResultRecord =
     })
   | (RootGenerationRef & {
       ts: string;
-      type: 'tellask_carryover_result_record';
+      type: 'tellask_carryover_record';
+      genseq: number;
+      // Provenance only: where the original tellask call was issued.
       originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now stores the canonical carryover context.
+      carryoverCourse: DialogCourseNumber;
+      responderId: string;
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string;
+      // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
+      // treating it as a tool-result pair for an older-course call.
+      content: string;
+      agentId: string;
+      callId: string;
+      originMemberId: string;
+      calleeDialogId?: string;
+      calleeCourse?: CalleeCourseNumber;
+      calleeGenseq?: CalleeGenerationSeqNumber;
+      sourceTag?: 'priming_script';
+    })
+  | (RootGenerationRef & {
+      ts: string;
+      type: 'tellask_carryover_record';
+      genseq: number;
+      // Provenance only: where the original tellask call was issued.
+      originCourse: CallingCourseNumber;
+      // Ownership: the latest/current course that now stores the canonical carryover context.
+      carryoverCourse: DialogCourseNumber;
       responderId: string;
       callName: 'freshBootsReasoning';
       tellaskContent: string;
       status: 'completed' | 'failed';
       response: string;
+      // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
+      // treating it as a tool-result pair for an older-course call.
       content: string;
       agentId: string;
       callId: string;
@@ -753,8 +728,7 @@ export interface HumanQuestion {
   id: string;
   tellaskContent: string;
   askedAt: string;
-  callId?: string;
-  remainingCallIds?: string[];
+  callId: string;
   callSiteRef: {
     course: number;
     messageIndex: number;
@@ -813,17 +787,15 @@ export type PersistedDialogRecord =
   | UiOnlyMarkdownRecord
   | RuntimeGuideRecord
   | FuncCallRecord
-  | TellaskSpecialCallRecord
+  | TellaskCallRecord
+  | TellaskResultRecord
   | WebSearchCallRecord
   | HumanTextRecord
   | FuncResultRecord
   | QuestForSupRecord
-  | TellaskCallResultRecord
   | TellaskReplyResolutionRecord
-  | TellaskCallCarryoverRecord
   | TellaskCallAnchorRecord
-  | TellaskResponseRecord
-  | TellaskCarryoverResultRecord
+  | TellaskCarryoverRecord
   | GenStartRecord
   | GenFinishRecord
   | SubdialogCreatedRecord

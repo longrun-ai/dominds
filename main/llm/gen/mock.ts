@@ -60,6 +60,14 @@ import yaml from 'yaml';
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import { log } from '../../log';
+import {
+  ACTIVE_REPLY_TOOL_PREFIX_EN,
+  ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  REPLY_REASSERTION_PREFIX_EN,
+  REPLY_REASSERTION_PREFIX_ZH,
+  REPLY_SUPPRESSION_PREFIX_EN,
+  REPLY_SUPPRESSION_PREFIX_ZH,
+} from '../../runtime/reply-prompt-copy';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';
@@ -149,6 +157,15 @@ const REPLY_TOOL_REMINDER_PREFIXES = [
   '[Dominds 必须调用回复工具]',
 ] as const;
 
+const RUNTIME_PROMPT_WRAPPER_PREFIXES = [
+  ACTIVE_REPLY_TOOL_PREFIX_EN,
+  ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  REPLY_REASSERTION_PREFIX_EN,
+  REPLY_REASSERTION_PREFIX_ZH,
+  REPLY_SUPPRESSION_PREFIX_EN,
+  REPLY_SUPPRESSION_PREFIX_ZH,
+] as const;
+
 function normalizeDelayMs(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   if (value <= 0) return 0;
@@ -202,12 +219,11 @@ export class MockGen implements LlmGenerator {
         case 'prompting_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
-        case 'tellask_carryover_result_msg':
+        case 'tellask_carryover_msg':
           return { content: msg.content, role: msg.role };
         case 'environment_msg':
         case 'transient_guide_msg':
         case 'saying_msg':
-        case 'ui_only_markdown_msg':
         case 'thinking_msg':
         case 'func_call_msg':
           break;
@@ -229,11 +245,10 @@ export class MockGen implements LlmGenerator {
         case 'transient_guide_msg':
         case 'prompting_msg':
         case 'saying_msg':
-        case 'ui_only_markdown_msg':
         case 'thinking_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
-        case 'tellask_carryover_result_msg':
+        case 'tellask_carryover_msg':
           return lastMsg.content;
         case 'func_call_msg':
           return '';
@@ -325,11 +340,10 @@ export class MockGen implements LlmGenerator {
         case 'transient_guide_msg':
         case 'prompting_msg':
         case 'saying_msg':
-        case 'ui_only_markdown_msg':
         case 'thinking_msg':
         case 'func_result_msg':
         case 'tellask_result_msg':
-        case 'tellask_carryover_result_msg':
+        case 'tellask_carryover_msg':
           availableContents.push(msg.content);
           break;
         case 'func_call_msg':
@@ -415,17 +429,40 @@ export class MockGen implements LlmGenerator {
       throw new Error('role is required for mock response matching');
     }
 
-    const normalizedInput = input.trim().toLowerCase();
-    // Exact match only: "role:message"
-    const exactKey = `${role}:${normalizedInput}`;
-    const candidates = database.lookupMap.get(exactKey);
-    if (!candidates || candidates.length === 0) {
-      return null;
-    }
-    for (let i = candidates.length - 1; i >= 0; i--) {
-      const candidate = candidates[i];
-      if (candidate && this.responseMatchesContext(candidate, context)) {
-        return candidate;
+    const normalizedInputs = (() => {
+      const variants = new Set<string>();
+      const trimmed = input.trim();
+      if (trimmed !== '') {
+        variants.add(trimmed.toLowerCase());
+      }
+      const hasRuntimeWrapper = RUNTIME_PROMPT_WRAPPER_PREFIXES.some((prefix) =>
+        trimmed.startsWith(prefix),
+      );
+      if (!hasRuntimeWrapper) {
+        return [...variants];
+      }
+      const separatorIndex = trimmed.indexOf('\n\n');
+      if (separatorIndex < 0) {
+        return [...variants];
+      }
+      const stripped = trimmed.slice(separatorIndex + 2).trim();
+      if (stripped !== '') {
+        variants.add(stripped.toLowerCase());
+      }
+      return [...variants];
+    })();
+
+    for (const normalizedInput of normalizedInputs) {
+      const exactKey = `${role}:${normalizedInput}`;
+      const candidates = database.lookupMap.get(exactKey);
+      if (!candidates || candidates.length === 0) {
+        continue;
+      }
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const candidate = candidates[i];
+        if (candidate && this.responseMatchesContext(candidate, context)) {
+          return candidate;
+        }
       }
     }
     return null;
@@ -519,11 +556,10 @@ responses:
             case 'transient_guide_msg':
             case 'prompting_msg':
             case 'saying_msg':
-            case 'ui_only_markdown_msg':
             case 'thinking_msg':
             case 'func_result_msg':
             case 'tellask_result_msg':
-            case 'tellask_carryover_result_msg':
+            case 'tellask_carryover_msg':
               return acc + msg.content.length;
             case 'func_call_msg':
               return acc + msg.name.length + msg.arguments.length;
@@ -651,11 +687,10 @@ responses:
               case 'transient_guide_msg':
               case 'prompting_msg':
               case 'saying_msg':
-              case 'ui_only_markdown_msg':
               case 'thinking_msg':
               case 'func_result_msg':
               case 'tellask_result_msg':
-              case 'tellask_carryover_result_msg':
+              case 'tellask_carryover_msg':
                 return acc + msg.content.length;
               case 'func_call_msg':
                 return acc + msg.name.length + msg.arguments.length;

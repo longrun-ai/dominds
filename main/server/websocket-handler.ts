@@ -41,6 +41,7 @@ import {
   supportedLanguageCodes,
   type LanguageCode,
 } from '@longrun-ai/kernel/types/language';
+import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -80,6 +81,7 @@ import {
 } from '../problems';
 import { recoverPendingReplyTellaskCallsForDialog } from '../recovery/reply-special';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import { formatTellaskCarryoverResultContent } from '../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import {
@@ -377,7 +379,7 @@ export async function handleWebSocketMessage(
         break;
 
       case 'drive_dialog_by_user_answer':
-        await handleUserAnswer2Q4H(ws, packet);
+        await handleReceiveHumanReply(ws, packet);
         break;
 
       case 'interrupt_dialog':
@@ -1147,7 +1149,6 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           tellaskContent: q.tellaskContent,
           askedAt: q.askedAt,
           callId: q.callId,
-          remainingCallIds: q.remainingCallIds,
           callSiteRef: q.callSiteRef,
         })),
       };
@@ -1189,7 +1190,6 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       tellaskContent: q.tellaskContent,
       askedAt: q.askedAt,
       callId: q.callId,
-      remainingCallIds: q.remainingCallIds,
       callSiteRef: q.callSiteRef,
     }));
 
@@ -1584,10 +1584,20 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
 }
 
 /**
- * Handle user answer to a Q4H (Questions for Human) question
- * Validates questionId, clears q4h.yaml entry, and resumes dialog with user's answer
+ * Receive a human reply for a Q4H question.
+ * Validates questionId, clears q4h.yaml entry, records askHuman result/carryover,
+ * and optionally queues a continuation drive input carrying the answered callId.
+ *
+ * Important: the human answer itself is canonicalized as askHuman tellask result/carryover first.
+ * For cross-course Q4H answers, the carryover is the canonical latest-course context; it is not a
+ * tool-result pair for the older-course askHuman call.
+ * The follow-up drive input here is only control-flow glue for the resumed round, not a separate
+ * persisted "user prompt" business fact.
  */
-async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnswer): Promise<void> {
+async function handleReceiveHumanReply(
+  ws: WebSocket,
+  packet: DriveDialogByUserAnswer,
+): Promise<void> {
   try {
     const { dialog: dialogIdent, content, msgId, questionId, continuationType } = packet;
     const userLanguageCode = resolveUserLanguageCode(
@@ -1616,7 +1626,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         JSON.stringify({
           type: 'error',
           message:
-            'Invalid dialog identifiers for drive_dialog_by_user_answer: selfId/rootId must be strings',
+            'Invalid dialog identifiers for receiveHumanReply: selfId/rootId must be strings',
         }),
       );
       return;
@@ -1679,24 +1689,40 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       );
     }
 
-    const askHumanCallIds = Array.from(
-      new Set(
-        [removedQuestion.callId, ...(removedQuestion.remainingCallIds ?? [])]
-          .map((value) => (typeof value === 'string' ? value.trim() : ''))
-          .filter((value) => value !== ''),
-      ),
-    );
-    for (const callId of askHumanCallIds) {
-      await dialog.receiveTellaskCallResult(
-        'human',
-        'askHuman',
-        undefined,
-        removedQuestion.tellaskContent,
-        effectivePrompt.content,
-        'completed',
-        callId,
+    const askHumanCallId = removedQuestion.callId.trim();
+    if (askHumanCallId === '') {
+      throw new Error(
+        `Q4H remove invariant violation: missing callId on answered question ` +
+          `(rootId=${dialog.id.rootId} selfId=${dialog.id.selfId} questionId=${questionId})`,
       );
     }
+    const askHumanOriginCourse = removedQuestion.callSiteRef.course;
+    const askHumanCarryoverContent = formatTellaskCarryoverResultContent({
+      originCourse: askHumanOriginCourse,
+      callName: 'askHuman',
+      responderId: 'human',
+      tellaskContent: removedQuestion.tellaskContent,
+      responseBody: effectivePrompt.content,
+      status: 'completed',
+      language: getWorkLanguage(),
+    });
+    const askHumanResultMirror = await dialog.receiveTellaskResponse(
+      'human',
+      'askHuman',
+      undefined,
+      removedQuestion.tellaskContent,
+      'completed',
+      undefined,
+      {
+        response: effectivePrompt.content,
+        agentId: 'human',
+        callId: askHumanCallId,
+        originMemberId: dialog.agentId,
+        originCourse: toCallingCourseNumber(askHumanOriginCourse),
+        carryoverContent: askHumanCarryoverContent,
+      },
+    );
+    await dialog.addChatMessages(askHumanResultMirror);
 
     // Emit q4h_answered event for answered question
     const answeredEvent: Q4HAnsweredEvent = {
@@ -1708,23 +1734,31 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 
     const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
     if (hasPendingSubdialogs) {
+      // This queued item is only the post-answer continuation input that resumes the suspended
+      // round after subdialogs settle. The human answer fact has already been persisted above as
+      // askHuman tellask result/carryover and must not be reinterpreted as a new user prompt.
       dialog.queueDeferredQ4HAnswerPrompt({
         prompt: effectivePrompt.content,
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
         userLanguageCode: effectivePrompt.userLanguageCode,
-        q4hAnswerCallIds: askHumanCallIds,
+        q4hAnswerCallId: askHumanCallId,
       });
-      log.debug('Deferred Q4H answer until pending subdialogs resolve', undefined, {
-        rootId: dialog.id.rootId,
-        selfId: dialog.id.selfId,
-        questionId,
-        msgId: effectivePrompt.msgId,
-      });
+      log.debug(
+        'Deferred post-Q4H continuation input until pending subdialogs resolve',
+        undefined,
+        {
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          questionId,
+          msgId: effectivePrompt.msgId,
+        },
+      );
       return;
     }
 
-    // Resume the dialog with the user's answer.
+    // Resume the dialog after the answer has been materialized as askHuman tellask result/carryover.
+    // The continuation input carries correlation only; it does not persist another user prompt fact.
     await driveDialogStream(
       dialog,
       {
@@ -1732,7 +1766,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
         userLanguageCode: effectivePrompt.userLanguageCode,
-        q4hAnswerCallIds: askHumanCallIds,
+        q4hAnswerCallId: askHumanCallId,
         origin: 'user',
       },
       true,
@@ -1742,11 +1776,11 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       },
     );
   } catch (error) {
-    log.error('Error processing Q4H user answer:', error);
+    log.error('Error processing receiveHumanReply:', error);
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: `Failed to process Q4H answer: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to process human reply: ${error instanceof Error ? error.message : 'Unknown error'}`,
       }),
     );
   }

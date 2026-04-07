@@ -38,9 +38,9 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import {
   reminderEchoBackEnabled,
+  resolveFuncToolInvocationArguments,
   type FuncTool,
   type Tool,
-  type ToolArguments,
   type ToolCallOutput,
 } from '../../tool';
 import { formatTaskDocContent } from '../../utils/taskdoc';
@@ -56,6 +56,10 @@ import type {
 import { LlmConfig } from '../client';
 import type { LlmStreamReceiver } from '../gen';
 import { getLlmGenerator } from '../gen/registry';
+import {
+  formatToolCallAdjacencyViolation,
+  sanitizeToolContextForProvider,
+} from '../gen/tool-call-context';
 import { projectFuncToolsForProvider } from '../tools-projection';
 import { assembleDriveContextMessages } from './context';
 import {
@@ -85,13 +89,12 @@ import {
   maybePrepareDiligenceAutoContinuePrompt,
   runLlmRequestWithRetry,
   suspendForKeepGoingBudgetExhausted,
-  validateFuncToolArguments,
 } from './runtime';
 import {
-  classifyTellaskSpecialFunctionCalls,
-  executeTellaskSpecialCalls,
-  isTellaskSpecialFunctionName,
-  type TellaskSpecialFunctionName,
+  formatPendingTellaskFuncResultContent,
+  isTellaskCallFunctionName,
+  processTellaskFunctionRound,
+  type TellaskCallFunctionName,
 } from './tellask-special';
 import type {
   KernelDriverCoreResult,
@@ -182,17 +185,10 @@ function buildKernelDriverFbrPrompt(
   };
 }
 
-function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[] | undefined {
-  if (!raw || raw.length === 0) return undefined;
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-  for (const value of raw) {
-    const callId = value.trim();
-    if (callId === '' || seen.has(callId)) continue;
-    seen.add(callId);
-    normalized.push(callId);
-  }
-  return normalized.length > 0 ? normalized : undefined;
+function normalizeQ4HAnswerCallId(raw: string | undefined): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const callId = raw.trim();
+  return callId !== '' ? callId : undefined;
 }
 
 function isUserOriginPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
@@ -515,7 +511,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   },
 ];
 
-function mergeTellaskSpecialVirtualTools(
+function mergeTellaskVirtualTools(
   baseTools: readonly FuncTool[],
   options: {
     includeTellaskBack: boolean;
@@ -656,7 +652,7 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
     grammar: upNext.grammar ?? 'markdown',
     origin: upNext.origin,
     userLanguageCode: upNext.userLanguageCode,
-    q4hAnswerCallIds: upNext.q4hAnswerCallIds,
+    q4hAnswerCallId: upNext.q4hAnswerCallId,
     tellaskReplyDirective: upNext.tellaskReplyDirective,
     skipTaskdoc: upNext.skipTaskdoc,
     subdialogReplyTarget: upNext.subdialogReplyTarget,
@@ -723,64 +719,49 @@ function hasSameReplyDirective(
   return true;
 }
 
-function formatElapsedSecondsText(startedAtMs: number | null): string {
-  const language = getWorkLanguage();
-  if (startedAtMs === null) {
-    return language === 'zh' ? '未知时长' : 'unknown elapsed time';
-  }
-  const elapsedMs = Math.max(0, Date.now() - startedAtMs);
-  const elapsedSec = Math.floor(elapsedMs / 1000);
-  return language === 'zh' ? `${elapsedSec} 秒` : `${elapsedSec}s`;
+function buildPendingTellaskFuncResult(args: {
+  callId: string;
+  callName: TellaskCallFunctionName;
+  genseq: number;
+}): FuncResultMsg {
+  return {
+    type: 'func_result_msg',
+    role: 'tool',
+    genseq: args.genseq,
+    id: args.callId,
+    name: args.callName,
+    content: formatPendingTellaskFuncResultContent(args.callName, null),
+  };
 }
 
-function formatPendingSpecialFuncResult(name: string, startedAtMs: number | null): string {
-  const language = getWorkLanguage();
-  const elapsed = formatElapsedSecondsText(startedAtMs);
-  if (name === 'askHuman') {
-    return language === 'zh'
-      ? `Q4H 仍在等待人类回复，已持续 ${elapsed}。`
-      : `Q4H is still waiting for human reply (elapsed ${elapsed}).`;
-  }
-  return language === 'zh'
-    ? `支线对话仍在进行中，已持续 ${elapsed}。`
-    : `Sideline dialog is still running (elapsed ${elapsed}).`;
-}
+type ProjectedTellaskContext = Readonly<{
+  messages: ChatMessage[];
+  projectedResultCallIds: ReadonlySet<string>;
+}>;
 
-function formatResolvedAskHumanResult(): string {
-  return getWorkLanguage() === 'zh'
-    ? 'Q4H 已结束等待状态，请参考后续用户消息。'
-    : 'Q4H wait is resolved; refer to subsequent user messages.';
-}
+type PendingTellaskSpecialState = Readonly<{
+  callName: TellaskCallFunctionName;
+  startedAtMs: number | null;
+}>;
 
-async function projectTellaskSpecialFuncResultsForContext(args: {
-  dialog: Dialog;
-  dialogMsgsForContext: readonly ChatMessage[];
-}): Promise<ChatMessage[]> {
-  const hasSpecialFuncCall = args.dialogMsgsForContext.some(
-    (msg) => msg.type === 'func_call_msg' && isTellaskSpecialFunctionName(msg.name),
-  );
-  if (!hasSpecialFuncCall) {
-    return [...args.dialogMsgsForContext];
-  }
+async function loadPendingTellaskSpecialStates(
+  dialog: Dialog,
+): Promise<ReadonlyMap<string, PendingTellaskSpecialState>> {
+  const pendingByCallId = new Map<string, PendingTellaskSpecialState>();
 
-  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
-    args.dialog.id,
-    args.dialog.status,
-  );
-  const pendingSubByCallId = new Map<string, { createdAt: string }>();
+  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialog.id, dialog.status);
   for (const pending of pendingSubdialogs) {
     const callId = pending.callId.trim();
     if (callId === '') {
       continue;
     }
-    pendingSubByCallId.set(callId, { createdAt: pending.createdAt });
+    pendingByCallId.set(callId, {
+      callName: pending.callName,
+      startedAtMs: parseUnifiedTimestampMs(pending.createdAt),
+    });
   }
 
-  const pendingQ4H = await DialogPersistence.loadQuestions4HumanState(
-    args.dialog.id,
-    args.dialog.status,
-  );
-  const pendingQ4HByCallId = new Map<string, { askedAt: string }>();
+  const pendingQ4H = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
   for (const question of pendingQ4H) {
     if (typeof question.callId !== 'string') {
       continue;
@@ -789,25 +770,52 @@ async function projectTellaskSpecialFuncResultsForContext(args: {
     if (callId === '') {
       continue;
     }
-    pendingQ4HByCallId.set(callId, { askedAt: question.askedAt });
+    pendingByCallId.set(callId, {
+      callName: 'askHuman',
+      startedAtMs: parseUnifiedTimestampMs(question.askedAt),
+    });
   }
 
-  const settledByCallId = new Map<string, string>();
+  return pendingByCallId;
+}
+
+async function projectTellaskFuncResultsForContext(args: {
+  dialog: Dialog;
+  dialogMsgsForContext: readonly ChatMessage[];
+}): Promise<ProjectedTellaskContext> {
+  const hasSpecialFuncCall = args.dialogMsgsForContext.some(
+    (msg) => msg.type === 'func_call_msg' && isTellaskCallFunctionName(msg.name),
+  );
+  if (!hasSpecialFuncCall) {
+    return {
+      messages: [...args.dialogMsgsForContext],
+      projectedResultCallIds: new Set<string>(),
+    };
+  }
+
+  const pendingSpecialByCallId = await loadPendingTellaskSpecialStates(args.dialog);
+
+  // Only technical tool-result-shaped messages can satisfy provider tool-call adjacency. A
+  // carryover message is different: it is already the canonical latest-course business context and
+  // intentionally does not act as a tool-result surrogate for an older-course call that is no
+  // longer present in current context.
+  const pairedToolResultContentByCallId = new Map<string, string>();
   const existingSpecialFuncResults = new Map<string, FuncResultMsg>();
   for (const msg of args.dialogMsgsForContext) {
     if (msg.type === 'tellask_result_msg') {
       const callId = typeof msg.callId === 'string' ? msg.callId.trim() : '';
       if (callId !== '') {
-        settledByCallId.set(callId, msg.content);
+        pairedToolResultContentByCallId.set(callId, msg.content);
       }
       continue;
     }
-    if (msg.type === 'func_result_msg' && isTellaskSpecialFunctionName(msg.name)) {
+    if (msg.type === 'func_result_msg' && isTellaskCallFunctionName(msg.name)) {
       existingSpecialFuncResults.set(msg.id, msg);
     }
   }
 
   const projected: ChatMessage[] = [];
+  const projectedResultCallIds = new Set<string>();
   const specialCallIds = new Set<string>();
   for (const msg of args.dialogMsgsForContext) {
     if (msg.type === 'func_result_msg' && specialCallIds.has(msg.id)) {
@@ -819,74 +827,108 @@ async function projectTellaskSpecialFuncResultsForContext(args: {
     if (msg.type !== 'func_call_msg') {
       continue;
     }
-    if (!isTellaskSpecialFunctionName(msg.name)) {
+    if (!isTellaskCallFunctionName(msg.name)) {
       continue;
     }
 
     specialCallIds.add(msg.id);
-    const settled = settledByCallId.get(msg.id);
-    if (settled !== undefined) {
+    const pairedToolResultContent = pairedToolResultContentByCallId.get(msg.id);
+    if (pairedToolResultContent !== undefined) {
+      projectedResultCallIds.add(msg.id);
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
         genseq: msg.genseq,
         id: msg.id,
         name: msg.name,
-        content: settled,
+        content: pairedToolResultContent,
       });
       continue;
     }
 
     const existingResult = existingSpecialFuncResults.get(msg.id);
     if (existingResult) {
+      projectedResultCallIds.add(msg.id);
       projected.push(existingResult);
       continue;
     }
 
-    if (msg.name === 'askHuman') {
-      const pendingQ4HState = pendingQ4HByCallId.get(msg.id);
-      const content = pendingQ4HState
-        ? formatPendingSpecialFuncResult(msg.name, parseUnifiedTimestampMs(pendingQ4HState.askedAt))
-        : formatResolvedAskHumanResult();
+    const pendingSpecialState = pendingSpecialByCallId.get(msg.id);
+    if (pendingSpecialState?.callName === msg.name) {
+      projectedResultCallIds.add(msg.id);
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
         genseq: msg.genseq,
         id: msg.id,
         name: msg.name,
-        content,
+        content: formatPendingTellaskFuncResultContent(msg.name, pendingSpecialState.startedAtMs),
       });
       continue;
     }
 
-    const pendingSubState = pendingSubByCallId.get(msg.id);
-    projected.push({
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: msg.genseq,
-      id: msg.id,
-      name: msg.name,
-      content: formatPendingSpecialFuncResult(
-        msg.name,
-        pendingSubState ? parseUnifiedTimestampMs(pendingSubState.createdAt) : null,
-      ),
-    });
+    projectedResultCallIds.add(msg.id);
+    projected.push(
+      buildPendingTellaskFuncResult({
+        callId: msg.id,
+        callName: msg.name,
+        genseq: msg.genseq,
+      }),
+    );
   }
 
-  return projected;
+  return {
+    messages: projected,
+    projectedResultCallIds,
+  };
 }
 
 async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
-  const rawDialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => {
-    if (!m) return false;
-    if (m.type === 'ui_only_markdown_msg') return false;
-    return true;
-  });
-  const projected = await projectTellaskSpecialFuncResultsForContext({
+  const rawDialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => !!m);
+  const projected = await projectTellaskFuncResultsForContext({
     dialog: dlg,
     dialogMsgsForContext: rawDialogMsgsForContext,
   });
-  return projected.filter((msg) => msg.type !== 'tellask_result_msg');
+  const businessFiltered = projected.messages.filter((msg) => {
+    if (msg.type !== 'tellask_result_msg') {
+      return true;
+    }
+    // Business tellask result bubbles stay in storage/UI, but when the same latest-course call is
+    // also projected into an adjacent technical tool result for provider context we omit the
+    // duplicate bubble form here. Carryover messages are intentionally not filtered by this branch:
+    // they are already the canonical latest-course context, not a tool-pair surrogate.
+    return !projected.projectedResultCallIds.has(msg.callId);
+  });
+  const sanitized = sanitizeToolContextForProvider(businessFiltered);
+  if (sanitized.droppedViolations.length > 0) {
+    const details = sanitized.droppedViolations.map((violation) =>
+      formatToolCallAdjacencyViolation(violation, 'kernel-driver provider context sanitization'),
+    );
+    const summary =
+      `kernel-driver dropped ${sanitized.droppedViolations.length} unpaired persisted tool ` +
+      `message(s) before provider projection for dialog=${dlg.id.valueOf()}; see logs for details.`;
+    log.error(summary, new Error('kernel_driver_provider_context_sanitized_unpaired_tool_msgs'), {
+      rootId: dlg.id.rootId,
+      selfId: dlg.id.selfId,
+      droppedViolationCount: sanitized.droppedViolations.length,
+      droppedViolations: sanitized.droppedViolations.map((violation) => ({
+        kind: violation.kind,
+        callId: violation.callId,
+        toolName: violation.toolName,
+        index: violation.index,
+      })),
+      detailPreview: details.slice(0, 3),
+    });
+    try {
+      await dlg.streamError(`${summary} ${details.slice(0, 3).join(' ')}`);
+    } catch (error) {
+      log.warn('kernel-driver failed to emit stream_error_evt for sanitized tool context', error, {
+        rootId: dlg.id.rootId,
+        selfId: dlg.id.selfId,
+      });
+    }
+  }
+  return sanitized.messages;
 }
 
 async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> {
@@ -903,65 +945,6 @@ type RoutedFunctionResult = {
   tellaskToolOutputs: ChatMessage[];
 };
 
-function isReplyTellaskCallName(
-  name: string,
-): name is 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' {
-  return (
-    name === 'replyTellask' || name === 'replyTellaskSessionless' || name === 'replyTellaskBack'
-  );
-}
-
-function isToolArgumentsObject(value: unknown): value is ToolArguments {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-type PreparedFuncCallArguments =
-  | {
-      ok: true;
-      raw: ToolArguments;
-      contextArguments: string;
-    }
-  | {
-      ok: false;
-      error: string;
-      contextArguments: string;
-    };
-
-function prepareFuncCallArguments(argumentsStr: string): PreparedFuncCallArguments {
-  if (argumentsStr.trim() === '') {
-    return {
-      ok: true,
-      raw: {},
-      contextArguments: '{}',
-    };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(argumentsStr);
-  } catch (err) {
-    return {
-      ok: false,
-      error: `Arguments must be valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-      contextArguments: '{}',
-    };
-  }
-
-  if (!isToolArgumentsObject(parsed)) {
-    return {
-      ok: false,
-      error: 'Arguments must be an object',
-      contextArguments: '{}',
-    };
-  }
-
-  return {
-    ok: true,
-    raw: parsed,
-    contextArguments: argumentsStr,
-  };
-}
-
 async function executeFunctionCalls(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -975,17 +958,16 @@ async function executeFunctionCalls(args: {
     const callGenseq = func.genseq;
     const argsStr =
       typeof func.arguments === 'string' ? func.arguments : JSON.stringify(func.arguments ?? {});
-    const preparedArgs = prepareFuncCallArguments(argsStr);
-    const persistedArguments: ToolArguments = preparedArgs.ok ? preparedArgs.raw : {};
-
-    await args.dlg.funcCallRequested(func.id, func.name, preparedArgs.contextArguments);
-    await args.dlg.persistFunctionCall(func.id, func.name, persistedArguments, callGenseq);
-
     const tool = args.agentTools.find(
       (t): t is FuncTool => t.type === 'func' && t.name === func.name,
     );
+    const preparedInvocationArgs =
+      tool !== undefined ? resolveFuncToolInvocationArguments(tool, argsStr) : null;
+    await args.dlg.funcCallRequested(func.id, func.name, argsStr);
+    let result: FuncResultMsg;
+    let rethrowError: unknown;
     if (!tool) {
-      const errorResult: FuncResultMsg = {
+      result = {
         type: 'func_result_msg',
         id: func.id,
         name: func.name,
@@ -993,92 +975,79 @@ async function executeFunctionCalls(args: {
         role: 'tool',
         genseq: callGenseq,
       };
-      await args.dlg.receiveFuncResult(errorResult);
-      return errorResult;
-    }
-
-    let result: FuncResultMsg;
-    let resultPersisted = false;
-    if (!preparedArgs.ok) {
-      log.warn('kernel-driver rejected function call arguments before execution', undefined, {
-        funcName: func.name,
-        arguments: argsStr,
-        error: preparedArgs.error,
-      });
-      result = {
-        type: 'func_result_msg',
-        id: func.id,
-        name: func.name,
-        content: `Invalid arguments: ${preparedArgs.error}`,
-        role: 'tool',
-        genseq: callGenseq,
-      };
     } else {
-      const argsValidation = validateFuncToolArguments(tool, preparedArgs.raw);
-      if (!argsValidation.ok) {
+      if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
+        const errorText =
+          preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
+        log.warn('kernel-driver rejected function call arguments before execution', undefined, {
+          funcName: func.name,
+          arguments: argsStr,
+          error: errorText,
+        });
         result = {
           type: 'func_result_msg',
           id: func.id,
           name: func.name,
-          content: `Invalid arguments: ${argsValidation.error}`,
+          content: `Invalid arguments: ${errorText}`,
           role: 'tool',
           genseq: callGenseq,
         };
-        await args.dlg.receiveFuncResult(result);
-        return result;
-      }
-
-      const argsObj: ToolArguments = argsValidation.args;
-
-      try {
-        throwIfAborted(args.abortSignal, args.dlg);
-        const output: ToolCallOutput = await tool.call(args.dlg, args.agent, argsObj);
-        throwIfAborted(args.abortSignal, args.dlg);
-        const normalized =
-          typeof output === 'string'
-            ? { content: output, contentItems: undefined }
-            : {
-                content: typeof output.content === 'string' ? output.content : String(output),
-                contentItems: Array.isArray(output.contentItems) ? output.contentItems : undefined,
-              };
-        result = {
-          type: 'func_result_msg',
-          id: func.id,
-          name: func.name,
-          content: String(normalized.content),
-          contentItems: normalized.contentItems,
-          role: 'tool',
-          genseq: callGenseq,
-        };
-      } catch (err) {
-        const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-        result = {
-          type: 'func_result_msg',
-          id: func.id,
-          name: func.name,
-          content: `Function '${func.name}' execution failed: ${errText}`,
-          role: 'tool',
-          genseq: callGenseq,
-        };
-        if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-          if (!resultPersisted) {
-            await args.dlg.receiveFuncResult({
+      } else {
+        try {
+          throwIfAborted(args.abortSignal, args.dlg);
+          const output: ToolCallOutput = await tool.call(
+            args.dlg,
+            args.agent,
+            preparedInvocationArgs.args,
+          );
+          throwIfAborted(args.abortSignal, args.dlg);
+          const normalized =
+            typeof output === 'string'
+              ? { content: output, contentItems: undefined }
+              : {
+                  content: typeof output.content === 'string' ? output.content : String(output),
+                  contentItems: Array.isArray(output.contentItems)
+                    ? output.contentItems
+                    : undefined,
+                };
+          result = {
+            type: 'func_result_msg',
+            id: func.id,
+            name: func.name,
+            content: String(normalized.content),
+            contentItems: normalized.contentItems,
+            role: 'tool',
+            genseq: callGenseq,
+          };
+        } catch (err) {
+          const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          result = {
+            type: 'func_result_msg',
+            id: func.id,
+            name: func.name,
+            content: `Function '${func.name}' execution failed: ${errText}`,
+            role: 'tool',
+            genseq: callGenseq,
+          };
+          if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+            result = {
               type: 'func_result_msg',
               id: func.id,
               name: func.name,
-              content: `Function '${func.name}' interrupted after call was persisted: ${errText}`,
+              content: `Function '${func.name}' interrupted before completion: ${errText}`,
               role: 'tool',
               genseq: callGenseq,
-            });
-            resultPersisted = true;
+            };
+            rethrowError = err;
           }
-          throw err;
         }
       }
     }
 
-    await args.dlg.receiveFuncResult(result);
-    resultPersisted = true;
+    await args.dlg.persistFunctionCallResultPair(func.id, func.name, argsStr, callGenseq, result);
+    if (rethrowError !== undefined) {
+      throw rethrowError;
+    }
     return result;
   });
 
@@ -1092,7 +1061,7 @@ async function executeFunctionRound(args: {
   funcCalls: readonly FuncCallMsg[];
   callbacks: KernelDriverDriveCallbacks;
   abortSignal: AbortSignal | undefined;
-  allowTellaskSpecialFunctions: boolean;
+  allowTellaskFunctions: boolean;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
     return {
@@ -1104,10 +1073,9 @@ async function executeFunctionRound(args: {
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
-  const allowTellaskBack =
-    args.allowTellaskSpecialFunctions && args.dlg.id.rootId !== args.dlg.id.selfId;
-  const allowedSpecials = args.allowTellaskSpecialFunctions
-    ? new Set<TellaskSpecialFunctionName>([
+  const allowTellaskBack = args.allowTellaskFunctions && args.dlg.id.rootId !== args.dlg.id.selfId;
+  const allowedSpecials = args.allowTellaskFunctions
+    ? new Set<TellaskCallFunctionName>([
         'tellask',
         'tellaskSessionless',
         'replyTellask',
@@ -1117,132 +1085,21 @@ async function executeFunctionRound(args: {
         'freshBootsReasoning',
         ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
       ])
-    : new Set<TellaskSpecialFunctionName>();
-  const classified = classifyTellaskSpecialFunctionCalls(args.funcCalls, { allowedSpecials });
-  const specialCallById = new Map(
-    classified.specialCalls.map((call) => [call.callId, call] as const),
-  );
-  const originalCallById = new Map(args.funcCalls.map((call) => [call.id, call] as const));
-
-  const toPersistedSpecialCallArgs = (
-    call: ReturnType<typeof classifyTellaskSpecialFunctionCalls>['specialCalls'][number],
-  ): ToolArguments => {
-    switch (call.callName) {
-      case 'tellaskBack':
-        return { tellaskContent: call.tellaskContent };
-      case 'askHuman':
-        return { tellaskContent: call.tellaskContent };
-      case 'freshBootsReasoning':
-        return {
-          tellaskContent: call.tellaskContent,
-          ...(call.effort !== undefined ? { effort: call.effort } : {}),
-        };
-      case 'tellask':
-        return {
-          targetAgentId: call.targetAgentId,
-          sessionSlug: call.sessionSlug,
-          tellaskContent: call.tellaskContent,
-        };
-      case 'tellaskSessionless':
-        return {
-          targetAgentId: call.targetAgentId,
-          tellaskContent: call.tellaskContent,
-        };
-      case 'replyTellask':
-      case 'replyTellaskSessionless':
-      case 'replyTellaskBack':
-        return { replyContent: call.replyContent };
-    }
-  };
-
-  for (const callMsg of args.funcCalls) {
-    throwIfAborted(args.abortSignal, args.dlg);
-    const special = specialCallById.get(callMsg.id);
-    if (!special) {
-      continue;
-    }
-    const argumentsStr =
-      typeof callMsg.arguments === 'string'
-        ? callMsg.arguments
-        : JSON.stringify(callMsg.arguments ?? {});
-    if (isReplyTellaskCallName(callMsg.name)) {
-      await args.dlg.funcCallRequested(callMsg.id, callMsg.name, argumentsStr);
-    }
-    await args.dlg.persistTellaskSpecialCall(
-      callMsg.id,
-      special.callName,
-      toPersistedSpecialCallArgs(special),
-      callMsg.genseq,
-    );
-  }
-
-  const issueResults: FuncResultMsg[] = [];
-  for (const issue of classified.parseIssues) {
-    const result: FuncResultMsg = {
-      type: 'func_result_msg',
-      id: issue.call.id,
-      name: issue.call.name,
-      content: `Invalid arguments for tellask special function '${issue.call.name}': ${issue.error}`,
-      role: 'tool',
-      genseq: issue.call.genseq,
-    };
-    await args.dlg.receiveFuncResult(result);
-    issueResults.push(result);
-  }
-
+    : new Set<TellaskCallFunctionName>();
   throwIfAborted(args.abortSignal, args.dlg);
-  let tellaskExecution: Awaited<ReturnType<typeof executeTellaskSpecialCalls>>;
-  try {
-    tellaskExecution = await executeTellaskSpecialCalls({
-      dlg: args.dlg,
-      calls: classified.specialCalls,
-      callbacks: args.callbacks,
-    });
-  } catch (err) {
-    const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    for (const call of classified.specialCalls) {
-      if (issueResults.some((result) => result.id === call.callId)) {
-        continue;
-      }
-      const originalCall = originalCallById.get(call.callId);
-      if (!originalCall) {
-        throw new Error(
-          `kernel-driver tellask special call invariant violation: missing original call for '${call.callId}'`,
-        );
-      }
-      await args.dlg.receiveFuncResult({
-        type: 'func_result_msg',
-        id: call.callId,
-        name: call.callName,
-        content:
-          args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError
-            ? `Special function '${call.callName}' interrupted after call was persisted: ${errText}`
-            : `Special function '${call.callName}' execution failed after call was persisted: ${errText}`,
-        role: 'tool',
-        genseq: originalCall.genseq,
-      });
-    }
-    throw err;
-  }
-  const tellaskFuncResults: FuncResultMsg[] = [];
-  const tellaskToolOutputs: ChatMessage[] = [];
-  for (const output of tellaskExecution.toolOutputs) {
-    if (output.type === 'func_result_msg') {
-      await args.dlg.receiveFuncResult(output);
-      tellaskFuncResults.push(output);
-      continue;
-    }
-    tellaskToolOutputs.push(output);
-  }
-  const shouldStopAfterReplyTool = tellaskExecution.successfulReplyCallIds.length > 0;
+  const tellaskRound = await processTellaskFunctionRound({
+    dlg: args.dlg,
+    funcCalls: args.funcCalls,
+    allowedSpecials,
+    callbacks: args.callbacks,
+  });
   throwIfAborted(args.abortSignal, args.dlg);
-  const specialCallIds = new Set(classified.specialCalls.map((call) => call.callId));
 
   const genericResults = await executeFunctionCalls({
     dlg: args.dlg,
     agent: args.agent,
     agentTools: args.agentTools,
-    funcCalls: classified.normalCalls,
+    funcCalls: tellaskRound.normalCalls,
     abortSignal: args.abortSignal,
   });
 
@@ -1256,10 +1113,7 @@ async function executeFunctionRound(args: {
     }
     resultByCallId.set(result.id, result);
   };
-  for (const result of issueResults) {
-    register(result);
-  }
-  for (const result of tellaskFuncResults) {
+  for (const result of tellaskRound.tellaskResults) {
     register(result);
   }
   for (const result of genericResults) {
@@ -1267,25 +1121,35 @@ async function executeFunctionRound(args: {
   }
 
   const pairedMessages: ChatMessage[] = [];
+  const tellaskCallMsgById = new Map(
+    tellaskRound.tellaskCallMessages.map((msg) => [msg.id, msg] as const),
+  );
+  const specialCallIds = new Set(tellaskRound.handledCallIds);
   for (const call of args.funcCalls) {
-    const originalArgsStr =
-      typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
-    const preparedArgs = prepareFuncCallArguments(originalArgsStr);
-    pairedMessages.push({
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: call.genseq,
-      id: call.id,
-      name: call.name,
-      arguments: preparedArgs.contextArguments,
-    });
+    const tellaskCallMsg = tellaskCallMsgById.get(call.id);
+    if (tellaskCallMsg) {
+      pairedMessages.push(tellaskCallMsg);
+    } else {
+      const originalArgsStr =
+        typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
+      pairedMessages.push({
+        type: 'func_call_msg',
+        role: 'assistant',
+        genseq: call.genseq,
+        id: call.id,
+        name: call.name,
+        arguments: originalArgsStr,
+      });
+    }
     const result = resultByCallId.get(call.id);
     if (result) {
       pairedMessages.push(result);
       continue;
     }
     if (specialCallIds.has(call.id)) {
-      continue;
+      throw new Error(
+        `kernel-driver tellask result invariant violation: missing tellask result for call id '${call.id}' (${call.name})`,
+      );
     }
     throw new Error(
       `kernel-driver function result invariant violation: missing result for call id '${call.id}' (${call.name})`,
@@ -1293,10 +1157,10 @@ async function executeFunctionRound(args: {
   }
 
   return {
-    hadNormalToolCalls: classified.normalCalls.length > 0,
-    shouldStopAfterReplyTool,
+    hadNormalToolCalls: tellaskRound.normalCalls.length > 0,
+    shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
-    tellaskToolOutputs,
+    tellaskToolOutputs: [...tellaskRound.toolOutputs],
   };
 }
 
@@ -1584,7 +1448,7 @@ export async function driveDialogStreamCore(
       const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
       const effectiveFuncTools: FuncTool[] =
         policy.mode === 'default'
-          ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
+          ? mergeTellaskVirtualTools(canonicalFuncTools, {
               includeTellaskBack: isSubdialog,
               fbrEffortDefault,
             })
@@ -1704,7 +1568,10 @@ export async function driveDialogStreamCore(
 
           const persistedUserLanguageCode =
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
-          const q4hAnswerCallIds = normalizeQ4HAnswerCallIds(currentPrompt.q4hAnswerCallIds);
+          const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt.q4hAnswerCallId);
+          // `q4hAnswerCallId` marks a continuation input for an already-materialized askHuman
+          // answer. It is not a second business-level user prompt that should re-enter transcript.
+          const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
           const promptLanguage =
             persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
               ? persistedUserLanguageCode
@@ -1789,23 +1656,33 @@ export async function driveDialogStreamCore(
             currentRuntimeGuideMsg = undefined;
           }
 
-          await dlg.addChatMessages({
-            type: 'prompting_msg',
-            role: 'user',
-            genseq: dlg.activeGenSeq,
-            msgId: currentPrompt.msgId,
-            grammar: 'markdown',
-            content: replyGuidance.promptContent,
-          });
-          await dlg.persistUserMessage(
-            replyGuidance.promptContent,
-            currentPrompt.msgId,
-            'markdown',
-            origin,
-            persistedUserLanguageCode,
-            q4hAnswerCallIds,
-            replyGuidance.persistedTellaskReplyDirective,
-          );
+          if (isQ4HAnswerPrompt) {
+            // Record only the answered call correlation / user language for the resumed round.
+            // The actual human answer fact was already persisted via askHuman tellask result flow.
+            await dlg.receiveHumanReply({
+              content: replyGuidance.promptContent,
+              userLanguageCode: persistedUserLanguageCode,
+              q4hAnswerCallId,
+            });
+          } else {
+            await dlg.addChatMessages({
+              type: 'prompting_msg',
+              role: 'user',
+              genseq: dlg.activeGenSeq,
+              msgId: currentPrompt.msgId,
+              grammar: 'markdown',
+              content: replyGuidance.promptContent,
+            });
+            await dlg.persistUserMessage(
+              replyGuidance.promptContent,
+              currentPrompt.msgId,
+              'markdown',
+              origin,
+              persistedUserLanguageCode,
+              q4hAnswerCallId,
+              replyGuidance.persistedTellaskReplyDirective,
+            );
+          }
 
           if (renderPromptAsRuntimeGuideBubble) {
             postDialogEvent(dlg, {
@@ -1814,10 +1691,9 @@ export async function driveDialogStreamCore(
               genseq: dlg.activeGenSeq,
               content: replyGuidance.promptContent,
             });
-          } else {
+          } else if (!isQ4HAnswerPrompt) {
             // Emit the live user-side boundary event for UI generation bubbles.
-            // Without this, realtime turns can miss user content + divider (<hr/>),
-            // while replay (from persisted human_text_record) still looks correct.
+            // Without this, realtime turns can miss user content + divider (<hr/>).
             postDialogEvent(dlg, {
               type: 'end_of_user_saying_evt',
               course: dlg.currentCourse,
@@ -1827,7 +1703,7 @@ export async function driveDialogStreamCore(
               grammar: 'markdown',
               origin,
               userLanguageCode: persistedUserLanguageCode,
-              q4hAnswerCallIds,
+              q4hAnswerCallId,
             });
           }
 
@@ -2177,7 +2053,7 @@ export async function driveDialogStreamCore(
           streamedFuncCalls.push(...funcCalls);
         }
 
-        const tellaskCallCount = policy.allowTellaskSpecialFunctions
+        const tellaskCallCount = policy.allowTellaskFunctions
           ? streamedFuncCalls.filter(
               (c) =>
                 c.name === 'tellask' ||
@@ -2263,7 +2139,7 @@ export async function driveDialogStreamCore(
           funcCalls: streamedFuncCalls,
           callbacks,
           abortSignal,
-          allowTellaskSpecialFunctions: policy.allowTellaskSpecialFunctions,
+          allowTellaskFunctions: policy.allowTellaskFunctions,
         });
         if (routed.tellaskToolOutputs.length > 0) {
           newMsgs.push(...routed.tellaskToolOutputs);

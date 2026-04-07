@@ -21,14 +21,13 @@ import type {
   StreamErrorEvent,
   SubdialogEvent,
   TellaskCallAnchorEvent,
-  TellaskCallCarryoverEvent,
-  TellaskCallResultEvent,
   TellaskCallStartEvent,
-  TellaskCarryoverResultEvent,
-  TellaskResponseEvent,
+  TellaskCarryoverEvent,
+  TellaskResultEvent,
   ThinkingChunkEvent,
   ThinkingFinishEvent,
   ThinkingStartEvent,
+  UiOnlyMarkdownEvent,
   WebSearchCallAction,
   WebSearchCallEvent,
 } from '@longrun-ai/kernel/types/dialog';
@@ -36,9 +35,6 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
-  CalleeCourseNumber,
-  CalleeGenerationSeqNumber,
-  CallingCourseNumber,
   DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogLatestFile,
@@ -67,18 +63,19 @@ import type {
   SubdialogRegistryStateRecord,
   SubdialogResponsesReconciledRecord,
   SubdialogResponseStateRecord,
-  TellaskCallCarryoverRecord,
-  TellaskCallResultRecord,
-  TellaskCarryoverResultRecord,
+  TellaskCallRecord,
+  TellaskCallRecordName,
+  TellaskCarryoverRecord,
   TellaskReplyDirective,
   TellaskReplyResolutionRecord,
-  TellaskResponseRecord,
-  TellaskSpecialCallRecord,
-  ToolArguments,
+  TellaskResultRecord,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import {
+  toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
+  toCallingCourseNumber,
   toCallingGenerationSeqNumber,
   toDialogCourseNumber,
   toRootGenerationAnchor,
@@ -92,13 +89,98 @@ import * as yaml from 'yaml';
 import type { PendingSubdialog } from './dialog';
 import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
-import { ChatMessage, FuncResultMsg } from './llm/client';
+import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import { isStandaloneRuntimeGuidePromptContent } from './runtime/reply-prompt-copy';
-import { getWorkLanguage } from './runtime/work-language';
 import { materializeReminder, Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
+
+type TellaskBusinessCallName = TellaskResultRecord['callName'];
+
+function isTellaskBusinessCallName(value: string): value is TellaskBusinessCallName {
+  return (
+    value === 'tellask' ||
+    value === 'tellaskSessionless' ||
+    value === 'tellaskBack' ||
+    value === 'askHuman' ||
+    value === 'freshBootsReasoning'
+  );
+}
+
+function buildTellaskResultRoute(
+  route: TellaskResultMsg['route'],
+  fallback?: {
+    calleeDialogId?: string;
+    calleeCourse?: number;
+    calleeGenseq?: number;
+  },
+): TellaskResultRecord['route'] | undefined {
+  const effective = route ?? fallback;
+  if (!effective) return undefined;
+  return {
+    ...(effective.calleeDialogId ? { calleeDialogId: effective.calleeDialogId } : {}),
+    ...(typeof effective.calleeCourse === 'number'
+      ? { calleeCourse: toCalleeCourseNumber(effective.calleeCourse) }
+      : {}),
+    ...(typeof effective.calleeGenseq === 'number'
+      ? { calleeGenseq: toCalleeGenerationSeqNumber(effective.calleeGenseq) }
+      : {}),
+  };
+}
+
+function requireNonEmptyTrimmedString(
+  value: string | undefined,
+  field: string,
+  context: string,
+): string {
+  if (typeof value !== 'string') {
+    throw new Error(`${context} invariant violation: missing ${field}`);
+  }
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    throw new Error(`${context} invariant violation: empty ${field}`);
+  }
+  return trimmed;
+}
+
+function requireTellaskResultResponderId(result: TellaskResultMsg, context: string): string {
+  return requireNonEmptyTrimmedString(
+    result.responder?.responderId ?? result.responderId,
+    'responderId',
+    `${context} (callId=${result.callId}, callName=${result.callName})`,
+  );
+}
+
+function requireTellaskResultContent(result: TellaskResultMsg, context: string): string {
+  return requireNonEmptyTrimmedString(
+    result.call?.tellaskContent ?? result.tellaskContent,
+    'tellaskContent',
+    `${context} (callId=${result.callId}, callName=${result.callName})`,
+  );
+}
+
+function resolveTellaskResultMentionList(result: TellaskResultMsg, context: string): string[] {
+  const mentionList = result.call?.mentionList ?? result.mentionList;
+  if (mentionList === undefined) {
+    return [];
+  }
+  if (!Array.isArray(mentionList) || mentionList.some((item) => typeof item !== 'string')) {
+    throw new Error(
+      `${context} invariant violation: invalid mentionList ` +
+        `(callId=${result.callId}, callName=${result.callName})`,
+    );
+  }
+  return [...mentionList];
+}
+
+function requireTellaskResultSessionSlug(result: TellaskResultMsg, context: string): string {
+  return requireNonEmptyTrimmedString(
+    result.call?.sessionSlug ?? result.sessionSlug,
+    'sessionSlug',
+    `${context} (callId=${result.callId}, callName=${result.callName})`,
+  );
+}
 
 function getErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -143,200 +225,355 @@ function cloneRootGenerationAnchor(anchor: RootGenerationAnchor): RootGeneration
   };
 }
 
-function formatCrashRecoveredFuncResultContent(toolName: string): string {
-  if (getWorkLanguage() === 'zh') {
-    return (
-      `Function '${toolName}' execution failed: ` +
-      'Dominds 在该工具调用发出后发生了进程意外退出，原调用未能产出结果。' +
-      '这是启动恢复阶段自动补记的失败结果，请基于当前上下文判断是否需要重试。'
-    );
-  }
-  return (
-    `Function '${toolName}' execution failed: ` +
-    'Dominds exited unexpectedly after this tool call was persisted, so no tool result was produced. ' +
-    'This failure record was added automatically during startup recovery; decide whether to retry.'
-  );
-}
-
-function readPersistedTellaskStringArg(
-  arguments_: ToolArguments,
-  field: string,
-  callName: string,
-  callId: string,
-): string {
-  const value = arguments_[field];
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(
-      `tellask special persistence invariant violation: missing ${field} for ${callName} (callId=${callId})`,
-    );
-  }
-  return value;
-}
-
-function readPersistedTellaskOptionalNumberArg(
-  arguments_: ToolArguments,
-  field: string,
-  callName: string,
-  callId: string,
-): number | undefined {
-  const value = arguments_[field];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(
-      `tellask special persistence invariant violation: invalid ${field} for ${callName} (callId=${callId})`,
-    );
-  }
-  return value;
-}
-
-function buildTellaskSpecialCallRecord(args: {
+function buildFuncCallRecord(args: {
   id: string;
-  name:
-    | 'tellaskBack'
-    | 'tellask'
-    | 'tellaskSessionless'
-    | 'replyTellask'
-    | 'replyTellaskSessionless'
-    | 'replyTellaskBack'
-    | 'askHuman'
-    | 'freshBootsReasoning';
-  arguments_: ToolArguments;
+  name: string;
+  rawArgumentsText: string;
   genseq: number;
-}): TellaskSpecialCallRecord {
-  const base = {
+}): FuncCallRecord {
+  return {
     ts: formatUnifiedTimestamp(new Date()),
-    type: 'tellask_special_call_record' as const,
+    type: 'func_call_record',
     genseq: args.genseq,
     id: args.id,
+    name: args.name,
+    rawArgumentsText: args.rawArgumentsText,
   };
+}
 
-  switch (args.name) {
-    case 'tellaskBack':
-      return {
-        ...base,
-        name: args.name,
-        tellaskContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'tellaskContent',
-          args.name,
-          args.id,
-        ),
-      };
+function buildFuncResultRecord(funcResult: FuncResultMsg, genseq: number): FuncResultRecord {
+  return {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'func_result_record',
+    id: funcResult.id,
+    name: funcResult.name,
+    content: funcResult.content,
+    contentItems: funcResult.contentItems,
+    genseq,
+  };
+}
+
+function buildTellaskCallRecord(args: {
+  id: string;
+  name: TellaskCallRecordName;
+  rawArgumentsText: string;
+  genseq: number;
+  deliveryMode: 'tellask_call_start' | 'func_call_requested';
+}): TellaskCallRecord {
+  return {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'tellask_call_record' as const,
+    genseq: args.genseq,
+    id: args.id,
+    name: args.name,
+    rawArgumentsText: args.rawArgumentsText,
+    deliveryMode: args.deliveryMode,
+  };
+}
+
+function buildTellaskResultRecord(result: TellaskResultMsg, genseq: number): TellaskResultRecord {
+  if (!isTellaskBusinessCallName(result.callName)) {
+    throw new Error(
+      `buildTellaskResultRecord invariant violation: ${result.callName} is not a tellask business result`,
+    );
+  }
+  const responderId = requireTellaskResultResponderId(result, 'buildTellaskResultRecord');
+  const tellaskContent = requireTellaskResultContent(result, 'buildTellaskResultRecord');
+  const route = buildTellaskResultRoute(result.route, {
+    calleeDialogId: result.calleeDialogId,
+    calleeCourse: result.calleeCourse,
+    calleeGenseq: result.calleeGenseq,
+  });
+  const base = {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'tellask_result_record' as const,
+    genseq,
+    callId: result.callId,
+    status: result.status,
+    content: result.content,
+    ...(typeof result.calling_genseq === 'number'
+      ? { calling_genseq: toCallingGenerationSeqNumber(result.calling_genseq) }
+      : {}),
+    responder: {
+      responderId,
+      ...((result.responder?.agentId ?? result.agentId)
+        ? { agentId: result.responder?.agentId ?? result.agentId }
+        : {}),
+      ...((result.responder?.originMemberId ?? result.originMemberId)
+        ? { originMemberId: result.responder?.originMemberId ?? result.originMemberId }
+        : {}),
+    },
+    ...(route ? { route } : {}),
+  };
+  switch (result.callName) {
     case 'tellask':
       return {
         ...base,
-        name: args.name,
-        targetAgentId: readPersistedTellaskStringArg(
-          args.arguments_,
-          'targetAgentId',
-          args.name,
-          args.id,
-        ),
-        sessionSlug: readPersistedTellaskStringArg(
-          args.arguments_,
-          'sessionSlug',
-          args.name,
-          args.id,
-        ),
-        tellaskContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'tellaskContent',
-          args.name,
-          args.id,
-        ),
+        callName: result.callName,
+        call: {
+          tellaskContent,
+          mentionList: resolveTellaskResultMentionList(result, 'buildTellaskResultRecord'),
+          sessionSlug: requireTellaskResultSessionSlug(result, 'buildTellaskResultRecord'),
+        },
       };
     case 'tellaskSessionless':
       return {
         ...base,
-        name: args.name,
-        targetAgentId: readPersistedTellaskStringArg(
-          args.arguments_,
-          'targetAgentId',
-          args.name,
-          args.id,
-        ),
-        tellaskContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'tellaskContent',
-          args.name,
-          args.id,
-        ),
+        callName: result.callName,
+        call: {
+          tellaskContent,
+          mentionList: resolveTellaskResultMentionList(result, 'buildTellaskResultRecord'),
+        },
       };
-    case 'replyTellask':
-    case 'replyTellaskSessionless':
-    case 'replyTellaskBack':
-      return {
-        ...base,
-        name: args.name,
-        replyContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'replyContent',
-          args.name,
-          args.id,
-        ),
-      };
+    case 'tellaskBack':
     case 'askHuman':
+    case 'freshBootsReasoning':
       return {
         ...base,
-        name: args.name,
-        tellaskContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'tellaskContent',
-          args.name,
-          args.id,
-        ),
+        callName: result.callName,
+        call: {
+          tellaskContent,
+        },
       };
-    case 'freshBootsReasoning': {
-      const effort = readPersistedTellaskOptionalNumberArg(
-        args.arguments_,
-        'effort',
-        args.name,
-        args.id,
-      );
-      return {
-        ...base,
-        name: args.name,
-        tellaskContent: readPersistedTellaskStringArg(
-          args.arguments_,
-          'tellaskContent',
-          args.name,
-          args.id,
-        ),
-        ...(effort !== undefined ? { effort } : {}),
-      };
-    }
   }
 }
 
-function formatTellaskSpecialCallArguments(record: TellaskSpecialCallRecord): string {
-  switch (record.name) {
-    case 'tellaskBack':
-      return JSON.stringify({ tellaskContent: record.tellaskContent });
-    case 'tellask':
-      return JSON.stringify({
-        targetAgentId: record.targetAgentId,
-        sessionSlug: record.sessionSlug,
-        tellaskContent: record.tellaskContent,
-      });
-    case 'tellaskSessionless':
-      return JSON.stringify({
-        targetAgentId: record.targetAgentId,
-        tellaskContent: record.tellaskContent,
-      });
-    case 'replyTellask':
-    case 'replyTellaskSessionless':
-    case 'replyTellaskBack':
-      return JSON.stringify({ replyContent: record.replyContent });
-    case 'askHuman':
-      return JSON.stringify({ tellaskContent: record.tellaskContent });
-    case 'freshBootsReasoning':
-      return JSON.stringify({
-        tellaskContent: record.tellaskContent,
-        ...(record.effort !== undefined ? { effort: record.effort } : {}),
-      });
+function buildTellaskCarryoverRecord(
+  result: TellaskCarryoverMsg,
+  genseq: number,
+): TellaskCarryoverRecord {
+  return {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'tellask_carryover_record',
+    genseq,
+    originCourse: toCallingCourseNumber(result.originCourse),
+    carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
+    responderId: result.responderId,
+    callName: result.callName,
+    tellaskContent: result.tellaskContent,
+    status: result.status,
+    response: result.response,
+    content: result.content,
+    agentId: result.agentId,
+    callId: result.callId,
+    originMemberId: result.originMemberId,
+    ...(result.callName === 'tellask'
+      ? {
+          sessionSlug: result.sessionSlug,
+          mentionList: result.mentionList,
+        }
+      : result.callName === 'tellaskSessionless'
+        ? {
+            mentionList: result.mentionList,
+          }
+        : {}),
+    ...(result.calleeDialogId ? { calleeDialogId: result.calleeDialogId } : {}),
+    ...(typeof result.calleeCourse === 'number' ? { calleeCourse: result.calleeCourse } : {}),
+    ...(typeof result.calleeGenseq === 'number' ? { calleeGenseq: result.calleeGenseq } : {}),
+  } as TellaskCarryoverRecord;
+}
+
+function buildTellaskResultEvent(result: TellaskResultMsg, course: number): TellaskResultEvent {
+  if (!isTellaskBusinessCallName(result.callName)) {
+    throw new Error(
+      `buildTellaskResultEvent invariant violation: ${result.callName} is not a tellask business result`,
+    );
   }
+  const responderId = requireTellaskResultResponderId(result, 'buildTellaskResultEvent');
+  const tellaskContent = requireTellaskResultContent(result, 'buildTellaskResultEvent');
+  const route = buildTellaskResultRoute(result.route, {
+    calleeDialogId: result.calleeDialogId,
+    calleeCourse: result.calleeCourse,
+    calleeGenseq: result.calleeGenseq,
+  });
+  if (result.callName === 'tellask') {
+    const effectiveSessionSlug = requireTellaskResultSessionSlug(result, 'buildTellaskResultEvent');
+    return {
+      type: 'tellask_result_evt',
+      course,
+      genseq: result.genseq,
+      calling_genseq:
+        typeof result.calling_genseq === 'number'
+          ? toCallingGenerationSeqNumber(result.calling_genseq)
+          : undefined,
+      callId: result.callId,
+      callName: result.callName,
+      status: result.status,
+      content: result.content,
+      call: {
+        tellaskContent,
+        mentionList: resolveTellaskResultMentionList(result, 'buildTellaskResultEvent'),
+        sessionSlug: effectiveSessionSlug,
+      },
+      responder: {
+        responderId,
+        ...((result.responder?.agentId ?? result.agentId)
+          ? { agentId: result.responder?.agentId ?? result.agentId }
+          : {}),
+        ...((result.responder?.originMemberId ?? result.originMemberId)
+          ? { originMemberId: result.responder?.originMemberId ?? result.originMemberId }
+          : {}),
+      },
+      ...(route ? { route } : {}),
+    };
+  }
+
+  if (result.callName === 'tellaskSessionless') {
+    return {
+      type: 'tellask_result_evt',
+      course,
+      genseq: result.genseq,
+      calling_genseq:
+        typeof result.calling_genseq === 'number'
+          ? toCallingGenerationSeqNumber(result.calling_genseq)
+          : undefined,
+      callId: result.callId,
+      callName: result.callName,
+      status: result.status,
+      content: result.content,
+      call: {
+        tellaskContent,
+        mentionList: resolveTellaskResultMentionList(result, 'buildTellaskResultEvent'),
+      },
+      responder: {
+        responderId,
+        ...((result.responder?.agentId ?? result.agentId)
+          ? { agentId: result.responder?.agentId ?? result.agentId }
+          : {}),
+        ...((result.responder?.originMemberId ?? result.originMemberId)
+          ? { originMemberId: result.responder?.originMemberId ?? result.originMemberId }
+          : {}),
+      },
+      ...(route ? { route } : {}),
+    };
+  }
+
+  return {
+    type: 'tellask_result_evt',
+    course,
+    genseq: result.genseq,
+    calling_genseq:
+      typeof result.calling_genseq === 'number'
+        ? toCallingGenerationSeqNumber(result.calling_genseq)
+        : undefined,
+    callId: result.callId,
+    callName: result.callName as 'tellaskBack' | 'askHuman' | 'freshBootsReasoning',
+    status: result.status,
+    content: result.content,
+    call: {
+      tellaskContent,
+    },
+    responder: {
+      responderId,
+      ...((result.responder?.agentId ?? result.agentId)
+        ? { agentId: result.responder?.agentId ?? result.agentId }
+        : {}),
+      ...((result.responder?.originMemberId ?? result.originMemberId)
+        ? { originMemberId: result.responder?.originMemberId ?? result.originMemberId }
+        : {}),
+    },
+    ...(route ? { route } : {}),
+  };
+}
+
+function buildTellaskCarryoverEvent(
+  result: TellaskCarryoverMsg,
+  course: number,
+): TellaskCarryoverEvent {
+  if (result.callName === 'tellask') {
+    const sessionSlug = result.sessionSlug?.trim();
+    if (!sessionSlug) {
+      throw new Error(
+        `buildTellaskCarryoverEvent invariant violation: missing sessionSlug for tellask call ${result.callId}`,
+      );
+    }
+    return {
+      type: 'tellask_carryover_evt',
+      course,
+      genseq: result.genseq,
+      originCourse: toCallingCourseNumber(result.originCourse),
+      carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
+      responderId: result.responderId,
+      callName: result.callName,
+      sessionSlug,
+      mentionList: result.mentionList ?? [],
+      tellaskContent: result.tellaskContent,
+      status: result.status,
+      response: result.response,
+      content: result.content,
+      agentId: result.agentId,
+      callId: result.callId,
+      originMemberId: result.originMemberId,
+      ...(result.calleeDialogId ? { calleeDialogId: result.calleeDialogId } : {}),
+      ...(typeof result.calleeCourse === 'number'
+        ? { calleeCourse: toCalleeCourseNumber(result.calleeCourse) }
+        : {}),
+      ...(typeof result.calleeGenseq === 'number'
+        ? { calleeGenseq: toCalleeGenerationSeqNumber(result.calleeGenseq) }
+        : {}),
+    };
+  }
+  if (result.callName === 'tellaskSessionless') {
+    return {
+      type: 'tellask_carryover_evt',
+      course,
+      genseq: result.genseq,
+      originCourse: toCallingCourseNumber(result.originCourse),
+      carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
+      responderId: result.responderId,
+      callName: result.callName,
+      mentionList: result.mentionList ?? [],
+      tellaskContent: result.tellaskContent,
+      status: result.status,
+      response: result.response,
+      content: result.content,
+      agentId: result.agentId,
+      callId: result.callId,
+      originMemberId: result.originMemberId,
+      ...(result.calleeDialogId ? { calleeDialogId: result.calleeDialogId } : {}),
+      ...(typeof result.calleeCourse === 'number'
+        ? { calleeCourse: toCalleeCourseNumber(result.calleeCourse) }
+        : {}),
+      ...(typeof result.calleeGenseq === 'number'
+        ? { calleeGenseq: toCalleeGenerationSeqNumber(result.calleeGenseq) }
+        : {}),
+    };
+  }
+  return {
+    type: 'tellask_carryover_evt',
+    course,
+    genseq: result.genseq,
+    originCourse: toCallingCourseNumber(result.originCourse),
+    carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
+    responderId: result.responderId,
+    callName: result.callName,
+    tellaskContent: result.tellaskContent,
+    status: result.status,
+    response: result.response,
+    content: result.content,
+    agentId: result.agentId,
+    callId: result.callId,
+    originMemberId: result.originMemberId,
+    ...(result.calleeDialogId ? { calleeDialogId: result.calleeDialogId } : {}),
+    ...(typeof result.calleeCourse === 'number'
+      ? { calleeCourse: toCalleeCourseNumber(result.calleeCourse) }
+      : {}),
+    ...(typeof result.calleeGenseq === 'number'
+      ? { calleeGenseq: toCalleeGenerationSeqNumber(result.calleeGenseq) }
+      : {}),
+  };
+}
+
+function formatTellaskCallArguments(record: TellaskCallRecord): string {
+  return record.rawArgumentsText;
+}
+
+function isReplyTellaskCallRecordName(
+  name: TellaskCallRecord['name'],
+): name is 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' {
+  return (
+    name === 'replyTellask' || name === 'replyTellaskSessionless' || name === 'replyTellaskBack'
+  );
 }
 
 function resolveRootGenerationAnchor(dialog: Dialog): RootGenerationAnchor {
@@ -737,7 +974,7 @@ export interface Questions4Human {
 // Remove old type definitions - now using kernel/types/storage.ts
 import { generateDialogID } from './utils/id';
 
-type ReplayTellaskSpecialCall =
+type ReplayTellaskCall =
   | Readonly<{
       callName: 'tellaskBack';
       tellaskContent: string;
@@ -767,43 +1004,101 @@ type ReplayTellaskSpecialCall =
       callId: string;
     }>;
 
-function parseReplayTellaskSpecialCall(
-  record: TellaskSpecialCallRecord,
-): ReplayTellaskSpecialCall | null {
+function parseReplayTellaskCall(record: TellaskCallRecord): ReplayTellaskCall | null {
+  if (record.deliveryMode !== 'tellask_call_start') {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.rawArgumentsText);
+  } catch (error: unknown) {
+    throw new Error(
+      `persisted tellask rawArgumentsText is not valid JSON for replay (callId=${record.id}, name=${record.name}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      `persisted tellask rawArgumentsText must decode to an object for replay (callId=${record.id}, name=${record.name})`,
+    );
+  }
+  const args = parsed as Record<string, unknown>;
   switch (record.name) {
-    case 'tellaskBack':
+    case 'tellaskBack': {
+      const tellaskContent = args['tellaskContent'];
+      if (typeof tellaskContent !== 'string' || tellaskContent.trim() === '') {
+        throw new Error(`persisted tellaskBack missing tellaskContent (callId=${record.id})`);
+      }
       return {
         callName: 'tellaskBack',
-        tellaskContent: record.tellaskContent,
+        tellaskContent,
         callId: record.id,
       };
-    case 'askHuman':
+    }
+    case 'askHuman': {
+      const tellaskContent = args['tellaskContent'];
+      if (typeof tellaskContent !== 'string' || tellaskContent.trim() === '') {
+        throw new Error(`persisted askHuman missing tellaskContent (callId=${record.id})`);
+      }
       return {
         callName: 'askHuman',
-        tellaskContent: record.tellaskContent,
+        tellaskContent,
         callId: record.id,
       };
-    case 'freshBootsReasoning':
+    }
+    case 'freshBootsReasoning': {
+      const tellaskContent = args['tellaskContent'];
+      if (typeof tellaskContent !== 'string' || tellaskContent.trim() === '') {
+        throw new Error(
+          `persisted freshBootsReasoning missing tellaskContent (callId=${record.id})`,
+        );
+      }
       return {
         callName: 'freshBootsReasoning',
-        tellaskContent: record.tellaskContent,
+        tellaskContent,
         callId: record.id,
       };
-    case 'tellask':
+    }
+    case 'tellask': {
+      const targetAgentId = args['targetAgentId'];
+      const sessionSlug = args['sessionSlug'];
+      const tellaskContent = args['tellaskContent'];
+      if (typeof targetAgentId !== 'string' || targetAgentId.trim() === '') {
+        throw new Error(`persisted tellask missing targetAgentId (callId=${record.id})`);
+      }
+      if (typeof sessionSlug !== 'string' || sessionSlug.trim() === '') {
+        throw new Error(`persisted tellask missing sessionSlug (callId=${record.id})`);
+      }
+      if (typeof tellaskContent !== 'string' || tellaskContent.trim() === '') {
+        throw new Error(`persisted tellask missing tellaskContent (callId=${record.id})`);
+      }
       return {
         callName: 'tellask',
-        mentionList: [`@${record.targetAgentId}`],
-        sessionSlug: record.sessionSlug,
-        tellaskContent: record.tellaskContent,
+        mentionList: [`@${targetAgentId}`],
+        sessionSlug,
+        tellaskContent,
         callId: record.id,
       };
-    case 'tellaskSessionless':
+    }
+    case 'tellaskSessionless': {
+      const targetAgentId = args['targetAgentId'];
+      const tellaskContent = args['tellaskContent'];
+      if (typeof targetAgentId !== 'string' || targetAgentId.trim() === '') {
+        throw new Error(`persisted tellaskSessionless missing targetAgentId (callId=${record.id})`);
+      }
+      if (typeof tellaskContent !== 'string' || tellaskContent.trim() === '') {
+        throw new Error(
+          `persisted tellaskSessionless missing tellaskContent (callId=${record.id})`,
+        );
+      }
       return {
         callName: 'tellaskSessionless',
-        mentionList: [`@${record.targetAgentId}`],
-        tellaskContent: record.tellaskContent,
+        mentionList: [`@${targetAgentId}`],
+        tellaskContent,
         callId: record.id,
       };
+    }
     case 'replyTellask':
     case 'replyTellaskSessionless':
     case 'replyTellaskBack':
@@ -811,6 +1106,19 @@ function parseReplayTellaskSpecialCall(
     default:
       return null;
   }
+}
+
+function isTellaskCallFunctionName(name: string): name is TellaskCallRecordName {
+  return (
+    name === 'tellaskBack' ||
+    name === 'tellask' ||
+    name === 'tellaskSessionless' ||
+    name === 'replyTellask' ||
+    name === 'replyTellaskSessionless' ||
+    name === 'replyTellaskBack' ||
+    name === 'askHuman' ||
+    name === 'freshBootsReasoning'
+  );
 }
 
 /**
@@ -1007,16 +1315,7 @@ export class DiskFileDialogStore extends DialogStore {
         `receiveFuncResult invariant violation: missing valid genseq for func result ${funcResult.id}`,
       );
     }
-    // Persist function result record
-    const funcResultRecord: FuncResultRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'func_result_record',
-      id: funcResult.id,
-      name: funcResult.name,
-      content: funcResult.content,
-      contentItems: funcResult.contentItems,
-      genseq,
-    };
+    const funcResultRecord = buildFuncResultRecord(funcResult, genseq);
     await this.appendEvent(dialog, course, funcResultRecord);
 
     // Send event to frontend
@@ -1031,488 +1330,43 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, funcResultEvt);
   }
 
-  /**
-   * Receive and handle tellask call results with callId for inline result display
-   *
-   * Call Types:
-   * - tellask-special function call (inline bubble)
-   *   - Result displays INLINE in the same bubble
-   *   - Uses callId for correlation between call_start and response
-   *   - Uses receiveTellaskCallResult() + callId parameter
-   *
-   * - Tellask sideline response (subdialog response bubble)
-   *   - Result displays in SEPARATE bubble (subdialog response)
-   *   - Uses calleeDialogId for correlation
-   *   - Uses receiveTellaskResponse() instead
-   *
-   * @param dialog - The dialog receiving the response
-   * @param responderId - ID of the tool/agent that responded (e.g., "add_reminder")
-   * @param mentionList - Mention list of the original call
-   * @param tellaskContent - Tellask content of the original call
-   * @param result - The result content to display
-   * @param status - Response status ('completed' | 'failed')
-   * @param callId - Correlation ID from call_start_evt (REQUIRED for inline display)
-   */
-  public async receiveTellaskCallResult(
-    dialog: Dialog,
-    responderId: string,
-    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
-    mentionList: string[] | undefined,
-    tellaskContent: string,
-    result: string,
-    status: 'completed' | 'failed',
-    callId: string,
-  ): Promise<void> {
+  public async receiveTellaskResult(dialog: Dialog, result: TellaskResultMsg): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const calling_genseq =
-      dialog.activeGenSeqOrUndefined !== undefined
-        ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
-        : undefined;
-    // Persist record WITH callId for replay correlation
-    const ev: TellaskCallResultRecord = (() => {
-      switch (callName) {
-        case 'tellask':
-        case 'tellaskSessionless':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_call_result_record',
-            responderId,
-            callName,
-            mentionList: mentionList ?? [],
-            tellaskContent,
-            status,
-            result,
-            calling_genseq,
-            callId,
+    const genseq = dialog.activeGenSeqOrUndefined ?? result.genseq;
+    if (!Number.isFinite(genseq) || genseq <= 0) {
+      throw new Error(
+        `receiveTellaskResult invariant violation: missing valid genseq for tellask result ${result.callId}`,
+      );
+    }
+    const normalizedResult =
+      genseq === result.genseq
+        ? result
+        : {
+            ...result,
+            genseq,
           };
-        case 'tellaskBack':
-        case 'askHuman':
-        case 'freshBootsReasoning':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_call_result_record',
-            responderId,
-            callName,
-            tellaskContent,
-            status,
-            result,
-            calling_genseq,
-            callId,
-          };
-      }
-    })();
-    await this.appendEvent(dialog, course, ev);
-
-    // Emit TellaskCallResultEvent WITH callId for UI correlation
-    const toolResponseEvt: TellaskCallResultEvent = (() => {
-      switch (callName) {
-        case 'tellask':
-        case 'tellaskSessionless':
-          return {
-            type: 'tellask_call_result_evt',
-            responderId,
-            callName,
-            mentionList: mentionList ?? [],
-            tellaskContent,
-            status,
-            result,
-            course,
-            calling_genseq,
-            callId,
-          };
-        case 'tellaskBack':
-        case 'askHuman':
-        case 'freshBootsReasoning':
-          return {
-            type: 'tellask_call_result_evt',
-            responderId,
-            callName,
-            tellaskContent,
-            status,
-            result,
-            course,
-            calling_genseq,
-            callId,
-          };
-      }
-    })();
-    postDialogEvent(dialog, toolResponseEvt);
+    const record = buildTellaskResultRecord(normalizedResult, genseq);
+    await this.appendEvent(dialog, course, record);
+    postDialogEvent(dialog, buildTellaskResultEvent(normalizedResult, course));
   }
 
-  /**
-   * Receive and handle tellask responses (separate bubble for subdialog/supdialog replies)
-   *
-   * Call Types:
-   * - Tellask sideline response
-   *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
-   *   - Uses calleeDialogId for correlation (not callId)
-   *   - Uses this method (receiveTellaskResponse)
-   *
-   * @param dialog - The dialog receiving the response
-   * @param responderId - ID of the responder agent (e.g., "coder")
-   * @param mentionList - Mention list of the original tellask
-   * @param tellaskContent - Tellask content of the original tellask
-   * @param status - Response status ('completed' | 'failed')
-   * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
-   */
-  public async receiveTellaskResponse(
-    dialog: Dialog,
-    responderId: string,
-    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
-    mentionList: string[] | undefined,
-    tellaskContent: string,
-    status: 'completed' | 'failed',
-    calleeDialogId: DialogID | undefined,
-    options: {
-      response: string;
-      agentId: string;
-      callId: string;
-      originMemberId: string;
-      originCourse?: CallingCourseNumber;
-      carryoverContent?: string;
-      sessionSlug?: string;
-      calleeCourse?: CalleeCourseNumber;
-      calleeGenseq?: CalleeGenerationSeqNumber;
-    },
-  ): Promise<void> {
-    const currentCourse = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const calling_genseq =
-      dialog.activeGenSeqOrUndefined !== undefined
-        ? toCallingGenerationSeqNumber(dialog.activeGenSeqOrUndefined)
-        : undefined;
-    const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
-    const response = options.response;
-    const agentId = options.agentId;
-    const callId = options.callId;
-    const originMemberId = options.originMemberId;
-    const originCourse = options.originCourse;
-    const carryoverContent = options.carryoverContent;
-    const carryoverText =
-      typeof carryoverContent === 'string' && carryoverContent.trim() !== ''
-        ? carryoverContent
-        : undefined;
-    const sessionSlug =
-      typeof options.sessionSlug === 'string' && options.sessionSlug.trim() !== ''
-        ? options.sessionSlug.trim()
-        : undefined;
-    const calleeCourse = options.calleeCourse;
-    const calleeGenseq = options.calleeGenseq;
-    const normalizedMentionList = mentionList ?? [];
-    const isCrossCourseCarryover = originCourse !== undefined && originCourse !== currentCourse;
-
-    if (!isCrossCourseCarryover) {
-      const responseCourse = originCourse ?? currentCourse;
-      const ev: TellaskResponseRecord = (() => {
-        switch (callName) {
-          case 'tellask':
-            if (!sessionSlug) {
-              throw new Error(
-                `receiveTellaskResponse invariant violation: missing sessionSlug for tellask ` +
-                  `(dialogId=${dialog.id.selfId}, callId=${callId})`,
-              );
-            }
-            return {
-              ts: formatUnifiedTimestamp(new Date()),
-              type: 'tellask_response_record',
-              responderId,
-              callName,
-              sessionSlug,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              mentionList: normalizedMentionList,
-              tellaskContent,
-              status,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-          case 'tellaskSessionless':
-            return {
-              ts: formatUnifiedTimestamp(new Date()),
-              type: 'tellask_response_record',
-              responderId,
-              callName,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              mentionList: normalizedMentionList,
-              tellaskContent,
-              status,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-          case 'tellaskBack':
-          case 'freshBootsReasoning':
-            return {
-              ts: formatUnifiedTimestamp(new Date()),
-              type: 'tellask_response_record',
-              responderId,
-              callName,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              tellaskContent,
-              status,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-        }
-      })();
-      await this.appendEvent(dialog, responseCourse, ev);
-
-      const tellaskResponseEvt: TellaskResponseEvent = (() => {
-        switch (callName) {
-          case 'tellask':
-            if (!sessionSlug) {
-              throw new Error(
-                `receiveTellaskResponse invariant violation: missing sessionSlug for tellask ` +
-                  `(dialogId=${dialog.id.selfId}, callId=${callId})`,
-              );
-            }
-            return {
-              type: 'tellask_response_evt',
-              responderId,
-              callName,
-              sessionSlug,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              mentionList: normalizedMentionList,
-              tellaskContent,
-              status,
-              course: responseCourse,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-          case 'tellaskSessionless':
-            return {
-              type: 'tellask_response_evt',
-              responderId,
-              callName,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              mentionList: normalizedMentionList,
-              tellaskContent,
-              status,
-              course: responseCourse,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-          case 'tellaskBack':
-          case 'freshBootsReasoning':
-            return {
-              type: 'tellask_response_evt',
-              responderId,
-              callName,
-              calleeDialogId: calleeDialogSelfId,
-              calleeCourse,
-              calleeGenseq,
-              tellaskContent,
-              status,
-              course: responseCourse,
-              calling_genseq,
-              response,
-              agentId,
-              callId,
-              originMemberId,
-            };
-        }
-      })();
-      postDialogEvent(dialog, tellaskResponseEvt);
-      return;
-    }
-
-    if (!originCourse) {
+  public async receiveTellaskCarryover(dialog: Dialog, result: TellaskCarryoverMsg): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const genseq = dialog.activeGenSeqOrUndefined ?? result.genseq;
+    if (!Number.isFinite(genseq) || genseq <= 0) {
       throw new Error(
-        `receiveTellaskResponse invariant violation: missing originCourse for cross-course carryover ` +
-          `(dialogId=${dialog.id.selfId}, callId=${callId}, currentCourse=${currentCourse})`,
+        `receiveTellaskCarryover invariant violation: missing valid genseq for tellask carryover ${result.callId}`,
       );
     }
-    if (callName === 'tellaskBack') {
-      throw new Error(
-        `tellask carryover does not support tellaskBack (dialogId=${dialog.id.selfId}, callId=${callId})`,
-      );
-    }
-    if (carryoverText === undefined) {
-      throw new Error(
-        `receiveTellaskResponse invariant violation: missing carryoverContent for cross-course tellask ` +
-          `(dialogId=${dialog.id.selfId}, callId=${callId}, originCourse=${originCourse}, currentCourse=${currentCourse})`,
-      );
-    }
-
-    const carryoverCallRecord: TellaskCallCarryoverRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'tellask_call_carryover_record',
-      responderId,
-      status,
-      callId,
-      carryoverCourse: toDialogCourseNumber(currentCourse),
-    };
-    await this.appendEvent(dialog, originCourse, carryoverCallRecord);
-
-    const carryoverCallEvent: TellaskCallCarryoverEvent = {
-      type: 'tellask_call_carryover_evt',
-      course: originCourse,
-      responderId,
-      status,
-      callId,
-      carryoverCourse: toDialogCourseNumber(currentCourse),
-    };
-    postDialogEvent(dialog, carryoverCallEvent);
-
-    const carryoverRecord: TellaskCarryoverResultRecord = (() => {
-      switch (callName) {
-        case 'tellask':
-          if (!sessionSlug) {
-            throw new Error(
-              `receiveTellaskResponse invariant violation: missing sessionSlug for tellask carryover ` +
-                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
-            );
-          }
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_carryover_result_record',
-            originCourse,
-            responderId,
-            callName,
-            sessionSlug,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
+    const normalizedResult =
+      genseq === result.genseq
+        ? result
+        : {
+            ...result,
+            genseq,
           };
-        case 'tellaskSessionless':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_carryover_result_record',
-            originCourse,
-            responderId,
-            callName,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-          };
-        case 'freshBootsReasoning':
-          return {
-            ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_carryover_result_record',
-            originCourse,
-            responderId,
-            callName,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-          };
-      }
-    })();
-    await this.appendEvent(dialog, currentCourse, carryoverRecord);
-
-    const carryoverEvent: TellaskCarryoverResultEvent = (() => {
-      switch (callName) {
-        case 'tellask':
-          if (!sessionSlug) {
-            throw new Error(
-              `receiveTellaskResponse invariant violation: missing sessionSlug for tellask carryover evt ` +
-                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
-            );
-          }
-          return {
-            type: 'tellask_carryover_result_evt',
-            course: currentCourse,
-            originCourse,
-            responderId,
-            callName,
-            sessionSlug,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-          };
-        case 'tellaskSessionless':
-          return {
-            type: 'tellask_carryover_result_evt',
-            course: currentCourse,
-            originCourse,
-            responderId,
-            callName,
-            mentionList: normalizedMentionList,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-          };
-        case 'freshBootsReasoning':
-          return {
-            type: 'tellask_carryover_result_evt',
-            course: currentCourse,
-            originCourse,
-            responderId,
-            callName,
-            tellaskContent,
-            status,
-            response,
-            content: carryoverText,
-            agentId,
-            callId,
-            originMemberId,
-            calleeDialogId: calleeDialogSelfId,
-            calleeCourse,
-            calleeGenseq,
-          };
-      }
-    })();
-    postDialogEvent(dialog, carryoverEvent);
+    await this.appendEvent(dialog, course, buildTellaskCarryoverRecord(normalizedResult, genseq));
+    postDialogEvent(dialog, buildTellaskCarryoverEvent(normalizedResult, course));
   }
 
   /**
@@ -1534,6 +1388,18 @@ export class DiskFileDialogStore extends DialogStore {
       this.dialogId,
       course,
       attachRootGenerationRef(dialog, event),
+    );
+  }
+
+  private async appendEvents(
+    dialog: Dialog,
+    course: number,
+    events: readonly PersistedDialogRecord[],
+  ): Promise<void> {
+    await DialogPersistence.appendEvents(
+      this.dialogId,
+      course,
+      events.map((event) => attachRootGenerationRef(dialog, event)),
     );
   }
 
@@ -1948,27 +1814,19 @@ export class DiskFileDialogStore extends DialogStore {
     grammar: 'markdown',
     origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
-    q4hAnswerCallIds?: string[],
+    q4hAnswerCallId?: string,
     tellaskReplyDirective?: TellaskReplyDirective,
   ): Promise<void> {
     const course = dialog.currentCourse;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
     const genseq = dialog.activeGenSeqOrUndefined ?? 1;
-    const normalizedQ4HAnswerCallIds = (() => {
-      if (!q4hAnswerCallIds || q4hAnswerCallIds.length === 0) {
-        return undefined;
-      }
-      const seen = new Set<string>();
-      const normalized: string[] = [];
-      for (const raw of q4hAnswerCallIds) {
-        const callId = raw.trim();
-        if (callId === '' || seen.has(callId)) continue;
-        seen.add(callId);
-        normalized.push(callId);
-      }
-      return normalized.length > 0 ? normalized : undefined;
-    })();
+    const normalizedQ4HAnswerCallId =
+      typeof q4hAnswerCallId === 'string' && q4hAnswerCallId.trim() !== ''
+        ? q4hAnswerCallId.trim()
+        : undefined;
 
+    // `q4hAnswerCallId` marks continuation glue for a resumed round after askHuman is answered.
+    // The canonical answer fact is persisted separately in tellask result/carryover records.
     const humanEv: HumanTextRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'human_text_record',
@@ -1978,7 +1836,7 @@ export class DiskFileDialogStore extends DialogStore {
       grammar,
       origin,
       userLanguageCode,
-      q4hAnswerCallIds: normalizedQ4HAnswerCallIds,
+      q4hAnswerCallId: normalizedQ4HAnswerCallId,
       tellaskReplyDirective,
     };
     await this.appendEvent(dialog, course, humanEv);
@@ -2080,19 +1938,11 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     id: string,
     name: string,
-    arguments_: ToolArguments,
+    rawArgumentsText: string,
     genseq: number,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-
-    const funcCallEvent: FuncCallRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'func_call_record',
-      genseq,
-      id,
-      name,
-      arguments: arguments_,
-    };
+    const funcCallEvent = buildFuncCallRecord({ id, name, rawArgumentsText, genseq });
 
     await this.appendEvent(dialog, course, funcCallEvent);
 
@@ -2100,7 +1950,7 @@ export class DiskFileDialogStore extends DialogStore {
     // UI display uses func_call_requested_evt instead
   }
 
-  public async persistTellaskSpecialCall(
+  public async persistTellaskCall(
     dialog: Dialog,
     id: string,
     name:
@@ -2112,18 +1962,119 @@ export class DiskFileDialogStore extends DialogStore {
       | 'replyTellaskBack'
       | 'askHuman'
       | 'freshBootsReasoning',
-    arguments_: ToolArguments,
+    rawArgumentsText: string,
     genseq: number,
+    options?: {
+      deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+    },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const tellaskCallEvent = buildTellaskSpecialCallRecord({
+    const tellaskCallEvent = buildTellaskCallRecord({
       id,
       name,
-      arguments_,
+      rawArgumentsText,
       genseq,
+      deliveryMode:
+        options?.deliveryMode ??
+        (isReplyTellaskCallRecordName(name) ? 'func_call_requested' : 'tellask_call_start'),
     });
 
     await this.appendEvent(dialog, course, tellaskCallEvent);
+
+    if (isReplyTellaskCallRecordName(name)) {
+      const funcCallEvt: FuncCallStartEvent = {
+        type: 'func_call_requested_evt',
+        funcId: id,
+        funcName: name,
+        arguments: formatTellaskCallArguments(tellaskCallEvent),
+        course,
+        genseq: dialog.activeGenSeqOrUndefined ?? genseq,
+      };
+      postDialogEvent(dialog, funcCallEvt);
+    }
+  }
+
+  public async persistFunctionCallResultPair(
+    dialog: Dialog,
+    id: string,
+    name: string,
+    rawArgumentsText: string,
+    genseq: number,
+    result: FuncResultMsg,
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const resultGenseq = dialog.activeGenSeqOrUndefined ?? result.genseq;
+    if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
+      throw new Error(
+        `persistFunctionCallResultPair invariant violation: missing valid genseq for func result ${result.id}`,
+      );
+    }
+    await this.appendEvents(dialog, course, [
+      buildFuncCallRecord({ id, name, rawArgumentsText, genseq }),
+      buildFuncResultRecord(result, resultGenseq),
+    ]);
+
+    const funcResultEvt: FunctionResultEvent = {
+      type: 'func_result_evt',
+      id: result.id,
+      name: result.name,
+      content: result.content,
+      contentItems: result.contentItems,
+      course,
+    };
+    postDialogEvent(dialog, funcResultEvt);
+  }
+
+  public async persistTellaskCallResultPair(
+    dialog: Dialog,
+    args: {
+      id: string;
+      name: TellaskCallRecordName;
+      rawArgumentsText: string;
+      genseq: number;
+      result: TellaskResultMsg | FuncResultMsg;
+      deliveryMode: 'tellask_call_start' | 'func_call_requested';
+    },
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const resultGenseq = dialog.activeGenSeqOrUndefined ?? args.result.genseq;
+    if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
+      throw new Error(
+        `persistTellaskCallResultPair invariant violation: missing valid genseq for tellask result ${
+          args.result.type === 'func_result_msg' ? args.result.id : args.result.callId
+        }`,
+      );
+    }
+    const callRecord = buildTellaskCallRecord({
+      id: args.id,
+      name: args.name,
+      rawArgumentsText: args.rawArgumentsText,
+      genseq: args.genseq,
+      deliveryMode: args.deliveryMode,
+    });
+    if (args.result.type === 'func_result_msg') {
+      await this.appendEvents(dialog, course, [
+        callRecord,
+        buildFuncResultRecord(args.result, resultGenseq),
+      ]);
+
+      const funcResultEvt: FunctionResultEvent = {
+        type: 'func_result_evt',
+        id: args.result.id,
+        name: args.result.name,
+        content: args.result.content,
+        contentItems: args.result.contentItems,
+        course,
+      };
+      postDialogEvent(dialog, funcResultEvt);
+      return;
+    }
+
+    await this.appendEvents(dialog, course, [
+      callRecord,
+      buildTellaskResultRecord(args.result, resultGenseq),
+    ]);
+    postDialogEvent(dialog, buildTellaskResultEvent(args.result, course));
   }
 
   /**
@@ -2520,6 +2471,12 @@ export class DiskFileDialogStore extends DialogStore {
 
     switch (event.type) {
       case 'human_text_record': {
+        if (typeof event.q4hAnswerCallId === 'string' && event.q4hAnswerCallId.trim() !== '') {
+          // Q4H-annotated human_text_record is a technical continuation marker for a resumed drive.
+          // The canonical answer fact already exists in tellask result/carryover records, so UI
+          // replay must not emit it as another user prompt bubble.
+          break;
+        }
         const genseq = event.genseq;
         const content = event.content || '';
         const grammar: 'markdown' = 'markdown';
@@ -2593,7 +2550,7 @@ export class DiskFileDialogStore extends DialogStore {
               grammar,
               origin,
               userLanguageCode,
-              q4hAnswerCallIds: event.q4hAnswerCallIds,
+              q4hAnswerCallId: event.q4hAnswerCallId,
               dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
               timestamp: event.ts,
             }),
@@ -2784,34 +2741,17 @@ export class DiskFileDialogStore extends DialogStore {
       case 'ui_only_markdown_record': {
         const content = event.content || '';
         if (!content.trim()) break;
-
-        const dialogIdent = { selfId: dialog.id.selfId, rootId: dialog.id.rootId };
         if (ws.readyState === 1) {
+          const uiOnlyMarkdownEvt: UiOnlyMarkdownEvent = {
+            type: 'ui_only_markdown_evt',
+            course,
+            genseq: event.genseq,
+            content,
+          };
           ws.send(
             JSON.stringify({
-              type: 'markdown_start_evt',
-              course,
-              genseq: event.genseq,
-              dialog: dialogIdent,
-              timestamp: event.ts,
-            }),
-          );
-          ws.send(
-            JSON.stringify({
-              type: 'markdown_chunk_evt',
-              chunk: content,
-              course,
-              genseq: event.genseq,
-              dialog: dialogIdent,
-              timestamp: event.ts,
-            }),
-          );
-          ws.send(
-            JSON.stringify({
-              type: 'markdown_finish_evt',
-              course,
-              genseq: event.genseq,
-              dialog: dialogIdent,
+              ...uiOnlyMarkdownEvt,
+              dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
               timestamp: event.ts,
             }),
           );
@@ -2825,7 +2765,7 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'func_call_requested_evt',
           funcId: event.id,
           funcName: event.name,
-          arguments: JSON.stringify(event.arguments),
+          arguments: event.rawArgumentsText,
           course,
           genseq: event.genseq,
           dialog: {
@@ -2841,8 +2781,27 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'tellask_special_call_record': {
-        const specialCall = parseReplayTellaskSpecialCall(event);
+      case 'tellask_call_record': {
+        if (event.deliveryMode === 'func_call_requested') {
+          const replyCall = {
+            type: 'func_call_requested_evt',
+            funcId: event.id,
+            funcName: event.name,
+            arguments: formatTellaskCallArguments(event),
+            course,
+            genseq: event.genseq,
+            dialog: {
+              selfId: dialog.id.selfId,
+              rootId: dialog.id.rootId,
+            },
+            timestamp: event.ts,
+          };
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify(replyCall));
+          }
+          break;
+        }
+        const specialCall = parseReplayTellaskCall(event);
         if (!specialCall) {
           break;
         }
@@ -2956,6 +2915,54 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
+      case 'tellask_result_record': {
+        const base = {
+          type: 'tellask_result_evt' as const,
+          course,
+          genseq: event.genseq,
+          callId: event.callId,
+          status: event.status,
+          content: event.content,
+          ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
+          responder: event.responder,
+          ...(event.route ? { route: event.route } : {}),
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        const tellaskResultEvent: TellaskResultEvent & {
+          dialog: {
+            selfId: string;
+            rootId: string;
+          };
+          timestamp: string;
+        } =
+          event.callName === 'tellask'
+            ? {
+                ...base,
+                callName: event.callName,
+                call: event.call,
+              }
+            : event.callName === 'tellaskSessionless'
+              ? {
+                  ...base,
+                  callName: event.callName,
+                  call: event.call,
+                }
+              : {
+                  ...base,
+                  callName: event.callName,
+                  call: event.call,
+                };
+
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(tellaskResultEvent));
+        }
+        break;
+      }
+
       case 'quest_for_sup_record': {
         // Handle subdialog creation requests
         const subdialogId = new DialogID(event.subDialogId, dialog.id.rootId);
@@ -3018,57 +3025,6 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'tellask_call_result_record': {
-        // Handle tellask-call inline results
-        const responseEvent = (() => {
-          switch (event.callName) {
-            case 'tellask':
-            case 'tellaskSessionless':
-              return {
-                type: 'tellask_call_result_evt',
-                responderId: event.responderId,
-                callName: event.callName,
-                mentionList: event.mentionList,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                result: event.result,
-                callId: event.callId || '',
-                course,
-                calling_genseq: event.calling_genseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-            case 'tellaskBack':
-            case 'askHuman':
-            case 'freshBootsReasoning':
-              return {
-                type: 'tellask_call_result_evt',
-                responderId: event.responderId,
-                callName: event.callName,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                result: event.result,
-                callId: event.callId || '',
-                course,
-                calling_genseq: event.calling_genseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-          }
-        })();
-
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify(responseEvent));
-        }
-        break;
-      }
-
       case 'tellask_call_anchor_record': {
         const anchorEvent: TellaskCallAnchorEvent & {
           dialog: {
@@ -3114,109 +3070,6 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'tellask_call_carryover_record': {
-        const carryoverEvent = {
-          type: 'tellask_call_carryover_evt',
-          course,
-          responderId: event.responderId,
-          status: event.status,
-          callId: event.callId,
-          carryoverCourse: event.carryoverCourse,
-          dialog: {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          },
-          timestamp: event.ts,
-        };
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify(carryoverEvent));
-        }
-        break;
-      }
-
-      case 'tellask_carryover_result_record': {
-        const carryoverEvent = (() => {
-          switch (event.callName) {
-            case 'tellask':
-              return {
-                type: 'tellask_carryover_result_evt',
-                course,
-                originCourse: event.originCourse,
-                responderId: event.responderId,
-                callName: event.callName,
-                sessionSlug: event.sessionSlug,
-                mentionList: event.mentionList,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                content: event.content,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-            case 'tellaskSessionless':
-              return {
-                type: 'tellask_carryover_result_evt',
-                course,
-                originCourse: event.originCourse,
-                responderId: event.responderId,
-                callName: event.callName,
-                mentionList: event.mentionList,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                content: event.content,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-            case 'freshBootsReasoning':
-              return {
-                type: 'tellask_carryover_result_evt',
-                course,
-                originCourse: event.originCourse,
-                responderId: event.responderId,
-                callName: event.callName,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                content: event.content,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-          }
-        })();
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify(carryoverEvent));
-        }
-        break;
-      }
-
       case 'subdialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
@@ -3225,106 +3078,56 @@ export class DiskFileDialogStore extends DialogStore {
       case 'subdialog_responses_reconciled_record':
         break;
 
-      case 'tellask_response_record': {
-        // Handle tellask response events (separate bubble for tellask sideline replies)
-        const mentionList = (() => {
-          switch (event.callName) {
-            case 'tellask':
-            case 'tellaskSessionless':
-              return event.mentionList;
-            case 'tellaskBack':
-            case 'freshBootsReasoning':
-              return undefined;
-          }
-        })();
-        const tellaskResponseEvent = (() => {
-          switch (event.callName) {
-            case 'tellask': {
-              const sessionSlug =
-                typeof event.sessionSlug === 'string' && event.sessionSlug.trim() !== ''
-                  ? event.sessionSlug.trim()
-                  : undefined;
-              if (!sessionSlug) {
-                throw new Error(
-                  `Replay tellask_response_record invariant violation: missing sessionSlug for tellask ` +
-                    `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, course=${course}, callId=${event.callId})`,
-                );
+      case 'tellask_carryover_record': {
+        const base = {
+          type: 'tellask_carryover_evt' as const,
+          course,
+          genseq: event.genseq,
+          originCourse: event.originCourse,
+          carryoverCourse: event.carryoverCourse,
+          responderId: event.responderId,
+          tellaskContent: event.tellaskContent,
+          status: event.status,
+          response: event.response,
+          content: event.content,
+          agentId: event.agentId,
+          callId: event.callId,
+          originMemberId: event.originMemberId,
+          ...(event.calleeDialogId ? { calleeDialogId: event.calleeDialogId } : {}),
+          ...(event.calleeCourse !== undefined ? { calleeCourse: event.calleeCourse } : {}),
+          ...(event.calleeGenseq !== undefined ? { calleeGenseq: event.calleeGenseq } : {}),
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        const tellaskCarryoverEvent: TellaskCarryoverEvent & {
+          dialog: {
+            selfId: string;
+            rootId: string;
+          };
+          timestamp: string;
+        } =
+          event.callName === 'tellask'
+            ? {
+                ...base,
+                callName: event.callName,
+                sessionSlug: event.sessionSlug,
+                mentionList: event.mentionList,
               }
-              return {
-                type: 'tellask_response_evt',
-                responderId: event.responderId,
-                callName: event.callName,
-                sessionSlug,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                mentionList,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                course,
-                calling_genseq: event.calling_genseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-            }
-            case 'tellaskSessionless':
-              return {
-                type: 'tellask_response_evt',
-                responderId: event.responderId,
-                callName: event.callName,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                mentionList,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                course,
-                calling_genseq: event.calling_genseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-            case 'tellaskBack':
-            case 'freshBootsReasoning':
-              return {
-                type: 'tellask_response_evt',
-                responderId: event.responderId,
-                callName: event.callName,
-                calleeDialogId: event.calleeDialogId,
-                calleeCourse: event.calleeCourse,
-                calleeGenseq: event.calleeGenseq,
-                tellaskContent: event.tellaskContent,
-                status: event.status,
-                response: event.response,
-                agentId: event.agentId,
-                callId: event.callId,
-                originMemberId: event.originMemberId,
-                course,
-                calling_genseq: event.calling_genseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-          }
-        })();
-
+            : event.callName === 'tellaskSessionless'
+              ? {
+                  ...base,
+                  callName: event.callName,
+                  mentionList: event.mentionList,
+                }
+              : {
+                  ...base,
+                  callName: event.callName,
+                };
         if (ws.readyState === 1) {
-          ws.send(JSON.stringify(tellaskResponseEvent));
+          ws.send(JSON.stringify(tellaskCarryoverEvent));
         }
         break;
       }
@@ -3455,88 +3258,6 @@ type DialogLatestMutation =
  * Utility class for managing dialog persistence
  */
 export class DialogPersistence {
-  private static async repairInterruptedFunctionCallsOnRestore(args: {
-    dialogId: DialogID;
-    course: number;
-    status: 'running' | 'completed' | 'archived';
-    events: PersistedDialogRecord[];
-  }): Promise<PersistedDialogRecord[]> {
-    const repaired: PersistedDialogRecord[] = [];
-    const unresolvedById = new Map<string, FuncCallRecord>();
-    for (const event of args.events) {
-      if (event.type === 'func_call_record') {
-        unresolvedById.set(event.id, event);
-        repaired.push(event);
-        continue;
-      }
-      if (event.type === 'func_result_record') {
-        if (!unresolvedById.has(event.id)) {
-          const repairCall: FuncCallRecord = {
-            ts: event.ts,
-            type: 'func_call_record',
-            genseq: event.genseq,
-            id: event.id,
-            name: event.name,
-            arguments: {},
-          };
-          log.error(
-            'Recovered orphaned persisted func_result_record by synthesizing missing func_call_record during dialog restore',
-            new Error('dialog_restore_recovered_orphaned_func_result'),
-            {
-              rootId: args.dialogId.rootId,
-              selfId: args.dialogId.selfId,
-              course: args.course,
-              genseq: event.genseq,
-              callId: event.id,
-              toolName: event.name,
-            },
-          );
-          repaired.push(repairCall);
-        } else {
-          unresolvedById.delete(event.id);
-        }
-        repaired.push(event);
-        continue;
-      }
-      repaired.push(event);
-    }
-
-    if (args.status !== 'running') {
-      return repaired;
-    }
-
-    if (unresolvedById.size === 0) {
-      return repaired;
-    }
-
-    for (const call of unresolvedById.values()) {
-      const repairRecord: FuncResultRecord = {
-        ts: formatUnifiedTimestamp(new Date()),
-        type: 'func_result_record',
-        id: call.id,
-        name: call.name,
-        content: formatCrashRecoveredFuncResultContent(call.name),
-        genseq: call.genseq,
-      };
-      log.error(
-        'Recovered unresolved persisted func_call_record after unexpected process exit',
-        new Error('dialog_restore_recovered_func_call'),
-        {
-          rootId: args.dialogId.rootId,
-          selfId: args.dialogId.selfId,
-          course: args.course,
-          genseq: call.genseq,
-          callId: call.id,
-          toolName: call.name,
-        },
-      );
-      await this.appendEvent(args.dialogId, args.course, repairRecord, args.status);
-      repaired.push(repairRecord);
-    }
-
-    return repaired;
-  }
-
   private static readonly DIALOGS_DIR = '.dialogs';
   private static readonly RUN_DIR = 'run';
   private static readonly DONE_DIR = 'done';
@@ -3635,7 +3356,6 @@ export class DialogPersistence {
   private static cloneQuestions4Human(questions: readonly HumanQuestion[]): HumanQuestion[] {
     return questions.map((question) => ({
       ...question,
-      remainingCallIds: question.remainingCallIds ? [...question.remainingCallIds] : undefined,
       callSiteRef: { ...question.callSiteRef },
     }));
   }
@@ -4126,15 +3846,18 @@ export class DialogPersistence {
   /**
    * Append event to course JSONL file (append-only pattern)
    */
-  static async appendEvent(
+  static async appendEvents(
     dialogId: DialogID,
     course: number,
-    event: PersistedDialogRecord,
+    events: readonly PersistedDialogRecord[],
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
     try {
+      if (events.length === 0) {
+        return;
+      }
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const courseFilename = this.getCourseFilename(course);
       const courseFilePath = path.join(dialogPath, courseFilename);
@@ -4145,8 +3868,8 @@ export class DialogPersistence {
       // Serialize appends per dialog+course file. Concurrent `appendFile` calls can interleave and
       // corrupt JSONL lines (e.g. tool results appended in parallel), which later manifests as
       // `Unterminated string in JSON ...` during resume.
-      const eventLine = JSON.stringify(event) + '\n';
-      await fs.promises.appendFile(courseFilePath, eventLine, 'utf-8');
+      const serialized = events.map((event) => JSON.stringify(event)).join('\n') + '\n';
+      await fs.promises.appendFile(courseFilePath, serialized, 'utf-8');
 
       // Update latest.yaml with new lastModified timestamp
       await this.mutateDialogLatest(
@@ -4161,11 +3884,20 @@ export class DialogPersistence {
         status,
       );
     } catch (error) {
-      log.error(`Failed to append event to dialog ${dialogId} course ${course}:`, error);
+      log.error(`Failed to append events to dialog ${dialogId} course ${course}:`, error);
       throw error;
     } finally {
       release();
     }
+  }
+
+  static async appendEvent(
+    dialogId: DialogID,
+    course: number,
+    event: PersistedDialogRecord,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.appendEvents(dialogId, course, [event], status);
   }
 
   static async persistRuntimeGuide(dialog: Dialog, content: string, genseq: number): Promise<void> {
@@ -4669,10 +4401,12 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     const questionId = question.id;
-    const normalizedCallId =
-      typeof question.callId === 'string' && question.callId.trim() !== ''
-        ? question.callId.trim()
-        : null;
+    const normalizedCallId = question.callId.trim();
+    if (normalizedCallId === '') {
+      throw new Error(
+        `Q4H append invariant violation: empty callId (dialog=${dialogId.valueOf()} questionId=${questionId})`,
+      );
+    }
 
     await this.mutateQuestions4HumanState(
       dialogId,
@@ -4684,25 +4418,21 @@ export class DialogPersistence {
           );
         }
 
-        if (normalizedCallId) {
-          const byCallId = previousQuestions.find((q) => {
-            return typeof q.callId === 'string' && q.callId.trim() === normalizedCallId;
-          });
-          if (byCallId) {
-            throw new Error(
-              `Q4H duplicate call id violation: dialog=${dialogId.valueOf()} status=${status} callId=${normalizedCallId} existingQuestionId=${byCallId.id} incomingQuestionId=${questionId} existingAskedAt=${byCallId.askedAt} incomingAskedAt=${question.askedAt}`,
-            );
-          }
+        const byCallId = previousQuestions.find((q) => q.callId.trim() === normalizedCallId);
+        if (byCallId) {
+          throw new Error(
+            `Q4H duplicate call id violation: dialog=${dialogId.valueOf()} status=${status} callId=${normalizedCallId} existingQuestionId=${byCallId.id} incomingQuestionId=${questionId} existingAskedAt=${byCallId.askedAt} incomingAskedAt=${question.askedAt}`,
+          );
         }
 
         if (previousQuestions.length > 0) {
           const existingIds = previousQuestions.map((q) => q.id).join(',');
           const existingCallIds = previousQuestions
-            .map((q) => (typeof q.callId === 'string' ? q.callId.trim() : ''))
+            .map((q) => q.callId.trim())
             .filter((value) => value !== '')
             .join(',');
           throw new Error(
-            `Q4H multi-pending violation: dialog=${dialogId.valueOf()} status=${status} existingCount=${previousQuestions.length} existingQuestionIds=${existingIds} existingCallIds=${existingCallIds} incomingQuestionId=${questionId} incomingCallId=${normalizedCallId ?? ''}`,
+            `Q4H multi-pending violation: dialog=${dialogId.valueOf()} status=${status} existingCount=${previousQuestions.length} existingQuestionIds=${existingIds} existingCallIds=${existingCallIds} incomingQuestionId=${questionId} incomingCallId=${normalizedCallId}`,
           );
         }
 
@@ -4870,8 +4600,7 @@ export class DialogPersistence {
       taskDocPath: string;
       tellaskContent: string;
       askedAt: string;
-      callId?: string;
-      remainingCallIds?: string[];
+      callId: string;
       callSiteRef: { course: number; messageIndex: number };
     }>
   > {
@@ -4886,8 +4615,7 @@ export class DialogPersistence {
         taskDocPath: string;
         tellaskContent: string;
         askedAt: string;
-        callId?: string;
-        remainingCallIds?: string[];
+        callId: string;
         callSiteRef: { course: number; messageIndex: number };
       }> = [];
 
@@ -6197,8 +5925,11 @@ export class DialogPersistence {
   }
 
   /**
-   * Restore dialog from disk using JSONL events (optimized: only latest course loaded)
-   * For historical courses, use loadCourseEvents() on-demand for UI navigation
+   * Restore dialog from disk using JSONL events (optimized: only latest course loaded).
+   * Historical-course ask/tellask context that still matters to the current round must already be
+   * represented via latest-course carryover records; older courses themselves are not reloaded into
+   * LLM context during restore. For historical courses, use loadCourseEvents() on-demand for UI
+   * navigation.
    */
   static async restoreDialog(
     dialogId: DialogID,
@@ -6212,18 +5943,12 @@ export class DialogPersistence {
       }
 
       const reminders = await this.loadReminderState(dialogId, status);
-      // Only load latest course for dialog state restoration
+      // Only load latest course for dialog state restoration. Cross-course business context should
+      // already have been materialized into latest-course carryover records when needed.
       const currentCourse = await this.getCurrentCourseNumber(dialogId, status);
       const latestEvents = await this.readCourseEvents(dialogId, currentCourse, status);
-      const repairedEvents = await this.repairInterruptedFunctionCallsOnRestore({
-        dialogId,
-        course: currentCourse,
-        status,
-        events: latestEvents,
-      });
-
       const reconstructedState = await this.rebuildFromEvents(
-        repairedEvents,
+        latestEvents,
         metadata,
         reminders,
         currentCourse,
@@ -6248,7 +5973,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Reconstruct dialog state from JSONL events (optimized: only latest course needed)
+   * Reconstruct dialog state from JSONL events (optimized: only latest course needed).
    */
   static async rebuildFromEvents(
     events: PersistedDialogRecord[],
@@ -6287,16 +6012,6 @@ export class DialogPersistence {
           break;
         }
 
-        case 'ui_only_markdown_record': {
-          messages.push({
-            type: 'ui_only_markdown_msg',
-            role: 'assistant',
-            genseq: event.genseq,
-            content: event.content,
-          });
-          break;
-        }
-
         case 'runtime_guide_record': {
           messages.push({
             type: 'transient_guide_msg',
@@ -6307,6 +6022,11 @@ export class DialogPersistence {
         }
 
         case 'human_text_record': {
+          if (typeof event.q4hAnswerCallId === 'string' && event.q4hAnswerCallId.trim() !== '') {
+            // Keep this out of transcript reconstruction: it is only the continuation glue for an
+            // answered askHuman call, not a persisted business-level user prompt fact.
+            break;
+          }
           // Convert human text to prompting message
           messages.push({
             type: 'prompting_msg',
@@ -6330,18 +6050,18 @@ export class DialogPersistence {
             genseq: event.genseq,
             id: event.id,
             name: event.name,
-            arguments: event.arguments ? JSON.stringify(event.arguments) : '{}',
+            arguments: event.rawArgumentsText,
           });
           break;
         }
-        case 'tellask_special_call_record': {
+        case 'tellask_call_record': {
           messages.push({
             type: 'func_call_msg',
             role: 'assistant',
             genseq: event.genseq,
             id: event.id,
             name: event.name,
-            arguments: formatTellaskSpecialCallArguments(event),
+            arguments: formatTellaskCallArguments(event),
           });
           break;
         }
@@ -6364,72 +6084,69 @@ export class DialogPersistence {
           break;
         }
 
-        case 'tellask_call_result_record': {
-          // Convert tellask-call inline result to ChatMessage
-          const mentionList = (() => {
-            switch (event.callName) {
-              case 'tellask':
-              case 'tellaskSessionless':
-                return event.mentionList;
-              case 'tellaskBack':
-              case 'askHuman':
-              case 'freshBootsReasoning':
-                return undefined;
-            }
-          })();
+        case 'tellask_result_record': {
           messages.push({
             type: 'tellask_result_msg',
             role: 'tool',
-            responderId: event.responderId,
-            mentionList,
-            tellaskContent: event.tellaskContent,
-            status: event.status,
+            genseq: event.genseq,
             callId: event.callId,
-            content: event.result,
+            callName: event.callName,
+            status: event.status,
+            content: event.content,
+            ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
+            call: event.call,
+            responder: event.responder,
+            ...(event.route ? { route: event.route } : {}),
+            responderId: event.responder.responderId,
+            ...(event.callName === 'tellask' || event.callName === 'tellaskSessionless'
+              ? { mentionList: event.call.mentionList }
+              : {}),
+            tellaskContent: event.call.tellaskContent,
+            ...(event.callName === 'tellask' ? { sessionSlug: event.call.sessionSlug } : {}),
+            ...(event.responder.agentId ? { agentId: event.responder.agentId } : {}),
+            ...(event.responder.originMemberId
+              ? { originMemberId: event.responder.originMemberId }
+              : {}),
+            ...(event.route?.calleeDialogId ? { calleeDialogId: event.route.calleeDialogId } : {}),
+            ...(event.route?.calleeCourse !== undefined
+              ? { calleeCourse: event.route.calleeCourse }
+              : {}),
+            ...(event.route?.calleeGenseq !== undefined
+              ? { calleeGenseq: event.route.calleeGenseq }
+              : {}),
           });
           break;
         }
 
-        case 'tellask_call_carryover_record':
-          break;
-
-        case 'tellask_response_record': {
-          // Convert tellask response to ChatMessage (separate bubble)
-          // Note: Tellask responses are stored as separate records but use same message type
-          const mentionList = (() => {
-            switch (event.callName) {
-              case 'tellask':
-              case 'tellaskSessionless':
-                return event.mentionList;
-              case 'tellaskBack':
-              case 'freshBootsReasoning':
-                return undefined;
-            }
-          })();
+        case 'tellask_carryover_record': {
           messages.push({
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: event.responderId,
-            mentionList,
-            tellaskContent: event.tellaskContent,
-            status: event.status,
-            callId: event.callId,
-            content: event.response,
-          });
-          break;
-        }
-
-        case 'tellask_carryover_result_record': {
-          messages.push({
-            type: 'tellask_carryover_result_msg',
+            type: 'tellask_carryover_msg',
             role: 'user',
+            genseq: event.genseq,
             content: event.content,
             originCourse: event.originCourse,
+            carryoverCourse: event.carryoverCourse,
             responderId: event.responderId,
             callName: event.callName,
             tellaskContent: event.tellaskContent,
             status: event.status,
+            response: event.response,
+            agentId: event.agentId,
             callId: event.callId,
+            originMemberId: event.originMemberId,
+            ...(event.callName === 'tellask'
+              ? {
+                  mentionList: event.mentionList,
+                  sessionSlug: event.sessionSlug,
+                }
+              : event.callName === 'tellaskSessionless'
+                ? {
+                    mentionList: event.mentionList,
+                  }
+                : {}),
+            ...(event.calleeDialogId ? { calleeDialogId: event.calleeDialogId } : {}),
+            ...(event.calleeCourse !== undefined ? { calleeCourse: event.calleeCourse } : {}),
+            ...(event.calleeGenseq !== undefined ? { calleeGenseq: event.calleeGenseq } : {}),
           });
           break;
         }
@@ -6450,6 +6167,9 @@ export class DialogPersistence {
         case 'tellask_call_anchor_record':
           // This record is UI navigation metadata for deep links in callee dialogs.
           // It does not contribute to model context or chat transcript reconstruction.
+          break;
+        case 'ui_only_markdown_record':
+          // UI-only records are replay-only rendering facts. They do not enter dialog messages or ctx.
           break;
         case 'subdialog_created_record':
         case 'reminders_reconciled_record':
