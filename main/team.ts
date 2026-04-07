@@ -330,25 +330,37 @@ export namespace Team {
     return { en: text, zh };
   }
 
-  type OpenAiStyleModelParams = {
+  type CodexModelParams = {
     temperature?: number; // 0-2, controls randomness
     max_tokens?: number; // Maximum tokens to generate
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
-    frequency_penalty?: number; // -2 to 2, penalize frequent tokens
-    presence_penalty?: number; // -2 to 2, penalize present tokens
-    seed?: number; // For deterministic outputs
-    logprobs?: boolean; // Return log probabilities
-    top_logprobs?: number; // Number of most likely tokens to return
-    stop?: string | string[]; // Stop sequences
-    logit_bias?: Record<string, number>; // Modify likelihood of specific tokens
-    user?: string; // User identifier for abuse monitoring
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
     reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
-    web_search?: 'disabled' | 'cached' | 'live'; // Native web_search mode (Responses API).
-    json_response?: boolean; // Force JSON response mode (provider-dependent behavior).
+    web_search?: 'disabled' | 'cached' | 'live'; // Codex native web_search mode abstraction.
+    json_response?: boolean; // Legacy convenience switch for permissive JSON-object mode.
+  };
+
+  type OpenAiModelParams = {
+    temperature?: number; // 0-2, controls randomness
+    max_tokens?: number; // Maximum tokens to generate
+    service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
+    top_p?: number; // 0-1, nucleus sampling
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
+    reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
+    verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
+    parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls.
+    safety_identifier?: string; // OpenAI safety identifier (preferred over deprecated `user`).
+    text_format?: 'text' | 'json_object' | 'json_schema'; // Maps to Responses/ChatCompletions structured-output format.
+    text_format_json_schema_name?: string; // Required when text_format=json_schema.
+    text_format_json_schema?: string; // JSON-encoded schema object when text_format=json_schema.
+    text_format_json_schema_strict?: boolean; // Strict schema adherence when text_format=json_schema.
+    web_search_tool?: boolean; // Enables Responses native web_search tool.
+    web_search_context_size?: 'low' | 'medium' | 'high'; // Native web_search search_context_size.
+    web_search_allowed_domains?: string[]; // Native web_search filters.allowed_domains.
+    web_search_include_sources?: boolean; // Include web_search_call.action.sources in Responses output.
   };
 
   export interface ModelParams {
@@ -359,11 +371,10 @@ export namespace Team {
     // Codex provider (apiType: codex) parameters.
     // Codex provider (apiType: codex) parameters.
     // Preferred for `provider: codex` in `.minds/team.yaml`.
-    codex?: OpenAiStyleModelParams;
+    codex?: CodexModelParams;
 
-    // OpenAI-style parameters.
-    // Some providers may still document params under this namespace.
-    openai?: OpenAiStyleModelParams;
+    // OpenAI Responses / Chat Completions parameters.
+    openai?: OpenAiModelParams;
     // Anthropic specific parameters
     anthropic?: {
       temperature?: number; // 0-1, controls randomness
@@ -845,7 +856,7 @@ export namespace Team {
       // member_defaults.fbr_model_params / members.<id>.fbr_model_params.
       fbr_model_params: {
         codex: { web_search: 'disabled' },
-        openai: { web_search: 'disabled' },
+        openai: { web_search_tool: false },
       },
     });
 
@@ -1570,14 +1581,25 @@ export namespace Team {
     'max_tokens',
     'service_tier',
     'top_p',
-    'frequency_penalty',
-    'presence_penalty',
-    'seed',
-    'logprobs',
-    'top_logprobs',
-    'stop',
-    'logit_bias',
-    'user',
+    'reasoning_effort',
+    'reasoning_summary',
+    'verbosity',
+    'parallel_tool_calls',
+    'safety_identifier',
+    'text_format',
+    'text_format_json_schema_name',
+    'text_format_json_schema',
+    'text_format_json_schema_strict',
+    'web_search_tool',
+    'web_search_context_size',
+    'web_search_allowed_domains',
+    'web_search_include_sources',
+  ] as const;
+  export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = [
+    'temperature',
+    'max_tokens',
+    'service_tier',
+    'top_p',
     'reasoning_effort',
     'reasoning_summary',
     'verbosity',
@@ -1585,7 +1607,6 @@ export namespace Team {
     'web_search',
     'json_response',
   ] as const;
-  export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS;
   export const TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS = [
     'temperature',
     'max_tokens',
@@ -1630,8 +1651,10 @@ export namespace Team {
       reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_summary\`? (not supported at ${atPrefix} root)`,
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
-      web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.web_search\`? (not supported at ${atPrefix} root)`,
-      json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.openai.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\`?`,
+      web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\`? (not supported at ${atPrefix} root)`,
+      web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\`? (not supported at ${atPrefix} root)`,
+      json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\`?`,
+      text_format: `Did you mean \`${atPrefix}.model_params.openai.text_format\`? (not supported at ${atPrefix} root)`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
@@ -1661,7 +1684,8 @@ export namespace Team {
         reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_summary\`?`,
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
-        web_search: `Did you mean \`${modelParamsAt}.codex.web_search\` (preferred for provider: codex) or \`${modelParamsAt}.openai.web_search\`?`,
+        web_search: `Did you mean \`${modelParamsAt}.codex.web_search\`?`,
+        web_search_tool: `Did you mean \`${modelParamsAt}.openai.web_search_tool\`?`,
         service_tier: `Did you mean \`${modelParamsAt}.codex.service_tier\` (preferred for provider: codex) or \`${modelParamsAt}.openai.service_tier\`?`,
         temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
         top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
@@ -2714,18 +2738,10 @@ export namespace Team {
     if (value === undefined) return undefined;
     const obj = asRecord(value, at);
 
-    const validateOpenAiStyleParams = (params: Record<string, unknown>, at2: string): void => {
+    const validateCodexParams = (params: Record<string, unknown>, at2: string): void => {
       asOptionalNumber(params.temperature, `${at2}.temperature`);
       asOptionalNumber(params.max_tokens, `${at2}.max_tokens`);
       asOptionalNumber(params.top_p, `${at2}.top_p`);
-      asOptionalNumber(params.frequency_penalty, `${at2}.frequency_penalty`);
-      asOptionalNumber(params.presence_penalty, `${at2}.presence_penalty`);
-      asOptionalNumber(params.seed, `${at2}.seed`);
-      asOptionalBoolean(params.logprobs, `${at2}.logprobs`);
-      asOptionalNumber(params.top_logprobs, `${at2}.top_logprobs`);
-      asOptionalStop(params.stop, `${at2}.stop`);
-      asOptionalLogitBias(params.logit_bias, `${at2}.logit_bias`);
-      asOptionalString(params.user, `${at2}.user`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
       asOptionalBoolean(params.json_response, `${at2}.json_response`);
       const serviceTier = params.service_tier;
@@ -2805,19 +2821,142 @@ export namespace Team {
       }
     };
 
+    const validateOpenAiParams = (params: Record<string, unknown>, at2: string): void => {
+      asOptionalNumber(params.temperature, `${at2}.temperature`);
+      asOptionalNumber(params.max_tokens, `${at2}.max_tokens`);
+      asOptionalNumber(params.top_p, `${at2}.top_p`);
+      asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
+      asOptionalString(params.safety_identifier, `${at2}.safety_identifier`);
+      asOptionalString(params.text_format_json_schema_name, `${at2}.text_format_json_schema_name`);
+      asOptionalString(params.text_format_json_schema, `${at2}.text_format_json_schema`);
+      asOptionalBoolean(
+        params.text_format_json_schema_strict,
+        `${at2}.text_format_json_schema_strict`,
+      );
+      asOptionalBoolean(params.web_search_tool, `${at2}.web_search_tool`);
+      asOptionalStringArray(params.web_search_allowed_domains, `${at2}.web_search_allowed_domains`);
+      asOptionalBoolean(params.web_search_include_sources, `${at2}.web_search_include_sources`);
+
+      const serviceTier = params.service_tier;
+      if (
+        serviceTier !== undefined &&
+        serviceTier !== 'auto' &&
+        serviceTier !== 'default' &&
+        serviceTier !== 'flex' &&
+        serviceTier !== 'scale' &&
+        serviceTier !== 'priority'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.service_tier: expected auto|default|flex|scale|priority (got ${describeValueType(
+            serviceTier,
+          )})`,
+        );
+      }
+
+      const reasoningEffort = params.reasoning_effort;
+      if (
+        reasoningEffort !== undefined &&
+        reasoningEffort !== 'none' &&
+        reasoningEffort !== 'minimal' &&
+        reasoningEffort !== 'low' &&
+        reasoningEffort !== 'medium' &&
+        reasoningEffort !== 'high' &&
+        reasoningEffort !== 'xhigh'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
+            reasoningEffort,
+          )})`,
+        );
+      }
+
+      const reasoningSummary = params.reasoning_summary;
+      if (
+        reasoningSummary !== undefined &&
+        reasoningSummary !== 'auto' &&
+        reasoningSummary !== 'concise' &&
+        reasoningSummary !== 'detailed' &&
+        reasoningSummary !== 'none'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.reasoning_summary: expected auto|concise|detailed|none (got ${describeValueType(
+            reasoningSummary,
+          )})`,
+        );
+      }
+
+      const verbosity = params.verbosity;
+      if (
+        verbosity !== undefined &&
+        verbosity !== 'low' &&
+        verbosity !== 'medium' &&
+        verbosity !== 'high'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.verbosity: expected low|medium|high (got ${describeValueType(
+            verbosity,
+          )})`,
+        );
+      }
+
+      const textFormat = params.text_format;
+      if (
+        textFormat !== undefined &&
+        textFormat !== 'text' &&
+        textFormat !== 'json_object' &&
+        textFormat !== 'json_schema'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.text_format: expected text|json_object|json_schema (got ${describeValueType(
+            textFormat,
+          )})`,
+        );
+      }
+
+      const webSearchContextSize = params.web_search_context_size;
+      if (
+        webSearchContextSize !== undefined &&
+        webSearchContextSize !== 'low' &&
+        webSearchContextSize !== 'medium' &&
+        webSearchContextSize !== 'high'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.web_search_context_size: expected low|medium|high (got ${describeValueType(
+            webSearchContextSize,
+          )})`,
+        );
+      }
+
+      const hasJsonSchemaDetails =
+        params.text_format_json_schema_name !== undefined ||
+        params.text_format_json_schema !== undefined ||
+        params.text_format_json_schema_strict !== undefined;
+      if (textFormat === 'json_schema') {
+        if (params.text_format_json_schema_name === undefined) {
+          throw new Error(
+            `Invalid ${at2}: ${at2}.text_format=json_schema requires ${at2}.text_format_json_schema_name.`,
+          );
+        }
+        if (params.text_format_json_schema === undefined) {
+          throw new Error(
+            `Invalid ${at2}: ${at2}.text_format=json_schema requires ${at2}.text_format_json_schema.`,
+          );
+        }
+      } else if (hasJsonSchemaDetails) {
+        throw new Error(
+          `Invalid ${at2}: text_format_json_schema_* fields require ${at2}.text_format=json_schema.`,
+        );
+      }
+    };
+
     const codex = obj.codex === undefined ? undefined : asRecord(obj.codex, `${at}.codex`);
     const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
     const anthropic =
       obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
     const general = obj.general === undefined ? undefined : asRecord(obj.general, `${at}.general`);
 
-    if (codex) {
-      validateOpenAiStyleParams(codex, `${at}.codex`);
-    }
-
-    if (openai) {
-      validateOpenAiStyleParams(openai, `${at}.openai`);
-    }
+    if (codex) validateCodexParams(codex, `${at}.codex`);
+    if (openai) validateOpenAiParams(openai, `${at}.openai`);
 
     if (anthropic) {
       asOptionalNumber(anthropic.temperature, `${at}.anthropic.temperature`);
@@ -2847,8 +2986,8 @@ export namespace Team {
     const effectiveMaxTokens = (topLevelMaxTokens ?? generalMaxTokens) as number | undefined;
     if (effectiveMaxTokens !== undefined) out.max_tokens = effectiveMaxTokens;
     if (obj.json_response !== undefined) out.json_response = obj.json_response as boolean;
-    if (codex) out.codex = codex as OpenAiStyleModelParams;
-    if (openai) out.openai = openai as OpenAiStyleModelParams;
+    if (codex) out.codex = codex as CodexModelParams;
+    if (openai) out.openai = openai as OpenAiModelParams;
     if (anthropic) out.anthropic = anthropic as ModelParams['anthropic'];
     return out;
   }

@@ -30,6 +30,7 @@ import type {
   UiOnlyMarkdownEvent,
   WebSearchCallAction,
   WebSearchCallEvent,
+  WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
@@ -1702,6 +1703,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async webSearchCall(
     dialog: Dialog,
     payload: {
+      source?: WebSearchCallSource;
       phase: 'added' | 'done';
       itemId: string;
       status?: string;
@@ -1723,6 +1725,7 @@ export class DiskFileDialogStore extends DialogStore {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'web_search_call_record',
       genseq: dialog.activeGenSeq,
+      source: payload.source,
       phase: payload.phase,
       itemId,
       status: payload.status,
@@ -1734,6 +1737,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'web_search_call_evt',
       course,
       genseq: dialog.activeGenSeq,
+      source: payload.source,
       phase: payload.phase,
       itemId,
       status: payload.status,

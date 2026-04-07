@@ -33,17 +33,31 @@ export interface LlmRequestContext {
   promptCacheKey?: string;
 }
 
-export type LlmWebSearchAction =
+export type CodexLlmWebSearchAction =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
   | { type: 'find_in_page'; url?: string; pattern?: string };
 
-export type LlmWebSearchCall = {
-  phase: 'added' | 'done';
-  itemId: string;
-  status?: string;
-  action?: LlmWebSearchAction;
-};
+export type OpenAiResponsesLlmWebSearchAction =
+  | { type: 'search'; query?: string; queries?: string[] }
+  | { type: 'open_page'; url?: string }
+  | { type: 'find_in_page'; url?: string; pattern?: string };
+
+export type LlmWebSearchCall =
+  | {
+      source: 'codex';
+      phase: 'added' | 'done';
+      itemId: string;
+      status?: string;
+      action?: CodexLlmWebSearchAction;
+    }
+  | {
+      source: 'openai_responses';
+      phase: 'added' | 'done';
+      itemId: string;
+      status?: string;
+      action?: OpenAiResponsesLlmWebSearchAction;
+    };
 
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;

@@ -54,7 +54,7 @@ import type {
   ThinkingMsg,
 } from '../client';
 import { LlmConfig } from '../client';
-import type { LlmStreamReceiver } from '../gen';
+import type { LlmStreamReceiver, LlmWebSearchCall } from '../gen';
 import { getLlmGenerator } from '../gen/registry';
 import {
   formatToolCallAdjacencyViolation,
@@ -120,6 +120,69 @@ const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
 };
 
 const KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
+
+function projectLlmWebSearchCall(call: LlmWebSearchCall): {
+  source: 'codex' | 'openai_responses';
+  phase: 'added' | 'done';
+  itemId: string;
+  status?: string;
+  action?:
+    | { type: 'search'; query?: string }
+    | { type: 'open_page'; url?: string }
+    | { type: 'find_in_page'; url?: string; pattern?: string };
+} {
+  if (call.source === 'codex') {
+    return call;
+  }
+
+  const action = call.action;
+  if (!action) {
+    return {
+      source: call.source,
+      phase: call.phase,
+      itemId: call.itemId,
+      status: call.status,
+    };
+  }
+
+  if (action.type === 'search') {
+    const query =
+      typeof action.query === 'string' && action.query.trim().length > 0
+        ? action.query
+        : Array.isArray(action.queries)
+          ? action.queries.find((entry) => entry.trim().length > 0)
+          : undefined;
+    return {
+      source: call.source,
+      phase: call.phase,
+      itemId: call.itemId,
+      status: call.status,
+      action: query !== undefined ? { type: 'search', query } : { type: 'search' },
+    };
+  }
+
+  if (action.type === 'open_page') {
+    return {
+      source: call.source,
+      phase: call.phase,
+      itemId: call.itemId,
+      status: call.status,
+      action: typeof action.url === 'string' ? { type: 'open_page', url: action.url } : action,
+    };
+  }
+
+  return {
+    source: call.source,
+    phase: call.phase,
+    itemId: call.itemId,
+    status: call.status,
+    action: {
+      type: 'find_in_page',
+      ...(typeof action.url === 'string' ? { url: action.url } : {}),
+      ...(typeof action.pattern === 'string' ? { pattern: action.pattern } : {}),
+    },
+  };
+}
 
 class KernelDriverInterruptedError extends Error {
   public readonly reason: DialogInterruptionReason;
@@ -1944,7 +2007,7 @@ export async function driveDialogStreamCore(
             webSearchCall: async (call) => {
               throwIfAborted(abortSignal, dlg);
               streamSawWebSearchCall = true;
-              await dlg.webSearchCall(call);
+              await dlg.webSearchCall(projectLlmWebSearchCall(call));
             },
           };
 

@@ -182,6 +182,8 @@ export interface FunctionResultEvent {
   genseq?: number;
 }
 
+export type WebSearchCallSource = 'codex' | 'openai_responses';
+
 export type WebSearchCallAction =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
@@ -189,6 +191,7 @@ export type WebSearchCallAction =
 
 export type WebSearchCallEvent = LlmGenDlgEvent & {
   type: 'web_search_call_evt';
+  source?: WebSearchCallSource;
   phase: 'added' | 'done';
   itemId: string;
   status?: string;

@@ -93,18 +93,43 @@ function tryExtractChatUsage(usage: unknown): LlmUsageStats {
 
 function buildChatCompletionResponseFormat(
   openAiParams: NonNullable<Team.ModelParams['openai']>,
-  jsonResponseEnabled: boolean,
 ): ChatCompletionCreateParamsStreaming['response_format'] | undefined {
-  if (!jsonResponseEnabled) return undefined;
-  return { type: 'json_object' };
-}
+  const textFormat = openAiParams.text_format;
+  if (textFormat === 'text' || textFormat === 'json_object') {
+    return { type: textFormat };
+  }
+  if (textFormat !== 'json_schema') return undefined;
 
-function resolveOpenAiCompatibleJsonResponseEnabled(
-  agent: Team.Member,
-  openAiParams: NonNullable<Team.ModelParams['openai']>,
-): boolean {
-  if (openAiParams.json_response !== undefined) return openAiParams.json_response;
-  return agent.model_params?.json_response === true;
+  const schemaName = openAiParams.text_format_json_schema_name?.trim();
+  const rawSchema = openAiParams.text_format_json_schema?.trim();
+  if (!schemaName || !rawSchema) {
+    throw new Error(
+      'Invalid openai text_format=json_schema: text_format_json_schema_name and text_format_json_schema are required.',
+    );
+  }
+  let parsedSchema: unknown;
+  try {
+    parsedSchema = JSON.parse(rawSchema);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid openai text_format_json_schema: ${message}`);
+  }
+  if (!isRecord(parsedSchema)) {
+    throw new Error(
+      'Invalid openai text_format_json_schema: expected a JSON object at the top level.',
+    );
+  }
+
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: schemaName,
+      schema: parsedSchema,
+      ...(openAiParams.text_format_json_schema_strict !== undefined
+        ? { strict: openAiParams.text_format_json_schema_strict }
+        : {}),
+    },
+  };
 }
 
 function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefined {
@@ -644,13 +669,12 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
-    const jsonResponseEnabled = resolveOpenAiCompatibleJsonResponseEnabled(agent, openAiParams);
 
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
-    const responseFormat = buildChatCompletionResponseFormat(openAiParams, jsonResponseEnabled);
+    const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 
     const payload: ChatCompletionCreateParamsStreaming = {
       model: agent.model,
@@ -658,20 +682,11 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       stream: true,
       stream_options: { include_usage: true },
       ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
+      ...(openAiParams.safety_identifier !== undefined && {
+        safety_identifier: openAiParams.safety_identifier,
+      }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
-      ...(openAiParams.stop !== undefined && { stop: openAiParams.stop }),
-      ...(openAiParams.presence_penalty !== undefined && {
-        presence_penalty: openAiParams.presence_penalty,
-      }),
-      ...(openAiParams.frequency_penalty !== undefined && {
-        frequency_penalty: openAiParams.frequency_penalty,
-      }),
-      ...(openAiParams.seed !== undefined && { seed: openAiParams.seed }),
-      ...(openAiParams.logprobs !== undefined && { logprobs: openAiParams.logprobs }),
-      ...(openAiParams.top_logprobs !== undefined && { top_logprobs: openAiParams.top_logprobs }),
-      ...(openAiParams.logit_bias !== undefined && { logit_bias: openAiParams.logit_bias }),
-      ...(openAiParams.user !== undefined && { user: openAiParams.user }),
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0
         ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
@@ -885,31 +900,21 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
-    const jsonResponseEnabled = resolveOpenAiCompatibleJsonResponseEnabled(agent, openAiParams);
 
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
-    const responseFormat = buildChatCompletionResponseFormat(openAiParams, jsonResponseEnabled);
+    const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 
     const payload: ChatCompletionCreateParamsNonStreaming = {
       model: agent.model,
       messages,
+      ...(openAiParams.safety_identifier !== undefined && {
+        safety_identifier: openAiParams.safety_identifier,
+      }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
-      ...(openAiParams.stop !== undefined && { stop: openAiParams.stop }),
-      ...(openAiParams.presence_penalty !== undefined && {
-        presence_penalty: openAiParams.presence_penalty,
-      }),
-      ...(openAiParams.frequency_penalty !== undefined && {
-        frequency_penalty: openAiParams.frequency_penalty,
-      }),
-      ...(openAiParams.seed !== undefined && { seed: openAiParams.seed }),
-      ...(openAiParams.logprobs !== undefined && { logprobs: openAiParams.logprobs }),
-      ...(openAiParams.top_logprobs !== undefined && { top_logprobs: openAiParams.top_logprobs }),
-      ...(openAiParams.logit_bias !== undefined && { logit_bias: openAiParams.logit_bias }),
-      ...(openAiParams.user !== undefined && { user: openAiParams.user }),
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
       tool_choice: 'auto',

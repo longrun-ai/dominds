@@ -180,15 +180,12 @@ const CODEX_JSON_RESPONSE_SCHEMA = {
 } as const;
 
 function resolveCodexWebSearchMode(agent: Team.Member): CodexWebSearchMode {
-  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
-  return codexParams?.web_search ?? 'live';
+  return agent.model_params?.codex?.web_search ?? 'live';
 }
 
 function resolveCodexJsonResponseEnabled(agent: Team.Member): boolean {
   const providerSpecific = agent.model_params?.codex?.json_response;
   if (providerSpecific !== undefined) return providerSpecific;
-  const openAiSpecific = agent.model_params?.openai?.json_response;
-  if (openAiSpecific !== undefined) return openAiSpecific;
   return agent.model_params?.json_response === true;
 }
 
@@ -264,6 +261,7 @@ function toLlmWebSearchCall(
   phase: 'added' | 'done',
 ): LlmWebSearchCall {
   return {
+    source: 'codex',
     phase,
     itemId,
     status: item.status,

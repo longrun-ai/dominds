@@ -33,6 +33,7 @@ import type {
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
+  LlmWebSearchCall,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
@@ -200,37 +201,27 @@ function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefin
   };
 }
 
-function buildReasoningItemId(genseq: number, text: string): string {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  }
-  return `dominds_reasoning_${genseq}_${hash.toString(16)}`;
-}
-
 function thinkingMessageToOpenAiReasoningItem(
   msg: Extract<ChatMessage, { type: 'thinking_msg' }>,
-): ResponseReasoningItem {
+): ResponseInputItem {
   const reasoning = msg.reasoning ?? buildReasoningPayloadFromText(msg.content);
   if (!reasoning) {
-    return {
-      id: buildReasoningItemId(msg.genseq, msg.content),
-      type: 'reasoning',
-      summary: [],
-    };
+    return { type: 'reasoning', summary: [] } as unknown as ResponseReasoningItem;
   }
-  const out: ResponseReasoningItem = {
-    id: buildReasoningItemId(msg.genseq, `${msg.content}\n${reasoning.encrypted_content ?? ''}`),
+  // Some Responses-compatible gateways reject client-fabricated reasoning IDs and only accept
+  // provider-issued IDs (for example `rs_*`). We therefore omit `id` when replaying persisted
+  // reasoning and rely on encrypted_content when available.
+  const out = {
     type: 'reasoning',
     summary: reasoning.summary.map((part) => ({ type: 'summary_text', text: part.text })),
-  };
+  } as Omit<ResponseReasoningItem, 'id'> & { id?: string };
   if (reasoning.content && reasoning.content.length > 0) {
     out.content = reasoning.content.map((part) => ({ type: 'reasoning_text', text: part.text }));
   }
   if (typeof reasoning.encrypted_content === 'string' && reasoning.encrypted_content.length > 0) {
     out.encrypted_content = reasoning.encrypted_content;
   }
-  return out;
+  return out as unknown as ResponseReasoningItem;
 }
 
 async function funcResultToOpenAiInputItemWithLimit(
@@ -338,6 +329,14 @@ function mergeAdjacentOpenAiMessages(input: ResponseInputItem[]): ResponseInputI
   return merged;
 }
 
+function shouldIncludeOpenAiEncryptedReasoning(
+  input: ResponseInputItem[],
+  reasoning: ResponseCreateParamsStreaming['reasoning'] | undefined,
+): boolean {
+  if (reasoning !== undefined) return true;
+  return input.some((item) => isRecord(item) && item.type === 'reasoning');
+}
+
 async function buildOpenAiRequestInput(
   context: ChatMessage[],
   providerConfig?: ProviderConfig,
@@ -383,14 +382,42 @@ function parseOpenAiUsage(usage: unknown): LlmUsageStats {
 
 function buildOpenAiTextConfig(
   openAiParams: NonNullable<Team.ModelParams['openai']>,
-  jsonResponseEnabled: boolean,
 ): ResponseCreateParamsStreaming['text'] | undefined {
   const textConfig: NonNullable<ResponseCreateParamsStreaming['text']> = {};
   if (openAiParams.verbosity !== undefined) {
     textConfig.verbosity = openAiParams.verbosity;
   }
-  if (jsonResponseEnabled) {
-    textConfig.format = { type: 'json_object' };
+  const textFormat = openAiParams.text_format;
+  if (textFormat === 'text' || textFormat === 'json_object') {
+    textConfig.format = { type: textFormat };
+  } else if (textFormat === 'json_schema') {
+    const schemaName = openAiParams.text_format_json_schema_name?.trim();
+    const rawSchema = openAiParams.text_format_json_schema?.trim();
+    if (!schemaName || !rawSchema) {
+      throw new Error(
+        'Invalid openai text_format=json_schema: text_format_json_schema_name and text_format_json_schema are required.',
+      );
+    }
+    let parsedSchema: unknown;
+    try {
+      parsedSchema = JSON.parse(rawSchema);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid openai text_format_json_schema: ${message}`);
+    }
+    if (!isRecord(parsedSchema)) {
+      throw new Error(
+        'Invalid openai text_format_json_schema: expected a JSON object at the top level.',
+      );
+    }
+    textConfig.format = {
+      type: 'json_schema',
+      name: schemaName,
+      schema: parsedSchema,
+      ...(openAiParams.text_format_json_schema_strict !== undefined
+        ? { strict: openAiParams.text_format_json_schema_strict }
+        : {}),
+    };
   }
   return textConfig.verbosity !== undefined || textConfig.format !== undefined
     ? textConfig
@@ -413,12 +440,82 @@ function buildOpenAiReasoning(
   };
 }
 
-function resolveOpenAiJsonResponseEnabled(
-  agent: Team.Member,
+function buildOpenAiNativeTools(openAiParams: NonNullable<Team.ModelParams['openai']>): Tool[] {
+  const enabled =
+    openAiParams.web_search_tool === true ||
+    openAiParams.web_search_context_size !== undefined ||
+    (Array.isArray(openAiParams.web_search_allowed_domains) &&
+      openAiParams.web_search_allowed_domains.length > 0);
+  if (!enabled) return [];
+
+  const webSearchTool = {
+    type: 'web_search',
+    ...(openAiParams.web_search_context_size !== undefined
+      ? { search_context_size: openAiParams.web_search_context_size }
+      : {}),
+    ...(Array.isArray(openAiParams.web_search_allowed_domains) &&
+    openAiParams.web_search_allowed_domains.length > 0
+      ? { filters: { allowed_domains: openAiParams.web_search_allowed_domains } }
+      : {}),
+  } as unknown as Tool;
+  return [webSearchTool];
+}
+
+function buildOpenAiInclude(
+  input: ResponseInputItem[],
+  reasoning: ResponseCreateParamsStreaming['reasoning'] | undefined,
   openAiParams: NonNullable<Team.ModelParams['openai']>,
-): boolean {
-  if (openAiParams.json_response !== undefined) return openAiParams.json_response;
-  return agent.model_params?.json_response === true;
+): NonNullable<ResponseCreateParamsStreaming['include']> | undefined {
+  const include = new Set<NonNullable<ResponseCreateParamsStreaming['include']>[number]>();
+  if (shouldIncludeOpenAiEncryptedReasoning(input, reasoning)) {
+    include.add('reasoning.encrypted_content');
+  }
+  if (openAiParams.web_search_include_sources === true) {
+    include.add('web_search_call.action.sources');
+  }
+  return include.size > 0 ? Array.from(include) : undefined;
+}
+
+function toOpenAiLlmWebSearchCall(
+  item: Record<string, unknown>,
+  itemId: string,
+  phase: 'added' | 'done',
+): LlmWebSearchCall {
+  const rawAction = isRecord(item.action) ? item.action : null;
+  let action: LlmWebSearchCall['action'];
+  if (rawAction?.type === 'search') {
+    const queries =
+      Array.isArray(rawAction.queries) &&
+      rawAction.queries.every((entry) => typeof entry === 'string')
+        ? rawAction.queries
+        : undefined;
+    action = {
+      type: 'search',
+      ...(typeof rawAction.query === 'string' ? { query: rawAction.query } : {}),
+      ...(queries && queries.length > 0 ? { queries } : {}),
+    };
+  } else if (rawAction?.type === 'open_page') {
+    action = {
+      type: 'open_page',
+      ...(typeof rawAction.url === 'string' ? { url: rawAction.url } : {}),
+    };
+  } else if (rawAction?.type === 'find_in_page') {
+    action = {
+      type: 'find_in_page',
+      ...(typeof rawAction.url === 'string' ? { url: rawAction.url } : {}),
+      ...(typeof rawAction.pattern === 'string' ? { pattern: rawAction.pattern } : {}),
+    };
+  } else {
+    action = undefined;
+  }
+
+  return {
+    source: 'openai_responses',
+    phase,
+    itemId,
+    ...(typeof item.status === 'string' ? { status: item.status } : {}),
+    ...(action !== undefined ? { action } : {}),
+  };
 }
 
 export async function buildOpenAiRequestInputWrapper(
@@ -584,14 +681,15 @@ export class OpenAiGen implements LlmGenerator {
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
-    const jsonResponseEnabled = resolveOpenAiJsonResponseEnabled(agent, openAiParams);
-
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
-    const textConfig = buildOpenAiTextConfig(openAiParams, jsonResponseEnabled);
+    const textConfig = buildOpenAiTextConfig(openAiParams);
     const reasoning = buildOpenAiReasoning(openAiParams);
+    const nativeTools = buildOpenAiNativeTools(openAiParams);
+    const include = buildOpenAiInclude(requestInput, reasoning, openAiParams);
+    const tools = [...funcTools.map(funcToolToOpenAiTool), ...nativeTools];
 
     const payload: ResponseCreateParamsStreaming = {
       model: agent.model,
@@ -602,12 +700,16 @@ export class OpenAiGen implements LlmGenerator {
       store: false,
       stream: true,
       ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
+      ...(openAiParams.safety_identifier !== undefined && {
+        safety_identifier: openAiParams.safety_identifier,
+      }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...(reasoning !== undefined && { reasoning }),
+      ...(include !== undefined ? { include } : {}),
       ...(textConfig !== undefined && { text: textConfig }),
-      ...(funcTools.length > 0
-        ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }
+      ...(tools.length > 0
+        ? { tools, tool_choice: 'auto' as const }
         : { tool_choice: 'none' as const }),
     };
 
@@ -659,6 +761,24 @@ export class OpenAiGen implements LlmGenerator {
     }
 
     const activeFuncCallsByItemId = new Map<string, ActiveFuncCall>();
+
+    function readOptionalEventString(value: unknown): string {
+      return typeof value === 'string' ? value : '';
+    }
+
+    async function requireEventString(
+      value: unknown,
+      eventType: string,
+      field: string,
+    ): Promise<string> {
+      if (typeof value === 'string') return value;
+      const detail = `OPENAI malformed stream event ${eventType}: missing string ${field}`;
+      log.error(detail, new Error('openai_malformed_stream_event'));
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw new Error(detail);
+    }
 
     try {
       const stream: AsyncIterable<ResponseStreamEvent> = await client.responses.create(payload, {
@@ -729,7 +849,7 @@ export class OpenAiGen implements LlmGenerator {
           }
 
           case 'response.output_text.delta': {
-            const delta = event.delta;
+            const delta = await requireEventString(event.delta, event.type, 'delta');
             if (delta.length > 0) {
               if (activeStream === 'thinking') {
                 const detail =
@@ -759,7 +879,8 @@ export class OpenAiGen implements LlmGenerator {
           }
 
           case 'response.output_text.done': {
-            if (!sawOutputText && event.text.length > 0) {
+            const text = await requireEventString(event.text, event.type, 'text');
+            if (!sawOutputText && text.length > 0) {
               if (activeStream === 'thinking') {
                 const detail =
                   'OPENAI stream overlap violation: received output_text while thinking stream still active';
@@ -781,7 +902,7 @@ export class OpenAiGen implements LlmGenerator {
                 await receiver.sayingStart();
                 activeStream = 'saying';
               }
-              await receiver.sayingChunk(event.text);
+              await receiver.sayingChunk(text);
               sawOutputText = true;
             }
             if (sayingStarted) {
@@ -794,7 +915,7 @@ export class OpenAiGen implements LlmGenerator {
 
           case 'response.reasoning_text.delta':
           case 'response.reasoning_summary_text.delta': {
-            const delta = event.delta;
+            const delta = await requireEventString(event.delta, event.type, 'delta');
             if (delta.length > 0) {
               if (activeStream === 'saying') {
                 const detail =
@@ -886,6 +1007,24 @@ export class OpenAiGen implements LlmGenerator {
               } else if (callId.length > 0 && name.length > 0) {
                 // Fallback: emit directly when item lacks an ID (should not happen on OpenAI).
                 await receiver.funcCall(callId, name, args.length > 0 ? args : '{}');
+              }
+              break;
+            }
+
+            if (isRecord(item) && item.type === 'web_search_call' && receiver.webSearchCall) {
+              const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+              if (itemId.length > 0) {
+                await receiver.webSearchCall(toOpenAiLlmWebSearchCall(item, itemId, 'done'));
+              } else {
+                const detail =
+                  'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
+                log.error(detail, new Error('openai_web_search_call_missing_item_id'), {
+                  status: item.status,
+                  action: item.action,
+                });
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
               }
               break;
             }
@@ -989,14 +1128,30 @@ export class OpenAiGen implements LlmGenerator {
                 activeFuncCallsByItemId.set(itemId, state);
               }
             }
+            if (isRecord(item) && item.type === 'web_search_call' && receiver.webSearchCall) {
+              const itemId = typeof item.id === 'string' ? item.id.trim() : '';
+              if (itemId.length > 0) {
+                await receiver.webSearchCall(toOpenAiLlmWebSearchCall(item, itemId, 'added'));
+              } else {
+                const detail =
+                  'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
+                log.error(detail, new Error('openai_web_search_call_missing_item_id'), {
+                  status: item.status,
+                  action: item.action,
+                });
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
+              }
+            }
             break;
           }
           case 'response.content_part.added':
           case 'response.content_part.done':
             break;
           case 'response.function_call_arguments.delta': {
-            const itemId = event.item_id;
-            const delta = event.delta;
+            const itemId = await requireEventString(event.item_id, event.type, 'item_id');
+            const delta = await requireEventString(event.delta, event.type, 'delta');
             if (itemId.length > 0 && delta.length > 0) {
               const existing = activeFuncCallsByItemId.get(itemId);
               const state: ActiveFuncCall =
@@ -1014,9 +1169,9 @@ export class OpenAiGen implements LlmGenerator {
             break;
           }
           case 'response.function_call_arguments.done': {
-            const itemId = event.item_id;
-            const name = event.name;
-            const args = event.arguments;
+            const itemId = await requireEventString(event.item_id, event.type, 'item_id');
+            const name = readOptionalEventString(event.name);
+            const args = readOptionalEventString(event.arguments);
             if (itemId.length > 0) {
               const existing = activeFuncCallsByItemId.get(itemId);
               const state: ActiveFuncCall =
@@ -1055,6 +1210,30 @@ export class OpenAiGen implements LlmGenerator {
             break;
           }
         }
+      }
+
+      for (const state of activeFuncCallsByItemId.values()) {
+        await maybeEmitFuncCall(state, receiver);
+      }
+      const unresolvedFuncCalls = Array.from(activeFuncCallsByItemId.values()).filter(
+        (state) =>
+          !state.emitted &&
+          (state.callId.length > 0 || state.name.length > 0 || state.argsJson.length > 0),
+      );
+      if (unresolvedFuncCalls.length > 0) {
+        const detail =
+          'OPENAI incomplete function-call stream state: ' +
+          unresolvedFuncCalls
+            .map(
+              (state) =>
+                `itemId=${state.itemId},callId=${state.callId || '<missing>'},name=${state.name || '<missing>'}`,
+            )
+            .join('; ');
+        log.error(detail, new Error('openai_incomplete_function_call_stream_state'));
+        if (receiver.streamError) {
+          await receiver.streamError(detail);
+        }
+        throw new Error(detail);
       }
     } catch (error: unknown) {
       log.warn('OPENAI streaming error', error);
@@ -1096,14 +1275,15 @@ export class OpenAiGen implements LlmGenerator {
     );
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
-    const jsonResponseEnabled = resolveOpenAiJsonResponseEnabled(agent, openAiParams);
-
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
-    const textConfig = buildOpenAiTextConfig(openAiParams, jsonResponseEnabled);
+    const textConfig = buildOpenAiTextConfig(openAiParams);
     const reasoning = buildOpenAiReasoning(openAiParams);
+    const nativeTools = buildOpenAiNativeTools(openAiParams);
+    const include = buildOpenAiInclude(requestInput, reasoning, openAiParams);
+    const tools = [...funcTools.map(funcToolToOpenAiTool), ...nativeTools];
 
     const payload: ResponseCreateParamsNonStreaming = {
       model: agent.model,
@@ -1114,12 +1294,16 @@ export class OpenAiGen implements LlmGenerator {
       store: false,
       stream: false,
       ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
+      ...(openAiParams.safety_identifier !== undefined && {
+        safety_identifier: openAiParams.safety_identifier,
+      }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...(reasoning !== undefined && { reasoning }),
+      ...(include !== undefined ? { include } : {}),
       ...(textConfig !== undefined && { text: textConfig }),
-      ...(funcTools.length > 0
-        ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }
+      ...(tools.length > 0
+        ? { tools, tool_choice: 'auto' as const }
         : { tool_choice: 'none' as const }),
     };
 

@@ -19,6 +19,7 @@ import type {
   ReminderContent,
   TellaskResultEvent,
   WebSearchCallAction,
+  WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
   DialogPrompt,
@@ -1617,6 +1618,7 @@ export abstract class Dialog {
   }
 
   public async webSearchCall(payload: {
+    source?: WebSearchCallSource;
     phase: 'added' | 'done';
     itemId: string;
     status?: string;
@@ -2341,6 +2343,7 @@ export abstract class DialogStore {
   public async webSearchCall(
     _dialog: Dialog,
     _payload: {
+      source?: WebSearchCallSource;
       phase: 'added' | 'done';
       itemId: string;
       status?: string;

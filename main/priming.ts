@@ -865,8 +865,12 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
     }
     case 'web_search_call_record': {
       const phase = raw['phase'];
+      const source = raw['source'];
       if (phase !== 'added' && phase !== 'done') {
         throw new Error(`${context}.phase must be added | done`);
+      }
+      if (source !== undefined && source !== 'codex' && source !== 'openai_responses') {
+        throw new Error(`${context}.source must be codex | openai_responses when provided`);
       }
       const itemId = raw['itemId'];
       const status = raw['status'];
@@ -883,6 +887,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         genseq: expectIntegerField(raw, 'genseq', context),
         phase,
       };
+      if (source !== undefined) record.source = source;
       if (itemId !== undefined) record.itemId = itemId;
       if (status !== undefined) record.status = status;
       if (action !== undefined) record.action = action;

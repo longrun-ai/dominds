@@ -437,6 +437,8 @@ export type TellaskResultRecord =
       };
     });
 
+export type WebSearchCallSourceRecord = 'codex' | 'openai_responses';
+
 export type WebSearchCallActionRecord =
   | { type: 'search'; query?: string }
   | { type: 'open_page'; url?: string }
@@ -446,6 +448,7 @@ export interface WebSearchCallRecord extends RootGenerationRef {
   ts: string;
   type: 'web_search_call_record';
   genseq: number;
+  source?: WebSearchCallSourceRecord;
   phase: 'added' | 'done';
   itemId?: string;
   status?: string;
