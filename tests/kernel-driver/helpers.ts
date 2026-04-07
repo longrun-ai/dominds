@@ -4,8 +4,8 @@ import yaml from 'yaml';
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { assertGlobalDialogEventBroadcasterInstalled } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, RootDialog } from '../../main/dialog';
-import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import type { ChatMessage } from '../../main/llm/client';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { buildActiveReplyToolNote } from '../../main/runtime/reply-prompt-copy';
@@ -34,12 +34,8 @@ export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Prom
     );
   }
   const tmpRoot = process.cwd();
-  setGlobalDialogEventBroadcaster(() => {});
-  try {
-    await fn(tmpRoot);
-  } finally {
-    setGlobalDialogEventBroadcaster(null);
-  }
+  assertGlobalDialogEventBroadcasterInstalled('tests/kernel-driver/helpers.withTempRtws');
+  await fn(tmpRoot);
 }
 
 export async function writeStandardMinds(

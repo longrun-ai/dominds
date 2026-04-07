@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import {
+  clearInstalledGlobalDialogEventBroadcaster,
+  installRecordingGlobalDialogEventBroadcaster,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogPersistence } from '../../main/persistence';
-
-import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import { createRootDialog } from '../kernel-driver/helpers';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
@@ -21,7 +23,9 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
-    setGlobalDialogEventBroadcaster(() => {});
+    installRecordingGlobalDialogEventBroadcaster({
+      label: 'tests/subdialog-reconciled-course',
+    });
     try {
       const root = await createRootDialog();
       const subdialog = await root.createSubDialog('tester', ['@tester'], 'debug current course', {
@@ -79,7 +83,7 @@ async function main(): Promise<void> {
         'reconciled reminder state must append exactly one new record to the active subdialog course',
       );
     } finally {
-      setGlobalDialogEventBroadcaster(null);
+      clearInstalledGlobalDialogEventBroadcaster();
     }
   });
 }

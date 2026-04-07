@@ -4,7 +4,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
-import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
+import {
+  clearInstalledGlobalDialogEventBroadcaster,
+  installRecordingGlobalDialogEventBroadcaster,
+  requireRecordingGlobalDialogEventRecorder,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogPersistence } from '../../main/persistence';
 import { createRootDialog } from '../kernel-driver/helpers';
 
@@ -22,10 +26,12 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
-    const received: TypedDialogEvent[] = [];
-    setGlobalDialogEventBroadcaster((evt) => {
-      received.push(evt);
+    installRecordingGlobalDialogEventBroadcaster({
+      label: 'tests/nested-subdialog-created-parent-context',
     });
+    const recorder = requireRecordingGlobalDialogEventRecorder(
+      'nested-subdialog-created-parent-context',
+    );
 
     try {
       const root = await createRootDialog();
@@ -41,7 +47,7 @@ async function main(): Promise<void> {
         },
       );
 
-      received.length = 0;
+      recorder.clear();
 
       const nestedSubdialog = await parentSubdialog.createSubDialog(
         'ux-tester',
@@ -96,6 +102,7 @@ async function main(): Promise<void> {
         'nested subdialog created record must keep callerDialogId on the actual caller subdialog',
       );
 
+      const received: readonly TypedDialogEvent[] = recorder.snapshot();
       const nestedCreatedEvent = received.find(
         (evt): evt is Extract<TypedDialogEvent, { type: 'subdialog_created_evt' }> =>
           evt.type === 'subdialog_created_evt' &&
@@ -118,7 +125,7 @@ async function main(): Promise<void> {
         'nested subdialog live node must keep callerDialogId on the actual caller subdialog',
       );
     } finally {
-      setGlobalDialogEventBroadcaster(null);
+      clearInstalledGlobalDialogEventBroadcaster();
     }
   });
 }

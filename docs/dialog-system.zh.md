@@ -131,6 +131,18 @@
 
 所有驱动逻辑、恢复决策和状态管理仍然是纯粹的后端关注点。
 
+### 全局对话事件广播器
+
+有一类对话事件属于 rtws 全局状态，而不是某个对话自己的局部流，包括 `new_q4h_asked`、`q4h_answered`、`subdialog_created_evt`、`dlg_touched_evt`。
+
+这些事件要求 runtime 在任何对话驱动逻辑开始前，就先完成**全局对话事件广播器**的 bootstrap。它是必要基础设施，不是可选优化：
+
+- WebUI server runtime 安装 WebSocket fanout broadcaster
+- script / test / future runtime 也必须安装 broadcaster，通常使用 recording broadcaster
+- tests 应在 runtime 入口完成 broadcaster bootstrap；需要验证广播时断言捕获内容，不需要时可直接忽略
+
+因此，“缺少 broadcaster”应被视为 runtime bootstrap 不变式被破坏，而不是 Q4H/业务层条件。
+
 ### 状态持久化
 
 对话状态在关键点持久化到存储：

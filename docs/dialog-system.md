@@ -132,6 +132,18 @@ Frontend clients never drive dialogs. Instead, they:
 
 All driving logic, resumption decisions, and state management remain purely backend concerns.
 
+### Global Dialog Event Broadcaster
+
+Some dialog events are rtws-global rather than dialog-scoped, including `new_q4h_asked`, `q4h_answered`, `subdialog_created_evt`, and `dlg_touched_evt`.
+
+These events require a **global dialog event broadcaster** to be installed during runtime bootstrap before any dialog-driving logic runs. This broadcaster is mandatory infrastructure, not an optional optimization:
+
+- WebUI server runtime installs a WebSocket fanout broadcaster
+- Script / test / future runtimes must also install a broadcaster, typically a recording broadcaster
+- Tests should bootstrap the broadcaster at runtime entry and then either assert on captured events or ignore them
+
+Missing broadcaster is therefore a runtime bootstrap invariant violation, not a Q4H/business-layer condition.
+
 ### State Persistence
 
 Dialog state is persisted to storage at key points:

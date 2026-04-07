@@ -125,6 +125,7 @@ async function main(): Promise<void> {
       require.resolve('tsx/cli'),
       '--tsconfig',
       path.resolve(testsRoot, 'tsconfig.json'),
+      path.resolve(testsRoot, 'rtws-script-runner.ts'),
       scriptAbs,
       ...scriptArgs,
     ],

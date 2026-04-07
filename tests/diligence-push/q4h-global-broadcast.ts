@@ -7,8 +7,13 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
+import {
+  clearInstalledGlobalDialogEventBroadcaster,
+  installRecordingGlobalDialogEventBroadcaster,
+  requireRecordingGlobalDialogEventRecorder,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, RootDialog } from '../../main/dialog';
-import { postDialogEvent, postDialogEventById, setQ4HBroadcaster } from '../../main/evt-registry';
+import { postDialogEvent, postDialogEventById } from '../../main/evt-registry';
 import { DiskFileDialogStore } from '../../main/persistence';
 
 async function main(): Promise<void> {
@@ -21,10 +26,11 @@ async function main(): Promise<void> {
     const store = new DiskFileDialogStore(dlgId);
     const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
 
-    const received: TypedDialogEvent[] = [];
-    setQ4HBroadcaster((evt) => {
-      received.push(evt);
+    installRecordingGlobalDialogEventBroadcaster({
+      label: 'tests/q4h-global-broadcast',
     });
+    const recorder = requireRecordingGlobalDialogEventRecorder('q4h-global-broadcast');
+    recorder.clear();
 
     postDialogEvent(dlg, {
       type: 'dlg_display_state_evt',
@@ -88,6 +94,7 @@ async function main(): Promise<void> {
       },
     });
 
+    const received: readonly TypedDialogEvent[] = recorder.snapshot();
     const q4hAskedEvents = received.filter((evt) => evt.type === 'new_q4h_asked');
     const q4hAnsweredEvents = received.filter((evt) => evt.type === 'q4h_answered');
     const subdialogCreatedEvents = received.filter((evt) => evt.type === 'subdialog_created_evt');
@@ -139,7 +146,7 @@ async function main(): Promise<void> {
 
     console.log('global dialog event broadcast: PASS');
   } finally {
-    setQ4HBroadcaster(null);
+    clearInstalledGlobalDialogEventBroadcaster();
     process.chdir(originalCwd);
   }
 }

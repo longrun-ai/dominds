@@ -4,9 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 
+import {
+  clearInstalledGlobalDialogEventBroadcaster,
+  installRecordingGlobalDialogEventBroadcaster,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
-import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
@@ -65,9 +68,10 @@ async function waitForDialogsToUnlock(root: RootDialog, timeoutMs: number): Prom
 }
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-typeb-dedupe-'));
-  setGlobalDialogEventBroadcaster(() => {});
+  installRecordingGlobalDialogEventBroadcaster({
+    label: 'tests/typeb-registered-subdialog-dedupe',
+  });
 
   try {
     process.chdir(tmpRoot);
@@ -275,8 +279,9 @@ async function main(): Promise<void> {
 
     console.log('type B registered subdialog dedupe: PASS');
   } finally {
-    setGlobalDialogEventBroadcaster(null);
-    process.chdir(oldCwd);
+    clearInstalledGlobalDialogEventBroadcaster();
+    // Background subdialog work may still consult process.cwd() briefly after the final await.
+    // This script exits immediately afterwards, so restoring cwd here is riskier than helpful.
   }
 }
 

@@ -8,9 +8,13 @@ import * as path from 'path';
 
 import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
+import {
+  clearInstalledGlobalDialogEventBroadcaster,
+  installRecordingGlobalDialogEventBroadcaster,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
-import { dialogEventRegistry, setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
+import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DiskFileDialogStore } from '../../main/persistence';
 
@@ -89,7 +93,9 @@ async function main(): Promise<void> {
     // Simulate normal root-dialog initialization done by server create/display handlers.
     dlg.diligencePushRemainingBudget = 2;
     globalDialogRegistry.register(dlg);
-    setGlobalDialogEventBroadcaster(() => {});
+    installRecordingGlobalDialogEventBroadcaster({
+      label: 'tests/diligence-budget-event',
+    });
 
     const ch = dialogEventRegistry.createSubChan(dlgId);
 
@@ -138,7 +144,7 @@ async function main(): Promise<void> {
 
     console.log('keep-going diligence budget event (streaming): PASS');
   } finally {
-    setGlobalDialogEventBroadcaster(null);
+    clearInstalledGlobalDialogEventBroadcaster();
     process.chdir(originalCwd);
   }
 }

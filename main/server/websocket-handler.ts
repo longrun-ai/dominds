@@ -46,6 +46,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
+import { installGlobalDialogEventBroadcaster } from '../bootstrap/global-dialog-event-broadcaster';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import {
   getRunControlCountsSnapshot,
@@ -60,11 +61,7 @@ import {
 } from '../dialog-display-state';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
-import {
-  dialogEventRegistry,
-  postDialogEvent,
-  setGlobalDialogEventBroadcaster,
-} from '../evt-registry';
+import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToSupdialog } from '../llm/kernel-driver';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/kernel-driver/runtime';
 import { createLogger } from '../log';
@@ -1811,13 +1808,16 @@ export function setupWebSocketServer(
   // - Q4H updates are rtws-global state in WebUI
   // - subdialog creation must refresh hierarchy/list even when current subscription is elsewhere
   // - dlg_touched_evt keeps dialog list timestamps/reordering in sync across clients
-  setGlobalDialogEventBroadcaster((evt) => {
-    const data = JSON.stringify(evt);
-    for (const ws of clients) {
-      if (ws.readyState === 1) {
-        ws.send(data);
+  installGlobalDialogEventBroadcaster({
+    label: 'websocket-server',
+    publish: (evt) => {
+      const data = JSON.stringify(evt);
+      for (const ws of clients) {
+        if (ws.readyState === 1) {
+          ws.send(data);
+        }
       }
-    }
+    },
   });
 
   // Broadcast dialog index changes (create/move/delete) so other tabs refresh their lists.

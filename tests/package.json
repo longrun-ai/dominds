@@ -28,6 +28,7 @@
     "interruption-resumption": "tsx interruption-resumption.ts",
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-subdialog-dedupe.ts",
     "kernel-driver:context-assembly-order": "pnpm run rtws -- -C script-rtws kernel-driver/context-assembly-order.ts",
+    "kernel-driver:q4h-runtime-broadcaster-bootstrap": "pnpm run rtws -- -C script-rtws kernel-driver/q4h-runtime-broadcaster-bootstrap.ts",
     "kernel-driver:subdialog-queue-commit-mirror": "pnpm run rtws -- -C script-rtws kernel-driver/subdialog-queue-commit-mirror.ts",
     "kernel-driver:subdialog-queue-order-before-gen": "pnpm run rtws -- -C script-rtws kernel-driver/subdialog-queue-order-before-gen.ts",
     "kernel-driver:subdialog-queue-interrupt-rollback": "pnpm run rtws -- -C script-rtws kernel-driver/subdialog-queue-interrupt-rollback.ts",
