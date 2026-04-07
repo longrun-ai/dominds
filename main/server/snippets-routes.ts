@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 import { createLogger } from '../log';
+import '../tools/builtins';
 
 type SnippetTemplateSource = 'builtin' | 'rtws';
 
@@ -696,16 +697,7 @@ export async function handleToolsetManual(rawBody: string): Promise<ToolsetManua
   if (!req) return { success: false, error: 'Invalid request body' };
 
   try {
-    const { getTool } = await import('../tools/registry');
-    const tool = getTool('man');
-    if (!tool || tool.type !== 'func') {
-      return { success: false, error: 'man tool not available' };
-    }
-
-    const fakeDlg = {
-      getLastUserLanguageCode: () => req.uiLanguage,
-    } as unknown as Parameters<typeof tool.call>[0];
-
+    const { renderToolsetManualContent } = await import('../tools/toolset-manual');
     const { Team } = await import('../team');
     const caller = new Team.Member({
       id: 'webui',
@@ -714,11 +706,32 @@ export async function handleToolsetManual(rawBody: string): Promise<ToolsetManua
       write_dirs: ['.minds/**'],
       toolsets: [req.toolsetId],
     });
+    const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
+      member: caller,
+    });
+    const declaredMcpToolsets = await Team.readMcpDeclaredToolsets();
+    const declaredMcpToolsetNames =
+      declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.declaredServerIds : undefined;
+    const invalidMcpToolsetNames =
+      declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.invalidServerIds : undefined;
+    const availableToolNames = new Set(
+      caller
+        .listTools({
+          onMissingToolset: 'silent',
+          onMissingTool: 'silent',
+          dynamicToolsetNames,
+          declaredMcpToolsetNames,
+          invalidMcpToolsetNames,
+        })
+        .map((tool) => tool.name),
+    );
 
-    const markdown = await tool.call(fakeDlg, caller, {
+    const markdown = await renderToolsetManualContent({
       toolsetId: req.toolsetId,
+      language: req.uiLanguage,
       ...(req.topic ? { topic: req.topic } : {}),
       ...(req.topics ? { topics: req.topics } : {}),
+      availableToolNames,
     });
     return { success: true, markdown: String(markdown) };
   } catch (error: unknown) {

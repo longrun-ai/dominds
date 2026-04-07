@@ -97,6 +97,7 @@ interface ApiError extends Error {
   status?: number;
   code?: string;
   response?: unknown;
+  requestBody?: unknown;
 }
 
 type ApiErrorPayload = {
@@ -127,6 +128,33 @@ function getApiErrorMessage(status: number, statusText: string, data: unknown): 
     if (typeof data.message === 'string' && data.message.trim() !== '') return data.message;
   }
   return `HTTP ${status}: ${statusText}`;
+}
+
+function summarizeRequestBodyForLog(body: unknown): unknown {
+  if (body === undefined || body === null) {
+    return undefined;
+  }
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    const entries: Array<{ key: string; value: string }> = [];
+    for (const [key, value] of body.entries()) {
+      if (typeof value === 'string') {
+        entries.push({ key, value: value.length > 200 ? `${value.slice(0, 200)}...` : value });
+      } else {
+        entries.push({
+          key,
+          value: `[Blob ${(value as Blob).type || 'application/octet-stream'}]`,
+        });
+      }
+    }
+    return { kind: 'FormData', entries };
+  }
+  if (typeof body === 'string') {
+    if (body.length <= 2000) {
+      return body;
+    }
+    return `${body.slice(0, 2000)}...`;
+  }
+  return body;
 }
 
 export class ApiClient {
@@ -200,6 +228,7 @@ export class ApiClient {
         ) as ApiError;
         error.status = response.status;
         error.response = data;
+        error.requestBody = summarizeRequestBodyForLog(body);
         throw error;
       }
 
@@ -224,6 +253,7 @@ export class ApiClient {
         url,
         status: apiError.status ?? null,
         error: apiError.message,
+        requestBody: apiError.requestBody ?? summarizeRequestBodyForLog(body),
         response: apiError.response,
       });
 
