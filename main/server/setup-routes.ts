@@ -80,7 +80,12 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
     };
   }
 
-  const providers = await buildProviderSummaries(builtin.providers, builtin.providerKeysInOrder, {
+  const providerKeysInOrder = mergeProviderKeysInOrder(
+    rtwsLlmYaml.providerKeys ?? [],
+    builtin.providerKeysInOrder,
+    merged.providers,
+  );
+  const providers = await buildProviderSummaries(merged.providers, providerKeysInOrder, {
     envLocalPath: RTWS_ENV_LOCAL_PATH,
     bashrcPath,
     zshrcPath,
@@ -318,7 +323,7 @@ async function loadBuiltinProviders(): Promise<BuiltinProvidersLoadResult> {
     if (!isRecord(parsed) || !isRecord(parsed.providers)) {
       return { kind: 'error', errorText: 'Invalid defaults.yaml: expected providers object' };
     }
-    const providerKeysInOrder = extractProvidersKeysFromDefaultsYamlDoc(doc);
+    const providerKeysInOrder = extractProvidersKeysFromYamlDoc(doc);
     return {
       kind: 'ok',
       providers: parsed.providers as Record<string, ProviderConfig>,
@@ -496,6 +501,28 @@ function orderedProviderEntries(
   return out;
 }
 
+function mergeProviderKeysInOrder(
+  preferredProviderKeysInOrder: string[],
+  secondaryProviderKeysInOrder: string[],
+  providers: Record<string, ProviderConfig>,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const appendKey = (providerKey: string): void => {
+    if (providerKey === '' || seen.has(providerKey)) return;
+    if (!Object.prototype.hasOwnProperty.call(providers, providerKey)) return;
+    out.push(providerKey);
+    seen.add(providerKey);
+  };
+
+  for (const providerKey of preferredProviderKeysInOrder) appendKey(providerKey);
+  for (const providerKey of secondaryProviderKeysInOrder) appendKey(providerKey);
+  for (const providerKey of Object.keys(providers)) appendKey(providerKey);
+
+  return out;
+}
+
 function extractYamlMapStringKeys(value: unknown): string[] {
   if (!YAML.isMap(value)) return [];
   const out: string[] = [];
@@ -510,7 +537,7 @@ function extractYamlMapStringKeys(value: unknown): string[] {
   return out;
 }
 
-function extractProvidersKeysFromDefaultsYamlDoc(doc: YAML.Document.Parsed): string[] {
+function extractProvidersKeysFromYamlDoc(doc: YAML.Document.Parsed): string[] {
   const root = doc.contents;
   if (!YAML.isMap(root)) return [];
   for (const pair of root.items) {
@@ -571,7 +598,8 @@ async function readRtwsLlmYamlProviderKeys(): Promise<SetupStatusResponse['rtwsL
   if (!exists) return { path: RTWS_LLM_YAML_PATH, exists: false };
   try {
     const raw = await fsPromises.readFile(RTWS_LLM_YAML_PATH, 'utf-8');
-    const parsed: unknown = YAML.parse(raw);
+    const doc = YAML.parseDocument(raw);
+    const parsed: unknown = doc.toJS();
     if (!isRecord(parsed)) {
       return {
         path: RTWS_LLM_YAML_PATH,
@@ -590,7 +618,7 @@ async function readRtwsLlmYamlProviderKeys(): Promise<SetupStatusResponse['rtwsL
     return {
       path: RTWS_LLM_YAML_PATH,
       exists: true,
-      providerKeys: Object.keys(providersUnknown).sort(),
+      providerKeys: extractProvidersKeysFromYamlDoc(doc),
     };
   } catch (error) {
     return { path: RTWS_LLM_YAML_PATH, exists: true, parseError: 'Failed to parse llm.yaml' };
