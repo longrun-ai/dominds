@@ -26,7 +26,7 @@ async function main(): Promise<void> {
       [
         'member_defaults:',
         '  provider: openai',
-        '  model: gpt-4',
+        '  model: gpt-5.4',
         'default_responder: alice',
         'members:',
         '  alice:',
@@ -51,14 +51,9 @@ async function main(): Promise<void> {
       'charlie should be omitted due to invalid config',
     );
     assert.equal(
-      team.getMember('alice')?.fbr_model_params?.codex?.web_search,
-      'disabled',
-      'member should inherit default fbr codex.web_search=disabled',
-    );
-    assert.equal(
-      team.getMember('alice')?.fbr_model_params?.openai?.web_search,
-      'disabled',
-      'member should inherit default fbr openai.web_search=disabled',
+      team.getMember('alice')?.fbr_model_params?.openai?.web_search_tool,
+      false,
+      'member should inherit default fbr openai.web_search_tool=false',
     );
 
     const snapshot = getProblemsSnapshot();
@@ -78,6 +73,36 @@ async function main(): Promise<void> {
     );
     assert.ok(charlieProblem && charlieProblem.kind === 'team_workspace_config_error');
     assert.ok(charlieProblem.detail.errorText.includes('members.charlie'));
+
+    // FBR web-search defaults are provider-namespace specific: OpenAI/Responses uses
+    // `openai.web_search_tool`, while Codex uses `codex.web_search`.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    toolsets: [ws_read]',
+        '',
+      ].join('\n'),
+    );
+
+    const teamCodexDefaults = await Team.load();
+    assert.equal(
+      teamCodexDefaults.getMember('alice')?.fbr_model_params?.codex?.web_search,
+      'disabled',
+      'member should inherit default fbr codex.web_search=disabled',
+    );
+    assert.equal(
+      teamCodexDefaults.getMember('alice')?.fbr_model_params?.openai?.web_search_tool,
+      false,
+      'FBR defaults should preserve separate OpenAI/Responses namespace even for codex members',
+    );
 
     // Unknown keys + common model_params misplacements should be detected and reported (but not
     // break loading of otherwise valid members/defaults).
@@ -203,6 +228,41 @@ async function main(): Promise<void> {
       'no team yaml errors expected for valid fbr_model_params.codex.web_search',
     );
 
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: openai',
+        '  model: gpt-5.4',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    fbr_model_params:',
+        '      openai:',
+        '        web_search_tool: true',
+        '        web_search_context_size: high',
+        '',
+      ].join('\n'),
+    );
+
+    const teamFbrOpenAiWebSearch = await Team.load();
+    assert.equal(
+      teamFbrOpenAiWebSearch.getMember('alice')?.fbr_model_params?.openai?.web_search_tool,
+      true,
+      'fbr_model_params should allow user override for openai.web_search_tool',
+    );
+    assert.equal(
+      teamFbrOpenAiWebSearch.getMember('alice')?.fbr_model_params?.openai?.web_search_context_size,
+      'high',
+      'fbr_model_params should allow Responses-native openai web search options',
+    );
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for valid fbr_model_params.openai.web_search_tool',
+    );
+
     // model_params.json_response should be accepted at root as provider-agnostic config.
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
@@ -285,7 +345,7 @@ async function main(): Promise<void> {
       [
         'member_defaults:',
         '  provider: openai',
-        '  model: gpt-4',
+        '  model: gpt-5.4',
         'default_responder: alice',
         'shell_specialists: cmdr',
         'members:',
@@ -329,12 +389,13 @@ async function main(): Promise<void> {
           p.id === 'team/team_yaml_error/shell_specialists/non_specialist_has_shell_tools/alice',
       );
       assert.ok(problem, 'shell-specialist policy problem should be present for alice');
+      assert.equal(problem.severity, 'warning');
       assert.equal(
         problem.messageI18n?.zh,
-        '无效的 .minds/team.yaml：有成员不是 shell 专员，却配置了 shell 工具。',
+        '.minds/team.yaml 警告：有成员不是 shell 专员，但在已有其他 shell 专员时也配置了 shell 工具。',
       );
       assert.ok(
-        problem.detailTextI18n?.zh?.includes('但没有列在 shell_specialists 里'),
+        problem.detailTextI18n?.zh?.includes('团队里已经配置了其他 shell 专员（cmdr）'),
         'shell-specialist problem detail should be localized in zh',
       );
     }
@@ -375,6 +436,43 @@ async function main(): Promise<void> {
 
       assert.ok(toolNames.includes('shell_cmd'), 'cmdr should receive shell_cmd');
     }
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: openai',
+        '  model: gpt-5.4',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    toolsets: [os]',
+        '',
+      ].join('\n'),
+    );
+
+    const teamNoSpecialist = await Team.load();
+    assert.ok(
+      teamNoSpecialist.getMember('alice'),
+      'alice should still be loaded without shell_specialists',
+    );
+
+    const noSpecialistSnapshot = getProblemsSnapshot();
+    const noSpecialistProblem = noSpecialistSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/shell_specialists/forbidden_member/alice',
+    );
+    assert.ok(noSpecialistProblem, 'missing shell_specialists should remain an error');
+    assert.equal(noSpecialistProblem.severity, 'error');
+    assert.equal(
+      noSpecialistProblem.messageI18n?.zh,
+      '无效的 .minds/team.yaml：已经配置了 shell 工具，但没有配置任何 shell 专员。',
+    );
+    assert.ok(
+      noSpecialistProblem.detailTextI18n?.zh?.includes('但团队里没有其他 shell 专员'),
+      'missing shell_specialists detail should explain there is no other shell specialist',
+    );
 
     // gofor should preserve string/object forms, and structured list form should remain allowed
     // while surfacing a warning that object form is clearer for labeled entries.

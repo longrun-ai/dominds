@@ -175,6 +175,14 @@ export namespace Team {
           "成员 '$1' 配置了 shell 工具（$2），但 shell_specialists 为空；请把 '$3' 加入 shell_specialists，或删掉这个成员的 shell 工具。",
         ],
         [
+          /member '(.+?)' has shell tools \((.+?)\) but there are no other shell specialists configured; set shell_specialists to include '(.+?)' or remove shell tools from that member\./g,
+          "成员 '$1' 配置了 shell 工具（$2），但团队里没有其他 shell 专员；请把 '$3' 加入 shell_specialists，或删掉这个成员的 shell 工具。",
+        ],
+        [
+          /member '(.+?)' has shell tools \((.+?)\) but is not listed in shell_specialists; other shell specialists are already configured \((.+?)\)\./g,
+          "成员 '$1' 配置了 shell 工具（$2），但没有列在 shell_specialists 里；团队里已经配置了其他 shell 专员（$3）。",
+        ],
+        [
           /shell_specialists includes '(.+?)', but no such member exists in team\.members\./g,
           "shell_specialists 里写了 '$1'，但 team.members 中没有这个成员。",
         ],
@@ -249,11 +257,16 @@ export namespace Team {
           /non-shell-specialist member has shell tools\./g,
           '有成员不是 shell 专员，却配置了 shell 工具。',
         ],
+        [
+          /non-shell-specialist member has shell tools while other shell specialists exist\./g,
+          '有成员不是 shell 专员，但在已有其他 shell 专员时也配置了 shell 工具。',
+        ],
         [/shell specialist has no shell tools\./g, '有 shell 专员成员却没有配置 shell 工具。'],
         [
-          /shell tools are present but shell_specialists is empty\/null\./g,
-          '已经配置了 shell 工具，但 shell_specialists 为空或 null。',
+          /shell tools are present but no shell specialists are configured\./g,
+          '已经配置了 shell 工具，但没有配置任何 shell 专员。',
         ],
+        [/Warning in \.minds\/team\.yaml:/g, '.minds/team.yaml 警告：'],
         [/missing member_defaults\.provider\./g, '缺少 member_defaults.provider。'],
         [/missing member_defaults\.model\./g, '缺少 member_defaults.model。'],
         [/default_responder does not match any member\./g, 'default_responder 没有指向任何成员。'],
@@ -966,8 +979,8 @@ export namespace Team {
           if (shellTools.length === 0) continue;
           addIssue(
             `shell_specialists/forbidden_member/${sanitizeProblemIdSegment(member.id)}`,
-            'Invalid .minds/team.yaml: shell tools are present but shell_specialists is empty/null.',
-            `member '${member.id}' has shell tools (${shellTools.join(', ')}) but shell_specialists is empty; set shell_specialists to include '${member.id}' or remove shell tools from that member.`,
+            'Invalid .minds/team.yaml: shell tools are present but no shell specialists are configured.',
+            `member '${member.id}' has shell tools (${shellTools.join(', ')}) but there are no other shell specialists configured; set shell_specialists to include '${member.id}' or remove shell tools from that member.`,
           );
         }
         return;
@@ -1000,10 +1013,10 @@ export namespace Team {
         if (specialistSet.has(member.id)) continue;
         const shellTools = listShellTools(member);
         if (shellTools.length === 0) continue;
-        addIssue(
+        addWarning(
           `shell_specialists/non_specialist_has_shell_tools/${sanitizeProblemIdSegment(member.id)}`,
-          'Invalid .minds/team.yaml: non-shell-specialist member has shell tools.',
-          `member '${member.id}' has shell tools (${shellTools.join(', ')}) but is not listed in shell_specialists.`,
+          'Warning in .minds/team.yaml: non-shell-specialist member has shell tools while other shell specialists exist.',
+          `member '${member.id}' has shell tools (${shellTools.join(', ')}) but is not listed in shell_specialists; other shell specialists are already configured (${specialists.join(', ')}).`,
         );
       }
     }
