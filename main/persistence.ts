@@ -112,6 +112,38 @@ function isTellaskBusinessCallName(value: string): value is TellaskBusinessCallN
   );
 }
 
+function isSuppressedTellaskPlaceholderFuncResult(args: {
+  name: string;
+  content: string;
+}): boolean {
+  if (!isTellaskBusinessCallName(args.name)) {
+    return false;
+  }
+  const raw = args.content.trim();
+  if (raw === '') {
+    return false;
+  }
+  if (
+    raw === 'Q4H 已结束等待状态，请参考 askHuman 结果气泡。' ||
+    raw === 'Q4H wait is resolved; refer to the askHuman result bubble.'
+  ) {
+    return true;
+  }
+  if (
+    raw.startsWith('Q4H 仍在等待人类回复，已持续 ') ||
+    raw.startsWith('Q4H is still waiting for human reply (elapsed ')
+  ) {
+    return true;
+  }
+  if (
+    raw.startsWith('支线对话仍在进行中，已持续 ') ||
+    raw.startsWith('Sideline dialog is still running (elapsed ')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function buildTellaskResultRoute(
   route: TellaskResultMsg['route'],
   fallback?: {
@@ -1323,15 +1355,22 @@ export class DiskFileDialogStore extends DialogStore {
     await this.appendEvent(dialog, course, funcResultRecord);
 
     // Send event to frontend
-    const funcResultEvt: FunctionResultEvent = {
-      type: 'func_result_evt',
-      id: funcResult.id,
-      name: funcResult.name,
-      content: funcResult.content,
-      contentItems: funcResult.contentItems,
-      course,
-    };
-    postDialogEvent(dialog, funcResultEvt);
+    if (
+      !isSuppressedTellaskPlaceholderFuncResult({
+        name: funcResult.name,
+        content: funcResult.content,
+      })
+    ) {
+      const funcResultEvt: FunctionResultEvent = {
+        type: 'func_result_evt',
+        id: funcResult.id,
+        name: funcResult.name,
+        content: funcResult.content,
+        contentItems: funcResult.contentItems,
+        course,
+      };
+      postDialogEvent(dialog, funcResultEvt);
+    }
   }
 
   public async receiveTellaskResult(dialog: Dialog, result: TellaskResultMsg): Promise<void> {
@@ -2143,15 +2182,22 @@ export class DiskFileDialogStore extends DialogStore {
       buildFuncResultRecord(result, resultGenseq),
     ]);
 
-    const funcResultEvt: FunctionResultEvent = {
-      type: 'func_result_evt',
-      id: result.id,
-      name: result.name,
-      content: result.content,
-      contentItems: result.contentItems,
-      course,
-    };
-    postDialogEvent(dialog, funcResultEvt);
+    if (
+      !isSuppressedTellaskPlaceholderFuncResult({
+        name: result.name,
+        content: result.content,
+      })
+    ) {
+      const funcResultEvt: FunctionResultEvent = {
+        type: 'func_result_evt',
+        id: result.id,
+        name: result.name,
+        content: result.content,
+        contentItems: result.contentItems,
+        course,
+      };
+      postDialogEvent(dialog, funcResultEvt);
+    }
   }
 
   public async persistTellaskCallResultPair(
@@ -2187,15 +2233,22 @@ export class DiskFileDialogStore extends DialogStore {
         buildFuncResultRecord(args.result, resultGenseq),
       ]);
 
-      const funcResultEvt: FunctionResultEvent = {
-        type: 'func_result_evt',
-        id: args.result.id,
-        name: args.result.name,
-        content: args.result.content,
-        contentItems: args.result.contentItems,
-        course,
-      };
-      postDialogEvent(dialog, funcResultEvt);
+      if (
+        !isSuppressedTellaskPlaceholderFuncResult({
+          name: args.result.name,
+          content: args.result.content,
+        })
+      ) {
+        const funcResultEvt: FunctionResultEvent = {
+          type: 'func_result_evt',
+          id: args.result.id,
+          name: args.result.name,
+          content: args.result.content,
+          contentItems: args.result.contentItems,
+          course,
+        };
+        postDialogEvent(dialog, funcResultEvt);
+      }
       return;
     }
 
@@ -3136,6 +3189,14 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'func_result_record': {
+        if (
+          isSuppressedTellaskPlaceholderFuncResult({
+            name: event.name,
+            content: event.content,
+          })
+        ) {
+          break;
+        }
         // Handle function result events from persistence
         const funcResult = {
           type: 'func_result_evt',
