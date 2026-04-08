@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -76,11 +77,169 @@ export function packWithPnpm(packageRootAbs) {
   }
 }
 
+function buildDirectNpmEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (key === 'NODE_OPTIONS') {
+      continue;
+    }
+    if (key.startsWith('npm_')) {
+      continue;
+    }
+    env[key] = value;
+  }
+  env.NODE_OPTIONS = '';
+  return env;
+}
+
+export function packPublishedPackageVersion(packageName, version) {
+  const tmpRootAbs = mkdtempSync(path.join(os.tmpdir(), 'dominds-pack-published-'));
+  try {
+    execFileSync('npm', ['pack', `${packageName}@${version}`, '--pack-destination', tmpRootAbs], {
+      encoding: 'utf8',
+      env: buildDirectNpmEnv(),
+      stdio: 'pipe',
+    });
+    const tarballs = readdirSync(tmpRootAbs).filter((entry) => entry.endsWith('.tgz')).sort();
+    if (tarballs.length !== 1) {
+      throw new Error(`npm pack must produce exactly one tarball, got ${tarballs.length}.`);
+    }
+    return {
+      tarballAbs: path.join(tmpRootAbs, tarballs[0]),
+      cleanup() {
+        rmSync(tmpRootAbs, { force: true, recursive: true });
+      },
+    };
+  } catch (error) {
+    rmSync(tmpRootAbs, { force: true, recursive: true });
+    throw error;
+  }
+}
+
 export function readTarballPackageJson(tarballAbs) {
   const stdout = execFileSync('tar', ['-xOf', tarballAbs, 'package/package.json'], {
     encoding: 'utf8',
   });
   return JSON.parse(stdout);
+}
+
+function unpackTarball(tarballAbs) {
+  const tmpRootAbs = mkdtempSync(path.join(os.tmpdir(), 'dominds-pack-unpack-'));
+  try {
+    execFileSync('tar', ['-xzf', tarballAbs, '-C', tmpRootAbs], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    const packageRootAbs = path.join(tmpRootAbs, 'package');
+    if (!existsSync(packageRootAbs)) {
+      throw new Error(`Tarball ${tarballAbs} does not contain package/ root.`);
+    }
+    return {
+      packageRootAbs,
+      cleanup() {
+        rmSync(tmpRootAbs, { force: true, recursive: true });
+      },
+    };
+  } catch (error) {
+    rmSync(tmpRootAbs, { force: true, recursive: true });
+    throw error;
+  }
+}
+
+function collectFileDigests(rootAbs) {
+  const digests = new Map();
+  const stack = [''];
+  while (stack.length > 0) {
+    const relDir = stack.pop();
+    if (relDir === undefined) {
+      continue;
+    }
+    const absDir = relDir === '' ? rootAbs : path.join(rootAbs, relDir);
+    const entries = readdirSync(absDir, { withFileTypes: true })
+      .slice()
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const relPath = relDir === '' ? entry.name : path.posix.join(relDir, entry.name);
+      const absPath = path.join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(relPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const content = readFileSync(absPath);
+      const digest = createHash('sha256').update(content).digest('hex');
+      digests.set(relPath.replaceAll(path.sep, '/'), digest);
+    }
+  }
+  return digests;
+}
+
+function describeDigestDiff(localDigests, publishedDigests) {
+  const onlyLocal = [];
+  const onlyPublished = [];
+  const mismatched = [];
+  const allPaths = [...new Set([...localDigests.keys(), ...publishedDigests.keys()])].sort();
+  for (const relPath of allPaths) {
+    const localDigest = localDigests.get(relPath);
+    const publishedDigest = publishedDigests.get(relPath);
+    if (localDigest === undefined) {
+      onlyPublished.push(relPath);
+      continue;
+    }
+    if (publishedDigest === undefined) {
+      onlyLocal.push(relPath);
+      continue;
+    }
+    if (localDigest !== publishedDigest) {
+      mismatched.push(relPath);
+    }
+  }
+
+  const previewLimit = 12;
+  const lines = [];
+  if (onlyLocal.length > 0) {
+    lines.push(
+      `only in local (${onlyLocal.length}): ${onlyLocal.slice(0, previewLimit).join(', ')}${onlyLocal.length > previewLimit ? ', ...' : ''}`,
+    );
+  }
+  if (onlyPublished.length > 0) {
+    lines.push(
+      `only in published (${onlyPublished.length}): ${onlyPublished.slice(0, previewLimit).join(', ')}${onlyPublished.length > previewLimit ? ', ...' : ''}`,
+    );
+  }
+  if (mismatched.length > 0) {
+    lines.push(
+      `content mismatch (${mismatched.length}): ${mismatched.slice(0, previewLimit).join(', ')}${mismatched.length > previewLimit ? ', ...' : ''}`,
+    );
+  }
+  return lines;
+}
+
+export function assertTarballContentsMatch(localTarballAbs, publishedTarballAbs, labels) {
+  const local = unpackTarball(localTarballAbs);
+  try {
+    const published = unpackTarball(publishedTarballAbs);
+    try {
+      const localDigests = collectFileDigests(local.packageRootAbs);
+      const publishedDigests = collectFileDigests(published.packageRootAbs);
+      const diffLines = describeDigestDiff(localDigests, publishedDigests);
+      if (diffLines.length === 0) {
+        return;
+      }
+      throw new Error(
+        `${labels.local} differs from ${labels.published}.\n${diffLines.map((line) => `- ${line}`).join('\n')}`,
+      );
+    } finally {
+      published.cleanup();
+    }
+  } finally {
+    local.cleanup();
+  }
 }
 
 export function assertPackedInternalDepsUseConcreteVersions(

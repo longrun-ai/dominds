@@ -4,7 +4,11 @@ import path from 'node:path';
 import * as readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { packAndVerifyPublicPackage } from './verify-packed-public-package.mjs';
+import {
+  assertTarballContentsMatch,
+  packAndVerifyPublicPackage,
+  packPublishedPackageVersion,
+} from './verify-packed-public-package.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -239,6 +243,7 @@ function shouldPublishPackage(pkg) {
   if (hasExactPublishedVersion(pkg.packageName, pkg.localVersion)) {
     return {
       publish: false,
+      exactVersionExists: true,
       reason: `skip: ${pkg.packageName}@${pkg.localVersion} already exists on npm`,
     };
   }
@@ -253,11 +258,37 @@ function shouldPublishPackage(pkg) {
   }
   return {
     publish: true,
+    exactVersionExists: false,
     reason:
       highestPublishedVersion === null
         ? `publish: ${pkg.packageName}@${pkg.localVersion} has never been published`
         : `publish: ${pkg.packageName}@${pkg.localVersion} is newer than npm ${highestPublishedVersion}`,
   };
+}
+
+function verifySkippedExactVersionPackageMatchesRegistry(pkg) {
+  runPrepublishOnly(pkg);
+  const localPacked = packAndVerifyPublicPackage(pkg.packageRootAbs);
+  try {
+    const publishedPacked = packPublishedPackageVersion(pkg.packageName, pkg.localVersion);
+    try {
+      assertTarballContentsMatch(localPacked.tarballAbs, publishedPacked.tarballAbs, {
+        local: `local packed ${pkg.packageName}@${pkg.localVersion}`,
+        published: `published npm ${pkg.packageName}@${pkg.localVersion}`,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${pkg.packageName}@${pkg.localVersion} already exists on npm, but the current local package contents differ from the published tarball.\n` +
+          `This means the workspace package changed without a version bump. Bump the version before publishing.\n` +
+          `${detail}`,
+      );
+    } finally {
+      publishedPacked.cleanup();
+    }
+  } finally {
+    localPacked.cleanup();
+  }
 }
 
 async function verifyPublished(packageName, version) {
@@ -391,6 +422,13 @@ async function main() {
   console.log('Public package publish plan:');
   for (const item of plan) {
     console.log(`- ${item.reason}`);
+  }
+
+  for (const item of plan) {
+    if (!item.publish && item.exactVersionExists) {
+      console.log(`Verifying skipped exact-version package matches npm: ${item.packageName}@${item.localVersion}`);
+      verifySkippedExactVersionPackageMatchesRegistry(item);
+    }
   }
 
   const toPublish = plan.filter((item) => item.publish);
