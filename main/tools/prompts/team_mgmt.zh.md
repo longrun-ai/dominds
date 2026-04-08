@@ -5,6 +5,7 @@
 ## 总原则
 
 - 增量编辑（推荐）：用 `team_mgmt_prepare_*` 先生成可复核的 YAML + diff + `hunk_id`，再用 `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })` 显式写入。
+- 若你承担团队管理职责，执行具体团队管理操作前，先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。
 - 并行约束：同一轮生成中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**。
 - 例外（创建）：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
 - 例外（整文件覆盖）：`team_mgmt_overwrite_entire_file` 会直接写盘（不走 prepare/apply），必须提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏；建议先用 `team_mgmt_read_file` 从 YAML header 读取 `total_lines/size_bytes` 再填写。
