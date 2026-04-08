@@ -9,3 +9,7 @@ dist/
 ._*
 
 npm-debug.log*
+
+*.tgz
+*.tar
+*.gz
