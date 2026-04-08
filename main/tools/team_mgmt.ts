@@ -3536,8 +3536,6 @@ function renderTeamManual(language: LanguageCode): string {
       '      - ws_read\n' +
       '      - ws_mod\n' +
       (windowsHost ? '' : '      - codex_style_tools\n') +
-      "    no_read_dirs: ['.minds/**']\n" +
-      "    no_write_dirs: ['.minds/**']\n" +
       '  qa_guard:\n' +
       '    name: QA Guard\n' +
       '    gofor:\n' +
@@ -3602,8 +3600,6 @@ function renderTeamManual(language: LanguageCode): string {
     '      - ws_read\n' +
     '      - ws_mod\n' +
     (windowsHost ? '' : '      - codex_style_tools\n') +
-    "    no_read_dirs: ['.minds/**']\n" +
-    "    no_write_dirs: ['.minds/**']\n" +
     '```\n'
   );
 }
@@ -3791,6 +3787,8 @@ function renderPermissionsManual(language: LanguageCode): string {
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
         '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。任何通用文件工具都无法访问该目录树（硬编码无条件拒绝）。',
         '`.minds/**` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team_mgmt`）可访问它。',
+        '因此，**不要**为了“重申系统内置限制”而在 `team.yaml` 里机械地添加 `no_read_dirs: [".minds/**"]` / `no_write_dirs: [".minds/**"]`（或出于同类目的添加 `*.tsk/**` deny）。这类条目不增加任何真实约束，只会制造样板噪音，并误导团队管理智能体以为它们是常规必填项。',
+        '原则：`team.yaml` 里的权限字段只写**额外**业务约束；系统内置的硬边界由运行时自己保证，不需要也不应重复书写。',
         '说明：如果你在 `team.yaml` 的 allow-list（`read_dirs`/`write_dirs`）里写了 `.minds/**` 或 `*.tsk/**` 试图绕过限制，运行时会忽略并上报 err 级别问题。',
       ]) +
       fmtCodeBlock('yaml', [
@@ -3799,8 +3797,6 @@ function renderPermissionsManual(language: LanguageCode): string {
         '  coder:',
         '    read_dirs: ["dominds/**"]',
         '    write_dirs: ["dominds/**"]',
-        '    no_read_dirs: [".minds/**"]',
-        '    no_write_dirs: [".minds/**"]',
       ])
     );
   }
@@ -3819,6 +3815,8 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
       '`*.tsk/` is an encapsulated Taskdoc: it must be maintained via the function tool `change_mind` only. It is hard-denied for all general file tools.',
       '`.minds/**` stores rtws (runtime workspace) team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team_mgmt`) may access it.',
+      'Therefore, do **not** mechanically restate that built-in hard deny in `team.yaml` with `no_read_dirs: [".minds/**"]` / `no_write_dirs: [".minds/**"]` (or similar `*.tsk/**` deny lines). Those entries add no real constraint, only boilerplate noise, and they incorrectly teach team managers that such lines are standard required practice.',
+      'Rule of thumb: permission fields in `team.yaml` should describe only **additional** business-specific constraints. Built-in hard boundaries are enforced by the runtime and should not be redundantly copied into member config.',
       'Note: If you try to whitelist `.minds/**` or `*.tsk/**` via `read_dirs`/`write_dirs`, the runtime ignores it and reports an error-level Problem.',
     ]) +
     fmtCodeBlock('yaml', [
@@ -3827,8 +3825,6 @@ function renderPermissionsManual(language: LanguageCode): string {
       '  coder:',
       '    read_dirs: ["dominds/**"]',
       '    write_dirs: ["dominds/**"]',
-      '    no_read_dirs: [".minds/**"]',
-      '    no_write_dirs: [".minds/**"]',
     ])
   );
 }

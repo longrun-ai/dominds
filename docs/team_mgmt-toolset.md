@@ -133,6 +133,9 @@ Notes:
   - For `team_mgmt`, that explicit allowlist is `.minds/**` (including `.minds/memory/**`) so the
     team manager can repair accidental corruptions made by other tools (even though `.minds/memory/**`
     already has dedicated `personal_memory` / `team_memory` tools for normal use).
+- Conversely, the denial of `.minds/**` / `*.tsk/**` for general file tools is a **built-in hard runtime
+  rule**, not a standard deny stanza you should keep repeating in `team.yaml`. Only additional
+  business-specific constraints belong in explicit `no_read_dirs` / `no_write_dirs`.
 - Require explicit `.minds/...` paths and validate them; do not support “implicitly scoped” paths
   like `team.yaml`.
 
@@ -444,19 +447,14 @@ member_defaults:
   toolsets:
     - ws_read
     - personal_memory
-  # Default posture: deny `.minds/` edits for normal members.
-  # (Team management should be done via `team_mgmt` tools, not general file tools.)
-  no_read_dirs:
-    - .minds/team.yaml
-    - .minds/llm.yaml
-    - .minds/mcp.yaml
-    - .minds/team/**
-  no_write_dirs:
-    - .minds/**
 
 default_responder: fuxi
 
 members:
+
+Note: in the normal-member example above, do **not** add `no_read_dirs` / `no_write_dirs` merely to
+restate that `.minds/**` is blocked. That boundary is already enforced by the runtime for general
+file tools; explicit deny entries should be reserved for extra constraints beyond the built-ins.
   # Example visible teammate (recommended): define at least one non-hidden responder for daily work.
   dev:
     name: Dev
