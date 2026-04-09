@@ -4560,30 +4560,6 @@ export class DomindsApp extends HTMLElement {
         word-break: break-word;
       }
 
-      .retry-panel {
-        border-color: color-mix(
-          in srgb,
-          var(--dominds-warning, var(--color-warning, #f59e0b)) 40%,
-          var(--dominds-border, var(--color-border-primary, #e2e8f0))
-        );
-        background: color-mix(
-          in srgb,
-          var(--dominds-warning, #f59e0b) 14%,
-          var(--dominds-sidebar-bg, var(--dominds-bg, #ffffff))
-        );
-      }
-
-      .retry-panel .icon-mask {
-        color: var(--dominds-warning, var(--color-warning, #f59e0b));
-      }
-
-      .resume-panel {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-      }
-
       .dialog-viewport-panel-actions {
         display: flex;
         align-items: center;

@@ -215,7 +215,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Smart auto-scroll state machine.
   // UX contract:
-  // - Programmatic layout changes must never disable follow. Retry/resume panels and streaming
+  // - Programmatic layout changes must never disable follow. Viewport status panels and streaming
   //   growth can change viewport geometry while the user still expects follow to stay on.
   // - "Move away from latest" disables follow; "move toward latest" does not.
   // - Reverse wheel/trackpad input is intentionally NOT judged by current viewport position.
