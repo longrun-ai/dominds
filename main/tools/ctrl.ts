@@ -414,7 +414,6 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
 export const deleteReminderTool: FuncTool = {
   type: 'func',
   name: 'delete_reminder',
-  followupMode: 'deferred',
   description: 'Delete a reminder by its reminder_id.',
   descriptionI18n: {
     en: 'Delete a reminder by its reminder_id.',
@@ -461,7 +460,6 @@ export const deleteReminderTool: FuncTool = {
 export const addReminderTool: FuncTool = {
   type: 'func',
   name: 'add_reminder',
-  followupMode: 'deferred',
   description:
     'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
   descriptionI18n: {
@@ -559,7 +557,6 @@ export const addReminderTool: FuncTool = {
 export const updateReminderTool: FuncTool = {
   type: 'func',
   name: 'update_reminder',
-  followupMode: 'deferred',
   description: 'Update an existing reminder by its reminder_id.',
   descriptionI18n: {
     en: 'Update an existing reminder by its reminder_id.',
