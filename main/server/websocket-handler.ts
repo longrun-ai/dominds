@@ -4,7 +4,13 @@
  * Common WebSocket handling functionality for dialog communication
  */
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
-import { EndOfStream, type SubChan } from '@longrun-ai/kernel/evt';
+import {
+  createPubChan,
+  createSubChan,
+  EndOfStream,
+  type PubChan,
+  type SubChan,
+} from '@longrun-ai/kernel/evt';
 import type {
   ClearResolvedProblemsRequest,
   CreateDialogErrorCode,
@@ -17,6 +23,8 @@ import type {
   DisplayCourseRequest,
   DisplayDialogRequest,
   DisplayRemindersRequest,
+  DomindsRuntimeMode,
+  DomindsRuntimeStatusMessage,
   DriveDialogByUserAnswer,
   DriveDialogRequest,
   EmergencyStopRequest,
@@ -97,6 +105,11 @@ import {
   normalizeCreateDialogErrorCode,
   parseCreateDialogInput,
 } from './create-dialog-contract';
+import {
+  createDomindsRuntimeStatusMessage,
+  getDomindsRuntimeStatus,
+} from './dominds-runtime-status';
+import { setDomindsSelfUpdateBroadcaster } from './dominds-self-update';
 
 function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   const member = team.getMember(agentId);
@@ -1784,18 +1797,23 @@ export function setupWebSocketServer(
   clients: Set<WebSocket>,
   auth: AuthConfig,
   serverWorkLanguage: LanguageCode,
+  mode: DomindsRuntimeMode,
 ): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
+  const runtimeStatusPubChan: PubChan<DomindsRuntimeStatusMessage> =
+    createPubChan<DomindsRuntimeStatusMessage>();
 
-  // Broadcast dialog display-state changes to all connected clients so multi-tab views converge.
-  setDisplayStateBroadcaster((msg: WebSocketMessage) => {
+  const broadcastToClients = (msg: WebSocketMessage): void => {
     const data = JSON.stringify(msg);
     for (const ws of clients) {
       if (ws.readyState === 1) {
         ws.send(data);
       }
     }
-  });
+  };
+
+  // Broadcast dialog display-state changes to all connected clients so multi-tab views converge.
+  setDisplayStateBroadcaster(broadcastToClients);
 
   // Broadcast global dialog events to all connected clients:
   // - Q4H updates are rtws-global state in WebUI
@@ -1804,60 +1822,47 @@ export function setupWebSocketServer(
   installGlobalDialogEventBroadcaster({
     label: 'websocket-server',
     publish: (evt) => {
-      const data = JSON.stringify(evt);
-      for (const ws of clients) {
-        if (ws.readyState === 1) {
-          ws.send(data);
-        }
-      }
+      broadcastToClients(evt);
     },
   });
 
   // Broadcast dialog index changes (create/move/delete) so other tabs refresh their lists.
   // This ensures multi-tab/multi-browser updates stay consistent without polling.
   broadcastDialogsIndexMessage = (msg: WebSocketMessage) => {
-    const data = JSON.stringify(msg);
-    for (const ws of clients) {
-      if (ws.readyState === 1) {
-        ws.send(data);
-      }
-    }
+    broadcastToClients(msg);
   };
 
   // Broadcast global run-control refresh hints so all clients converge from persisted dialog index.
   broadcastRunControlRefreshMessage = (msg: RunControlRefreshMessage) => {
-    const data = JSON.stringify(msg);
-    for (const ws of clients) {
-      if (ws.readyState === 1) {
-        ws.send(data);
-      }
-    }
+    broadcastToClients(msg);
   };
 
   // Broadcast rtws Problems snapshots to all connected clients.
-  setProblemsBroadcaster((msg: WebSocketMessage) => {
-    const data = JSON.stringify(msg);
-    for (const ws of clients) {
-      if (ws.readyState === 1) {
-        ws.send(data);
-      }
-    }
-  });
+  setProblemsBroadcaster(broadcastToClients);
 
   // Broadcast `.minds/team.yaml` updates so multi-tab clients can refresh cached team config.
-  setTeamConfigBroadcaster((msg: WebSocketMessage) => {
-    const data = JSON.stringify(msg);
-    for (const ws of clients) {
-      if (ws.readyState === 1) {
-        ws.send(data);
-      }
-    }
+  setTeamConfigBroadcaster(broadcastToClients);
+  setDomindsSelfUpdateBroadcaster((status) => {
+    void createDomindsRuntimeStatusMessage(mode)
+      .then((msg) => {
+        runtimeStatusPubChan.write({
+          ...msg,
+          runtimeStatus: {
+            ...msg.runtimeStatus,
+            selfUpdate: status,
+          },
+        });
+      })
+      .catch((error: unknown) => {
+        log.warn('Failed to broadcast Dominds runtime status update', error);
+      });
   });
   startTeamConfigWatcher();
 
   httpServer.once('close', () => {
     stopTeamConfigWatcher();
     clearTeamConfigBroadcaster();
+    setDomindsSelfUpdateBroadcaster(null);
     void wss.close();
   });
 
@@ -1868,23 +1873,46 @@ export function setupWebSocketServer(
       return;
     }
 
-    clients.add(ws);
     wsUiLanguage.set(ws, serverWorkLanguage);
-
-    // Send welcome message
-    ws.send(
-      JSON.stringify({
-        type: 'welcome',
-        message: 'Connected to dialog server',
-        serverWorkLanguage,
-        supportedLanguageCodes: [...supportedLanguageCodes],
-        timestamp: formatUnifiedTimestamp(new Date()),
-      }),
-    );
-
-    // Send an initial snapshot so the UI can render a stable Problems indicator immediately.
-    ws.send(JSON.stringify(createProblemsSnapshotMessage()));
+    const runtimeStatusSubChan = createSubChan(runtimeStatusPubChan);
     void (async () => {
+      try {
+        const runtimeStatus = await getDomindsRuntimeStatus(mode);
+        ws.send(
+          JSON.stringify({
+            type: 'welcome',
+            message: 'Connected to dialog server',
+            serverWorkLanguage,
+            supportedLanguageCodes: [...supportedLanguageCodes],
+            runtimeStatus,
+            timestamp: formatUnifiedTimestamp(new Date()),
+          }),
+        );
+      } catch (error) {
+        log.warn('Failed to send WebSocket welcome snapshot', error);
+        ws.close(1011, 'welcome_failed');
+        return;
+      }
+
+      clients.add(ws);
+
+      try {
+        // Send an initial snapshot so the UI can render a stable Problems indicator immediately.
+        ws.send(JSON.stringify(createProblemsSnapshotMessage()));
+      } catch (error) {
+        log.warn('Failed to send initial problems snapshot', error);
+      }
+
+      void (async () => {
+        try {
+          for await (const runtimeStatusMsg of runtimeStatusSubChan.stream()) {
+            ws.send(JSON.stringify(runtimeStatusMsg));
+          }
+        } catch (error) {
+          log.warn('Failed to forward Dominds runtime status event', error);
+        }
+      })();
+
       try {
         const counts = await getRunControlCountsSnapshot();
         ws.send(
@@ -1919,6 +1947,7 @@ export function setupWebSocketServer(
     });
 
     ws.on('close', () => {
+      runtimeStatusSubChan.cancel();
       clients.delete(ws);
 
       // Clean up client subscriptions
@@ -1927,6 +1956,7 @@ export function setupWebSocketServer(
 
     ws.on('error', (error) => {
       log.error('WebSocket error:', error);
+      runtimeStatusSubChan.cancel();
       clients.delete(ws);
 
       // Clean up client subscriptions on error

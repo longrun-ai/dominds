@@ -41,6 +41,7 @@ import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
+import { installLatestDominds, restartDomindsIntoLatest } from './dominds-self-update';
 import { isTextLikeMimeType, sniffMimeType } from './mime-types';
 import {
   buildSetupFileResponse,
@@ -63,8 +64,6 @@ import {
 const log = createLogger('api-routes');
 const PRIMING_WARNING_SAMPLE_MAX = 5;
 
-let cachedDomindsVersion: string | null | undefined;
-
 function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   const member = team.getMember(agentId);
   if (member && member.diligence_push_max !== undefined) {
@@ -76,25 +75,6 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
 function normalizeDiligencePushMax(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.floor(value);
-}
-
-async function readDomindsPackageVersion(): Promise<string | null> {
-  if (cachedDomindsVersion !== undefined) return cachedDomindsVersion;
-  try {
-    const packagePath = path.join(__dirname, '..', '..', 'package.json');
-    const raw = await fsPromises.readFile(packagePath, 'utf8');
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) {
-      cachedDomindsVersion = null;
-      return null;
-    }
-    const version = parsed['version'];
-    cachedDomindsVersion = typeof version === 'string' ? version : null;
-    return cachedDomindsVersion;
-  } catch {
-    cachedDomindsVersion = null;
-    return null;
-  }
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -346,6 +326,13 @@ async function handleSaveCurrentCoursePriming(
 export interface ApiRouteContext {
   clients?: Set<WebSocket>;
   mode: 'development' | 'production';
+}
+
+function parseDomindsSelfUpdateAction(body: unknown): 'install' | 'restart' | null {
+  if (!isRecord(body)) return null;
+  const action = body['action'];
+  if (action === 'install' || action === 'restart') return action;
+  return null;
 }
 
 export async function handleWorkspaceFilePreviewPage(
@@ -1002,14 +989,44 @@ export async function handleApiRoute(
   context: ApiRouteContext,
 ): Promise<boolean> {
   try {
-    // Health check endpoint
-    if (pathname === '/api/health' && req.method === 'GET') {
-      return await handleHealthCheck(res, context);
-    }
-
     // Live reload endpoint for development
     if (pathname === '/api/live-reload' && req.method === 'GET') {
       return await handleLiveReload(res, context);
+    }
+
+    if (pathname === '/api/dominds/self-update' && req.method === 'POST') {
+      const body = await readRequestBody(req);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body) as unknown;
+      } catch {
+        respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
+        return true;
+      }
+      const action = parseDomindsSelfUpdateAction(parsed);
+      if (action === null) {
+        respondJson(res, 400, {
+          success: false,
+          error: "Invalid action. Expected 'install' or 'restart'",
+        });
+        return true;
+      }
+      try {
+        if (action === 'install') {
+          const status = await installLatestDominds();
+          respondJson(res, 200, { success: true, update: status });
+          return true;
+        }
+        const status = await restartDomindsIntoLatest();
+        respondJson(res, 202, { success: true, update: status });
+        return true;
+      } catch (error: unknown) {
+        respondJson(res, 409, {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return true;
+      }
     }
 
     // Team configuration endpoint (renamed)
@@ -2084,34 +2101,6 @@ async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse)
       'Cache-Control': 'no-store',
     });
     res.end(JSON.stringify({ success: false, error: 'Failed to get tools registry' }));
-    return true;
-  }
-}
-
-/**
- * Health check endpoint
- */
-async function handleHealthCheck(res: ServerResponse, context: ApiRouteContext): Promise<boolean> {
-  try {
-    const version = (await readDomindsPackageVersion()) ?? 'unknown';
-    const workspace = process.cwd();
-    const healthData = {
-      ok: true,
-      timestamp: formatUnifiedTimestamp(new Date()),
-      server: 'dominds',
-      version,
-      // `workspace` is the canonical name used by WebUI indicators.
-      // Keep `rtws` for backward compatibility.
-      workspace,
-      rtws: workspace,
-      mode: context.mode,
-    };
-
-    respondJson(res, 200, healthData);
-    return true;
-  } catch (error) {
-    log.error('Health check failed:', error);
-    respondJson(res, 500, { ok: false, error: 'Health check failed' });
     return true;
   }
 }

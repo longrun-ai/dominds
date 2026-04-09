@@ -44,7 +44,6 @@ API Server is running in development mode
 Frontend (Vite dev server) should be started by your outer dev-server.sh
 
 Available API endpoints:
-• GET /api/health - Server health check
 • GET /api/live-reload - Development status
 • GET /api/team/config - Team configuration
 • GET /api/dialogs - List all dialogs

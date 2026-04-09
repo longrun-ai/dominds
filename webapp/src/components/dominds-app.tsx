@@ -40,6 +40,7 @@ import type {
   ClearResolvedProblemsResultMessage,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
+  DomindsRuntimeStatus,
   ErrorMessage,
   ProblemsSnapshotMessage,
   Q4HStateResponse,
@@ -57,7 +58,7 @@ import {
   getUiLanguageMatchState,
   getUiStrings,
 } from '../i18n/ui';
-import type { FrontendTeamMember } from '../services/api';
+import type { DomindsSelfUpdateStatus, FrontendTeamMember } from '../services/api';
 import { getApiClient } from '../services/api';
 import {
   makeWebSocketAuthProtocols,
@@ -318,6 +319,13 @@ type RootDialogsByStatus = {
 
 type DialogListBootstrapState = { kind: 'loading' } | { kind: 'ready' };
 
+type DomindsVersionActionState =
+  | Readonly<{ kind: 'idle' }>
+  | Readonly<{ kind: 'install'; latestVersion: string | null }>
+  | Readonly<{ kind: 'restart'; latestVersion: string | null }>
+  | Readonly<{ kind: 'installing'; latestVersion: string | null }>
+  | Readonly<{ kind: 'restarting'; latestVersion: string | null }>;
+
 export class DomindsApp extends HTMLElement {
   private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
@@ -354,6 +362,8 @@ export class DomindsApp extends HTMLElement {
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
   private backendRtws: string = '';
   private backendVersion: string = '';
+  private backendMode: 'development' | 'production' | null = null;
+  private domindsSelfUpdate: DomindsSelfUpdateStatus | null = null;
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
   private toolbarReminders: ReminderContent[] = [];
@@ -1186,11 +1196,12 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
 
     // Header + toolbar
-    const logo = this.shadowRoot.querySelector('.logo') as HTMLAnchorElement | null;
+    const logo = this.shadowRoot.querySelector('.logo-link') as HTMLAnchorElement | null;
     if (logo) {
       logo.title = t.logoGitHubTitle;
       logo.setAttribute('aria-label', t.logoGitHubTitle);
     }
+    this.updateDomindsVersionUi();
 
     const rtwsIndicator = this.shadowRoot.querySelector('.rtws-indicator') as HTMLElement | null;
     if (rtwsIndicator) rtwsIndicator.title = t.backendWorkspaceTitle;
@@ -2103,6 +2114,106 @@ export class DomindsApp extends HTMLElement {
     });
   }
 
+  private getDomindsVersionActionState(): DomindsVersionActionState {
+    const status = this.domindsSelfUpdate;
+    if (status === null || status.enabled !== true) return { kind: 'idle' };
+    if (status.busy === 'installing') {
+      return { kind: 'installing', latestVersion: status.targetVersion };
+    }
+    if (status.busy === 'restarting') {
+      return { kind: 'restarting', latestVersion: status.targetVersion };
+    }
+    if (status.action === 'install') {
+      return { kind: 'install', latestVersion: status.targetVersion };
+    }
+    if (status.action === 'restart') {
+      return { kind: 'restart', latestVersion: status.targetVersion };
+    }
+    return { kind: 'idle' };
+  }
+
+  private renderDomindsVersionBadge(): string {
+    const t = getUiStrings(this.uiLanguage);
+    const versionText = this.backendVersion ? `v${this.backendVersion}` : '';
+    const state = this.getDomindsVersionActionState();
+    let actionLabel = '';
+    let showIcon = false;
+    switch (state.kind) {
+      case 'idle':
+        actionLabel = '';
+        showIcon = false;
+        break;
+      case 'install':
+        actionLabel = t.domindsVersionUpdateLabel;
+        showIcon = true;
+        break;
+      case 'restart':
+        actionLabel = t.domindsVersionRestartLabel;
+        showIcon = true;
+        break;
+      case 'installing':
+        actionLabel = t.domindsVersionInstallingLabel;
+        showIcon = true;
+        break;
+      case 'restarting':
+        actionLabel = t.domindsVersionRestartingLabel;
+        showIcon = true;
+        break;
+    }
+
+    return [
+      `<span class="dominds-version-text">${escapeHtml(versionText)}</span>`,
+      actionLabel !== ''
+        ? `<span class="dominds-version-divider" aria-hidden="true">·</span><span class="dominds-version-action">${escapeHtml(actionLabel)}</span>`
+        : '',
+      showIcon
+        ? '<span class="icon-mask app-icon-refresh dominds-version-icon" aria-hidden="true"></span>'
+        : '',
+    ].join('');
+  }
+
+  private getDomindsVersionTitle(): string {
+    const t = getUiStrings(this.uiLanguage);
+    const currentVersion = this.backendVersion ? `v${this.backendVersion}` : 'unknown';
+    const latestVersion =
+      this.domindsSelfUpdate?.targetVersion ?? this.domindsSelfUpdate?.latestVersion ?? null;
+    const latestLabel = latestVersion ? `v${latestVersion}` : currentVersion;
+    const state = this.getDomindsVersionActionState();
+    switch (state.kind) {
+      case 'install':
+      case 'installing':
+        return `${t.domindsVersionUpdateAvailableTitle}\n${currentVersion} -> ${latestLabel}`;
+      case 'restart':
+      case 'restarting':
+        return `${t.domindsVersionRestartAvailableTitle}\n${currentVersion} -> ${latestLabel}`;
+      case 'idle':
+        if (
+          this.domindsSelfUpdate?.reason === 'latest_check_failed' &&
+          this.domindsSelfUpdate.message
+        ) {
+          return `${t.domindsVersionTitle}\n${this.domindsSelfUpdate.message}`;
+        }
+        return `${t.domindsVersionTitle}\n${currentVersion}`;
+    }
+  }
+
+  private updateDomindsVersionUi(): void {
+    const versionIndicator = this.shadowRoot?.querySelector('#dominds-version');
+    if (!(versionIndicator instanceof HTMLButtonElement)) return;
+    versionIndicator.innerHTML = this.renderDomindsVersionBadge();
+    versionIndicator.title = this.getDomindsVersionTitle();
+    versionIndicator.setAttribute('aria-label', this.getDomindsVersionTitle());
+    const isVisible = this.backendVersion !== '';
+    versionIndicator.classList.toggle('hidden', !isVisible);
+    const actionState = this.getDomindsVersionActionState();
+    const isActionable = actionState.kind === 'install' || actionState.kind === 'restart';
+    const needsAttention = isActionable;
+    versionIndicator.disabled = !isActionable;
+    versionIndicator.dataset.actionable = isActionable ? 'true' : 'false';
+    versionIndicator.dataset.attention = needsAttention ? 'true' : 'false';
+    versionIndicator.dataset.state = actionState.kind;
+  }
+
   /**
    * Surgical update: Update only the rtws indicator text.
    * Use this when rtws info is loaded or changes.
@@ -2115,14 +2226,85 @@ export class DomindsApp extends HTMLElement {
       )}`;
     }
 
-    const versionIndicator = this.shadowRoot?.querySelector('#dominds-version');
-    if (versionIndicator) {
-      versionIndicator.textContent = this.backendVersion ? `v${this.backendVersion}` : '';
-      if (this.backendVersion) {
-        versionIndicator.classList.remove('hidden');
-      } else {
-        versionIndicator.classList.add('hidden');
+    this.updateDomindsVersionUi();
+  }
+
+  private applyDomindsRuntimeStatus(status: DomindsRuntimeStatus): void {
+    const workspace = status.workspace.trim();
+    this.backendRtws = workspace;
+    this.backendVersion = status.version.trim();
+    this.backendMode = status.mode;
+    this.domindsSelfUpdate = status.selfUpdate;
+
+    if (workspace !== '') {
+      document.documentElement.setAttribute('data-dominds-rtws', workspace);
+      try {
+        window.localStorage.setItem('dominds.rtws', workspace);
+      } catch {
+        // ignore storage errors
       }
+    } else {
+      document.documentElement.removeAttribute('data-dominds-rtws');
+      try {
+        window.localStorage.removeItem('dominds.rtws');
+      } catch {
+        // ignore storage errors
+      }
+    }
+
+    this.updateRtwsInfo();
+  }
+
+  private formatVersionActionPrompt(template: string, latestVersion: string | null): string {
+    const currentVersion = this.backendVersion !== '' ? this.backendVersion : 'unknown';
+    const targetVersion = latestVersion ?? currentVersion;
+    return template.split('<current>').join(currentVersion).split('<latest>').join(targetVersion);
+  }
+
+  private async handleDomindsVersionAction(): Promise<void> {
+    const status = this.domindsSelfUpdate;
+    const t = getUiStrings(this.uiLanguage);
+    if (status === null || status.enabled !== true) return;
+    if (status.busy !== 'idle') return;
+    if (status.action !== 'install' && status.action !== 'restart') return;
+
+    const confirmText =
+      status.action === 'install'
+        ? this.formatVersionActionPrompt(t.domindsVersionInstallConfirm, status.targetVersion)
+        : this.formatVersionActionPrompt(t.domindsVersionRestartConfirm, status.targetVersion);
+    if (!window.confirm(confirmText)) return;
+
+    try {
+      const resp = await this.apiClient.actDomindsSelfUpdate(status.action);
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        throw new Error(resp.error || t.unknownError);
+      }
+      const nextStatus = resp.data?.update;
+      if (!nextStatus) {
+        throw new Error('Missing Dominds self-update action payload');
+      }
+      this.domindsSelfUpdate = nextStatus;
+      this.updateDomindsVersionUi();
+      if (nextStatus.busy === 'installing') {
+        this.showInfo(t.domindsVersionInstallInProgress);
+        return;
+      }
+      if (nextStatus.busy === 'restarting') {
+        this.showInfo(t.domindsVersionRestartInProgress);
+        return;
+      }
+      if (status.action === 'install' && nextStatus.action === 'restart') {
+        this.showSuccess(t.domindsVersionInstallSuccess);
+        return;
+      }
+      this.showInfo(t.domindsVersionRestartScheduled);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t.unknownError;
+      this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
     }
   }
 
@@ -2639,22 +2821,29 @@ export class DomindsApp extends HTMLElement {
 		        flex-shrink: 0;
 		      }
 
-			      .logo {
-			        display: flex;
-			        align-items: center;
-			        gap: 6px;
-			        font-weight: 600;
-			        font-size: 13px;
-			        line-height: 1;
-			        color: var(--dominds-primary, #007acc);
-			        flex: none;
+	      .logo {
+	        display: flex;
+	        align-items: center;
+	        gap: 6px;
+	        flex: none;
 	        min-width: auto;
 	        width: auto;
 	        margin-right: 0;
+	      }
+
+	      .logo-link {
+		        display: flex;
+		        align-items: center;
+		        gap: 6px;
+		        font-weight: 600;
+		        font-size: 13px;
+		        line-height: 1;
+		        color: var(--dominds-primary, #007acc);
+		        flex: none;
 	        text-decoration: none;
 	      }
 
-	      .logo img {
+	      .logo-link img {
 	        align-self: center;
 	        display: block;
 	      }
@@ -2672,12 +2861,68 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .dominds-version {
-	        font-size: 8px;
-	        font-weight: 550;
+	        display: inline-flex;
+	        align-items: center;
+	        gap: 4px;
+	        padding: 2px 6px;
+	        border-radius: 999px;
+	        border: 1px solid transparent;
+	        background: transparent;
 	        color: var(--dominds-muted, #666666);
+	        font-size: 9px;
+	        font-weight: 550;
 	        line-height: 1;
-          align-self: flex-end;
+	        cursor: default;
 	      }
+
+      .dominds-version:disabled {
+        opacity: 1;
+      }
+
+      .dominds-version[data-actionable='true'] {
+        cursor: pointer;
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 18%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 10%, transparent);
+        color: var(--dominds-primary, #007acc);
+      }
+
+      .dominds-version[data-actionable='true']:hover {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 16%, transparent);
+      }
+
+      .dominds-version-text,
+      .dominds-version-action,
+      .dominds-version-divider {
+        display: inline-block;
+        line-height: 1;
+      }
+
+      .dominds-version-icon {
+        width: 10px;
+        height: 10px;
+      }
+
+      @keyframes domindsVersionDoubleBounce {
+        0%, 72%, 100% {
+          transform: translateY(0) scale(1);
+        }
+        76% {
+          transform: translateY(-3px) scale(1.06);
+        }
+        80% {
+          transform: translateY(0) scale(1);
+        }
+        84% {
+          transform: translateY(-3px) scale(1.06);
+        }
+        88% {
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .dominds-version[data-attention='true'] .dominds-version-icon {
+        animation: domindsVersionDoubleBounce 8s ease-in-out infinite;
+      }
 
 	      .rtws-indicator {
 	        font-size: var(--dominds-font-size-xs, 11px);
@@ -5807,15 +6052,24 @@ export class DomindsApp extends HTMLElement {
     return `
       <div class="app-container">
 	        <header class="header">
-	          <a class="logo" href="https://github.com/longrun-ai/dominds" target="_blank" rel="noopener noreferrer" title="${t.logoGitHubTitle}" aria-label="${t.logoGitHubTitle}">
-	            <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
-	            <span class="logo-text">
-	              <span>Dominds</span>
-	              <span id="dominds-version" class="dominds-version ${this.backendVersion ? '' : 'hidden'}">${escapeHtml(
-                  this.backendVersion ? `v${this.backendVersion}` : '',
-                )}</span>
-	            </span>
-	          </a>
+	          <div class="logo">
+	            <a class="logo-link" href="https://github.com/longrun-ai/dominds" target="_blank" rel="noopener noreferrer" title="${t.logoGitHubTitle}" aria-label="${t.logoGitHubTitle}">
+	              <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
+	              <span class="logo-text">
+	                <span>Dominds</span>
+	              </span>
+	            </a>
+              <button type="button" id="dominds-version" class="dominds-version ${this.backendVersion ? '' : 'hidden'}" title="${escapeHtml(
+                this.getDomindsVersionTitle(),
+              )}" aria-label="${escapeHtml(this.getDomindsVersionTitle())}" data-actionable="false" data-attention="false" data-state="idle" ${
+                this.getDomindsVersionActionState().kind === 'install' ||
+                this.getDomindsVersionActionState().kind === 'restart'
+                  ? ''
+                  : 'disabled'
+              }>
+                ${this.renderDomindsVersionBadge()}
+              </button>
+	          </div>
 		          <div class="rtws-indicator" title="${t.backendWorkspaceTitle}">
 		            <span class="icon-mask app-icon-folder" aria-hidden="true"></span>
 		            ${this.backendRtws || t.backendWorkspaceLoading}
@@ -6421,8 +6675,20 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
+      const versionBtn = target.closest('#dominds-version') as HTMLButtonElement | null;
+      if (versionBtn) {
+        await this.handleDomindsVersionAction();
+        return;
+      }
+
       const statusBtn = target.closest('#dialog-status-btn') as HTMLButtonElement | null;
       if (statusBtn) {
+        this.resumeCurrentDialog();
+        return;
+      }
+
+      const resumeBtn = target.closest('#dialog-resume-btn') as HTMLButtonElement | null;
+      if (resumeBtn) {
         this.resumeCurrentDialog();
         return;
       }
@@ -7290,13 +7556,8 @@ export class DomindsApp extends HTMLElement {
     // Q4H state will be loaded when WebSocket connection is established
     // See handleConnectionStateChange() for Q4H request on connect
 
-    // Load rtws info, dialogs, team members, and Taskdocs
-    await Promise.all([
-      this.loadRtwsInfo(),
-      this.loadDialogs(),
-      this.loadTeamMembers(),
-      this.loadTaskDocuments(),
-    ]);
+    // Welcome/runtime status arrives via WebSocket.
+    await Promise.all([this.loadDialogs(), this.loadTeamMembers(), this.loadTaskDocuments()]);
 
     // If a deep link was provided, attempt to apply it once the essential lists are loaded.
     void this.applyPendingDeepLink();
@@ -8008,7 +8269,7 @@ export class DomindsApp extends HTMLElement {
       // Try the provided key immediately.
       this.setAuthActive('manual', key);
 
-      const probe = await this.apiClient.getHealth();
+      const probe = await this.apiClient.healthCheck();
       if (!probe.success) {
         this.setAuthNone();
         if (probe.status === 401) {
@@ -8514,57 +8775,6 @@ export class DomindsApp extends HTMLElement {
       }
     } catch (error) {
       console.error('Failed to load Taskdocs:', error);
-    }
-  }
-
-  private async loadRtwsInfo(): Promise<void> {
-    try {
-      const api = getApiClient();
-      const resp = await api.getHealth();
-      if (!resp.success) {
-        if (resp.status === 401) {
-          this.onAuthRejected('api');
-          return;
-        }
-        throw new Error(resp.error || 'Failed to load rtws info');
-      }
-      const data = resp.data;
-      if (data) {
-        const workspace = typeof data.workspace === 'string' ? data.workspace.trim() : '';
-        const rtws = typeof data.rtws === 'string' ? data.rtws.trim() : '';
-        const resolved = workspace !== '' ? workspace : rtws;
-        if (resolved !== '') {
-          this.backendRtws = resolved;
-          document.documentElement.setAttribute('data-dominds-rtws', resolved);
-          try {
-            window.localStorage.setItem('dominds.rtws', resolved);
-          } catch {
-            // ignore storage errors
-          }
-        } else {
-          document.documentElement.removeAttribute('data-dominds-rtws');
-          try {
-            window.localStorage.removeItem('dominds.rtws');
-          } catch {
-            // ignore storage errors
-          }
-        }
-      }
-      if (data && typeof data.version === 'string') {
-        this.backendVersion = data.version;
-      }
-      this.updateRtwsInfo();
-    } catch (error) {
-      console.error('Failed to load rtws info:', error);
-      this.backendRtws = 'Unknown rtws';
-      this.backendVersion = '';
-      document.documentElement.removeAttribute('data-dominds-rtws');
-      try {
-        window.localStorage.removeItem('dominds.rtws');
-      } catch {
-        // ignore storage errors
-      }
-      this.updateRtwsInfo();
     }
   }
 
@@ -10178,13 +10388,17 @@ export class DomindsApp extends HTMLElement {
     // Handle global events that don't need dialog filtering using discriminated unions
     switch (message.type) {
       case 'welcome': {
-        const welcome = message as WelcomeMessage;
-        this.serverWorkLanguage = welcome.serverWorkLanguage;
+        this.serverWorkLanguage = message.serverWorkLanguage;
         const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
         if (dialogContainer instanceof DomindsDialogContainer) {
-          dialogContainer.setServerWorkLanguage(welcome.serverWorkLanguage);
+          dialogContainer.setServerWorkLanguage(message.serverWorkLanguage);
         }
+        this.applyDomindsRuntimeStatus(message.runtimeStatus);
         this.applyUiLanguageToDom();
+        return true;
+      }
+      case 'dominds_runtime_status': {
+        this.applyDomindsRuntimeStatus(message.runtimeStatus);
         return true;
       }
       case 'ui_language_set': {

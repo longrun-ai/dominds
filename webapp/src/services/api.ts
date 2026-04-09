@@ -11,6 +11,8 @@ import {
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
+  DomindsRuntimeStatus,
+  DomindsSelfUpdateStatus as KernelDomindsSelfUpdateStatus,
   ListPrimingScriptsResponse,
   SaveCurrentCoursePrimingRequest,
   SaveCurrentCoursePrimingResponse,
@@ -69,6 +71,8 @@ export interface ApiResponse<T> {
   message?: string;
   timestamp?: string;
 }
+
+export type DomindsSelfUpdateStatus = KernelDomindsSelfUpdateStatus;
 
 export type DiligenceFileResponse = {
   success: boolean;
@@ -328,30 +332,32 @@ export class ApiClient {
   }
 
   /**
-   * Health check endpoint
+   * Lightweight authenticated probe endpoint
    */
-  async healthCheck(): Promise<ApiResponse<{ status: string; uptime: number; timestamp: string }>> {
+  async healthCheck(): Promise<
+    ApiResponse<{
+      success: boolean;
+      message: string;
+      timestamp: string;
+      mode: 'development' | 'production';
+    }>
+  > {
     return this.request('/api/live-reload');
   }
 
-  async getHealth(): Promise<
-    ApiResponse<{
-      ok: boolean;
-      timestamp: string;
-      server: string;
-      version: string;
-      workspace?: string;
-      rtws: string;
-      mode: string;
-    }>
-  > {
-    return this.request('/api/health');
+  async actDomindsSelfUpdate(
+    action: 'install' | 'restart',
+  ): Promise<ApiResponse<{ update: DomindsSelfUpdateStatus }>> {
+    return this.request('/api/dominds/self-update', {
+      method: 'POST',
+      body: { action },
+    });
   }
 
   /**
    * Get server information
    */
-  async getServerInfo(): Promise<ApiResponse<{ name: string; version: string; mode: string }>> {
+  async getServerInfo(): Promise<ApiResponse<DomindsRuntimeStatus>> {
     return this.request('/api/info');
   }
 

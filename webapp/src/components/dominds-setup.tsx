@@ -1,10 +1,12 @@
 import type {
+  DomindsRuntimeStatus,
   SetupFileKind,
   SetupFileResponse,
   SetupProminentEnumModelParam,
   SetupProviderSummary,
   SetupRequirement,
   SetupStatusResponse,
+  WebSocketMessage,
 } from '@longrun-ai/kernel/types';
 import {
   formatLanguageName,
@@ -17,11 +19,14 @@ import faviconUrl from '../assets/favicon.svg';
 import { getUiStrings, type UiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import {
+  makeWebSocketAuthProtocols,
   readAuthKeyFromLocalStorage,
   readAuthKeyFromUrl,
   removeAuthKeyFromUrl,
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
+import type { ConnectionState } from '../services/store';
+import { getWebSocketManager } from '../services/websocket';
 import './dominds-code-block';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
@@ -65,11 +70,14 @@ type ConfirmModalState =
 
 export class DomindsSetup extends HTMLElement {
   private apiClient = getApiClient();
+  private wsManager = getWebSocketManager();
   private authState: AuthState = { kind: 'uninitialized' };
   private state: SetupState = { kind: 'loading' };
   private fileModal: FileModalState = { kind: 'closed' };
   private confirmModal: ConfirmModalState = { kind: 'closed' };
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
+  private _wsEventCancel?: () => void;
+  private _connStateCancel?: () => void;
 
   private backendRtws: string = '';
   private backendVersion: string = '';
@@ -90,47 +98,98 @@ export class DomindsSetup extends HTMLElement {
 
   connectedCallback(): void {
     this.initializeAuth();
+    this.setupRuntimeStatusChannel();
     this.render();
-    void this.loadRtwsInfo();
+    void this.connectRuntimeStatusChannel();
     void this.loadStatus();
+  }
+
+  disconnectedCallback(): void {
+    if (this._wsEventCancel) {
+      this._wsEventCancel();
+      this._wsEventCancel = undefined;
+    }
+    if (this._connStateCancel) {
+      this._connStateCancel();
+      this._connStateCancel = undefined;
+    }
+    this.wsManager.disconnect();
   }
 
   private getDefaultRtwsLlmYamlDraft(t: UiStrings): string {
     return t.setupWorkspaceLlmTextareaPlaceholder;
   }
 
-  private async loadRtwsInfo(): Promise<void> {
-    try {
-      const resp = await this.apiClient.getHealth();
-      if (!resp.success) {
-        if (resp.status === 401) {
-          this.authState =
-            this.authState.kind === 'active'
-              ? { kind: 'prompt', reason: 'rejected' }
-              : { kind: 'prompt', reason: 'missing' };
-          this.setAuthNone();
-          this.state = { kind: 'auth_required' };
-          this.backendRtws = '';
-          this.render();
-          return;
-        }
-        throw new Error(resp.error || 'Failed to load rtws info');
+  private setupRuntimeStatusChannel(): void {
+    if (this._wsEventCancel) {
+      this._wsEventCancel();
+      this._wsEventCancel = undefined;
+    }
+    if (this._connStateCancel) {
+      this._connStateCancel();
+      this._connStateCancel = undefined;
+    }
+
+    const backendEvents = this.wsManager.subscribeToBackendEvents();
+    this._wsEventCancel = backendEvents.cancel;
+    void (async () => {
+      for await (const message of backendEvents.stream()) {
+        this.handleRuntimeStatusMessage(message);
       }
+    })();
 
-      const data = resp.data;
+    const connectionStates = this.wsManager.subscribeToConnectionState();
+    this._connStateCancel = connectionStates.cancel;
+    void (async () => {
+      for await (const state of connectionStates.stream()) {
+        this.handleRuntimeConnectionState(state);
+      }
+    })();
+  }
 
-      const workspace = data && typeof data.workspace === 'string' ? data.workspace.trim() : '';
-      const rtws = data && typeof data.rtws === 'string' ? data.rtws.trim() : '';
-      this.backendRtws = workspace !== '' ? workspace : rtws;
+  private async connectRuntimeStatusChannel(): Promise<void> {
+    try {
+      await this.wsManager.connect();
+    } catch (error) {
+      console.warn('Failed to connect setup WebSocket runtime status channel', error);
+    }
+  }
 
-      this.backendVersion = data && typeof data.version === 'string' ? data.version : '';
-      this.render();
-    } catch (error: unknown) {
-      console.error('Failed to load rtws info:', error);
+  private handleRuntimeConnectionState(state: ConnectionState): void {
+    if (state.status === 'connected') {
+      this.wsManager.setUiLanguage(this.uiLanguage);
+      return;
+    }
+    if (state.status === 'error' && state.error === 'Unauthorized') {
+      this.authState =
+        this.authState.kind === 'active'
+          ? { kind: 'prompt', reason: 'rejected' }
+          : { kind: 'prompt', reason: 'missing' };
+      this.setAuthNone();
+      this.state = { kind: 'auth_required' };
       this.backendRtws = '';
       this.backendVersion = '';
       this.render();
     }
+  }
+
+  private handleRuntimeStatusMessage(message: WebSocketMessage): void {
+    switch (message.type) {
+      case 'welcome':
+        this.applyRuntimeStatus(message.runtimeStatus);
+        return;
+      case 'dominds_runtime_status':
+        this.applyRuntimeStatus(message.runtimeStatus);
+        return;
+      default:
+        return;
+    }
+  }
+
+  private applyRuntimeStatus(status: DomindsRuntimeStatus): void {
+    this.backendRtws = status.workspace.trim();
+    this.backendVersion = status.version.trim();
+    this.render();
   }
 
   private getStoredUiLanguage(): LanguageCode | null {
@@ -183,11 +242,13 @@ export class DomindsSetup extends HTMLElement {
   private setAuthActive(source: 'url' | 'localStorage' | 'manual', key: string): void {
     this.authState = { kind: 'active', source, key };
     this.apiClient.setAuthToken(key);
+    this.wsManager.setProtocols(makeWebSocketAuthProtocols(key));
   }
 
   private setAuthNone(): void {
     this.authState = { kind: 'none' };
     this.apiClient.clearAuthToken();
+    this.wsManager.setProtocols(undefined);
   }
 
   private async loadStatus(): Promise<void> {
@@ -203,6 +264,8 @@ export class DomindsSetup extends HTMLElement {
             : { kind: 'prompt', reason: 'missing' };
         this.setAuthNone();
         this.state = { kind: 'auth_required' };
+        this.backendRtws = '';
+        this.backendVersion = '';
         this.render();
         return;
       }
@@ -361,11 +424,14 @@ export class DomindsSetup extends HTMLElement {
       this.setAuthNone();
       this.authState = { kind: 'prompt', reason: 'rejected' };
       this.state = { kind: 'auth_required' };
+      this.backendRtws = '';
+      this.backendVersion = '';
       this.render();
       return;
     }
 
     writeAuthKeyToLocalStorage(key);
+    void this.connectRuntimeStatusChannel();
     await this.loadStatus();
   }
 
@@ -429,7 +495,8 @@ export class DomindsSetup extends HTMLElement {
 
     const refresh = this.shadowRoot.querySelector('#refresh-btn');
     if (refresh instanceof HTMLButtonElement) {
-      refresh.onclick = () => void Promise.all([this.loadStatus(), this.loadRtwsInfo()]);
+      refresh.onclick = () =>
+        void Promise.all([this.loadStatus(), this.connectRuntimeStatusChannel()]);
     }
 
     const goBtn = this.shadowRoot.querySelector('#go-btn');
@@ -447,6 +514,7 @@ export class DomindsSetup extends HTMLElement {
         if (!parsed) return;
         this.uiLanguage = parsed;
         this.persistUiLanguage(parsed);
+        this.wsManager.setUiLanguage(parsed);
         this.render();
       };
     }
@@ -690,6 +758,8 @@ export class DomindsSetup extends HTMLElement {
             : { kind: 'prompt', reason: 'missing' };
         this.setAuthNone();
         this.state = { kind: 'auth_required' };
+        this.backendRtws = '';
+        this.backendVersion = '';
         this.fileModal = { kind: 'closed' };
         this.render();
         return;

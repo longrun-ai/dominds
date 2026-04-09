@@ -60,6 +60,7 @@ export function createDialogIdent(
 // WebSocket Protocol Discriminated Union for Dominds WebUI
 export type WebSocketMessage =
   | WelcomeMessage
+  | DomindsRuntimeStatusMessage
   | ErrorMessage
   | SetUiLanguageRequest
   | UiLanguageSetMessage
@@ -93,11 +94,53 @@ export type WebSocketMessage =
   | TypedDialogEvent;
 
 // Connection and Status Messages
+export type DomindsRuntimeMode = 'development' | 'production';
+
+export type DomindsSelfUpdateRunKind = 'disabled' | 'npm_global' | 'npx_latest';
+export type DomindsSelfUpdateAction = 'none' | 'install' | 'restart';
+export type DomindsSelfUpdateBusy = 'idle' | 'installing' | 'restarting';
+export type DomindsSelfUpdateReason =
+  | 'dev_mode'
+  | 'latest_check_failed'
+  | 'install_available'
+  | 'restart_required'
+  | 'restart_available_via_npx'
+  | null;
+
+export interface DomindsSelfUpdateStatus {
+  enabled: boolean;
+  mode: DomindsRuntimeMode;
+  currentVersion: string;
+  installedVersion: string;
+  latestVersion: string | null;
+  checkedAt: string | null;
+  runKind: DomindsSelfUpdateRunKind;
+  action: DomindsSelfUpdateAction;
+  busy: DomindsSelfUpdateBusy;
+  reason: DomindsSelfUpdateReason;
+  message: string | null;
+  targetVersion: string | null;
+}
+
+export interface DomindsRuntimeStatus {
+  workspace: string;
+  version: string;
+  mode: DomindsRuntimeMode;
+  selfUpdate: DomindsSelfUpdateStatus;
+}
+
 export interface WelcomeMessage {
   type: 'welcome';
   message: string;
   serverWorkLanguage: LanguageCode;
   supportedLanguageCodes: LanguageCode[];
+  runtimeStatus: DomindsRuntimeStatus;
+  timestamp: string;
+}
+
+export interface DomindsRuntimeStatusMessage {
+  type: 'dominds_runtime_status';
+  runtimeStatus: DomindsRuntimeStatus;
   timestamp: string;
 }
 

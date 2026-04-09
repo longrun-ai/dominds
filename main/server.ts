@@ -18,6 +18,7 @@ import { startMcpSupervisor } from './mcp/supervisor';
 import { recoverPendingReplyTellaskCallsAfterRestart } from './recovery/reply-special';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
 import { AuthConfig, computeAuthConfig } from './server/auth';
+import { configureDomindsSelfUpdate } from './server/dominds-self-update';
 import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
 import './tools/builtins';
@@ -123,6 +124,14 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
 
   // Create HTTP server
   const httpServer = createHttpServer(config);
+  configureDomindsSelfUpdate({
+    host,
+    port,
+    mode: config.mode,
+    stopServer: async () => {
+      await httpServer.stop();
+    },
+  });
 
   // Setup WebSocket server
   setupWebSocketServer(
@@ -130,6 +139,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     clients,
     config.auth ?? { kind: 'disabled' },
     getWorkLanguage(),
+    config.mode,
   );
 
   // MCP is best-effort: startup must not be blocked by MCP config/server issues.

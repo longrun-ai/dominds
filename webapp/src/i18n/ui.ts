@@ -4,6 +4,20 @@ export type UiStrings = {
   logoGitHubTitle: string;
   backendWorkspaceTitle: string;
   backendWorkspaceLoading: string;
+  domindsVersionTitle: string;
+  domindsVersionUpdateLabel: string;
+  domindsVersionRestartLabel: string;
+  domindsVersionInstallingLabel: string;
+  domindsVersionRestartingLabel: string;
+  domindsVersionUpdateAvailableTitle: string;
+  domindsVersionRestartAvailableTitle: string;
+  domindsVersionInstallConfirm: string;
+  domindsVersionRestartConfirm: string;
+  domindsVersionInstallSuccess: string;
+  domindsVersionInstallInProgress: string;
+  domindsVersionRestartScheduled: string;
+  domindsVersionRestartInProgress: string;
+  domindsVersionActionFailedPrefix: string;
   loading: string;
   uiLanguageSelectTitle: string;
   themeToggleTitle: string;
@@ -357,6 +371,22 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       logoGitHubTitle: '在新窗口打开 Dominds 的 GitHub 仓库',
       backendWorkspaceTitle: '后端运行时工作区',
       backendWorkspaceLoading: '加载中…',
+      domindsVersionTitle: 'Dominds 版本',
+      domindsVersionUpdateLabel: '更新',
+      domindsVersionRestartLabel: '重启',
+      domindsVersionInstallingLabel: '安装中',
+      domindsVersionRestartingLabel: '重启中',
+      domindsVersionUpdateAvailableTitle: '发现新版本，点击安装',
+      domindsVersionRestartAvailableTitle: '新版本已就绪，点击重启',
+      domindsVersionInstallConfirm:
+        '检测到 npm registry 上有新版 Dominds。\n\n当前: v<current>\n最新: v<latest>\n\n现在安装并在完成后等待重启吗？',
+      domindsVersionRestartConfirm:
+        '将以最新可用版本重启 Dominds 后台。\n\n当前: v<current>\n目标: v<latest>\n\n是否继续？',
+      domindsVersionInstallSuccess: '最新版 Dominds 已安装完成，请点击重启。',
+      domindsVersionInstallInProgress: '后端正在安装……',
+      domindsVersionRestartScheduled: 'Dominds 后台正在重启…',
+      domindsVersionRestartInProgress: '后端正在重启，若页面没有自动刷新，可手动刷新看看。',
+      domindsVersionActionFailedPrefix: 'Dominds 更新失败：',
       loading: '加载中…',
       uiLanguageSelectTitle: '界面语言（也用于提示 agent 用该语言回复）',
       themeToggleTitle: '切换主题',
@@ -718,6 +748,23 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     logoGitHubTitle: 'Open Dominds on GitHub (new window)',
     backendWorkspaceTitle: 'Backend Runtime Workspace',
     backendWorkspaceLoading: 'Loading...',
+    domindsVersionTitle: 'Dominds version',
+    domindsVersionUpdateLabel: 'Update',
+    domindsVersionRestartLabel: 'Restart',
+    domindsVersionInstallingLabel: 'Installing',
+    domindsVersionRestartingLabel: 'Restarting',
+    domindsVersionUpdateAvailableTitle: 'A newer Dominds version is available. Click to install.',
+    domindsVersionRestartAvailableTitle: 'The latest Dominds is ready. Click to restart.',
+    domindsVersionInstallConfirm:
+      'A newer Dominds version is available on npm registry.\n\nCurrent: v<current>\nLatest: v<latest>\n\nInstall it now and wait for restart?',
+    domindsVersionRestartConfirm:
+      'Dominds backend will restart into the latest available version.\n\nCurrent: v<current>\nTarget: v<latest>\n\nContinue?',
+    domindsVersionInstallSuccess: 'Latest Dominds is installed. Click restart when ready.',
+    domindsVersionInstallInProgress: 'Backend is installing…',
+    domindsVersionRestartScheduled: 'Dominds backend is restarting…',
+    domindsVersionRestartInProgress:
+      'Backend is restarting. If the page does not refresh automatically, try a manual refresh.',
+    domindsVersionActionFailedPrefix: 'Dominds update failed: ',
     loading: 'Loading…',
     uiLanguageSelectTitle: 'UI language (also used to prompt agent replies)',
     themeToggleTitle: 'Switch theme',
