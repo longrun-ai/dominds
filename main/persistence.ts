@@ -3601,6 +3601,7 @@ type DialogLatestMutation =
  */
 export class DialogPersistence {
   private static readonly DIALOGS_DIR = '.dialogs';
+  private static readonly MALFORMED_DIR = 'malformed';
   private static readonly RUN_DIR = 'run';
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
@@ -3939,6 +3940,100 @@ export class DialogPersistence {
     }
     const rootPath = this.getRootDialogPath(new DialogID(dialogId.rootId), status);
     return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
+  }
+
+  private static isMalformedDialogLoadError(error: unknown): error is Error {
+    return (
+      error instanceof Error &&
+      (error.message.startsWith('Invalid latest.yaml in ') ||
+        error.message.startsWith('Invalid dialog metadata in '))
+    );
+  }
+
+  private static getMalformedRootDialogPath(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): string {
+    if (dialogId.rootId !== dialogId.selfId) {
+      throw new Error('Expected root dialog id');
+    }
+    void status;
+    return path.join(this.getDialogsRootDir(), this.MALFORMED_DIR, dialogId.selfId);
+  }
+
+  private static async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.promises.access(targetPath);
+      return true;
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private static clearLatestWriteBackState(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): void {
+    const key = this.getLatestWriteBackKey(dialogId, status);
+    const entry = this.latestWriteBack.get(key);
+    if (entry?.kind === 'scheduled') {
+      clearTimeout(entry.timer);
+    }
+    this.latestWriteBack.delete(key);
+    this.latestWriteBackMutexes.delete(key);
+  }
+
+  private static async quarantineMalformedRootDialog(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+    reason: string,
+    error: Error,
+  ): Promise<void> {
+    if (dialogId.rootId !== dialogId.selfId) {
+      throw error;
+    }
+
+    const sourcePath = this.getRootDialogPath(dialogId, status);
+    if (!(await this.pathExists(sourcePath))) {
+      return;
+    }
+
+    let destinationPath = this.getMalformedRootDialogPath(dialogId, status);
+    if (await this.pathExists(destinationPath)) {
+      destinationPath = path.join(
+        this.getDialogsRootDir(),
+        this.MALFORMED_DIR,
+        `${dialogId.selfId}__${randomUUID()}`,
+      );
+    }
+
+    await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+    await fs.promises.rename(sourcePath, destinationPath);
+    this.clearLatestWriteBackState(dialogId, status);
+    log.warn(`Quarantined malformed root dialog ${dialogId.selfId}`, undefined, {
+      status,
+      reason,
+      sourcePath,
+      destinationPath,
+      errorMessage: error.message,
+    });
+  }
+
+  private static parseDialogLatestYaml(content: string, latestFilePath: string): DialogLatestFile {
+    let parsed: unknown;
+    try {
+      parsed = yaml.parse(content);
+    } catch {
+      throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
+    }
+    const latest = parseDialogLatestFile(parsed);
+    if (!latest) {
+      throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
+    }
+    return latest;
   }
 
   /**
@@ -5753,7 +5848,12 @@ export class DialogPersistence {
 
       try {
         const content = await fs.promises.readFile(metadataFilePath, 'utf-8');
-        const parsed: unknown = yaml.parse(content);
+        let parsed: unknown;
+        try {
+          parsed = yaml.parse(content);
+        } catch {
+          throw new Error(`Invalid dialog metadata in ${metadataFilePath}`);
+        }
 
         if (!isDialogMetadataFile(parsed)) {
           throw new Error(`Invalid dialog metadata in ${metadataFilePath}`);
@@ -5770,6 +5870,15 @@ export class DialogPersistence {
         return parsed;
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
+          return null;
+        }
+        if (this.isMalformedDialogLoadError(error)) {
+          await this.quarantineMalformedRootDialog(
+            dialogId,
+            status,
+            'loadRootDialogMetadata',
+            error,
+          );
           return null;
         }
         throw error;
@@ -5902,14 +6011,13 @@ export class DialogPersistence {
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
 
       const content = await fs.promises.readFile(latestFilePath, 'utf-8');
-      const parsed: unknown = yaml.parse(content);
-      const latest = parseDialogLatestFile(parsed);
-      if (!latest) {
-        throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
-      }
-      return latest;
+      return this.parseDialogLatestYaml(content, latestFilePath);
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
+        return null;
+      }
+      if (dialogId.rootId === dialogId.selfId && this.isMalformedDialogLoadError(error)) {
+        await this.quarantineMalformedRootDialog(dialogId, status, 'loadDialogLatest', error);
         return null;
       }
       throw error;
@@ -6001,14 +6109,18 @@ export class DialogPersistence {
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
 
       const content = await fs.promises.readFile(latestFilePath, 'utf-8');
-      const parsed: unknown = yaml.parse(content);
-      const latest = parseDialogLatestFile(parsed);
-      if (!latest) {
-        throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
-      }
-      return latest;
+      return this.parseDialogLatestYaml(content, latestFilePath);
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
+        return null;
+      }
+      if (dialogId.rootId === dialogId.selfId && this.isMalformedDialogLoadError(error)) {
+        await this.quarantineMalformedRootDialog(
+          dialogId,
+          status,
+          'loadDialogLatestFromDisk',
+          error,
+        );
         return null;
       }
       throw error;

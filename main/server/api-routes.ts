@@ -2190,18 +2190,31 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
 
     const ids = await DialogPersistence.listDialogs(status);
     for (const id of ids) {
-      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), status);
+      const dialogId = new DialogID(id);
+      const meta = await DialogPersistence.loadRootDialogMetadata(dialogId, status);
       if (!meta) continue;
 
       // Load latest.yaml for currentCourse and lastModified timestamp
-      const latest = await DialogPersistence.loadDialogLatest(new DialogID(id), status);
+      const latest = await DialogPersistence.loadDialogLatest(dialogId, status);
+      const rootPath = DialogPersistence.getRootDialogPath(dialogId, status);
+      const rootStillExists = await fsPromises
+        .access(rootPath)
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (getErrorCode(error) === 'ENOENT') {
+            return false;
+          }
+          throw error;
+        });
+      if (!rootStillExists) {
+        continue;
+      }
       const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
-        new DialogID(id),
+        dialogId,
         status,
       );
 
       // Count subdialogs for this root dialog
-      const rootPath = DialogPersistence.getRootDialogPath(new DialogID(id), status);
       const subPath = path.join(rootPath, 'subdialogs');
       const subdialogCount = await countSubdialogs(subPath);
 
@@ -2304,6 +2317,23 @@ async function handleGetDialogHierarchy(
       new DialogID(rootId),
       status,
     );
+    const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootId), status);
+    const rootStillExists = await fsPromises
+      .access(rootPath)
+      .then(() => true)
+      .catch((error: unknown) => {
+        if (getErrorCode(error) === 'ENOENT') {
+          return false;
+        }
+        throw error;
+      });
+    if (!rootStillExists) {
+      respondJson(res, 404, {
+        success: false,
+        error: `Root dialog ${rootId} was quarantined as malformed`,
+      });
+      return true;
+    }
 
     const rootInfo = {
       id: rootMeta.id,
