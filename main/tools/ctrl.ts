@@ -40,12 +40,15 @@ import type { Team } from '../team';
 import {
   materializeReminder,
   reminderIsListed,
+  toolFailure,
+  toolSuccess,
   type FuncTool,
   type JsonObject,
   type JsonValue,
   type Reminder,
   type ReminderScope,
   type ToolArguments,
+  type ToolCallOutput,
 } from '../tool';
 import {
   bearInMindFilenameForSection,
@@ -411,6 +414,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
 export const deleteReminderTool: FuncTool = {
   type: 'func',
   name: 'delete_reminder',
+  followupMode: 'deferred',
   description: 'Delete a reminder by its reminder_id.',
   descriptionI18n: {
     en: 'Delete a reminder by its reminder_id.',
@@ -425,19 +429,19 @@ export const deleteReminderTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const resolved = await resolveReminderTarget(dlg, args['reminder_id']);
     if (!resolved.ok) {
       const reminderId = resolved.reminderId.trim();
-      if (reminderId === '') return t.invalidFormatDelete;
-      return t.reminderDoesNotExist(reminderId);
+      if (reminderId === '') return toolFailure(t.invalidFormatDelete);
+      return toolFailure(t.reminderDoesNotExist(reminderId));
     }
     const targetReminder = resolved.target.reminder;
     const deleteAltInstruction = getDeleteAltInstruction(targetReminder.meta);
     if (deleteAltInstruction !== undefined) {
-      return formatManualDeleteBlockedError(language, deleteAltInstruction);
+      return toolFailure(formatManualDeleteBlockedError(language, deleteAltInstruction));
     }
     if (resolved.target.source === 'dialog') {
       dlg.deleteReminder(resolved.target.index);
@@ -450,13 +454,14 @@ export const deleteReminderTool: FuncTool = {
       dlg.touchReminders();
       return formatToolActionResult(language, 'deleted');
     }
-    return t.invalidFormatDelete;
+    return toolFailure(t.invalidFormatDelete);
   },
 };
 
 export const addReminderTool: FuncTool = {
   type: 'func',
   name: 'add_reminder',
+  followupMode: 'deferred',
   description:
     'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
   descriptionI18n: {
@@ -478,12 +483,12 @@ export const addReminderTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const contentValue = args['content'];
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
-    if (!reminderContent) return t.reminderContentEmpty;
+    if (!reminderContent) return toolFailure(t.reminderContentEmpty);
 
     const scopeValue = args['scope'];
     const reminderScope: 'dialog' | 'personal' | null =
@@ -493,7 +498,7 @@ export const addReminderTool: FuncTool = {
           ? scopeValue
           : null;
     if (reminderScope === null) {
-      return t.invalidFormatAdd;
+      return toolFailure(t.invalidFormatAdd);
     }
 
     const positionValue = args['position'];
@@ -513,10 +518,10 @@ export const addReminderTool: FuncTool = {
         return formatToolActionResult(language, 'added');
       } catch (error: unknown) {
         if (error instanceof InvalidReminderPositionError) {
-          return t.invalidReminderPosition(error.positionHuman, error.totalPlusOne);
+          return toolFailure(t.invalidReminderPosition(error.positionHuman, error.totalPlusOne));
         }
         if (error instanceof Error && error.message === 'invalid_add_position_format') {
-          return t.invalidFormatAdd;
+          return toolFailure(t.invalidFormatAdd);
         }
         throw error;
       }
@@ -538,13 +543,13 @@ export const addReminderTool: FuncTool = {
       return formatToolActionResult(language, 'added');
     } catch (error: unknown) {
       if (error instanceof InvalidReminderPositionError) {
-        return t.invalidReminderPosition(error.positionHuman, error.totalPlusOne);
+        return toolFailure(t.invalidReminderPosition(error.positionHuman, error.totalPlusOne));
       }
       if (error instanceof Error && error.message === 'invalid_add_position_format') {
-        return t.invalidFormatAdd;
+        return toolFailure(t.invalidFormatAdd);
       }
       if (error instanceof Error && error.message === 'personal_add_position_unsupported') {
-        return t.personalPositionUnsupported;
+        return toolFailure(t.personalPositionUnsupported);
       }
       throw error;
     }
@@ -554,6 +559,7 @@ export const addReminderTool: FuncTool = {
 export const updateReminderTool: FuncTool = {
   type: 'func',
   name: 'update_reminder',
+  followupMode: 'deferred',
   description: 'Update an existing reminder by its reminder_id.',
   descriptionI18n: {
     en: 'Update an existing reminder by its reminder_id.',
@@ -569,14 +575,14 @@ export const updateReminderTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const resolved = await resolveReminderTarget(dlg, args['reminder_id']);
     if (!resolved.ok) {
       const reminderId = resolved.reminderId.trim();
-      if (reminderId === '') return t.invalidFormatUpdate;
-      return t.reminderDoesNotExist(reminderId);
+      if (reminderId === '') return toolFailure(t.invalidFormatUpdate);
+      return toolFailure(t.reminderDoesNotExist(reminderId));
     }
     const reminder = resolved.target.reminder;
     // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
@@ -584,18 +590,20 @@ export const updateReminderTool: FuncTool = {
     const meta = reminder?.meta;
     const updateAltInstruction = getUpdateAltInstruction(meta);
     if (updateAltInstruction !== undefined) {
-      return formatManualUpdateBlockedError(language, updateAltInstruction);
+      return toolFailure(formatManualUpdateBlockedError(language, updateAltInstruction));
     }
     const managerTool = getManagerTool(meta);
     if (managerTool !== undefined) {
-      return language === 'zh'
-        ? `错误：该提醒项由工具 ${managerTool} 管理，不能用 update_reminder 修改；请使用 ${managerTool} 更新。`
-        : `Error: This reminder is managed by tool ${managerTool}. Do not edit it via update_reminder; use ${managerTool} instead.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：该提醒项由工具 ${managerTool} 管理，不能用 update_reminder 修改；请使用 ${managerTool} 更新。`
+          : `Error: This reminder is managed by tool ${managerTool}. Do not edit it via update_reminder; use ${managerTool} instead.`,
+      );
     }
 
     const contentValue = args['content'];
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
-    if (!reminderContent) return t.reminderContentEmpty;
+    if (!reminderContent) return toolFailure(t.reminderContentEmpty);
 
     const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
     if (contextHealthLevel === undefined) {
@@ -670,7 +678,7 @@ export const clearMindTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const reminderValue = args['reminder_content'];
@@ -722,66 +730,68 @@ export const changeMindTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
 
     if (dlg.supdialog !== undefined) {
       const maintainerId = dlg instanceof SubDialog ? dlg.rootDialog.agentId : dlg.agentId;
       if (language === 'zh') {
-        return (
+        return toolFailure(
           `错误：\`change_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
-          `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`change_mind\`，并提供你已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`change_mind\`，并提供你已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`,
         );
       }
-      return (
+      return toolFailure(
         `Error: \`change_mind\` is only available in the mainline dialog (not in sideline dialogs).\n` +
-        `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
       );
     }
 
     const selectorValue = args['selector'];
     const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
-    if (!selector) return t.selectorRequired;
+    if (!selector) return toolFailure(t.selectorRequired);
 
     const categoryValue = args['category'];
     const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
 
     const contentValue = args['content'];
     const newTaskDocContent = typeof contentValue === 'string' ? contentValue.trim() : '';
-    if (!newTaskDocContent) return t.taskDocContentRequired;
+    if (!newTaskDocContent) return toolFailure(t.taskDocContentRequired);
 
     // Taskdoc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
-    if (!taskDocPath) return t.noTaskDocPathConfigured;
+    if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
     const workspaceRoot = path.resolve(process.cwd());
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
-    if (!fullPath.startsWith(workspaceRoot)) return t.pathMustBeWithinWorkspace;
+    if (!fullPath.startsWith(workspaceRoot)) return toolFailure(t.pathMustBeWithinWorkspace);
 
-    if (!isTaskPackagePath(taskDocPath)) return t.invalidTaskDocPath(taskDocPath);
+    if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
 
     const parsed = parseTaskPackageChangeMindTarget({ selector, category });
     if (parsed.kind !== 'ok') {
       const e = parsed.error;
       switch (e.kind) {
         case 'selector_required':
-          return t.selectorRequired;
+          return toolFailure(t.selectorRequired);
         case 'invalid_category_name':
-          return t.invalidCategory(e.category);
+          return toolFailure(t.invalidCategory(e.category));
         case 'invalid_category_selector':
-          return t.invalidCategorySelector(e.selector);
+          return toolFailure(t.invalidCategorySelector(e.selector));
         case 'invalid_top_level_selector':
-          return t.invalidSelector(e.selector);
+          return toolFailure(t.invalidSelector(e.selector));
         case 'invalid_bearinmind_selector':
-          return t.invalidSelector(e.selector);
+          return toolFailure(t.invalidSelector(e.selector));
         case 'top_level_selector_requires_no_category':
-          return t.topLevelSelectorRequiresNoCategory(e.category, e.selector);
+          return toolFailure(t.topLevelSelectorRequiresNoCategory(e.category, e.selector));
         case 'bearinmind_selector_requires_bearinmind_category':
-          return t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector);
+          return toolFailure(
+            t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector),
+          );
         default: {
           const _exhaustive: never = e;
-          return String(_exhaustive);
+          return toolFailure(String(_exhaustive));
         }
       }
     }
@@ -814,49 +824,51 @@ export const recallTaskdocTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
 
     const categoryValue = args['category'];
     const category = typeof categoryValue === 'string' ? categoryValue.trim() : '';
-    if (category === '') return t.categoryRequired;
+    if (category === '') return toolFailure(t.categoryRequired);
 
     const selectorValue = args['selector'];
     const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
-    if (selector === '') return t.selectorRequired;
+    if (selector === '') return toolFailure(t.selectorRequired);
 
     // Taskdoc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
-    if (!taskDocPath) return t.noTaskDocPathConfigured;
+    if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
     const workspaceRoot = path.resolve(process.cwd());
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
-    if (!fullPath.startsWith(workspaceRoot)) return t.pathMustBeWithinWorkspace;
+    if (!fullPath.startsWith(workspaceRoot)) return toolFailure(t.pathMustBeWithinWorkspace);
 
-    if (!isTaskPackagePath(taskDocPath)) return t.invalidTaskDocPath(taskDocPath);
+    if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
 
     const parsed = parseTaskPackageChangeMindTarget({ selector, category });
     if (parsed.kind !== 'ok') {
       const e = parsed.error;
       switch (e.kind) {
         case 'selector_required':
-          return t.selectorRequired;
+          return toolFailure(t.selectorRequired);
         case 'invalid_category_name':
-          return t.invalidCategory(e.category);
+          return toolFailure(t.invalidCategory(e.category));
         case 'invalid_category_selector':
-          return t.invalidCategorySelector(e.selector);
+          return toolFailure(t.invalidCategorySelector(e.selector));
         case 'invalid_top_level_selector':
-          return t.invalidSelector(e.selector);
+          return toolFailure(t.invalidSelector(e.selector));
         case 'invalid_bearinmind_selector':
-          return t.invalidSelector(e.selector);
+          return toolFailure(t.invalidSelector(e.selector));
         case 'top_level_selector_requires_no_category':
-          return t.topLevelSelectorRequiresNoCategory(e.category, e.selector);
+          return toolFailure(t.topLevelSelectorRequiresNoCategory(e.category, e.selector));
         case 'bearinmind_selector_requires_bearinmind_category':
-          return t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector);
+          return toolFailure(
+            t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector),
+          );
         default: {
           const _exhaustive: never = e;
-          return String(_exhaustive);
+          return toolFailure(String(_exhaustive));
         }
       }
     }
@@ -878,18 +890,18 @@ export const recallTaskdocTool: FuncTool = {
     })();
 
     if (relPath === null) {
-      return t.invalidFormatRecallTaskdoc;
+      return toolFailure(t.invalidFormatRecallTaskdoc);
     }
 
     const sectionPath = path.resolve(fullPath, relPath);
     if (!sectionPath.startsWith(fullPath)) {
-      return t.pathMustBeWithinWorkspace;
+      return toolFailure(t.pathMustBeWithinWorkspace);
     }
 
     try {
       const st = await fs.promises.stat(sectionPath);
       if (!st.isFile()) {
-        return t.taskDocSectionMissing(relPath);
+        return toolFailure(t.taskDocSectionMissing(relPath));
       }
     } catch (err: unknown) {
       if (
@@ -898,7 +910,7 @@ export const recallTaskdocTool: FuncTool = {
         'code' in err &&
         (err as { code?: unknown }).code === 'ENOENT'
       ) {
-        return t.taskDocSectionMissing(relPath);
+        return toolFailure(t.taskDocSectionMissing(relPath));
       }
       throw err;
     }
@@ -914,6 +926,6 @@ export const recallTaskdocTool: FuncTool = {
           : `\n\n⚠️ Truncated: content is too large (${bytes} bytes); showing first ${maxSize} bytes.`
         : '';
 
-    return `**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}\n---${note}`;
+    return toolSuccess(`**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}\n---${note}`);
   },
 };

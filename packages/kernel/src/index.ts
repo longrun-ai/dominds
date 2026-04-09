@@ -13,7 +13,17 @@ export type {
   DomindsAppRunControlResult,
 } from './app-host-contract';
 
-export { parseDomindsAppInstallJson } from './app-json';
+export {
+  appToolFailure,
+  appToolPartialFailure,
+  appToolResult,
+  appToolSuccess,
+  parseDomindsAppInstallJson,
+  toolFailure,
+  toolPartialFailure,
+  toolResult,
+  toolSuccess,
+} from './app-json';
 export * from './types';
 
 export type {
@@ -28,8 +38,7 @@ export type {
   DomindsAppHostToolContext,
   DomindsAppHostToolHandler,
   DomindsAppHostToolResult,
-  DomindsAppInstallJsonV1,
-  DomindsAppJsonSchemaVersion,
+  DomindsAppInstallJson,
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
   DomindsAppReminderOwnerJson,

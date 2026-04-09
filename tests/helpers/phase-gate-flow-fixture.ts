@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type { DomindsAppRunControlHandler } from '@longrun-ai/kernel/app-host-contract';
+import type { DomindsAppHostToolResult } from '@longrun-ai/kernel/app-json';
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 
 export type ToolCtx = Readonly<{
@@ -16,7 +17,7 @@ export type ToolCtx = Readonly<{
 type ToolHandler = (
   args: Record<string, unknown>,
   ctx: ToolCtx,
-) => Promise<string | Readonly<{ output: string }>>;
+) => Promise<DomindsAppHostToolResult>;
 
 export type PhaseGateHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
@@ -51,8 +52,8 @@ export type PhaseGateFixture = Readonly<{
   cleanup: () => Promise<void>;
 }>;
 
-export function extractOutput(result: string | Readonly<{ output: string }>): string {
-  return typeof result === 'string' ? result : result.output;
+export function extractOutput(result: DomindsAppHostToolResult): string {
+  return result.output.content;
 }
 
 export function stripFrontmatter(markdown: string): string {

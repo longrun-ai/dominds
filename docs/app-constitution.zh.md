@@ -221,7 +221,7 @@ Install JSON 是 app 与 Kernel/CLI 之间的**安装/运行握手载荷**。它
 
 （现状：已实现）install json schema 与 apps 配置/解析锚点仍可参考：
 
-- JSON schema：`dominds/main/apps/app-json.ts`（`DomindsAppInstallJsonV1`）。
+- JSON schema：`dominds/main/apps/app-json.ts`（`DomindsAppInstallJson`）。
 - `.apps/configuration.yaml`：`dominds/main/apps/configuration-file.ts`。
 - `.apps/resolution.yaml`：`dominds/main/apps/resolution-file.ts`。
 

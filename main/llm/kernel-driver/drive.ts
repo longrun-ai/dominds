@@ -39,9 +39,12 @@ import type { Team } from '../../team';
 import {
   reminderEchoBackEnabled,
   resolveFuncToolInvocationArguments,
+  toolFailure,
   type FuncTool,
+  type FuncToolFollowupMode,
   type Tool,
   type ToolCallOutput,
+  type ToolOutcome,
 } from '../../tool';
 import { formatTaskDocContent } from '../../utils/taskdoc';
 import type {
@@ -1027,11 +1030,34 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
 }
 
 type RoutedFunctionResult = {
-  hadNormalToolCalls: boolean;
+  hasImmediateFollowupToolCalls: boolean;
   shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
+
+function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
+  return tool?.followupMode ?? 'immediate';
+}
+
+function shouldImmediatelyFollowUpSuccessfulToolResult(tool: FuncTool | undefined): boolean {
+  return resolveFuncToolFollowupMode(tool) === 'immediate';
+}
+
+function shouldImmediatelyFollowUpToolOutcome(
+  tool: FuncTool | undefined,
+  outcome: ToolOutcome,
+): boolean {
+  if (outcome === 'failure' || outcome === 'partial_failure') {
+    return true;
+  }
+  return shouldImmediatelyFollowUpSuccessfulToolResult(tool);
+}
+
+type ExecutedFuncCallResult = Readonly<{
+  outcome: ToolOutcome;
+  result: FuncResultMsg;
+}>;
 
 async function executeFunctionCalls(args: {
   dlg: Dialog;
@@ -1039,8 +1065,8 @@ async function executeFunctionCalls(args: {
   agentTools: readonly Tool[];
   funcCalls: readonly FuncCallMsg[];
   abortSignal: AbortSignal | undefined;
-}): Promise<FuncResultMsg[]> {
-  const functionPromises = args.funcCalls.map(async (func): Promise<FuncResultMsg> => {
+}): Promise<ExecutedFuncCallResult[]> {
+  const functionPromises = args.funcCalls.map(async (func): Promise<ExecutedFuncCallResult> => {
     throwIfAborted(args.abortSignal, args.dlg);
 
     const callGenseq = func.genseq;
@@ -1053,18 +1079,22 @@ async function executeFunctionCalls(args: {
       tool !== undefined ? resolveFuncToolInvocationArguments(tool, argsStr) : null;
     await args.dlg.funcCallRequested(func.id, func.name, argsStr);
     let result: FuncResultMsg;
+    let outcome: ToolOutcome = 'success';
     let rethrowError: unknown;
     if (!tool) {
+      outcome = 'failure';
+      const output = toolFailure(`Tool '${func.name}' not found`);
       result = {
         type: 'func_result_msg',
         id: func.id,
         name: func.name,
-        content: `Tool '${func.name}' not found`,
+        content: output.content,
         role: 'tool',
         genseq: callGenseq,
       };
     } else {
       if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
+        outcome = 'failure';
         const errorText =
           preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
         log.warn('kernel-driver rejected function call arguments before execution', undefined, {
@@ -1076,7 +1106,7 @@ async function executeFunctionCalls(args: {
           type: 'func_result_msg',
           id: func.id,
           name: func.name,
-          content: `Invalid arguments: ${errorText}`,
+          content: toolFailure(`Invalid arguments: ${errorText}`).content,
           role: 'tool',
           genseq: callGenseq,
         };
@@ -1089,40 +1119,37 @@ async function executeFunctionCalls(args: {
             preparedInvocationArgs.args,
           );
           throwIfAborted(args.abortSignal, args.dlg);
-          const normalized =
-            typeof output === 'string'
-              ? { content: output, contentItems: undefined }
-              : {
-                  content: typeof output.content === 'string' ? output.content : String(output),
-                  contentItems: Array.isArray(output.contentItems)
-                    ? output.contentItems
-                    : undefined,
-                };
+          outcome = output.outcome;
           result = {
             type: 'func_result_msg',
             id: func.id,
             name: func.name,
-            content: String(normalized.content),
-            contentItems: normalized.contentItems,
+            content: output.content,
+            contentItems: Array.isArray(output.contentItems) ? [...output.contentItems] : undefined,
             role: 'tool',
             genseq: callGenseq,
           };
         } catch (err) {
+          outcome = 'failure';
           const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          const failureOutput = toolFailure(`Function '${func.name}' execution failed: ${errText}`);
           result = {
             type: 'func_result_msg',
             id: func.id,
             name: func.name,
-            content: `Function '${func.name}' execution failed: ${errText}`,
+            content: failureOutput.content,
             role: 'tool',
             genseq: callGenseq,
           };
           if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+            const interruptedOutput = toolFailure(
+              `Function '${func.name}' interrupted before completion: ${errText}`,
+            );
             result = {
               type: 'func_result_msg',
               id: func.id,
               name: func.name,
-              content: `Function '${func.name}' interrupted before completion: ${errText}`,
+              content: interruptedOutput.content,
               role: 'tool',
               genseq: callGenseq,
             };
@@ -1136,7 +1163,7 @@ async function executeFunctionCalls(args: {
     if (rethrowError !== undefined) {
       throw rethrowError;
     }
-    return result;
+    return { outcome, result };
   });
 
   return await Promise.all(functionPromises);
@@ -1153,7 +1180,7 @@ async function executeFunctionRound(args: {
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
     return {
-      hadNormalToolCalls: false,
+      hasImmediateFollowupToolCalls: false,
       shouldStopAfterReplyTool: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
@@ -1183,12 +1210,30 @@ async function executeFunctionRound(args: {
   });
   throwIfAborted(args.abortSignal, args.dlg);
 
-  const genericResults = await executeFunctionCalls({
+  const genericExecutions = await executeFunctionCalls({
     dlg: args.dlg,
     agent: args.agent,
     agentTools: args.agentTools,
     funcCalls: tellaskRound.normalCalls,
     abortSignal: args.abortSignal,
+  });
+  const funcToolByName = new Map(
+    args.agentTools
+      .filter((tool): tool is FuncTool => tool.type === 'func')
+      .map((tool) => [tool.name, tool] as const),
+  );
+  const genericOutcomeByCallId = new Map(
+    genericExecutions.map((execution) => [execution.result.id, execution.outcome] as const),
+  );
+  const hasImmediateFollowupToolCalls = tellaskRound.normalCalls.some((call) => {
+    const tool = funcToolByName.get(call.name);
+    const outcome = genericOutcomeByCallId.get(call.id);
+    if (outcome === undefined) {
+      throw new Error(
+        `kernel-driver function outcome invariant violation: missing outcome for call id '${call.id}' (${call.name})`,
+      );
+    }
+    return shouldImmediatelyFollowUpToolOutcome(tool, outcome);
   });
 
   const resultByCallId = new Map<string, FuncResultMsg>();
@@ -1204,8 +1249,8 @@ async function executeFunctionRound(args: {
   for (const result of tellaskRound.tellaskResults) {
     register(result);
   }
-  for (const result of genericResults) {
-    register(result);
+  for (const execution of genericExecutions) {
+    register(execution.result);
   }
 
   const pairedMessages: ChatMessage[] = [];
@@ -1245,7 +1290,7 @@ async function executeFunctionRound(args: {
   }
 
   return {
-    hadNormalToolCalls: tellaskRound.normalCalls.length > 0,
+    hasImmediateFollowupToolCalls,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
@@ -2406,21 +2451,20 @@ export async function driveDialogStreamCore(
         // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
         // dialog's actual suspension state here so auto-continue is decided in one place.
         const suspensionAfterToolRound = await dlg.getSuspensionStatus({
-          allowPendingSubdialogs: routed.hadNormalToolCalls,
+          allowPendingSubdialogs: routed.hasImmediateFollowupToolCalls,
         });
         if (!suspensionAfterToolRound.canDrive) {
           await resetDiligenceBudgetAfterQ4H(dlg, team);
           break;
         }
 
-        // Continue only when this round produced new context that must be fed back into the next
-        // LLM turn. Provider-native side-channel UI events are meaningful output, but they are not
-        // transcript/context inputs and therefore must not trigger another generation round.
-        const shouldContinue =
-          streamedFuncCalls.length > 0 ||
-          routed.pairedMessages.length > 0 ||
-          routed.tellaskToolOutputs.length > 0;
-        if (!shouldContinue) {
+        // Start an immediate post-tool generation only when this round produced tool outputs that
+        // warrant same-drive LLM reaction right away. Provider-native side-channel UI events are
+        // meaningful output, but they are not transcript/context inputs and therefore must not
+        // trigger another immediate generation round by themselves.
+        const shouldStartImmediatePostToolGeneration =
+          routed.hasImmediateFollowupToolCalls || routed.tellaskToolOutputs.length > 0;
+        if (!shouldStartImmediatePostToolGeneration) {
           const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
             dlg,
             providerCfg,
@@ -2447,7 +2491,7 @@ export async function driveDialogStreamCore(
           }
           break;
         }
-        if (shouldContinue) {
+        if (shouldStartImmediatePostToolGeneration) {
           continue;
         }
       } finally {

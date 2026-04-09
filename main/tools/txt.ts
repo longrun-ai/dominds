@@ -11,46 +11,24 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
-import { formatToolError, formatToolOk } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];
 
 type TxtToolCallResult = {
   status: 'completed' | 'failed';
-  result: string;
+  result: ToolCallOutput;
   messages?: ChatMessage[];
 };
 
-function wrapTxtToolResult(language: LanguageCode, messages: ChatMessage[]): TxtToolCallResult {
-  const first = messages[0];
-  const text =
-    first && 'content' in first && typeof first.content === 'string' ? first.content : '';
-  const failed =
-    /^(?:Error:|错误：|❌\s|\*\*Access Denied\*\*|\*\*访问被拒绝\*\*)/m.test(text) ||
-    text.includes('Please use the correct format') ||
-    text.includes('请使用正确的格式') ||
-    text.includes('Invalid format') ||
-    text.includes('格式不正确') ||
-    text.includes('Path required') ||
-    text.includes('需要提供路径') ||
-    text.includes('Path must be within rtws (runtime workspace)') ||
-    text.includes('路径必须位于 rtws（运行时工作区）内') ||
-    text.includes('路径必须在 rtws（运行时工作区）内');
-  return {
-    status: failed ? 'failed' : 'completed',
-    result: text || (failed ? formatToolError(language) : formatToolOk(language)),
-    messages,
-  };
-}
-
 function ok(result: string, messages?: ChatMessage[]): TxtToolCallResult {
-  return { status: 'completed', result, messages };
+  return { status: 'completed', result: toolSuccess(result), messages };
 }
 
 function failed(result: string, messages?: ChatMessage[]): TxtToolCallResult {
-  return { status: 'failed', result, messages };
+  return { status: 'failed', result: toolFailure(result), messages };
 }
 
 function ensureInsideWorkspace(rel: string): string {
@@ -130,7 +108,7 @@ function normalizeExistingHunkId(raw: string | undefined): string | undefined {
   return id;
 }
 
-function unwrapTxtToolResult(res: TxtToolCallResult): string {
+function unwrapTxtToolResult(res: TxtToolCallResult): ToolCallOutput {
   return res.result;
 }
 
@@ -170,6 +148,14 @@ function yamlBlockScalarLines(valueLines: ReadonlyArray<string>, indent: string)
 
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
+}
+
+function okYaml(yaml: string): ToolCallOutput {
+  return toolSuccess(formatYamlCodeBlock(yaml));
+}
+
+function failYaml(yaml: string): ToolCallOutput {
+  return toolFailure(formatYamlCodeBlock(yaml));
 }
 
 function formatPreparedHunkNextStep(language: LanguageCode, hunkId: string): string {
@@ -774,7 +760,7 @@ export const readFileTool = {
     required: ['path'],
   },
   argsValidation: 'dominds',
-  call: async (dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
     let labels:
       | {
@@ -873,7 +859,7 @@ export const readFileTool = {
 
     const pathValue = args['path'];
     if (typeof pathValue !== 'string' || pathValue.trim() === '') {
-      return labels.formatError;
+      return toolFailure(labels.formatError);
     }
     const rel = pathValue.trim();
 
@@ -885,8 +871,10 @@ export const readFileTool = {
           ? showLinenosValue
           : null;
     if (showLinenos === null) {
-      return labels.formatErrorWithReason(
-        errorMsg('`show_linenos` 必须是 boolean', '`show_linenos` must be a boolean'),
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg('`show_linenos` 必须是 boolean', '`show_linenos` must be a boolean'),
+        ),
       );
     }
 
@@ -899,10 +887,12 @@ export const readFileTool = {
           ? maxLinesValue
           : null;
     if (maxLines === null) {
-      return labels.formatErrorWithReason(
-        errorMsg(
-          '`max_lines` 必须是正整数（或传 0 表示默认值）',
-          '`max_lines` must be a positive integer (or 0 for default)',
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg(
+            '`max_lines` 必须是正整数（或传 0 表示默认值）',
+            '`max_lines` must be a positive integer (or 0 for default)',
+          ),
         ),
       );
     }
@@ -911,10 +901,12 @@ export const readFileTool = {
     const rangeStr =
       rangeValue === undefined ? '' : typeof rangeValue === 'string' ? rangeValue.trim() : null;
     if (rangeStr === null) {
-      return labels.formatErrorWithReason(
-        errorMsg(
-          '`range` 必须是 string（传 \"\" 表示不指定）',
-          '`range` must be a string (use "" for unset)',
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg(
+            '`range` 必须是 string（传 \"\" 表示不指定）',
+            '`range` must be a string (use "" for unset)',
+          ),
         ),
       );
     }
@@ -932,17 +924,19 @@ export const readFileTool = {
     const suspiciousTool =
       detectMultiToolCalls(rel) ?? (rangeSpecified ? detectMultiToolCalls(rangeStr) : null);
     if (suspiciousTool) {
-      return labels.invalidFormatMultiToolCalls(suspiciousTool);
+      return toolFailure(labels.invalidFormatMultiToolCalls(suspiciousTool));
     }
 
     const options: ReadFileOptions = { decorateLinenos: showLinenos, maxLines };
     if (rangeSpecified) {
       const match = rangeStr.match(/^(\d+)?~(\d+)?$/);
       if (!match) {
-        return labels.formatErrorWithReason(
-          errorMsg(
-            '`range` 无效（期望：\"start~end\" / \"start~\" / \"~end\" / \"~\"）',
-            'Invalid `range` (expected "start~end" / "start~" / "~end" / "~")',
+        return toolFailure(
+          labels.formatErrorWithReason(
+            errorMsg(
+              '`range` 无效（期望：\"start~end\" / \"start~\" / \"~end\" / \"~\"）',
+              'Invalid `range` (expected "start~end" / "start~" / "~end" / "~")',
+            ),
           ),
         );
       }
@@ -950,10 +944,12 @@ export const readFileTool = {
       if (startStr) {
         const start = Number.parseInt(startStr, 10);
         if (!Number.isFinite(start) || start <= 0) {
-          return labels.formatErrorWithReason(
-            errorMsg(
-              '`range` 起始行号无效（必须是正整数）',
-              'Invalid `range` start (must be a positive integer)',
+          return toolFailure(
+            labels.formatErrorWithReason(
+              errorMsg(
+                '`range` 起始行号无效（必须是正整数）',
+                'Invalid `range` start (must be a positive integer)',
+              ),
             ),
           );
         }
@@ -962,10 +958,12 @@ export const readFileTool = {
       if (endStr) {
         const end = Number.parseInt(endStr, 10);
         if (!Number.isFinite(end) || end <= 0) {
-          return labels.formatErrorWithReason(
-            errorMsg(
-              '`range` 结束行号无效（必须是正整数）',
-              'Invalid `range` end (must be a positive integer)',
+          return toolFailure(
+            labels.formatErrorWithReason(
+              errorMsg(
+                '`range` 结束行号无效（必须是正整数）',
+                'Invalid `range` end (must be a positive integer)',
+              ),
             ),
           );
         }
@@ -976,8 +974,10 @@ export const readFileTool = {
         options.rangeEnd !== undefined &&
         options.rangeStart > options.rangeEnd
       ) {
-        return labels.formatErrorWithReason(
-          errorMsg('`range` 无效（start 必须 <= end）', 'Invalid `range` (start must be <= end)'),
+        return toolFailure(
+          labels.formatErrorWithReason(
+            errorMsg('`range` 无效（start 必须 <= end）', 'Invalid `range` (start must be <= end)'),
+          ),
         );
       }
     }
@@ -987,8 +987,7 @@ export const readFileTool = {
     try {
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
-        const content = getAccessDeniedMessage('read', rel, language);
-        return content;
+        return toolFailure(getAccessDeniedMessage('read', rel, language));
       }
 
       const file = ensureInsideWorkspace(rel);
@@ -1079,19 +1078,17 @@ export const readFileTool = {
         markdown += '```';
       }
 
-      return markdown;
+      return toolSuccess(markdown);
     } catch (error: unknown) {
       if (
         error instanceof Error &&
         (error.message === 'Invalid format' || error.message === 'Path required')
       ) {
-        const content = labels.formatError;
-        return content;
+        return toolFailure(labels.formatError);
       }
 
       const msg = error instanceof Error ? error.message : String(error);
-      const content = labels.failedToRead(msg);
-      return content;
+      return toolFailure(labels.failedToRead(msg));
     }
   },
 } satisfies FuncTool;
@@ -1235,7 +1232,7 @@ export const createNewFileTool: FuncTool = {
     required: ['path'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
     const t =
       language === 'zh'
@@ -1265,7 +1262,7 @@ export const createNewFileTool: FuncTool = {
       }
     })();
     if ('__error' in parsed) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: create_new_file`,
@@ -1276,14 +1273,14 @@ export const createNewFileTool: FuncTool = {
     }
 
     if (!hasWriteAccess(caller, parsed.path)) {
-      return getAccessDeniedMessage('write', parsed.path, language);
+      return toolFailure(getAccessDeniedMessage('write', parsed.path, language));
     }
 
     let absPath: string;
     try {
       absPath = ensureInsideWorkspace(parsed.path);
     } catch (err: unknown) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: create_new_file`,
@@ -1299,7 +1296,7 @@ export const createNewFileTool: FuncTool = {
       try {
         s = fsSync.statSync(absPath);
       } catch (err: unknown) {
-        return formatYamlCodeBlock(
+        return failYaml(
           [
             `status: error`,
             `mode: create_new_file`,
@@ -1311,7 +1308,7 @@ export const createNewFileTool: FuncTool = {
       }
 
       if (!s.isFile()) {
-        return formatYamlCodeBlock(
+        return failYaml(
           [
             `status: error`,
             `mode: create_new_file`,
@@ -1322,7 +1319,7 @@ export const createNewFileTool: FuncTool = {
         );
       }
 
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: create_new_file`,
@@ -1341,7 +1338,7 @@ export const createNewFileTool: FuncTool = {
       fsSync.mkdirSync(path.dirname(absPath), { recursive: true });
       fsSync.writeFileSync(absPath, normalizedBody, 'utf8');
     } catch (err: unknown) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: create_new_file`,
@@ -1359,7 +1356,7 @@ export const createNewFileTool: FuncTool = {
       language === 'zh'
         ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
         : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
-    return formatYamlCodeBlock(
+    return okYaml(
       [
         `status: ok`,
         `mode: create_new_file`,
@@ -1384,7 +1381,7 @@ export const overwriteEntireFileTool: FuncTool = {
   },
   parameters: overwriteEntireFileSchema,
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
     const t =
       language === 'zh'
@@ -1424,7 +1421,7 @@ export const overwriteEntireFileTool: FuncTool = {
       }
     })();
     if ('__error' in parsed) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1435,14 +1432,14 @@ export const overwriteEntireFileTool: FuncTool = {
     }
 
     if (!hasWriteAccess(caller, parsed.path)) {
-      return getAccessDeniedMessage('write', parsed.path, language);
+      return toolFailure(getAccessDeniedMessage('write', parsed.path, language));
     }
 
     let absPath: string;
     try {
       absPath = ensureInsideWorkspace(parsed.path);
     } catch (err: unknown) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1463,7 +1460,7 @@ export const overwriteEntireFileTool: FuncTool = {
         'code' in err &&
         (err as { code?: unknown }).code === 'ENOENT'
       ) {
-        return formatYamlCodeBlock(
+        return failYaml(
           [
             `status: error`,
             `mode: overwrite_entire_file`,
@@ -1473,7 +1470,7 @@ export const overwriteEntireFileTool: FuncTool = {
           ].join('\n'),
         );
       }
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1484,7 +1481,7 @@ export const overwriteEntireFileTool: FuncTool = {
       );
     }
     if (!s.isFile()) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1500,7 +1497,7 @@ export const overwriteEntireFileTool: FuncTool = {
     try {
       actualOldTotalLines = await countFileLinesUtf8(absPath);
     } catch (err: unknown) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1515,7 +1512,7 @@ export const overwriteEntireFileTool: FuncTool = {
       parsed.knownOldTotalBytes !== actualOldTotalBytes ||
       parsed.knownOldTotalLines !== actualOldTotalLines
     ) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1534,7 +1531,7 @@ export const overwriteEntireFileTool: FuncTool = {
     if (parsed.contentFormat !== 'diff' && parsed.contentFormat !== 'patch') {
       // Only refuse when content_format is omitted (or a non-diff format), and content is strongly diff-like.
       if (detectStrongDiffOrPatchMarkers(parsed.content)) {
-        return formatYamlCodeBlock(
+        return failYaml(
           [
             `status: error`,
             `mode: overwrite_entire_file`,
@@ -1554,7 +1551,7 @@ export const overwriteEntireFileTool: FuncTool = {
     try {
       await fs.writeFile(absPath, normalizedBody, 'utf8');
     } catch (err: unknown) {
-      return formatYamlCodeBlock(
+      return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
@@ -1572,7 +1569,7 @@ export const overwriteEntireFileTool: FuncTool = {
       language === 'zh'
         ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
         : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
-    return formatYamlCodeBlock(
+    return okYaml(
       [
         `status: ok`,
         `mode: overwrite_entire_file`,
@@ -1631,20 +1628,20 @@ async function runPrepareFileRangeEdit(
 
   if (!filePath) {
     const content = labels.filePathRequired;
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
   if (!rangeSpec) {
     const content = labels.rangeRequired;
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
   if (requestedId !== undefined && !isValidHunkId(requestedId)) {
     const content = labels.invalidHunkId;
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
   try {
@@ -1655,24 +1652,24 @@ async function runPrepareFileRangeEdit(
       const existing = plannedModsById.get(requestedId);
       if (!existing) {
         const content = labels.unknownHunkId(requestedId);
-        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (existing.plannedBy !== caller.id) {
         const content = labels.wrongOwner(requestedId);
-        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (existing.kind !== 'range') {
         const content =
           language === 'zh'
             ? `错误：hunk id \`${requestedId}\` 不是由 prepare_file_range_edit 生成的，不能用该工具覆写。`
             : `Error: hunk id \`${requestedId}\` was not generated by prepare_file_range_edit; cannot overwrite with this tool.`;
-        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
     }
 
     if (!fsSync.existsSync(fullPath)) {
       const content = labels.fileDoesNotExist(filePath);
-      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const currentContent = fsSync.readFileSync(fullPath, 'utf8');
@@ -1685,7 +1682,7 @@ async function runPrepareFileRangeEdit(
         language === 'zh'
           ? `错误：行号范围无效：${parsed.error}`
           : `Error: invalid line range: ${parsed.error}`;
-      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const range = parsed.range;
@@ -1813,7 +1810,7 @@ async function runPrepareFileRangeEdit(
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = labels.planFailed(error instanceof Error ? error.message : String(error));
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 }
 
@@ -1833,7 +1830,7 @@ export const prepareFileRangeEditTool: FuncTool = {
     required: ['path', 'range'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const range = requireNonEmptyStringArg(args, 'range');
     const existingHunkId = normalizeExistingHunkId(
@@ -1873,7 +1870,7 @@ async function runPrepareFileAppend(
   }
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
   if (inputBody === '') {
     const content = formatYamlCodeBlock(
@@ -2170,7 +2167,7 @@ async function planInsertionCommon(
 
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
   if (inputBody === '') {
@@ -2520,7 +2517,7 @@ export const prepareFileInsertAfterTool: FuncTool = {
     required: ['path', 'anchor', 'content'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const anchor = requireNonEmptyStringArg(args, 'anchor');
     const existingHunkId = normalizeExistingHunkId(
@@ -2609,7 +2606,7 @@ export const prepareFileInsertBeforeTool: FuncTool = {
     required: ['path', 'anchor', 'content'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const anchor = requireNonEmptyStringArg(args, 'anchor');
     const existingHunkId = normalizeExistingHunkId(
@@ -2711,11 +2708,11 @@ async function runApplyFileModification(
         };
   if (!id) {
     const content = labels.hunkIdRequired;
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
   if (!isValidHunkId(id)) {
     const content = labels.hunkIdRequired;
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
   try {
@@ -2770,7 +2767,7 @@ async function runApplyFileModification(
       }
       if (!hasWriteAccess(caller, plannedFileMod.relPath)) {
         const content = getAccessDeniedMessage('write', plannedFileMod.relPath, language);
-        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const absKey = plannedFileMod.absPath;
@@ -3287,9 +3284,7 @@ async function runApplyFileModification(
               const content = labels.applyFailed(
                 error instanceof Error ? error.message : String(error),
               );
-              resolve(
-                wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]),
-              );
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
             }
           },
         });
@@ -3328,7 +3323,7 @@ async function runApplyFileModification(
     }
     if (!hasWriteAccess(caller, planned.relPath)) {
       const content = getAccessDeniedMessage('write', planned.relPath, language);
-      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const absKey = planned.absPath;
@@ -3700,9 +3695,7 @@ async function runApplyFileModification(
             const content = labels.applyFailed(
               error instanceof Error ? error.message : String(error),
             );
-            resolve(
-              wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]),
-            );
+            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
           }
         },
       });
@@ -3712,7 +3705,7 @@ async function runApplyFileModification(
     return res;
   } catch (error: unknown) {
     const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 }
 
@@ -3729,7 +3722,7 @@ export const applyFileModificationTool: FuncTool = {
     required: ['hunk_id'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const raw = requireNonEmptyStringArg(args, 'hunk_id');
     const id = normalizeExistingHunkId(raw) ?? '';
     if (!id) throw new Error('Invalid arguments: `hunk_id` must be a non-empty string');
@@ -3788,7 +3781,7 @@ async function runPrepareBlockReplace(
   }
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
   if (inputBody === '') {
     const content = formatYamlCodeBlock(
@@ -4151,7 +4144,7 @@ export const prepareFileBlockReplaceTool: FuncTool = {
     required: ['path', 'start_anchor', 'end_anchor', 'content'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const startAnchor = requireNonEmptyStringArg(args, 'start_anchor');
     const endAnchor = requireNonEmptyStringArg(args, 'end_anchor');
@@ -4245,7 +4238,7 @@ export const prepareFileAppendTool: FuncTool = {
     required: ['path', 'content'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const create = optionalBooleanArg(args, 'create');
     const existingHunkId = normalizeExistingHunkId(

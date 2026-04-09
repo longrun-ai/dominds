@@ -12,7 +12,7 @@ import {
   parseDomindsAppInstallJson,
 } from '@longrun-ai/kernel';
 import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
-import type { DomindsAppInstallJsonV1 } from '@longrun-ai/kernel/app-json';
+import type { DomindsAppInstallJson } from '@longrun-ai/kernel/app-json';
 import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import { createPubChan, createSubChan } from '@longrun-ai/kernel/evt';
 import { supportedLanguageCodes } from '@longrun-ai/kernel/types/language';
@@ -138,7 +138,6 @@ async function main(): Promise<void> {
   );
 
   const installJsonInput = {
-    schemaVersion: 1,
     appId: '@demo/example',
     displayName: 'Example',
     package: {
@@ -155,7 +154,7 @@ async function main(): Promise<void> {
 
   const parsed = parseDomindsAppInstallJson(installJsonInput);
   assert.equal(parsed.ok, true, 'Kernel root export must parse valid app install json.');
-  const installJsonContract: DomindsAppInstallJsonV1 = installJsonInput;
+  const installJsonContract: DomindsAppInstallJson = installJsonInput;
   assert.equal(installJsonContract.host.exportName, 'createDomindsApp');
   assert.deepEqual(
     TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.slice(0, 3),
@@ -314,7 +313,7 @@ async function main(): Promise<void> {
       path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate', 'src', 'install.ts'),
     ).href
   )) as Readonly<{
-    createInstallJson: () => Promise<DomindsAppInstallJsonV1>;
+    createInstallJson: () => Promise<DomindsAppInstallJson>;
   }>;
   const phaseGateAppModule = (await import(
     pathToFileURL(

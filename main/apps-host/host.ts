@@ -63,9 +63,12 @@ function isStringArray(value: unknown): value is readonly string[] {
 }
 
 function isToolCallOutput(value: unknown): value is DomindsAppHostToolResult['output'] {
-  if (typeof value === 'string') return true;
   if (!isRecord(value)) return false;
   if (typeof value['content'] !== 'string') return false;
+  const outcome = value['outcome'];
+  if (outcome !== 'success' && outcome !== 'failure' && outcome !== 'partial_failure') {
+    return false;
+  }
   const contentItems = value['contentItems'];
   return contentItems === undefined || Array.isArray(contentItems);
 }
@@ -212,15 +215,14 @@ function isChatMessage(value: unknown): value is ChatMessage {
 }
 
 function normalizeToolResult(value: unknown): DomindsAppHostToolResult {
-  if (isToolCallOutput(value)) {
-    return { output: value };
-  }
   if (!isRecord(value)) {
-    throw new Error('Invalid app tool result: expected ToolCallOutput or structured object');
+    throw new Error(
+      'Invalid app tool result: expected { output: { content, outcome, contentItems? }, ... }',
+    );
   }
   const output = value['output'];
   if (!isToolCallOutput(output)) {
-    throw new Error('Invalid app tool result: output must be ToolCallOutput');
+    throw new Error('Invalid app tool result: output must be { content, outcome, contentItems? }');
   }
   const reminderRequestsRaw = value['reminderRequests'];
   if (reminderRequestsRaw !== undefined && !Array.isArray(reminderRequestsRaw)) {

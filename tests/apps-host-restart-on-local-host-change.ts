@@ -41,7 +41,9 @@ function buildHostSource(params: {
     `  await delay(${initDelayMs});`,
     '  return {',
     '    tools: {',
-    '      probe_tool: async () => ({ output: ' + JSON.stringify(params.version) + ' }),',
+    '      probe_tool: async () => ({',
+    '        output: { content: ' + JSON.stringify(params.version) + ", outcome: 'success' },",
+    '      }),',
     '    },',
     '  };',
     '}',
@@ -108,7 +110,6 @@ async function main(): Promise<void> {
       [
         '#!/usr/bin/env node',
         'console.log(JSON.stringify({',
-        '  schemaVersion: 1,',
         "  appId: 'probe_app',",
         "  displayName: 'Probe App',",
         '  package: {',
@@ -182,7 +183,8 @@ async function main(): Promise<void> {
         callerId: 'tester',
       },
     );
-    assert.equal(first.output, 'v1');
+    assert.equal(first.output.content, 'v1');
+    assert.equal(first.output.outcome, 'success');
 
     const initMarkerAbs = path.join(tmpRoot, '.apps', 'probe-host-init.marker');
     await writeText(
@@ -204,7 +206,8 @@ async function main(): Promise<void> {
         callerId: 'tester',
       },
     );
-    assert.equal(duringRefresh.output, 'v2');
+    assert.equal(duringRefresh.output.content, 'v2');
+    assert.equal(duringRefresh.output.outcome, 'success');
     await refreshPromise;
 
     const second = await getAppsHostClient().callTool(
@@ -218,7 +221,8 @@ async function main(): Promise<void> {
         callerId: 'tester',
       },
     );
-    assert.equal(second.output, 'v2');
+    assert.equal(second.output.content, 'v2');
+    assert.equal(second.output.outcome, 'success');
   } finally {
     await shutdownAppsRuntime();
     process.chdir(previousCwd);

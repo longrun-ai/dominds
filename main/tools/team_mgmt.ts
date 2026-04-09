@@ -36,6 +36,7 @@ import {
 import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { truncateInlineText } from './output-limit';
 import { getToolsetMeta, listToolsets } from './registry';
@@ -68,18 +69,18 @@ const MCP_WORKSPACE_PROBLEM_PREFIX = 'mcp/workspace_config_error';
 const MCP_SERVER_PROBLEM_PREFIX = 'mcp/server/';
 const log = createLogger('tools/team_mgmt');
 
-function ok(result: string, messages?: ChatMessage[]): string {
+function ok(result: string, messages?: ChatMessage[]): ToolCallOutput {
   void messages;
-  return result;
+  return toolSuccess(result);
 }
 
-function fail(result: string, messages?: ChatMessage[]): string {
+function fail(result: string, messages?: ChatMessage[]): ToolCallOutput {
   void messages;
-  return result;
+  return toolFailure(result);
 }
 
 function toolCallOutputToString(output: ToolCallOutput): string {
-  return typeof output === 'string' ? output : output.content;
+  return output.content;
 }
 
 const TEAM_MGMT_LIST_PROVIDERS_HARD_MAX_PROVIDERS = 80;
@@ -908,7 +909,7 @@ export const teamMgmtCheckProviderTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const providerKeyValue = args['provider_key'];
@@ -1155,7 +1156,7 @@ export const teamMgmtListProvidersTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const providerPatternValue = args['provider_pattern'];
@@ -1362,7 +1363,7 @@ export const teamMgmtListModelsTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const sourceValue = args['source'];
@@ -1627,7 +1628,7 @@ export const teamMgmtListDirTool: FuncTool = {
     properties: { path: { type: 'string' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1646,7 +1647,7 @@ export const teamMgmtListDirTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await listDirTool.call(dlg, proxyCaller, { path: rel });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1677,7 +1678,7 @@ export const teamMgmtReadFileTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1737,7 +1738,7 @@ export const teamMgmtReadFileTool: FuncTool = {
         ...(showLinenos !== undefined ? { show_linenos: showLinenos } : {}),
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1766,7 +1767,7 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     const t =
       language === 'zh'
@@ -1926,7 +1927,7 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1989,7 +1990,7 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
           trigger: 'overwrite_entire_file',
         });
       }
-      return ok(result, [{ type: 'environment_msg', role: 'user', content: result }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2020,7 +2021,7 @@ export const teamMgmtPrepareFileAppendTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2062,7 +2063,7 @@ export const teamMgmtPrepareFileAppendTool: FuncTool = {
         content: contentValue,
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2095,7 +2096,7 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2149,7 +2150,7 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
         content: contentValue,
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2182,7 +2183,7 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2236,7 +2237,7 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
         content: contentValue,
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2273,7 +2274,7 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2342,7 +2343,7 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
         content: contentValue,
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2373,7 +2374,7 @@ export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2409,7 +2410,7 @@ export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
         ...(typeof contentValue === 'string' ? { content: contentValue } : {}),
       });
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2435,7 +2436,7 @@ export const teamMgmtApplyFileModificationTool: FuncTool = {
     properties: { hunk_id: { type: 'string' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2459,7 +2460,7 @@ export const teamMgmtApplyFileModificationTool: FuncTool = {
           });
         }
       }
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2485,7 +2486,7 @@ export const teamMgmtMkDirTool: FuncTool = {
     properties: { path: { type: 'string' }, parents: { type: 'boolean' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2509,7 +2510,7 @@ export const teamMgmtMkDirTool: FuncTool = {
         parents === undefined ? { path: rel } : { path: rel, parents };
       const output = await mkDirTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2535,7 +2536,7 @@ export const teamMgmtMoveFileTool: FuncTool = {
     properties: { from: { type: 'string' }, to: { type: 'string' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2565,7 +2566,7 @@ export const teamMgmtMoveFileTool: FuncTool = {
           trigger: 'move_file',
         });
       }
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2591,7 +2592,7 @@ export const teamMgmtMoveDirTool: FuncTool = {
     properties: { from: { type: 'string' }, to: { type: 'string' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2621,7 +2622,7 @@ export const teamMgmtMoveDirTool: FuncTool = {
           trigger: 'move_dir',
         });
       }
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2656,7 +2657,7 @@ export const teamMgmtRipgrepFilesTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2719,7 +2720,7 @@ export const teamMgmtRipgrepFilesTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await ripgrepFilesTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2756,7 +2757,7 @@ export const teamMgmtRipgrepSnippetsTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2834,7 +2835,7 @@ export const teamMgmtRipgrepSnippetsTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await ripgrepSnippetsTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2869,7 +2870,7 @@ export const teamMgmtRipgrepCountTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2932,7 +2933,7 @@ export const teamMgmtRipgrepCountTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await ripgrepCountTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2970,7 +2971,7 @@ export const teamMgmtRipgrepFixedTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -3050,7 +3051,7 @@ export const teamMgmtRipgrepFixedTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await ripgrepFixedTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -3080,7 +3081,7 @@ export const teamMgmtRipgrepSearchTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -3117,7 +3118,7 @@ export const teamMgmtRipgrepSearchTool: FuncTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const output = await ripgrepSearchTool.call(dlg, proxyCaller, toolArgs);
       const content = toolCallOutputToString(output);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -3143,7 +3144,7 @@ export const teamMgmtRmFileTool: FuncTool = {
     properties: { path: { type: 'string' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -3169,7 +3170,7 @@ export const teamMgmtRmFileTool: FuncTool = {
           trigger: 'rm_file',
         });
       }
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -3195,7 +3196,7 @@ export const teamMgmtRmDirTool: FuncTool = {
     properties: { path: { type: 'string' }, recursive: { type: 'boolean' } },
   },
   argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<string> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -3229,7 +3230,7 @@ export const teamMgmtRmDirTool: FuncTool = {
           trigger: 'rm_dir',
         });
       }
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -5180,7 +5181,7 @@ export const teamMgmtValidatePrimingScriptsTool: FuncTool = {
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',
-  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, _args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const minds = await getMindsDirState();
@@ -5270,7 +5271,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',
-  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, _args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const minds = await getMindsDirState();
@@ -5462,7 +5463,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',
-  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, _args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const minds = await getMindsDirState();
@@ -5713,7 +5714,7 @@ export const teamMgmtListProblemsTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const source = parseTeamMgmtProblemSourceArg(args['source']);
@@ -5851,7 +5852,7 @@ export const teamMgmtClearProblemsTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
     try {
       const source = parseTeamMgmtProblemSourceArg(args['source']);

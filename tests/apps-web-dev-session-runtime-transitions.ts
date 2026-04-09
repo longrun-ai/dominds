@@ -35,9 +35,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(modeResult);
-    assert.match(modeResult.output, /ok: session browser mode switched\./);
-    assert.match(modeResult.output, /previousMode=desktop/);
-    assert.match(modeResult.output, /browserMode=native_window/);
+    assert.match(modeResult.output.content, /ok: session browser mode switched\./);
+    assert.match(modeResult.output.content, /previousMode=desktop/);
+    assert.match(modeResult.output.content, /browserMode=native_window/);
     assert.equal(fixture.fakeEnv.trackers.contextClosed, 1);
     assert.deepEqual(fixture.fakeEnv.trackers.newContextOptions.at(-1), { viewport: null });
 
@@ -52,7 +52,10 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(normalizedScreenshot);
-    assert.match(normalizedScreenshot.output, /ok: normalized session screenshot captured\./);
+    assert.match(
+      normalizedScreenshot.output.content,
+      /ok: normalized session screenshot captured\./,
+    );
     assert.deepEqual(fixture.fakeEnv.trackers.screenshotCalls.at(-1), {
       type: 'png',
       scale: 'device',
@@ -76,9 +79,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(fitCheck);
-    assert.match(fitCheck.output, /ok: session viewport fit check passed\./);
+    assert.match(fitCheck.output.content, /ok: session viewport fit check passed\./);
     assert.match(
-      fitCheck.output,
+      fitCheck.output.content,
       /PASS surface=page viewport=1280x720 document=1280x720 regions=1/,
     );
 
@@ -91,9 +94,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(relaunch);
-    assert.match(relaunch.output, /ok: session browser runtime relaunched\./);
+    assert.match(relaunch.output.content, /ok: session browser runtime relaunched\./);
     assert.match(
-      relaunch.output,
+      relaunch.output.content,
       /boundary=use relaunch after startup\/process-ownership changes; use reload for renderer-only changes\./,
     );
     assert.equal(fixture.fakeEnv.trackers.launched, 2);
@@ -111,7 +114,7 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(electronCreated);
-    assert.match(electronCreated.output, /ok: created Web Dev electron session\./);
+    assert.match(electronCreated.output.content, /ok: created Web Dev electron session\./);
     const electronReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(electronCreated), {
         dialogId: fixture.controllerCtx.dialogId,
@@ -139,16 +142,16 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(electronEval);
-    assert.match(electronEval.output, /runtime=playwright_electron_runtime/);
-    assert.match(electronEval.output, /"activeSurfaceRole":"appWindow"/);
-    assert.match(electronEval.output, /"hasElectronApp":true/);
+    assert.match(electronEval.output.content, /runtime=playwright_electron_runtime/);
+    assert.match(electronEval.output.content, /"activeSurfaceRole":"appWindow"/);
+    assert.match(electronEval.output.content, /"hasElectronApp":true/);
 
     const electronReload = await fixture.host.tools.playwright_session_reload(
       { sessionId: electronSessionId, waitUntil: 'domcontentloaded', surfaceHint: 'appWindow' },
       fixture.controllerCtx,
     );
     assertStructuredResult(electronReload);
-    assert.match(electronReload.output, /ok: session app window reloaded\./);
+    assert.match(electronReload.output.content, /ok: session app window reloaded\./);
 
     const electronRelaunch = await fixture.host.tools.playwright_session_relaunch(
       {
@@ -160,8 +163,8 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(electronRelaunch);
-    assert.match(electronRelaunch.output, /sessionKind=electron/);
-    assert.match(electronRelaunch.output, /entryUrl=\.\/main\.js/);
+    assert.match(electronRelaunch.output.content, /sessionKind=electron/);
+    assert.match(electronRelaunch.output.content, /entryUrl=\.\/main\.js/);
     assert.equal(fixture.fakeEnv.trackers.electronLaunched, 2);
 
     const electronClosed = await fixture.host.tools.playwright_session_close(
@@ -169,7 +172,7 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(electronClosed);
-    assert.match(electronClosed.output, /ok: session closed\./);
+    assert.match(electronClosed.output.content, /ok: session closed\./);
   } finally {
     await fixture.cleanup();
   }

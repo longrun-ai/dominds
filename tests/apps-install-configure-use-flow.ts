@@ -98,7 +98,6 @@ async function writeLocalAppPackage(params: {
       "'use strict';",
       "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
       'const json = {',
-      '  schemaVersion: 1,',
       `  appId: ${JSON.stringify(params.appId)},`,
       '  package: {',
       `    name: ${JSON.stringify(params.packageName)},`,

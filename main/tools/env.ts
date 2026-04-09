@@ -10,7 +10,8 @@
 import type { Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { Team } from '../team';
-import type { FuncTool, JsonSchema, ToolArguments } from '../tool';
+import type { FuncTool, JsonSchema, ToolArguments, ToolCallOutput } from '../tool';
+import { toolSuccess } from '../tool';
 
 const log = createLogger('tools/env');
 
@@ -143,7 +144,7 @@ export const envGetTool: FuncTool = {
   },
   parameters: envGetSchema,
   argsValidation: 'dominds',
-  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvGetArgs(args);
     assertAllowedKey(parsed.key);
 
@@ -156,10 +157,10 @@ export const envGetTool: FuncTool = {
       hasValue: value !== undefined,
     });
 
-    if (value === undefined) return '(unset)';
-    if (parsed.reveal === true) return value;
-    if (isSensitiveKeyName(parsed.key)) return redactValue(value);
-    return value;
+    if (value === undefined) return toolSuccess('(unset)');
+    if (parsed.reveal === true) return toolSuccess(value);
+    if (isSensitiveKeyName(parsed.key)) return toolSuccess(redactValue(value));
+    return toolSuccess(value);
   },
 };
 
@@ -173,7 +174,7 @@ export const envSetTool: FuncTool = {
   },
   parameters: envSetSchema,
   argsValidation: 'dominds',
-  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvSetArgs(args);
     assertAllowedKey(parsed.key);
 
@@ -194,7 +195,7 @@ export const envSetTool: FuncTool = {
           ? redactValue(String(prev))
           : String(prev);
     const nextStr = isSensitiveKeyName(parsed.key) ? redactValue(parsed.value) : parsed.value;
-    return `ok: ${parsed.key}\nprev: ${prevStr}\nnext: ${nextStr}`;
+    return toolSuccess(`ok: ${parsed.key}\nprev: ${prevStr}\nnext: ${nextStr}`);
   },
 };
 
@@ -208,7 +209,7 @@ export const envUnsetTool: FuncTool = {
   },
   parameters: envUnsetSchema,
   argsValidation: 'dominds',
-  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvUnsetArgs(args);
     assertAllowedKey(parsed.key);
 
@@ -227,6 +228,6 @@ export const envUnsetTool: FuncTool = {
         : isSensitiveKeyName(parsed.key)
           ? redactValue(String(prev))
           : String(prev);
-    return `ok: ${parsed.key}\nprev: ${prevStr}\nnext: (unset)`;
+    return toolSuccess(`ok: ${parsed.key}\nprev: ${prevStr}\nnext: (unset)`);
   },
 };

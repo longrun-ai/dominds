@@ -2,7 +2,7 @@ import type { DomindsAppRunControlResult } from '@longrun-ai/kernel/app-host-con
 import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppHostReminderUpdateResult,
-  DomindsAppInstallJsonV1,
+  DomindsAppInstallJson,
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
   DomindsAppReminderState,
@@ -19,7 +19,7 @@ export type AppsHostKernelInitMessage = Readonly<{
     Readonly<{
       appId: string;
       runtimePort: number | null;
-      installJson: DomindsAppInstallJsonV1;
+      installJson: DomindsAppInstallJson;
     }>
   >;
 }>;
@@ -362,7 +362,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       if (!isRecord(installJson)) {
         throw new Error(`Invalid init message: apps[${idx}].installJson must be object`);
       }
-      return { appId, runtimePort, installJson: installJson as DomindsAppInstallJsonV1 };
+      return { appId, runtimePort, installJson: installJson as DomindsAppInstallJson };
     });
     return { type: 'init', rtwsRootAbs, kernel: { host, port }, apps: parsedApps };
   }

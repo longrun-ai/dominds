@@ -19,7 +19,6 @@ function makeFile(params: {
     source: { kind: 'npx', spec: 'example@0.0.0' },
     assignedPort: params.assignedPort,
     installJson: {
-      schemaVersion: 1,
       appId: params.appId,
       package: {
         name: 'example',

@@ -124,7 +124,6 @@ async function main(): Promise<void> {
         '#!/usr/bin/env node',
         "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
         'process.stdout.write(JSON.stringify({',
-        '  schemaVersion: 1,',
         `  appId: ${JSON.stringify(appId)},`,
         "  displayName: 'Web Dev',",
         '  package: {',

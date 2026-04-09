@@ -21,7 +21,9 @@ import type {
   ReminderOwner,
   ReminderUpdateResult,
   ToolArguments,
+  ToolCallOutput,
 } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 
 const log = createLogger('tools/mcp');
 
@@ -97,7 +99,7 @@ export const mcpRestartTool: FuncTool = {
   },
   parameters: mcpRestartSchema,
   argsValidation: 'dominds',
-  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseMcpRestartArgs(args);
 
     const res = await requestMcpServerRestart(parsed.serverId);
@@ -115,10 +117,10 @@ export const mcpRestartTool: FuncTool = {
         ok: false,
         errorText: res.errorText,
       });
-      return `error: ${res.errorText}`;
+      return toolFailure(`error: ${res.errorText}`);
     }
 
-    return `ok: restarted ${parsed.serverId}`;
+    return toolSuccess(`ok: restarted ${parsed.serverId}`);
   },
 };
 
@@ -133,7 +135,7 @@ export const mcpReleaseTool: FuncTool = {
   },
   parameters: mcpReleaseSchema,
   argsValidation: 'dominds',
-  call: async (dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+  call: async (dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseMcpReleaseArgs(args);
     const dialogKey = dlg.id.key();
 
@@ -153,13 +155,15 @@ export const mcpReleaseTool: FuncTool = {
         ok: false,
         errorText: res.errorText,
       });
-      return `error: ${res.errorText}`;
+      return toolFailure(`error: ${res.errorText}`);
     }
 
     if (!res.released) {
-      return `ok: no active lease for ${parsed.serverId} (or server is truely-stateless)`;
+      return toolSuccess(
+        `ok: no active lease for ${parsed.serverId} (or server is truely-stateless)`,
+      );
     }
-    return `ok: released ${parsed.serverId} for dialog ${dialogKey}`;
+    return toolSuccess(`ok: released ${parsed.serverId} for dialog ${dialogKey}`);
   },
 };
 

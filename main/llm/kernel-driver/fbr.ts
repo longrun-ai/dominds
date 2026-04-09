@@ -4,7 +4,7 @@ import type { Dialog } from '../../dialog';
 import { appendDistinctPerspectiveFbrBody } from '../../runtime/fbr-body';
 import { formatAssignmentFromSupdialog } from '../../runtime/inter-dialog-format';
 import type { Team } from '../../team';
-import type { FuncTool, ToolArguments, ToolCallOutput } from '../../tool';
+import { type FuncTool, type ToolArguments, type ToolCallOutput, toolSuccess } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg } from '../client';
 
 export const FBR_LOW_NOISE_CONCLUSION_TOOL_NAME = 'presentLowNoiseHighlyInformativeConclusion';
@@ -67,7 +67,7 @@ async function callFbrConclusionTool(
   _caller: Team.Member,
   rawArgs: ToolArguments,
 ): Promise<ToolCallOutput> {
-  return extractFbrConclusionToolArgs(rawArgs).content;
+  return toolSuccess(extractFbrConclusionToolArgs(rawArgs).content);
 }
 
 export function buildFbrConclusionTools(language: LanguageCode): readonly FuncTool[] {

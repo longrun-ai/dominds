@@ -5,7 +5,7 @@ import YAML from 'yaml';
 
 import {
   parseDomindsAppInstallJson,
-  type DomindsAppInstallJsonV1,
+  type DomindsAppInstallJson,
 } from '@longrun-ai/kernel/app-json';
 
 export type AppsResolutionSchemaVersion = 1;
@@ -25,7 +25,7 @@ export type AppsResolutionEntry = Readonly<{
   enabled: boolean;
   source: AppsResolutionSource;
   assignedPort: number | null;
-  installJson: DomindsAppInstallJsonV1;
+  installJson: DomindsAppInstallJson;
 }>;
 
 export type AppsResolutionFile = Readonly<{

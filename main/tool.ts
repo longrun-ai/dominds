@@ -16,8 +16,10 @@ import type {
   ReminderUpdateResult as KernelReminderUpdateResult,
   ToolArguments as KernelToolArguments,
   ToolCallOutput as KernelToolCallOutput,
+  ToolOutcome as KernelToolOutcome,
 } from '@longrun-ai/kernel/app-json';
 import type { I18nText } from '@longrun-ai/kernel/types/i18n';
+import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
@@ -37,6 +39,9 @@ export type ToolArguments = KernelToolArguments;
 // Dominds does not attempt to statically model every JSON Schema keyword at the type level.
 export type JsonSchema = KernelJsonSchema;
 
+export type FuncToolFollowupMode = 'immediate' | 'deferred';
+export type ToolOutcome = KernelToolOutcome;
+
 export interface FuncTool {
   readonly type: 'func';
   readonly name: string;
@@ -48,6 +53,11 @@ export interface FuncTool {
   // - 'dominds': validate using Dominds' built-in minimal validator (best-effort).
   // - 'passthrough': accept any JSON object (used by MCP tools).
   readonly argsValidation?: 'dominds' | 'passthrough';
+  // Whether a successful tool result should trigger an immediate post-tool generation.
+  // - 'immediate': start another generation right away so the LLM can react in the same drive.
+  // - 'deferred': do not start a new generation just for this success result; include it later
+  //   if/when a natural next generation happens.
+  readonly followupMode?: FuncToolFollowupMode;
   // args is a structured object adhering to parameters schema
   call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput>;
 }
@@ -55,6 +65,39 @@ export interface FuncTool {
 export type Tool = FuncTool;
 
 export type ToolCallOutput = KernelToolCallOutput;
+
+export function toolResult(
+  content: string,
+  outcome: ToolOutcome,
+  contentItems?: FuncResultContentItem[],
+): ToolCallOutput {
+  return {
+    content,
+    outcome,
+    contentItems,
+  };
+}
+
+export function toolSuccess(
+  content: string,
+  contentItems?: FuncResultContentItem[],
+): ToolCallOutput {
+  return toolResult(content, 'success', contentItems);
+}
+
+export function toolFailure(
+  content: string,
+  contentItems?: FuncResultContentItem[],
+): ToolCallOutput {
+  return toolResult(content, 'failure', contentItems);
+}
+
+export function toolPartialFailure(
+  content: string,
+  contentItems?: FuncResultContentItem[],
+): ToolCallOutput {
+  return toolResult(content, 'partial_failure', contentItems);
+}
 
 type PreparedRawToolArguments =
   | Readonly<{

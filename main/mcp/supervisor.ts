@@ -9,7 +9,7 @@ import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
 import { getWorkLanguage } from '../runtime/work-language';
-import type { Tool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolSuccess, type Tool, type ToolArguments, type ToolCallOutput } from '../tool';
 import { buildMcpManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
@@ -1482,12 +1482,12 @@ async function materializeMcpToolCallOutput(params: {
 }): Promise<ToolCallOutput> {
   const rawValue = params.raw;
   if (!isRecord(rawValue) || Array.isArray(rawValue)) {
-    return String(rawValue);
+    return toolSuccess(String(rawValue));
   }
 
   const maybeContent = rawValue.content;
   if (!Array.isArray(maybeContent)) {
-    return stringifyMcpToolCallResultSafe(rawValue);
+    return toolSuccess(stringifyMcpToolCallResultSafe(rawValue));
   }
 
   const eventsBase = DialogPersistence.getDialogEventsPath(params.dlg.id, params.dlg.status);
@@ -1554,10 +1554,10 @@ async function materializeMcpToolCallOutput(params: {
   }
 
   const content = displayLines.join('\n').trim();
-  return {
-    content: content !== '' ? content : stringifyMcpToolCallResultSafe(rawValue),
-    contentItems: contentItems.length > 0 ? contentItems : undefined,
-  };
+  return toolSuccess(
+    content !== '' ? content : stringifyMcpToolCallResultSafe(rawValue),
+    contentItems.length > 0 ? contentItems : undefined,
+  );
 }
 
 function buildHttpHeaders(

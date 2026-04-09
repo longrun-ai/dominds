@@ -3,6 +3,15 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type {
+  DomindsAppDialogReminderRequestBatch,
+  DomindsAppHostReminderUpdateResult,
+  DomindsAppHostToolResult,
+  DomindsAppReminderApplyRequest,
+  DomindsAppReminderApplyResult,
+  DomindsAppReminderState,
+} from '@longrun-ai/kernel/app-json';
+
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 
 export type ToolCtx = Readonly<{
@@ -13,47 +22,12 @@ export type ToolCtx = Readonly<{
   callerId: string;
 }>;
 
-export type ReminderRequest =
-  | Readonly<{
-      kind: 'upsert';
-      ownerRef: string;
-      content: string;
-      meta?: unknown;
-      position?: number;
-      echoback?: boolean;
-    }>
-  | Readonly<{
-      kind: 'delete';
-      ownerRef: string;
-      meta?: unknown;
-    }>;
-
-export type DialogReminderBatch = Readonly<{
-  target: Readonly<Record<string, unknown>>;
-  reminderRequests: ReadonlyArray<ReminderRequest>;
-}>;
-
-export type StructuredToolResult = Readonly<{
-  output: string;
-  reminderRequests?: ReadonlyArray<ReminderRequest>;
-  dialogReminderRequests?: ReadonlyArray<DialogReminderBatch>;
-}>;
-
-export type ReminderState = Readonly<{
-  content: string;
-  meta?: unknown;
-  echoback?: boolean;
-}>;
-
-export type ReminderApplyResult =
-  | Readonly<{ treatment: 'noop' }>
-  | Readonly<{ treatment: 'add'; reminder: ReminderState; position?: number }>
-  | Readonly<{ treatment: 'update'; ownedIndex: number; reminder: ReminderState }>
-  | Readonly<{ treatment: 'delete'; ownedIndex: number }>;
-
-export type ReminderUpdateResult =
-  | Readonly<{ treatment: 'keep' | 'drop' }>
-  | Readonly<{ treatment: 'update'; updatedContent: string; updatedMeta?: unknown }>;
+export type ReminderRequest = DomindsAppReminderApplyRequest;
+export type DialogReminderBatch = DomindsAppDialogReminderRequestBatch;
+export type StructuredToolResult = DomindsAppHostToolResult;
+export type ReminderState = DomindsAppReminderState;
+export type ReminderApplyResult = DomindsAppReminderApplyResult;
+export type ReminderUpdateResult = DomindsAppHostReminderUpdateResult;
 
 export type ReminderOwnerHandler = Readonly<{
   apply: (
@@ -73,10 +47,7 @@ export type ReminderOwnerHandler = Readonly<{
   ) => Promise<Readonly<{ content: string }>>;
 }>;
 
-type ToolHandler = (
-  args: Record<string, unknown>,
-  ctx: ToolCtx,
-) => Promise<string | StructuredToolResult>;
+type ToolHandler = (args: Record<string, unknown>, ctx: ToolCtx) => Promise<StructuredToolResult>;
 
 export type WebDevAppHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
@@ -203,11 +174,12 @@ export async function pathExists(absPath: string): Promise<boolean> {
 }
 
 export function assertStructuredResult(
-  result: string | StructuredToolResult,
+  result: StructuredToolResult,
 ): asserts result is StructuredToolResult {
   assert.equal(typeof result, 'object');
   assert.notEqual(result, null);
-  assert.equal(typeof result.output, 'string');
+  assert.equal(typeof result.output.content, 'string');
+  assert.match(result.output.outcome, /^(success|failure|partial_failure)$/);
 }
 
 export function assertRecord(value: unknown): asserts value is Record<string, unknown> {
@@ -238,6 +210,9 @@ export function sessionIdFromReminder(reminder: ReminderState): string {
   assertRecord(reminder.meta);
   const sessionId = reminder.meta['sessionId'];
   assert.equal(typeof sessionId, 'string');
+  if (typeof sessionId !== 'string') {
+    throw new Error('expected reminder.meta.sessionId to be a string');
+  }
   return sessionId;
 }
 

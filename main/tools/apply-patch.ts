@@ -13,7 +13,8 @@ import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access
 import type { Dialog } from '../dialog';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolSuccess } from '../tool';
 
 const BEGIN_PATCH_MARKER = '*** Begin Patch';
 const END_PATCH_MARKER = '*** End Patch';
@@ -656,10 +657,10 @@ export const applyPatchTool: FuncTool = {
       patch: { type: 'string' },
     },
   },
-  async call(_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const parsed = parseApplyPatchArgs(args);
     const hunks = parsePatch(parsed.patch);
     const summary = await applyHunksToWorkspace(caller, hunks);
-    return printSummary(summary);
+    return toolSuccess(printSummary(summary));
   },
 };

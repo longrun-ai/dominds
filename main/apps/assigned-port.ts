@@ -1,6 +1,6 @@
 import net from 'node:net';
 
-import type { DomindsAppInstallJsonV1 } from '@longrun-ai/kernel/app-json';
+import type { DomindsAppInstallJson } from '@longrun-ai/kernel/app-json';
 import type { AppsResolutionEntry } from './resolution-file';
 
 const STABLE_PORT_RANGE_START = 43000;
@@ -108,7 +108,7 @@ async function pickDeterministicAvailablePort(params: {
  */
 export async function resolveStableAssignedPort(params: {
   appId: string;
-  installJson: DomindsAppInstallJsonV1;
+  installJson: DomindsAppInstallJson;
   existingApps: ReadonlyArray<AppsResolutionEntry>;
   existingAssignedPort: number | null;
 }): Promise<number | null> {
@@ -118,7 +118,7 @@ export async function resolveStableAssignedPort(params: {
 
 export async function resolveStableAssignedPortWithReason(params: {
   appId: string;
-  installJson: DomindsAppInstallJsonV1;
+  installJson: DomindsAppInstallJson;
   existingApps: ReadonlyArray<AppsResolutionEntry>;
   existingAssignedPort: number | null;
 }): Promise<AssignedPortResolution> {

@@ -97,6 +97,28 @@ async function main(): Promise<void> {
 
     await waitForAllDialogsUnlocked(dlg, 2000);
 
+    const courseEvents = await DialogPersistence.loadCourseEvents(
+      dlg.id,
+      dlg.currentCourse,
+      dlg.status,
+    );
+    const genStartCount = courseEvents.filter((event) => event.type === 'gen_start_record').length;
+    assert.equal(
+      genStartCount,
+      1,
+      'update_plan should sync reminder state without triggering an immediate post-tool generation',
+    );
+
+    const assistantSayings = dlg.msgs.filter(
+      (msg): msg is Extract<(typeof dlg.msgs)[number], { type: 'saying_msg'; role: 'assistant' }> =>
+        msg.type === 'saying_msg' && msg.role === 'assistant',
+    );
+    assert.equal(
+      assistantSayings[assistantSayings.length - 1]?.content,
+      'Calling update_plan to store current plan.',
+      'root dialog should stop after the original assistant turn instead of immediately self-following on update_plan',
+    );
+
     const events = await collectEvents(ch, 800);
     const reminderEvents = events.filter(
       (ev): ev is Extract<TypedDialogEvent, { type: 'full_reminders_update' }> =>

@@ -16,7 +16,7 @@ import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppHostReminderUpdateResult,
   DomindsAppHostToolResult,
-  DomindsAppInstallJsonV1,
+  DomindsAppInstallJson,
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
 } from '@longrun-ai/kernel/app-json';
@@ -142,7 +142,7 @@ function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
 export type EnabledAppForHost = Readonly<{
   appId: string;
   runtimePort: number | null;
-  installJson: DomindsAppInstallJsonV1;
+  installJson: DomindsAppInstallJson;
   hostSourceVersion: string | null;
 }>;
 

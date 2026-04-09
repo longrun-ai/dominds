@@ -40,7 +40,6 @@ async function main(): Promise<void> {
               pathAbs: path.join(tmpRoot, 'dominds-apps', 'broken-web-dev'),
             },
             installJson: {
-              schemaVersion: 1,
               appId: '@longrun-ai/broken-web-dev',
               package: {
                 name: '@longrun-ai/broken-web-dev',

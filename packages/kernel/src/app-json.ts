@@ -6,19 +6,50 @@ export type JsonObject = { [key: string]: JsonValue };
 export type JsonArray = JsonValue[];
 export type ToolArguments = JsonObject;
 export type JsonSchema = Record<string, unknown>;
-export type ToolCallOutput =
-  | string
-  | {
-      content: string;
-      contentItems?: ReadonlyArray<unknown>;
-    };
+export type ToolOutcome = 'success' | 'failure' | 'partial_failure';
+export type ToolCallOutput = Readonly<{
+  content: string;
+  outcome: ToolOutcome;
+  contentItems?: ReadonlyArray<unknown>;
+}>;
+
+export function toolResult(
+  content: string,
+  outcome: ToolOutcome,
+  contentItems?: ReadonlyArray<unknown>,
+): ToolCallOutput {
+  return {
+    content,
+    outcome,
+    contentItems,
+  };
+}
+
+export function toolSuccess(
+  content: string,
+  contentItems?: ReadonlyArray<unknown>,
+): ToolCallOutput {
+  return toolResult(content, 'success', contentItems);
+}
+
+export function toolFailure(
+  content: string,
+  contentItems?: ReadonlyArray<unknown>,
+): ToolCallOutput {
+  return toolResult(content, 'failure', contentItems);
+}
+
+export function toolPartialFailure(
+  content: string,
+  contentItems?: ReadonlyArray<unknown>,
+): ToolCallOutput {
+  return toolResult(content, 'partial_failure', contentItems);
+}
 export interface ReminderUpdateResult {
   treatment: 'drop' | 'keep' | 'update';
   updatedContent?: string;
   updatedMeta?: JsonValue;
 }
-
-export type DomindsAppJsonSchemaVersion = 1;
 
 export type DomindsAppToolJson = Readonly<{
   name: string;
@@ -71,8 +102,7 @@ export type DomindsAppFrontendJson = Readonly<{
   wsPath?: string;
 }>;
 
-export type DomindsAppInstallJsonV1 = Readonly<{
-  schemaVersion: DomindsAppJsonSchemaVersion;
+export type DomindsAppInstallJson = Readonly<{
   appId: string;
   displayName?: string;
   package: Readonly<{
@@ -236,13 +266,9 @@ function parseReminderOwnerJson(
 
 export function parseDomindsAppInstallJson(
   v: unknown,
-): { ok: true; json: DomindsAppInstallJsonV1 } | { ok: false; errorText: string } {
+): { ok: true; json: DomindsAppInstallJson } | { ok: false; errorText: string } {
   if (!isRecord(v)) {
     return { ok: false, errorText: 'Invalid app --dominds-app output: expected object' };
-  }
-  const schemaVersion = v['schemaVersion'];
-  if (schemaVersion !== 1) {
-    return { ok: false, errorText: `Unsupported app json schemaVersion: ${String(schemaVersion)}` };
   }
   const appId = asString(v['appId']);
   if (!appId || appId.trim() === '')
@@ -372,7 +398,6 @@ export function parseDomindsAppInstallJson(
   return {
     ok: true,
     json: {
-      schemaVersion: 1,
       appId,
       displayName,
       package: { name: packageName, version: packageVersion, rootAbs },
@@ -448,9 +473,46 @@ export type DomindsAppHostToolResult = Readonly<{
   dialogReminderRequests?: ReadonlyArray<DomindsAppDialogReminderRequestBatch>;
 }>;
 
+type DomindsAppHostToolResultOptions = Readonly<{
+  reminderRequests?: ReadonlyArray<DomindsAppReminderApplyRequest>;
+  dialogReminderRequests?: ReadonlyArray<DomindsAppDialogReminderRequestBatch>;
+}>;
+
+export function appToolResult(
+  output: ToolCallOutput,
+  options?: DomindsAppHostToolResultOptions,
+): DomindsAppHostToolResult {
+  return {
+    output,
+    reminderRequests: options?.reminderRequests,
+    dialogReminderRequests: options?.dialogReminderRequests,
+  };
+}
+
+export function appToolSuccess(
+  content: string,
+  options?: DomindsAppHostToolResultOptions & Readonly<{ contentItems?: ReadonlyArray<unknown> }>,
+): DomindsAppHostToolResult {
+  return appToolResult(toolSuccess(content, options?.contentItems), options);
+}
+
+export function appToolFailure(
+  content: string,
+  options?: DomindsAppHostToolResultOptions & Readonly<{ contentItems?: ReadonlyArray<unknown> }>,
+): DomindsAppHostToolResult {
+  return appToolResult(toolFailure(content, options?.contentItems), options);
+}
+
+export function appToolPartialFailure(
+  content: string,
+  options?: DomindsAppHostToolResultOptions & Readonly<{ contentItems?: ReadonlyArray<unknown> }>,
+): DomindsAppHostToolResult {
+  return appToolResult(toolPartialFailure(content, options?.contentItems), options);
+}
+
 export type DomindsAppHostToolHandler = (
   args: ToolArguments,
   ctx: DomindsAppHostToolContext,
-) => Promise<ToolCallOutput | DomindsAppHostToolResult>;
+) => Promise<DomindsAppHostToolResult>;
 
 export type DomindsAppHostReminderUpdateResult = ReminderUpdateResult;

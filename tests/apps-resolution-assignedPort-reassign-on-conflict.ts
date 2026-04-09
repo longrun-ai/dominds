@@ -35,7 +35,6 @@ function makeEntry(params: {
     source: { kind: 'npx', spec: `${params.id}@0.0.0` },
     assignedPort: params.assignedPort,
     installJson: {
-      schemaVersion: 1,
       appId: params.id,
       package: {
         name: params.id,

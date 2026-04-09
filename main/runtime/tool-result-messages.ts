@@ -1,4 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { toolSuccess, type ToolCallOutput } from '../tool';
 
 export type ToolActionResult =
   | 'added'
@@ -16,21 +17,24 @@ export function formatToolError(language: LanguageCode): string {
   return language === 'zh' ? '错误' : 'Error';
 }
 
-export function formatToolActionResult(language: LanguageCode, action: ToolActionResult): string {
+export function formatToolActionResult(
+  language: LanguageCode,
+  action: ToolActionResult,
+): ToolCallOutput {
   if (language === 'zh') {
     switch (action) {
       case 'added':
-        return '已添加';
+        return toolSuccess('已添加');
       case 'deleted':
-        return '已删除';
+        return toolSuccess('已删除');
       case 'updated':
-        return '已更新';
+        return toolSuccess('已更新');
       case 'cleared':
-        return '已清空';
+        return toolSuccess('已清空');
       case 'mindCleared':
-        return '已清理头脑';
+        return toolSuccess('已清理头脑');
       case 'mindChanged':
-        return '已更新想法';
+        return toolSuccess('已更新想法');
       default: {
         const _exhaustive: never = action;
         return _exhaustive;
@@ -40,17 +44,17 @@ export function formatToolActionResult(language: LanguageCode, action: ToolActio
 
   switch (action) {
     case 'added':
-      return 'Added';
+      return toolSuccess('Added');
     case 'deleted':
-      return 'Deleted';
+      return toolSuccess('Deleted');
     case 'updated':
-      return 'Updated';
+      return toolSuccess('Updated');
     case 'cleared':
-      return 'Cleared';
+      return toolSuccess('Cleared');
     case 'mindCleared':
-      return 'Mind cleared';
+      return toolSuccess('Mind cleared');
     case 'mindChanged':
-      return 'Mind changed';
+      return toolSuccess('Mind changed');
     default: {
       const _exhaustive: never = action;
       return _exhaustive;

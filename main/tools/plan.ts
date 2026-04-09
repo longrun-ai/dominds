@@ -3,7 +3,8 @@ import type { Dialog } from '../dialog';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure } from '../tool';
 
 type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -62,6 +63,7 @@ function renderPlanReminderContent(
 export const updatePlanTool: FuncTool = {
   type: 'func',
   name: 'update_plan',
+  followupMode: 'deferred',
   description:
     'Updates the task plan. Provide an optional explanation and a list of plan items, each with a step and status. At most one step can be in_progress at a time.',
   descriptionI18n: {
@@ -94,15 +96,17 @@ export const updatePlanTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const planValue: unknown = args['plan'];
     const explanationValue: unknown = args['explanation'];
 
     if (!Array.isArray(planValue)) {
-      return language === 'zh'
-        ? '错误：参数格式不对。用法：update_plan({ plan: Array<{ step: string, status: "pending"|"in_progress"|"completed" }>, explanation?: string })'
-        : 'Error: Invalid args. Use: update_plan({ plan: Array<{ step: string, status: "pending"|"in_progress"|"completed" }>, explanation?: string })';
+      return toolFailure(
+        language === 'zh'
+          ? '错误：参数格式不对。用法：update_plan({ plan: Array<{ step: string, status: "pending"|"in_progress"|"completed" }>, explanation?: string })'
+          : 'Error: Invalid args. Use: update_plan({ plan: Array<{ step: string, status: "pending"|"in_progress"|"completed" }>, explanation?: string })',
+      );
     }
 
     const explanation = typeof explanationValue === 'string' ? explanationValue : undefined;
@@ -113,8 +117,8 @@ export const updatePlanTool: FuncTool = {
     for (const itemValue of planValue) {
       if (!isRecord(itemValue)) {
         return language === 'zh'
-          ? '错误：plan 中每一项都必须是对象（包含 step 与 status）。'
-          : 'Error: Each plan item must be an object with step and status.';
+          ? toolFailure('错误：plan 中每一项都必须是对象（包含 step 与 status）。')
+          : toolFailure('Error: Each plan item must be an object with step and status.');
       }
       const stepValue = itemValue['step'];
       const statusValue = itemValue['status'];
@@ -122,8 +126,8 @@ export const updatePlanTool: FuncTool = {
       const statusRaw = typeof statusValue === 'string' ? statusValue : '';
       if (step.length === 0) {
         return language === 'zh'
-          ? '错误：plan 中每一项都需要非空 step。'
-          : 'Error: Each plan item requires a non-empty step.';
+          ? toolFailure('错误：plan 中每一项都需要非空 step。')
+          : toolFailure('Error: Each plan item requires a non-empty step.');
       }
 
       let status: PlanItemStatus;
@@ -135,16 +139,18 @@ export const updatePlanTool: FuncTool = {
           break;
         default:
           return language === 'zh'
-            ? '错误：plan[].status 必须是 "pending" | "in_progress" | "completed"。'
-            : 'Error: plan[].status must be one of "pending" | "in_progress" | "completed".';
+            ? toolFailure('错误：plan[].status 必须是 "pending" | "in_progress" | "completed"。')
+            : toolFailure(
+                'Error: plan[].status must be one of "pending" | "in_progress" | "completed".',
+              );
       }
 
       if (status === 'in_progress') {
         inProgressCount += 1;
         if (inProgressCount > 1) {
           return language === 'zh'
-            ? '错误：同一时间最多只能有一个 in_progress。'
-            : 'Error: At most one step can be in_progress at a time.';
+            ? toolFailure('错误：同一时间最多只能有一个 in_progress。')
+            : toolFailure('Error: At most one step can be in_progress at a time.');
         }
       }
 

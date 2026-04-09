@@ -33,17 +33,20 @@ async function main(): Promise<void> {
       fixture.observerCtx,
     );
     assertStructuredResult(observerStatusBeforeAttach);
-    assert.match(observerStatusBeforeAttach.output, /role=not attached/);
-    assert.match(observerStatusBeforeAttach.output, /use playwright_session_attach/);
+    assert.match(observerStatusBeforeAttach.output.content, /role=not attached/);
+    assert.match(observerStatusBeforeAttach.output.content, /use playwright_session_attach/);
 
     const attached = await fixture.host.tools.playwright_session_attach(
       { sessionId, role: 'observer' },
       fixture.observerCtx,
     );
     assertStructuredResult(attached);
-    assert.match(attached.output, /ok: session attachment updated\./);
-    assert.match(attached.output, /attachment: current dialog attached as observer/);
-    assert.match(attached.output, /reminder sync: current=refreshed; other=1 updates\/1 dialogs/);
+    assert.match(attached.output.content, /ok: session attachment updated\./);
+    assert.match(attached.output.content, /attachment: current dialog attached as observer/);
+    assert.match(
+      attached.output.content,
+      /reminder sync: current=refreshed; other=1 updates\/1 dialogs/,
+    );
 
     const observerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(attached), {
@@ -63,8 +66,8 @@ async function main(): Promise<void> {
       fixture.observerCtx,
     );
     assertStructuredResult(observerStatus);
-    assert.match(observerStatus.output, /role=observer/);
-    assert.match(observerStatus.output, /attachment: current dialog attached as observer/);
+    assert.match(observerStatus.output.content, /role=observer/);
+    assert.match(observerStatus.output.content, /attachment: current dialog attached as observer/);
 
     const renderedReminder = await fixture.reminderOwner.renderReminder({
       dialogId: fixture.observerCtx.dialogId,
@@ -82,8 +85,11 @@ async function main(): Promise<void> {
       fixture.observerCtx,
     );
     assertStructuredResult(detached);
-    assert.match(detached.output, /ok: session detached\./);
-    assert.match(detached.output, /reminder sync: current=removed; other=1 updates\/1 dialogs/);
+    assert.match(detached.output.content, /ok: session detached\./);
+    assert.match(
+      detached.output.content,
+      /reminder sync: current=removed; other=1 updates\/1 dialogs/,
+    );
 
     const staleObserverReminder = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.observerCtx.dialogId,
@@ -97,6 +103,7 @@ async function main(): Promise<void> {
     });
     assert.equal(controllerReminderUpdate.treatment, 'update');
     if (controllerReminderUpdate.treatment === 'update') {
+      assert.equal(typeof controllerReminderUpdate.updatedContent, 'string');
       assert.match(controllerReminderUpdate.updatedContent, /https:\/\/example\.test\/initial/);
     }
 
@@ -105,7 +112,7 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(closed);
-    assert.match(closed.output, /ok: session closed\./);
+    assert.match(closed.output.content, /ok: session closed\./);
 
     const closedControllerReminder = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.controllerCtx.dialogId,

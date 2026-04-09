@@ -5,7 +5,7 @@ import { promisify } from 'util';
 
 import {
   parseDomindsAppInstallJson,
-  type DomindsAppInstallJsonV1,
+  type DomindsAppInstallJson,
 } from '@longrun-ai/kernel/app-json';
 
 const execFileAsync = promisify(execFile);
@@ -45,7 +45,7 @@ async function resolveLocalBinScriptAbs(packageRootAbs: string): Promise<string>
   throw new Error(`Invalid package.json: bin must be string|object (${packageRootAbs})`);
 }
 
-function parseAppJsonFromStdout(stdout: string, where: string): DomindsAppInstallJsonV1 {
+function parseAppJsonFromStdout(stdout: string, where: string): DomindsAppInstallJson {
   const trimmed = stdout.trim();
   if (trimmed === '') {
     throw new Error(`App did not print JSON to stdout (${where})`);
@@ -66,7 +66,7 @@ function parseAppJsonFromStdout(stdout: string, where: string): DomindsAppInstal
 export async function runDomindsAppJsonViaNpx(params: {
   spec: string;
   cwdAbs: string;
-}): Promise<DomindsAppInstallJsonV1> {
+}): Promise<DomindsAppInstallJson> {
   const { stdout, stderr } = await execFileAsync('npx', ['-y', params.spec, '--dominds-app'], {
     cwd: params.cwdAbs,
     env: process.env,
@@ -83,7 +83,7 @@ export async function runDomindsAppJsonViaNpx(params: {
 
 export async function runDomindsAppJsonViaLocalPackage(params: {
   packageRootAbs: string;
-}): Promise<DomindsAppInstallJsonV1> {
+}): Promise<DomindsAppInstallJson> {
   const scriptAbs = await resolveLocalBinScriptAbs(params.packageRootAbs);
   const { stdout, stderr } = await execFileAsync(process.execPath, [scriptAbs, '--dominds-app'], {
     cwd: params.packageRootAbs,

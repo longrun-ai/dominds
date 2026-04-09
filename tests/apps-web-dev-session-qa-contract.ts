@@ -37,11 +37,11 @@ async function main(): Promise<void> {
     );
     assertStructuredResult(inventoryStatus);
     assert.match(
-      inventoryStatus.output,
+      inventoryStatus.output.content,
       /coverage snapshot: inventory=0 functional=0\/0 visual=0\/0 pendingFunctional=none pendingVisual=none/,
     );
     assert.match(
-      inventoryStatus.output,
+      inventoryStatus.output.content,
       /decision gate: status=not_started functional=pending visual=pending viewport=pending exploratory=pending cleanup=not_run/,
     );
 
@@ -67,9 +67,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(createdInventory);
-    assert.match(createdInventory.output, /ok: session QA inventory item created\./);
+    assert.match(createdInventory.output.content, /ok: session QA inventory item created\./);
     assert.match(
-      createdInventory.output,
+      createdInventory.output.content,
       /coverage snapshot: inventory=1 functional=1\/1 visual=0\/1 pendingFunctional=none pendingVisual=critical_flow/,
     );
 
@@ -100,9 +100,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(inProgress);
-    assert.match(inProgress.output, /ok: session QA signoff recorded\./);
+    assert.match(inProgress.output.content, /ok: session QA signoff recorded\./);
     assert.match(
-      inProgress.output,
+      inProgress.output.content,
       /decision gate detail: status=in_progress functional=pending visual=pending viewport=pending exploratory=pending cleanup=not_run/,
     );
 
@@ -122,9 +122,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(updatedInventory);
-    assert.match(updatedInventory.output, /ok: session QA inventory item updated\./);
+    assert.match(updatedInventory.output.content, /ok: session QA inventory item updated\./);
     assert.match(
-      updatedInventory.output,
+      updatedInventory.output.content,
       /coverage snapshot: inventory=1 functional=1\/1 visual=1\/1 pendingFunctional=none pendingVisual=none/,
     );
 
@@ -144,9 +144,9 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(signoffReady);
-    assert.match(signoffReady.output, /ok: session QA signoff recorded\./);
+    assert.match(signoffReady.output.content, /ok: session QA signoff recorded\./);
     assert.match(
-      signoffReady.output,
+      signoffReady.output.content,
       /decision gate detail: status=ready functional=pass visual=pass viewport=pass exploratory=pass cleanup=kept_alive/,
     );
 
@@ -155,8 +155,8 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(signoffStatus);
-    assert.match(signoffStatus.output, /ok: session QA signoff retrieved\./);
-    assert.match(signoffStatus.output, /- pending visual items: none/);
+    assert.match(signoffStatus.output.content, /ok: session QA signoff retrieved\./);
+    assert.match(signoffStatus.output.content, /- pending visual items: none/);
 
     const persistedSession = JSON.parse(
       await fs.readFile(path.join(fixture.sessionsCacheDirAbs, `${sessionId}.json`), 'utf-8'),

@@ -47,7 +47,6 @@ async function writeLocalPackage(params: {
       "'use strict';",
       "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
       'const json = {',
-      '  schemaVersion: 1,',
       `  appId: ${JSON.stringify(params.appId)},`,
       '  package: {',
       `    name: ${JSON.stringify(params.appId)},`,
@@ -87,7 +86,6 @@ function makeEntry(params: {
     source: { kind: 'local', pathAbs: params.packageRootAbs },
     assignedPort: null,
     installJson: {
-      schemaVersion: 1,
       appId: params.id,
       package: {
         name: params.id,

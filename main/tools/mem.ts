@@ -10,7 +10,8 @@ import path from 'path';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 
 type MemoryPathResult =
   | Readonly<{ kind: 'ok'; rel: string }>
@@ -86,32 +87,38 @@ export const addPersonalMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const contentValue = args['content'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     const content = typeof contentValue === 'string' ? contentValue : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
     if (content.length === 0) {
-      return language === 'zh'
-        ? '错误：需要提供记忆内容（content）。'
-        : 'Error: Memory content is required (content).';
+      return toolFailure(
+        language === 'zh'
+          ? '错误：需要提供记忆内容（content）。'
+          : 'Error: Memory content is required (content).',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：记忆文件 '${filePath}' 已存在。请使用 replace_personal_memory 更新它。`
-        : `Error: Memory file '${filePath}' already exists. Use replace_personal_memory to update it.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 已存在。请使用 replace_personal_memory 更新它。`
+          : `Error: Memory file '${filePath}' already exists. Use replace_personal_memory to update it.`,
+      );
     }
 
     const dir = path.dirname(fullPath);
@@ -140,25 +147,29 @@ export const dropPersonalMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：记忆文件 '${filePath}' 不存在。`
-        : `Error: Memory file '${filePath}' does not exist.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 不存在。`
+          : `Error: Memory file '${filePath}' does not exist.`,
+      );
     }
 
     fs.unlinkSync(fullPath);
@@ -186,32 +197,38 @@ export const replacePersonalMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const contentValue = args['content'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     const content = typeof contentValue === 'string' ? contentValue : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
     if (content.length === 0) {
-      return language === 'zh'
-        ? '错误：需要提供记忆内容（content）。'
-        : 'Error: Memory content is required (content).';
+      return toolFailure(
+        language === 'zh'
+          ? '错误：需要提供记忆内容（content）。'
+          : 'Error: Memory content is required (content).',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：记忆文件 '${filePath}' 不存在。请使用 add_personal_memory 创建它。`
-        : `Error: Memory file '${filePath}' does not exist. Use add_personal_memory to create it.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 不存在。请使用 add_personal_memory 创建它。`
+          : `Error: Memory file '${filePath}' does not exist. Use add_personal_memory to create it.`,
+      );
     }
 
     fs.writeFileSync(fullPath, content, 'utf8');
@@ -231,14 +248,16 @@ export const clearPersonalMemoryTool: FuncTool = {
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',
-  async call(_dlg, caller, _args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, _args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const memoryDir = path.join('.minds/memory/individual', caller.id);
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh' ? '没有可清空的个人记忆。' : 'No personal memory to clear.';
+      return toolSuccess(
+        language === 'zh' ? '没有可清空的个人记忆。' : 'No personal memory to clear.',
+      );
     }
 
     fs.rmSync(fullPath, { recursive: true, force: true });
@@ -266,32 +285,38 @@ export const addSharedMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const contentValue = args['content'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     const content = typeof contentValue === 'string' ? contentValue : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
     if (content.length === 0) {
-      return language === 'zh'
-        ? '错误：需要提供共享记忆内容（content）。'
-        : 'Error: Shared memory content is required (content).';
+      return toolFailure(
+        language === 'zh'
+          ? '错误：需要提供共享记忆内容（content）。'
+          : 'Error: Shared memory content is required (content).',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：共享记忆文件 '${filePath}' 已存在。请使用 replace_team_memory 更新它。`
-        : `Error: Shared memory file '${filePath}' already exists. Use replace_team_memory to update it.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 已存在。请使用 replace_team_memory 更新它。`
+          : `Error: Shared memory file '${filePath}' already exists. Use replace_team_memory to update it.`,
+      );
     }
 
     const dir = path.dirname(fullPath);
@@ -319,25 +344,29 @@ export const dropSharedMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：共享记忆文件 '${filePath}' 不存在。`
-        : `Error: Shared memory file '${filePath}' does not exist.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 不存在。`
+          : `Error: Shared memory file '${filePath}' does not exist.`,
+      );
     }
 
     fs.unlinkSync(fullPath);
@@ -364,32 +393,38 @@ export const replaceSharedMemoryTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  async call(_dlg, caller, args: ToolArguments): Promise<string> {
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const pathValue = args['path'];
     const contentValue = args['content'];
     const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
     const content = typeof contentValue === 'string' ? contentValue : '';
     if (!filePath) {
-      return language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.';
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.',
+      );
     }
     if (content.length === 0) {
-      return language === 'zh'
-        ? '错误：需要提供共享记忆内容（content）。'
-        : 'Error: Shared memory content is required (content).';
+      return toolFailure(
+        language === 'zh'
+          ? '错误：需要提供共享记忆内容（content）。'
+          : 'Error: Shared memory content is required (content).',
+      );
     }
 
     const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
     if (memoryPath.kind === 'invalid_path') {
-      return memoryPath.message;
+      return toolFailure(memoryPath.message);
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh'
-        ? `错误：共享记忆文件 '${filePath}' 不存在。请使用 add_team_memory 创建它。`
-        : `Error: Shared memory file '${filePath}' does not exist. Use add_team_memory to create it.`;
+      return toolFailure(
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 不存在。请使用 add_team_memory 创建它。`
+          : `Error: Shared memory file '${filePath}' does not exist. Use add_team_memory to create it.`,
+      );
     }
 
     fs.writeFileSync(fullPath, content, 'utf8');
@@ -408,14 +443,16 @@ export const clearSharedMemoryTool: FuncTool = {
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',
-  async call(_dlg, _caller, _args: ToolArguments): Promise<string> {
+  async call(_dlg, _caller, _args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const memoryDir = '.minds/memory/team_shared';
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
     if (!fs.existsSync(fullPath)) {
-      return language === 'zh' ? '没有可清空的共享记忆。' : 'No shared memory to clear.';
+      return toolSuccess(
+        language === 'zh' ? '没有可清空的共享记忆。' : 'No shared memory to clear.',
+      );
     }
 
     fs.rmSync(fullPath, { recursive: true, force: true });

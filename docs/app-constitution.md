@@ -222,7 +222,7 @@ Recommended user mental model:
 
 (Current: implemented) existing anchors:
 
-- JSON schema: `dominds/main/apps/app-json.ts` (`DomindsAppInstallJsonV1`).
+- JSON schema: `dominds/main/apps/app-json.ts` (`DomindsAppInstallJson`).
 - Apps configuration file: `dominds/main/apps/configuration-file.ts`.
 - Apps resolution file: `dominds/main/apps/resolution-file.ts`.
 

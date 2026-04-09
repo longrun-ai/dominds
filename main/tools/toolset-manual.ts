@@ -2,7 +2,8 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { Dialog } from '../dialog';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
-import type { FuncTool, JsonObject } from '../tool';
+import type { FuncTool, JsonObject, ToolCallOutput } from '../tool';
+import { toolSuccess } from '../tool';
 import { renderToolsetManual } from './manual/render';
 import { MANUAL_TOPICS, type ManualTopic } from './manual/spec';
 import { getToolsetMeta, listToolsets } from './registry';
@@ -201,7 +202,7 @@ function buildManTool(): FuncTool {
       },
     },
     argsValidation: 'dominds',
-    async call(_dlg: Dialog, _caller: Team.Member, args: JsonObject): Promise<string> {
+    async call(_dlg: Dialog, _caller: Team.Member, args: JsonObject): Promise<ToolCallOutput> {
       const language =
         typeof _dlg?.getLastUserLanguageCode === 'function'
           ? _dlg.getLastUserLanguageCode()
@@ -226,21 +227,25 @@ function buildManTool(): FuncTool {
           invalidMcpToolsetNames,
         });
         if (language === 'zh') {
-          return [
-            '**可用工具集**',
+          return toolSuccess(
+            [
+              '**可用工具集**',
+              '',
+              formatToolsetIdList(language, availableToolsetNames),
+              '',
+              '提示：当某个工具集的功能边界、参数写法、场景示例或错误处理不确定时，继续调用 `man({ "toolsetId": "<toolset>" })` 查看详情。',
+            ].join('\n'),
+          );
+        }
+        return toolSuccess(
+          [
+            '**Available toolsets**',
             '',
             formatToolsetIdList(language, availableToolsetNames),
             '',
-            '提示：当某个工具集的功能边界、参数写法、场景示例或错误处理不确定时，继续调用 `man({ "toolsetId": "<toolset>" })` 查看详情。',
-          ].join('\n');
-        }
-        return [
-          '**Available toolsets**',
-          '',
-          formatToolsetIdList(language, availableToolsetNames),
-          '',
-          'Hint: when a toolset’s boundaries, argument shape, scenarios, or error handling are unclear, call `man({ "toolsetId": "<toolset>" })` for details.',
-        ].join('\n');
+            'Hint: when a toolset’s boundaries, argument shape, scenarios, or error handling are unclear, call `man({ "toolsetId": "<toolset>" })` for details.',
+          ].join('\n'),
+        );
       }
 
       // Step 1: Get available toolsets for this caller (dynamic availability)
@@ -259,22 +264,24 @@ function buildManTool(): FuncTool {
         // Toolset is not available for this user
         if (suggestion && availableToolsetNames.includes(suggestion)) {
           // The suggested toolset IS available, user might have meant that
-          return language === 'zh'
-            ? `工具集 '${toolsetId}' 暂未配置给您使用。您是否在找：'${suggestion}'？`
-            : `Toolset '${toolsetId}' is not available to you. Did you mean: '${suggestion}'?`;
+          return toolSuccess(
+            language === 'zh'
+              ? `工具集 '${toolsetId}' 暂未配置给您使用。您是否在找：'${suggestion}'？`
+              : `Toolset '${toolsetId}' is not available to you. Did you mean: '${suggestion}'?`,
+          );
         }
         // No suggestion available, just report unavailability and list available toolsets
         const list = formatToolsetIdList(language, availableToolsetNames);
-        return language === 'zh'
-          ? `工具集 '${toolsetId}' 暂未配置给您使用。\n\n可用工具集：\n${list}`
-          : `Toolset '${toolsetId}' is not available to you.\n\nAvailable toolsets:\n${list}`;
+        return toolSuccess(
+          language === 'zh'
+            ? `工具集 '${toolsetId}' 暂未配置给您使用。\n\n可用工具集：\n${list}`
+            : `Toolset '${toolsetId}' is not available to you.\n\nAvailable toolsets:\n${list}`,
+        );
       }
 
       if (toolsetId === 'team_mgmt') {
-        return renderManualResult(
-          language,
-          toolsetId,
-          await renderTeamMgmtGuideViaMan(language, args),
+        return toolSuccess(
+          renderManualResult(language, toolsetId, await renderTeamMgmtGuideViaMan(language, args)),
         );
       }
 
@@ -290,15 +297,19 @@ function buildManTool(): FuncTool {
           .map((tool) => tool.name),
       );
 
-      return await renderToolsetManualContent({
-        toolsetId,
-        language,
-        topic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
-        topics: Array.isArray(args?.topics)
-          ? (args.topics as unknown[]).filter((entry): entry is string => typeof entry === 'string')
-          : undefined,
-        availableToolNames,
-      });
+      return toolSuccess(
+        await renderToolsetManualContent({
+          toolsetId,
+          language,
+          topic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
+          topics: Array.isArray(args?.topics)
+            ? (args.topics as unknown[]).filter(
+                (entry): entry is string => typeof entry === 'string',
+              )
+            : undefined,
+          availableToolNames,
+        }),
+      );
     },
   };
 }

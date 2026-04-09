@@ -4,13 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type { DomindsAppRunControlHandler } from '@longrun-ai/kernel/app-host-contract';
+import type { DomindsAppHostToolResult } from '@longrun-ai/kernel/app-json';
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 import { extractOutput, parseJsonBlock, writeText, type ToolCtx } from './phase-gate-flow-fixture';
 
 type ToolHandler = (
   args: Record<string, unknown>,
   ctx: ToolCtx,
-) => Promise<string | Readonly<{ output: string }>>;
+) => Promise<DomindsAppHostToolResult>;
 
 type PhaseGateHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;

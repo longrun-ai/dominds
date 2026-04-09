@@ -28,8 +28,15 @@ import type {
   ReminderOwner,
   ReminderUpdateResult,
   ToolArguments,
+  ToolCallOutput,
 } from '../tool';
-import { materializeReminder, reminderOwnedBy } from '../tool';
+import {
+  materializeReminder,
+  reminderOwnedBy,
+  toolFailure,
+  toolPartialFailure,
+  toolSuccess,
+} from '../tool';
 import {
   parseCmdRunnerInitialIpcMessage,
   parseCmdRunnerResponseLine,
@@ -607,7 +614,7 @@ async function spawnCmdRunner(init: CmdRunnerInitMessage): Promise<SpawnedCmdRun
 function formatCompletedShellCommandOutput(
   message: Extract<CmdRunnerInitialIpcMessage, { type: 'completed' }>,
   t: OsToolMessages,
-): string {
+): ToolCallOutput {
   const stdoutHasScrolled = message.stdout.linesScrolledOut > 0;
   const stderrHasScrolled = message.stderr.linesScrolledOut > 0;
   let scrollNotice = '';
@@ -634,7 +641,8 @@ function formatCompletedShellCommandOutput(
   if (stderrContent !== '') {
     result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
   }
-  return result.trim();
+  const content = result.trim();
+  return message.exitCode === 0 ? toolSuccess(content) : toolPartialFailure(content);
 }
 
 async function removeDaemonRemindersForPid(dlg: Dialog, pid: number): Promise<void> {
@@ -1455,7 +1463,7 @@ export const shellCmdTool: FuncTool = {
     zh: '执行 shell 命令（支持超时）。如果 timeoutSeconds > 0 且命令运行时间超过超时，将转为可追踪的后台守护进程。守护进程会跨消息持续存在，需要显式调用 stop_daemon 或 get_daemon_output 来管理与查看输出。',
   },
   parameters: shellCmdSchema,
-  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const parsedArgs = parseShellCmdArgs(args);
@@ -1480,7 +1488,7 @@ export const shellCmdTool: FuncTool = {
 
       if (initialMessage.type === 'failed') {
         disconnectRunnerProcess(runnerProcess);
-        return t.failedToExecute(initialMessage.errorText);
+        return toolFailure(t.failedToExecute(initialMessage.errorText));
       }
 
       const daemon: RunnerBackedDaemon = {
@@ -1530,16 +1538,18 @@ export const shellCmdTool: FuncTool = {
       } catch (error: unknown) {
         await bestEffortKillDaemonProcessGroup(reminderSeedMeta);
         disconnectRunnerProcess(runnerProcess);
-        return t.failedToExecute(
-          error instanceof Error
-            ? `daemon reminder persistence failed: ${error.message}`
-            : `daemon reminder persistence failed: ${String(error)}`,
+        return toolFailure(
+          t.failedToExecute(
+            error instanceof Error
+              ? `daemon reminder persistence failed: ${error.message}`
+              : `daemon reminder persistence failed: ${String(error)}`,
+          ),
         );
       }
       disconnectRunnerProcess(runnerProcess);
-      return t.daemonStarted(initialMessage.daemonPid, timeoutSeconds, command);
+      return toolSuccess(t.daemonStarted(initialMessage.daemonPid, timeoutSeconds, command));
     } catch (error: unknown) {
-      return t.failedToExecute(error instanceof Error ? error.message : String(error));
+      return toolFailure(t.failedToExecute(error instanceof Error ? error.message : String(error)));
     }
   },
 };
@@ -2191,16 +2201,18 @@ export const readonlyShellTool: FuncTool = {
     zh: '执行只读 shell 命令，仅允许少量白名单命令前缀。对 node/python 仅允许版本探针（不允许 `node -e` / `python3 -c` 这类脚本）。通过 |/&&/|| 串联时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
-  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const parsedArgs = parseReadonlyShellArgs(args);
     const { command, timeoutMs = 10_000 } = parsedArgs;
 
     if (command.includes('\n') || command.includes('\r')) {
-      return language === 'zh'
-        ? `❌ readonly_shell 不建议执行多行脚本式命令（检测到换行符）。请用单行命令（允许 |、&&、||）。\n收到：${command}`
-        : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`;
+      return toolFailure(
+        language === 'zh'
+          ? `❌ readonly_shell 不建议执行多行脚本式命令（检测到换行符）。请用单行命令（允许 |、&&、||）。\n收到：${command}`
+          : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`,
+      );
     }
 
     const validation = validateReadonlyShellCommand(command);
@@ -2212,9 +2224,11 @@ export const readonlyShellTool: FuncTool = {
         language === 'zh'
           ? getReadonlyShellSuggestionZh(validation.failure)
           : getReadonlyShellSuggestionEn(validation.failure);
-      return language === 'zh'
-        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
-        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`;
+      return toolFailure(
+        language === 'zh'
+          ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
+          : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`,
+      );
     }
 
     const forbiddenHiddenDir = detectReadonlyShellForbiddenHiddenDirAccess(
@@ -2223,25 +2237,29 @@ export const readonlyShellTool: FuncTool = {
     );
     if (forbiddenHiddenDir) {
       if (forbiddenHiddenDir === '.minds') {
-        return language === 'zh'
-          ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.minds/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.minds/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若团队配置了 \`team_mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管 \`.minds/**\`。\n- 若团队未配置该工具集或你不具备权限，请诉请具备 \`team_mgmt\` 权限的成员/团队管理员成员代管。\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
-          : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.minds/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.minds/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- If your team configured the \`team_mgmt\` toolset, use its tools (\`team_mgmt_*\`) to manage \`.minds/**\`.\n- If the toolset is not configured or you don\'t have permission, tellask a team-admin / a member with \`team_mgmt\` access to manage it for you.\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
+        return toolFailure(
+          language === 'zh'
+            ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.minds/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.minds/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若团队配置了 \`team_mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管 \`.minds/**\`。\n- 若团队未配置该工具集或你不具备权限，请诉请具备 \`team_mgmt\` 权限的成员/团队管理员成员代管。\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
+            : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.minds/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.minds/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- If your team configured the \`team_mgmt\` toolset, use its tools (\`team_mgmt_*\`) to manage \`.minds/**\`.\n- If the toolset is not configured or you don't have permission, tellask a team-admin / a member with \`team_mgmt\` access to manage it for you.\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`,
+        );
       }
 
-      return language === 'zh'
-        ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.dialogs/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.dialogs/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
-        : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.dialogs/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.dialogs/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
+      return toolFailure(
+        language === 'zh'
+          ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.dialogs/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.dialogs/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
+          : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.dialogs/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.dialogs/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`,
+      );
     }
 
     const stdoutBuffer = new HeadTailByteBuffer(1024 * 1024);
     const stderrBuffer = new HeadTailByteBuffer(1024 * 1024);
 
-    return new Promise((resolve) => {
+    return new Promise<ToolCallOutput>((resolve) => {
       let settled = false;
-      const finish = (content: string): void => {
+      const finish = (output: ToolCallOutput): void => {
         if (settled) return;
         settled = true;
-        resolve(content.trim());
+        resolve(output);
       };
 
       const spawnSpec = resolveReadonlyShellSpawnSpec(command);
@@ -2296,7 +2314,7 @@ export const readonlyShellTool: FuncTool = {
           result += `\n\n${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
         }
 
-        finish(result);
+        finish(toolPartialFailure(result.trim()));
       }, timeoutMs);
 
       childProcess.on('close', (code) => {
@@ -2329,12 +2347,12 @@ export const readonlyShellTool: FuncTool = {
           result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
         }
 
-        finish(result);
+        finish(code === 0 ? toolSuccess(result.trim()) : toolPartialFailure(result.trim()));
       });
 
       childProcess.on('error', (error) => {
         clearTimeout(timeoutHandle);
-        finish(t.failedToExecute(error.message));
+        finish(toolFailure(t.failedToExecute(error.message)));
       });
     });
   },
@@ -2351,7 +2369,7 @@ export const stopDaemonTool: FuncTool = {
     zh: '根据 PID 终止正在运行的守护进程。通常在使用 get_daemon_output 检查输出并确认无需继续监控后调用。该操作会停止进程并移除追踪。',
   },
   parameters: stopDaemonSchema,
-  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const { pid, entirePg } = parseStopDaemonArgs(args);
@@ -2360,17 +2378,17 @@ export const stopDaemonTool: FuncTool = {
       (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
     );
     if (!reminder || !isShellCmdReminder(reminder)) {
-      return t.noDaemonFound(pid);
+      return toolFailure(t.noDaemonFound(pid));
     }
 
     try {
       const resolved = await resolveDaemonFromMeta(reminder.meta);
       if (resolved.kind === 'gone') {
         await removeDaemonRemindersForPid(dlg, pid);
-        return t.noDaemonFound(pid);
+        return toolFailure(t.noDaemonFound(pid));
       }
       if (resolved.kind === 'error') {
-        return t.failedToStop(pid, resolved.errorText);
+        return toolFailure(t.failedToStop(pid, resolved.errorText));
       }
 
       if (
@@ -2389,7 +2407,7 @@ export const stopDaemonTool: FuncTool = {
             }
           } else {
             await removeDaemonRemindersForPid(dlg, pid);
-            return t.noDaemonFound(pid);
+            return toolFailure(t.noDaemonFound(pid));
           }
         } catch {
           await bestEffortKillDaemonProcessGroup(reminder.meta, { includeEntirePg: entirePg });
@@ -2399,9 +2417,11 @@ export const stopDaemonTool: FuncTool = {
       }
 
       await removeDaemonRemindersForPid(dlg, pid);
-      return t.daemonStopped(pid, reminder.meta.initialCommandLine);
+      return toolSuccess(t.daemonStopped(pid, reminder.meta.initialCommandLine));
     } catch (error) {
-      return t.failedToStop(pid, error instanceof Error ? error.message : String(error));
+      return toolFailure(
+        t.failedToStop(pid, error instanceof Error ? error.message : String(error)),
+      );
     }
   },
 };
@@ -2417,7 +2437,7 @@ export const getDaemonOutputTool: FuncTool = {
     zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。默认会同时返回两个流，也可显式关闭其中一个；若所请求的流尚无输出，则返回 (no output)。',
   },
   parameters: getDaemonOutputSchema,
-  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const { pid, stdout, stderr } = parseGetDaemonOutputArgs(args);
@@ -2427,16 +2447,16 @@ export const getDaemonOutputTool: FuncTool = {
       (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
     );
     if (!reminder || !isShellCmdReminder(reminder)) {
-      return t.noDaemonFound(pid);
+      return toolFailure(t.noDaemonFound(pid));
     }
 
     const resolved = await resolveDaemonFromMeta(reminder.meta);
     if (resolved.kind === 'gone') {
       await removeDaemonRemindersForPid(dlg, pid);
-      return t.noDaemonFound(pid);
+      return toolFailure(t.noDaemonFound(pid));
     }
     if (resolved.kind === 'error') {
-      return formatRunnerRecoveryError(pid, resolved.errorText, language);
+      return toolFailure(formatRunnerRecoveryError(pid, resolved.errorText, language));
     }
 
     const daemon = resolved.daemon;
@@ -2471,6 +2491,6 @@ export const getDaemonOutputTool: FuncTool = {
       }
     }
 
-    return result;
+    return toolSuccess(result);
   },
 };

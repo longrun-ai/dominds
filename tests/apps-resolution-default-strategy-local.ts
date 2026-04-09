@@ -60,7 +60,6 @@ async function main(): Promise<void> {
         "  throw new Error('invalid DOMINDS_TEST_APP_DEFAULT_PORT');",
         '}',
         'const json = {',
-        '  schemaVersion: 1,',
         '  appId,',
         '  package: {',
         '    name: appId,',

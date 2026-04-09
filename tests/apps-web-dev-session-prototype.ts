@@ -23,12 +23,12 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(created);
-    assert.match(created.output, /ok: created Web Dev browser session\./);
+    assert.match(created.output.content, /ok: created Web Dev browser session\./);
     assert.match(
-      created.output,
+      created.output.content,
       /state=ready \| role=controller \| runtime=playwright_browser_runtime \| browserMode=desktop/,
     );
-    assert.match(created.output, /surface: page https:\/\/example\.test\/initial/);
+    assert.match(created.output.content, /surface: page https:\/\/example\.test\/initial/);
 
     const controllerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(created), {
@@ -62,16 +62,16 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(evalResult);
-    assert.match(evalResult.output, /ok: session eval completed\./);
-    assert.match(evalResult.output, /"url":"https:\/\/example\.test\/after-eval"/);
-    assert.match(evalResult.output, /"remembered":"Clicked 1"/);
+    assert.match(evalResult.output.content, /ok: session eval completed\./);
+    assert.match(evalResult.output.content, /"url":"https:\/\/example\.test\/after-eval"/);
+    assert.match(evalResult.output.content, /"remembered":"Clicked 1"/);
 
     const screenshotResult = await fixture.host.tools.playwright_session_screenshot(
       { sessionId, label: 'after-eval-proof', imageType: 'png' },
       fixture.controllerCtx,
     );
     assertStructuredResult(screenshotResult);
-    assert.match(screenshotResult.output, /ok: session screenshot captured\./);
+    assert.match(screenshotResult.output.content, /ok: session screenshot captured\./);
     const artifacts = await fs.readdir(path.join(fixture.artifactsDirAbs, sessionId));
     assert.equal(artifacts.length, 1);
     assert.ok(artifacts.some((entry) => /after-eval-proof\.png$/.test(entry)));
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(closed);
-    assert.match(closed.output, /ok: session closed\./);
+    assert.match(closed.output.content, /ok: session closed\./);
 
     const controllerReminderUpdate = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.controllerCtx.dialogId,

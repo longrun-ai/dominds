@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { DomindsAppInstallJsonV1 } from '@longrun-ai/kernel/app-json';
+import type { DomindsAppInstallJson } from '@longrun-ai/kernel/app-json';
 import { runDomindsAppJsonViaLocalPackage } from '../../main/apps/run-app-json';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -23,7 +23,7 @@ export type AppFactoryContext = Readonly<{
 
 export async function loadLocalAppEntry(params: { packageRootAbs: string }): Promise<
   Readonly<{
-    installJson: DomindsAppInstallJsonV1;
+    installJson: DomindsAppInstallJson;
     appFactory: (ctx: AppFactoryContext) => unknown;
   }>
 > {

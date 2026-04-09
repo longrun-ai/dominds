@@ -8,7 +8,8 @@ import fs from 'fs/promises';
 import * as readline from 'node:readline';
 import path from 'path';
 import { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 
 function yamlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -16,6 +17,14 @@ function yamlQuote(value: string): string {
 
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
+}
+
+function okYaml(yaml: string): ToolCallOutput {
+  return toolSuccess(formatYamlCodeBlock(yaml));
+}
+
+function failYaml(yaml: string): ToolCallOutput {
+  return toolFailure(formatYamlCodeBlock(yaml));
 }
 
 function yamlFlowStringArray(values: ReadonlyArray<string>): string {
@@ -232,7 +241,7 @@ function formatForbiddenSearchPathAccessDeniedYaml(
   pattern: string,
   searchPath: string,
   forbiddenPath: ForbiddenSearchPath,
-): string {
+): ToolCallOutput {
   const summary =
     forbiddenPath === '.minds'
       ? 'ACCESS_DENIED: `.minds/**` is reserved rtws state for team config/memory/assets. Use `team_mgmt_ripgrep_*` (or other `team_mgmt_*`) for `.minds/**`.'
@@ -248,7 +257,7 @@ function formatForbiddenSearchPathAccessDeniedYaml(
     `reserved_path: ${yamlQuote(forbiddenPath)}`,
     `summary: ${yamlQuote(summary)}`,
   ].join('\n');
-  return formatYamlCodeBlock(yaml);
+  return failYaml(yaml);
 }
 
 type RipgrepCase = 'smart' | 'sensitive' | 'insensitive';
@@ -442,7 +451,7 @@ function formatRipgrepSnippetYaml(input: {
   fileCount: number;
   totalMatches: number;
   results: ReadonlyArray<RipgrepSnippetResult>;
-}): string {
+}): ToolCallOutput {
   const fitted = fitRipgrepSnippetResults(input.results);
   const truncatedByMatchLimit = input.totalMatches > input.maxResults;
   const truncated = truncatedByMatchLimit || fitted.outputCharsTruncated || fitted.textTruncated;
@@ -490,7 +499,7 @@ function formatRipgrepSnippetYaml(input: {
     `results:`,
     ...fitted.rendered,
   ].join('\n');
-  return formatYamlCodeBlock(yaml);
+  return okYaml(yaml);
 }
 
 function defaultBaseOptions(): RipgrepBaseOptions {
@@ -648,7 +657,7 @@ async function runRipgrepFiles(
   pattern: string,
   searchPath: string,
   options: RipgrepFilesOptions,
-): Promise<string> {
+): Promise<ToolCallOutput> {
   const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
   if (forbiddenPath) {
     return formatForbiddenSearchPathAccessDeniedYaml('files', pattern, searchPath, forbiddenPath);
@@ -693,9 +702,9 @@ async function runRipgrepFiles(
       `results:`,
       ...results.map((r) => `  - path: ${yamlQuote(r.path)}`),
     ].join('\n');
-    return formatYamlCodeBlock(yaml);
+    return okYaml(yaml);
   } catch (error: unknown) {
-    return formatYamlCodeBlock(
+    return failYaml(
       [
         `status: error`,
         `pattern: ${yamlQuote(pattern)}`,
@@ -732,7 +741,7 @@ export const ripgrepFilesTool: FuncTool = {
     required: ['pattern'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
     const globs = optionalStringArrayArg(args, 'globs') ?? [];
@@ -760,7 +769,7 @@ async function runRipgrepCount(
   pattern: string,
   searchPath: string,
   options: RipgrepCountOptions,
-): Promise<string> {
+): Promise<ToolCallOutput> {
   const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
   if (forbiddenPath) {
     return formatForbiddenSearchPathAccessDeniedYaml('count', pattern, searchPath, forbiddenPath);
@@ -814,9 +823,9 @@ async function runRipgrepCount(
       `results:`,
       ...results.map((r) => `  - path: ${yamlQuote(r.path)}\n    count: ${r.count}`),
     ].join('\n');
-    return formatYamlCodeBlock(yaml);
+    return okYaml(yaml);
   } catch (error: unknown) {
-    return formatYamlCodeBlock(
+    return failYaml(
       [
         `status: error`,
         `pattern: ${yamlQuote(pattern)}`,
@@ -853,7 +862,7 @@ export const ripgrepCountTool: FuncTool = {
     required: ['pattern'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
     const globs = optionalStringArrayArg(args, 'globs') ?? [];
@@ -881,7 +890,7 @@ async function runRipgrepSnippets(
   pattern: string,
   searchPath: string,
   options: RipgrepSnippetsOptions,
-): Promise<string> {
+): Promise<ToolCallOutput> {
   const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
   if (forbiddenPath) {
     return formatForbiddenSearchPathAccessDeniedYaml(
@@ -957,7 +966,7 @@ async function runRipgrepSnippets(
       results,
     });
   } catch (error: unknown) {
-    return formatYamlCodeBlock(
+    return failYaml(
       [
         `status: error`,
         `pattern: ${yamlQuote(pattern)}`,
@@ -996,7 +1005,7 @@ export const ripgrepSnippetsTool: FuncTool = {
     required: ['pattern'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
     const globs = optionalStringArrayArg(args, 'globs') ?? [];
@@ -1051,7 +1060,7 @@ export const ripgrepFixedTool: FuncTool = {
     required: ['literal'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const literal = requireNonEmptyStringArg(args, 'literal');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
     const modeRaw = optionalStringArg(args, 'mode') ?? 'snippets';
@@ -1099,7 +1108,7 @@ async function runRipgrepSearch(
   pattern: string,
   searchPath: string,
   rawRgArgs: ReadonlyArray<string>,
-): Promise<string> {
+): Promise<ToolCallOutput> {
   const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
   if (forbiddenPath) {
     return formatForbiddenSearchPathAccessDeniedYaml(
@@ -1121,7 +1130,7 @@ async function runRipgrepSearch(
 
   for (const tok of rawRgArgs) {
     if (DISALLOWED_RG_ARGS.has(tok)) {
-      return formatYamlCodeBlock(
+      return failYaml(
         `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg arg: ${tok}`)}`,
       );
     }
@@ -1132,7 +1141,7 @@ async function runRipgrepSearch(
       tok === '--files-with-matches' ||
       tok === '--files'
     ) {
-      return formatYamlCodeBlock(
+      return failYaml(
         `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg output arg: ${tok}`)}`,
       );
     }
@@ -1191,7 +1200,7 @@ async function runRipgrepSearch(
       results,
     });
   } catch (error: unknown) {
-    return formatYamlCodeBlock(
+    return failYaml(
       [
         `status: error`,
         `pattern: ${yamlQuote(pattern)}`,
@@ -1224,7 +1233,7 @@ export const ripgrepSearchTool: FuncTool = {
     required: ['pattern'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<string> => {
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
     const rgArgs = optionalStringArrayArg(args, 'rg_args') ?? [];

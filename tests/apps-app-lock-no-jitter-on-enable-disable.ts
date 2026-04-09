@@ -95,7 +95,6 @@ async function main(): Promise<void> {
         "  throw new Error('expected --dominds-app');",
         '}',
         'const json = {',
-        '  schemaVersion: 1,',
         `  appId: ${JSON.stringify(appId)},`,
         '  package: {',
         `    name: ${JSON.stringify(appId)},`,

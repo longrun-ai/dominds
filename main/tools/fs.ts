@@ -11,7 +11,8 @@ import { createInterface } from 'readline';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import { log } from '../log';
 import { getWorkLanguage } from '../runtime/work-language';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 import { truncateInlineText } from './output-limit';
 
 const LIST_DIR_MAX_RENDERED_ENTRIES = 120;
@@ -33,6 +34,14 @@ type PathStatInfo = {
   isSymlink: boolean;
   symlinkTarget?: string;
 };
+
+function ok(content: string): ToolCallOutput {
+  return toolSuccess(content);
+}
+
+function fail(content: string): ToolCallOutput {
+  return toolFailure(content);
+}
 
 async function statWithSymlinkInfo(absPath: string): Promise<PathStatInfo> {
   const lstat = await fs.lstat(absPath);
@@ -184,7 +193,7 @@ export const listDirTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -237,14 +246,12 @@ export const listDirTool: FuncTool = {
     // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!dir.startsWith(cwd)) {
-      const content = labels.accessDenied;
-      return content;
+      return fail(labels.accessDenied);
     }
 
     // Check member access permissions
     if (!hasReadAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('read', rel, workLanguage);
-      return content;
+      return fail(getAccessDeniedMessage('read', rel, workLanguage));
     }
 
     try {
@@ -255,8 +262,7 @@ export const listDirTool: FuncTool = {
         inputPathIsSymlink = statsInfo.isSymlink;
         inputPathSymlinkTarget = statsInfo.symlinkTarget;
         if (!statsInfo.followStat.isDirectory()) {
-          const content = labels.notDir(rel);
-          return content;
+          return fail(labels.notDir(rel));
         }
       } catch (error: unknown) {
         if (
@@ -265,13 +271,11 @@ export const listDirTool: FuncTool = {
           'code' in error &&
           (error as { code?: unknown }).code === 'ENOENT'
         ) {
-          const content = labels.notFound(rel);
-          return content;
+          return fail(labels.notFound(rel));
         }
 
         const msg = error instanceof Error ? error.message : String(error);
-        const content = labels.readDirFailed(msg);
-        return content;
+        return fail(labels.readDirFailed(msg));
       }
 
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -397,7 +401,7 @@ export const listDirTool: FuncTool = {
         }
       }
 
-      return markdown;
+      return ok(markdown);
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -405,8 +409,7 @@ export const listDirTool: FuncTool = {
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        const content = labels.notFound(rel);
-        return content;
+        return fail(labels.notFound(rel));
       }
 
       if (
@@ -415,13 +418,11 @@ export const listDirTool: FuncTool = {
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOTDIR'
       ) {
-        const content = labels.notDir(rel);
-        return content;
+        return fail(labels.notDir(rel));
       }
 
       const msg = error instanceof Error ? error.message : String(error);
-      const content = labels.readDirFailed(msg);
-      return content;
+      return fail(labels.readDirFailed(msg));
     }
   },
 };
@@ -447,7 +448,7 @@ export const rmDirTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -479,12 +480,12 @@ export const rmDirTool: FuncTool = {
 
     const pathValue = args['path'];
     const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
-    if (!rel) return labels.dirPathRequired;
+    if (!rel) return fail(labels.dirPathRequired);
 
     const recursiveValue = args['recursive'];
     const recursive = recursiveValue === undefined ? false : recursiveValue === true ? true : false;
     if (recursiveValue !== undefined && typeof recursiveValue !== 'boolean')
-      return labels.formatError;
+      return fail(labels.formatError);
 
     // Resolve path relative to current working directory (rtws)
     const targetPath = path.resolve(process.cwd(), rel);
@@ -492,12 +493,12 @@ export const rmDirTool: FuncTool = {
     // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      return labels.pathMustBeWithinWorkspace;
+      return fail(labels.pathMustBeWithinWorkspace);
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      return getAccessDeniedMessage('write', rel, workLanguage);
+      return fail(getAccessDeniedMessage('write', rel, workLanguage));
     }
 
     try {
@@ -508,14 +509,14 @@ export const rmDirTool: FuncTool = {
         ? `\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}`
         : '';
       if (!pathInfo.followStat.isDirectory()) {
-        return `${labels.notDir(rel)}${followNotice}`;
+        return fail(`${labels.notDir(rel)}${followNotice}`);
       }
 
       // Check if directory is empty when not using recursive
       if (!recursive) {
         const entries = await fs.readdir(targetPath);
         if (entries.length > 0) {
-          return `${labels.notEmpty(rel)}${followNotice}`;
+          return fail(`${labels.notEmpty(rel)}${followNotice}`);
         }
       }
 
@@ -523,9 +524,11 @@ export const rmDirTool: FuncTool = {
       await fs.rm(targetPath, { recursive, force: false });
 
       if (pathInfo.isSymlink) {
-        return `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`;
+        return ok(
+          `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`,
+        );
       }
-      return labels.removed(rel);
+      return ok(labels.removed(rel));
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -533,10 +536,10 @@ export const rmDirTool: FuncTool = {
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        return labels.doesNotExist(rel);
+        return fail(labels.doesNotExist(rel));
       }
 
-      return labels.removeFailed(error instanceof Error ? error.message : String(error));
+      return fail(labels.removeFailed(error instanceof Error ? error.message : String(error)));
     }
   },
 };
@@ -558,7 +561,7 @@ export const rmFileTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -586,7 +589,7 @@ export const rmFileTool: FuncTool = {
 
     const pathValue = args['path'];
     const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
-    if (!rel) return labels.filePathRequired;
+    if (!rel) return fail(labels.filePathRequired);
 
     // Resolve path relative to current working directory (rtws)
     const targetPath = path.resolve(process.cwd(), rel);
@@ -594,12 +597,12 @@ export const rmFileTool: FuncTool = {
     // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      return labels.pathMustBeWithinWorkspace;
+      return fail(labels.pathMustBeWithinWorkspace);
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      return getAccessDeniedMessage('write', rel, workLanguage);
+      return fail(getAccessDeniedMessage('write', rel, workLanguage));
     }
 
     try {
@@ -610,16 +613,18 @@ export const rmFileTool: FuncTool = {
         ? `\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'file')}`
         : '';
       if (!pathInfo.followStat.isFile()) {
-        return `${labels.notFile(rel)}${followNotice}`;
+        return fail(`${labels.notFile(rel)}${followNotice}`);
       }
 
       // Remove the file
       await fs.unlink(targetPath);
 
       if (pathInfo.isSymlink) {
-        return `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'file')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`;
+        return ok(
+          `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'file')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`,
+        );
       }
-      return labels.removed(rel);
+      return ok(labels.removed(rel));
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -627,10 +632,10 @@ export const rmFileTool: FuncTool = {
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        return labels.doesNotExist(rel);
+        return fail(labels.doesNotExist(rel));
       }
 
-      return labels.removeFailed(error instanceof Error ? error.message : String(error));
+      return fail(labels.removeFailed(error instanceof Error ? error.message : String(error)));
     }
   },
 };
@@ -641,6 +646,14 @@ function yamlQuote(value: string): string {
 
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
+}
+
+function okYaml(yaml: string): ToolCallOutput {
+  return toolSuccess(formatYamlCodeBlock(yaml));
+}
+
+function failYaml(yaml: string): ToolCallOutput {
+  return toolFailure(formatYamlCodeBlock(yaml));
 }
 
 async function countDirEntries(absPath: string): Promise<number> {
@@ -673,7 +686,7 @@ export const mkDirTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const pathValue = args['path'];
     const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
@@ -683,7 +696,7 @@ export const mkDirTool: FuncTool = {
         `error: PATH_REQUIRED`,
         `summary: ${yamlQuote(workLanguage === 'zh' ? 'Mk-dir failed: path required.' : 'Mk-dir failed: path required.')}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     const parentsValue = args['parents'];
@@ -705,7 +718,7 @@ export const mkDirTool: FuncTool = {
             : 'Mk-dir failed: invalid args. Expected { path: string, parents?: boolean }.',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     const targetPath = path.resolve(process.cwd(), rel);
@@ -721,11 +734,11 @@ export const mkDirTool: FuncTool = {
             : 'Mk-dir failed: path must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     if (!hasWriteAccess(caller, rel)) {
-      return getAccessDeniedMessage('write', rel, workLanguage);
+      return fail(getAccessDeniedMessage('write', rel, workLanguage));
     }
 
     try {
@@ -756,7 +769,7 @@ export const mkDirTool: FuncTool = {
             )}`,
           ];
           appendSymlinkYamlFields(yamlLines, 'path', pathInfo);
-          return formatYamlCodeBlock(yamlLines.join('\n'));
+          return failYaml(yamlLines.join('\n'));
         }
         const yamlLines = [
           `status: ok`,
@@ -765,7 +778,7 @@ export const mkDirTool: FuncTool = {
           `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).${symlinkSummary}`)}`,
         ];
         appendSymlinkYamlFields(yamlLines, 'path', pathInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return okYaml(yamlLines.join('\n'));
       }
 
       await fs.mkdir(targetPath, { recursive: parents });
@@ -775,7 +788,7 @@ export const mkDirTool: FuncTool = {
         `created: true`,
         `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return okYaml(yaml);
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -783,7 +796,7 @@ export const mkDirTool: FuncTool = {
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
   },
 };
@@ -806,7 +819,7 @@ export const moveFileTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const fromValue = args['from'];
     const toValue = args['to'];
@@ -822,7 +835,7 @@ export const moveFileTool: FuncTool = {
             : 'Move-file failed: from/to required.',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     const absFrom = path.resolve(process.cwd(), from);
@@ -840,11 +853,11 @@ export const moveFileTool: FuncTool = {
             : 'Move-file failed: paths must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
-      return getAccessDeniedMessage('write', from, workLanguage);
+      return fail(getAccessDeniedMessage('write', from, workLanguage));
     }
 
     try {
@@ -865,7 +878,7 @@ export const moveFileTool: FuncTool = {
           )}`,
         ];
         appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       const toParent = path.dirname(absTo);
@@ -887,7 +900,7 @@ export const moveFileTool: FuncTool = {
           )}`,
         ];
         appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       const toExists = await fs
@@ -918,7 +931,7 @@ export const moveFileTool: FuncTool = {
         ];
         appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
         appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       await fs.rename(absFrom, absTo);
@@ -930,7 +943,7 @@ export const moveFileTool: FuncTool = {
       ];
       appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
       appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-      return formatYamlCodeBlock(yamlLines.join('\n'));
+      return okYaml(yamlLines.join('\n'));
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -939,7 +952,7 @@ export const moveFileTool: FuncTool = {
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
   },
 };
@@ -962,7 +975,7 @@ export const moveDirTool: FuncTool = {
     },
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const workLanguage = getWorkLanguage();
     const fromValue = args['from'];
     const toValue = args['to'];
@@ -978,7 +991,7 @@ export const moveDirTool: FuncTool = {
             : 'Move-dir failed: from/to required.',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     const absFrom = path.resolve(process.cwd(), from);
@@ -996,11 +1009,11 @@ export const moveDirTool: FuncTool = {
             : 'Move-dir failed: paths must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
 
     if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
-      return getAccessDeniedMessage('write', from, workLanguage);
+      return fail(getAccessDeniedMessage('write', from, workLanguage));
     }
 
     try {
@@ -1021,7 +1034,7 @@ export const moveDirTool: FuncTool = {
           )}`,
         ];
         appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       const toParent = path.dirname(absTo);
@@ -1043,7 +1056,7 @@ export const moveDirTool: FuncTool = {
           )}`,
         ];
         appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       const toExists = await fs
@@ -1074,7 +1087,7 @@ export const moveDirTool: FuncTool = {
         ];
         appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
         appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-        return formatYamlCodeBlock(yamlLines.join('\n'));
+        return failYaml(yamlLines.join('\n'));
       }
 
       const movedEntryCount = fromInfo.isSymlink ? 1 : await countDirEntries(absFrom);
@@ -1091,7 +1104,7 @@ export const moveDirTool: FuncTool = {
       ];
       appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
       appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
-      return formatYamlCodeBlock(yamlLines.join('\n'));
+      return okYaml(yamlLines.join('\n'));
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -1100,7 +1113,7 @@ export const moveDirTool: FuncTool = {
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      return formatYamlCodeBlock(yaml);
+      return failYaml(yaml);
     }
   },
 };
