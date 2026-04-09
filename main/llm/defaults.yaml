@@ -5,7 +5,9 @@
 # - llm_retry_backoff_multiplier: exponential factor between retries (default 1.5).
 # - llm_retry_max_delay_ms: upper bound for retry delay (default 1800000 / 30m).
 # - apiQuirks: optional provider/gateway quirk profile(s) for non-standard transport behavior
-#   and retry classification. Example: `apiQuirks: xcode.best`.
+#   and provider-specific failure handling that can override the driver's default retry disposition.
+#   Example: `apiQuirks: xcode.best` currently covers both keepalive/heartbeat stream quirks and
+#   repeated empty-response handling for the same dialog context.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.

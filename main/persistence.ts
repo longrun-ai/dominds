@@ -34,7 +34,9 @@ import type {
   WebSearchCallEvent,
   WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
+import type { DialogInterruptionReason } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
@@ -226,6 +228,72 @@ function getErrorCode(error: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function parseDisplayTextI18n(
+  value: unknown,
+): Partial<Record<LanguageCode, string>> | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return null;
+  const parsed: Partial<Record<LanguageCode, string>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!isLanguageCode(key) || typeof entry !== 'string') {
+      return null;
+    }
+    parsed[key] = entry;
+  }
+  return parsed;
+}
+
+function parseDialogRetryDisplay(value: unknown): {
+  titleTextI18n: Partial<Record<LanguageCode, string>>;
+  summaryTextI18n: Partial<Record<LanguageCode, string>>;
+} | null {
+  if (!isRecord(value)) return null;
+  const titleTextI18n = parseDisplayTextI18n(value.titleTextI18n);
+  if (titleTextI18n === null || titleTextI18n === undefined) return null;
+  const summaryTextI18n = parseDisplayTextI18n(value.summaryTextI18n);
+  if (summaryTextI18n === null || summaryTextI18n === undefined) return null;
+  return {
+    titleTextI18n,
+    summaryTextI18n,
+  };
+}
+
+function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason | null {
+  if (!isRecord(value) || typeof value.kind !== 'string') return null;
+  switch (value.kind) {
+    case 'user_stop':
+      return { kind: 'user_stop' };
+    case 'emergency_stop':
+      return { kind: 'emergency_stop' };
+    case 'server_restart':
+      return { kind: 'server_restart' };
+    case 'fork_continue_ready':
+      return { kind: 'fork_continue_ready' };
+    case 'system_stop': {
+      const detail = value.detail;
+      if (typeof detail !== 'string') return null;
+      return { kind: 'system_stop', detail };
+    }
+    case 'llm_retry_stopped': {
+      const error = value.error;
+      if (typeof error !== 'string') return null;
+      const display = parseDialogRetryDisplay(value.display);
+      if (display === null) return null;
+      return {
+        kind: 'llm_retry_stopped',
+        error,
+        display,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
+  return reason.kind !== 'llm_retry_stopped';
 }
 
 function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {
@@ -760,24 +828,14 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       if (reason !== 'user_stop' && reason !== 'emergency_stop') return null;
       return { kind: 'proceeding_stop_requested', reason } as const;
     }
-    if (kind === 'interrupted') {
-      const reason = displayStateRaw.reason;
-      if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
-      switch (reason.kind) {
-        case 'user_stop':
-          return { kind: 'interrupted', reason: { kind: 'user_stop' } } as const;
-        case 'emergency_stop':
-          return { kind: 'interrupted', reason: { kind: 'emergency_stop' } } as const;
-        case 'server_restart':
-          return { kind: 'interrupted', reason: { kind: 'server_restart' } } as const;
-        case 'system_stop': {
-          const detail = (reason as Record<string, unknown>).detail;
-          if (typeof detail !== 'string') return null;
-          return { kind: 'interrupted', reason: { kind: 'system_stop', detail } } as const;
-        }
-        default:
-          return null;
-      }
+    if (kind === 'stopped') {
+      const reason = parseDialogInterruptionReason(displayStateRaw.reason);
+      if (reason === null) return null;
+      const continueEnabled =
+        typeof displayStateRaw.continueEnabled === 'boolean'
+          ? displayStateRaw.continueEnabled
+          : resolveStoppedContinueEnabled(reason);
+      return { kind: 'stopped', reason, continueEnabled } as const;
     }
     if (kind === 'blocked') {
       const reason = displayStateRaw.reason;
@@ -808,11 +866,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
           return null;
       }
     }
-    if (kind === 'terminal') {
-      const status = displayStateRaw.status;
-      if (status !== 'completed' && status !== 'archived') return null;
-      return { kind: 'terminal', status };
-    }
     return null;
   })();
   if (displayState === null) return null;
@@ -823,23 +876,9 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     if (!isRecord(executionMarkerRaw) || typeof executionMarkerRaw.kind !== 'string') return null;
     switch (executionMarkerRaw.kind) {
       case 'interrupted': {
-        const reason = executionMarkerRaw.reason;
-        if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
-        switch (reason.kind) {
-          case 'user_stop':
-            return { kind: 'interrupted', reason: { kind: 'user_stop' } } as const;
-          case 'emergency_stop':
-            return { kind: 'interrupted', reason: { kind: 'emergency_stop' } } as const;
-          case 'server_restart':
-            return { kind: 'interrupted', reason: { kind: 'server_restart' } } as const;
-          case 'system_stop': {
-            const detail = (reason as Record<string, unknown>).detail;
-            if (typeof detail !== 'string') return null;
-            return { kind: 'interrupted', reason: { kind: 'system_stop', detail } } as const;
-          }
-          default:
-            return null;
-        }
+        const reason = parseDialogInterruptionReason(executionMarkerRaw.reason);
+        if (reason === null) return null;
+        return { kind: 'interrupted', reason } as const;
       }
       case 'dead': {
         const reason = executionMarkerRaw.reason;

@@ -7,7 +7,7 @@ export type RunControlVisualState =
   | { kind: 'none' }
   | { kind: 'proceeding' }
   | { kind: 'proceeding_stop_requested' }
-  | { kind: 'interrupted' }
+  | { kind: 'stopped' }
   | { kind: 'blocked_q4h' }
   | { kind: 'blocked_subdialogs' }
   | { kind: 'blocked_both' };
@@ -16,7 +16,7 @@ export type DisplayStateClassSuffix =
   | ''
   | 'state-proceeding'
   | 'state-proceeding-stop'
-  | 'state-interrupted'
+  | 'state-stopped'
   | 'state-blocked-q4h'
   | 'state-blocked-subdialogs'
   | 'state-blocked-both';
@@ -42,15 +42,14 @@ export function runControlVisualStateFromDisplayState(
   if (!displayState) return { kind: 'none' };
   switch (displayState.kind) {
     case 'idle_waiting_user':
-    case 'terminal':
     case 'dead':
       return { kind: 'none' };
     case 'proceeding':
       return { kind: 'proceeding' };
     case 'proceeding_stop_requested':
       return { kind: 'proceeding_stop_requested' };
-    case 'interrupted':
-      return { kind: 'interrupted' };
+    case 'stopped':
+      return { kind: 'stopped' };
     case 'blocked':
       return blockedReasonToVisualState(displayState.reason);
     default: {
@@ -71,8 +70,8 @@ export function displayStateClassSuffixFromDisplayState(
       return 'state-proceeding';
     case 'proceeding_stop_requested':
       return 'state-proceeding-stop';
-    case 'interrupted':
-      return 'state-interrupted';
+    case 'stopped':
+      return 'state-stopped';
     case 'blocked_q4h':
       return 'state-blocked-q4h';
     case 'blocked_subdialogs':

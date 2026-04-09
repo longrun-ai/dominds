@@ -84,7 +84,8 @@ export type ProviderConfig = {
   name: string;
   apiType: ProviderApiType;
   // Optional gateway-specific behavior switches for non-standard transport quirks. Accept either a
-  // single string shorthand or a string array in YAML.
+  // single string shorthand or a string array in YAML. Quirks may register provider-specific
+  // failure handlers that override the driver's default retry disposition for matched failures.
   apiQuirks?: string | string[];
   baseUrl: string;
   apiKeyEnvVar: string;

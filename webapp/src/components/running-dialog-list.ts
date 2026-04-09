@@ -76,7 +76,7 @@ export class RunningDialogList extends HTMLElement {
   private static readonly RUN_STATE_CLASSES = [
     'state-proceeding',
     'state-proceeding-stop',
-    'state-interrupted',
+    'state-stopped',
     'state-blocked-q4h',
     'state-blocked-subdialogs',
     'state-blocked-both',
@@ -257,8 +257,15 @@ export class RunningDialogList extends HTMLElement {
         break;
       case 'proceeding_stop_requested':
         break;
-      case 'interrupted':
-        badges.push(this.renderRunBadge('interrupted', t.runBadgeInterruptedTitle));
+      case 'stopped':
+        badges.push(
+          this.renderRunBadge(
+            'interrupted',
+            dialog.displayState?.kind === 'stopped' && dialog.displayState.continueEnabled
+              ? t.runBadgeInterruptedTitle
+              : t.runBadgeStoppedTitle,
+          ),
+        );
         break;
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));

@@ -52,6 +52,7 @@ import {
   getRunControlCountsSnapshot,
   getStopRequestedReason,
   hasActiveRun,
+  isDialogLatestResumable,
   loadDialogExecutionMarker,
   requestEmergencyStopAll,
   requestInterruptDialog,
@@ -1102,31 +1103,26 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 
-    // Send the persisted display-state projection so the client can render Send↔Stop and Continue
-    // without inferring state locally. This is a UI snapshot, not a business-fact oracle.
-    try {
-      const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
-      const displayState =
-        latest?.displayState ??
-        (requestedStatus === 'running'
-          ? { kind: 'idle_waiting_user' }
-          : requestedStatus === 'completed'
-            ? { kind: 'terminal', status: 'completed' }
-            : { kind: 'terminal', status: 'archived' });
-      // `display_dialog` is a read/navigation action. Use persisted lastModified as timestamp
-      // so the frontend list does not reorder as if there were new activity "now".
-      const displayStateEvt: TypedDialogEvent = {
-        dialog: {
-          selfId: dialogIdObj.selfId,
-          rootId: dialogIdObj.rootId,
-        },
-        timestamp: latest?.lastModified ?? formatUnifiedTimestamp(new Date()),
-        type: 'dlg_display_state_evt',
-        displayState,
-      };
-      ws.send(JSON.stringify(displayStateEvt));
-    } catch (err) {
-      log.warn(`Failed to send dlg_display_state_evt for ${dialogIdObj.valueOf()}:`, err);
+    // Running dialogs expose a persisted display-state snapshot for viewport controls.
+    if (requestedStatus === 'running') {
+      try {
+        const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
+        const displayState = latest?.displayState ?? { kind: 'idle_waiting_user' };
+        // `display_dialog` is a read/navigation action. Use persisted lastModified as timestamp
+        // so the frontend list does not reorder as if there were new activity "now".
+        const displayStateEvt: TypedDialogEvent = {
+          dialog: {
+            selfId: dialogIdObj.selfId,
+            rootId: dialogIdObj.rootId,
+          },
+          timestamp: latest?.lastModified ?? formatUnifiedTimestamp(new Date()),
+          type: 'dlg_display_state_evt',
+          displayState,
+        };
+        ws.send(JSON.stringify(displayStateEvt));
+      } catch (err) {
+        log.warn(`Failed to send dlg_display_state_evt for ${dialogIdObj.valueOf()}:`, err);
+      }
     }
 
     // Emit one Q4H snapshot to ensure frontend has current global questions state.
@@ -1540,9 +1536,7 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
   }
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
   const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
-  const executionMarker = latest?.executionMarker;
-
-  if (!executionMarker || executionMarker.kind !== 'interrupted') {
+  if (!isDialogLatestResumable(latest)) {
     ws.send(JSON.stringify({ type: 'error', message: 'Dialog is not eligible for resumption.' }));
     return;
   }
@@ -1562,8 +1556,7 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const id of dialogIds) {
     const latest = await DialogPersistence.loadDialogLatest(id, 'running');
-    const executionMarker = latest?.executionMarker;
-    if (!executionMarker || executionMarker.kind !== 'interrupted') continue;
+    if (!isDialogLatestResumable(latest)) continue;
     void (async () => {
       try {
         const dlg = await restoreDialogForDrive(id, 'running');

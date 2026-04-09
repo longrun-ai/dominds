@@ -6,7 +6,12 @@
  */
 
 import type { ContextHealthSnapshot } from './context-health';
-import type { DialogDisplayState, DialogInterruptionReason } from './display-state';
+import type {
+  DialogDisplayState,
+  DialogInterruptionReason,
+  DialogLlmRetryExhaustedReason,
+  DialogRetryDisplay,
+} from './display-state';
 import type { LanguageCode } from './language';
 import type {
   AssignmentCourseNumber,
@@ -91,23 +96,31 @@ export interface StreamErrorEvent {
   genseq?: number;
 }
 
-export type LlmRetryEvent = LlmGenDlgEvent & {
+type LlmRetryEventBase = LlmGenDlgEvent & {
   type: 'llm_retry_evt';
-  phase: 'waiting' | 'running' | 'exhausted';
-  provider: string;
-  retryStrategy: 'aggressive' | 'conservative';
-  retryForever: boolean;
-  attempt: number;
-  totalAttempts: number;
-  maxRetries: number;
-  retriesRemaining?: number;
-  backoffMs?: number;
-  failureKind: 'retriable' | 'rejected' | 'fatal';
-  status?: number;
-  code?: string;
-  error: string;
-  suggestion?: string;
+  display: DialogRetryDisplay;
 };
+
+export type LlmRetryEvent =
+  | (LlmRetryEventBase & {
+      phase: 'waiting';
+      error: string;
+    })
+  | (LlmRetryEventBase & {
+      phase: 'running';
+      error: string;
+    })
+  | (LlmRetryEventBase & {
+      phase: 'resolved';
+    })
+  | {
+      type: 'llm_retry_evt';
+      course: number;
+      genseq: number;
+      phase: 'stopped';
+      continueEnabled: boolean;
+      reason: DialogLlmRetryExhaustedReason;
+    };
 
 export type GeneratingStartEvent = LlmGenDlgEvent & {
   type: 'generating_start_evt';

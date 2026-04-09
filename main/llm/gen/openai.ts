@@ -27,6 +27,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
+import { normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchOutput,
@@ -138,19 +139,6 @@ function readEventType(value: unknown): string | null {
     return null;
   }
   return value.type;
-}
-
-function normalizeProviderApiQuirks(providerConfig: ProviderConfig): Set<string> {
-  const raw = providerConfig.apiQuirks;
-  if (typeof raw === 'string') {
-    return raw.trim().length > 0 ? new Set([raw.trim()]) : new Set();
-  }
-  if (Array.isArray(raw)) {
-    return new Set(
-      raw.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== ''),
-    );
-  }
-  return new Set();
 }
 
 function resolveOpenAiVendorHeartbeatEventTypes(providerConfig: ProviderConfig): Set<string> {

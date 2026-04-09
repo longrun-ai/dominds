@@ -20,7 +20,7 @@ import type {
   DialogDisplayState,
   DialogInterruptionReason,
 } from '@longrun-ai/kernel/types/display-state';
-import type { DialogExecutionMarker } from '@longrun-ai/kernel/types/storage';
+import type { DialogExecutionMarker, DialogLatestFile } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
@@ -68,12 +68,36 @@ function syncRunControlCountsAfterActiveRunChange(
 
 type RunControlBucket = 'proceeding' | 'resumable' | 'none';
 
+export function isStoppedReasonResumable(reason: DialogInterruptionReason): boolean {
+  return reason.kind !== 'llm_retry_stopped';
+}
+
+export function isDisplayStateResumable(state: DialogDisplayState | undefined): boolean {
+  return state?.kind === 'stopped' && state.continueEnabled;
+}
+
+export function isExecutionMarkerResumable(
+  executionMarker: DialogExecutionMarker | undefined,
+): boolean {
+  return (
+    executionMarker?.kind === 'interrupted' && isStoppedReasonResumable(executionMarker.reason)
+  );
+}
+
+export function isDialogLatestResumable(latest: DialogLatestFile | null | undefined): boolean {
+  return (
+    latest?.displayState?.kind === 'stopped' &&
+    latest.displayState.continueEnabled &&
+    latest.executionMarker?.kind === 'interrupted'
+  );
+}
+
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
   if (!state) return 'none';
   if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
     return 'proceeding';
   }
-  if (state.kind === 'interrupted') {
+  if (isDisplayStateResumable(state)) {
     return 'resumable';
   }
   return 'none';
@@ -104,7 +128,7 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
     const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
     if (latest?.generating === true) {
       proceeding++;
-    } else if (latest?.executionMarker?.kind === 'interrupted') {
+    } else if (isDialogLatestResumable(latest)) {
       resumable++;
     }
   }
@@ -260,7 +284,7 @@ export async function setDialogDisplayState(
   }
 
   const nextExecutionMarker: DialogExecutionMarker | undefined =
-    displayState.kind === 'interrupted'
+    displayState.kind === 'stopped'
       ? { kind: 'interrupted', reason: displayState.reason }
       : displayState.kind === 'dead'
         ? { kind: 'dead', reason: displayState.reason }
@@ -317,7 +341,7 @@ export function broadcastDisplayStateMarker(
 
 export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDisplayState> {
   if (dlg.status === 'completed' || dlg.status === 'archived') {
-    return { kind: 'terminal', status: dlg.status };
+    return { kind: 'idle_waiting_user' };
   }
 
   const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
@@ -329,7 +353,11 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
     return { kind: 'dead', reason: latest.executionMarker.reason };
   }
   if (latest?.executionMarker?.kind === 'interrupted') {
-    return { kind: 'interrupted', reason: latest.executionMarker.reason };
+    return {
+      kind: 'stopped',
+      reason: latest.executionMarker.reason,
+      continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+    };
   }
 
   const hasQ4H = await dlg.hasPendingQ4H();
@@ -353,7 +381,7 @@ async function computeIdleDisplayStateFromPersistence(
   const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
   const status = latest?.status;
   if (status === 'completed' || status === 'archived') {
-    return { kind: 'terminal', status };
+    return { kind: 'idle_waiting_user' };
   }
   if (
     dialogId.selfId !== dialogId.rootId &&
@@ -364,7 +392,11 @@ async function computeIdleDisplayStateFromPersistence(
     return { kind: 'dead', reason: latest.executionMarker.reason };
   }
   if (latest?.executionMarker?.kind === 'interrupted') {
-    return { kind: 'interrupted', reason: latest.executionMarker.reason };
+    return {
+      kind: 'stopped',
+      reason: latest.executionMarker.reason,
+      continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+    };
   }
 
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
@@ -423,8 +455,9 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         nextIdle.kind === 'blocked'
           ? nextIdle
           : ({
-              kind: 'interrupted',
+              kind: 'stopped',
               reason: { kind: 'server_restart' },
+              continueEnabled: true,
             } satisfies DialogDisplayState);
       try {
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
@@ -433,9 +466,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
             generating: false,
             displayState: next,
             executionMarker:
-              next.kind === 'interrupted'
-                ? { kind: 'interrupted', reason: next.reason }
-                : undefined,
+              next.kind === 'stopped' ? { kind: 'interrupted', reason: next.reason } : undefined,
           },
         }));
       } catch (err) {

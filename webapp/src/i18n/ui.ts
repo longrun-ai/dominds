@@ -212,20 +212,16 @@ export type UiStrings = {
   emergencyStop: string;
   resumeAll: string;
   continueLabel: string;
-  retryPanelTitleRetrying: string;
-  retryPanelAttemptPrefix: string;
-  retryPanelAttemptConnector: string;
-  retryPanelAttemptSuffix: string;
-  retryPanelCountdownPrefix: string;
-  retryPanelRunningAttemptPrefix: string;
-  retryPanelRunningAttemptSuffix: string;
+  stoppedPanelTitle: string;
 
   stoppedByYou: string;
   stoppedByEmergencyStop: string;
   interruptedByServerRestart: string;
+  forkContinueReady: string;
   runMarkerResumed: string;
   runMarkerInterrupted: string;
   runBadgeInterruptedTitle: string;
+  runBadgeStoppedTitle: string;
   runBadgeRunningTitle: string;
   runBadgeWaitingHumanTitle: string;
   runBadgeWaitingSubdialogsTitle: string;
@@ -497,7 +493,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       forkDialogTitle: 'Fork 对话',
       q4hInvalidDialogToast: '对话标识无效：selfId/rootId 必须是字符串。',
       q4hDeclareDeadOnlySidelineToast: '只有支线对话支持“宣布卡死”。',
-      q4hDeclareDeadOnlyInterruptedToast: '只有已中断的对话支持“宣布卡死”。',
+      q4hDeclareDeadOnlyInterruptedToast: '只有已停止且可继续的对话支持“宣布卡死”。',
       q4hActionFailedToast: '操作失败',
       q4hSelectedQuestionStaleToastPrefix: '已选问题已失效：',
       q4hMessageEmptyToast: '消息内容不能为空。',
@@ -576,20 +572,16 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       emergencyStop: '紧急停止',
       resumeAll: '全部继续',
       continueLabel: '继续',
-      retryPanelTitleRetrying: '正在重试',
-      retryPanelAttemptPrefix: '已重试 ',
-      retryPanelAttemptConnector: ' / ',
-      retryPanelAttemptSuffix: ' 次',
-      retryPanelCountdownPrefix: '下次重试倒计时 ',
-      retryPanelRunningAttemptPrefix: '正在进行第 ',
-      retryPanelRunningAttemptSuffix: ' 次重试…',
+      stoppedPanelTitle: '已停止',
 
       stoppedByYou: '已由你停止',
       stoppedByEmergencyStop: '已被紧急停止终止',
       interruptedByServerRestart: '因服务器重启而中断',
+      forkContinueReady: '已创建继续分支，可继续推进',
       runMarkerResumed: '已继续',
-      runMarkerInterrupted: '已中断',
-      runBadgeInterruptedTitle: '对话已中断（可继续）',
+      runMarkerInterrupted: '已停止',
+      runBadgeInterruptedTitle: '对话已停止（可继续）',
+      runBadgeStoppedTitle: '对话已停止',
       runBadgeRunningTitle: '正在运行',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
       runBadgeWaitingSubdialogsTitle: '等待支线对话完成',
@@ -867,7 +859,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hInvalidDialogToast: 'Invalid dialog id: selfId/rootId must be strings.',
     q4hDeclareDeadOnlySidelineToast: 'Declare dead is available only for sideline dialogs.',
     q4hDeclareDeadOnlyInterruptedToast:
-      'Declare dead is available only when the dialog is interrupted.',
+      'Declare dead is available only when the dialog is stopped and resumable.',
     q4hActionFailedToast: 'Action failed',
     q4hSelectedQuestionStaleToastPrefix: 'Selected Q4H question is stale: ',
     q4hMessageEmptyToast: 'Message content is empty.',
@@ -950,20 +942,16 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     emergencyStop: 'Emergency stop',
     resumeAll: 'Resume all',
     continueLabel: 'Continue',
-    retryPanelTitleRetrying: 'Retrying',
-    retryPanelAttemptPrefix: 'Attempt ',
-    retryPanelAttemptConnector: ' / ',
-    retryPanelAttemptSuffix: '',
-    retryPanelCountdownPrefix: 'Next retry in ',
-    retryPanelRunningAttemptPrefix: 'Running retry attempt ',
-    retryPanelRunningAttemptSuffix: '...',
+    stoppedPanelTitle: 'Stopped',
 
     stoppedByYou: 'Stopped by you',
     stoppedByEmergencyStop: 'Stopped by emergency stop',
     interruptedByServerRestart: 'Interrupted by server restart',
+    forkContinueReady: 'A continuation fork is ready to proceed',
     runMarkerResumed: 'Resumed',
-    runMarkerInterrupted: 'Interrupted',
-    runBadgeInterruptedTitle: 'Interrupted (resumable)',
+    runMarkerInterrupted: 'Stopped',
+    runBadgeInterruptedTitle: 'Stopped (resumable)',
+    runBadgeStoppedTitle: 'Stopped',
     runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
     runBadgeWaitingSubdialogsTitle: 'Waiting for sideline dialogs',

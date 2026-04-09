@@ -381,7 +381,7 @@ function computeRootForkDisplayState(args: {
   if (hasSubdialogs) {
     return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
   }
-  return { kind: 'interrupted', reason: { kind: 'system_stop', detail: 'fork_dialog_continue' } };
+  return { kind: 'stopped', reason: { kind: 'fork_continue_ready' }, continueEnabled: true };
 }
 
 async function copyArtifactsIfPresent(

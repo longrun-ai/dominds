@@ -780,7 +780,7 @@ export class DomindsQ4HInput extends HTMLElement {
       throw new Error(t.q4hDeclareDeadOnlySidelineToast);
     }
     const state = this.displayState;
-    if (state === null || state.kind !== 'interrupted') {
+    if (state === null || state.kind !== 'stopped' || !state.continueEnabled) {
       throw new Error(t.q4hDeclareDeadOnlyInterruptedToast);
     }
     if (this.props.disabled) {
@@ -1026,7 +1026,12 @@ export class DomindsQ4HInput extends HTMLElement {
       const dialog = this.currentDialog;
       const isDead = state !== null && state.kind === 'dead';
       const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
-      const shouldShow = isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
+      const shouldShow =
+        isSubdialog &&
+        !isDead &&
+        state !== null &&
+        state.kind === 'stopped' &&
+        state.continueEnabled;
       this.declareDeathButton.hidden = !shouldShow;
       this.declareDeathButton.disabled = this.props.disabled || dialog === null;
 
@@ -1077,7 +1082,7 @@ export class DomindsQ4HInput extends HTMLElement {
     const state = this.displayState;
     const isDead = state !== null && state.kind === 'dead';
     const showDeclareDeath =
-      isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
+      isSubdialog && !isDead && state !== null && state.kind === 'stopped' && state.continueEnabled;
 
     return `
       <div class="q4h-input-container">

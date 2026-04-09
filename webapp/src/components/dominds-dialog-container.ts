@@ -14,6 +14,7 @@ import type {
 import type {
   DialogDisplayState,
   DialogInterruptionReason,
+  DialogRetryDisplay,
 } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
@@ -37,6 +38,7 @@ import mannedToolIcon from '../assets/manned-tool.svg';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
+import { formatRetryStoppedReason } from '../utils/localized-text';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -166,31 +168,22 @@ const AUTO_SCROLL_WHEEL_IDLE_EPSILON = 0.03;
 
 type LlmRetryEvent = Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>;
 
-type RetryPanelState =
+type ViewportPanelState =
   | { kind: 'hidden' }
   | {
-      kind: 'retry-waiting';
+      kind: 'retrying';
       genseq: number;
-      attempt: number;
-      totalAttempts: number;
-      retryForever: boolean;
-      provider: string;
-      failureLabel: string;
-      error: string;
-      nextRetryAtMs: number;
+      display: DialogRetryDisplay;
+      errorText: string;
     }
   | {
-      kind: 'retry-running';
+      kind: 'stopped';
       genseq: number;
-      attempt: number;
-      totalAttempts: number;
-      retryForever: boolean;
-      provider: string;
-      failureLabel: string;
-      error: string;
+      reason: DialogInterruptionReason;
+      continueEnabled: boolean;
     };
 
-export type DialogViewportRetryPanelState = RetryPanelState;
+export type DialogViewportPanelState = ViewportPanelState;
 
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
@@ -265,7 +258,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
-  private retryPanelState: RetryPanelState = { kind: 'hidden' };
+  private viewportPanelState: ViewportPanelState = { kind: 'hidden' };
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -1115,7 +1108,7 @@ export class DomindsDialogContainer extends HTMLElement {
   public resetForCourse(course: number): void {
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
-    this.clearRetryPanel();
+    this.clearViewportPanel();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -1143,7 +1136,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private cleanup(): void {
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
-    this.clearRetryPanel();
+    this.clearViewportPanel();
     this.previousDialog = undefined;
     this.displayState = null;
     this.generationBubble = undefined;
@@ -1250,8 +1243,8 @@ export class DomindsDialogContainer extends HTMLElement {
           break;
         }
         this.displayState = event.displayState;
-        if (event.displayState.kind === 'interrupted' || event.displayState.kind === 'dead') {
-          this.clearRetryPanel();
+        if (event.displayState.kind === 'stopped' || event.displayState.kind === 'dead') {
+          this.clearViewportPanel();
         }
         break;
 
@@ -1264,13 +1257,23 @@ export class DomindsDialogContainer extends HTMLElement {
           break;
         }
         if (event.kind === 'interrupted') {
+          const t = getUiStrings(this.uiLanguage);
+          const reason = event.reason ?? { kind: 'system_stop', detail: t.stoppedPanelTitle };
           this.displayState = {
-            kind: 'interrupted',
-            reason: event.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
+            kind: 'stopped',
+            reason,
+            continueEnabled: false,
           };
-          this.clearRetryPanel();
-        } else if (this.displayState !== null && this.displayState.kind === 'interrupted') {
+          this.viewportPanelState = {
+            kind: 'stopped',
+            genseq: this.activeGenSeq ?? 0,
+            reason,
+            continueEnabled: false,
+          };
+          this.emitViewportPanelStateChanged();
+        } else if (this.displayState !== null && this.displayState.kind === 'stopped') {
           this.displayState = { kind: 'proceeding' };
+          this.clearViewportPanel();
         }
         let reasonText: string | undefined;
         const reason = event.reason;
@@ -1477,8 +1480,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
   private handleGeneratingStart(seq: number, timestamp: string, msgId?: string): void {
-    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq !== seq) {
-      this.clearRetryPanel();
+    if (this.viewportPanelState.kind !== 'hidden' && this.viewportPanelState.genseq !== seq) {
+      this.clearViewportPanel();
     }
 
     const applyPendingCallAnchor = (bubble: HTMLElement): void => {
@@ -1797,8 +1800,8 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.classList.remove('generating');
     bubble.classList.add('completed');
     bubble.setAttribute('data-finalized', 'true');
-    if (this.retryPanelState.kind !== 'hidden' && this.retryPanelState.genseq === seq) {
-      this.clearRetryPanel();
+    if (this.viewportPanelState.kind !== 'hidden' && this.viewportPanelState.genseq === seq) {
+      this.clearViewportPanel();
     }
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
@@ -4388,67 +4391,41 @@ export class DomindsDialogContainer extends HTMLElement {
     return `${trimmed.slice(0, 240)}...`;
   }
 
-  private describeRetryFailure(event: LlmRetryEvent): string {
-    if (typeof event.status === 'number') {
-      return `HTTP ${event.status}`;
-    }
-    if (typeof event.code === 'string' && event.code.trim() !== '') {
-      return event.code.trim();
-    }
-    if (event.failureKind === 'retriable') {
-      return this.uiLanguage === 'zh' ? '可重试错误' : 'Retriable error';
-    }
-    if (event.failureKind === 'rejected') {
-      return this.uiLanguage === 'zh' ? '请求被拒绝' : 'Request rejected';
-    }
-    return this.uiLanguage === 'zh' ? '致命错误' : 'Fatal error';
-  }
-
   private handleLlmRetry(event: LlmRetryEvent): void {
-    if (event.phase === 'exhausted') {
-      this.clearRetryPanel();
+    if (event.phase === 'resolved') {
+      this.viewportPanelState = { kind: 'hidden' };
+      this.emitViewportPanelStateChanged();
+      return;
+    }
+    if (event.phase === 'stopped') {
+      this.viewportPanelState = {
+        kind: 'stopped',
+        genseq: event.genseq,
+        reason: event.reason,
+        continueEnabled: event.continueEnabled,
+      };
+      this.emitViewportPanelStateChanged();
       return;
     }
 
-    const failureLabel = this.describeRetryFailure(event);
-    const errorText = this.summarizeRetryError(event.error);
-    if (event.phase === 'waiting') {
-      const backoffMs = Math.max(0, Math.floor(event.backoffMs ?? 0));
-      this.retryPanelState = {
-        kind: 'retry-waiting',
-        genseq: event.genseq,
-        attempt: event.attempt,
-        totalAttempts: event.totalAttempts,
-        retryForever: event.retryForever,
-        provider: event.provider,
-        failureLabel,
-        error: errorText,
-        nextRetryAtMs: Date.now() + backoffMs,
-      };
-    } else {
-      this.retryPanelState = {
-        kind: 'retry-running',
-        genseq: event.genseq,
-        attempt: event.attempt,
-        totalAttempts: event.totalAttempts,
-        retryForever: event.retryForever,
-        provider: event.provider,
-        failureLabel,
-        error: errorText,
-      };
-    }
-    this.emitRetryPanelStateChanged();
+    this.viewportPanelState = {
+      kind: 'retrying',
+      genseq: event.genseq,
+      display: event.display,
+      errorText: this.summarizeRetryError(event.error),
+    };
+    this.emitViewportPanelStateChanged();
   }
 
-  private clearRetryPanel(): void {
-    this.retryPanelState = { kind: 'hidden' };
-    this.emitRetryPanelStateChanged();
+  private clearViewportPanel(): void {
+    this.viewportPanelState = { kind: 'hidden' };
+    this.emitViewportPanelStateChanged();
   }
 
-  private emitRetryPanelStateChanged(): void {
+  private emitViewportPanelStateChanged(): void {
     this.dispatchEvent(
-      new CustomEvent<{ state: DialogViewportRetryPanelState }>('dialog-retry-panel-state', {
-        detail: { state: this.retryPanelState },
+      new CustomEvent<{ state: DialogViewportPanelState }>('dialog-viewport-panel-state', {
+        detail: { state: this.viewportPanelState },
         bubbles: true,
         composed: true,
       }),
@@ -4639,6 +4616,10 @@ export class DomindsDialogContainer extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
+      case 'fork_continue_ready':
+        return t.forkContinueReady;
+      case 'llm_retry_stopped':
+        return formatRetryStoppedReason(reason, this.uiLanguage);
       case 'system_stop':
         return reason.detail;
       default: {

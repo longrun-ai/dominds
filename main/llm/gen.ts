@@ -23,7 +23,7 @@ export interface LlmBatchResult {
   llmGenModel?: string;
 }
 
-export type LlmRetryStrategy = 'aggressive' | 'conservative';
+export type LlmRetryStrategy = 'aggressive' | 'conservative' | 'smart_rate';
 
 export type LlmFailureDisposition = {
   kind: 'retriable' | 'rejected' | 'fatal';
@@ -31,6 +31,7 @@ export type LlmFailureDisposition = {
   status?: number;
   code?: string;
   retryStrategy?: LlmRetryStrategy;
+  retryAfterMs?: number;
 };
 
 export type LlmFailureClassifier = (error: unknown) => LlmFailureDisposition | undefined;

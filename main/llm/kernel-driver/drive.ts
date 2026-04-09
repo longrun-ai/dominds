@@ -95,6 +95,7 @@ import {
 } from './guardrails';
 import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
+  LlmRetryStoppedError,
   maybePrepareDiligenceAutoContinuePrompt,
   runLlmRequestWithRetry,
   suspendForKeepGoingBudgetExhausted,
@@ -203,6 +204,10 @@ class KernelDriverInterruptedError extends Error {
     super('Dialog interrupted');
     this.reason = reason;
   }
+}
+
+function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
+  return reason.kind !== 'llm_retry_stopped';
 }
 
 function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void {
@@ -1935,6 +1940,8 @@ export async function driveDialogStreamCore(
             const batch = await runLlmRequestWithRetry({
               dlg,
               provider,
+              modelId: model,
+              providerConfig: providerCfg,
               abortSignal,
               maxRetries: retryPolicy.maxRetries,
               retryInitialDelayMs: retryPolicy.initialDelayMs,
@@ -2132,6 +2139,8 @@ export async function driveDialogStreamCore(
           const res = await runLlmRequestWithRetry({
             dlg,
             provider,
+            modelId: model,
+            providerConfig: providerCfg,
             abortSignal,
             maxRetries: retryPolicy.maxRetries,
             retryInitialDelayMs: retryPolicy.initialDelayMs,
@@ -2504,18 +2513,24 @@ export async function driveDialogStreamCore(
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
     const interruptedReason: DialogInterruptionReason | undefined =
-      err instanceof KernelDriverInterruptedError
+      err instanceof LlmRetryStoppedError
         ? err.reason
-        : abortSignal.aborted
-          ? stopRequested === 'emergency_stop'
-            ? { kind: 'emergency_stop' }
-            : stopRequested === 'user_stop'
-              ? { kind: 'user_stop' }
-              : { kind: 'system_stop', detail: 'Aborted.' }
-          : undefined;
+        : err instanceof KernelDriverInterruptedError
+          ? err.reason
+          : abortSignal.aborted
+            ? stopRequested === 'emergency_stop'
+              ? { kind: 'emergency_stop' }
+              : stopRequested === 'user_stop'
+                ? { kind: 'user_stop' }
+                : { kind: 'system_stop', detail: 'Aborted.' }
+            : undefined;
 
     if (interruptedReason) {
-      finalDisplayState = { kind: 'interrupted', reason: interruptedReason };
+      finalDisplayState = {
+        kind: 'stopped',
+        reason: interruptedReason,
+        continueEnabled: resolveStoppedContinueEnabled(interruptedReason),
+      };
       broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
     } else {
       const errText = extractErrorDetails(err).message;
@@ -2524,7 +2539,11 @@ export async function driveDialogStreamCore(
       } catch {
         // best-effort
       }
-      finalDisplayState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
+      finalDisplayState = {
+        kind: 'stopped',
+        reason: { kind: 'system_stop', detail: errText },
+        continueEnabled: true,
+      };
       broadcastDisplayStateMarker(dlg.id, {
         kind: 'interrupted',
         reason: { kind: 'system_stop', detail: errText },
@@ -2548,7 +2567,7 @@ export async function driveDialogStreamCore(
 
     if (
       abortSignal.aborted &&
-      finalDisplayState.kind !== 'interrupted' &&
+      finalDisplayState.kind !== 'stopped' &&
       finalDisplayState.kind !== 'dead'
     ) {
       const stopRequested = getStopRequestedReason(dlg.id);
@@ -2558,7 +2577,11 @@ export async function driveDialogStreamCore(
           : stopRequested === 'user_stop'
             ? { kind: 'user_stop' }
             : { kind: 'system_stop', detail: 'Aborted.' };
-      finalDisplayState = { kind: 'interrupted', reason: lateInterruptedReason };
+      finalDisplayState = {
+        kind: 'stopped',
+        reason: lateInterruptedReason,
+        continueEnabled: resolveStoppedContinueEnabled(lateInterruptedReason),
+      };
       broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
     }
 
@@ -2573,7 +2596,7 @@ export async function driveDialogStreamCore(
       });
     }
 
-    if (finalDisplayState.kind === 'interrupted') {
+    if (finalDisplayState.kind === 'stopped') {
       await setDialogExecutionMarker(dlg.id, {
         kind: 'interrupted',
         reason: finalDisplayState.reason,

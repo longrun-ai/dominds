@@ -84,6 +84,7 @@
     "openai-context-normalization": "tsx provider/openai-context-normalization.ts",
     "openai-compatible-context-normalization": "tsx provider/openai-compatible-context-normalization.ts",
     "openai-compatible-image-fallback": "tsx provider/openai-compatible-image-fallback.ts",
+    "provider-llm-quirks-retry-handling": "tsx provider/llm-quirks-retry-handling.ts",
     "provider-tool-result-truncation": "tsx provider/tool-result-truncation.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "man-structure": "tsx toolsets/man-structure.ts",

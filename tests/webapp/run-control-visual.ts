@@ -10,7 +10,10 @@ expectSuffix(undefined, '');
 expectSuffix({ kind: 'idle_waiting_user' }, '');
 expectSuffix({ kind: 'proceeding' }, 'state-proceeding');
 expectSuffix({ kind: 'proceeding_stop_requested', reason: 'user_stop' }, 'state-proceeding-stop');
-expectSuffix({ kind: 'interrupted', reason: { kind: 'user_stop' } }, 'state-interrupted');
+expectSuffix(
+  { kind: 'stopped', reason: { kind: 'user_stop' }, continueEnabled: true },
+  'state-stopped',
+);
 expectSuffix({ kind: 'blocked', reason: { kind: 'needs_human_input' } }, 'state-blocked-q4h');
 expectSuffix(
   { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
@@ -20,4 +23,3 @@ expectSuffix(
   { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } },
   'state-blocked-both',
 );
-expectSuffix({ kind: 'terminal', status: 'completed' }, '');

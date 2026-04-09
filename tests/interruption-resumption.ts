@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   try {
     process.chdir(tmpRoot);
 
-    // Dialog A: was proceeding when server crashed => becomes interrupted (resumable) after reconcile.
+    // Dialog A: was proceeding when server crashed => becomes stopped (resumable) after reconcile.
     const aRoot = 'dlg-a';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'dialog.yaml'), { id: aRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'latest.yaml'), {
@@ -59,8 +59,9 @@ async function main(): Promise<void> {
     assert.ok(latestA, 'latest.yaml for dlg-a should exist');
     assert.equal(latestA.generating, false);
     assert.ok(latestA.displayState);
-    assert.equal(latestA.displayState.kind, 'interrupted');
+    assert.equal(latestA.displayState.kind, 'stopped');
     assert.equal(latestA.displayState.reason.kind, 'server_restart');
+    assert.equal(latestA.displayState.continueEnabled, true);
 
     const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
     assert.ok(latestB, 'latest.yaml for dlg-b should exist');

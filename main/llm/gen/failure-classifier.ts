@@ -11,7 +11,14 @@ function readNestedError(error: unknown): Record<string, unknown> | undefined {
   return error.error;
 }
 
-function readErrorStatus(error: unknown): number | undefined {
+function readNestedResponse(error: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(error) || !('response' in error) || !isPlainObject(error.response)) {
+    return undefined;
+  }
+  return error.response;
+}
+
+export function readErrorStatus(error: unknown): number | undefined {
   if (isPlainObject(error)) {
     if ('status' in error && typeof error.status === 'number') {
       return error.status;
@@ -33,7 +40,7 @@ function readErrorStatus(error: unknown): number | undefined {
   return undefined;
 }
 
-function readErrorCode(error: unknown): string | undefined {
+export function readErrorCode(error: unknown): string | undefined {
   if (isPlainObject(error)) {
     if ('code' in error && typeof error.code === 'string') {
       return error.code;
@@ -60,7 +67,7 @@ function readErrorType(error: unknown): string | undefined {
   return undefined;
 }
 
-function readErrorMessage(error: unknown): string | undefined {
+export function readErrorMessage(error: unknown): string | undefined {
   if (error instanceof Error) {
     const message = error.message.trim();
     return message.length > 0 ? message : error.name;
@@ -83,6 +90,96 @@ function readErrorMessage(error: unknown): string | undefined {
   return undefined;
 }
 
+function readErrorHeaders(error: unknown): Record<string, unknown> | undefined {
+  if (isPlainObject(error) && 'headers' in error && isPlainObject(error.headers)) {
+    return error.headers;
+  }
+  const nested = readNestedError(error);
+  if (nested && 'headers' in nested && isPlainObject(nested.headers)) {
+    return nested.headers;
+  }
+  const response = readNestedResponse(error);
+  if (response && 'headers' in response && isPlainObject(response.headers)) {
+    return response.headers;
+  }
+  return undefined;
+}
+
+function readHeaderValue(headers: Record<string, unknown>, headerName: string): unknown {
+  const target = headerName.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === target) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function parseRetryAfterHeaderMs(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value * 1000));
+  }
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) {
+    return Math.max(0, Math.floor(numeric * 1000));
+  }
+  const parsedDateMs = Date.parse(trimmed);
+  if (!Number.isFinite(parsedDateMs)) return undefined;
+  return Math.max(0, parsedDateMs - Date.now());
+}
+
+function parseDelayFieldMs(value: unknown, unit: 'milliseconds' | 'seconds'): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const ms = unit === 'seconds' ? value * 1000 : value;
+    return Math.max(0, Math.floor(ms));
+  }
+  if (typeof value !== 'string') return undefined;
+  const numeric = Number(value.trim());
+  if (!Number.isFinite(numeric)) return undefined;
+  const ms = unit === 'seconds' ? numeric * 1000 : numeric;
+  return Math.max(0, Math.floor(ms));
+}
+
+export function readProviderSuggestedRetryAfterMs(error: unknown): number | undefined {
+  const headers = readErrorHeaders(error);
+  if (headers) {
+    const retryAfter = parseRetryAfterHeaderMs(readHeaderValue(headers, 'retry-after'));
+    if (retryAfter !== undefined) return retryAfter;
+    const resetAfter =
+      parseDelayFieldMs(readHeaderValue(headers, 'x-ratelimit-reset-after'), 'seconds') ??
+      parseDelayFieldMs(readHeaderValue(headers, 'ratelimit-reset-after'), 'seconds');
+    if (resetAfter !== undefined) return resetAfter;
+  }
+
+  const roots: Record<string, unknown>[] = [];
+  if (isPlainObject(error)) roots.push(error);
+  const nested = readNestedError(error);
+  if (nested) roots.push(nested);
+  const response = readNestedResponse(error);
+  if (response) roots.push(response);
+
+  for (const root of roots) {
+    const retryAfterMs =
+      parseDelayFieldMs(root.retryAfterMs, 'milliseconds') ??
+      parseDelayFieldMs(root.retry_after_ms, 'milliseconds') ??
+      parseDelayFieldMs(root.resetAfterMs, 'milliseconds') ??
+      parseDelayFieldMs(root.reset_after_ms, 'milliseconds');
+    if (retryAfterMs !== undefined) return retryAfterMs;
+
+    const retryAfterSeconds =
+      parseDelayFieldMs(root.retryAfter, 'seconds') ??
+      parseDelayFieldMs(root.retry_after, 'seconds') ??
+      parseDelayFieldMs(root.resetAfter, 'seconds') ??
+      parseDelayFieldMs(root.reset_after, 'seconds');
+    if (retryAfterSeconds !== undefined) return retryAfterSeconds;
+  }
+
+  return undefined;
+}
+
 function buildFailureMessage(error: unknown): string {
   return readErrorMessage(error) ?? 'Unknown LLM provider error.';
 }
@@ -100,7 +197,7 @@ function isOpenAiRetriableProcessingFailureMessage(lowerMessage: string): boolea
   return lowerMessage.includes('help.openai.com') && lowerMessage.includes('request id');
 }
 
-function isConservativeRetryMessage(lowerMessage: string): boolean {
+export function isConservativeRetryMessage(lowerMessage: string): boolean {
   if (lowerMessage.includes('servers are currently overloaded')) {
     return true;
   }
@@ -117,6 +214,32 @@ function isConservativeRetryMessage(lowerMessage: string): boolean {
     return true;
   }
   return lowerMessage.includes('overloaded') && lowerMessage.includes('try again later');
+}
+
+export function isOpenAiLikeOverloadFailure(error: unknown): boolean {
+  const lowerMessage = buildFailureMessage(error).toLowerCase();
+  const status = readErrorStatus(error);
+  return status === 503 || status === 529 || isConservativeRetryMessage(lowerMessage);
+}
+
+export function isOpenAiLikeRateLimitFailure(error: unknown): boolean {
+  const lowerMessage = buildFailureMessage(error).toLowerCase();
+  const status = readErrorStatus(error);
+  const code = readErrorCode(error)?.toLowerCase();
+
+  if (status === 429) {
+    return true;
+  }
+  if (typeof code === 'string' && code.includes('rate_limit')) {
+    return true;
+  }
+  if (lowerMessage.includes('rate limit')) {
+    return true;
+  }
+  if (lowerMessage.includes('requests per min')) {
+    return true;
+  }
+  return lowerMessage.includes('rpm') && lowerMessage.includes('limit');
 }
 
 export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition | undefined {
@@ -144,13 +267,24 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
     };
   }
 
-  if (status === 503 || status === 529 || isConservativeRetryMessage(lowerMessage)) {
+  if (isOpenAiLikeOverloadFailure(error)) {
     return {
       kind: 'retriable',
       message,
       status,
       code,
       retryStrategy: 'conservative',
+    };
+  }
+
+  if (isOpenAiLikeRateLimitFailure(error)) {
+    return {
+      kind: 'retriable',
+      message,
+      status,
+      code,
+      retryStrategy: 'smart_rate',
+      retryAfterMs: readProviderSuggestedRetryAfterMs(error),
     };
   }
 

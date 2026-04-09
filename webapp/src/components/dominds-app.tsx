@@ -73,6 +73,11 @@ import {
   saveViewportScopedRectSize,
 } from '../services/viewport-size-storage';
 import { getWebSocketManager } from '../services/websocket.js';
+import {
+  formatRetryStoppedReason,
+  resolveRetryDisplaySummary,
+  resolveRetryDisplayTitle,
+} from '../utils/localized-text';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
 import {
@@ -87,7 +92,7 @@ import {
 import './dominds-dialog-container.js';
 import {
   DomindsDialogContainer,
-  type DialogViewportRetryPanelState,
+  type DialogViewportPanelState,
 } from './dominds-dialog-container.js';
 import './dominds-docs-panel';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
@@ -342,8 +347,7 @@ export class DomindsApp extends HTMLElement {
   private resumableDialogsCount: number = 0;
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
-  private retryPanelState: DialogViewportRetryPanelState = { kind: 'hidden' };
-  private retryPanelTicker: number | null = null;
+  private viewportPanelState: DialogViewportPanelState = { kind: 'hidden' };
   private teamMembers: FrontendTeamMember[] = [];
   private defaultResponder: string | null = null;
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
@@ -1951,7 +1955,6 @@ export class DomindsApp extends HTMLElement {
 
   disconnectedCallback(): void {
     this.wsManager.disconnect();
-    this.stopRetryPanelTicker();
     window.removeEventListener('resize', this.boundOnWindowResize);
 
     for (const t of this.runControlRefreshTimers) {
@@ -6001,23 +6004,17 @@ export class DomindsApp extends HTMLElement {
 	                </div>
                 </div>
                 <div id="dialog-viewport-panels" class="dialog-viewport-panels hidden">
-                  <div id="dialog-retry-panel" class="dialog-viewport-panel retry-panel hidden" data-state="hidden">
+                  <div id="dialog-status-panel" class="dialog-viewport-panel hidden" data-state="hidden">
                     <div class="dialog-viewport-panel-header">
                       <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
                       <div class="dialog-viewport-panel-text">
-                        <div id="dialog-retry-title" class="dialog-viewport-panel-title"></div>
-                        <div id="dialog-retry-summary" class="dialog-viewport-panel-summary"></div>
+                        <div id="dialog-status-title" class="dialog-viewport-panel-title"></div>
+                        <div id="dialog-status-summary" class="dialog-viewport-panel-summary"></div>
                       </div>
                     </div>
-                    <div id="dialog-retry-error" class="dialog-viewport-panel-error"></div>
-                  </div>
-                  <div id="dialog-resume-panel" class="dialog-viewport-panel resume-panel hidden">
-                    <div class="dialog-viewport-panel-text">
-                      <div id="dialog-resume-title" class="dialog-viewport-panel-title">${t.continueLabel}</div>
-                      <div id="dialog-resume-reason" class="dialog-viewport-panel-summary"></div>
-                    </div>
+                    <div id="dialog-status-error" class="dialog-viewport-panel-error"></div>
                     <div class="dialog-viewport-panel-actions">
-                      <button id="dialog-resume-btn" class="dialog-resume-btn" type="button">${t.continueLabel}</button>
+                      <button id="dialog-status-btn" class="dialog-resume-btn hidden" type="button">${t.continueLabel}</button>
                     </div>
                   </div>
                 </div>
@@ -6424,8 +6421,8 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const resumeBtn = target.closest('#dialog-resume-btn') as HTMLButtonElement | null;
-      if (resumeBtn) {
+      const statusBtn = target.closest('#dialog-status-btn') as HTMLButtonElement | null;
+      if (statusBtn) {
         this.resumeCurrentDialog();
         return;
       }
@@ -6702,18 +6699,18 @@ export class DomindsApp extends HTMLElement {
           input.setDisabled(course !== latest);
         }
       });
-      dialogContainerEl.addEventListener('dialog-retry-panel-state', (e: Event) => {
+      dialogContainerEl.addEventListener('dialog-viewport-panel-state', (e: Event) => {
         const ce = e as CustomEvent<unknown>;
         const detail =
           ce.detail && typeof ce.detail === 'object'
-            ? (ce.detail as { state?: DialogViewportRetryPanelState })
+            ? (ce.detail as { state?: DialogViewportPanelState })
             : null;
         const state = detail?.state;
         if (!state || typeof state !== 'object' || !('kind' in state)) {
-          console.warn('Invalid dialog-retry-panel-state payload', ce.detail);
+          console.warn('Invalid dialog-viewport-panel-state payload', ce.detail);
           return;
         }
-        this.retryPanelState = state;
+        this.viewportPanelState = state;
         this.updateDialogViewportPanels();
       });
     }
@@ -8089,7 +8086,7 @@ export class DomindsApp extends HTMLElement {
       this.dialogDisplayStatesByKey.clear();
       for (const root of this.getAllDisplayedDialogs()) {
         const selfId = root.selfId ? root.selfId : root.rootId;
-        if (!root.displayState) continue;
+        if (root.status !== 'running' || !root.displayState) continue;
         this.dialogDisplayStatesByKey.set(this.dialogKey(root.rootId, selfId), root.displayState);
       }
       if (runControlCountsResp.success && runControlCountsResp.data) {
@@ -8131,7 +8128,7 @@ export class DomindsApp extends HTMLElement {
   private clearCurrentDialogSelection(): void {
     this.currentDialog = null;
     this.currentDialogStatus = null;
-    this.retryPanelState = { kind: 'hidden' };
+    this.viewportPanelState = { kind: 'hidden' };
     this.updateBrowserTitle(null);
 
     const root = this.shadowRoot;
@@ -8350,7 +8347,8 @@ export class DomindsApp extends HTMLElement {
           const cachedRootDisplayState = this.dialogDisplayStatesByKey.get(
             this.dialogKey(rootId, rootId),
           );
-          const rootDisplayState = h.root.displayState ?? cachedRootDisplayState;
+          const rootDisplayState =
+            status === 'running' ? (h.root.displayState ?? cachedRootDisplayState) : undefined;
           if (rootDisplayState) {
             this.dialogDisplayStatesByKey.set(this.dialogKey(rootId, rootId), rootDisplayState);
           }
@@ -8362,7 +8360,8 @@ export class DomindsApp extends HTMLElement {
               const cachedDisplayState = this.dialogDisplayStatesByKey.get(
                 this.dialogKey(subdialog.rootId, subdialog.selfId),
               );
-              const effectiveDisplayState = subdialog.displayState ?? cachedDisplayState;
+              const effectiveDisplayState =
+                status === 'running' ? (subdialog.displayState ?? cachedDisplayState) : undefined;
               if (effectiveDisplayState) {
                 this.dialogDisplayStatesByKey.set(
                   this.dialogKey(subdialog.rootId, subdialog.selfId),
@@ -8692,65 +8691,10 @@ export class DomindsApp extends HTMLElement {
     return rootMatch ? rootMatch.status : null;
   }
 
-  private ensureRetryPanelTicker(): void {
-    if (this.retryPanelState.kind !== 'retry-waiting') {
-      this.stopRetryPanelTicker();
-      return;
-    }
-    if (this.retryPanelTicker !== null) return;
-    this.retryPanelTicker = window.setInterval(() => {
-      if (this.retryPanelState.kind !== 'retry-waiting') {
-        this.stopRetryPanelTicker();
-        return;
-      }
-      this.updateDialogViewportPanels();
-    }, 200);
-  }
-
-  private stopRetryPanelTicker(): void {
-    if (this.retryPanelTicker === null) return;
-    window.clearInterval(this.retryPanelTicker);
-    this.retryPanelTicker = null;
-  }
-
-  private formatRetryCountdown(remainingMs: number): string {
-    const safeMs = Math.max(0, remainingMs);
-    if (safeMs >= 10_000) {
-      const seconds = Math.ceil(safeMs / 1000);
-      return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
-    }
-    const seconds = (safeMs / 1000).toFixed(1);
-    return this.uiLanguage === 'zh' ? `${seconds} 秒` : `${seconds}s`;
-  }
-
-  private buildRetryWaitingSummary(
-    state: DialogViewportRetryPanelState & { kind: 'retry-waiting' },
-  ): string {
-    const t = getUiStrings(this.uiLanguage);
-    const totalAttemptsText = state.retryForever ? '∞' : String(state.totalAttempts);
-    const attemptText = `${t.retryPanelAttemptPrefix}${state.attempt}${t.retryPanelAttemptConnector}${totalAttemptsText}${t.retryPanelAttemptSuffix}`;
-    const providerText = state.provider.trim();
-    const failureText =
-      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
-    const remainingMs = Math.max(0, state.nextRetryAtMs - Date.now());
-    const countdown = this.formatRetryCountdown(remainingMs);
-    return `${attemptText} · ${t.retryPanelCountdownPrefix}${countdown} · ${failureText}`;
-  }
-
-  private buildRetryRunningSummary(
-    state: DialogViewportRetryPanelState & { kind: 'retry-running' },
-  ): string {
-    const t = getUiStrings(this.uiLanguage);
-    const attemptText = `${t.retryPanelRunningAttemptPrefix}${state.attempt}${t.retryPanelRunningAttemptSuffix}`;
-    const providerText = state.provider.trim();
-    const failureText =
-      providerText === '' ? state.failureLabel : `${providerText} · ${state.failureLabel}`;
-    return `${attemptText} · ${failureText}`;
-  }
-
   private getCurrentDialogDisplayState(): DialogDisplayState | null {
     const current = this.currentDialog;
     if (!current) return null;
+    if (this.currentDialogStatus !== 'running') return null;
     return (
       this.dialogDisplayStatesByKey.get(this.dialogKey(current.rootId, current.selfId)) ?? null
     );
@@ -8765,6 +8709,10 @@ export class DomindsApp extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
+      case 'fork_continue_ready':
+        return t.forkContinueReady;
+      case 'llm_retry_stopped':
+        return formatRetryStoppedReason(reason, this.uiLanguage);
       case 'system_stop':
         return reason.detail;
       default: {
@@ -8782,78 +8730,73 @@ export class DomindsApp extends HTMLElement {
       '#dialog-container',
     ) as DomindsDialogContainer | null;
     const wrap = root.querySelector('#dialog-viewport-panels') as HTMLElement | null;
-    const retryPanel = root.querySelector('#dialog-retry-panel') as HTMLElement | null;
-    const retryTitle = root.querySelector('#dialog-retry-title') as HTMLElement | null;
-    const retrySummary = root.querySelector('#dialog-retry-summary') as HTMLElement | null;
-    const retryError = root.querySelector('#dialog-retry-error') as HTMLElement | null;
-    const resumePanel = root.querySelector('#dialog-resume-panel') as HTMLElement | null;
-    const resumeTitle = root.querySelector('#dialog-resume-title') as HTMLElement | null;
-    const resumeReason = root.querySelector('#dialog-resume-reason') as HTMLElement | null;
-    const resumeBtn = root.querySelector('#dialog-resume-btn') as HTMLButtonElement | null;
-    if (
-      !wrap ||
-      !retryPanel ||
-      !retryTitle ||
-      !retrySummary ||
-      !retryError ||
-      !resumePanel ||
-      !resumeTitle ||
-      !resumeReason ||
-      !resumeBtn
-    ) {
+    const statusPanel = root.querySelector('#dialog-status-panel') as HTMLElement | null;
+    const statusTitle = root.querySelector('#dialog-status-title') as HTMLElement | null;
+    const statusSummary = root.querySelector('#dialog-status-summary') as HTMLElement | null;
+    const statusError = root.querySelector('#dialog-status-error') as HTMLElement | null;
+    const statusBtn = root.querySelector('#dialog-status-btn') as HTMLButtonElement | null;
+    if (!wrap || !statusPanel || !statusTitle || !statusSummary || !statusError || !statusBtn) {
       return;
     }
 
     const wrapWasHidden = wrap.classList.contains('hidden');
-    const retryWasHidden = retryPanel.classList.contains('hidden');
-    const resumeWasHidden = resumePanel.classList.contains('hidden');
+    const panelWasHidden = statusPanel.classList.contains('hidden');
     const t = getUiStrings(this.uiLanguage);
-    const retryState = this.retryPanelState;
-    const retryVisible = this.currentDialog !== null && retryState.kind !== 'hidden';
-    retryPanel.classList.toggle('hidden', !retryVisible);
-    if (!retryVisible) {
-      retryTitle.textContent = '';
-      retrySummary.textContent = '';
-      retryError.textContent = '';
-      this.stopRetryPanelTicker();
-    } else {
-      retryTitle.textContent = t.retryPanelTitleRetrying;
-      retrySummary.textContent =
-        retryState.kind === 'retry-waiting'
-          ? this.buildRetryWaitingSummary(retryState)
-          : this.buildRetryRunningSummary(retryState);
-      retryError.textContent = retryState.error;
-      if (retryState.kind === 'retry-waiting') {
-        this.ensureRetryPanelTicker();
-      } else {
-        this.stopRetryPanelTicker();
-      }
-    }
-
     const displayState = this.getCurrentDialogDisplayState();
-    const interruptedDisplayState =
-      this.currentDialog !== null && displayState !== null && displayState.kind === 'interrupted'
-        ? displayState
+    const stoppedReason =
+      this.currentDialog !== null && displayState !== null && displayState.kind === 'stopped'
+        ? displayState.reason
+        : this.viewportPanelState.kind === 'stopped'
+          ? this.viewportPanelState.reason
+          : null;
+    const continueEnabled =
+      this.currentDialog !== null && displayState !== null && displayState.kind === 'stopped'
+        ? displayState.continueEnabled
+        : this.viewportPanelState.kind === 'stopped'
+          ? this.viewportPanelState.continueEnabled
+          : false;
+    const retryingState =
+      this.currentDialog !== null &&
+      this.viewportPanelState.kind === 'retrying' &&
+      (displayState === null || (displayState.kind !== 'stopped' && displayState.kind !== 'dead'))
+        ? this.viewportPanelState
         : null;
-    const resumeVisible = interruptedDisplayState !== null;
-    resumePanel.classList.toggle('hidden', !resumeVisible);
-    resumeTitle.textContent = t.continueLabel;
-    resumeBtn.textContent = t.continueLabel;
-    resumeBtn.disabled = !resumeVisible;
-    if (!resumeVisible) {
-      resumeReason.textContent = '';
-    } else {
-      resumeReason.textContent = this.formatInterruptionReason(interruptedDisplayState.reason);
+
+    const panelVisible = retryingState !== null || stoppedReason !== null;
+    statusPanel.classList.toggle('hidden', !panelVisible);
+    statusBtn.classList.toggle('hidden', stoppedReason === null);
+    statusBtn.textContent = t.continueLabel;
+    statusBtn.disabled = stoppedReason === null || !continueEnabled;
+    statusPanel.setAttribute(
+      'data-state',
+      retryingState !== null ? 'retrying' : stoppedReason !== null ? 'stopped' : 'hidden',
+    );
+    if (!panelVisible) {
+      statusTitle.textContent = '';
+      statusSummary.textContent = '';
+      statusError.textContent = '';
+    } else if (retryingState !== null) {
+      statusTitle.textContent = resolveRetryDisplayTitle(retryingState.display, this.uiLanguage);
+      statusSummary.textContent = resolveRetryDisplaySummary(
+        retryingState.display,
+        this.uiLanguage,
+      );
+      statusError.textContent = retryingState.errorText;
+    } else if (stoppedReason?.kind === 'llm_retry_stopped') {
+      statusTitle.textContent = resolveRetryDisplayTitle(stoppedReason.display, this.uiLanguage);
+      statusSummary.textContent = resolveRetryDisplaySummary(
+        stoppedReason.display,
+        this.uiLanguage,
+      );
+      statusError.textContent = stoppedReason.error.trim();
+    } else if (stoppedReason !== null) {
+      statusTitle.textContent = t.stoppedPanelTitle;
+      statusSummary.textContent = this.formatInterruptionReason(stoppedReason);
+      statusError.textContent = '';
     }
 
-    const hasVisiblePanels = retryVisible || resumeVisible;
-    wrap.classList.toggle('hidden', !hasVisiblePanels);
-    if (
-      dialogContainer &&
-      (wrapWasHidden !== !hasVisiblePanels ||
-        retryWasHidden !== !retryVisible ||
-        resumeWasHidden !== !resumeVisible)
-    ) {
+    wrap.classList.toggle('hidden', !panelVisible);
+    if (dialogContainer && (wrapWasHidden !== !panelVisible || panelWasHidden !== !panelVisible)) {
       dialogContainer.stabilizeAutoFollowAfterViewportChange();
     }
   }
@@ -8875,7 +8818,7 @@ export class DomindsApp extends HTMLElement {
       this.currentDialogStatus === 'completed' || this.currentDialogStatus === 'archived';
     let isDead = false;
     const current = this.currentDialog;
-    if (current) {
+    if (!readOnly && current) {
       const key = this.dialogKey(current.rootId, current.selfId);
       const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
       isDead = displayState !== null && displayState.kind === 'dead';
@@ -8943,7 +8886,7 @@ export class DomindsApp extends HTMLElement {
     this.currentDialog = normalizedDialog;
     this.currentDialogStatus =
       normalizedDialog.status ?? this.resolveDialogStatus(normalizedDialog);
-    this.retryPanelState = { kind: 'hidden' };
+    this.viewportPanelState = { kind: 'hidden' };
     this.updateInputPanelVisibility();
     // Clear stale badge from previous dialog until dialog_ready arrives.
     this.applyDiligenceState({
@@ -9010,7 +8953,10 @@ export class DomindsApp extends HTMLElement {
           status: this.currentDialogStatus ?? 'running',
         });
         const key = this.dialogKey(normalizedDialog.rootId, normalizedDialog.selfId);
-        const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
+        const displayState =
+          this.currentDialogStatus === 'running'
+            ? (this.dialogDisplayStatesByKey.get(key) ?? null)
+            : null;
         const isDead = displayState !== null && displayState.kind === 'dead';
         const input = this.q4hInput as HTMLElement & {
           setDisplayState?: (state: DialogDisplayState | null) => void;
@@ -10713,11 +10659,13 @@ export class DomindsApp extends HTMLElement {
             this.currentDialog.rootId === rootId &&
             this.currentDialog.selfId === selfId
           ) {
+            const currentDisplayState =
+              this.currentDialogStatus === 'running' ? typedDisplayState : null;
             const input = this.q4hInput as HTMLElement & {
               setDisplayState?: (state: DialogDisplayState | null) => void;
             };
             if (input && typeof input.setDisplayState === 'function') {
-              input.setDisplayState(typedDisplayState);
+              input.setDisplayState(currentDisplayState);
             }
             this.updateInputPanelVisibility();
           }
@@ -10761,48 +10709,48 @@ export class DomindsApp extends HTMLElement {
         case 'dlg_display_state_marker_evt': {
           const selfId = dialog.selfId;
           const rootId = dialog.rootId;
-          const key = this.dialogKey(rootId, selfId);
-          const markerDisplayState: DialogDisplayState =
-            message.kind === 'interrupted'
-              ? {
-                  kind: 'interrupted',
-                  reason: message.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
-                }
-              : { kind: 'proceeding' };
-          this.dialogDisplayStatesByKey.set(key, markerDisplayState);
+          if (message.kind === 'resumed') {
+            const key = this.dialogKey(rootId, selfId);
+            const markerDisplayState: DialogDisplayState = { kind: 'proceeding' };
+            this.dialogDisplayStatesByKey.set(key, markerDisplayState);
 
-          if (selfId === rootId) {
-            const rootDialog = this.getRootDialog(rootId);
-            if (rootDialog) {
-              this.upsertRootDialogSnapshot({ ...rootDialog, displayState: markerDisplayState });
+            if (selfId === rootId) {
+              const rootDialog = this.getRootDialog(rootId);
+              if (rootDialog) {
+                this.upsertRootDialogSnapshot({ ...rootDialog, displayState: markerDisplayState });
+              }
+            } else if (this.visibleSubdialogsByRoot.has(rootId)) {
+              const subs = this.getVisibleSubdialogsForRoot(rootId);
+              const updated = subs.map((d) =>
+                d.selfId === selfId ? { ...d, displayState: markerDisplayState } : d,
+              );
+              this.setVisibleSubdialogsForRoot(rootId, updated);
             }
-          } else if (this.visibleSubdialogsByRoot.has(rootId)) {
-            const subs = this.getVisibleSubdialogsForRoot(rootId);
-            const updated = subs.map((d) =>
-              d.selfId === selfId ? { ...d, displayState: markerDisplayState } : d,
-            );
-            this.setVisibleSubdialogsForRoot(rootId, updated);
-          }
 
-          if (
-            this.currentDialog &&
-            this.currentDialog.rootId === rootId &&
-            this.currentDialog.selfId === selfId
-          ) {
-            const input = this.q4hInput as HTMLElement & {
-              setDisplayState?: (state: DialogDisplayState | null) => void;
-            };
-            if (input && typeof input.setDisplayState === 'function') {
-              input.setDisplayState(markerDisplayState);
+            if (
+              this.currentDialog &&
+              this.currentDialog.rootId === rootId &&
+              this.currentDialog.selfId === selfId
+            ) {
+              const input = this.q4hInput as HTMLElement & {
+                setDisplayState?: (state: DialogDisplayState | null) => void;
+              };
+              if (input && typeof input.setDisplayState === 'function') {
+                input.setDisplayState(
+                  this.currentDialogStatus === 'running' ? markerDisplayState : null,
+                );
+              }
+              this.updateInputPanelVisibility();
             }
-            this.updateInputPanelVisibility();
           }
 
           const status = this.resolveDialogStatusByIds(rootId, selfId);
-          if (status === 'running') {
+          if (status === 'running' && message.kind === 'resumed') {
             const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
             if (runningList instanceof RunningDialogList) {
-              runningList.updateDialogEntry(rootId, selfId, { displayState: markerDisplayState });
+              runningList.updateDialogEntry(rootId, selfId, {
+                displayState: { kind: 'proceeding' },
+              });
             }
           }
 
@@ -10837,7 +10785,7 @@ export class DomindsApp extends HTMLElement {
             const readOnly = status === 'completed' || status === 'archived';
             const current = this.currentDialog;
             let isDead = false;
-            if (current) {
+            if (!readOnly && current) {
               const key = this.dialogKey(current.rootId, current.selfId);
               const displayState = this.dialogDisplayStatesByKey.get(key) ?? null;
               isDead = displayState !== null && displayState.kind === 'dead';
