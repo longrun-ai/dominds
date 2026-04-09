@@ -1,4 +1,4 @@
-import type { WebSocketMessage, WelcomeMessage } from '@longrun-ai/kernel/types/wire';
+import { parseWebSocketMessage, type WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
 import { WebSocket } from 'ws';
@@ -8,8 +8,7 @@ function waitForMessage(ws: WebSocket): Promise<WebSocketMessage> {
   return new Promise((resolve, reject) => {
     const onMessage = (data: Buffer) => {
       try {
-        const parsed: unknown = JSON.parse(data.toString('utf-8'));
-        resolve(parsed as WebSocketMessage);
+        resolve(parseWebSocketMessage(data.toString('utf-8')));
       } catch (err) {
         reject(err);
       }
@@ -48,7 +47,10 @@ async function run(): Promise<void> {
   {
     const msg = await waitForMessage(ws);
     assert.equal(msg.type, 'welcome');
-    const welcome = msg as WelcomeMessage;
+    if (msg.type !== 'welcome') {
+      throw new Error(`Expected welcome message, got ${msg.type}`);
+    }
+    const welcome = msg;
     assert.equal(welcome.serverWorkLanguage, 'zh');
     assert.ok(Array.isArray(welcome.supportedLanguageCodes));
     assert.ok(welcome.supportedLanguageCodes.includes('en'));

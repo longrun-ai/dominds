@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
   "type": "commonjs",
   "publishConfig": {
@@ -45,7 +45,7 @@
     "lint:types": "pnpm -r --filter './packages/*' --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit",
     "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
-    "build:backend": "pnpm -r --filter './packages/*' --filter ./codex-auth run build && tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds dist/tools dist/snippets dist/docs && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && cp -r main/tools/prompts dist/tools/ && cp -r snippets/. dist/snippets/ && cp -r docs/. dist/docs/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null"
+    "build:backend": "rm -rf ./dist && pnpm -r --filter './packages/*' --filter ./codex-auth run build && tsc -p main/tsconfig.json --rootDir main && mkdir -p dist/llm dist/minds dist/tools dist/snippets dist/docs && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && cp -r main/tools/prompts dist/tools/ && cp -r snippets/. dist/snippets/ && cp -r docs/. dist/docs/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null"
   },
   "repository": {
     "type": "git",

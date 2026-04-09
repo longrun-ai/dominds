@@ -6,7 +6,7 @@
 
 import type { ConnectionState } from '@/services/store';
 import { createPubChan, createSubChan, PubChan, SubChan } from '@longrun-ai/kernel/evt';
-import type { ErrorMessage, WebSocketMessage } from '@longrun-ai/kernel/types';
+import { parseWebSocketMessage, type WebSocketMessage } from '@longrun-ai/kernel/types';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getWebSocketUrl } from '../utils';
 // StreamHandler removed - streaming is now handled directly by event type matching
@@ -178,7 +178,7 @@ export class WebSocketManager {
 
   private handleMessage(event: MessageEvent): void {
     try {
-      const message: WebSocketMessage = JSON.parse(event.data);
+      const message = parseWebSocketMessage(event.data as string);
       this.processMessage(message);
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);
@@ -231,15 +231,15 @@ export class WebSocketManager {
         // Distribute it so the app can react (E2E relies on this wiring).
         this.distributeMessage(message);
         break;
-
+      case 'dominds_runtime_status':
+        this.distributeMessage(message);
+        break;
       case 'error':
-        const errorMsg: ErrorMessage = message;
-        console.error('Server error:', errorMsg.message);
+        console.error('Server error:', message.message);
         console.error('Full error message:', JSON.stringify(message, null, 2));
         // Re-emit the error through the backend events channel for components to handle
         this.distributeMessage(message);
         break;
-
       default:
         this.distributeMessage(message);
         break;

@@ -149,6 +149,10 @@ export interface ErrorMessage {
   message: string;
 }
 
+export function parseWebSocketMessage(raw: string): WebSocketMessage {
+  return JSON.parse(raw) as WebSocketMessage;
+}
+
 export interface SetUiLanguageRequest {
   type: 'set_ui_language';
   uiLanguage: LanguageCode;
