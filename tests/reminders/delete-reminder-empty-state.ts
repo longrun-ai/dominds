@@ -13,9 +13,11 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     undefined,
     'tester',
   );
-  const output = await deleteReminderTool.call(dlg, {} as Team.Member, {
-    reminder_id: 'missing-id',
-  });
+  const output = (
+    await deleteReminderTool.call(dlg, {} as Team.Member, {
+      reminder_id: 'missing-id',
+    })
+  ).content;
 
   assert.ok(
     output.includes(expectedSubstring),

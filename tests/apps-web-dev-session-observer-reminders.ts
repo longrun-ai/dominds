@@ -103,7 +103,9 @@ async function main(): Promise<void> {
     });
     assert.equal(controllerReminderUpdate.treatment, 'update');
     if (controllerReminderUpdate.treatment === 'update') {
-      assert.equal(typeof controllerReminderUpdate.updatedContent, 'string');
+      if (typeof controllerReminderUpdate.updatedContent !== 'string') {
+        throw new Error('Expected updated reminder content to be a string');
+      }
       assert.match(controllerReminderUpdate.updatedContent, /https:\/\/example\.test\/initial/);
     }
 

@@ -13,6 +13,7 @@ import {
   createRootDialog,
   lastAssistantSaying,
   listTellaskResultContents,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
     const completedResponseContent = formatTellaskResponseContent({
       callName: 'tellaskSessionless',
       responderId: 'pangu',
+      requesterId: 'tester',
       mentionList,
       tellaskContent,
       responseBody: finalSubdialogReply,
@@ -109,12 +111,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       rootDialog,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-subdialog-clear-mind-keeps-pending-round',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-clear-mind-keeps-pending-round'),
       true,
     );
 

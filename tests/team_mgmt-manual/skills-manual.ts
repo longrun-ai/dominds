@@ -13,7 +13,8 @@ async function render(lang: 'en' | 'zh'): Promise<string> {
     getLastUserLanguageCode: () => lang,
   };
   const caller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
-  return await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: ['skills'] });
+  return (await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: ['skills'] }))
+    .content;
 }
 
 async function main(): Promise<void> {

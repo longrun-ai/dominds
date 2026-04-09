@@ -13,7 +13,7 @@ import { ChatMessage, LlmConfig, type ProviderConfig } from '../../main/llm/clie
 import type { LlmGenerator, LlmStreamReceiver } from '../../main/llm/gen';
 import { getLlmGenerator } from '../../main/llm/gen/registry';
 import { Team } from '../../main/team';
-import type { FuncTool, ToolArguments } from '../../main/tool';
+import { toolSuccess, type FuncTool, type ToolArguments } from '../../main/tool';
 
 type Scenario =
   | {
@@ -210,8 +210,8 @@ Remember: You are operating in workspace ${process.cwd()}`;
         required: ['command'],
         additionalProperties: false,
       },
-      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
-        return 'shell_cmd execution skipped in streaming test';
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments) => {
+        return toolSuccess('shell_cmd execution skipped in streaming test');
       },
     };
 
@@ -230,8 +230,8 @@ Remember: You are operating in workspace ${process.cwd()}`;
         required: ['pid'],
         additionalProperties: false,
       },
-      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
-        return 'stop_daemon execution skipped in streaming test';
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments) => {
+        return toolSuccess('stop_daemon execution skipped in streaming test');
       },
     };
 
@@ -284,6 +284,10 @@ Remember: You are operating in workspace ${process.cwd()}`;
         this.state.agent,
         this.getSystemPrompt(),
         this.getFunctionTools(),
+        {
+          dialogSelfId: 'tests/provider/stream-func-call',
+          dialogRootId: 'tests/provider/stream-func-call',
+        },
         context,
         receiver,
         genseq,

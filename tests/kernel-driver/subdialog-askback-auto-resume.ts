@@ -11,6 +11,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -151,14 +153,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-subdialog-askback-auto-resume',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-askback-auto-resume'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await waitFor(

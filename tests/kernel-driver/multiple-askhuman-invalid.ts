@@ -5,6 +5,7 @@ import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 import {
   createRootDialog,
+  makeDriveOptions,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -29,9 +30,28 @@ async function runScenario(args: {
       origin: 'user',
     },
     true,
-    { suppressDiligencePush: true },
+    makeDriveOptions({ suppressDiligencePush: true }),
   );
   await waitForAllDialogsUnlocked(args.root, 3_000);
+}
+
+function requirePersistedContent(
+  event: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>[number] | undefined,
+): string {
+  assert.ok(event, 'expected persisted record to exist');
+  if (!event || !('content' in event) || typeof event.content !== 'string') {
+    throw new Error('expected persisted record with string content');
+  }
+  return event.content;
+}
+
+function requirePersistedId(
+  event: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>[number],
+): string {
+  if (!('id' in event) || typeof event.id !== 'string') {
+    throw new Error('expected persisted record with string id');
+  }
+  return event.id;
 }
 
 async function main(): Promise<void> {
@@ -90,7 +110,7 @@ async function main(): Promise<void> {
       invalidAskHumanPrimaryResult,
       'the first askHuman call should also receive an automatic tool error result',
     );
-    assert.equal(invalidAskHumanPrimaryResult?.content, MULTI_ASKHUMAN_ERROR);
+    assert.equal(requirePersistedContent(invalidAskHumanPrimaryResult), MULTI_ASKHUMAN_ERROR);
 
     const invalidAskHumanExtraResult = courseEvents.find(
       (event) =>
@@ -102,7 +122,7 @@ async function main(): Promise<void> {
       invalidAskHumanExtraResult,
       'the extra askHuman call should receive an automatic tool error result',
     );
-    assert.equal(invalidAskHumanExtraResult?.content, MULTI_ASKHUMAN_ERROR);
+    assert.equal(requirePersistedContent(invalidAskHumanExtraResult), MULTI_ASKHUMAN_ERROR);
 
     assert.equal(
       courseEvents.filter(
@@ -213,12 +233,12 @@ async function main(): Promise<void> {
           event.type === 'func_result_record' && event.id === callId && event.name === 'askHuman',
       );
       assert.ok(result, `expected ${callId} to receive automatic multi-askHuman failure result`);
-      assert.equal(result?.content, MULTI_ASKHUMAN_ERROR);
+      assert.equal(requirePersistedContent(result), MULTI_ASKHUMAN_ERROR);
     }
     assert.deepEqual(
       mixedEvents
         .filter((event) => event.type === 'tellask_call_record' && event.name === 'askHuman')
-        .map((event) => event.id),
+        .map((event) => requirePersistedId(event)),
       ['askhuman-invalid-mixed', 'askhuman-valid-mixed'],
       'mixed-validity multi-askHuman should preserve original call order in persisted history',
     );
@@ -272,21 +292,25 @@ async function main(): Promise<void> {
       'mixed special-call rounds should preserve original tellask-special call order in persisted history',
     );
     assert.equal(
-      interleavedEvents.find(
-        (event) =>
-          event.type === 'func_result_record' &&
-          event.id === 'askhuman-order-first' &&
-          event.name === 'askHuman',
-      )?.content,
+      requirePersistedContent(
+        interleavedEvents.find(
+          (event) =>
+            event.type === 'func_result_record' &&
+            event.id === 'askhuman-order-first' &&
+            event.name === 'askHuman',
+        ),
+      ),
       MULTI_ASKHUMAN_ERROR,
     );
     assert.equal(
-      interleavedEvents.find(
-        (event) =>
-          event.type === 'func_result_record' &&
-          event.id === 'askhuman-order-last' &&
-          event.name === 'askHuman',
-      )?.content,
+      requirePersistedContent(
+        interleavedEvents.find(
+          (event) =>
+            event.type === 'func_result_record' &&
+            event.id === 'askhuman-order-last' &&
+            event.name === 'askHuman',
+        ),
+      ),
       MULTI_ASKHUMAN_ERROR,
     );
   });

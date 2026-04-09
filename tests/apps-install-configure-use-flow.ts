@@ -191,31 +191,19 @@ async function main(): Promise<void> {
       packageRootAbs: tmpRoot,
       manifestRelPath: path.join('.minds', 'app.yaml'),
     });
-    assert.equal(
-      manifestLoaded.kind,
-      'ok',
-      manifestLoaded.kind === 'ok' ? 'expected ok' : manifestLoaded.errorText,
-    );
     if (manifestLoaded.kind !== 'ok') throw new Error(manifestLoaded.errorText);
+    assert.equal(manifestLoaded.kind, 'ok', 'expected ok');
     assert.equal(manifestLoaded.manifest.dependencies?.length, 1);
     assert.equal(manifestLoaded.manifest.dependencies?.[0]?.id, appId);
 
     const configLoaded = await loadAppsConfigurationFile({ rtwsRootAbs: tmpRoot });
-    assert.equal(
-      configLoaded.kind,
-      'ok',
-      configLoaded.kind === 'ok' ? 'expected ok' : configLoaded.errorText,
-    );
     if (configLoaded.kind !== 'ok') throw new Error(configLoaded.errorText);
+    assert.equal(configLoaded.kind, 'ok', 'expected ok');
     assert.deepEqual(configLoaded.file.disabledApps ?? [], []);
 
     const lockLoaded = await loadAppLockFile({ rtwsRootAbs: tmpRoot });
-    assert.equal(
-      lockLoaded.kind,
-      'ok',
-      lockLoaded.kind === 'ok' ? 'expected ok' : lockLoaded.errorText,
-    );
     if (lockLoaded.kind !== 'ok') throw new Error(lockLoaded.errorText);
+    assert.equal(lockLoaded.kind, 'ok', 'expected ok');
     assert.deepEqual(lockLoaded.file.apps, [
       {
         id: appId,
@@ -227,12 +215,8 @@ async function main(): Promise<void> {
     ]);
 
     const resolutionLoaded = await loadAppsResolutionFile({ rtwsRootAbs: tmpRoot });
-    assert.equal(
-      resolutionLoaded.kind,
-      'ok',
-      resolutionLoaded.kind === 'ok' ? 'expected ok' : resolutionLoaded.errorText,
-    );
     if (resolutionLoaded.kind !== 'ok') throw new Error(resolutionLoaded.errorText);
+    assert.equal(resolutionLoaded.kind, 'ok', 'expected ok');
     assert.equal(resolutionLoaded.file.apps.length, 1);
     const resolvedApp = resolutionLoaded.file.apps[0] ?? null;
     assert.ok(resolvedApp, 'expected resolved app entry');

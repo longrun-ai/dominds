@@ -16,6 +16,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from '../../main/dialog';
 import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
 import { DialogPersistence } from '../../main/persistence';
+import { materializeReminder } from '../../main/tool';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-dialog-fork-'));
@@ -136,6 +137,7 @@ async function main(): Promise<void> {
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
       reminders: [
         {
+          id: 'alpha-reminder',
           content: 'alpha',
           createdAt,
           priority: 'medium',
@@ -193,6 +195,7 @@ async function main(): Promise<void> {
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
       reminders: [
         {
+          id: 'beta-reminder',
           content: 'beta',
           createdAt: secondTs,
           priority: 'medium',
@@ -238,8 +241,12 @@ async function main(): Promise<void> {
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
     });
 
-    await DialogPersistence._saveReminderState(rootId, [{ content: 'beta' }]);
-    await DialogPersistence._saveReminderState(subId, [{ content: 'sub reminder' }]);
+    await DialogPersistence._saveReminderState(rootId, [
+      materializeReminder({ id: 'beta-reminder', content: 'beta' }),
+    ]);
+    await DialogPersistence._saveReminderState(subId, [
+      materializeReminder({ id: 'sub-reminder', content: 'sub reminder' }),
+    ]);
 
     const forkBeforeSecond = await forkRootDialogTreeAtGeneration({
       sourceRootId: rootId.selfId,

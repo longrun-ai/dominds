@@ -29,24 +29,28 @@ async function main(): Promise<void> {
     const oldStat = await fs.stat(filePath);
 
     const nextContent = ['members:', '  bob:', '    name: Bob', ''].join('\n');
-    const overwriteYamlResult = await overwriteEntireFileTool.call(dlg, alice, {
-      path: 'sample.yaml',
-      known_old_total_lines: 3,
-      known_old_total_bytes: oldStat.size,
-      content_format: 'yaml',
-      content: nextContent,
-    });
+    const overwriteYamlResult = (
+      await overwriteEntireFileTool.call(dlg, alice, {
+        path: 'sample.yaml',
+        known_old_total_lines: 3,
+        known_old_total_bytes: oldStat.size,
+        content_format: 'yaml',
+        content: nextContent,
+      })
+    ).content;
     assert.ok(overwriteYamlResult.includes('status: ok'));
     assert.ok(overwriteYamlResult.includes("content_format: 'yaml'"));
     assert.equal(await fs.readFile(filePath, 'utf-8'), nextContent);
 
-    const diffLiteralResult = await overwriteEntireFileTool.call(dlg, alice, {
-      path: 'sample.yaml',
-      known_old_total_lines: 3,
-      known_old_total_bytes: Buffer.byteLength(nextContent, 'utf8'),
-      content_format: 'yaml',
-      content: ['diff --git a/a.txt b/a.txt', '--- a/a.txt', '+++ b/a.txt', ''].join('\n'),
-    });
+    const diffLiteralResult = (
+      await overwriteEntireFileTool.call(dlg, alice, {
+        path: 'sample.yaml',
+        known_old_total_lines: 3,
+        known_old_total_bytes: Buffer.byteLength(nextContent, 'utf8'),
+        content_format: 'yaml',
+        content: ['diff --git a/a.txt b/a.txt', '--- a/a.txt', '+++ b/a.txt', ''].join('\n'),
+      })
+    ).content;
     assert.ok(diffLiteralResult.includes('status: error'));
     assert.ok(diffLiteralResult.includes('error: SUSPICIOUS_DIFF'));
 

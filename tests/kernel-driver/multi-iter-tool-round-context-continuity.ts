@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 
-import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
+import {
+  createRootDialog,
+  makeUserPrompt,
+  withTempRtws,
+  writeMockDb,
+  writeStandardMinds,
+} from './helpers';
 
 const ENV_KEY = 'DOMINDS_TEST_CTX_CONTINUITY';
 
@@ -35,11 +41,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-tool-round-context-continuity',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-tool-round-context-continuity'),
       true,
     );
 

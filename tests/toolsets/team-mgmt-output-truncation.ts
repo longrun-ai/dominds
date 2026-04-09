@@ -45,8 +45,11 @@ async function main(): Promise<void> {
       max_models: 20,
     });
 
-    assert.match(output, /omitted .*additional provider\(s\)|其余 .* 个 provider 未展示/);
-    assert.ok(output.length <= 60_000, `Expected bounded output, got ${output.length} chars`);
+    assert.match(output.content, /omitted .*additional provider\(s\)|其余 .* 个 provider 未展示/);
+    assert.ok(
+      output.content.length <= 60_000,
+      `Expected bounded output, got ${output.content.length} chars`,
+    );
   } finally {
     process.chdir(originalCwd);
     await fs.rm(tmpRtws, { recursive: true, force: true });

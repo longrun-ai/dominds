@@ -8,6 +8,8 @@ import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -96,15 +98,11 @@ async function runRootDialogScenario(): Promise<void> {
 
   await driveDialogStream(
     root,
-    {
-      content: interjectPrompt,
-      msgId: 'root-user-interject-while-pending-subdialog',
-      grammar: 'markdown',
-      origin: 'user',
+    makeUserPrompt(interjectPrompt, 'root-user-interject-while-pending-subdialog', {
       userLanguageCode: 'en',
-    },
+    }),
     true,
-    { suppressDiligencePush: true },
+    makeDriveOptions({ suppressDiligencePush: true }),
   );
   await waitForAllDialogsUnlocked(root, 2_000);
 
@@ -197,15 +195,11 @@ async function runSubdialogScenario(): Promise<void> {
 
   await driveDialogStream(
     subdialog,
-    {
-      content: interjectPrompt,
-      msgId: 'subdialog-user-interject-while-pending-subdialog',
-      grammar: 'markdown',
-      origin: 'user',
+    makeUserPrompt(interjectPrompt, 'subdialog-user-interject-while-pending-subdialog', {
       userLanguageCode: 'en',
-    },
+    }),
     true,
-    { suppressDiligencePush: true },
+    makeDriveOptions({ suppressDiligencePush: true }),
   );
   await waitForAllDialogsUnlocked(root, 2_000);
 
@@ -302,30 +296,22 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
 
   await driveDialogStream(
     root,
-    {
-      content: firstPrompt,
-      msgId: 'root-user-interject-pending-subdialog-first',
-      grammar: 'markdown',
-      origin: 'user',
+    makeUserPrompt(firstPrompt, 'root-user-interject-pending-subdialog-first', {
       userLanguageCode: 'en',
-    },
+    }),
     true,
-    { suppressDiligencePush: true },
+    makeDriveOptions({ suppressDiligencePush: true }),
   );
   await waitForAllDialogsUnlocked(root, 2_000);
   assert.equal(lastAssistantSayingContent(root.msgs), firstResponse);
 
   await driveDialogStream(
     root,
-    {
-      content: secondPrompt,
-      msgId: 'root-user-interject-pending-subdialog-second',
-      grammar: 'markdown',
-      origin: 'user',
+    makeUserPrompt(secondPrompt, 'root-user-interject-pending-subdialog-second', {
       userLanguageCode: 'en',
-    },
+    }),
     true,
-    { suppressDiligencePush: true },
+    makeDriveOptions({ suppressDiligencePush: true }),
   );
   await waitForAllDialogsUnlocked(root, 2_000);
   assert.equal(lastAssistantSayingContent(root.msgs), secondResponse);

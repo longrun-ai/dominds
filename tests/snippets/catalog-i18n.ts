@@ -9,18 +9,21 @@ function requireStartingTemplatePath(groups: ReadonlyArray<SnippetTemplateGroup>
   assert.ok(first, 'Expected at least one template');
   const pathValue = first.path;
   assert.equal(typeof pathValue, 'string');
+  if (typeof pathValue !== 'string') {
+    throw new Error('Expected first daily template path to be a string');
+  }
   return pathValue;
 }
 
 async function run(): Promise<void> {
   const zh = await handleGetSnippetCatalog('zh');
-  assert.equal(zh.success, true);
   if (!zh.success) throw new Error(zh.error);
+  assert.equal(zh.success, true);
   assert.equal(requireStartingTemplatePath(zh.groups), 'snippets/starting.zh.md');
 
   const en = await handleGetSnippetCatalog('en');
-  assert.equal(en.success, true);
   if (!en.success) throw new Error(en.error);
+  assert.equal(en.success, true);
   assert.equal(requireStartingTemplatePath(en.groups), 'snippets/starting.en.md');
 
   console.log('snippets catalog i18n tests: ok');

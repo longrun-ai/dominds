@@ -67,12 +67,17 @@ async function driveToDiligencePushBudgetExhaustedNotice(options: {
   const store = new DiskFileDialogStore(dlgId);
   const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
 
-  await driveDialogStream(dlg, {
-    content: 'hello',
-    msgId: 'm-1',
-    grammar: 'markdown',
-    userLanguageCode,
-  });
+  await driveDialogStream(
+    dlg,
+    {
+      content: 'hello',
+      msgId: 'm-1',
+      grammar: 'markdown',
+      userLanguageCode,
+      origin: 'user',
+    },
+    true,
+  );
 
   const courseEvents = await DialogPersistence.loadCourseEvents(
     dlg.id,

@@ -17,7 +17,8 @@ async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise
     getLastUserLanguageCode: () => lang,
   };
   const caller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
-  return await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: [...topics] });
+  return (await tool.call(dlg as never, caller, { toolsetId: 'team_mgmt', topics: [...topics] }))
+    .content;
 }
 
 async function main(): Promise<void> {

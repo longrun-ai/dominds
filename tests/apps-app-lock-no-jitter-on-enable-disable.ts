@@ -124,8 +124,8 @@ async function main(): Promise<void> {
     const lockText1 = await fs.readFile(lockPathAbs, 'utf-8');
     const st1 = await fs.stat(lockPathAbs);
     const lockParsed1 = parseAppLockFile(YAML.parse(lockText1) as unknown, lockPathAbs);
-    assert.equal(lockParsed1.ok, true, lockParsed1.ok ? 'expected ok' : lockParsed1.errorText);
     if (!lockParsed1.ok) throw new Error(lockParsed1.errorText);
+    assert.equal(lockParsed1.ok, true, 'expected ok');
     assert.equal(lockParsed1.file.apps.length, 1);
     assert.equal(lockParsed1.file.apps[0]?.id, appId);
     assert.deepEqual(lockParsed1.file.apps[0]?.package, { name: appId, version: '0.0.0' });

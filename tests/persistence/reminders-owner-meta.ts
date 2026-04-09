@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
-import type { ReminderOwner } from '../../main/tool';
+import { materializeReminder, type ReminderOwner } from '../../main/tool';
 import { buildAppReminderOwnerRegistryName } from '../../main/tools/app-reminders';
 import '../../main/tools/builtins';
 import { getReminderOwner, registerReminderOwner } from '../../main/tools/registry';
@@ -62,13 +62,13 @@ async function main(): Promise<void> {
 
     const dialogId = new DialogID('11/22/33334444');
     await DialogPersistence._saveReminderState(dialogId, [
-      { content: 'MCP lease reminder', owner: mcpLeaseOwner },
-      {
+      materializeReminder({ content: 'MCP lease reminder', owner: mcpLeaseOwner }),
+      materializeReminder({
         content: 'Daemon reminder',
         owner: shellCmdOwner,
         meta: { kind: 'daemon', pid: 123, command: 'sleep 10' },
-      },
-      {
+      }),
+      materializeReminder({
         content: 'App tool reminder',
         owner: appReminderOwner,
         meta: {
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
           },
           workflow: 'playwright_interactive_manual',
         },
-      },
+      }),
     ]);
 
     const remindersPath = path.join(

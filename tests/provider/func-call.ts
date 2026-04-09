@@ -32,7 +32,7 @@ import { ChatMessage, FuncCallMsg, LlmConfig, type ProviderConfig } from '../../
 import type { LlmGenerator } from '../../main/llm/gen';
 import { generatorsRegistry } from '../../main/llm/gen/registry';
 import { Team } from '../../main/team';
-import type { FuncTool, JsonObject, ToolArguments } from '../../main/tool';
+import { toolSuccess, type FuncTool, type JsonObject, type ToolArguments } from '../../main/tool';
 
 type ArgValidationResult = { valid: boolean; error?: string };
 
@@ -183,8 +183,8 @@ Remember: You are operating in rtws (runtime workspace) ${process.cwd()}`;
         required: ['command'],
         additionalProperties: false,
       },
-      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
-        return 'shell_cmd execution skipped in test';
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments) => {
+        return toolSuccess('shell_cmd execution skipped in test');
       },
     };
 
@@ -203,8 +203,8 @@ Remember: You are operating in rtws (runtime workspace) ${process.cwd()}`;
         required: ['pid'],
         additionalProperties: false,
       },
-      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
-        return 'stop_daemon execution skipped in test';
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments) => {
+        return toolSuccess('stop_daemon execution skipped in test');
       },
     };
 
@@ -249,14 +249,18 @@ Remember: You are operating in rtws (runtime workspace) ${process.cwd()}`;
         agent,
         systemPrompt,
         functionTools,
+        { dialogSelfId: 'tests/provider/func-call', dialogRootId: 'tests/provider/func-call' },
         context,
         genseq,
       );
+      const responseMessages = messages.messages;
 
-      console.log(`📊 Non-streaming processing complete: ${messages.length} messages returned`);
+      console.log(
+        `📊 Non-streaming processing complete: ${responseMessages.length} messages returned`,
+      );
 
       // Find the first function call in the returned messages
-      const maybeFunctionCall = messages.find(
+      const maybeFunctionCall = responseMessages.find(
         (msg): msg is FuncCallMsg => msg.type === 'func_call_msg',
       );
       functionCall = maybeFunctionCall ?? null;
@@ -269,7 +273,7 @@ Remember: You are operating in rtws (runtime workspace) ${process.cwd()}`;
         console.log(`❌ No function call found in returned messages`);
         console.log(
           `📝 Returned messages:`,
-          messages.map((m) => summarizeMessage(m)),
+          responseMessages.map((m) => summarizeMessage(m)),
         );
         return { success: false, error: 'No function call was made' };
       }

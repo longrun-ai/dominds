@@ -75,7 +75,19 @@ async function main(): Promise<void> {
     streamError: async (_detail: string) => {},
   };
 
-  await gen.genToReceiver(provider, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    provider,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/codex-streaming',
+      dialogRootId: 'tests/provider/codex-streaming',
+    },
+    context,
+    receiver,
+    1,
+  );
 
   const end = Date.now();
 

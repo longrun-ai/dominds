@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 
-import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
+import {
+  createRootDialog,
+  makeUserPrompt,
+  withTempRtws,
+  writeMockDb,
+  writeStandardMinds,
+} from './helpers';
 
 function getJsonParseMessage(raw: string): string {
   try {
@@ -44,11 +50,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-invalid-json-tool-call-feedback',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-invalid-json-tool-call-feedback'),
       true,
     );
 
@@ -89,6 +91,9 @@ async function main(): Promise<void> {
       (msg) => msg.type === 'func_call_msg' && msg.id === funcCalls[0]?.id,
     );
     assert(restoredCall, 'expected restored dialog state to include the malformed tool call');
+    if (restoredCall.type !== 'func_call_msg') {
+      throw new Error('expected restored malformed tool call to be a func_call_msg');
+    }
     assert.equal(
       restoredCall.arguments,
       badArguments,

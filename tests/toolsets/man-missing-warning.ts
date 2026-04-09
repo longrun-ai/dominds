@@ -15,6 +15,8 @@ function createManTool() {
   return tool;
 }
 
+type LanguageAwareDialog = { getLastUserLanguageCode(): 'en' };
+
 async function main(): Promise<void> {
   setToolsetMeta('ws_read', {
     source: 'dominds',
@@ -46,10 +48,12 @@ async function main(): Promise<void> {
     toolsets: ['ws_read'],
   });
 
-  const output = await manTool.call({} as never, caller, {
-    toolsetId: 'ws_read',
-    topics: ['index', 'errors'],
-  });
+  const output = (
+    await manTool.call({} as LanguageAwareDialog as never, caller, {
+      toolsetId: 'ws_read',
+      topics: ['index', 'errors'],
+    })
+  ).content;
 
   assert.ok(output.includes('⚠️ Missing manual sections'));
   assert.ok(output.includes('`errors`: missing'));

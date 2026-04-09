@@ -10,6 +10,7 @@ import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-f
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -205,11 +206,7 @@ async function main(): Promise<void> {
     const subdialogEvents = dialogEventRegistry.createSubChan(liveSubdialog.id);
     await driveDialogStream(
       liveSubdialog,
-      {
-        content: 'Please finalize the upstream reply now.',
-        msgId: 'live-reply-user-msg',
-        grammar: 'markdown',
-      },
+      makeUserPrompt('Please finalize the upstream reply now.', 'live-reply-user-msg'),
       true,
     );
     await waitForAllDialogsUnlocked(root, 2000);

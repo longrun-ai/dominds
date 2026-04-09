@@ -21,14 +21,26 @@ async function withTempRtws(
   }
 }
 
-function runCli(args: string[], cwd: string): ReturnType<typeof spawnSync> {
+function runCli(
+  args: string[],
+  cwd: string,
+): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
   const repoRoot = path.resolve(__dirname, '..', '..', '..');
   const cliEntry = path.resolve(repoRoot, 'dominds', 'main', 'cli.ts');
   const tsxCli = require.resolve('tsx/cli');
-  return spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
+  const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
     cwd,
     encoding: 'utf8',
   });
+  return {
+    status: result.status,
+    stdout: String(result.stdout),
+    stderr: String(result.stderr),
+  };
 }
 
 async function main(): Promise<void> {

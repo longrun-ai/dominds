@@ -18,7 +18,7 @@ import {
   applyPrimingScriptsToDialog,
   saveDialogCourseAsIndividualPrimingScript,
 } from '../../main/priming';
-import type { Reminder } from '../../main/tool';
+import { materializeReminder, type Reminder } from '../../main/tool';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-priming-reminders-'));
@@ -97,14 +97,14 @@ async function main(): Promise<void> {
       genseq: 1,
     });
 
-    const sourceReminder: Reminder = {
+    const sourceReminder: Reminder = materializeReminder({
       content: 'Remember to keep deployment notes in sync.',
       meta: {
         source: 'priming-test',
         sticky: true,
       },
       echoback: false,
-    };
+    });
     await DialogPersistence._saveReminderState(sourceId, [sourceReminder], 'running');
 
     const pendingRecord: PendingSubdialogStateRecord = {

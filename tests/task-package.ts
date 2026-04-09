@@ -10,6 +10,14 @@ import { recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
+function requireMessageContent(message: { type: string } & Record<string, unknown>): string {
+  const content = message['content'];
+  if (typeof content !== 'string') {
+    throw new Error(`Expected ${message.type} to carry string content`);
+  }
+  return content;
+}
+
 async function pathExists(p: string): Promise<boolean> {
   try {
     await fs.stat(p);
@@ -41,36 +49,31 @@ async function main(): Promise<void> {
     // 0) Legacy single-file Taskdocs are rejected.
     const legacyDlg = new RootDialog(store, 'legacy.md', undefined, 'tester');
     const legacy = await formatTaskDocContent(legacyDlg);
-    assert.ok(
-      typeof legacy.content === 'string' &&
-        legacy.content.includes('Invalid Taskdoc path') &&
-        legacy.content.includes('*.tsk'),
-    );
+    const legacyContent = requireMessageContent(legacy);
+    assert.ok(legacyContent.includes('Invalid Taskdoc path') && legacyContent.includes('*.tsk'));
 
     // 1) Formatting should describe an encapsulated Taskdoc package.
     const dlg = new RootDialog(store, taskDocPath, undefined, 'tester');
     const msg1 = await formatTaskDocContent(dlg);
+    const msg1Content = requireMessageContent(msg1);
     assert.equal(msg1.type, 'environment_msg');
     assert.equal(msg1.role, 'user');
     assert.ok(
-      typeof msg1.content === 'string' &&
-        msg1.content.includes('Encapsulated `*.tsk/`') &&
-        msg1.content.includes('`goals.md`: missing'),
+      msg1Content.includes('Encapsulated `*.tsk/`') && msg1Content.includes('`goals.md`: missing'),
     );
     assert.ok(
-      typeof msg1.content === 'string' &&
-        msg1.content.includes(
-          '`progress` is the team-shared milestone bulletin board for key decisions, current status, and next steps',
-        ),
+      msg1Content.includes(
+        '`progress` is the team-shared milestone bulletin board for key decisions, current status, and next steps',
+      ),
     );
 
     setWorkLanguage('zh');
     const msg1Zh = await formatTaskDocContent(dlg);
+    const msg1ZhContent = requireMessageContent(msg1Zh);
     assert.ok(
-      typeof msg1Zh.content === 'string' &&
-        msg1Zh.content.includes(
-          '`progress` 是全队共享的里程碑公告牌，用于关键决策、当前状态与下一步，不是“我当前在做什么”的个人笔记',
-        ),
+      msg1ZhContent.includes(
+        '`progress` 是全队共享的里程碑公告牌，用于关键决策、当前状态与下一步，不是“我当前在做什么”的个人笔记',
+      ),
     );
     setWorkLanguage('en');
 
@@ -109,14 +112,14 @@ async function main(): Promise<void> {
     assert.equal(sections.progress.content, newProgress);
 
     const msg2 = await formatTaskDocContent(dlg);
-    assert.ok(typeof msg2.content === 'string');
-    assert.ok(msg2.content.includes('## Goals'));
-    assert.ok(msg2.content.includes(newGoals));
-    assert.ok(msg2.content.includes('## Constraints'));
-    assert.ok(msg2.content.includes(newConstraints));
-    assert.ok(!msg2.content.includes('## Bear In Mind'));
-    assert.ok(msg2.content.includes('## Progress'));
-    assert.ok(msg2.content.includes(newProgress));
+    const msg2Content = requireMessageContent(msg2);
+    assert.ok(msg2Content.includes('## Goals'));
+    assert.ok(msg2Content.includes(newGoals));
+    assert.ok(msg2Content.includes('## Constraints'));
+    assert.ok(msg2Content.includes(newConstraints));
+    assert.ok(!msg2Content.includes('## Bear In Mind'));
+    assert.ok(msg2Content.includes('## Progress'));
+    assert.ok(msg2Content.includes(newProgress));
 
     // 3) Optional injected bearinmind/ should be included (fixed order) and bounded.
     await fs.mkdir(path.join(taskDir, 'bearinmind'), { recursive: true });
@@ -125,15 +128,15 @@ async function main(): Promise<void> {
     await fs.writeFile(path.join(taskDir, 'bearinmind', 'extra.md'), 'NO\n', 'utf-8');
 
     const msg3 = await formatTaskDocContent(dlg);
-    assert.ok(typeof msg3.content === 'string');
-    assert.ok(msg3.content.includes('## Bear In Mind'));
-    assert.ok(msg3.content.includes('### contracts.md'));
-    assert.ok(msg3.content.includes('C\n'));
-    assert.ok(msg3.content.includes('### risks.md'));
-    assert.ok(msg3.content.includes('R\n'));
-    assert.ok(!msg3.content.includes('NO\n'));
-    assert.ok(msg3.content.indexOf('## Constraints') < msg3.content.indexOf('## Bear In Mind'));
-    assert.ok(msg3.content.indexOf('## Bear In Mind') < msg3.content.indexOf('## Progress'));
+    const msg3Content = requireMessageContent(msg3);
+    assert.ok(msg3Content.includes('## Bear In Mind'));
+    assert.ok(msg3Content.includes('### contracts.md'));
+    assert.ok(msg3Content.includes('C\n'));
+    assert.ok(msg3Content.includes('### risks.md'));
+    assert.ok(msg3Content.includes('R\n'));
+    assert.ok(!msg3Content.includes('NO\n'));
+    assert.ok(msg3Content.indexOf('## Constraints') < msg3Content.indexOf('## Bear In Mind'));
+    assert.ok(msg3Content.indexOf('## Bear In Mind') < msg3Content.indexOf('## Progress'));
 
     // 4) Extra categories are not auto-injected as content, but should appear as an index entry,
     // and should be readable via `recall_taskdoc`.
@@ -141,14 +144,16 @@ async function main(): Promise<void> {
     await fs.writeFile(path.join(taskDir, 'ux', 'checklist.md'), 'UX\n', 'utf-8');
 
     const msg4 = await formatTaskDocContent(dlg);
-    assert.ok(typeof msg4.content === 'string');
-    assert.ok(msg4.content.includes('**Extra sections index'));
-    assert.ok(msg4.content.includes('`ux/checklist.md`'));
+    const msg4Content = requireMessageContent(msg4);
+    assert.ok(msg4Content.includes('**Extra sections index'));
+    assert.ok(msg4Content.includes('`ux/checklist.md`'));
 
-    const recall = await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
-      category: 'ux',
-      selector: 'checklist',
-    });
+    const recall = (
+      await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
+        category: 'ux',
+        selector: 'checklist',
+      })
+    ).content;
     assert.ok(recall.includes('`ux/checklist.md`'));
     assert.ok(recall.includes('UX\n'));
 

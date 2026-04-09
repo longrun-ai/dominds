@@ -4,10 +4,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import type { Dialog } from '../main/dialog';
-import { setWorkLanguage } from '../main/runtime/work-language';
-import { Team } from '../main/team';
-import { addPersonalMemoryTool, addSharedMemoryTool } from '../main/tools/mem';
+import type { Dialog } from '../../main/dialog';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { Team } from '../../main/team';
+import { addPersonalMemoryTool, addSharedMemoryTool } from '../../main/tools/mem';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {
@@ -60,10 +60,12 @@ async function main(): Promise<void> {
       });
 
       const dlg = {} as unknown as Dialog;
-      const res = await addPersonalMemoryTool.call(dlg, caller, {
-        path: 'onboarding.md',
-        content: '# Hello\n',
-      });
+      const res = (
+        await addPersonalMemoryTool.call(dlg, caller, {
+          path: 'onboarding.md',
+          content: '# Hello\n',
+        })
+      ).content;
 
       assertEqual(res, 'Added');
 
@@ -83,10 +85,12 @@ async function main(): Promise<void> {
       });
 
       const dlg = {} as unknown as Dialog;
-      const res = await addSharedMemoryTool.call(dlg, caller, {
-        path: 'decisions.md',
-        content: 'ok',
-      });
+      const res = (
+        await addSharedMemoryTool.call(dlg, caller, {
+          path: 'decisions.md',
+          content: 'ok',
+        })
+      ).content;
 
       assertEqual(res, 'Added');
 
@@ -100,15 +104,14 @@ async function main(): Promise<void> {
     await withTempCwd(async () => {
       const caller = new Team.Member({ id: 'pm', name: 'Product Manager' });
       const dlg = {} as unknown as Dialog;
-      const res = await addPersonalMemoryTool.call(dlg, caller, {
-        path: '/etc/passwd',
-        content: 'nope',
-      });
+      const res = (
+        await addPersonalMemoryTool.call(dlg, caller, {
+          path: '/etc/passwd',
+          content: 'nope',
+        })
+      ).content;
 
-      assertTrue(
-        typeof res === 'string' && res.includes('relative'),
-        `Expected a relative-path error, got: ${res}`,
-      );
+      assertTrue(res.includes('relative'), `Expected a relative-path error, got: ${res}`);
     });
   });
 

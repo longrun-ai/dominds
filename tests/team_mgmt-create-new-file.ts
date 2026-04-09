@@ -23,29 +23,35 @@ async function main(): Promise<void> {
     });
 
     // Create empty file under .minds via shorthand path.
-    const created = await teamMgmtCreateNewFileTool.call(dlg, alice, {
-      path: 'team.yaml',
-      content: '',
-    });
+    const created = (
+      await teamMgmtCreateNewFileTool.call(dlg, alice, {
+        path: 'team.yaml',
+        content: '',
+      })
+    ).content;
     assert.ok(created.includes('status: ok'));
     assert.ok(created.includes('mode: create_new_file'));
     assert.ok(created.includes("path: '.minds/team.yaml'"));
 
-    const read = await teamMgmtReadFileTool.call(dlg, alice, { path: 'team.yaml' });
+    const read = (await teamMgmtReadFileTool.call(dlg, alice, { path: 'team.yaml' })).content;
     assert.ok(read.includes('mode: read_file'));
     assert.ok(read.includes('total_lines: 0'));
 
     // Existing file should be refused.
-    const exists = await teamMgmtCreateNewFileTool.call(dlg, alice, {
-      path: 'team.yaml',
-      content: '',
-    });
+    const exists = (
+      await teamMgmtCreateNewFileTool.call(dlg, alice, {
+        path: 'team.yaml',
+        content: '',
+      })
+    ).content;
     assert.ok(exists.includes('status: error'));
     assert.ok(exists.includes('error: FILE_EXISTS'));
 
     // Existing directory path should be refused.
     await fs.mkdir(path.join(tmpRoot, '.minds', 'dir'), { recursive: true });
-    const notAFile = await teamMgmtCreateNewFileTool.call(dlg, alice, { path: 'dir', content: '' });
+    const notAFile = (
+      await teamMgmtCreateNewFileTool.call(dlg, alice, { path: 'dir', content: '' })
+    ).content;
     assert.ok(notAFile.includes('status: error'));
     assert.ok(notAFile.includes('error: NOT_A_FILE'));
 

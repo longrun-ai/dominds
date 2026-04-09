@@ -21,7 +21,9 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
   const reminderId = dlg.reminders[0]?.id;
   assert.equal(typeof reminderId, 'string');
 
-  const output = await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_id: reminderId });
+  const output = (
+    await deleteReminderTool.call(dlg, {} as Team.Member, { reminder_id: reminderId })
+  ).content;
 
   assert.ok(
     output.includes(expectedSubstring),

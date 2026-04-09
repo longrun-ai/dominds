@@ -54,6 +54,9 @@ async function readPackageVersion(packageJsonAbs: string, label: string): Promis
     'string',
     `${label} package.json version must be a string.`,
   );
+  if (typeof packageJson.version !== 'string') {
+    throw new Error(`${label} package.json version must be a string.`);
+  }
   return packageJson.version;
 }
 

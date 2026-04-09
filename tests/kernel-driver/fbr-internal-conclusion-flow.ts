@@ -21,6 +21,8 @@ import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-langua
 import {
   createRootDialog,
   lastAssistantSaying,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -271,14 +273,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       successRoot,
-      {
-        content: successTrigger,
-        msgId: 'kernel-driver-fbr-internal-conclusion-flow-success',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(successTrigger, 'kernel-driver-fbr-internal-conclusion-flow-success'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitFor(
       async () => lastAssistantSaying(successRoot) === successRootFinalAnswer,
@@ -357,14 +354,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       fallbackRoot,
-      {
-        content: fallbackTrigger,
-        msgId: 'kernel-driver-fbr-internal-conclusion-flow-fallback',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(fallbackTrigger, 'kernel-driver-fbr-internal-conclusion-flow-fallback'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitFor(
       async () => lastAssistantSaying(fallbackRoot) === fallbackRootFinalAnswer,

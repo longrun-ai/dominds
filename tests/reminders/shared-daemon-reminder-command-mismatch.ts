@@ -14,6 +14,21 @@ import {
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
 
+function requireMetaRecord(meta: unknown): Record<string, unknown> {
+  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
+  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
+  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  return meta as Record<string, unknown>;
+}
+
+function requireNumber(value: unknown, label: string): number {
+  assert.equal(typeof value, 'number', `Expected ${label} to be a number`);
+  if (typeof value !== 'number') {
+    throw new Error(`Expected ${label} to be a number`);
+  }
+  return value;
+}
+
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-shared-daemon-command-'));
   const previousCwd = process.cwd();
@@ -48,14 +63,9 @@ function requireDaemonReminder(
 function requireDaemonPid(
   reminder: Awaited<ReturnType<RootDialog['listVisibleReminders']>>[number],
 ): number {
-  const meta = reminder.meta;
-  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
-  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
-  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  const meta = requireMetaRecord(reminder.meta);
   assert.equal(meta['kind'], 'daemon', 'Expected daemon reminder meta.kind to be daemon');
-  const pid = meta['pid'];
-  assert.equal(typeof pid, 'number', 'Expected daemon reminder meta.pid to be a number');
-  return pid;
+  return requireNumber(meta['pid'], 'daemon reminder meta.pid');
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -101,6 +111,9 @@ async function main(): Promise<void> {
           ? (parsed['meta'] as Record<string, unknown>)
           : null;
       assert.notEqual(parsedMeta, null, 'Expected persisted daemon reminder meta to exist');
+      if (parsedMeta === null) {
+        throw new Error('Expected persisted daemon reminder meta to exist');
+      }
       assert.equal(
         typeof parsedMeta['daemonCommandLine'],
         'string',
@@ -111,7 +124,7 @@ async function main(): Promise<void> {
 
       resetTrackedDaemonsForTests();
       const dialogB = createDialog('tester');
-      const stopOutput = await stopDaemonTool.call(dialogB, caller, { pid: daemonPid });
+      const stopOutput = (await stopDaemonTool.call(dialogB, caller, { pid: daemonPid })).content;
       assert.match(
         stopOutput,
         /No daemon process found|未找到/,

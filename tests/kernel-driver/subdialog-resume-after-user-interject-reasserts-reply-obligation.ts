@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
@@ -7,6 +8,8 @@ import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -77,7 +80,7 @@ async function main(): Promise<void> {
       tellaskContent: assignmentDirective.tellaskContent,
       targetAgentId: 'pangu',
       callId: assignmentDirective.targetCallId,
-      callingCourse: 1,
+      callingCourse: toCallingCourseNumber(1),
       callType: 'C',
     });
 
@@ -116,15 +119,11 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       subdialog,
-      {
-        content: interjectPrompt,
-        msgId: 'subdialog-user-interject-before-resume',
-        grammar: 'markdown',
-        origin: 'user',
+      makeUserPrompt(interjectPrompt, 'subdialog-user-interject-before-resume', {
         userLanguageCode: 'en',
-      },
+      }),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
@@ -148,18 +147,23 @@ async function main(): Promise<void> {
       subdialog.status,
     );
 
-    await driveDialogStream(subdialog, undefined, true, {
-      source: 'kernel_driver_supply_response_parent_revive',
-      reason: 'nested_subdialog_resolved',
-      suppressDiligencePush: true,
-      noPromptSubdialogResumeEntitlement: {
-        ownerDialogId: subdialog.id.selfId,
-        reason: 'resolved_pending_subdialog_reply',
-        subdialogId: nestedSubdialog.id.selfId,
-        callType: 'C',
-        callId: 'pangu-to-nuwa-call',
-      },
-    });
+    await driveDialogStream(
+      subdialog,
+      undefined,
+      true,
+      makeDriveOptions({
+        source: 'kernel_driver_supply_response_parent_revive',
+        reason: 'nested_subdialog_resolved',
+        suppressDiligencePush: true,
+        noPromptSubdialogResumeEntitlement: {
+          ownerDialogId: subdialog.id.selfId,
+          reason: 'resolved_pending_subdialog_reply',
+          subdialogId: nestedSubdialog.id.selfId,
+          callType: 'C',
+          callId: 'pangu-to-nuwa-call',
+        },
+      }),
+    );
     await waitForAllDialogsUnlocked(root, 2_000);
 
     assert.equal(

@@ -10,6 +10,16 @@ import {
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import { createRootDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
+function requirePersistedContent(
+  event: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>[number] | undefined,
+): string {
+  assert.ok(event, 'expected persisted record to exist');
+  if (!event || !('content' in event) || typeof event.content !== 'string') {
+    throw new Error('expected persisted record with string content');
+  }
+  return event.content;
+}
+
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
@@ -75,7 +85,7 @@ async function main(): Promise<void> {
     );
     assert(replyFuncResult, 'expected restart recovery to append reply func_result_record');
     assert.match(
-      replyFuncResult.content,
+      requirePersistedContent(replyFuncResult),
       /Reply delivered via `replyTellaskBack`|已通过 `replyTellaskBack` 送达回复/u,
     );
 

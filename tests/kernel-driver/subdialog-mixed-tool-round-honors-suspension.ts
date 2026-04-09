@@ -7,6 +7,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   wrapPromptWithExpectedReplyTool,
@@ -92,14 +94,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-subdialog-mixed-tool-round-honors-suspension',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-mixed-tool-round-honors-suspension'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 

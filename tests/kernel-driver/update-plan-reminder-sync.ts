@@ -9,6 +9,7 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -87,11 +88,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-update-plan-reminder-sync',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-update-plan-reminder-sync'),
       true,
     );
 

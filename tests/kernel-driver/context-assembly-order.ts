@@ -49,11 +49,6 @@ async function main(): Promise<void> {
           { type: 'environment_msg', role: 'user', content: 'reminder-1' },
           { type: 'environment_msg', role: 'user', content: 'reminder-2' },
         ],
-        languageGuideMsg: {
-          type: 'environment_msg',
-          role: 'user',
-          content: 'language-guide',
-        },
       },
     });
 
@@ -67,7 +62,6 @@ async function main(): Promise<void> {
         'prompting:latest-user',
         'env:reminder-1',
         'env:reminder-2',
-        'env:language-guide',
       ],
       'tail insertions should happen after the last user prompt-like message',
     );
@@ -85,18 +79,13 @@ async function main(): Promise<void> {
       ephemeral: {},
       tail: {
         renderedReminders: [{ type: 'environment_msg', role: 'user', content: 'reminder-only' }],
-        languageGuideMsg: {
-          type: 'environment_msg',
-          role: 'user',
-          content: 'language-guide-only',
-        },
       },
     });
 
     assertOrder(
       result,
-      ['env:language-guide-only', 'env:reminder-only'],
-      'when no prior user prompt exists, reminder append still provides user anchor for language guide',
+      ['env:reminder-only'],
+      'when no prior user prompt exists, rendered reminders still append directly',
     );
   }
 
@@ -112,14 +101,9 @@ async function main(): Promise<void> {
       ephemeral: {},
       tail: {
         renderedReminders: [],
-        languageGuideMsg: {
-          type: 'environment_msg',
-          role: 'user',
-          content: 'guide-final',
-        },
       },
     });
-    assertOrder(result, ['env:guide-final'], 'guide should append when no insertion anchor exists');
+    assertOrder(result, [], 'empty tail should leave context unchanged');
   }
 
   console.log('kernel-driver context-assembly-order: PASS');

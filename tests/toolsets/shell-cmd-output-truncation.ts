@@ -18,11 +18,13 @@ async function main(): Promise<void> {
 
   const dlg = {} as unknown as Dialog;
 
-  const output = await shellCmdTool.call(dlg, caller, {
-    command:
-      'awk \'BEGIN { for (i = 1; i <= 200; i++) { printf("row-%06d ", i); for (j = 1; j <= 600; j++) printf("x"); printf("\\n"); } }\'',
-    timeoutSeconds: 5,
-  });
+  const output = (
+    await shellCmdTool.call(dlg, caller, {
+      command:
+        'awk \'BEGIN { for (i = 1; i <= 200; i++) { printf("row-%06d ", i); for (j = 1; j <= 600; j++) printf("x"); printf("\\n"); } }\'',
+      timeoutSeconds: 5,
+    })
+  ).content;
 
   assert.match(output, /Command completed \(exit code: 0\)/);
   assert.match(output, /row-000001/);

@@ -14,6 +14,8 @@ function createManTool() {
   return tool;
 }
 
+type LanguageAwareDialog = { getLastUserLanguageCode(): 'zh' };
+
 async function main(): Promise<void> {
   setWorkLanguage('zh');
   const manTool = createManTool();
@@ -23,7 +25,7 @@ async function main(): Promise<void> {
     toolsets: ['ws_read', 'team_memory'],
   });
 
-  const output = await manTool.call({} as never, caller, {});
+  const output = (await manTool.call({} as LanguageAwareDialog as never, caller, {})).content;
 
   assert.ok(output.includes('**可用工具集**'));
   assert.ok(output.includes('- `ws_read`'));

@@ -49,10 +49,12 @@ async function main(): Promise<void> {
       },
     );
 
-    const addOutput = await addReminderTool.call(dialogA, caller, {
-      content: 'Remember the preferred deploy smoke-check command',
-      scope: 'personal',
-    });
+    const addOutput = (
+      await addReminderTool.call(dialogA, caller, {
+        content: 'Remember the preferred deploy smoke-check command',
+        scope: 'personal',
+      })
+    ).content;
     assert.match(addOutput, /Added|已添加/);
     assert.equal(
       dialogA.reminders.length,
@@ -94,18 +96,22 @@ async function main(): Promise<void> {
       'Expected only shared personal reminder to be visible in fresh dialog',
     );
 
-    const updateOutput = await updateReminderTool.call(dialogB, caller, {
-      reminder_id: personalReminder.id,
-      content: 'Remember the updated deploy smoke-check command',
-    });
+    const updateOutput = (
+      await updateReminderTool.call(dialogB, caller, {
+        reminder_id: personalReminder.id,
+        content: 'Remember the updated deploy smoke-check command',
+      })
+    ).content;
     assert.match(updateOutput, /Updated|已更新/);
     const updatedReminder = (await dialogB.listVisibleReminders())[0];
     assert.equal(updatedReminder?.content, 'Remember the updated deploy smoke-check command');
     assert.equal(updatedReminder?.scope, 'personal');
 
-    const deleteOutput = await deleteReminderTool.call(dialogB, caller, {
-      reminder_id: personalReminder.id,
-    });
+    const deleteOutput = (
+      await deleteReminderTool.call(dialogB, caller, {
+        reminder_id: personalReminder.id,
+      })
+    ).content;
     assert.match(deleteOutput, /Deleted|已删除/);
     assert.equal((await dialogB.listVisibleReminders()).length, 0);
   });

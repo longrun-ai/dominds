@@ -9,6 +9,13 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
+function requireStringContent(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('Expected last message content to be string fallback');
+  }
+  return value;
+}
+
 async function main() {
   const missingRelPath = 'artifacts/mcp/test-server/test-tool/missing.png';
 
@@ -44,6 +51,7 @@ async function main() {
           artifact: {
             rootId: 'missing-root',
             selfId: 'missing-self',
+            status: 'running',
             relPath: missingRelPath,
           },
         },
@@ -56,9 +64,9 @@ async function main() {
   const last = messages[messages.length - 1];
   assert(isRecord(last), 'Expected last message to be an object');
   assert(last.role === 'user', 'Expected last message role to be user');
-  assert(typeof last.content === 'string', 'Expected last message content to be string fallback');
+  const content = requireStringContent(last.content);
   assert(
-    last.content.includes('image missing') && last.content.includes(missingRelPath),
+    content.includes('image missing') && content.includes(missingRelPath),
     'Expected missing image to be downgraded to text',
   );
 

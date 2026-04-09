@@ -14,10 +14,12 @@ function run(): void {
 
   {
     const actual = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
       responderId: 'bob',
       requesterId: 'alice',
-      originalCallHeadLine: '@bob hello',
+      tellaskContent: '@bob hello',
       responseBody: 'ok',
+      status: 'completed',
       language: 'en',
     });
     const expected = `Hi @alice, @bob provided response:
@@ -33,10 +35,12 @@ to your original call:
 
   {
     const actual = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
       responderId: 'bob',
       requesterId: 'alice',
-      originalCallHeadLine: '@bob hello',
+      tellaskContent: '@bob hello',
       responseBody: 'ok',
+      status: 'completed',
       language: 'zh',
     });
     const expected = `你好 @alice，@bob 已回复：

@@ -29,9 +29,11 @@ async function main(): Promise<void> {
     await fs.writeFile(path.join(targetDir, 'marker.txt'), 'line-1\nline-2\n', 'utf-8');
     await fs.symlink(targetDir, linkDir);
 
-    const output = await listDirTool.call(dlg, alice, {
-      path: 'dominds/webapp/src/shared',
-    });
+    const output = (
+      await listDirTool.call(dlg, alice, {
+        path: 'dominds/webapp/src/shared',
+      })
+    ).content;
 
     assert.ok(output.includes('📁 **目录：**'), 'should render directory header');
     assert.ok(!output.includes('不是目录'), 'should not reject symlink dir as not-a-directory');

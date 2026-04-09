@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 
 import fs from 'node:fs/promises';
-import type { Dialog } from '../main/dialog';
-import { validateFuncToolArguments } from '../main/llm/kernel-driver/runtime';
-import { setWorkLanguage } from '../main/runtime/work-language';
-import { Team } from '../main/team';
-import { readonlyShellTool } from '../main/tools/os';
+import type { Dialog } from '../../main/dialog';
+import { validateFuncToolArguments } from '../../main/llm/kernel-driver/runtime';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { Team } from '../../main/team';
+import { readonlyShellTool } from '../../main/tools/os';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {
@@ -13,16 +13,26 @@ function assertTrue(condition: boolean, message?: string): void {
   }
 }
 
-function assertIncludes(haystack: string, needle: string, message?: string): void {
+function assertIncludes(
+  haystack: string | Readonly<{ content: string }>,
+  needle: string,
+  message?: string,
+): void {
+  const text = typeof haystack === 'string' ? haystack : haystack.content;
   assertTrue(
-    haystack.includes(needle),
+    text.includes(needle),
     message || `Assertion failed: expected output to include '${needle}'`,
   );
 }
 
-function assertNotIncludes(haystack: string, needle: string, message?: string): void {
+function assertNotIncludes(
+  haystack: string | Readonly<{ content: string }>,
+  needle: string,
+  message?: string,
+): void {
+  const text = typeof haystack === 'string' ? haystack : haystack.content;
   assertTrue(
-    !haystack.includes(needle),
+    !text.includes(needle),
     message || `Assertion failed: expected output NOT to include '${needle}'`,
   );
 }

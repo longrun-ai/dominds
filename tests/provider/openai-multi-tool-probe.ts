@@ -144,7 +144,19 @@ async function main(): Promise<void> {
   };
 
   const startedAt = Date.now();
-  await gen.genToReceiver(providerCfg, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    providerCfg,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/openai-multi-tool-probe',
+      dialogRootId: 'tests/provider/openai-multi-tool-probe',
+    },
+    context,
+    receiver,
+    1,
+  );
   const elapsedMs = Date.now() - startedAt;
 
   console.log(

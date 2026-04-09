@@ -30,8 +30,11 @@ async function main(): Promise<void> {
       path: path.relative(process.cwd(), tmpDir),
     });
 
-    assert.match(output, /showing the first 120 entries and omitting 280/);
-    assert.ok(output.length <= 60_000, `Expected bounded output, got ${output.length} chars`);
+    assert.match(output.content, /showing the first 120 entries and omitting 280/);
+    assert.ok(
+      output.content.length <= 60_000,
+      `Expected bounded output, got ${output.content.length} chars`,
+    );
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

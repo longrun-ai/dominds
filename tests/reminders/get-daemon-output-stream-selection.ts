@@ -48,26 +48,30 @@ async function main(): Promise<void> {
     const pid = requireDaemonPid(reminder.meta);
 
     try {
-      const both = await getDaemonOutputTool.call(dialog, caller, { pid });
+      const both = (await getDaemonOutputTool.call(dialog, caller, { pid })).content;
       assert.match(both, /stdout/);
       assert.match(both, /stderr/);
       assert.match(both, /stdout-line/);
       assert.match(both, /stderr-line/);
 
-      const onlyStdout = await getDaemonOutputTool.call(dialog, caller, {
-        pid,
-        stdout: true,
-        stderr: false,
-      });
+      const onlyStdout = (
+        await getDaemonOutputTool.call(dialog, caller, {
+          pid,
+          stdout: true,
+          stderr: false,
+        })
+      ).content;
       assert.match(onlyStdout, /stdout/);
       assert.doesNotMatch(onlyStdout, /stderr-line/);
       assert.match(onlyStdout, /stdout-line/);
 
-      const onlyStderr = await getDaemonOutputTool.call(dialog, caller, {
-        pid,
-        stdout: false,
-        stderr: true,
-      });
+      const onlyStderr = (
+        await getDaemonOutputTool.call(dialog, caller, {
+          pid,
+          stdout: false,
+          stderr: true,
+        })
+      ).content;
       assert.match(onlyStderr, /stderr/);
       assert.doesNotMatch(onlyStderr, /stdout-line/);
       assert.match(onlyStderr, /stderr-line/);

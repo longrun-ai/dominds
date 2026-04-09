@@ -10,6 +10,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -113,14 +115,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      {
-        content: initialPrompt,
-        msgId: 'kernel-driver-deferred-tool-pending-subdialog-initial',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(initialPrompt, 'kernel-driver-deferred-tool-pending-subdialog-initial'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await waitFor(
@@ -134,14 +131,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      {
-        content: interjectPrompt,
-        msgId: 'kernel-driver-deferred-tool-pending-subdialog-followup',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(interjectPrompt, 'kernel-driver-deferred-tool-pending-subdialog-followup'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     const rootEvents = await DialogPersistence.loadCourseEvents(

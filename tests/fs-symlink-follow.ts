@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     const fileLink = path.join(tmpRoot, 'file-link.txt');
     await fs.writeFile(fileTarget, 'hello\n', 'utf8');
     await fs.symlink(fileTarget, fileLink);
-    const rmFileOut = await rmFileTool.call(dlg, alice, { path: 'file-link.txt' });
+    const rmFileOut = (await rmFileTool.call(dlg, alice, { path: 'file-link.txt' })).content;
     assert.ok(rmFileOut.includes('已删除文件'), 'rm_file should succeed on symlink to file');
     assert.ok(rmFileOut.includes('符号链接'), 'rm_file should explain symlink follow');
     assert.equal(await exists(fileLink), false, 'rm_file should remove link path');
@@ -47,7 +47,8 @@ async function main(): Promise<void> {
     const dirLink = path.join(tmpRoot, 'dir-link');
     await fs.mkdir(dirTarget, { recursive: true });
     await fs.symlink(dirTarget, dirLink);
-    const rmDirOut = await rmDirTool.call(dlg, alice, { path: 'dir-link', recursive: false });
+    const rmDirOut = (await rmDirTool.call(dlg, alice, { path: 'dir-link', recursive: false }))
+      .content;
     assert.ok(rmDirOut.includes('已删除目录'), 'rm_dir should succeed on symlink to dir');
     assert.ok(rmDirOut.includes('符号链接'), 'rm_dir should explain symlink follow');
     assert.equal(await exists(dirLink), false, 'rm_dir should remove link path');
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
     const mkLink = path.join(tmpRoot, 'mk-link');
     await fs.mkdir(mkTarget, { recursive: true });
     await fs.symlink(mkTarget, mkLink);
-    const mkOut = await mkDirTool.call(dlg, alice, { path: 'mk-link' });
+    const mkOut = (await mkDirTool.call(dlg, alice, { path: 'mk-link' })).content;
     assert.ok(mkOut.includes('status: ok'), 'mk_dir should treat symlinked dir as existing dir');
     assert.ok(mkOut.includes('created: false'));
     assert.ok(mkOut.includes('path_kind: symlink'), 'mk_dir should annotate symlink path');
@@ -72,10 +73,12 @@ async function main(): Promise<void> {
     const moveFileDstParentLink = path.join(tmpRoot, 'move-file-dst-link');
     await fs.mkdir(moveFileDstParentReal, { recursive: true });
     await fs.symlink(moveFileDstParentReal, moveFileDstParentLink);
-    const moveFileOut = await moveFileTool.call(dlg, alice, {
-      from: 'move-file-link.txt',
-      to: 'move-file-dst-link/moved-link.txt',
-    });
+    const moveFileOut = (
+      await moveFileTool.call(dlg, alice, {
+        from: 'move-file-link.txt',
+        to: 'move-file-dst-link/moved-link.txt',
+      })
+    ).content;
     assert.ok(
       moveFileOut.includes('status: ok'),
       'move_file should succeed with symlink from/parent',
@@ -95,10 +98,12 @@ async function main(): Promise<void> {
     const moveDirDstParentLink = path.join(tmpRoot, 'move-dir-dst-link');
     await fs.mkdir(moveDirDstParentReal, { recursive: true });
     await fs.symlink(moveDirDstParentReal, moveDirDstParentLink);
-    const moveDirOut = await moveDirTool.call(dlg, alice, {
-      from: 'move-dir-link',
-      to: 'move-dir-dst-link/moved-dir-link',
-    });
+    const moveDirOut = (
+      await moveDirTool.call(dlg, alice, {
+        from: 'move-dir-link',
+        to: 'move-dir-dst-link/moved-dir-link',
+      })
+    ).content;
     assert.ok(
       moveDirOut.includes('status: ok'),
       'move_dir should succeed with symlink from/parent',

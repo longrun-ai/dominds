@@ -176,7 +176,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'typeb-dedupe-test', grammar: 'markdown' },
+      { content: trigger, msgId: 'typeb-dedupe-test', grammar: 'markdown', origin: 'user' },
       true,
     );
 
@@ -218,7 +218,12 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      { content: triggerReuseAfterDead, msgId: 'typeb-reuse-after-dead', grammar: 'markdown' },
+      {
+        content: triggerReuseAfterDead,
+        msgId: 'typeb-reuse-after-dead',
+        grammar: 'markdown',
+        origin: 'user',
+      },
       true,
     );
 

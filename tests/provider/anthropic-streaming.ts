@@ -54,7 +54,19 @@ async function main() {
     funcCall: async () => {},
     streamError: async (_detail: string) => {},
   };
-  await gen.genToReceiver(provider, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    provider,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/anthropic-streaming',
+      dialogRootId: 'tests/provider/anthropic-streaming',
+    },
+    context,
+    receiver,
+    1,
+  );
 
   const end = Date.now();
 

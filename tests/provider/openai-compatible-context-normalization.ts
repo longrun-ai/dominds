@@ -15,6 +15,76 @@ function getRole(value: unknown): string {
   return typeof role === 'string' ? role : 'unknown';
 }
 
+function isAssistantReasoningMessage(
+  value: unknown,
+): value is { role: 'assistant'; content: string; reasoning_content: string } {
+  return (
+    isRecord(value) &&
+    value.role === 'assistant' &&
+    typeof value.content === 'string' &&
+    typeof value.reasoning_content === 'string'
+  );
+}
+
+function isAssistantToolCallMessage(value: unknown): value is {
+  role: 'assistant';
+  tool_calls: ReadonlyArray<{
+    id: string;
+    type: string;
+    function: { name: string; arguments: string };
+  }>;
+} {
+  if (!isRecord(value) || value.role !== 'assistant' || !Array.isArray(value.tool_calls)) {
+    return false;
+  }
+  return value.tool_calls.every((call) => {
+    return (
+      isRecord(call) &&
+      typeof call.id === 'string' &&
+      typeof call.type === 'string' &&
+      isRecord(call.function) &&
+      typeof call.function.name === 'string' &&
+      typeof call.function.arguments === 'string'
+    );
+  });
+}
+
+function isToolMessage(value: unknown): value is { role: 'tool'; tool_call_id: string } {
+  return isRecord(value) && value.role === 'tool' && typeof value.tool_call_id === 'string';
+}
+
+function requireAssistantReasoningMessage(value: unknown): {
+  role: 'assistant';
+  content: string;
+  reasoning_content: string;
+} {
+  if (!isAssistantReasoningMessage(value)) {
+    throw new Error('Expected assistant message to be an object');
+  }
+  return value;
+}
+
+function requireAssistantToolCallMessage(value: unknown): {
+  role: 'assistant';
+  tool_calls: ReadonlyArray<{
+    id: string;
+    type: string;
+    function: { name: string; arguments: string };
+  }>;
+} {
+  if (!isAssistantToolCallMessage(value)) {
+    throw new Error('Expected tool call message to be an object');
+  }
+  return value;
+}
+
+function requireToolMessage(value: unknown): { role: 'tool'; tool_call_id: string } {
+  if (!isToolMessage(value)) {
+    throw new Error('Expected tool message to be an object');
+  }
+  return value;
+}
+
 async function main() {
   const context: ChatMessage[] = [
     {
@@ -65,10 +135,7 @@ async function main() {
     `Unexpected roles: ${roles.join(',')}`,
   );
 
-  const assistantMsg = messages[1];
-  assert(isRecord(assistantMsg), 'Expected assistant message to be an object');
-  assert(assistantMsg.role === 'assistant', 'Expected assistant message role to be assistant');
-  assert(typeof assistantMsg.content === 'string', 'Expected assistant content to be string');
+  const assistantMsg = requireAssistantReasoningMessage(messages[1]);
   assert(
     assistantMsg.content === 'Calling tool now.',
     'Expected saying content to remain standalone',
@@ -79,10 +146,7 @@ async function main() {
     'Expected thinking content to map to assistant.reasoning_content',
   );
 
-  const toolCallMsg = messages[2];
-  assert(isRecord(toolCallMsg), 'Expected tool call message to be an object');
-  assert(toolCallMsg.role === 'assistant', 'Expected tool call message role to be assistant');
-  assert(Array.isArray(toolCallMsg.tool_calls), 'Expected tool_calls to be an array');
+  const toolCallMsg = requireAssistantToolCallMessage(messages[2]);
   assert(toolCallMsg.tool_calls.length === 1, 'Expected exactly one tool call');
   const call = toolCallMsg.tool_calls[0];
   assert(isRecord(call), 'Expected tool call to be an object');
@@ -92,9 +156,7 @@ async function main() {
   assert(call.function.name === 'shell_cmd', 'Expected function name to match');
   assert(typeof call.function.arguments === 'string', 'Expected function arguments to be string');
 
-  const toolMsg = messages[3];
-  assert(isRecord(toolMsg), 'Expected tool message to be an object');
-  assert(toolMsg.role === 'tool', 'Expected tool message role to be tool');
+  const toolMsg = requireToolMessage(messages[3]);
   assert(toolMsg.tool_call_id === 'call-1', 'Expected tool_call_id to match call id');
 
   const orphanedCallContext: ChatMessage[] = [

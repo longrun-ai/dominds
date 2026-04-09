@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { Dialog } from '../../main/dialog';
 import { Team } from '../../main/team';
 import { teamMgmtValidateMcpCfgTool } from '../../main/tools/team_mgmt';
 
@@ -40,9 +41,9 @@ async function main(): Promise<void> {
     async () => {
       const dlg = {
         getLastUserLanguageCode: () => 'en' as const,
-      };
+      } as unknown as Dialog;
       const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-      const out = await teamMgmtValidateMcpCfgTool.call(dlg, caller, {});
+      const out = (await teamMgmtValidateMcpCfgTool.call(dlg, caller, {})).content;
 
       assert.ok(
         out.includes('toolset_manual_error'),

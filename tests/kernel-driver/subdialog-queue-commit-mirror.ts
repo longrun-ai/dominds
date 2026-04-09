@@ -11,6 +11,7 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
   lastAssistantSaying,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'kernel-driver-subdialog-commit-mirror', grammar: 'markdown' },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-commit-mirror'),
       true,
     );
 

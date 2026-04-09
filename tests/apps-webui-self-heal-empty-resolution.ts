@@ -157,12 +157,8 @@ async function main(): Promise<void> {
     });
     try {
       const resolutionLoaded = await loadAppsResolutionFile({ rtwsRootAbs: tmpRoot });
-      assert.equal(
-        resolutionLoaded.kind,
-        'ok',
-        resolutionLoaded.kind === 'ok' ? 'expected ok' : resolutionLoaded.errorText,
-      );
       if (resolutionLoaded.kind !== 'ok') throw new Error(resolutionLoaded.errorText);
+      assert.equal(resolutionLoaded.kind, 'ok', 'expected ok');
       assert.equal(resolutionLoaded.file.apps.length, 1);
       const resolved = resolutionLoaded.file.apps[0] ?? null;
       assert.ok(resolved, 'expected one resolved app entry');

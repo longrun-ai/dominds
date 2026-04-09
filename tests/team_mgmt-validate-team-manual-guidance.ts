@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { Dialog } from '../main/dialog';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
 import { teamMgmtValidateTeamCfgTool } from '../main/tools/team_mgmt';
@@ -58,9 +59,7 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
 
-    const dlg = {
-      getLastUserLanguageCode: () => 'en' as const,
-    };
+    const dlg = { getLastUserLanguageCode: () => 'en' as const } as unknown as Dialog;
     const caller = new Team.Member({ id: 'tester', name: 'Tester' });
     const manualCaller = new Team.Member({ id: 'tester', name: 'Tester', toolsets: ['team_mgmt'] });
     const built = buildToolsetManualTools({
@@ -70,7 +69,7 @@ async function main(): Promise<void> {
     const manTool = built.tools.find((entry) => entry.name === 'man');
     assert.ok(manTool, 'man tool should be available');
 
-    const validateOut = await teamMgmtValidateTeamCfgTool.call(dlg, caller, {});
+    const validateOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
     assert.ok(
       validateOut.includes(
         'team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `man({ "toolsetId": "team_mgmt" })` should remain usable',
@@ -90,10 +89,12 @@ async function main(): Promise<void> {
       'validate_team_cfg should guide the team manager to the relevant manual topics',
     );
 
-    const manualOut = await manTool.call(dlg as never, manualCaller, {
-      toolsetId: 'team_mgmt',
-      topics: ['troubleshooting'],
-    });
+    const manualOut = (
+      await manTool.call(dlg as never, manualCaller, {
+        toolsetId: 'team_mgmt',
+        topics: ['troubleshooting'],
+      })
+    ).content;
     assert.ok(
       manualOut.includes(
         'app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable',

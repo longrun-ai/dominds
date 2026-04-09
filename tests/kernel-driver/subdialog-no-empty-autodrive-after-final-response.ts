@@ -11,6 +11,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
   lastAssistantSaying,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -106,13 +108,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-subdialog-no-empty-autodrive-after-final-response',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-no-empty-autodrive-after-final-response'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitFor(
       async () => lastAssistantSaying(dlg) === rootFinalResponse,
@@ -139,11 +137,16 @@ async function main(): Promise<void> {
       'expected subdialog to end its finalized round at a response anchor',
     );
 
-    await driveDialogStream(subdialog, undefined, true, {
-      suppressDiligencePush: true,
-      source: 'unspecified',
-      reason: 'stale_auto_drive_probe',
-    });
+    await driveDialogStream(
+      subdialog,
+      undefined,
+      true,
+      makeDriveOptions({
+        suppressDiligencePush: true,
+        source: 'unspecified',
+        reason: 'stale_auto_drive_probe',
+      }),
+    );
     await waitForAllDialogsUnlocked(dlg, 3_000);
 
     const eventsAfter = await DialogPersistence.loadCourseEvents(

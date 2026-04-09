@@ -7,6 +7,10 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { assertGlobalDialogEventBroadcasterInstalled } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, RootDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
+import type {
+  KernelDriverDriveOptions,
+  KernelDriverHumanPrompt,
+} from '../../main/llm/kernel-driver/types';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { buildActiveReplyToolNote } from '../../main/runtime/reply-prompt-copy';
 import '../../main/tools/builtins';
@@ -19,6 +23,12 @@ export type MockEntry = {
   delayMs?: number;
   chunkDelayMs?: number;
   streamError?: string;
+  usageUnavailable?: boolean;
+  usage?: Readonly<{
+    promptTokens: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  }>;
   funcCalls?: ReadonlyArray<{
     id?: string;
     name: string;
@@ -211,4 +221,28 @@ export function wrapPromptWithExpectedReplyTool(args: {
     toolName: args.expectedReplyToolName,
   });
   return `${note}\n\n${args.prompt}`;
+}
+
+export function makeUserPrompt(
+  content: string,
+  msgId: string,
+  extras?: Readonly<Omit<KernelDriverHumanPrompt, 'content' | 'msgId' | 'grammar' | 'origin'>>,
+): KernelDriverHumanPrompt {
+  return {
+    content,
+    msgId,
+    grammar: 'markdown',
+    origin: 'user',
+    ...extras,
+  };
+}
+
+export function makeDriveOptions(
+  overrides?: Readonly<Partial<KernelDriverDriveOptions>>,
+): KernelDriverDriveOptions {
+  return {
+    source: 'ws_user_message',
+    reason: 'test',
+    ...overrides,
+  };
 }

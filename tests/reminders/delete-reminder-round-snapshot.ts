@@ -43,8 +43,8 @@ async function main(): Promise<void> {
   });
 
   assert.ok(
-    secondRoundError.includes(`Reminder '${reminderCId}' does not exist`),
-    `Expected deleted reminder id to stay invalid after removal; got: ${secondRoundError}`,
+    secondRoundError.content.includes(`Reminder '${reminderCId}' does not exist`),
+    `Expected deleted reminder id to stay invalid after removal; got: ${secondRoundError.content}`,
   );
 
   console.log('✓ delete_reminder reminder-id stability test passed');

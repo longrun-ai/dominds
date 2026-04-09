@@ -6,7 +6,13 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
-import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
+import {
+  createRootDialog,
+  makeUserPrompt,
+  withTempRtws,
+  writeMockDb,
+  writeStandardMinds,
+} from './helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
@@ -69,11 +75,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-context-health-multi-iter-gate',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-context-health-multi-iter-gate'),
       true,
     );
 

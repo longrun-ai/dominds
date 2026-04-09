@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { Dialog } from '../main/dialog';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
@@ -81,10 +82,10 @@ async function main(): Promise<void> {
 
     const dlg = {
       getLastUserLanguageCode: () => 'en' as const,
-    };
+    } as unknown as Dialog;
     const caller = new Team.Member({ id: 'tester', name: 'Tester' });
 
-    const invalidOut = await teamMgmtValidateTeamCfgTool.call(dlg, caller, {});
+    const invalidOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
     assert.ok(
       invalidOut.includes('Active Problems'),
       'validate_team_cfg should report active problems in a dedicated section',
@@ -94,10 +95,12 @@ async function main(): Promise<void> {
       'invalid team.yaml should leave active team problems in the snapshot',
     );
 
-    const prematureClearOut = await teamMgmtClearProblemsTool.call(dlg, caller, {
-      source: 'team',
-      path: 'team.yaml',
-    });
+    const prematureClearOut = (
+      await teamMgmtClearProblemsTool.call(dlg, caller, {
+        source: 'team',
+        path: 'team.yaml',
+      })
+    ).content;
     assert.ok(
       prematureClearOut.includes('cleared 0 problem(s)'),
       'default clear should not remove active problems',
@@ -105,7 +108,7 @@ async function main(): Promise<void> {
 
     await writeText(path.join(process.cwd(), '.minds', 'team.yaml'), validTeamYaml);
 
-    const validOut = await teamMgmtValidateTeamCfgTool.call(dlg, caller, {});
+    const validOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
     assert.ok(
       validOut.includes('team.yaml Validation Passed'),
       'validate_team_cfg should pass after team.yaml is fixed',
@@ -119,10 +122,12 @@ async function main(): Promise<void> {
       'resolved-history section should include the clear hint',
     );
 
-    const listedOut = await teamMgmtListProblemsTool.call(dlg, caller, {
-      source: 'team',
-      path: 'team.yaml',
-    });
+    const listedOut = (
+      await teamMgmtListProblemsTool.call(dlg, caller, {
+        source: 'team',
+        path: 'team.yaml',
+      })
+    ).content;
     assert.ok(
       listedOut.includes('Resolved But Not Yet Cleared'),
       'list_problems should split resolved history into its own section',
@@ -132,10 +137,12 @@ async function main(): Promise<void> {
       'list_problems YAML block should expose active=false for resolved history',
     );
 
-    const clearOut = await teamMgmtClearProblemsTool.call(dlg, caller, {
-      source: 'team',
-      path: 'team.yaml',
-    });
+    const clearOut = (
+      await teamMgmtClearProblemsTool.call(dlg, caller, {
+        source: 'team',
+        path: 'team.yaml',
+      })
+    ).content;
     assert.ok(
       clearOut.includes('cleared 1 problem(s)'),
       'clear_problems should remove resolved team problems by source/path',

@@ -25,6 +25,7 @@ async function main(): Promise<void> {
     const dlgId = new DialogID('dlg-q4h-bcast-test');
     const store = new DiskFileDialogStore(dlgId);
     const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
+    const createdAt = '2026-01-29 00:00:01';
 
     installRecordingGlobalDialogEventBroadcaster({
       label: 'tests/q4h-global-broadcast',
@@ -60,6 +61,11 @@ async function main(): Promise<void> {
 
     postDialogEvent(dlg, {
       type: 'subdialog_created_evt',
+      dialog: {
+        selfId: dlgId.selfId,
+        rootId: dlgId.rootId,
+      },
+      timestamp: createdAt,
       course: 1,
       parentDialog: {
         selfId: dlgId.selfId,
@@ -70,6 +76,7 @@ async function main(): Promise<void> {
         rootId: dlgId.rootId,
       },
       targetAgentId: 'coder',
+      callName: 'tellaskSessionless',
       mentionList: ['@coder'],
       tellaskContent: 'Please investigate.',
       subDialogNode: {
@@ -80,11 +87,12 @@ async function main(): Promise<void> {
         taskDocPath: 'task.md',
         status: 'running',
         currentCourse: 1,
-        createdAt: '2026-01-29 00:00:01',
-        lastModified: '2026-01-29 00:00:01',
+        createdAt,
+        lastModified: createdAt,
         displayState: { kind: 'idle_waiting_user' },
         sessionSlug: 'sess-1',
         assignmentFromSup: {
+          callName: 'tellaskSessionless',
           mentionList: ['@coder'],
           tellaskContent: 'Please investigate.',
           originMemberId: 'tester',

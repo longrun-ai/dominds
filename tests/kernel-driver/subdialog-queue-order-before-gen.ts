@@ -12,6 +12,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 import {
   createRootDialog,
   lastAssistantSaying,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -98,9 +100,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'kernel-driver-subdialog-order-before-gen', grammar: 'markdown' },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-order-before-gen'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitFor(
       async () => lastAssistantSaying(dlg) === resumeResponse,

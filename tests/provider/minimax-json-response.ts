@@ -138,7 +138,19 @@ async function main(): Promise<void> {
     streamError: async () => {},
   };
 
-  await gen.genToReceiver(provider, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    provider,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/minimax-json-response',
+      dialogRootId: 'tests/provider/minimax-json-response',
+    },
+    context,
+    receiver,
+    1,
+  );
 
   const elapsedMs = Date.now() - start;
   const raw = chunks.join('').trim();

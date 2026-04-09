@@ -27,33 +27,50 @@ async function main(): Promise<void> {
     });
 
     // Empty content is allowed; creates an empty file.
-    const createdEmpty = await createNewFileTool.call(dlg, alice, { path: 'a.txt', content: '' });
+    const createdEmpty = (
+      await createNewFileTool.call(dlg, alice, {
+        path: 'a.txt',
+        content: '',
+      })
+    ).content;
     assert.ok(createdEmpty.includes('status: ok'));
     assert.ok(createdEmpty.includes('mode: create_new_file'));
     assert.ok(createdEmpty.includes('new_total_lines: 0'));
     assert.ok(createdEmpty.includes('new_total_bytes: 0'));
 
-    const readEmpty = await readFileTool.call(dlg, alice, { path: 'a.txt' });
+    const readEmpty = (await readFileTool.call(dlg, alice, { path: 'a.txt' })).content;
     assert.ok(readEmpty.includes('mode: read_file'));
     assert.ok(readEmpty.includes('total_lines: 0'));
 
     // Existing file: refuse with FILE_EXISTS and a next-step hint.
-    const exists = await createNewFileTool.call(dlg, alice, { path: 'a.txt', content: '' });
+    const exists = (
+      await createNewFileTool.call(dlg, alice, {
+        path: 'a.txt',
+        content: '',
+      })
+    ).content;
     assert.ok(exists.includes('status: error'));
     assert.ok(exists.includes('error: FILE_EXISTS'));
     assert.ok(exists.includes('next:'));
 
     // Existing non-file path: refuse with NOT_A_FILE.
     await fs.mkdir(path.join(tmpRoot, 'dir'));
-    const notAFile = await createNewFileTool.call(dlg, alice, { path: 'dir', content: '' });
+    const notAFile = (
+      await createNewFileTool.call(dlg, alice, {
+        path: 'dir',
+        content: '',
+      })
+    ).content;
     assert.ok(notAFile.includes('status: error'));
     assert.ok(notAFile.includes('error: NOT_A_FILE'));
 
     // Trailing newline normalization for non-empty content.
-    const createdWithContent = await createNewFileTool.call(dlg, alice, {
-      path: 'b.txt',
-      content: 'hello',
-    });
+    const createdWithContent = (
+      await createNewFileTool.call(dlg, alice, {
+        path: 'b.txt',
+        content: 'hello',
+      })
+    ).content;
     assert.ok(createdWithContent.includes('status: ok'));
     assert.ok(createdWithContent.includes('normalized_trailing_newline_added: true'));
     const bText = await readText(path.join(tmpRoot, 'b.txt'));

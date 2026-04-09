@@ -65,11 +65,6 @@ async function main(): Promise<void> {
     ephemeral: {},
     tail: {
       renderedReminders,
-      languageGuideMsg: {
-        type: 'environment_msg',
-        role: 'user',
-        content: 'language-guide',
-      },
     },
   });
 

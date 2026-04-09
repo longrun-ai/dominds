@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { SpawnOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
@@ -39,10 +40,11 @@ async function main(): Promise<void> {
     process.chdir(tmpRoot);
     await fs.writeFile(path.join(tmpRoot, 'sample.txt'), 'before\nneedle line\nafter\n', 'utf8');
 
-    childProcess.spawn = ((command, args) => {
+    childProcess.spawn = ((command, args?: readonly string[] | SpawnOptions) => {
       assert.equal(command, 'rg');
       const child = new FakeRipgrepProcess();
-      seenArgs.push([...(args ?? [])]);
+      const spawnArgs: readonly string[] = Array.isArray(args) ? args : [];
+      seenArgs.push([...spawnArgs]);
       setImmediate(() => {
         for (let idx = 0; idx < 500; idx += 1) {
           child.stdout.write(`sample.txt:2:1:needle hit ${idx}\n`);
@@ -67,13 +69,15 @@ async function main(): Promise<void> {
       write_dirs: ['**'],
     });
 
-    const result = await ripgrepSnippetsTool.call(dlg, alice, {
-      pattern: 'needle',
-      path: '.',
-      max_results: 5,
-      context_before: 1,
-      context_after: 1,
-    });
+    const result = (
+      await ripgrepSnippetsTool.call(dlg, alice, {
+        pattern: 'needle',
+        path: '.',
+        max_results: 5,
+        context_before: 1,
+        context_after: 1,
+      })
+    ).content;
 
     assert.ok(result.includes('status: ok'));
     assert.ok(result.includes('mode: snippets'));

@@ -60,6 +60,9 @@ async function main(): Promise<void> {
     });
     const pid = child.pid;
     assert.equal(typeof pid, 'number', 'Expected wrapper process pid to exist');
+    if (typeof pid !== 'number') {
+      throw new Error('Expected wrapper process pid to exist');
+    }
     child.unref();
     const actualCommandLine = await readProcessCommandLine(pid);
     assert.notEqual(actualCommandLine, '', 'Expected wrapper process command line to be readable');
@@ -75,8 +78,8 @@ async function main(): Promise<void> {
         daemonCommandLine: actualCommandLine,
         shell: 'bash',
         startTime: formatUnifiedTimestamp(new Date()),
-        processGroupId: process.platform === 'win32' ? undefined : pid,
         delete: { altInstruction: `stop_daemon({ "pid": ${String(pid)} })` },
+        ...(process.platform === 'win32' ? {} : { processGroupId: pid }),
       },
       scope: 'agent_shared',
     });
@@ -93,6 +96,9 @@ async function main(): Promise<void> {
       );
 
       const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder);
+      if (!('content' in rendered) || typeof rendered.content !== 'string') {
+        throw new Error('Expected rendered reminder to contain string content');
+      }
       assert.match(rendered.content, /terminated|已结束/);
     } finally {
       try {

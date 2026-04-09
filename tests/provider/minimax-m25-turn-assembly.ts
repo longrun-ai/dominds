@@ -169,7 +169,19 @@ async function main(): Promise<void> {
     streamError: async () => {},
   };
 
-  await gen.genToReceiver(providerCfg, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    providerCfg,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/minimax-m25-turn-assembly',
+      dialogRootId: 'tests/provider/minimax-m25-turn-assembly',
+    },
+    context,
+    receiver,
+    1,
+  );
 
   const elapsedMs = Date.now() - start;
   const raw = chunks.join('').trim();

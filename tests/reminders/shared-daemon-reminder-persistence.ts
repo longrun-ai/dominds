@@ -15,6 +15,21 @@ import {
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
 
+function requireMetaRecord(meta: unknown): Record<string, unknown> {
+  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
+  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
+  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  return meta as Record<string, unknown>;
+}
+
+function requireNumber(value: unknown, label: string): number {
+  assert.equal(typeof value, 'number', `Expected ${label} to be a number`);
+  if (typeof value !== 'number') {
+    throw new Error(`Expected ${label} to be a number`);
+  }
+  return value;
+}
+
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-shared-daemon-reminder-'));
   const previousCwd = process.cwd();
@@ -44,14 +59,9 @@ function requireDaemonPid(
     : never,
 ): number {
   assert.ok(reminder, 'Expected daemon reminder to be present');
-  const meta = reminder.meta;
-  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
-  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
-  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  const meta = requireMetaRecord(reminder.meta);
   assert.equal(meta['kind'], 'daemon', 'Expected daemon reminder meta.kind to be daemon');
-  const pid = meta['pid'];
-  assert.equal(typeof pid, 'number', 'Expected daemon reminder meta.pid to be a number');
-  return pid;
+  return requireNumber(meta['pid'], 'daemon reminder meta.pid');
 }
 
 async function main(): Promise<void> {
@@ -116,16 +126,19 @@ async function main(): Promise<void> {
         'Expected shared reminder to survive in-memory daemon registry reset',
       );
       const rendered = await shellCmdReminderOwner.renderReminder(dialogB, reminderAfterRestart!);
+      if (!('content' in rendered) || typeof rendered.content !== 'string') {
+        throw new Error('Expected rendered daemon reminder to carry string content');
+      }
       assert.match(rendered.content, /PID/);
       assert.match(rendered.content, /daemon-ready/);
 
-      const outputAfterRestart = await getDaemonOutputTool.call(dialogB, caller, { pid });
+      const outputAfterRestart = (await getDaemonOutputTool.call(dialogB, caller, { pid })).content;
       assert.match(outputAfterRestart, /stdout/);
       assert.match(outputAfterRestart, /stderr/);
       assert.match(outputAfterRestart, /daemon-ready/);
       assert.match(outputAfterRestart, /daemon-err/);
 
-      const stopOutput = await stopDaemonTool.call(dialogB, caller, { pid });
+      const stopOutput = (await stopDaemonTool.call(dialogB, caller, { pid })).content;
       assert.match(stopOutput, /stopped|已停止/);
 
       const remaining = await dialogB.listVisibleReminders();

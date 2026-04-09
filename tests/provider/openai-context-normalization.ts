@@ -15,6 +15,51 @@ function getItemType(value: unknown): string {
   return typeof t === 'string' ? t : 'unknown';
 }
 
+function isReasoningItem(
+  value: unknown,
+): value is { type: 'reasoning'; summary: ReadonlyArray<unknown> } {
+  return isRecord(value) && value.type === 'reasoning' && Array.isArray(value.summary);
+}
+
+function isAssistantMessageItem(
+  value: unknown,
+): value is { type: 'message'; role: 'assistant'; content: string } {
+  return (
+    isRecord(value) &&
+    value.type === 'message' &&
+    value.role === 'assistant' &&
+    typeof value.content === 'string'
+  );
+}
+
+function requireReasoningItem(value: unknown): {
+  type: 'reasoning';
+  summary: ReadonlyArray<unknown>;
+} {
+  if (!isReasoningItem(value)) {
+    throw new Error('Expected thinking item to map to reasoning');
+  }
+  return value;
+}
+
+function requireAssistantMessageItem(value: unknown): {
+  type: 'message';
+  role: 'assistant';
+  content: string;
+} {
+  if (!isAssistantMessageItem(value)) {
+    throw new Error('Expected assistant item to be message');
+  }
+  return value;
+}
+
+function requireSummaryTextItem(value: unknown): { type: 'summary_text'; text: string } {
+  if (!isRecord(value) || value.type !== 'summary_text' || typeof value.text !== 'string') {
+    throw new Error('Expected reasoning summary item to be summary_text');
+  }
+  return value as { type: 'summary_text'; text: string };
+}
+
 async function main() {
   const context: ChatMessage[] = [
     {
@@ -63,24 +108,15 @@ async function main() {
     `Unexpected input item types: ${types.join(',')}`,
   );
 
-  const reasoningItem = input[1];
-  assert(isRecord(reasoningItem), 'Expected reasoning item to be an object');
-  assert(reasoningItem.type === 'reasoning', 'Expected thinking item to map to reasoning');
-  assert(Array.isArray(reasoningItem.summary), 'Expected reasoning summary to be an array');
+  const reasoningItem = requireReasoningItem(input[1]);
   assert(reasoningItem.summary.length === 1, 'Expected one reasoning summary item');
-  const summary0 = reasoningItem.summary[0];
-  assert(isRecord(summary0), 'Expected reasoning summary item to be an object');
-  assert(summary0.type === 'summary_text', 'Expected reasoning summary type to be summary_text');
+  const summary0 = requireSummaryTextItem(reasoningItem.summary[0]);
   assert(
     summary0.text === 'I should use a tool.',
     'Expected reasoning text to match thinking content',
   );
 
-  const assistantMsg = input[2];
-  assert(isRecord(assistantMsg), 'Expected assistant message to be an object');
-  assert(assistantMsg.type === 'message', 'Expected assistant item to be message');
-  assert(assistantMsg.role === 'assistant', 'Expected assistant message role to be assistant');
-  assert(typeof assistantMsg.content === 'string', 'Expected assistant content to be string');
+  const assistantMsg = requireAssistantMessageItem(input[2]);
   assert(
     assistantMsg.content === 'Calling tool now.',
     'Expected assistant content to stay as saying',

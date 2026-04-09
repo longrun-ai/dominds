@@ -7,6 +7,31 @@ import type { Reminder } from '../../main/tool';
 import { shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
 
+function requireMetaRecord(meta: Reminder['meta']): Record<string, unknown> {
+  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
+  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
+  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  return meta as Record<string, unknown>;
+}
+
+function requireNumber(value: unknown, label: string): number {
+  assert.equal(typeof value, 'number', `Expected ${label} to be a number`);
+  if (typeof value !== 'number') {
+    throw new Error(`Expected ${label} to be a number`);
+  }
+  return value;
+}
+
+function requireObjectRecord(value: unknown, label: string): Record<string, unknown> {
+  assert.equal(typeof value, 'object', `Expected ${label} to exist`);
+  assert.notEqual(value, null, `Expected ${label} to be non-null`);
+  assert.equal(Array.isArray(value), false, `Expected ${label} to be a record`);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be a record`);
+  }
+  return value as Record<string, unknown>;
+}
+
 function createDialog(): RootDialog {
   return new RootDialog(
     {} as unknown as DialogStore,
@@ -18,16 +43,10 @@ function createDialog(): RootDialog {
 
 function requireDaemonPid(reminder: Reminder | undefined): number {
   assert.ok(reminder, 'Expected daemon reminder to be created');
-  const meta = reminder.meta;
-  assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
-  assert.notEqual(meta, null, 'Expected daemon reminder meta to be non-null');
-  assert.equal(Array.isArray(meta), false, 'Expected daemon reminder meta to be a record');
+  const meta = requireMetaRecord(reminder.meta);
   assert.equal(meta['kind'], 'daemon', 'Expected daemon reminder meta.kind to be daemon');
-  const pid = meta['pid'];
-  assert.equal(typeof pid, 'number', 'Expected daemon reminder meta.pid to be a number');
-  const deleteMeta = meta['delete'];
-  assert.equal(typeof deleteMeta, 'object', 'Expected daemon reminder meta.delete to exist');
-  assert.notEqual(deleteMeta, null, 'Expected daemon reminder meta.delete to be non-null');
+  const pid = requireNumber(meta['pid'], 'daemon reminder meta.pid');
+  const deleteMeta = requireObjectRecord(meta['delete'], 'daemon reminder meta.delete');
   assert.equal(
     deleteMeta['altInstruction'],
     `stop_daemon({ "pid": ${String(pid)} })`,
@@ -55,6 +74,9 @@ async function main(): Promise<void> {
 
     try {
       const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder!);
+      if (!('content' in rendered) || typeof rendered.content !== 'string') {
+        throw new Error('Expected daemon reminder render output to carry string content');
+      }
       assert.equal(rendered.type, 'environment_msg');
       assert.equal(rendered.role, 'user');
       assert.match(rendered.content, /运行中后台进程状态 \[/);

@@ -133,12 +133,14 @@ async function main(): Promise<void> {
 
     const appFileAbs = path.join(tmpRoot, '.minds', 'app.yaml');
     const appState = await readFileState(appFileAbs);
-    const overwriteAppResult = await teamMgmtOverwriteEntireFileTool.call(dlg, alice, {
-      path: 'app.yaml',
-      known_old_total_lines: appState.lines,
-      known_old_total_bytes: appState.bytes,
-      content: validAppYaml,
-    });
+    const overwriteAppResult = (
+      await teamMgmtOverwriteEntireFileTool.call(dlg, alice, {
+        path: 'app.yaml',
+        known_old_total_lines: appState.lines,
+        known_old_total_bytes: appState.bytes,
+        content: validAppYaml,
+      })
+    ).content;
     assert.ok(overwriteAppResult.includes('status: ok'));
     assert.ok(overwriteAppResult.includes('mode: overwrite_entire_file'));
     assert.deepEqual(
@@ -153,12 +155,14 @@ async function main(): Promise<void> {
 
     const teamFileAbs = path.join(tmpRoot, '.minds', 'team.yaml');
     const teamState = await readFileState(teamFileAbs);
-    const overwriteTeamResult = await teamMgmtOverwriteEntireFileTool.call(dlg, alice, {
-      path: 'team.yaml',
-      known_old_total_lines: teamState.lines,
-      known_old_total_bytes: teamState.bytes,
-      content: validTeamYaml,
-    });
+    const overwriteTeamResult = (
+      await teamMgmtOverwriteEntireFileTool.call(dlg, alice, {
+        path: 'team.yaml',
+        known_old_total_lines: teamState.lines,
+        known_old_total_bytes: teamState.bytes,
+        content: validTeamYaml,
+      })
+    ).content;
     assert.ok(overwriteTeamResult.includes('status: ok'));
     assert.ok(overwriteTeamResult.includes('mode: overwrite_entire_file'));
     assert.deepEqual(

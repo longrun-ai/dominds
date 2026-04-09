@@ -68,10 +68,12 @@ async function main(): Promise<void> {
     toolsets: ['ws_read'],
   });
 
-  const output = await manTool.call({} as never, caller, {
-    toolsetId: 'ws_read',
-    topic: 'all',
-  });
+  const output = (
+    await manTool.call({} as never, caller, {
+      toolsetId: 'ws_read',
+      topic: 'all',
+    })
+  ).content;
 
   assert.ok(output.includes('**Toolset manual: ws_read**'));
   assert.ok(output.includes('### Overview'));

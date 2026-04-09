@@ -17,11 +17,13 @@ async function main(): Promise<void> {
   });
   const dlg = {} as unknown as Dialog;
 
-  const output = await shellCmdTool.call(dlg, caller, {
-    command:
-      "node -e \"let data = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (chunk) => { data += chunk; }); process.stdin.on('end', () => { console.log('stdin-ended'); console.log(data === '' ? 'stdin-empty' : data); }); process.stdin.resume();\"",
-    timeoutSeconds: 5,
-  });
+  const output = (
+    await shellCmdTool.call(dlg, caller, {
+      command:
+        "node -e \"let data = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', (chunk) => { data += chunk; }); process.stdin.on('end', () => { console.log('stdin-ended'); console.log(data === '' ? 'stdin-empty' : data); }); process.stdin.resume();\"",
+      timeoutSeconds: 5,
+    })
+  ).content;
 
   assert.match(output, /Command completed \(exit code: 0\)/);
   assert.match(output, /stdin-ended/);

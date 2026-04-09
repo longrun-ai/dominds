@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { EndOfStream } from '@longrun-ai/kernel/evt';
-import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
+import type { DiligenceBudgetEvent, TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import {
   clearInstalledGlobalDialogEventBroadcaster,
   installRecordingGlobalDialogEventBroadcaster,
@@ -99,14 +99,19 @@ async function main(): Promise<void> {
 
     const ch = dialogEventRegistry.createSubChan(dlgId);
 
-    await driveDialogStream(dlg, {
-      content: 'hello',
-      msgId: 'm-1',
-      grammar: 'markdown',
-      userLanguageCode: 'en',
-    });
+    await driveDialogStream(
+      dlg,
+      {
+        content: 'hello',
+        msgId: 'm-1',
+        grammar: 'markdown',
+        userLanguageCode: 'en',
+        origin: 'user',
+      },
+      true,
+    );
 
-    const diligenceEvents: TypedDialogEvent[] = [];
+    const diligenceEvents: DiligenceBudgetEvent[] = [];
     const deadlineAt = Date.now() + 2500;
     while (Date.now() < deadlineAt) {
       const ev = await readNextEventWithTimeout(ch, 50);

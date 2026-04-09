@@ -6,6 +6,8 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -42,14 +44,12 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      {
-        content: 'Please ask the human to confirm the deployment window.',
-        msgId: 'q4h-runtime-bootstrap-user-msg',
-        grammar: 'markdown',
-        origin: 'user',
-      },
+      makeUserPrompt(
+        'Please ask the human to confirm the deployment window.',
+        'q4h-runtime-bootstrap-user-msg',
+      ),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
@@ -77,8 +77,9 @@ async function main(): Promise<void> {
       undefined,
       'askHuman should not be downgraded into a Q4H failure when runtime bootstrap installed broadcaster',
     );
-    const broadcasterFailure = courseEvents.find(
-      (event) =>
+    const broadcastEvents = recorder.snapshot();
+    const broadcasterFailure = broadcastEvents.find(
+      (event): event is Extract<TypedDialogEvent, { type: 'stream_error_evt' }> =>
         event.type === 'stream_error_evt' &&
         event.error.includes('Global dialog event broadcaster missing'),
     );
@@ -87,8 +88,6 @@ async function main(): Promise<void> {
       undefined,
       'runtime bootstrap should prevent broadcaster-missing stream errors',
     );
-
-    const broadcastEvents = recorder.snapshot();
     const q4hAskedEvent = broadcastEvents.find(
       (event): event is Extract<TypedDialogEvent, { type: 'new_q4h_asked' }> =>
         event.type === 'new_q4h_asked' && event.dialog.selfId === root.id.selfId,

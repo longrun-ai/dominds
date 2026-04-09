@@ -3,11 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import type { ResponseInputItem } from 'openai/resources/responses/responses';
+import type { Dialog } from '../../main/dialog';
 import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
 import { buildAnthropicRequestMessagesWrapper } from '../../main/llm/gen/anthropic';
 import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
 import { buildOpenAiCompatibleRequestMessagesWrapper } from '../../main/llm/gen/openai-compatible';
 import { resolveProviderToolResultMaxChars } from '../../main/llm/gen/tool-output-limit';
+import { Team } from '../../main/team';
 import { ripgrepSnippetsTool } from '../../main/tools/ripgrep';
 
 function assert(condition: boolean, message: string): void {
@@ -18,13 +20,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isOpenAiFunctionCallOutputItem(
+  value: ResponseInputItem | undefined,
+): value is ResponseInputItem & { type: 'function_call_output'; output: string } {
+  return (
+    isRecord(value) && value.type === 'function_call_output' && typeof value.output === 'string'
+  );
+}
+
+function isAnthropicToolResultBlock(
+  value: unknown,
+): value is { type: 'tool_result'; content: string } {
+  return isRecord(value) && value.type === 'tool_result' && typeof value.content === 'string';
+}
+
+function requireOpenAiToolOutputItem(
+  value: ResponseInputItem | undefined,
+): ResponseInputItem & { type: 'function_call_output'; output: string } {
+  if (value === undefined || !isOpenAiFunctionCallOutputItem(value)) {
+    throw new Error('Expected function_call_output item');
+  }
+  return value;
+}
+
+function requireToolMessageContent(value: ChatCompletionMessageParam | undefined): string {
+  if (
+    value === undefined ||
+    !isRecord(value) ||
+    value.role !== 'tool' ||
+    typeof value.content !== 'string'
+  ) {
+    throw new Error('Expected tool message');
+  }
+  return value.content;
+}
+
+function requireAnthropicUserToolTurn(
+  value: Awaited<ReturnType<typeof buildAnthropicRequestMessagesWrapper>>[number] | undefined,
+): { role: 'user'; content: ReadonlyArray<unknown> } {
+  if (value === undefined || value.role !== 'user' || !Array.isArray(value.content)) {
+    throw new Error('Expected anthropic user tool_result turn');
+  }
+  return value as { role: 'user'; content: ReadonlyArray<unknown> };
+}
+
 function getOpenAiToolOutput(input: ResponseInputItem[]): string {
   const item = input.find(
-    (candidate) => isRecord(candidate) && candidate.type === 'function_call_output',
+    (
+      candidate,
+    ): candidate is ResponseInputItem & { type: 'function_call_output'; output: string } =>
+      isOpenAiFunctionCallOutputItem(candidate),
   );
-  assert(item !== undefined, 'Expected function_call_output item');
-  assert(typeof item.output === 'string', 'Expected string tool output');
-  return item.output;
+  return requireOpenAiToolOutputItem(item).output;
 }
 
 function getOpenAiCompatibleToolOutput(messages: ChatCompletionMessageParam[]): string {
@@ -32,20 +79,22 @@ function getOpenAiCompatibleToolOutput(messages: ChatCompletionMessageParam[]): 
     (message) =>
       isRecord(message) && message.role === 'tool' && typeof message.content === 'string',
   );
-  assert(toolMessage !== undefined, 'Expected tool message');
-  return toolMessage.content as string;
+  return requireToolMessageContent(toolMessage);
 }
 
 function getAnthropicToolOutput(
   messages: Awaited<ReturnType<typeof buildAnthropicRequestMessagesWrapper>>,
 ): string {
-  const userTurn = [...messages].reverse().find((message) => message.role === 'user');
-  assert(userTurn !== undefined, 'Expected anthropic user tool_result turn');
+  const userTurn = requireAnthropicUserToolTurn(
+    [...messages].reverse().find((message) => message.role === 'user'),
+  );
   const content = userTurn.content;
-  assert(Array.isArray(content), 'Expected anthropic content blocks array');
-  const toolResult = content.find((block) => block.type === 'tool_result');
-  assert(toolResult !== undefined, 'Expected tool_result block');
-  assert(typeof toolResult.content === 'string', 'Expected string anthropic tool result');
+  const toolResult = content.find((block): block is { type: 'tool_result'; content: string } =>
+    isAnthropicToolResultBlock(block),
+  );
+  if (toolResult === undefined) {
+    throw new Error('Expected tool_result block');
+  }
   return toolResult.content;
 }
 
@@ -57,11 +106,13 @@ async function verifyRipgrepYamlTruncationMetadata(): Promise<void> {
     const prev = process.cwd();
     process.chdir(tmp);
     try {
-      const output = await ripgrepSnippetsTool.call(
-        undefined,
-        { read_dirs: [], no_read_dirs: [] },
-        { pattern: 'needle', path: '.', max_results: 50 },
-      );
+      const output = (
+        await ripgrepSnippetsTool.call(
+          {} as Dialog,
+          new Team.Member({ id: 'reader', name: 'Reader', read_dirs: ['**/*'] }),
+          { pattern: 'needle', path: '.', max_results: 50 },
+        )
+      ).content;
       assert(output.includes('truncation:'), 'Expected ripgrep YAML truncation section');
       assert(output.includes('match_original_chars:'), 'Expected per-result original length');
       assert(output.includes('reasons: ['), 'Expected truncation reasons array');

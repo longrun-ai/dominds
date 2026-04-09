@@ -10,6 +10,8 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createRootDialog,
+  makeDriveOptions,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -133,13 +135,9 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      {
-        content: trigger,
-        msgId: 'kernel-driver-subdialog-supply-before-suspension',
-        grammar: 'markdown',
-      },
+      makeUserPrompt(trigger, 'kernel-driver-subdialog-supply-before-suspension'),
       true,
-      { suppressDiligencePush: true },
+      makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await new Promise((resolve) => setTimeout(resolve, 900));

@@ -55,7 +55,19 @@ async function main() {
     streamError: async (_detail: string) => {},
   };
 
-  await gen.genToReceiver(provider, agent, systemPrompt, funcTools, context, receiver, 1);
+  await gen.genToReceiver(
+    provider,
+    agent,
+    systemPrompt,
+    funcTools,
+    {
+      dialogSelfId: 'tests/provider/openai-streaming',
+      dialogRootId: 'tests/provider/openai-streaming',
+    },
+    context,
+    receiver,
+    1,
+  );
 
   const end = Date.now();
 

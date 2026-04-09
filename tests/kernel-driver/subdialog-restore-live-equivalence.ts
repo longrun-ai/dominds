@@ -13,6 +13,7 @@ import {
   createRootDialog,
   lastAssistantSaying,
   listTellaskResultContents,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'kernel-driver-restore-live-equivalence', grammar: 'markdown' },
+      makeUserPrompt(trigger, 'kernel-driver-restore-live-equivalence'),
       true,
     );
     await waitFor(
