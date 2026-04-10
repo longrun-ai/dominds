@@ -50,6 +50,18 @@ function makeFailure(code: string, message: string): LlmFailureSummary {
   };
 }
 
+function makeGatewayHtml502Error(): { status: number; message: string } {
+  return {
+    status: 502,
+    message:
+      '502 <!DOCTYPE html>\n' +
+      '<html lang="en-US">\n' +
+      '<head><title>18181899.xyz | 502: Bad gateway</title></head>\n' +
+      '<body>Cloudflare Bad gateway</body>\n' +
+      '</html>',
+  };
+}
+
 function buildFakeDialog(language: LanguageCode): Dialog {
   const dialogId = new DialogID('quirk-retry-test');
   const fakeDialog = {
@@ -178,6 +190,23 @@ async function verifyQuirkSessionStateMachine(): Promise<void> {
     'single_retry',
     'Expected non-empty-response failure to reset the xcode.best empty-response streak',
   );
+
+  const gatewayHtmlHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: {
+      kind: 'fatal',
+      status: 502,
+      message: makeGatewayHtml502Error().message,
+    },
+    error: makeGatewayHtml502Error(),
+  });
+  assert.equal(gatewayHtmlHandling.kind, 'retry_strategy');
+  if (gatewayHtmlHandling.kind !== 'retry_strategy') {
+    throw new Error(`Expected retry_strategy, got ${gatewayHtmlHandling.kind}`);
+  }
+  assert.equal(gatewayHtmlHandling.retryStrategy, 'conservative');
+  assert.match(gatewayHtmlHandling.message ?? '', /html 502 bad gateway page/iu);
 }
 
 async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
@@ -474,6 +503,48 @@ async function verifyRuntimeStillRetriesPlainObjectTransportFailures(): Promise<
   assert.equal(attempts, 2);
 }
 
+async function verifyXcodeBestGatewayHtml502UsesConservativeRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    maxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeGatewayHtml502Error();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.titleTextI18n.en, 'Retrying');
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+  assert.match(waiting?.error ?? '', /bad gateway/iu);
+  assert.equal(resolved?.display.titleTextI18n.en, 'Retry recovered');
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+}
+
 async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
   await verifySingleRetryBypassesDriverRetryLimit();
@@ -483,6 +554,7 @@ async function main(): Promise<void> {
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
   await verifyRuntimeDoesNotInferProviderRateLimitWithoutWrapperClassifier();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();
+  await verifyXcodeBestGatewayHtml502UsesConservativeRetry();
   console.log('provider llm-quirks-retry-handling: PASS');
 }
 
