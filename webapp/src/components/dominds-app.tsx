@@ -4518,6 +4518,10 @@ export class DomindsApp extends HTMLElement {
           --dominds-sidebar-bg,
           var(--dominds-bg, var(--color-bg-secondary, #ffffff))
         );
+        max-height: 20vh;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
       }
 
       .dialog-viewport-panel-header {
@@ -4550,6 +4554,7 @@ export class DomindsApp extends HTMLElement {
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         margin-top: 1px;
+        overflow-wrap: anywhere;
       }
 
       .dialog-viewport-panel-error {
@@ -4558,6 +4563,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
         white-space: pre-wrap;
         word-break: break-word;
+        overflow-wrap: anywhere;
       }
 
       .dialog-viewport-panel-actions {
