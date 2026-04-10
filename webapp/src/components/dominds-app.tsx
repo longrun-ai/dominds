@@ -8886,6 +8886,10 @@ export class DomindsApp extends HTMLElement {
     );
   }
 
+  private isViewingLatestCourse(): boolean {
+    return this.currentDialog !== null && this.toolbarCurrentCourse === this.toolbarTotalCourses;
+  }
+
   private formatInterruptionReason(reason: DialogInterruptionReason): string {
     const t = getUiStrings(this.uiLanguage);
     switch (reason.kind) {
@@ -8928,24 +8932,28 @@ export class DomindsApp extends HTMLElement {
     const wrapWasHidden = wrap.classList.contains('hidden');
     const panelWasHidden = statusPanel.classList.contains('hidden');
     const t = getUiStrings(this.uiLanguage);
-    const displayState = this.getCurrentDialogDisplayState();
+    const viewingLatestCourse = this.isViewingLatestCourse();
+    const displayState = viewingLatestCourse ? this.getCurrentDialogDisplayState() : null;
+    const viewportPanelState: DialogViewportPanelState = viewingLatestCourse
+      ? this.viewportPanelState
+      : { kind: 'hidden' };
     const stoppedReason =
       this.currentDialog !== null && displayState !== null && displayState.kind === 'stopped'
         ? displayState.reason
-        : this.viewportPanelState.kind === 'stopped'
-          ? this.viewportPanelState.reason
+        : viewportPanelState.kind === 'stopped'
+          ? viewportPanelState.reason
           : null;
     const continueEnabled =
       this.currentDialog !== null && displayState !== null && displayState.kind === 'stopped'
         ? displayState.continueEnabled
-        : this.viewportPanelState.kind === 'stopped'
-          ? this.viewportPanelState.continueEnabled
+        : viewportPanelState.kind === 'stopped'
+          ? viewportPanelState.continueEnabled
           : false;
     const retryingState =
       this.currentDialog !== null &&
-      this.viewportPanelState.kind === 'retrying' &&
+      viewportPanelState.kind === 'retrying' &&
       (displayState === null || (displayState.kind !== 'stopped' && displayState.kind !== 'dead'))
-        ? this.viewportPanelState
+        ? viewportPanelState
         : null;
 
     const panelVisible = retryingState !== null || stoppedReason !== null;
