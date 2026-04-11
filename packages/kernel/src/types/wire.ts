@@ -17,7 +17,7 @@ export type {
   ProblemsSnapshotMessage,
 } from './problems';
 
-export type DialogStatusKind = 'running' | 'completed' | 'archived';
+export type DialogStatusKind = 'running' | 'completed' | 'archived' | 'quarantining';
 
 // Dialog Identification Structure
 export interface DialogIdent {
@@ -25,7 +25,7 @@ export interface DialogIdent {
   rootId: string;
   // Persistence status directory of this dialog tree.
   // Callers should always provide it for read/navigation operations.
-  status?: DialogStatusKind;
+  status?: Exclude<DialogStatusKind, 'quarantining'>;
 }
 
 export interface AssignmentFromSup {
@@ -43,7 +43,7 @@ export interface AssignmentFromSup {
 export function createDialogIdent(
   selfId: string,
   rootId?: string,
-  status?: DialogStatusKind,
+  status?: Exclude<DialogStatusKind, 'quarantining'>,
 ): DialogIdent {
   return status
     ? {
@@ -79,6 +79,7 @@ export type WebSocketMessage =
   | DialogsMovedMessage
   | DialogsDeletedMessage
   | DialogsCreatedMessage
+  | DialogsQuarantinedMessage
   | RunControlRefreshMessage
   | RunControlCountsMessage
   | InterruptDialogRequest
@@ -319,8 +320,8 @@ export type DialogsMovedScope =
 export interface DialogsMovedMessage {
   type: 'dialogs_moved';
   scope: DialogsMovedScope;
-  fromStatus: DialogStatusKind;
-  toStatus: DialogStatusKind;
+  fromStatus: Exclude<DialogStatusKind, 'quarantining'>;
+  toStatus: Exclude<DialogStatusKind, 'quarantining'>;
   movedRootIds: string[];
   timestamp: string;
 }
@@ -332,7 +333,7 @@ export type DialogsDeletedScope =
 export interface DialogsDeletedMessage {
   type: 'dialogs_deleted';
   scope: DialogsDeletedScope;
-  fromStatus: DialogStatusKind;
+  fromStatus: Exclude<DialogStatusKind, 'quarantining'>;
   deletedRootIds: string[];
   timestamp: string;
 }
@@ -344,8 +345,18 @@ export type DialogsCreatedScope =
 export interface DialogsCreatedMessage {
   type: 'dialogs_created';
   scope: DialogsCreatedScope;
-  status: DialogStatusKind;
+  status: Exclude<DialogStatusKind, 'quarantining'>;
   createdRootIds: string[];
+  timestamp: string;
+}
+
+export interface DialogsQuarantinedMessage {
+  type: 'dialogs_quarantined';
+  status: 'quarantining';
+  fromStatus: Exclude<DialogStatusKind, 'quarantining'>;
+  rootId: string;
+  dialogId: string;
+  reason: string;
   timestamp: string;
 }
 

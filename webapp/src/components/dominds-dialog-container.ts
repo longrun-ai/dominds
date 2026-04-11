@@ -38,7 +38,7 @@ import mannedToolIcon from '../assets/manned-tool.svg';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
-import { formatRetryStoppedReason } from '../utils/localized-text';
+import { formatRetryStoppedReason, formatSystemStopReason } from '../utils/localized-text';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -4621,7 +4621,7 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'llm_retry_stopped':
         return formatRetryStoppedReason(reason, this.uiLanguage);
       case 'system_stop':
-        return reason.detail;
+        return formatSystemStopReason(reason, this.uiLanguage);
       default: {
         const _exhaustive: never = reason;
         return String(_exhaustive);

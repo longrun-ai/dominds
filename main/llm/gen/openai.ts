@@ -29,20 +29,22 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import { normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
-import type {
-  LlmBatchOutput,
-  LlmBatchResult,
-  LlmFailureDisposition,
-  LlmGenerator,
-  LlmRequestContext,
-  LlmStreamReceiver,
-  LlmStreamResult,
-  OpenAiResponsesLlmWebSearchAction,
-  OpenAiResponsesLlmWebSearchCall,
-  OpenAiResponsesNativeToolCall,
-  OpenAiResponsesNativeToolItemType,
-  OpenAiResponsesNonCustomNativeToolItemType,
+import {
+  LlmStreamErrorEmittedError,
+  type LlmBatchOutput,
+  type LlmBatchResult,
+  type LlmFailureDisposition,
+  type LlmGenerator,
+  type LlmRequestContext,
+  type LlmStreamReceiver,
+  type LlmStreamResult,
+  type OpenAiResponsesLlmWebSearchAction,
+  type OpenAiResponsesLlmWebSearchCall,
+  type OpenAiResponsesNativeToolCall,
+  type OpenAiResponsesNativeToolItemType,
+  type OpenAiResponsesNonCustomNativeToolItemType,
 } from '../gen';
+import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
@@ -625,7 +627,13 @@ async function throwOpenAiMalformedStreamEvent(
   if (receiver.streamError) {
     await receiver.streamError(message);
   }
-  throw new Error(message);
+  throw new LlmStreamErrorEmittedError({
+    detail: message,
+    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+      detail: message,
+      kind: 'malformed_stream',
+    }),
+  });
 }
 
 type OpenAiItemNativeToolState = {
@@ -2081,7 +2089,13 @@ export class OpenAiGen implements LlmGenerator {
         if (receiver.streamError) {
           await receiver.streamError(detail);
         }
-        throw new Error(detail);
+        throw new LlmStreamErrorEmittedError({
+          detail,
+          i18nStopReason: buildHumanSystemStopReasonTextI18n({
+            detail,
+            kind: 'incomplete_tool_call_stream',
+          }),
+        });
       }
     } catch (error: unknown) {
       const annotatedError = maybeAnnotateOpenAiQuirkFailure(providerConfig, error);

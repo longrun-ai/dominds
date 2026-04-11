@@ -1,4 +1,5 @@
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type { DialogDisplayTextI18n } from '@longrun-ai/kernel/types/display-state';
 import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { Team } from '../team';
 import { FuncTool } from '../tool';
@@ -7,6 +8,18 @@ import { ChatMessage, ProviderConfig } from './client';
 export interface LlmStreamResult {
   usage: LlmUsageStats;
   llmGenModel?: string;
+}
+
+export class LlmStreamErrorEmittedError extends Error {
+  public readonly detail: string;
+  public readonly i18nStopReason: DialogDisplayTextI18n;
+
+  constructor(args: { detail: string; message?: string; i18nStopReason: DialogDisplayTextI18n }) {
+    super(args.message ?? args.detail);
+    this.name = 'LlmStreamErrorEmittedError';
+    this.detail = args.detail;
+    this.i18nStopReason = args.i18nStopReason;
+  }
 }
 
 export type LlmBatchOutput =

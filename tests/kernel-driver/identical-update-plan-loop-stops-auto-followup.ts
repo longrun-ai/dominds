@@ -117,6 +117,10 @@ async function main(): Promise<void> {
       /update_plan|自激发循环|self-trigger loop/i,
       'guard stop detail should explain the repeated update_plan loop',
     );
+    assert.deepEqual(latest.displayState.reason.i18nStopReason, {
+      zh: '模型连续重复相同的 update_plan 结果，本次生成已停止。',
+      en: 'The model repeated the same update_plan result multiple times. This generation was stopped.',
+    });
 
     const courseEvents = await DialogPersistence.loadCourseEvents(
       dlg.id,

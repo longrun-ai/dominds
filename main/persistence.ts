@@ -86,6 +86,7 @@ import {
   toDialogCourseNumber,
   toRootGenerationAnchor,
 } from '@longrun-ai/kernel/types/storage';
+import type { DialogsQuarantinedMessage, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import * as fs from 'fs';
 import { randomUUID } from 'node:crypto';
@@ -97,12 +98,97 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import { log } from './log';
+import {
+  DomindsPersistenceFileError,
+  findDomindsPersistenceFileError,
+  type DomindsPersistenceFileFormat,
+  type DomindsPersistenceFileSource,
+} from './persistence-errors';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import { isStandaloneRuntimeGuidePromptContent } from './runtime/reply-prompt-copy';
 import { materializeReminder, Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
 
 type TellaskBusinessCallName = TellaskResultRecord['callName'];
+
+let dialogsQuarantinedBroadcaster: ((msg: DialogsQuarantinedMessage) => void) | null = null;
+let prepareDialogQuarantineHook:
+  | ((args: {
+      dialogId: DialogID;
+      rootDialogId: DialogID;
+      status: DialogStatusKind;
+      reason: string;
+      error: Error;
+    }) => Promise<void> | void)
+  | null = null;
+let finalizeDialogQuarantineHook:
+  | ((args: {
+      dialogId: DialogID;
+      rootDialogId: DialogID;
+      status: DialogStatusKind;
+      reason: string;
+      error: Error;
+      quarantined: boolean;
+    }) => Promise<void> | void)
+  | null = null;
+const quarantiningRootDialogs = new Set<string>();
+const PERSISTABLE_DIALOG_STATUSES = ['running', 'completed', 'archived'] as const;
+type PersistableDialogStatus = (typeof PERSISTABLE_DIALOG_STATUSES)[number];
+const RUN_STATUS_DIR = 'run';
+const DONE_STATUS_DIR = 'done';
+const ARCHIVE_STATUS_DIR = 'archive';
+
+function assertPersistableDialogStatus(
+  status: DialogStatusKind,
+  context: string,
+): PersistableDialogStatus {
+  if (status === 'quarantining') {
+    throw new Error(`${context} does not support status 'quarantining'`);
+  }
+  return status;
+}
+
+function getPersistableStatusDirName(status: DialogStatusKind, context: string): string {
+  const persistableStatus = assertPersistableDialogStatus(status, context);
+  if (persistableStatus === 'running') return RUN_STATUS_DIR;
+  if (persistableStatus === 'completed') return DONE_STATUS_DIR;
+  return ARCHIVE_STATUS_DIR;
+}
+
+export function setDialogsQuarantinedBroadcaster(
+  fn: ((msg: DialogsQuarantinedMessage) => void) | null,
+): void {
+  dialogsQuarantinedBroadcaster = fn;
+}
+
+export function setPrepareDialogQuarantineHook(
+  fn:
+    | ((args: {
+        dialogId: DialogID;
+        rootDialogId: DialogID;
+        status: DialogStatusKind;
+        reason: string;
+        error: Error;
+      }) => Promise<void> | void)
+    | null,
+): void {
+  prepareDialogQuarantineHook = fn;
+}
+
+export function setFinalizeDialogQuarantineHook(
+  fn:
+    | ((args: {
+        dialogId: DialogID;
+        rootDialogId: DialogID;
+        status: DialogStatusKind;
+        reason: string;
+        error: Error;
+        quarantined: boolean;
+      }) => Promise<void> | void)
+    | null,
+): void {
+  finalizeDialogQuarantineHook = fn;
+}
 
 function isTellaskBusinessCallName(value: string): value is TellaskBusinessCallName {
   return (
@@ -144,6 +230,27 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
     return true;
   }
   return false;
+}
+
+function isYamlUnexpectedEofLikeError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('unexpected eof') ||
+    message.includes('unexpected end') ||
+    message.includes('end of the stream') ||
+    message.includes('unexpected end of document')
+  );
+}
+
+function isJsonUnexpectedEofLikeError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes('unterminated string in json') ||
+    message.includes('unexpected end of json input') ||
+    message.includes('unexpected eof')
+  );
 }
 
 function buildTellaskResultRoute(
@@ -226,6 +333,106 @@ function getErrorCode(error: unknown): string | undefined {
   return typeof maybeCode === 'string' ? maybeCode : undefined;
 }
 
+function isGenericUnexpectedEofLikeError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes('unexpected eof') || message.includes('unexpected end');
+}
+
+function isPersistenceFileUnexpectedEofLikeError(
+  error: unknown,
+  format: DomindsPersistenceFileFormat,
+): boolean {
+  if (format === 'yaml') {
+    return isYamlUnexpectedEofLikeError(error) || isGenericUnexpectedEofLikeError(error);
+  }
+  if (format === 'json' || format === 'jsonl') {
+    return isJsonUnexpectedEofLikeError(error) || isGenericUnexpectedEofLikeError(error);
+  }
+  return isGenericUnexpectedEofLikeError(error);
+}
+
+function buildInvalidPersistenceFileError(args: {
+  source: DomindsPersistenceFileSource;
+  format: DomindsPersistenceFileFormat;
+  filePath: string;
+  lineNumber?: number;
+  cause?: unknown;
+}): DomindsPersistenceFileError {
+  return new DomindsPersistenceFileError({
+    message: `Invalid ${path.basename(args.filePath)} in ${args.filePath}`,
+    source: args.source,
+    operation: 'parse',
+    format: args.format,
+    filePath: args.filePath,
+    eofLike:
+      args.cause === undefined
+        ? false
+        : isPersistenceFileUnexpectedEofLikeError(args.cause, args.format),
+    ...(args.lineNumber !== undefined ? { lineNumber: args.lineNumber } : {}),
+    ...(args.cause !== undefined ? { cause: args.cause } : {}),
+  });
+}
+
+async function readPersistenceTextFile(args: {
+  filePath: string;
+  source: DomindsPersistenceFileSource;
+  format: DomindsPersistenceFileFormat;
+}): Promise<string> {
+  try {
+    return await fs.promises.readFile(args.filePath, 'utf-8');
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'ENOENT') {
+      throw error;
+    }
+    throw new DomindsPersistenceFileError({
+      message: `Failed to read ${path.basename(args.filePath)} in ${args.filePath}`,
+      source: args.source,
+      operation: 'read',
+      format: args.format,
+      filePath: args.filePath,
+      eofLike: isPersistenceFileUnexpectedEofLikeError(error, args.format),
+      cause: error,
+    });
+  }
+}
+
+function parsePersistenceYaml(args: {
+  content: string;
+  filePath: string;
+  source: DomindsPersistenceFileSource;
+}): unknown {
+  try {
+    return yaml.parse(args.content);
+  } catch (error: unknown) {
+    throw buildInvalidPersistenceFileError({
+      source: args.source,
+      format: 'yaml',
+      filePath: args.filePath,
+      cause: error,
+    });
+  }
+}
+
+function parsePersistenceJson(args: {
+  content: string;
+  filePath: string;
+  source: DomindsPersistenceFileSource;
+  lineNumber?: number;
+}): unknown {
+  try {
+    return JSON.parse(args.content);
+  } catch (error: unknown) {
+    throw buildInvalidPersistenceFileError({
+      source: args.source,
+      format: args.lineNumber === undefined ? 'json' : 'jsonl',
+      filePath: args.filePath,
+      cause: error,
+      ...(args.lineNumber !== undefined ? { lineNumber: args.lineNumber } : {}),
+    });
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -274,7 +481,11 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
     case 'system_stop': {
       const detail = value.detail;
       if (typeof detail !== 'string') return null;
-      return { kind: 'system_stop', detail };
+      const i18nStopReason = parseDisplayTextI18n(value.i18nStopReason);
+      if (i18nStopReason === null) return null;
+      return i18nStopReason
+        ? { kind: 'system_stop', detail, i18nStopReason }
+        : { kind: 'system_stop', detail };
     }
     case 'llm_retry_stopped': {
       const error = value.error;
@@ -1031,6 +1242,50 @@ function isSubdialogResponseRecord(value: unknown): value is SubdialogResponseSt
   return true;
 }
 
+function isReminderPriority(value: unknown): value is 'high' | 'medium' | 'low' {
+  return value === 'high' || value === 'medium' || value === 'low';
+}
+
+function isReminderScope(value: unknown): value is 'dialog' | 'personal' | 'agent_shared' {
+  return value === 'dialog' || value === 'personal' || value === 'agent_shared';
+}
+
+function isReminderStateFile(value: unknown): value is ReminderStateFile {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.reminders)) return false;
+  if (typeof value.updatedAt !== 'string') return false;
+  return value.reminders.every((entry) => {
+    if (!isRecord(entry)) return false;
+    if (typeof entry.id !== 'string') return false;
+    if (typeof entry.content !== 'string') return false;
+    if (entry.ownerName !== undefined && typeof entry.ownerName !== 'string') return false;
+    if (entry.echoback !== undefined && typeof entry.echoback !== 'boolean') return false;
+    if (entry.scope !== undefined && !isReminderScope(entry.scope)) return false;
+    if (typeof entry.createdAt !== 'string') return false;
+    if (!isReminderPriority(entry.priority)) return false;
+    return true;
+  });
+}
+
+function isHumanQuestion(value: unknown): value is HumanQuestion {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string') return false;
+  if (typeof value.tellaskContent !== 'string') return false;
+  if (typeof value.askedAt !== 'string') return false;
+  if (typeof value.callId !== 'string') return false;
+  if (!isRecord(value.callSiteRef)) return false;
+  if (typeof value.callSiteRef.course !== 'number') return false;
+  if (typeof value.callSiteRef.messageIndex !== 'number') return false;
+  return true;
+}
+
+function isQuestions4HumanFile(value: unknown): value is Questions4HumanFile {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.questions)) return false;
+  if (typeof value.updatedAt !== 'string') return false;
+  return value.questions.every(isHumanQuestion);
+}
+
 export interface DialogPersistenceState {
   metadata: DialogMetadataFile;
   currentCourse: number;
@@ -1285,7 +1540,6 @@ export class DiskFileDialogStore extends DialogStore {
       },
     };
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
-    await DialogPersistence.saveDialogMetadata(subdialogId, metadata);
 
     const rootAnchor = resolveRootGenerationAnchor(callerDialog);
     const parentCourse = callerDialog.activeGenCourseOrUndefined ?? callerDialog.currentCourse;
@@ -2316,21 +2570,21 @@ export class DiskFileDialogStore extends DialogStore {
    */
   public async loadQuestions4Human(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<HumanQuestion[]> {
     return await DialogPersistence.loadQuestions4HumanState(dialogId, status);
   }
 
   public async loadDialogMetadata(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<DialogMetadataFile | null> {
     return await DialogPersistence.loadDialogMetadata(dialogId, status);
   }
 
   public async loadPendingSubdialogs(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<PendingSubdialog[]> {
     const records = await DialogPersistence.loadPendingSubdialogs(rootDialogId, status);
     return records.map((record) => ({
@@ -2355,7 +2609,7 @@ export class DiskFileDialogStore extends DialogStore {
       agentId: string;
       sessionSlug?: string;
     }>,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     await DialogPersistence.saveSubdialogRegistry(rootDialogId, entries, status);
     await DialogPersistence.appendSubdialogRegistryReconciledRecord(
@@ -2373,7 +2627,7 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async loadSubdialogRegistry(
     rootDialog: RootDialog,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
     const shouldPruneDead = status === 'running';
@@ -2614,7 +2868,7 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     course?: number,
     totalCourses?: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
     options?: {
       showPrimingEventsInUi?: boolean;
     },
@@ -2676,7 +2930,7 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     course: number,
     event: PersistedDialogRecord,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
     options?: {
       showPrimingEventsInUi?: boolean;
     },
@@ -3506,14 +3760,14 @@ type LatestWriteBackEntry =
   | {
       kind: 'scheduled';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       latest: DialogLatestFile;
       timer: NodeJS.Timeout;
     }
   | {
       kind: 'flushing';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       latest: DialogLatestFile;
       dirty: boolean;
       inFlight: Promise<void>;
@@ -3525,14 +3779,14 @@ type Q4HWriteBackEntry =
   | {
       kind: 'scheduled';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       state: Q4HWriteBackState;
       timer: NodeJS.Timeout;
     }
   | {
       kind: 'flushing';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       state: Q4HWriteBackState;
       dirty: boolean;
       inFlight: Promise<void>;
@@ -3546,14 +3800,14 @@ type PendingSubdialogsWriteBackEntry =
   | {
       kind: 'scheduled';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       state: PendingSubdialogsWriteBackState;
       timer: NodeJS.Timeout;
     }
   | {
       kind: 'flushing';
       dialogId: DialogID;
-      status: 'running' | 'completed' | 'archived';
+      status: DialogStatusKind;
       state: PendingSubdialogsWriteBackState;
       dirty: boolean;
       inFlight: Promise<void>;
@@ -3596,6 +3850,24 @@ type DialogLatestMutation =
   | { kind: 'patch'; patch: DialogLatestPatch }
   | { kind: 'replace'; next: DialogLatestFile };
 
+type RootDialogWriteBackCancellationToken = Readonly<{
+  scopeKey: string;
+  generation: number;
+  rootDialogId: string;
+  status: DialogStatusKind;
+}>;
+
+class DialogWriteBackCanceledError extends Error {
+  constructor(token: RootDialogWriteBackCancellationToken, phase: string) {
+    super(`Dialog writeback canceled for ${token.rootDialogId} (${token.status}) during ${phase}`);
+    this.name = 'DialogWriteBackCanceledError';
+  }
+}
+
+function isDialogWriteBackCanceledError(error: unknown): error is DialogWriteBackCanceledError {
+  return error instanceof DialogWriteBackCanceledError;
+}
+
 /**
  * Utility class for managing dialog persistence
  */
@@ -3623,6 +3895,7 @@ export class DialogPersistence {
     new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly rootDialogWriteBackCancelGenerations: Map<string, number> = new Map();
 
   private static getLatestWriteBackMutex(key: string): AsyncFifoMutex {
     const existing = this.latestWriteBackMutexes.get(key);
@@ -3651,7 +3924,7 @@ export class DialogPersistence {
   private static getCourseAppendMutexKey(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): string {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
   }
@@ -3664,27 +3937,63 @@ export class DialogPersistence {
     return created;
   }
 
-  private static getLatestWriteBackKey(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
-  ): string {
+  private static getLatestWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
   }
 
-  private static getQ4HWriteBackKey(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
-  ): string {
+  private static getQ4HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|q4h`;
   }
 
   private static getPendingSubdialogsWriteBackKey(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): string {
     return `${this.getDialogsRootDir()}|${status}|${rootDialogId.valueOf()}|pending-subdialogs`;
+  }
+
+  private static getRootDialogWriteBackCancelScopeKey(
+    rootDialogId: DialogID,
+    status: DialogStatusKind,
+  ): string {
+    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.selfId}|writeback-cancel`;
+  }
+
+  private static createRootDialogWriteBackCancellationToken(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): RootDialogWriteBackCancellationToken {
+    const rootDialogId =
+      dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
+    const scopeKey = this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status);
+    return {
+      scopeKey,
+      generation: this.rootDialogWriteBackCancelGenerations.get(scopeKey) ?? 0,
+      rootDialogId: rootDialogId.selfId,
+      status,
+    };
+  }
+
+  private static assertRootDialogWriteBackNotCanceled(
+    token: RootDialogWriteBackCancellationToken,
+    phase: string,
+  ): void {
+    const currentGeneration = this.rootDialogWriteBackCancelGenerations.get(token.scopeKey) ?? 0;
+    if (currentGeneration !== token.generation) {
+      throw new DialogWriteBackCanceledError(token, phase);
+    }
+  }
+
+  private static cancelRootDialogWriteBacks(
+    rootDialogId: DialogID,
+    status: DialogStatusKind,
+  ): void {
+    const scopeKey = this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status);
+    const nextGeneration = (this.rootDialogWriteBackCancelGenerations.get(scopeKey) ?? 0) + 1;
+    this.rootDialogWriteBackCancelGenerations.set(scopeKey, nextGeneration);
+    this.clearWriteBackEntriesForRootDialog(rootDialogId, status);
   }
 
   private static clonePendingSubdialogRecords(
@@ -3724,7 +4033,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     reminders: readonly Reminder[],
     writeTarget: ReconciledRecordWriteTarget,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const record: RemindersReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -3744,7 +4053,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     questions: readonly HumanQuestion[],
     writeTarget: ReconciledRecordWriteTarget,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const record: Questions4HumanReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -3764,7 +4073,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     pendingSubdialogs: readonly PendingSubdialogStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const record: PendingSubdialogsReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -3784,7 +4093,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     entries: readonly SubdialogRegistryStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const record: SubdialogRegistryReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -3804,7 +4113,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     responses: readonly SubdialogResponseStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<void> {
     const record: SubdialogResponsesReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -3828,98 +4137,20 @@ export class DialogPersistence {
   }
 
   /**
-   * Save dialog state to JSON file for persistence (internal use only)
-   */
-  private static async saveDialogState(state: DialogPersistenceState): Promise<void> {
-    try {
-      const dialogPath = await this.ensureRootDialogDirectory(new DialogID(state.metadata.id));
-
-      // Save state as JSON file
-      const stateFile = path.join(dialogPath, 'state.json');
-      await fs.promises.writeFile(
-        stateFile,
-        JSON.stringify(
-          {
-            metadata: state.metadata,
-            currentCourse: state.currentCourse,
-            messages: state.messages,
-            reminders: state.reminders,
-            savedAt: formatUnifiedTimestamp(new Date()),
-          },
-          null,
-          2,
-        ),
-        'utf-8',
-      );
-    } catch (error) {
-      log.error(`Failed to save dialog state for ${state.metadata.id}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Load dialog state from JSON file
-   */
-  static async loadDialogState(dialogId: DialogID): Promise<DialogPersistenceState | null> {
-    try {
-      const dialogPath = this.getRootDialogPath(dialogId, 'running');
-      const stateFile = path.join(dialogPath, 'state.json');
-
-      // Check if state file exists
-      try {
-        await fs.promises.access(stateFile);
-      } catch {
-        log.warn(`No state file found for dialog ${dialogId.selfId}, returning null`);
-        return null;
-      }
-
-      const stateData = JSON.parse(await fs.promises.readFile(stateFile, 'utf-8'));
-
-      const currentCourse =
-        typeof (stateData as { currentCourse?: unknown }).currentCourse === 'number'
-          ? (stateData as { currentCourse: number }).currentCourse
-          : 1;
-
-      return {
-        metadata: stateData.metadata,
-        currentCourse,
-        messages: stateData.messages,
-        reminders: stateData.reminders || [],
-      };
-    } catch (error) {
-      log.error(`Failed to load dialog state for root ${dialogId.selfId}:`, error);
-      return null;
-    }
-  }
-
-  /**
    * Get the full path for a dialog directory
    */
-  static getRootDialogPath(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): string {
+  static getRootDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId !== dialogId.selfId) {
       throw new Error('Expected root dialog id');
     }
-    let statusDir: string;
-    if (status === 'running') {
-      statusDir = this.RUN_DIR;
-    } else if (status === 'completed') {
-      statusDir = this.DONE_DIR;
-    } else {
-      statusDir = this.ARCHIVE_DIR;
-    }
+    const statusDir = getPersistableStatusDirName(status, 'DialogPersistence.getRootDialogPath');
     return path.join(this.getDialogsRootDir(), statusDir, dialogId.selfId);
   }
 
   /**
    * Get the events/state directory for a dialog (composite ID for subdialogs)
    */
-  static getDialogEventsPath(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): string {
+  static getDialogEventsPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     // Root dialogs store events under their own directory.
     // Subdialogs store events under the root's subdialogs/<self> directory.
     if (dialogId.rootId === dialogId.selfId) {
@@ -3931,10 +4162,7 @@ export class DialogPersistence {
   /**
    * Get the path for a subdialog within a supdialog
    */
-  static getSubdialogPath(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): string {
+  static getSubdialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId === dialogId.selfId) {
       throw new Error('Expected subdialog id (self differs from root)');
     }
@@ -3942,23 +4170,46 @@ export class DialogPersistence {
     return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
   }
 
-  private static isMalformedDialogLoadError(error: unknown): error is Error {
-    return (
-      error instanceof Error &&
-      (error.message.startsWith('Invalid latest.yaml in ') ||
-        error.message.startsWith('Invalid dialog metadata in '))
-    );
-  }
-
-  private static getMalformedRootDialogPath(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
-  ): string {
+  private static getMalformedRootDialogPath(dialogId: DialogID, status: DialogStatusKind): string {
     if (dialogId.rootId !== dialogId.selfId) {
       throw new Error('Expected root dialog id');
     }
     void status;
     return path.join(this.getDialogsRootDir(), this.MALFORMED_DIR, dialogId.selfId);
+  }
+
+  private static inferRootDialogIdFromMetadataRelativeDir(relativeDir: string): DialogID | null {
+    const dir = relativeDir.trim();
+    if (dir === '' || dir === '.' || dir === path.sep) {
+      return null;
+    }
+    const segments = dir.split(path.sep).filter((seg) => seg.length > 0 && seg !== '.');
+    if (segments.length === 0) {
+      return null;
+    }
+    const subdialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    const rootSegments = subdialogsIndex === -1 ? segments : segments.slice(0, subdialogsIndex);
+    if (rootSegments.length === 0) {
+      return null;
+    }
+    return new DialogID(rootSegments.join('/'));
+  }
+
+  private static inferExpectedDialogIdFromMetadataRelativeDir(relativeDir: string): string | null {
+    const dir = relativeDir.trim();
+    if (dir === '' || dir === '.' || dir === path.sep) {
+      return null;
+    }
+    const segments = dir.split(path.sep).filter((seg) => seg.length > 0 && seg !== '.');
+    if (segments.length === 0) {
+      return null;
+    }
+    const subdialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    if (subdialogsIndex === -1) {
+      return segments.join('/');
+    }
+    const selfId = segments[segments.length - 1];
+    return typeof selfId === 'string' && selfId !== '' ? selfId : null;
   }
 
   private static async pathExists(targetPath: string): Promise<boolean> {
@@ -3973,10 +4224,7 @@ export class DialogPersistence {
     }
   }
 
-  private static clearLatestWriteBackState(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
-  ): void {
+  private static clearLatestWriteBackState(dialogId: DialogID, status: DialogStatusKind): void {
     const key = this.getLatestWriteBackKey(dialogId, status);
     const entry = this.latestWriteBack.get(key);
     if (entry?.kind === 'scheduled') {
@@ -3986,52 +4234,165 @@ export class DialogPersistence {
     this.latestWriteBackMutexes.delete(key);
   }
 
-  private static async quarantineMalformedRootDialog(
+  private static clearWriteBackEntriesForRootDialog(
+    rootDialogId: DialogID,
+    status: DialogStatusKind,
+  ): void {
+    const basePrefix = `${this.getDialogsRootDir()}|${status}|${rootDialogId.selfId}`;
+    const matchesRootDialogKey = (key: string): boolean =>
+      key === basePrefix || key.startsWith(`${basePrefix}#`) || key.startsWith(`${basePrefix}|`);
+
+    for (const [key, entry] of this.latestWriteBack.entries()) {
+      if (!matchesRootDialogKey(key)) continue;
+      if (entry.kind === 'scheduled') {
+        clearTimeout(entry.timer);
+      }
+      this.latestWriteBack.delete(key);
+    }
+    for (const key of this.latestWriteBackMutexes.keys()) {
+      if (matchesRootDialogKey(key)) {
+        this.latestWriteBackMutexes.delete(key);
+      }
+    }
+
+    for (const [key, entry] of this.q4hWriteBack.entries()) {
+      if (!matchesRootDialogKey(key)) continue;
+      if (entry.kind === 'scheduled') {
+        clearTimeout(entry.timer);
+      }
+      this.q4hWriteBack.delete(key);
+    }
+    for (const key of this.q4hWriteBackMutexes.keys()) {
+      if (matchesRootDialogKey(key)) {
+        this.q4hWriteBackMutexes.delete(key);
+      }
+    }
+
+    for (const [key, entry] of this.pendingSubdialogsWriteBack.entries()) {
+      if (!matchesRootDialogKey(key)) continue;
+      if (entry.kind === 'scheduled') {
+        clearTimeout(entry.timer);
+      }
+      this.pendingSubdialogsWriteBack.delete(key);
+    }
+    for (const key of this.pendingSubdialogsWriteBackMutexes.keys()) {
+      if (matchesRootDialogKey(key)) {
+        this.pendingSubdialogsWriteBackMutexes.delete(key);
+      }
+    }
+
+    for (const key of this.courseAppendMutexes.keys()) {
+      if (matchesRootDialogKey(key)) {
+        this.courseAppendMutexes.delete(key);
+      }
+    }
+  }
+
+  private static async quarantineMalformedDialog(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
     reason: string,
     error: Error,
   ): Promise<void> {
-    if (dialogId.rootId !== dialogId.selfId) {
-      throw error;
-    }
-
-    const sourcePath = this.getRootDialogPath(dialogId, status);
-    if (!(await this.pathExists(sourcePath))) {
+    const rootDialogId =
+      dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
+    const quarantineKey = `${status}|${rootDialogId.selfId}`;
+    if (quarantiningRootDialogs.has(quarantineKey)) {
       return;
     }
+    quarantiningRootDialogs.add(quarantineKey);
+    let quarantined = false;
+    try {
+      await prepareDialogQuarantineHook?.({
+        dialogId,
+        rootDialogId,
+        status,
+        reason,
+        error,
+      });
+      this.cancelRootDialogWriteBacks(rootDialogId, status);
 
-    let destinationPath = this.getMalformedRootDialogPath(dialogId, status);
-    if (await this.pathExists(destinationPath)) {
-      destinationPath = path.join(
-        this.getDialogsRootDir(),
-        this.MALFORMED_DIR,
-        `${dialogId.selfId}__${randomUUID()}`,
-      );
+      const sourcePath = this.getRootDialogPath(rootDialogId, status);
+      if (!(await this.pathExists(sourcePath))) {
+        return;
+      }
+
+      let destinationPath = this.getMalformedRootDialogPath(rootDialogId, status);
+      if (await this.pathExists(destinationPath)) {
+        destinationPath = path.join(
+          this.getDialogsRootDir(),
+          this.MALFORMED_DIR,
+          `${rootDialogId.selfId}__${randomUUID()}`,
+        );
+      }
+
+      await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+      await fs.promises.rename(sourcePath, destinationPath);
+      quarantined = true;
+      log.warn(`Quarantined malformed dialog ${rootDialogId.selfId}`, undefined, {
+        status,
+        reason,
+        sourcePath,
+        destinationPath,
+        errorMessage: error.message,
+        dialogId: dialogId.valueOf(),
+        rootDialogId: rootDialogId.valueOf(),
+      });
+      dialogsQuarantinedBroadcaster?.({
+        type: 'dialogs_quarantined',
+        status: 'quarantining',
+        fromStatus: assertPersistableDialogStatus(
+          status,
+          'DialogPersistence.quarantineMalformedDialog(fromStatus)',
+        ),
+        rootId: rootDialogId.selfId,
+        dialogId: dialogId.selfId,
+        reason,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      });
+    } finally {
+      try {
+        await finalizeDialogQuarantineHook?.({
+          dialogId,
+          rootDialogId,
+          status,
+          reason,
+          error,
+          quarantined,
+        });
+      } finally {
+        quarantiningRootDialogs.delete(quarantineKey);
+      }
     }
+  }
 
-    await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
-    await fs.promises.rename(sourcePath, destinationPath);
-    this.clearLatestWriteBackState(dialogId, status);
-    log.warn(`Quarantined malformed root dialog ${dialogId.selfId}`, undefined, {
-      status,
-      reason,
-      sourcePath,
-      destinationPath,
-      errorMessage: error.message,
-    });
+  private static async rethrowAfterQuarantiningDialogPersistenceProblem(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+    reason: string,
+    error: unknown,
+  ): Promise<never> {
+    const persistenceError = findDomindsPersistenceFileError(error);
+    if (persistenceError) {
+      await this.quarantineMalformedDialog(dialogId, status, reason, persistenceError);
+      throw persistenceError;
+    }
+    throw error;
   }
 
   private static parseDialogLatestYaml(content: string, latestFilePath: string): DialogLatestFile {
-    let parsed: unknown;
-    try {
-      parsed = yaml.parse(content);
-    } catch {
-      throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
-    }
+    const parsed = parsePersistenceYaml({
+      content,
+      filePath: latestFilePath,
+      source: 'dialog_latest',
+    });
     const latest = parseDialogLatestFile(parsed);
     if (!latest) {
-      throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
+      throw buildInvalidPersistenceFileError({
+        source: 'dialog_latest',
+        format: 'yaml',
+        filePath: latestFilePath,
+      });
     }
     return latest;
   }
@@ -4041,7 +4402,7 @@ export class DialogPersistence {
    */
   static async ensureRootDialogDirectory(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<string> {
     const dialogPath = this.getRootDialogPath(dialogId, status);
 
@@ -4059,7 +4420,7 @@ export class DialogPersistence {
    */
   static async ensureSubdialogDirectory(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<string> {
     const subdialogPath = this.getSubdialogPath(dialogId, status);
 
@@ -4096,20 +4457,19 @@ export class DialogPersistence {
   }
 
   /**
-   * List all dialog IDs by scanning for dialog.yaml files and validating their IDs
+   * List candidate root dialog IDs by scanning `dialog.yaml`.
+   *
+   * This scanner intentionally stays lightweight: it only validates the path<->id identity needed
+   * for safe enumeration, and leaves full metadata shape validation to the subsequent lazy-load
+   * step. Callers iterating these candidate IDs must therefore tolerate per-dialog load failures
+   * and continue after a malformed dialog is quarantined.
    */
-  static async listDialogs(
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<string[]> {
+  static async listDialogs(status: DialogStatusKind = 'running'): Promise<string[]> {
     try {
       const statusDir = this.getDialogsRootDir();
       const specificDir = path.join(
         statusDir,
-        status === 'running'
-          ? this.RUN_DIR
-          : status === 'completed'
-            ? this.DONE_DIR
-            : this.ARCHIVE_DIR,
+        getPersistableStatusDirName(status, 'DialogPersistence.listDialogs'),
       );
 
       const validDialogIds: string[] = [];
@@ -4127,34 +4487,81 @@ export class DialogPersistence {
               // Recursively search subdirectories
               await findDialogYamls(fullPath, entryRelativePath);
             } else if (entry.name === 'dialog.yaml') {
-              // Found a dialog.yaml file, record its ID regardless of nesting structure
+              // Found a dialog.yaml file. We only validate path<->id identity here; full metadata
+              // shape remains lazy-loaded by the caller-specific read path.
               try {
-                const content = await fs.promises.readFile(fullPath, 'utf-8');
-                const parsed = yaml.parse(content);
-                if (parsed?.id && typeof parsed.id === 'string') {
-                  validDialogIds.push(parsed.id);
+                const content = await readPersistenceTextFile({
+                  filePath: fullPath,
+                  source: 'dialog_metadata',
+                  format: 'yaml',
+                });
+                const parsed = parsePersistenceYaml({
+                  content,
+                  filePath: fullPath,
+                  source: 'dialog_metadata',
+                });
+                if (!isRecord(parsed) || typeof parsed.id !== 'string' || parsed.id.trim() === '') {
+                  throw buildInvalidPersistenceFileError({
+                    source: 'dialog_metadata',
+                    format: 'yaml',
+                    filePath: fullPath,
+                  });
                 }
-              } catch (yamlError) {
+                const expectedDialogId = this.inferExpectedDialogIdFromMetadataRelativeDir(
+                  path.dirname(entryRelativePath),
+                );
+                if (expectedDialogId === null || parsed.id !== expectedDialogId) {
+                  throw buildInvalidPersistenceFileError({
+                    source: 'dialog_metadata',
+                    format: 'yaml',
+                    filePath: fullPath,
+                  });
+                }
+                validDialogIds.push(parsed.id);
+              } catch (yamlError: unknown) {
+                const persistenceError = findDomindsPersistenceFileError(yamlError);
+                if (persistenceError) {
+                  const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(
+                    path.dirname(entryRelativePath),
+                  );
+                  if (rootDialogId) {
+                    await this.quarantineMalformedDialog(
+                      rootDialogId,
+                      status,
+                      'listDialogs',
+                      persistenceError,
+                    );
+                  }
+                }
                 log.warn(`🔍 listDialogs: Failed to parse dialog.yaml at ${fullPath}:`, yamlError);
               }
             }
           }
         } catch (error) {
+          // Directory enumeration failures are filesystem-level access/I/O problems, not evidence
+          // that a specific dialog record is malformed. If we cannot even read this directory,
+          // attempting to quarantine a child dialog via move/rename is unlikely to be reliable.
           log.warn(`🔍 listDialogs: Error reading directory ${dirPath}:`, error);
         }
       };
 
       try {
-        // Check if directory exists before trying to read it
-        const dirExists = await fs.promises
-          .stat(specificDir)
-          .then(() => true)
-          .catch(() => false);
-        if (dirExists) {
-          await findDialogYamls(specificDir);
+        // Only ENOENT means "status directory absent". Other stat failures are loud environment
+        // errors and must flow into the warning path below instead of being silently downgraded.
+        try {
+          await fs.promises.stat(specificDir);
+        } catch (error: unknown) {
+          if (getErrorCode(error) === 'ENOENT') {
+            return validDialogIds;
+          }
+          throw error;
         }
+        await findDialogYamls(specificDir);
         return validDialogIds;
       } catch (error) {
+        // Same rationale as the inner readdir catch above: keep the failure loud in logs, but do
+        // not pretend we have actionable malformed-dialog evidence when the status directory itself
+        // is not readable.
         log.warn(`🔍 listDialogs: Error processing directory ${specificDir}:`, error);
         return [];
       }
@@ -4168,18 +4575,16 @@ export class DialogPersistence {
    * List all dialog IDs (root + subdialogs) together with their root IDs.
    * This is the only safe way to enumerate subdialogs because their directory names
    * are not guaranteed to be their selfId.
+   *
+   * Like `listDialogs()`, this is a candidate scanner rather than a full metadata validator.
+   * Callers must treat later metadata/latest loads as lazy, per-dialog operations that can still
+   * quarantine one dialog without invalidating the rest of the enumeration.
    */
-  static async listAllDialogIds(
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<DialogID[]> {
+  static async listAllDialogIds(status: DialogStatusKind = 'running'): Promise<DialogID[]> {
     const statusDir = this.getDialogsRootDir();
     const specificDir = path.join(
       statusDir,
-      status === 'running'
-        ? this.RUN_DIR
-        : status === 'completed'
-          ? this.DONE_DIR
-          : this.ARCHIVE_DIR,
+      getPersistableStatusDirName(status, 'DialogPersistence.listAllDialogIds'),
     );
 
     const result: DialogID[] = [];
@@ -4189,21 +4594,48 @@ export class DialogPersistence {
       const cached = rootDialogIdByDialogYamlPath.get(dialogYamlPath);
       if (cached !== undefined) return cached;
       try {
-        const content = await fs.promises.readFile(dialogYamlPath, 'utf-8');
-        const parsed: unknown = yaml.parse(content);
+        const content = await readPersistenceTextFile({
+          filePath: dialogYamlPath,
+          source: 'dialog_metadata',
+          format: 'yaml',
+        });
+        const parsed: unknown = parsePersistenceYaml({
+          content,
+          filePath: dialogYamlPath,
+          source: 'dialog_metadata',
+        });
         if (typeof parsed !== 'object' || parsed === null) {
-          rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
-          return null;
+          throw buildInvalidPersistenceFileError({
+            source: 'dialog_metadata',
+            format: 'yaml',
+            filePath: dialogYamlPath,
+          });
         }
         const idValue = (parsed as { id?: unknown }).id;
         if (typeof idValue !== 'string' || idValue.trim() === '') {
-          rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
-          return null;
+          throw buildInvalidPersistenceFileError({
+            source: 'dialog_metadata',
+            format: 'yaml',
+            filePath: dialogYamlPath,
+          });
         }
         const normalized = idValue.trim();
         rootDialogIdByDialogYamlPath.set(dialogYamlPath, normalized);
         return normalized;
-      } catch {
+      } catch (error: unknown) {
+        const persistenceError = findDomindsPersistenceFileError(error);
+        if (persistenceError) {
+          const relativeDir = path.relative(specificDir, path.dirname(dialogYamlPath));
+          const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(relativeDir);
+          if (rootDialogId) {
+            await this.quarantineMalformedDialog(
+              rootDialogId,
+              status,
+              'listAllDialogIds:readDialogYamlId',
+              persistenceError,
+            );
+          }
+        }
         rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
         return null;
       }
@@ -4237,6 +4669,9 @@ export class DialogPersistence {
       try {
         entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
       } catch (err) {
+        // This is an environment/filesystem failure rather than confirmed dialog corruption. We log
+        // loudly and keep enumeration partial instead of fabricating a quarantine target that may
+        // not even be reachable through the same broken directory path.
         log.warn(`🔍 listAllDialogIds: Error reading directory ${dirPath}:`, err);
         return;
       }
@@ -4256,23 +4691,68 @@ export class DialogPersistence {
         if (!rootId) continue;
 
         try {
-          const content = await fs.promises.readFile(fullPath, 'utf-8');
-          const parsed: unknown = yaml.parse(content);
-          if (typeof parsed !== 'object' || parsed === null) continue;
+          const content = await readPersistenceTextFile({
+            filePath: fullPath,
+            source: 'dialog_metadata',
+            format: 'yaml',
+          });
+          const parsed: unknown = parsePersistenceYaml({
+            content,
+            filePath: fullPath,
+            source: 'dialog_metadata',
+          });
+          if (typeof parsed !== 'object' || parsed === null) {
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_metadata',
+              format: 'yaml',
+              filePath: fullPath,
+            });
+          }
           const idValue = (parsed as { id?: unknown }).id;
-          if (typeof idValue !== 'string' || idValue.trim() === '') continue;
+          if (typeof idValue !== 'string' || idValue.trim() === '') {
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_metadata',
+              format: 'yaml',
+              filePath: fullPath,
+            });
+          }
+          const expectedDialogId = this.inferExpectedDialogIdFromMetadataRelativeDir(relDir);
+          if (expectedDialogId === null || idValue !== expectedDialogId) {
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_metadata',
+              format: 'yaml',
+              filePath: fullPath,
+            });
+          }
           result.push(new DialogID(idValue, rootId));
-        } catch (yamlError) {
+        } catch (yamlError: unknown) {
+          const persistenceError = findDomindsPersistenceFileError(yamlError);
+          if (persistenceError) {
+            const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(relDir);
+            if (rootDialogId) {
+              await this.quarantineMalformedDialog(
+                rootDialogId,
+                status,
+                'listAllDialogIds',
+                persistenceError,
+              );
+            }
+          }
           log.warn(`🔍 listAllDialogIds: Failed to parse dialog.yaml at ${fullPath}:`, yamlError);
         }
       }
     };
 
-    const dirExists = await fs.promises
-      .stat(specificDir)
-      .then(() => true)
-      .catch(() => false);
-    if (!dirExists) return [];
+    try {
+      // Only ENOENT is the benign "no dialogs under this status" case. Permission/I/O failures
+      // must stay loud so operators can tell the difference between "missing" and "inaccessible".
+      await fs.promises.stat(specificDir);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
 
     await findDialogYamls(specificDir);
     return result;
@@ -4287,7 +4767,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     course: number,
     events: readonly PersistedDialogRecord[],
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
@@ -4332,7 +4812,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     course: number,
     event: PersistedDialogRecord,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.appendEvents(dialogId, course, [event], status);
   }
@@ -4355,7 +4835,7 @@ export class DialogPersistence {
   static async captureCourseFileOffset(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<number> {
     const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
@@ -4384,7 +4864,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     course: number,
     offset: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     if (!Number.isFinite(offset) || offset < 0) {
       throw new Error(
@@ -4455,14 +4935,18 @@ export class DialogPersistence {
   static async readCourseEvents(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<PersistedDialogRecord[]> {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const courseFilePath = path.join(dialogPath, this.getCourseFilename(course));
 
       try {
-        const content = await fs.promises.readFile(courseFilePath, 'utf-8');
+        const content = await readPersistenceTextFile({
+          filePath: courseFilePath,
+          source: 'dialog_course_events',
+          format: 'jsonl',
+        });
         const events: PersistedDialogRecord[] = [];
 
         const lines = content.split('\n');
@@ -4470,7 +4954,14 @@ export class DialogPersistence {
           const line = lines[i];
           if (!line.trim()) continue;
           try {
-            events.push(JSON.parse(line));
+            events.push(
+              parsePersistenceJson({
+                content: line,
+                filePath: courseFilePath,
+                source: 'dialog_course_events',
+                lineNumber: i + 1,
+              }) as PersistedDialogRecord,
+            );
           } catch (err) {
             const isLastNonEmptyLine = (() => {
               for (let j = lines.length - 1; j > i; j--) {
@@ -4478,12 +4969,15 @@ export class DialogPersistence {
               }
               return true;
             })();
+            const persistenceFileError =
+              err instanceof DomindsPersistenceFileError ? err : undefined;
             const msg = err instanceof Error ? err.message : String(err);
             // If the last JSONL line was truncated (e.g. process crash mid-append), ignore it so
             // dialogs remain resumable. Do not mask corruption in the middle of the file.
             if (
               isLastNonEmptyLine &&
-              (msg.includes('Unterminated string in JSON') ||
+              (persistenceFileError?.eofLike === true ||
+                msg.includes('Unterminated string in JSON') ||
                 msg.includes('Unexpected end of JSON input'))
             ) {
               log.warn(
@@ -4491,7 +4985,16 @@ export class DialogPersistence {
               );
               break;
             }
-            throw err;
+            if (persistenceFileError) {
+              throw persistenceFileError;
+            }
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_course_events',
+              format: 'jsonl',
+              filePath: courseFilePath,
+              lineNumber: i + 1,
+              cause: err,
+            });
           }
         }
 
@@ -4515,7 +5018,7 @@ export class DialogPersistence {
   static async getNextSeq(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<number> {
     const events = await this.readCourseEvents(dialogId, course, status);
     let maxSeq = 0;
@@ -4533,7 +5036,7 @@ export class DialogPersistence {
    */
   static async getCurrentCourseNumber(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<number> {
     try {
       const latest = await this.loadDialogLatest(dialogId, status);
@@ -4550,11 +5053,10 @@ export class DialogPersistence {
   public static async _saveReminderState(
     dialogId: DialogID,
     reminders: Reminder[],
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
-      await fs.promises.mkdir(dialogPath, { recursive: true });
       const remindersFilePath = path.join(dialogPath, 'reminders.json');
 
       const reminderState: ReminderStateFile = {
@@ -4578,7 +5080,7 @@ export class DialogPersistence {
         `.${path.basename(remindersFilePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
-      await this.renameWithRetry(tempFile, remindersFilePath, jsonContent);
+      await this.renameWithRetry(tempFile, remindersFilePath);
     } catch (error) {
       log.error(`Failed to save reminder state for dialog ${dialogId}:`, error);
       throw error;
@@ -4590,15 +5092,30 @@ export class DialogPersistence {
    */
   static async loadReminderState(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<Reminder[]> {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const remindersFilePath = path.join(dialogPath, 'reminders.json');
 
       try {
-        const content = await fs.promises.readFile(remindersFilePath, 'utf-8');
-        const reminderState: ReminderStateFile = JSON.parse(content);
+        const content = await readPersistenceTextFile({
+          filePath: remindersFilePath,
+          source: 'reminder_state',
+          format: 'json',
+        });
+        const reminderState = parsePersistenceJson({
+          content,
+          filePath: remindersFilePath,
+          source: 'reminder_state',
+        });
+        if (!isReminderStateFile(reminderState)) {
+          throw buildInvalidPersistenceFileError({
+            source: 'reminder_state',
+            format: 'json',
+            filePath: remindersFilePath,
+          });
+        }
         return reminderState.reminders.map((r) => {
           const ownerNameFromFile = typeof r.ownerName === 'string' ? r.ownerName : undefined;
           // Reminder metadata is owner-private. Rebind strictly through persisted ownerName.
@@ -4621,9 +5138,14 @@ export class DialogPersistence {
         }
         throw error;
       }
-    } catch (error) {
-      log.error(`Failed to load reminder state for dialog ${dialogId}:`, error);
-      return [];
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadReminderState',
+        error,
+      );
+      throw new Error('unreachable after loadReminderState persistence rethrow');
     }
   }
 
@@ -4633,7 +5155,7 @@ export class DialogPersistence {
   public static async _saveQuestions4HumanState(
     dialogId: DialogID,
     questions: HumanQuestion[],
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const nextQuestions = [...questions];
     await this.mutateQuestions4HumanState(
@@ -4648,7 +5170,7 @@ export class DialogPersistence {
    */
   static async loadQuestions4HumanState(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<HumanQuestion[]> {
     const key = this.getQ4HWriteBackKey(dialogId, status);
     const staged = this.q4hWriteBack.get(key);
@@ -4659,93 +5181,43 @@ export class DialogPersistence {
 
     try {
       return await this.loadQuestions4HumanStateFromDisk(dialogId, status);
-    } catch (error) {
-      log.error(`Failed to load q4h.yaml for dialog ${dialogId}:`, error);
-      return [];
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadQuestions4HumanState',
+        error,
+      );
+      throw new Error('unreachable after loadQuestions4HumanState persistence rethrow');
     }
   }
 
   private static async loadQuestions4HumanStateFromDisk(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<HumanQuestion[]> {
     const dialogPath = this.getDialogEventsPath(dialogId, status);
     const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
 
     try {
-      const content = await fs.promises.readFile(questionsFilePath, 'utf-8');
-      try {
-        const parsed = yaml.parse(content) as unknown;
-        if (
-          typeof parsed === 'object' &&
-          parsed !== null &&
-          'questions' in parsed &&
-          Array.isArray((parsed as { questions?: unknown }).questions)
-        ) {
-          return (parsed as Questions4HumanFile).questions;
-        }
-        log.warn(`q4h.yaml has unexpected shape for dialog ${dialogId}`, undefined, {
+      const content = await readPersistenceTextFile({
+        filePath: questionsFilePath,
+        source: 'questions4human_state',
+        format: 'yaml',
+      });
+      const parsed = parsePersistenceYaml({
+        content,
+        filePath: questionsFilePath,
+        source: 'questions4human_state',
+      });
+      if (!isQuestions4HumanFile(parsed)) {
+        throw buildInvalidPersistenceFileError({
+          source: 'questions4human_state',
+          format: 'yaml',
           filePath: questionsFilePath,
         });
-        return [];
-      } catch (parseError: unknown) {
-        // Attempt to auto-repair the common corruption pattern where extra trailing lines are appended
-        // due to concurrent writers clobbering a shared temp file.
-        const lines = content.split(/\r?\n/);
-        let repairedQuestions: HumanQuestion[] | null = null;
-
-        for (let cut = lines.length - 1; cut > 0 && lines.length - cut <= 12; cut--) {
-          const candidate = lines.slice(0, cut).join('\n');
-          if (candidate.trim() === '') continue;
-          try {
-            const candidateState = yaml.parse(candidate) as unknown;
-            if (
-              typeof candidateState === 'object' &&
-              candidateState !== null &&
-              'questions' in candidateState &&
-              Array.isArray((candidateState as { questions?: unknown }).questions)
-            ) {
-              repairedQuestions = (candidateState as Questions4HumanFile).questions;
-              break;
-            }
-          } catch {
-            // keep trimming
-          }
-        }
-
-        if (repairedQuestions) {
-          log.warn(`Repaired corrupted q4h.yaml for dialog ${dialogId}`, undefined, {
-            filePath: questionsFilePath,
-          });
-          const repairedFile: Questions4HumanFile = {
-            questions: repairedQuestions,
-            updatedAt: formatUnifiedTimestamp(new Date()),
-          };
-          try {
-            await this.writeQ4HStateToDisk(dialogId, { kind: 'file', file: repairedFile }, status);
-          } catch (repairSaveError: unknown) {
-            log.warn(`Failed to persist repaired q4h.yaml for dialog ${dialogId}`, repairSaveError);
-          }
-          return repairedQuestions;
-        }
-
-        // Quarantine the bad file to avoid repeated parse errors, then treat as "no questions".
-        try {
-          const quarantinePath = `${questionsFilePath}.corrupt-${randomUUID()}`;
-          await fs.promises.rename(questionsFilePath, quarantinePath);
-          log.warn(`Quarantined corrupted q4h.yaml for dialog ${dialogId}`, undefined, {
-            filePath: questionsFilePath,
-            quarantinePath,
-          });
-        } catch (quarantineError: unknown) {
-          log.warn(
-            `Failed to quarantine corrupted q4h.yaml for dialog ${dialogId}`,
-            quarantineError,
-          );
-        }
-        log.warn(`Failed to parse q4h.yaml for dialog ${dialogId}`, parseError);
-        return [];
       }
+      return parsed.questions;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return [];
       throw error;
@@ -4755,7 +5227,7 @@ export class DialogPersistence {
   static async mutateQuestions4HumanState(
     dialogId: DialogID,
     mutator: (previous: HumanQuestion[]) => Q4HMutation,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<Q4HMutateOutcome> {
     const key = this.getQ4HWriteBackKey(dialogId, status);
     const mutex = this.getQ4HWriteBackMutex(key);
@@ -4835,7 +5307,7 @@ export class DialogPersistence {
   static async appendQuestion4HumanState(
     dialogId: DialogID,
     question: HumanQuestion,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const questionId = question.id;
     const normalizedCallId = question.callId.trim();
@@ -4882,7 +5354,7 @@ export class DialogPersistence {
   static async removeQuestion4HumanState(
     dialogId: DialogID,
     questionId: string,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<{
     found: boolean;
     remainingQuestions: HumanQuestion[];
@@ -4906,7 +5378,7 @@ export class DialogPersistence {
     let captured:
       | {
           dialogId: DialogID;
-          status: 'running' | 'completed' | 'archived';
+          status: DialogStatusKind;
           stateToWrite: Q4HWriteBackState;
           inFlight: Promise<void>;
         }
@@ -4922,7 +5394,16 @@ export class DialogPersistence {
 
         clearTimeout(entry.timer);
 
-        const inFlight = this.writeQ4HStateToDisk(entry.dialogId, entry.state, entry.status);
+        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+          entry.dialogId,
+          entry.status,
+        );
+        const inFlight = this.writeQ4HStateToDisk(
+          entry.dialogId,
+          entry.state,
+          entry.status,
+          cancellationToken,
+        );
         captured = {
           dialogId: entry.dialogId,
           status: entry.status,
@@ -4954,6 +5435,10 @@ export class DialogPersistence {
         if (!entry) return;
         if (entry.kind !== 'flushing') return;
         if (entry.inFlight !== captured.inFlight) return;
+        if (isDialogWriteBackCanceledError(error)) {
+          this.q4hWriteBack.delete(key);
+          return;
+        }
 
         const timer = setTimeout(() => {
           void this.flushQ4HWriteBack(key);
@@ -5003,12 +5488,14 @@ export class DialogPersistence {
   private static async writeQ4HStateToDisk(
     dialogId: DialogID,
     state: Q4HWriteBackState,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
+    cancellationToken?: RootDialogWriteBackCancellationToken,
   ): Promise<void> {
+    if (cancellationToken) {
+      this.assertRootDialogWriteBackNotCanceled(cancellationToken, 'writeQ4HStateToDisk:start');
+    }
     const dialogPath = this.getDialogEventsPath(dialogId, status);
     const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
-
-    await fs.promises.mkdir(dialogPath, { recursive: true });
 
     if (state.kind === 'deleted') {
       await fs.promises.rm(questionsFilePath, { force: true });
@@ -5021,7 +5508,7 @@ export class DialogPersistence {
       `.${path.basename(questionsFilePath)}.${process.pid}.${randomUUID()}.tmp`,
     );
     await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-    await this.renameWithRetry(tempFile, questionsFilePath, yamlContent);
+    await this.renameWithRetry(tempFile, questionsFilePath, 5, cancellationToken);
   }
 
   /**
@@ -5090,7 +5577,7 @@ export class DialogPersistence {
 
   public static async clearQuestions4HumanState(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const { previousQuestions } = await this.mutateQuestions4HumanState(
@@ -5124,7 +5611,7 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     pendingSubdialogs: PendingSubdialogStateRecord[],
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const next = pendingSubdialogs.map((r) => ({ ...r }));
     await this.mutatePendingSubdialogs(
@@ -5140,7 +5627,7 @@ export class DialogPersistence {
    */
   static async loadPendingSubdialogs(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<PendingSubdialogStateRecord[]> {
     const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
     const staged = this.pendingSubdialogsWriteBack.get(key);
@@ -5150,9 +5637,14 @@ export class DialogPersistence {
 
     try {
       return await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
-    } catch (error) {
-      log.error(`Failed to load pending subdialogs for dialog ${rootDialogId}:`, error);
-      return [];
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        rootDialogId,
+        status,
+        'loadPendingSubdialogs',
+        error,
+      );
+      throw new Error('unreachable after loadPendingSubdialogs persistence rethrow');
     }
   }
 
@@ -5199,15 +5691,29 @@ export class DialogPersistence {
 
   private static async loadPendingSubdialogsFromDisk(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<PendingSubdialogStateRecord[]> {
     const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
     const filePath = path.join(dialogPath, 'pending-subdialogs.json');
     try {
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      const parsed: unknown = JSON.parse(content);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(this.isPendingSubdialogRecord);
+      const content = await readPersistenceTextFile({
+        filePath,
+        source: 'pending_subdialogs',
+        format: 'json',
+      });
+      const parsed: unknown = parsePersistenceJson({
+        content,
+        filePath,
+        source: 'pending_subdialogs',
+      });
+      if (!Array.isArray(parsed) || !parsed.every((item) => this.isPendingSubdialogRecord(item))) {
+        throw buildInvalidPersistenceFileError({
+          source: 'pending_subdialogs',
+          format: 'json',
+          filePath,
+        });
+      }
+      return parsed;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return [];
       throw error;
@@ -5218,7 +5724,7 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     mutator: (previous: PendingSubdialogStateRecord[]) => PendingSubdialogsMutation,
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<PendingSubdialogsMutateOutcome> {
     const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
     const mutex = this.getPendingSubdialogsWriteBackMutex(key);
@@ -5302,7 +5808,7 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     record: PendingSubdialogStateRecord,
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutatePendingSubdialogs(
       rootDialogId,
@@ -5316,7 +5822,7 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     subdialogId: string,
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutatePendingSubdialogs(
       rootDialogId,
@@ -5329,7 +5835,7 @@ export class DialogPersistence {
   static async clearPendingSubdialogs(
     rootDialogId: DialogID,
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'clear' }), rootAnchor, status);
   }
@@ -5340,7 +5846,7 @@ export class DialogPersistence {
     let captured:
       | {
           dialogId: DialogID;
-          status: 'running' | 'completed' | 'archived';
+          status: DialogStatusKind;
           stateToWrite: PendingSubdialogsWriteBackState;
           inFlight: Promise<void>;
         }
@@ -5355,10 +5861,15 @@ export class DialogPersistence {
         if (entry.kind !== 'scheduled') return;
         clearTimeout(entry.timer);
 
+        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+          entry.dialogId,
+          entry.status,
+        );
         const inFlight = this.writePendingSubdialogsToDisk(
           entry.dialogId,
           entry.state,
           entry.status,
+          cancellationToken,
         );
         captured = {
           dialogId: entry.dialogId,
@@ -5383,13 +5894,17 @@ export class DialogPersistence {
 
     try {
       await captured.inFlight;
-    } catch {
+    } catch (error) {
       const release = await mutex.acquire();
       try {
         const entry = this.pendingSubdialogsWriteBack.get(key);
         if (!entry) return;
         if (entry.kind !== 'flushing') return;
         if (entry.inFlight !== captured.inFlight) return;
+        if (isDialogWriteBackCanceledError(error)) {
+          this.pendingSubdialogsWriteBack.delete(key);
+          return;
+        }
 
         const timer = setTimeout(() => {
           void this.flushPendingSubdialogsWriteBack(key);
@@ -5438,10 +5953,16 @@ export class DialogPersistence {
   private static async writePendingSubdialogsToDisk(
     rootDialogId: DialogID,
     state: PendingSubdialogsWriteBackState,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
+    cancellationToken?: RootDialogWriteBackCancellationToken,
   ): Promise<void> {
+    if (cancellationToken) {
+      this.assertRootDialogWriteBackNotCanceled(
+        cancellationToken,
+        'writePendingSubdialogsToDisk:start',
+      );
+    }
     const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-    await fs.promises.mkdir(dialogPath, { recursive: true });
     const filePath = path.join(dialogPath, 'pending-subdialogs.json');
 
     if (state.kind === 'deleted') {
@@ -5455,17 +5976,14 @@ export class DialogPersistence {
       `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
     );
     await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
-    await this.renameWithRetry(tempFile, filePath, jsonContent);
+    await this.renameWithRetry(tempFile, filePath, 5, cancellationToken);
   }
 
   /**
    * Get the path for storing subdialog responses (supports both root and subdialog parents).
    * For Type C subdialogs created inside another subdialog, responses are stored at the parent's level.
    */
-  static getDialogResponsesPath(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): string {
+  static getDialogResponsesPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     // Root dialogs store responses in their own directory.
     // Subdialogs store responses in the parent's location (root or subdialog).
     if (dialogId.rootId === dialogId.selfId) {
@@ -5487,11 +6005,10 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     responses: SubdialogResponseStateRecord[],
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-      await fs.promises.mkdir(dialogPath, { recursive: true });
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
 
       // Atomic write operation
@@ -5501,7 +6018,7 @@ export class DialogPersistence {
         `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
-      await this.renameWithRetry(tempFile, filePath, jsonContent);
+      await this.renameWithRetry(tempFile, filePath);
       if (rootAnchor) {
         await this.appendSubdialogResponsesReconciledRecord(
           rootDialogId,
@@ -5521,7 +6038,7 @@ export class DialogPersistence {
    */
   static async loadSubdialogResponses(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<SubdialogResponseStateRecord[]> {
     try {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
@@ -5533,9 +6050,24 @@ export class DialogPersistence {
 
         const tryReadArray = async (p: string): Promise<unknown[]> => {
           try {
-            const content = await fs.promises.readFile(p, 'utf-8');
-            const parsed: unknown = JSON.parse(content);
-            return Array.isArray(parsed) ? parsed : [];
+            const content = await readPersistenceTextFile({
+              filePath: p,
+              source: 'subdialog_responses',
+              format: 'json',
+            });
+            const parsed: unknown = parsePersistenceJson({
+              content,
+              filePath: p,
+              source: 'subdialog_responses',
+            });
+            if (!Array.isArray(parsed)) {
+              throw buildInvalidPersistenceFileError({
+                source: 'subdialog_responses',
+                format: 'json',
+                filePath: p,
+              });
+            }
+            return parsed;
           } catch (error) {
             if (getErrorCode(error) === 'ENOENT') {
               return [];
@@ -5547,9 +6079,14 @@ export class DialogPersistence {
         const primary = await tryReadArray(filePath);
         const inflight = await tryReadArray(inflightPath);
         for (const item of [...primary, ...inflight]) {
-          if (isSubdialogResponseRecord(item)) {
-            results.push(item);
+          if (!isSubdialogResponseRecord(item)) {
+            throw buildInvalidPersistenceFileError({
+              source: 'subdialog_responses',
+              format: 'json',
+              filePath,
+            });
           }
+          results.push(item);
         }
 
         // Deduplicate by responseId (primary wins over inflight order is irrelevant)
@@ -5564,30 +6101,53 @@ export class DialogPersistence {
         }
         throw error;
       }
-    } catch (error) {
-      log.error(`Failed to load subdialog responses for dialog ${rootDialogId}:`, error);
-      return [];
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        rootDialogId,
+        status,
+        'loadSubdialogResponses',
+        error,
+      );
+      throw new Error('unreachable after loadSubdialogResponses persistence rethrow');
     }
   }
 
   static async loadSubdialogResponsesQueue(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<SubdialogResponseStateRecord[]> {
     try {
       const dialogPath = this.getDialogResponsesPath(dialogId, status);
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      const parsed: unknown = JSON.parse(content);
-      if (!Array.isArray(parsed)) {
-        return [];
+      const content = await readPersistenceTextFile({
+        filePath,
+        source: 'subdialog_responses',
+        format: 'json',
+      });
+      const parsed: unknown = parsePersistenceJson({
+        content,
+        filePath,
+        source: 'subdialog_responses',
+      });
+      if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+        throw buildInvalidPersistenceFileError({
+          source: 'subdialog_responses',
+          format: 'json',
+          filePath,
+        });
       }
-      return parsed.filter(isSubdialogResponseRecord);
+      return parsed;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
         return [];
       }
-      throw error;
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadSubdialogResponsesQueue',
+        error,
+      );
+      throw new Error('unreachable after loadSubdialogResponsesQueue persistence rethrow');
     }
   }
 
@@ -5595,7 +6155,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     response: SubdialogResponseStateRecord,
     rootAnchor?: RootGenerationAnchor,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const existing = await this.loadSubdialogResponsesQueue(dialogId, status);
     existing.push(response);
@@ -5604,7 +6164,7 @@ export class DialogPersistence {
 
   static async takeSubdialogResponses(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<
     Array<{
       responseId: string;
@@ -5621,47 +6181,68 @@ export class DialogPersistence {
       callId: string;
     }>
   > {
-    const dialogPath = this.getDialogResponsesPath(dialogId, status);
-    await fs.promises.mkdir(dialogPath, { recursive: true });
-
-    const filePath = path.join(dialogPath, 'subdialog-responses.json');
-    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
-
-    // If a previous processing file exists, merge it back so it will be re-processed.
     try {
-      await fs.promises.access(inflightPath);
-      await this.rollbackTakenSubdialogResponses(dialogId, status);
-    } catch {
-      // no-op
-    }
+      const dialogPath = this.getDialogResponsesPath(dialogId, status);
 
-    try {
-      await fs.promises.rename(filePath, inflightPath);
+      const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+
+      // If a previous processing file exists, merge it back so it will be re-processed.
+      try {
+        await fs.promises.access(inflightPath);
+      } catch (error: unknown) {
+        if (getErrorCode(error) !== 'ENOENT') {
+          throw error;
+        }
+      }
+      if (await this.pathExists(inflightPath)) {
+        await this.rollbackTakenSubdialogResponses(dialogId, status);
+      }
+
+      try {
+        await fs.promises.rename(filePath, inflightPath);
+      } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+          return [];
+        }
+        throw error;
+      }
+
+      const raw = await readPersistenceTextFile({
+        filePath: inflightPath,
+        source: 'subdialog_responses',
+        format: 'json',
+      });
+      const parsed: unknown = parsePersistenceJson({
+        content: raw,
+        filePath: inflightPath,
+        source: 'subdialog_responses',
+      });
+      if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+        throw buildInvalidPersistenceFileError({
+          source: 'subdialog_responses',
+          format: 'json',
+          filePath: inflightPath,
+        });
+      }
+      return parsed;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
         return [];
       }
-      throw error;
-    }
-
-    try {
-      const raw = await fs.promises.readFile(inflightPath, 'utf-8');
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-      return parsed.filter(isSubdialogResponseRecord);
-    } catch (error) {
-      if (getErrorCode(error) === 'ENOENT') {
-        return [];
-      }
-      throw error;
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'takeSubdialogResponses',
+        error,
+      );
+      throw new Error('unreachable after takeSubdialogResponses persistence rethrow');
     }
   }
 
   static async commitTakenSubdialogResponses(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     const dialogPath = this.getDialogResponsesPath(dialogId, status);
     const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
@@ -5670,52 +6251,91 @@ export class DialogPersistence {
 
   static async rollbackTakenSubdialogResponses(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
-    const dialogPath = this.getDialogResponsesPath(dialogId, status);
-    await fs.promises.mkdir(dialogPath, { recursive: true });
-
-    const filePath = path.join(dialogPath, 'subdialog-responses.json');
-    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
-
-    let inflight: unknown[] = [];
     try {
-      const raw = await fs.promises.readFile(inflightPath, 'utf-8');
-      const parsed: unknown = JSON.parse(raw);
-      inflight = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      if (getErrorCode(error) === 'ENOENT') {
-        return;
-      }
-      throw error;
-    }
+      const dialogPath = this.getDialogResponsesPath(dialogId, status);
 
-    let primary: unknown[] = [];
-    try {
-      const raw = await fs.promises.readFile(filePath, 'utf-8');
-      const parsed: unknown = JSON.parse(raw);
-      primary = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      if (getErrorCode(error) !== 'ENOENT') {
+      const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+
+      let inflight: SubdialogResponseStateRecord[] = [];
+      try {
+        const raw = await readPersistenceTextFile({
+          filePath: inflightPath,
+          source: 'subdialog_responses',
+          format: 'json',
+        });
+        const parsed: unknown = parsePersistenceJson({
+          content: raw,
+          filePath: inflightPath,
+          source: 'subdialog_responses',
+        });
+        if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+          throw buildInvalidPersistenceFileError({
+            source: 'subdialog_responses',
+            format: 'json',
+            filePath: inflightPath,
+          });
+        }
+        inflight = parsed;
+      } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') {
+          return;
+        }
         throw error;
       }
-    }
 
-    const merged = [...inflight, ...primary].filter(isSubdialogResponseRecord);
-    const byId = new Map<string, (typeof merged)[number]>();
-    for (const r of merged) {
-      byId.set(r.responseId, r);
-    }
-    const result = Array.from(byId.values());
+      let primary: SubdialogResponseStateRecord[] = [];
+      try {
+        const raw = await readPersistenceTextFile({
+          filePath,
+          source: 'subdialog_responses',
+          format: 'json',
+        });
+        const parsed: unknown = parsePersistenceJson({
+          content: raw,
+          filePath,
+          source: 'subdialog_responses',
+        });
+        if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+          throw buildInvalidPersistenceFileError({
+            source: 'subdialog_responses',
+            format: 'json',
+            filePath,
+          });
+        }
+        primary = parsed;
+      } catch (error) {
+        if (getErrorCode(error) !== 'ENOENT') {
+          throw error;
+        }
+      }
 
-    const jsonContent = JSON.stringify(result, null, 2);
-    const tempFile = path.join(
-      dialogPath,
-      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
-    );
-    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
-    await this.renameWithRetry(tempFile, filePath, jsonContent);
-    await fs.promises.rm(inflightPath, { force: true });
+      const merged = [...inflight, ...primary];
+      const byId = new Map<string, (typeof merged)[number]>();
+      for (const r of merged) {
+        byId.set(r.responseId, r);
+      }
+      const result = Array.from(byId.values());
+
+      const jsonContent = JSON.stringify(result, null, 2);
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
+      await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+      await this.renameWithRetry(tempFile, filePath);
+      await fs.promises.rm(inflightPath, { force: true });
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'rollbackTakenSubdialogResponses',
+        error,
+      );
+      throw new Error('unreachable after rollbackTakenSubdialogResponses persistence rethrow');
+    }
   }
 
   /**
@@ -5724,7 +6344,7 @@ export class DialogPersistence {
   static async saveRootDialogMetadata(
     dialogId: DialogID,
     metadata: RootDialogMetadataFile,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const dialogPath = this.getRootDialogPath(dialogId, status);
@@ -5740,7 +6360,7 @@ export class DialogPersistence {
         `.${path.basename(metadataFilePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await this.renameWithRetry(tempFile, metadataFilePath, yamlContent);
+      await this.renameWithRetry(tempFile, metadataFilePath);
     } catch (error) {
       log.error(`Failed to save dialog YAML for dialog ${dialogId}:`, error);
       throw error;
@@ -5753,7 +6373,7 @@ export class DialogPersistence {
   static async saveDialogMetadata(
     dialogId: DialogID,
     metadata: DialogMetadataFile,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
       if (!isRootDialogMetadataFile(metadata)) {
@@ -5776,7 +6396,7 @@ export class DialogPersistence {
   static async _saveDialogMetadata(
     dialogId: DialogID,
     metadata: RootDialogMetadataFile,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     return this.saveRootDialogMetadata(dialogId, metadata, status);
   }
@@ -5787,21 +6407,21 @@ export class DialogPersistence {
   static async saveSubdialogMetadata(
     dialogId: DialogID,
     metadata: SubdialogMetadataFile,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const subPath = this.getSubdialogPath(dialogId, status);
       const metadataFilePath = path.join(subPath, 'dialog.yaml');
 
-      await fs.promises.mkdir(subPath, { recursive: true });
-
+      // Creation sites must ensure the directory exists first. Update paths intentionally do not
+      // recreate missing directories so quarantine can use "directory disappeared" as cancellation.
       const yamlContent = yaml.stringify(metadata);
       const tempFile = path.join(
         subPath,
         `.${path.basename(metadataFilePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await this.renameWithRetry(tempFile, metadataFilePath, yamlContent);
+      await this.renameWithRetry(tempFile, metadataFilePath);
     } catch (error) {
       log.error(
         `Failed to save subdialog YAML for ${dialogId.selfId} under root dialog ${dialogId.rootId}:`,
@@ -5813,12 +6433,11 @@ export class DialogPersistence {
 
   /**
    * Update assignmentFromSup for an existing subdialog.
-   * Persists both subdialog metadata locations for consistency.
    */
   static async updateSubdialogAssignment(
     dialogId: DialogID,
     assignment: SubdialogMetadataFile['assignmentFromSup'],
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
       throw new Error('updateSubdialogAssignment expects a subdialog id');
@@ -5832,7 +6451,6 @@ export class DialogPersistence {
       assignmentFromSup: assignment,
     };
     await this.saveSubdialogMetadata(dialogId, next, status);
-    await this.saveDialogMetadata(dialogId, next, status);
   }
 
   /**
@@ -5840,52 +6458,57 @@ export class DialogPersistence {
    */
   static async loadRootDialogMetadata(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
     try {
       const dialogPath = this.getRootDialogPath(dialogId, status);
       const metadataFilePath = path.join(dialogPath, 'dialog.yaml');
 
       try {
-        const content = await fs.promises.readFile(metadataFilePath, 'utf-8');
-        let parsed: unknown;
-        try {
-          parsed = yaml.parse(content);
-        } catch {
-          throw new Error(`Invalid dialog metadata in ${metadataFilePath}`);
-        }
+        const content = await readPersistenceTextFile({
+          filePath: metadataFilePath,
+          source: 'dialog_metadata',
+          format: 'yaml',
+        });
+        const parsed = parsePersistenceYaml({
+          content,
+          filePath: metadataFilePath,
+          source: 'dialog_metadata',
+        });
 
         if (!isDialogMetadataFile(parsed)) {
-          throw new Error(`Invalid dialog metadata in ${metadataFilePath}`);
+          throw buildInvalidPersistenceFileError({
+            source: 'dialog_metadata',
+            format: 'yaml',
+            filePath: metadataFilePath,
+          });
         }
 
         // Validate that the ID in the file matches the expected dialogId
         if (parsed.id !== dialogId.selfId) {
-          log.warn(
-            `Dialog ID mismatch in ${metadataFilePath}: expected ${dialogId.selfId}, got ${parsed.id}`,
-          );
-          return null;
+          throw buildInvalidPersistenceFileError({
+            source: 'dialog_metadata',
+            format: 'yaml',
+            filePath: metadataFilePath,
+          });
         }
 
         return parsed;
-      } catch (error) {
+      } catch (error: unknown) {
         if (getErrorCode(error) === 'ENOENT') {
           return null;
         }
-        if (this.isMalformedDialogLoadError(error)) {
-          await this.quarantineMalformedRootDialog(
-            dialogId,
-            status,
-            'loadRootDialogMetadata',
-            error,
-          );
-          return null;
-        }
-        throw error;
+        await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+          dialogId,
+          status,
+          'loadRootDialogMetadata',
+          error,
+        );
+        throw new Error('unreachable after loadRootDialogMetadata persistence rethrow');
       }
-    } catch (error) {
+    } catch (error: unknown) {
       log.error(`Failed to load dialog YAML for dialog ${dialogId.selfId}:`, error);
-      return null;
+      throw error;
     }
   }
 
@@ -5894,7 +6517,7 @@ export class DialogPersistence {
    */
   static async loadDialogMetadata(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
     // For root dialogs, use the selfId
     // For subdialogs, this is more complex - we need to find the root metadata
@@ -5907,17 +6530,35 @@ export class DialogPersistence {
     const metadataFilePath = path.join(subdialogPath, 'dialog.yaml');
 
     try {
-      const content = await fs.promises.readFile(metadataFilePath, 'utf-8');
-      const parsed: unknown = yaml.parse(content);
+      const content = await readPersistenceTextFile({
+        filePath: metadataFilePath,
+        source: 'dialog_metadata',
+        format: 'yaml',
+      });
+      const parsed: unknown = parsePersistenceYaml({
+        content,
+        filePath: metadataFilePath,
+        source: 'dialog_metadata',
+      });
       if (!isDialogMetadataFile(parsed)) {
-        throw new Error(`Invalid dialog metadata in ${metadataFilePath}`);
+        throw buildInvalidPersistenceFileError({
+          source: 'dialog_metadata',
+          format: 'yaml',
+          filePath: metadataFilePath,
+        });
       }
       return parsed;
-    } catch (error) {
+    } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
       }
-      throw error;
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadDialogMetadata',
+        error,
+      );
+      throw new Error('unreachable after loadDialogMetadata persistence rethrow');
     }
   }
 
@@ -5927,14 +6568,18 @@ export class DialogPersistence {
   private static async writeDialogLatestToDisk(
     dialogId: DialogID,
     latest: DialogLatestFile,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
+    cancellationToken?: RootDialogWriteBackCancellationToken,
   ): Promise<void> {
     try {
+      if (cancellationToken) {
+        this.assertRootDialogWriteBackNotCanceled(
+          cancellationToken,
+          'writeDialogLatestToDisk:start',
+        );
+      }
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
-
-      // Ensure directory exists before writing (handles race conditions and new dialogs)
-      await fs.promises.mkdir(dialogPath, { recursive: true });
 
       // NOTE: Use a unique temp file name to avoid collisions when multiple updates
       // happen concurrently for the same dialog (e.g., parallel tool responses).
@@ -5946,10 +6591,13 @@ export class DialogPersistence {
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
 
       // Rename with retry logic for filesystem sync issues
-      await this.renameWithRetry(tempFile, latestFilePath, yamlContent);
+      await this.renameWithRetry(tempFile, latestFilePath, 5, cancellationToken);
 
       // todo: publish CourseEvent here or where more suitable?
     } catch (error) {
+      if (isDialogWriteBackCanceledError(error)) {
+        throw error;
+      }
       log.error(`Failed to save latest.yaml for dialog ${dialogId.selfId}:`, error);
       throw error;
     }
@@ -5961,29 +6609,26 @@ export class DialogPersistence {
   private static async renameWithRetry(
     source: string,
     destination: string,
-    yamlContent: string,
     maxRetries: number = 5,
+    cancellationToken?: RootDialogWriteBackCancellationToken,
   ): Promise<void> {
     let lastError: Error | undefined;
-    const destinationDir = path.dirname(destination);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Ensure directory exists (handles race conditions)
-        await fs.promises.mkdir(destinationDir, { recursive: true });
-
-        // Check if source file exists, re-create if missing
-        try {
-          await fs.promises.access(source);
-        } catch {
-          // Source file missing - re-create it
-          await fs.promises.writeFile(source, yamlContent, 'utf-8');
+        if (cancellationToken) {
+          this.assertRootDialogWriteBackNotCanceled(
+            cancellationToken,
+            `renameWithRetry:${path.basename(destination)}:before-rename`,
+          );
         }
-
         await fs.promises.rename(source, destination);
         return;
-      } catch (error) {
-        lastError = error as Error;
+      } catch (error: unknown) {
+        if (isDialogWriteBackCanceledError(error)) {
+          throw error;
+        }
+        lastError = error instanceof Error ? error : new Error(String(error));
         if (getErrorCode(error) !== 'ENOENT' || attempt === maxRetries) {
           throw error;
         }
@@ -5999,7 +6644,7 @@ export class DialogPersistence {
    */
   static async loadDialogLatest(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogLatestFile | null> {
     try {
       const key = this.getLatestWriteBackKey(dialogId, status);
@@ -6010,17 +6655,23 @@ export class DialogPersistence {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
 
-      const content = await fs.promises.readFile(latestFilePath, 'utf-8');
+      const content = await readPersistenceTextFile({
+        filePath: latestFilePath,
+        source: 'dialog_latest',
+        format: 'yaml',
+      });
       return this.parseDialogLatestYaml(content, latestFilePath);
-    } catch (error) {
+    } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
       }
-      if (dialogId.rootId === dialogId.selfId && this.isMalformedDialogLoadError(error)) {
-        await this.quarantineMalformedRootDialog(dialogId, status, 'loadDialogLatest', error);
-        return null;
-      }
-      throw error;
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadDialogLatest',
+        error,
+      );
+      throw new Error('unreachable after loadDialogLatest persistence rethrow');
     }
   }
 
@@ -6034,7 +6685,7 @@ export class DialogPersistence {
   static async mutateDialogLatest(
     dialogId: DialogID,
     mutator: (previous: DialogLatestFile) => DialogLatestMutation,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogLatestFile> {
     const key = this.getLatestWriteBackKey(dialogId, status);
     const mutex = this.getLatestWriteBackMutex(key);
@@ -6102,28 +6753,29 @@ export class DialogPersistence {
 
   private static async loadDialogLatestFromDisk(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived',
+    status: DialogStatusKind,
   ): Promise<DialogLatestFile | null> {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
 
-      const content = await fs.promises.readFile(latestFilePath, 'utf-8');
+      const content = await readPersistenceTextFile({
+        filePath: latestFilePath,
+        source: 'dialog_latest',
+        format: 'yaml',
+      });
       return this.parseDialogLatestYaml(content, latestFilePath);
-    } catch (error) {
+    } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
       }
-      if (dialogId.rootId === dialogId.selfId && this.isMalformedDialogLoadError(error)) {
-        await this.quarantineMalformedRootDialog(
-          dialogId,
-          status,
-          'loadDialogLatestFromDisk',
-          error,
-        );
-        return null;
-      }
-      throw error;
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadDialogLatestFromDisk',
+        error,
+      );
+      throw new Error('unreachable after loadDialogLatestFromDisk persistence rethrow');
     }
   }
 
@@ -6133,7 +6785,7 @@ export class DialogPersistence {
     let captured:
       | {
           dialogId: DialogID;
-          status: 'running' | 'completed' | 'archived';
+          status: DialogStatusKind;
           latestToWrite: DialogLatestFile;
           inFlight: Promise<void>;
         }
@@ -6150,7 +6802,16 @@ export class DialogPersistence {
         clearTimeout(entry.timer);
 
         const latestToWrite = entry.latest;
-        const inFlight = this.writeDialogLatestToDisk(entry.dialogId, latestToWrite, entry.status);
+        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+          entry.dialogId,
+          entry.status,
+        );
+        const inFlight = this.writeDialogLatestToDisk(
+          entry.dialogId,
+          latestToWrite,
+          entry.status,
+          cancellationToken,
+        );
 
         captured = {
           dialogId: entry.dialogId,
@@ -6183,6 +6844,10 @@ export class DialogPersistence {
         if (!entry) return;
         if (entry.kind !== 'flushing') return;
         if (entry.inFlight !== captured.inFlight) return;
+        if (isDialogWriteBackCanceledError(error)) {
+          this.latestWriteBack.delete(key);
+          return;
+        }
 
         const timer = setTimeout(() => {
           void this.flushLatestWriteBack(key);
@@ -6232,7 +6897,7 @@ export class DialogPersistence {
   static async setNeedsDrive(
     dialogId: DialogID,
     needsDrive: boolean,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutateDialogLatest(
       dialogId,
@@ -6243,7 +6908,7 @@ export class DialogPersistence {
 
   static async getNeedsDrive(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<boolean> {
     const latest = await this.loadDialogLatest(dialogId, status);
     return latest?.needsDrive === true;
@@ -6252,7 +6917,7 @@ export class DialogPersistence {
   static async setDeferredReplyReassertion(
     dialogId: DialogID,
     deferredReplyReassertion: DialogLatestFile['deferredReplyReassertion'],
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutateDialogLatest(
       dialogId,
@@ -6263,7 +6928,7 @@ export class DialogPersistence {
 
   static async getDeferredReplyReassertion(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogLatestFile['deferredReplyReassertion']> {
     const latest = await this.loadDialogLatest(dialogId, status);
     return latest?.deferredReplyReassertion;
@@ -6292,7 +6957,7 @@ export class DialogPersistence {
   /**
    * Get dialog status from file system path
    */
-  static getStatusFromPath(dialogPath: string): 'running' | 'completed' | 'archived' {
+  static getStatusFromPath(dialogPath: string): DialogStatusKind {
     const parentDir = path.basename(path.dirname(dialogPath));
     if (parentDir === this.RUN_DIR) return 'running';
     if (parentDir === this.DONE_DIR) return 'completed';
@@ -6303,7 +6968,7 @@ export class DialogPersistence {
   static async loadQuestions4Human(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<Questions4Human | null> {
     const questions = await this.loadQuestions4HumanState(dialogId, status);
     return {
@@ -6319,7 +6984,7 @@ export class DialogPersistence {
    */
   static async countAllSubdialogsUnderRoot(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<number> {
     try {
       const rootPath = this.getRootDialogPath(rootDialogId, status);
@@ -6346,7 +7011,7 @@ export class DialogPersistence {
    */
   static async restoreDialogTree(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogPersistenceState | null> {
     try {
       // First restore the root dialog
@@ -6387,7 +7052,7 @@ export class DialogPersistence {
    */
   static async restoreDialog(
     dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<DialogPersistenceState | null> {
     try {
       const metadata = await this.loadDialogMetadata(dialogId, status);
@@ -6421,7 +7086,7 @@ export class DialogPersistence {
   static async loadCourseEvents(
     dialogId: DialogID,
     course: number,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<PersistedDialogRecord[]> {
     return await this.readCourseEvents(dialogId, course, status);
   }
@@ -6657,42 +7322,35 @@ export class DialogPersistence {
    */
   static async moveDialogStatus(
     dialogId: DialogID,
-    fromStatus: 'running' | 'completed' | 'archived',
-    toStatus: 'running' | 'completed' | 'archived',
+    fromStatus: DialogStatusKind,
+    toStatus: DialogStatusKind,
   ): Promise<void> {
     try {
       const fromPath = path.join(
         this.getDialogsRootDir(),
-        fromStatus === 'running'
-          ? this.RUN_DIR
-          : fromStatus === 'completed'
-            ? this.DONE_DIR
-            : this.ARCHIVE_DIR,
+        getPersistableStatusDirName(fromStatus, 'DialogPersistence.moveDialogStatus(fromStatus)'),
         dialogId.selfId,
       );
       const toPath = path.join(
         this.getDialogsRootDir(),
-        toStatus === 'running'
-          ? this.RUN_DIR
-          : toStatus === 'completed'
-            ? this.DONE_DIR
-            : this.ARCHIVE_DIR,
+        getPersistableStatusDirName(toStatus, 'DialogPersistence.moveDialogStatus(toStatus)'),
         dialogId.selfId,
       );
 
-      // Ensure destination directory exists
-      await fs.promises.mkdir(toPath, { recursive: true });
+      await fs.promises.mkdir(path.dirname(toPath), { recursive: true });
 
-      // Move all files and directories
-      const entries = await fs.promises.readdir(fromPath, { withFileTypes: true });
-      for (const entry of entries) {
-        const srcPath = path.join(fromPath, entry.name);
-        const destPath = path.join(toPath, entry.name);
-        await fs.promises.rename(srcPath, destPath);
+      try {
+        await fs.promises.access(toPath);
+        throw new Error(
+          `Refusing to move dialog ${dialogId.valueOf()} from ${fromStatus} to ${toStatus}: destination already exists at ${toPath}`,
+        );
+      } catch (error: unknown) {
+        if (getErrorCode(error) !== 'ENOENT') {
+          throw error;
+        }
       }
 
-      // Remove the (now-empty) source directory so the dialog is not detected under both statuses.
-      await fs.promises.rm(fromPath, { recursive: true, force: true });
+      await fs.promises.rename(fromPath, toPath);
     } catch (error) {
       log.error(`Failed to move dialog ${dialogId} from ${fromStatus} to ${toStatus}:`, error);
       throw error;
@@ -6705,7 +7363,7 @@ export class DialogPersistence {
    */
   static async deleteRootDialog(
     rootDialogId: DialogID,
-    fromStatus: 'running' | 'completed' | 'archived',
+    fromStatus: DialogStatusKind,
   ): Promise<boolean> {
     if (rootDialogId.selfId !== rootDialogId.rootId) {
       throw new Error('deleteRootDialog expects a root dialog id');
@@ -6715,12 +7373,7 @@ export class DialogPersistence {
 
     // Best-effort cleanup: remove the dialog from all status directories to avoid leaving behind
     // orphaned placeholder paths (e.g. `run/<id>/latest.yaml`) after a delete.
-    const allStatuses: Array<'running' | 'completed' | 'archived'> = [
-      'running',
-      'completed',
-      'archived',
-    ];
-    for (const candidate of allStatuses) {
+    for (const candidate of PERSISTABLE_DIALOG_STATUSES) {
       const candidatePath = this.getRootDialogPath(rootDialogId, candidate);
       await fs.promises.rm(candidatePath, { recursive: true, force: true });
     }
@@ -6740,13 +7393,11 @@ export class DialogPersistence {
       agentId: string;
       sessionSlug?: string;
     }>,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
-
-      await fs.promises.mkdir(dialogPath, { recursive: true });
 
       const serializableEntries = entries.map((entry) => ({
         key: entry.key,
@@ -6761,7 +7412,7 @@ export class DialogPersistence {
         `.${path.basename(registryFilePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await this.renameWithRetry(tempFile, registryFilePath, yamlContent);
+      await this.renameWithRetry(tempFile, registryFilePath);
     } catch (error) {
       log.error(`Failed to save subdialog registry for dialog ${rootDialogId}:`, error);
       throw error;
@@ -6773,7 +7424,7 @@ export class DialogPersistence {
    */
   static async loadSubdialogRegistry(
     rootDialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
+    status: DialogStatusKind = 'running',
   ): Promise<
     Array<{
       key: string;
@@ -6786,33 +7437,59 @@ export class DialogPersistence {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
-      const content = await fs.promises.readFile(registryFilePath, 'utf-8');
-      const parsed: unknown = yaml.parse(content);
+      const content = await readPersistenceTextFile({
+        filePath: registryFilePath,
+        source: 'subdialog_registry',
+        format: 'yaml',
+      });
+      const parsed: unknown = parsePersistenceYaml({
+        content,
+        filePath: registryFilePath,
+        source: 'subdialog_registry',
+      });
 
       if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
-        log.warn(`Invalid registry.yaml format for dialog ${rootDialogId}`);
-        return [];
+        throw buildInvalidPersistenceFileError({
+          source: 'subdialog_registry',
+          format: 'yaml',
+          filePath: registryFilePath,
+        });
       }
 
       const entries = parsed.entries.map((entry: unknown) => {
-        if (!isRecord(entry)) {
-          throw new Error('Invalid registry entry');
+        if (
+          !isRecord(entry) ||
+          typeof entry.key !== 'string' ||
+          typeof entry.subdialogId !== 'string' ||
+          typeof entry.agentId !== 'string' ||
+          (entry.sessionSlug !== undefined && typeof entry.sessionSlug !== 'string')
+        ) {
+          throw buildInvalidPersistenceFileError({
+            source: 'subdialog_registry',
+            format: 'yaml',
+            filePath: registryFilePath,
+          });
         }
         return {
-          key: entry.key as string,
-          subdialogId: new DialogID(entry.subdialogId as string, rootDialogId.rootId),
-          agentId: entry.agentId as string,
-          sessionSlug: entry.sessionSlug as string | undefined,
+          key: entry.key,
+          subdialogId: new DialogID(entry.subdialogId, rootDialogId.rootId),
+          agentId: entry.agentId,
+          sessionSlug: entry.sessionSlug,
         };
       });
 
       return entries;
-    } catch (error) {
+    } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return [];
       }
-      log.error(`Failed to load subdialog registry for dialog ${rootDialogId}:`, error);
-      return [];
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        rootDialogId,
+        status,
+        'loadSubdialogRegistry',
+        error,
+      );
+      throw new Error('unreachable after loadSubdialogRegistry persistence rethrow');
     }
   }
 }

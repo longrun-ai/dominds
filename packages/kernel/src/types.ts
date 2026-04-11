@@ -29,7 +29,7 @@ export interface DialogInfo {
   agentId: string;
   agentName: string;
   taskDocPath: string;
-  status?: DialogStatusKind;
+  status?: Exclude<DialogStatusKind, 'quarantining'>;
   supdialogId?: string;
   sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
@@ -40,7 +40,7 @@ export interface ApiRootDialogResponse {
   selfId?: string;
   agentId: string;
   taskDocPath: string;
-  status: 'running' | 'completed' | 'archived';
+  status: Exclude<DialogStatusKind, 'quarantining'>;
   currentCourse: number;
   createdAt: string;
   lastModified: string;
@@ -58,7 +58,7 @@ export interface ApiSubdialogResponse {
   supdialogId?: string;
   agentId: string;
   taskDocPath: string;
-  status: 'running' | 'completed' | 'archived';
+  status: Exclude<DialogStatusKind, 'quarantining'>;
   currentCourse: number;
   createdAt: string;
   lastModified: string;
@@ -75,7 +75,7 @@ export interface ApiDialogHierarchyResponse {
       id: string;
       agentId: string;
       taskDocPath: string;
-      status: 'running' | 'completed' | 'archived';
+      status: Exclude<DialogStatusKind, 'quarantining'>;
       currentCourse: number;
       createdAt: string;
       lastModified: string;
@@ -95,14 +95,14 @@ export type ApiMoveDialogsRequest =
   | {
       kind: 'root';
       rootId: string;
-      fromStatus: DialogStatusKind;
-      toStatus: DialogStatusKind;
+      fromStatus: Exclude<DialogStatusKind, 'quarantining'>;
+      toStatus: Exclude<DialogStatusKind, 'quarantining'>;
     }
   | {
       kind: 'task';
       taskDocPath: string;
-      fromStatus: DialogStatusKind;
-      toStatus: DialogStatusKind;
+      fromStatus: Exclude<DialogStatusKind, 'quarantining'>;
+      toStatus: Exclude<DialogStatusKind, 'quarantining'>;
     };
 
 export interface ApiMoveDialogsResponse {
@@ -114,7 +114,7 @@ export interface ApiMoveDialogsResponse {
 export interface ApiForkDialogRequest {
   course: number;
   genseq: number;
-  status?: DialogStatusKind;
+  status?: Exclude<DialogStatusKind, 'quarantining'>;
 }
 
 export type ApiForkDialogAction =

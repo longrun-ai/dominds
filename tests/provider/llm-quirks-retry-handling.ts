@@ -12,6 +12,7 @@ import {
 import type { ProviderConfig } from '../../main/llm/client';
 import { classifyOpenAiLikeFailure } from '../../main/llm/gen/failure-classifier';
 import { LlmRetryStoppedError, runLlmRequestWithRetry } from '../../main/llm/kernel-driver/runtime';
+import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
 function buildProviderConfig(): ProviderConfig {
   return {
@@ -60,6 +61,14 @@ function makeGatewayHtml502Error(): { status: number; message: string } {
       '<body>Cloudflare Bad gateway</body>\n' +
       '</html>',
   };
+}
+
+function makeUnexpectedEofError(): Error {
+  return new Error('unexpected EOF');
+}
+
+function makeWrappedUnexpectedEofError(): Error {
+  return new Error('fetch failed', { cause: makeUnexpectedEofError() });
 }
 
 function buildFakeDialog(language: LanguageCode): Dialog {
@@ -207,6 +216,80 @@ async function verifyQuirkSessionStateMachine(): Promise<void> {
   }
   assert.equal(gatewayHtmlHandling.retryStrategy, 'conservative');
   assert.match(gatewayHtmlHandling.message ?? '', /html 502 bad gateway page/iu);
+
+  const unexpectedEofHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: {
+      kind: 'fatal',
+      message: 'unexpected EOF',
+    },
+    error: makeUnexpectedEofError(),
+  });
+  assert.equal(unexpectedEofHandling.kind, 'retry_strategy');
+  if (unexpectedEofHandling.kind !== 'retry_strategy') {
+    throw new Error(`Expected retry_strategy, got ${unexpectedEofHandling.kind}`);
+  }
+  assert.equal(unexpectedEofHandling.retryStrategy, 'conservative');
+  assert.match(unexpectedEofHandling.message ?? '', /unexpected eof/iu);
+
+  const wrappedUnexpectedEofHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: {
+      kind: 'fatal',
+      message: 'fetch failed',
+    },
+    error: makeWrappedUnexpectedEofError(),
+  });
+  assert.equal(wrappedUnexpectedEofHandling.kind, 'retry_strategy');
+  if (wrappedUnexpectedEofHandling.kind !== 'retry_strategy') {
+    throw new Error(`Expected retry_strategy, got ${wrappedUnexpectedEofHandling.kind}`);
+  }
+  assert.equal(wrappedUnexpectedEofHandling.retryStrategy, 'conservative');
+
+  assert.equal(
+    session.onFailure({
+      provider: 'xcode1',
+      providerConfig,
+      failure: {
+        kind: 'fatal',
+        message: 'unexpected EOF',
+      },
+      error: new DomindsPersistenceFileError({
+        message: 'Invalid latest.yaml in /tmp/latest.yaml',
+        source: 'dialog_latest',
+        operation: 'parse',
+        format: 'yaml',
+        filePath: '/tmp/latest.yaml',
+        eofLike: true,
+        cause: makeUnexpectedEofError(),
+      }),
+    }).kind,
+    'default',
+    'Expected local file-context EOFs to stay out of xcode.best infrastructure retry quirks',
+  );
+
+  const providerHttpPathUnexpectedEofHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: {
+      kind: 'fatal',
+      message: 'unexpected EOF',
+    },
+    error: {
+      message: 'unexpected EOF',
+      path: '/v1/responses',
+      status: 502,
+    },
+  });
+  assert.equal(providerHttpPathUnexpectedEofHandling.kind, 'retry_strategy');
+  if (providerHttpPathUnexpectedEofHandling.kind !== 'retry_strategy') {
+    throw new Error(
+      `Expected retry_strategy for provider http-path EOF, got ${providerHttpPathUnexpectedEofHandling.kind}`,
+    );
+  }
+  assert.equal(providerHttpPathUnexpectedEofHandling.retryStrategy, 'conservative');
 }
 
 async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
@@ -545,6 +628,48 @@ async function verifyXcodeBestGatewayHtml502UsesConservativeRetry(): Promise<voi
   assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
 }
 
+async function verifyXcodeBestUnexpectedEofUsesConservativeRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    maxRetries: 0,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeWrappedUnexpectedEofError();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.titleTextI18n.en, 'Retrying');
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+  assert.equal(waiting?.error, 'fetch failed');
+  assert.equal(resolved?.display.titleTextI18n.en, 'Retry recovered');
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+}
+
 async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
   await verifySingleRetryBypassesDriverRetryLimit();
@@ -555,6 +680,7 @@ async function main(): Promise<void> {
   await verifyRuntimeDoesNotInferProviderRateLimitWithoutWrapperClassifier();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();
   await verifyXcodeBestGatewayHtml502UsesConservativeRetry();
+  await verifyXcodeBestUnexpectedEofUsesConservativeRetry();
   console.log('provider llm-quirks-retry-handling: PASS');
 }
 

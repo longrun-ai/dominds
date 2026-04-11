@@ -27,6 +27,7 @@ import { forkRootDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import { findDomindsPersistenceFileError } from '../persistence-errors';
 import type { PrimingScriptLoadIssue } from '../priming';
 import {
   applyPrimingScriptsToDialog,
@@ -63,6 +64,7 @@ import {
 
 const log = createLogger('api-routes');
 const PRIMING_WARNING_SAMPLE_MAX = 5;
+type PersistableDialogStatus = Exclude<DialogStatusKind, 'quarantining'>;
 
 function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   const member = team.getMember(agentId);
@@ -87,28 +89,149 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseDialogStatusFromUrl(urlObj: URL): DialogStatusKind | null {
-  const raw = urlObj.searchParams.get('status');
-  if (raw === null) return 'running';
+function parsePersistableDialogStatus(raw: unknown): PersistableDialogStatus | null {
   if (raw === 'running' || raw === 'completed' || raw === 'archived') {
     return raw;
   }
   return null;
 }
 
-function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
-  if (raw === 'running' || raw === 'completed' || raw === 'archived') {
-    return raw;
+function readOptionalPersistableDialogStatusQuery(urlObj: URL):
+  | {
+      kind: 'missing';
+    }
+  | {
+      kind: 'invalid';
+    }
+  | {
+      kind: 'value';
+      status: PersistableDialogStatus;
+    } {
+  const raw = urlObj.searchParams.get('status');
+  if (raw === null) {
+    return { kind: 'missing' };
   }
-  return null;
+  const status = parsePersistableDialogStatus(raw);
+  if (status === null) {
+    return { kind: 'invalid' };
+  }
+  return { kind: 'value', status };
+}
+
+function readOptionalPersistableDialogStatus(raw: unknown):
+  | {
+      kind: 'missing';
+    }
+  | {
+      kind: 'invalid';
+    }
+  | {
+      kind: 'value';
+      status: PersistableDialogStatus;
+    } {
+  if (raw === undefined) {
+    return { kind: 'missing' };
+  }
+  const status = parsePersistableDialogStatus(raw);
+  if (status === null) {
+    return { kind: 'invalid' };
+  }
+  return { kind: 'value', status };
+}
+
+async function loadDialogMetadataForLookup(
+  dialogId: DialogID,
+  status: PersistableDialogStatus,
+  context: string,
+): Promise<DialogMetadataFile | null> {
+  try {
+    return await DialogPersistence.loadDialogMetadata(dialogId, status);
+  } catch (error: unknown) {
+    if (!findDomindsPersistenceFileError(error)) {
+      throw error;
+    }
+    log.warn(`${context}: dialog metadata quarantined during lazy lookup`, error, {
+      dialogId: dialogId.valueOf(),
+      status,
+    });
+    return null;
+  }
+}
+
+async function loadRootDialogMetadataForLookup(
+  dialogId: DialogID,
+  status: PersistableDialogStatus,
+  context: string,
+): Promise<DialogMetadataFile | null> {
+  try {
+    return await DialogPersistence.loadRootDialogMetadata(dialogId, status);
+  } catch (error: unknown) {
+    if (!findDomindsPersistenceFileError(error)) {
+      throw error;
+    }
+    log.warn(`${context}: root dialog metadata quarantined during lazy lookup`, error, {
+      dialogId: dialogId.valueOf(),
+      status,
+    });
+    return null;
+  }
+}
+
+async function loadDialogLatestForLookup(
+  dialogId: DialogID,
+  status: PersistableDialogStatus,
+  context: string,
+): Promise<DialogLatestFile | null> {
+  try {
+    return await DialogPersistence.loadDialogLatest(dialogId, status);
+  } catch (error: unknown) {
+    if (!findDomindsPersistenceFileError(error)) {
+      throw error;
+    }
+    log.warn(`${context}: latest.yaml quarantined during lazy lookup`, error, {
+      dialogId: dialogId.valueOf(),
+      status,
+    });
+    return null;
+  }
 }
 
 async function detectWaitingForFreshBootsReasoning(
   dialogId: DialogID,
-  status: DialogStatusKind,
+  status: PersistableDialogStatus,
 ): Promise<boolean> {
-  const pending = await DialogPersistence.loadPendingSubdialogs(dialogId, status);
-  return pending.some((entry) => entry.callName === 'freshBootsReasoning');
+  try {
+    // Pending-subdialogs is also lazy-loaded per dialog. A malformed queue should quarantine just
+    // that dialog and degrade this derived flag to "unknown/false" instead of taking down the
+    // surrounding list or hierarchy response.
+    const pending = await DialogPersistence.loadPendingSubdialogs(dialogId, status);
+    return pending.some((entry) => entry.callName === 'freshBootsReasoning');
+  } catch (error: unknown) {
+    if (!findDomindsPersistenceFileError(error)) {
+      throw error;
+    }
+    log.warn(
+      'detectWaitingForFreshBootsReasoning: pending-subdialogs quarantined during lookup',
+      error,
+      {
+        dialogId: dialogId.valueOf(),
+        status,
+      },
+    );
+    return false;
+  }
+}
+
+async function pathStillExistsForLookup(targetPath: string): Promise<boolean> {
+  try {
+    await fsPromises.access(targetPath);
+    return true;
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function buildPrimingWarningSummary(
@@ -233,7 +356,17 @@ async function handleSaveCurrentCoursePriming(
 
   const rootId = typeof dialogRaw['rootId'] === 'string' ? dialogRaw['rootId'].trim() : '';
   const selfId = typeof dialogRaw['selfId'] === 'string' ? dialogRaw['selfId'].trim() : '';
-  const status = parseDialogStatusKind(dialogRaw['status']) ?? 'running';
+  const parsedStatus = readOptionalPersistableDialogStatus(dialogRaw['status']);
+  if (parsedStatus.kind === 'invalid') {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'dialog.status must be running, completed, or archived',
+      errorCode: 'INVALID_REQUEST',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+  const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
   const course =
     typeof courseRaw === 'number' && Number.isFinite(courseRaw) ? Math.floor(courseRaw) : 0;
   const slug = typeof slugRaw === 'string' ? slugRaw.trim() : '';
@@ -1121,11 +1254,12 @@ export async function handleApiRoute(
     // Dialog list endpoint
     if (pathname === '/api/dialogs' && req.method === 'GET') {
       const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-      const status = parseDialogStatusFromUrl(urlObj);
-      if (!status) {
+      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
+      if (parsedStatus.kind === 'invalid') {
         respondJson(res, 400, { success: false, error: 'Invalid status' });
         return true;
       }
+      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
       return await handleGetDialogs(res, status);
     }
 
@@ -1200,11 +1334,12 @@ export async function handleApiRoute(
       const parts = pathname.split('/');
       const rootId = parts[3].replace(/%2F/g, '/');
       const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-      const status = parseDialogStatusFromUrl(urlObj);
-      if (!status) {
+      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
+      if (parsedStatus.kind === 'invalid') {
         respondJson(res, 400, { success: false, error: 'Invalid status' });
         return true;
       }
+      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
       return await handleGetDialogHierarchy(res, rootId, status);
     }
 
@@ -1233,11 +1368,12 @@ export async function handleApiRoute(
         return true;
       }
       const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-      const status = parseDialogStatusFromUrl(urlObj);
-      if (!status) {
+      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
+      if (parsedStatus.kind === 'invalid') {
         respondJson(res, 400, { success: false, error: 'Invalid status' });
         return true;
       }
+      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
       return await handleGetDialogArtifact(req, res, { rootId, selfId }, status);
     }
 
@@ -1247,11 +1383,12 @@ export async function handleApiRoute(
       const selfId = (parts[4] || parts[3]).replace(/%2F/g, '/');
       const rootId = parts[3].replace(/%2F/g, '/');
       const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-      const status = parseDialogStatusFromUrl(urlObj);
-      if (!status) {
+      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
+      if (parsedStatus.kind === 'invalid') {
         respondJson(res, 400, { success: false, error: 'Invalid status' });
         return true;
       }
+      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
       const dialog: DialogIdent = { selfId, rootId, status };
       return await handleGetDialog(res, dialog, status);
     }
@@ -2024,29 +2161,37 @@ async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse)
     const selfId = typeof selfIdRaw === 'string' ? selfIdRaw.trim() : '';
     const requestedAgentId = typeof agentIdRaw === 'string' ? agentIdRaw.trim() : '';
     const requestedTaskDocPath = typeof taskDocPathRaw === 'string' ? taskDocPathRaw.trim() : '';
+    const requestedStatusParam = readOptionalPersistableDialogStatusQuery(urlObj);
+    if (requestedStatusParam.kind === 'invalid') {
+      respondJson(res, 400, { success: false, error: 'Invalid status' });
+      return true;
+    }
 
     const resolveDialogMetadata = async (): Promise<DialogMetadataFile | null> => {
       if (rootId === '' || selfId === '') {
         return null;
       }
 
-      const requestedStatus = parseDialogStatusFromUrl(urlObj);
       const statusOrder = [
         'running',
         'completed',
         'archived',
-      ] as const satisfies readonly DialogStatusKind[];
+      ] as const satisfies readonly PersistableDialogStatus[];
       const candidateStatuses =
-        requestedStatus === null
+        requestedStatusParam.kind === 'missing'
           ? statusOrder
           : ([
-              requestedStatus,
-              ...statusOrder.filter((status) => status !== requestedStatus),
+              requestedStatusParam.status,
+              ...statusOrder.filter((status) => status !== requestedStatusParam.status),
             ] as const);
 
       for (const status of candidateStatuses) {
         const dialogId = new DialogID(selfId, rootId);
-        const metadata = await DialogPersistence.loadDialogMetadata(dialogId, status);
+        const metadata = await loadDialogMetadataForLookup(
+          dialogId,
+          status,
+          'resolveDialogMetadata',
+        );
         if (metadata) {
           return metadata;
         }
@@ -2173,13 +2318,16 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
 /**
  * Get dialog list - returns root dialogs with subdialogCount
  */
-async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): Promise<boolean> {
+async function handleGetDialogs(
+  res: ServerResponse,
+  status: PersistableDialogStatus,
+): Promise<boolean> {
   try {
     const rootDialogs: Array<{
       rootId: string;
       agentId: string;
       taskDocPath: string;
-      status: 'running' | 'completed' | 'archived';
+      status: PersistableDialogStatus;
       currentCourse: number;
       createdAt: string;
       lastModified: string;
@@ -2191,21 +2339,14 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
     const ids = await DialogPersistence.listDialogs(status);
     for (const id of ids) {
       const dialogId = new DialogID(id);
-      const meta = await DialogPersistence.loadRootDialogMetadata(dialogId, status);
+      const meta = await loadRootDialogMetadataForLookup(dialogId, status, 'handleListDialogs');
       if (!meta) continue;
 
-      // Load latest.yaml for currentCourse and lastModified timestamp
-      const latest = await DialogPersistence.loadDialogLatest(dialogId, status);
+      // listDialogs() only yields candidate IDs. Metadata/latest stay lazy so one malformed dialog
+      // can quarantine itself here without taking down the whole list response.
+      const latest = await loadDialogLatestForLookup(dialogId, status, 'handleListDialogs');
       const rootPath = DialogPersistence.getRootDialogPath(dialogId, status);
-      const rootStillExists = await fsPromises
-        .access(rootPath)
-        .then(() => true)
-        .catch((error: unknown) => {
-          if (getErrorCode(error) === 'ENOENT') {
-            return false;
-          }
-          throw error;
-        });
+      const rootStillExists = await pathStillExistsForLookup(rootPath);
       if (!rootStillExists) {
         continue;
       }
@@ -2217,6 +2358,9 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
       // Count subdialogs for this root dialog
       const subPath = path.join(rootPath, 'subdialogs');
       const subdialogCount = await countSubdialogs(subPath);
+      if (!(await pathStillExistsForLookup(rootPath))) {
+        continue;
+      }
 
       rootDialogs.push({
         rootId: meta.id,
@@ -2272,11 +2416,16 @@ async function countSubdialogs(dirPath: string): Promise<number> {
         const dialogYamlPath = path.join(fullPath, 'dialog.yaml');
         try {
           await fsPromises.access(dialogYamlPath);
-          // This directory contains dialog.yaml - it's a subdialog
+          // This directory contains dialog.yaml - it's a subdialog.
           count++;
-        } catch {
-          // No dialog.yaml - recurse into this directory
-          count += await countSubdialogs(fullPath);
+        } catch (error: unknown) {
+          if (getErrorCode(error) === 'ENOENT') {
+            // Only a missing dialog.yaml means "keep recursing". Permission/I/O failures must stay
+            // loud so operators can distinguish inaccessible paths from ordinary non-dialog dirs.
+            count += await countSubdialogs(fullPath);
+            continue;
+          }
+          throw error;
         }
       }
     }
@@ -2300,10 +2449,14 @@ async function countSubdialogs(dirPath: string): Promise<number> {
 async function handleGetDialogHierarchy(
   res: ServerResponse,
   rootId: string,
-  status: DialogStatusKind,
+  status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
-    const rootMeta = await DialogPersistence.loadRootDialogMetadata(new DialogID(rootId), status);
+    const rootMeta = await loadRootDialogMetadataForLookup(
+      new DialogID(rootId),
+      status,
+      'handleGetDialogHierarchy:root',
+    );
     if (!rootMeta) {
       respondJson(res, 404, {
         success: false,
@@ -2313,20 +2466,13 @@ async function handleGetDialogHierarchy(
     }
 
     // Load latest.yaml for root dialog currentCourse and lastModified timestamp
-    const rootLatest: DialogLatestFile | null = await DialogPersistence.loadDialogLatest(
+    const rootLatest: DialogLatestFile | null = await loadDialogLatestForLookup(
       new DialogID(rootId),
       status,
+      'handleGetDialogHierarchy:root',
     );
     const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootId), status);
-    const rootStillExists = await fsPromises
-      .access(rootPath)
-      .then(() => true)
-      .catch((error: unknown) => {
-        if (getErrorCode(error) === 'ENOENT') {
-          return false;
-        }
-        throw error;
-      });
+    const rootStillExists = await pathStillExistsForLookup(rootPath);
     if (!rootStillExists) {
       respondJson(res, 404, {
         success: false,
@@ -2349,6 +2495,13 @@ async function handleGetDialogHierarchy(
         status,
       ),
     };
+    if (!(await pathStillExistsForLookup(rootPath))) {
+      respondJson(res, 404, {
+        success: false,
+        error: `Root dialog ${rootId} was quarantined as malformed`,
+      });
+      return true;
+    }
 
     let subdialogs: Array<{
       selfId: string;
@@ -2356,7 +2509,7 @@ async function handleGetDialogHierarchy(
       supdialogId?: string;
       agentId: string;
       taskDocPath: string;
-      status: 'running' | 'completed' | 'archived';
+      status: PersistableDialogStatus;
       currentCourse: number;
       createdAt: string;
       lastModified: string;
@@ -2371,16 +2524,28 @@ async function handleGetDialogHierarchy(
       if (dialogId.rootId !== rootId || dialogId.selfId === rootId) {
         continue;
       }
-      const meta = await DialogPersistence.loadDialogMetadata(dialogId, status);
+      const meta = await loadDialogMetadataForLookup(
+        dialogId,
+        status,
+        'handleGetDialogHierarchy:subdialog',
+      );
       if (!meta) {
         continue;
       }
 
-      const subLatest = await DialogPersistence.loadDialogLatest(dialogId, status);
+      const subLatest = await loadDialogLatestForLookup(
+        dialogId,
+        status,
+        'handleGetDialogHierarchy:subdialog',
+      );
       const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
         dialogId,
         status,
       );
+      const subdialogPath = DialogPersistence.getSubdialogPath(dialogId, status);
+      if (!(await pathStillExistsForLookup(subdialogPath))) {
+        continue;
+      }
       const derivedSupdialogId =
         meta.assignmentFromSup?.callerDialogId &&
         meta.assignmentFromSup.callerDialogId.trim() !== ''
@@ -2558,7 +2723,16 @@ async function handleForkDialog(
       typeof courseRaw === 'number' && Number.isFinite(courseRaw) ? Math.floor(courseRaw) : 0;
     const genseq =
       typeof genseqRaw === 'number' && Number.isFinite(genseqRaw) ? Math.floor(genseqRaw) : 0;
-    const status = parseDialogStatusKind(statusRaw) ?? 'running';
+    const parsedStatus = readOptionalPersistableDialogStatus(statusRaw);
+    if (parsedStatus.kind === 'invalid') {
+      const payload: ApiForkDialogResponse = {
+        success: false,
+        error: 'status must be running, completed, or archived',
+      };
+      respondJson(res, 400, payload);
+      return true;
+    }
+    const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
 
     if (rootId === '') {
       const payload: ApiForkDialogResponse = { success: false, error: 'rootId is required' };
@@ -2660,7 +2834,11 @@ async function handleMoveDialogs(
         return true;
       }
 
-      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(rootId), fromStatus);
+      const meta = await loadRootDialogMetadataForLookup(
+        new DialogID(rootId),
+        fromStatus,
+        'handleMoveDialogs:root',
+      );
       if (!meta) {
         respondJson(res, 404, {
           success: false,
@@ -2701,7 +2879,11 @@ async function handleMoveDialogs(
     const ids = await DialogPersistence.listDialogs(fromStatus);
     for (const id of ids) {
       if (typeof id !== 'string' || id.trim() === '') continue;
-      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), fromStatus);
+      const meta = await loadRootDialogMetadataForLookup(
+        new DialogID(id),
+        fromStatus,
+        'handleMoveDialogs:task-scan',
+      );
       if (!meta) continue;
       if (meta.taskDocPath !== taskDocPath) continue;
       await DialogPersistence.moveDialogStatus(new DialogID(id), fromStatus, toStatus);
@@ -2761,7 +2943,7 @@ function broadcastDialogDeletes(
   message: {
     type: 'dialogs_deleted';
     scope: { kind: 'root'; rootId: string } | { kind: 'task'; taskDocPath: string };
-    fromStatus: 'running' | 'completed' | 'archived';
+    fromStatus: PersistableDialogStatus;
     deletedRootIds: string[];
     timestamp: string;
   },
@@ -2814,7 +2996,7 @@ function broadcastDialogCreates(
 
 async function handleDeleteDialog(
   res: ServerResponse,
-  dialog: { rootId: string; selfId: string; fromStatus: DialogStatusKind },
+  dialog: { rootId: string; selfId: string; fromStatus: PersistableDialogStatus },
   context: ApiRouteContext,
 ): Promise<boolean> {
   try {
@@ -2868,12 +3050,13 @@ async function handleDeleteDialog(
 async function handleGetDialog(
   res: ServerResponse,
   dialog: DialogIdent,
-  status: DialogStatusKind,
+  status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
-    const metadata: DialogMetadataFile | null = await DialogPersistence.loadDialogMetadata(
+    const metadata: DialogMetadataFile | null = await loadDialogMetadataForLookup(
       new DialogID(dialog.selfId, dialog.rootId),
       status,
+      'handleGetDialog',
     );
     if (!metadata) {
       respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
@@ -2894,7 +3077,13 @@ async function handleGetDialog(
       status,
     );
 
-    const dialogData = {
+    const dialogData: {
+      id: string;
+      agentId: string;
+      status: PersistableDialogStatus;
+      createdAt: string;
+      currentCourse: number;
+    } = {
       id: metadata.id,
       agentId: metadata.agentId,
       status,
@@ -2930,9 +3119,13 @@ async function handleResolveDialogStatus(
     })();
 
     const dialogId = new DialogID(selfId, rootId);
-    const candidates: DialogStatusKind[] = ['running', 'completed', 'archived'];
+    const candidates: PersistableDialogStatus[] = ['running', 'completed', 'archived'];
     for (const status of candidates) {
-      const metadata = await DialogPersistence.loadDialogMetadata(dialogId, status);
+      const metadata = await loadDialogMetadataForLookup(
+        dialogId,
+        status,
+        'handleResolveDialogStatus',
+      );
       if (!metadata) continue;
       respondJson(res, 200, {
         success: true,
@@ -3002,7 +3195,7 @@ async function handleGetDialogArtifact(
   req: IncomingMessage,
   res: ServerResponse,
   dialog: DialogIdent,
-  status: DialogStatusKind,
+  status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
     const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');

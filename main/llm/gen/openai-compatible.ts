@@ -31,14 +31,16 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
-import type {
-  LlmBatchResult,
-  LlmFailureDisposition,
-  LlmGenerator,
-  LlmRequestContext,
-  LlmStreamReceiver,
-  LlmStreamResult,
+import {
+  LlmStreamErrorEmittedError,
+  type LlmBatchResult,
+  type LlmFailureDisposition,
+  type LlmGenerator,
+  type LlmRequestContext,
+  type LlmStreamReceiver,
+  type LlmStreamResult,
 } from '../gen';
+import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
@@ -793,7 +795,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
               if (receiver.streamError) {
                 await receiver.streamError(detail);
               }
-              throw new Error(detail);
+              throw new LlmStreamErrorEmittedError({
+                detail,
+                i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                  detail,
+                  kind: 'invalid_tool_call',
+                }),
+              });
             }
             const index = rawIndex;
             const existing = activeCallsByIndex.get(index);

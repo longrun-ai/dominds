@@ -27,6 +27,7 @@ import { DialogID, type Dialog } from './dialog';
 import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
+import { findDomindsPersistenceFileError } from './persistence-errors';
 
 const log = createLogger('dialog-display-state');
 
@@ -40,6 +41,7 @@ type ActiveRun = {
 let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 
 const activeRunsByDialogKey: Map<string, ActiveRun> = new Map();
+const quarantiningRootDialogIds: Set<string> = new Set();
 
 export type RunControlCountsSnapshot = {
   proceeding: number;
@@ -113,26 +115,47 @@ function shouldBroadcastRunControlCounts(
 export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSnapshot> {
   let proceeding = 0;
   let resumable = 0;
-  const activeRunDialogKeys = new Set(activeRunsByDialogKey.keys());
+  const activeRunKeysByDialogKey = new Map(activeRunsByDialogKey.entries());
   const seenDialogKeys = new Set<string>();
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const dialogId of dialogIds) {
-    const dialogKey = dialogId.key();
-    seenDialogKeys.add(dialogKey);
-    // Active in-memory drives are authoritative for "proceeding". This avoids transient
-    // under-count windows when displayState persistence lags behind an already started drive.
-    if (activeRunDialogKeys.has(dialogKey)) {
-      proceeding++;
+    try {
+      const dialogKey = dialogId.key();
+      seenDialogKeys.add(dialogKey);
+      if (quarantiningRootDialogIds.has(dialogId.rootId)) {
+        continue;
+      }
+      // listAllDialogIds() is intentionally a candidate scan. Per-dialog latest reads below may
+      // still quarantine one malformed dialog without invalidating the rest of the snapshot.
+      const activeRun = activeRunKeysByDialogKey.get(dialogKey);
+      if (activeRun) {
+        proceeding++;
+        continue;
+      }
+      const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+      if (latest?.generating === true) {
+        proceeding++;
+      } else if (isDialogLatestResumable(latest)) {
+        resumable++;
+      }
+    } catch (error: unknown) {
+      if (!findDomindsPersistenceFileError(error)) {
+        throw error;
+      }
+      log.warn('Skipping malformed dialog during run-control snapshot rebuild', error, {
+        dialogId: dialogId.valueOf(),
+      });
       continue;
     }
-    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
-    if (latest?.generating === true) {
-      proceeding++;
-    } else if (isDialogLatestResumable(latest)) {
-      resumable++;
-    }
   }
-  for (const dialogKey of activeRunDialogKeys) {
+  for (const [dialogKey, activeRun] of activeRunKeysByDialogKey.entries()) {
+    if (!activeRun) {
+      continue;
+    }
+    const [rootId] = dialogKey.includes('#') ? dialogKey.split('#') : [dialogKey];
+    if (!rootId || quarantiningRootDialogIds.has(rootId)) {
+      continue;
+    }
     if (!seenDialogKeys.has(dialogKey)) {
       proceeding++;
     }
@@ -174,8 +197,67 @@ export function createActiveRun(dialogId: DialogID): AbortSignal {
 
 export function clearActiveRun(dialogId: DialogID): void {
   const deleted = activeRunsByDialogKey.delete(dialogId.key());
-  if (!deleted) return;
+  if (!deleted) {
+    clearQuarantiningRootDialogIfIdle(dialogId.rootId);
+    return;
+  }
+  clearQuarantiningRootDialogIfIdle(dialogId.rootId);
   syncRunControlCountsAfterActiveRunChange('clear_active_run', dialogId);
+}
+
+function clearQuarantiningRootDialogIfIdle(rootId: string): void {
+  for (const key of activeRunsByDialogKey.keys()) {
+    const [candidateRootId] = key.includes('#') ? key.split('#') : [key];
+    if (candidateRootId === rootId) {
+      return;
+    }
+  }
+  quarantiningRootDialogIds.delete(rootId);
+}
+
+export function clearRootDialogQuarantiningIfIdle(rootDialogId: DialogID): void {
+  clearQuarantiningRootDialogIfIdle(rootDialogId.selfId);
+}
+
+export function markRootDialogQuarantining(rootDialogId: DialogID): void {
+  quarantiningRootDialogIds.add(rootDialogId.selfId);
+}
+
+export function clearRootDialogQuarantining(rootDialogId: DialogID): void {
+  quarantiningRootDialogIds.delete(rootDialogId.selfId);
+}
+
+export async function forceStopActiveRunsForRootDialog(rootDialogId: DialogID): Promise<void> {
+  for (const key of Array.from(activeRunsByDialogKey.keys())) {
+    const [rootId, selfId] = key.includes('#') ? key.split('#') : [key, key];
+    if (!rootId || !selfId) continue;
+    if (rootId !== rootDialogId.selfId) continue;
+    const dialogId = new DialogID(selfId, rootId);
+    const run = activeRunsByDialogKey.get(key);
+    if (!run) continue;
+    if (!run.stopRequested) {
+      run.stopRequested = 'emergency_stop';
+      try {
+        await setDialogDisplayState(dialogId, {
+          kind: 'proceeding_stop_requested',
+          reason: 'emergency_stop',
+        });
+      } catch (error: unknown) {
+        log.warn('Failed to persist stop-requested state while forcing root dialog stop', error, {
+          dialogId: dialogId.valueOf(),
+          rootDialogId: rootDialogId.valueOf(),
+        });
+      }
+    }
+    try {
+      run.abortController.abort();
+    } catch (error: unknown) {
+      log.warn('Failed to abort active run while forcing root dialog stop', error, {
+        dialogId: dialogId.valueOf(),
+        rootDialogId: rootDialogId.valueOf(),
+      });
+    }
+  }
 }
 
 export function getStopRequestedReason(dialogId: DialogID): StopRequestedReason | undefined {
@@ -416,10 +498,37 @@ async function computeIdleDisplayStateFromPersistence(
   return { kind: 'idle_waiting_user' };
 }
 
+async function computeIdleDisplayStateForReconciliation(
+  dialogId: DialogID,
+): Promise<DialogDisplayState | null> {
+  try {
+    return await computeIdleDisplayStateFromPersistence(dialogId);
+  } catch (error: unknown) {
+    if (!findDomindsPersistenceFileError(error)) {
+      throw error;
+    }
+    log.warn('Skipping malformed dialog during display-state idle reconstruction', error, {
+      dialogId: dialogId.valueOf(),
+    });
+    return null;
+  }
+}
+
 export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const dialogId of dialogIds) {
-    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    let latest: DialogLatestFile | null;
+    try {
+      latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    } catch (error: unknown) {
+      if (!findDomindsPersistenceFileError(error)) {
+        throw error;
+      }
+      log.warn('Skipping malformed dialog during display-state restart reconciliation', error, {
+        dialogId: dialogId.valueOf(),
+      });
+      continue;
+    }
     const existing = latest?.displayState;
 
     const existingMarker = latest?.executionMarker;
@@ -450,7 +559,10 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         (existing.kind === 'proceeding' || existing.kind === 'proceeding_stop_requested'));
 
     if (wasProceeding) {
-      const nextIdle = await computeIdleDisplayStateFromPersistence(dialogId);
+      const nextIdle = await computeIdleDisplayStateForReconciliation(dialogId);
+      if (!nextIdle) {
+        continue;
+      }
       const next =
         nextIdle.kind === 'blocked'
           ? nextIdle
@@ -478,7 +590,10 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
     }
 
     if (!existing) {
-      const inferred = await computeIdleDisplayStateFromPersistence(dialogId);
+      const inferred = await computeIdleDisplayStateForReconciliation(dialogId);
+      if (!inferred) {
+        continue;
+      }
       try {
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',

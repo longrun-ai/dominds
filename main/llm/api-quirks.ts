@@ -1,4 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { findDomindsPersistenceFileError } from '../persistence-errors';
 import type { ProviderConfig } from './client';
 import type { LlmRetryStrategy } from './gen';
 
@@ -47,6 +48,22 @@ const XCODE_BEST_EMPTY_RESPONSE_SINGLE_RETRY_DELAY_MS = 3000;
 const XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD = 5;
 const XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE =
   'xcode.best gateway returned an HTML 502 Bad Gateway page; retrying conservatively.';
+const XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE =
+  'xcode.best upstream stream ended unexpectedly (unexpected EOF); retrying conservatively.';
+const LOCAL_FILE_IO_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM']);
+const LOCAL_FILE_IO_SYSCALLS = new Set([
+  'open',
+  'read',
+  'write',
+  'close',
+  'stat',
+  'lstat',
+  'fstat',
+  'rename',
+  'truncate',
+  'mkdir',
+  'readdir',
+]);
 
 function isXcodeBestGatewayHtml502Failure(failure: LlmFailureSummary, error: unknown): boolean {
   const status = failure.status ?? readErrorStatus(error);
@@ -65,46 +82,235 @@ function isXcodeBestGatewayHtml502Failure(failure: LlmFailureSummary, error: unk
   return lowerMessage.includes('<html') || lowerMessage.includes('cloudflare');
 }
 
+function isXcodeBestUnexpectedEofFailure(failure: LlmFailureSummary, error: unknown): boolean {
+  return (
+    (errorChainIncludesMessageFragment(error, 'unexpected eof') ||
+      failure.message.toLowerCase().includes('unexpected eof')) &&
+    !hasLikelyLocalFileErrorContext(error)
+  );
+}
+
+function getErrorChain(error: unknown): unknown[] {
+  const queue: unknown[] = [error];
+  const visited = new Set<object>();
+  const chain: unknown[] = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined) {
+      continue;
+    }
+    if (typeof current === 'object' && current !== null) {
+      if (visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
+    }
+    chain.push(current);
+
+    const nestedError = readNestedError(current);
+    if (nestedError !== undefined) {
+      queue.push(nestedError);
+    }
+    const cause = readErrorCause(current);
+    if (cause !== undefined) {
+      queue.push(cause);
+    }
+  }
+
+  return chain;
+}
+
 function readErrorStatus(error: unknown): number | undefined {
-  if (isRecord(error)) {
-    if ('status' in error && typeof error.status === 'number') {
-      return error.status;
+  for (const current of getErrorChain(error)) {
+    if (isRecord(current)) {
+      if ('status' in current && typeof current.status === 'number') {
+        return current.status;
+      }
+      if ('statusCode' in current && typeof current.statusCode === 'number') {
+        return current.statusCode;
+      }
     }
-    if ('statusCode' in error && typeof error.statusCode === 'number') {
-      return error.statusCode;
+  }
+  return undefined;
+}
+
+function readErrorCause(error: unknown): unknown {
+  if (error instanceof Error) {
+    const withCause = error as Error & { cause?: unknown };
+    return withCause.cause;
+  }
+  if (isRecord(error) && 'cause' in error) {
+    return error.cause;
+  }
+  return undefined;
+}
+
+function readNestedError(error: unknown): unknown {
+  if (isRecord(error) && 'error' in error && isRecord(error.error)) {
+    return error.error;
+  }
+  return undefined;
+}
+
+function readErrorPath(error: unknown): string | undefined {
+  for (const current of getErrorChain(error)) {
+    if (current instanceof Error) {
+      const withPath = current as Error & { path?: unknown };
+      if (typeof withPath.path === 'string' && withPath.path.trim() !== '') {
+        return withPath.path;
+      }
     }
-    if ('error' in error && isRecord(error.error)) {
-      return readErrorStatus(error.error);
+    if (isRecord(current)) {
+      if ('path' in current && typeof current.path === 'string' && current.path.trim() !== '') {
+        return current.path;
+      }
+    }
+  }
+  return undefined;
+}
+
+function readErrorSyscall(error: unknown): string | undefined {
+  for (const current of getErrorChain(error)) {
+    if (current instanceof Error) {
+      const withSyscall = current as Error & { syscall?: unknown };
+      if (typeof withSyscall.syscall === 'string' && withSyscall.syscall.trim() !== '') {
+        return withSyscall.syscall;
+      }
+    }
+    if (isRecord(current)) {
+      if (
+        'syscall' in current &&
+        typeof current.syscall === 'string' &&
+        current.syscall.trim() !== ''
+      ) {
+        return current.syscall;
+      }
     }
   }
   return undefined;
 }
 
 function readErrorMessage(error: unknown): string | undefined {
-  if (error instanceof Error) {
-    const trimmed = error.message.trim();
-    return trimmed.length > 0 ? trimmed : error.name;
-  }
-  if (typeof error === 'string') {
-    const trimmed = error.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  if (isRecord(error)) {
-    if ('message' in error && typeof error.message === 'string') {
-      const trimmed = error.message.trim();
+  for (const current of getErrorChain(error)) {
+    if (current instanceof Error) {
+      const trimmed = current.message.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+      if (current.name.trim().length > 0) {
+        return current.name;
+      }
+    }
+    if (typeof current === 'string') {
+      const trimmed = current.trim();
       if (trimmed.length > 0) {
         return trimmed;
       }
     }
-    if ('error' in error && isRecord(error.error)) {
-      return readErrorMessage(error.error);
+    if (isRecord(current)) {
+      if ('message' in current && typeof current.message === 'string') {
+        const trimmed = current.message.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
     }
   }
   return undefined;
 }
 
+function errorChainIncludesMessageFragment(error: unknown, fragment: string): boolean {
+  const lowerFragment = fragment.toLowerCase();
+  for (const current of getErrorChain(error)) {
+    if (current instanceof Error) {
+      if (current.message.toLowerCase().includes(lowerFragment)) {
+        return true;
+      }
+      continue;
+    }
+    if (typeof current === 'string') {
+      if (current.toLowerCase().includes(lowerFragment)) {
+        return true;
+      }
+      continue;
+    }
+    if (isRecord(current) && 'message' in current && typeof current.message === 'string') {
+      if (current.message.toLowerCase().includes(lowerFragment)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasLikelyLocalFileErrorContext(error: unknown): boolean {
+  const persistenceFileError = findDomindsPersistenceFileError(error);
+  if (persistenceFileError) {
+    return true;
+  }
+  const pathValue = readErrorPath(error);
+  const syscall = readErrorSyscall(error);
+  if (typeof syscall === 'string' && LOCAL_FILE_IO_SYSCALLS.has(syscall)) {
+    return true;
+  }
+  const code = readErrorCode(error);
+  if (
+    typeof code === 'string' &&
+    LOCAL_FILE_IO_ERROR_CODES.has(code) &&
+    isLikelyDomindsFilePath(pathValue)
+  ) {
+    return true;
+  }
+  if (isLikelyDomindsFilePath(pathValue)) {
+    return true;
+  }
+  return false;
+}
+
+function isLikelyDomindsFilePath(filePath: string | undefined): boolean {
+  if (typeof filePath !== 'string') {
+    return false;
+  }
+  const normalized = filePath.split('\\').join('/').trim().toLowerCase();
+  if (normalized === '') {
+    return false;
+  }
+  return (
+    normalized.includes('/.dialogs/') ||
+    normalized.includes('/.minds/') ||
+    normalized.endsWith('/latest.yaml') ||
+    normalized.endsWith('/dialog.yaml') ||
+    normalized.endsWith('/q4h.yaml') ||
+    normalized.endsWith('.jsonl')
+  );
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  for (const current of getErrorChain(error)) {
+    if (current instanceof Error) {
+      const withCode = current as Error & { code?: unknown; errno?: unknown };
+      if (typeof withCode.code === 'string' && withCode.code.trim() !== '') {
+        return withCode.code;
+      }
+      if (typeof withCode.errno === 'string' && withCode.errno.trim() !== '') {
+        return withCode.errno;
+      }
+    }
+    if (isRecord(current)) {
+      if ('code' in current && typeof current.code === 'string' && current.code.trim() !== '') {
+        return current.code;
+      }
+      if ('errno' in current && typeof current.errno === 'string' && current.errno.trim() !== '') {
+        return current.errno;
+      }
+    }
+  }
+  return undefined;
 }
 
 function buildXcodeBestEmptyResponseGiveUpText(
@@ -162,6 +368,13 @@ function createXcodeBestFailureQuirkHandlerSession(
       }
 
       consecutiveEmptyResponseCount = 0;
+      if (isXcodeBestUnexpectedEofFailure(args.failure, args.error)) {
+        return {
+          kind: 'retry_strategy',
+          retryStrategy: 'conservative',
+          message: XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE,
+        };
+      }
       if (isXcodeBestGatewayHtml502Failure(args.failure, args.error)) {
         return {
           kind: 'retry_strategy',

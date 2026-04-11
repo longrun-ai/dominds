@@ -27,7 +27,13 @@ import {
   type LlmQuirkFailureHandling,
 } from '../api-quirks';
 import type { ProviderConfig } from '../client';
-import type { LlmFailureClassifier, LlmFailureDisposition, LlmRetryStrategy } from '../gen';
+import {
+  LlmStreamErrorEmittedError,
+  type LlmFailureClassifier,
+  type LlmFailureDisposition,
+  type LlmRetryStrategy,
+} from '../gen';
+import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import type { KernelDriverHumanPrompt } from './types';
 
 export class LlmRetryStoppedError extends Error {
@@ -37,6 +43,25 @@ export class LlmRetryStoppedError extends Error {
     super(message);
     this.name = 'LlmRetryStoppedError';
     this.reason = reason;
+  }
+}
+
+export class LlmRequestFailedError extends Error {
+  public readonly detail: string;
+  public readonly streamErrorEmitted: boolean;
+  public readonly i18nStopReason?: DialogDisplayTextI18n;
+
+  constructor(args: {
+    message: string;
+    detail: string;
+    streamErrorEmitted: boolean;
+    i18nStopReason?: DialogDisplayTextI18n;
+  }) {
+    super(args.message);
+    this.name = 'LlmRequestFailedError';
+    this.detail = args.detail;
+    this.streamErrorEmitted = args.streamErrorEmitted;
+    this.i18nStopReason = args.i18nStopReason;
   }
 }
 
@@ -842,6 +867,9 @@ export async function runLlmRequestWithRetry<T>(params: {
       if (params.abortSignal?.aborted) {
         throw err;
       }
+      if (err instanceof LlmStreamErrorEmittedError) {
+        throw err;
+      }
 
       const defaultFailure = classifyLlmFailure(err, params.classifyFailure);
       const handledFailure = applyQuirkFailureHandling(
@@ -897,12 +925,26 @@ export async function runLlmRequestWithRetry<T>(params: {
             errorText: detail,
           },
         });
+        let streamErrorEmitted = false;
         try {
           await params.dlg.streamError(detail);
+          streamErrorEmitted = true;
         } catch {
           // best-effort
         }
-        throw new Error(`Provider '${params.provider}' rejected the request: ${failure.message}`);
+        throw new LlmRequestFailedError({
+          message: `Provider '${params.provider}' rejected the request: ${failure.message}`,
+          detail,
+          streamErrorEmitted,
+          i18nStopReason: buildHumanSystemStopReasonTextI18n({
+            detail,
+            providerName:
+              params.providerConfig.name.trim().length > 0
+                ? params.providerConfig.name
+                : params.provider,
+            kind: 'provider_rejected',
+          }),
+        });
       }
 
       const canRetry = failure.kind === 'retriable' && params.canRetry();
@@ -968,15 +1010,29 @@ export async function runLlmRequestWithRetry<T>(params: {
           });
           retryStoppedError = new LlmRetryStoppedError(interruptionReason, interruptionDetail);
         }
+        let streamErrorEmitted = false;
         try {
           await params.dlg.streamError(detail);
+          streamErrorEmitted = true;
         } catch {
           // best-effort
         }
         if (retryStoppedError) {
           throw retryStoppedError;
         }
-        throw new Error(`LLM failed: ${failure.message}`);
+        throw new LlmRequestFailedError({
+          message: `LLM failed: ${failure.message}`,
+          detail,
+          streamErrorEmitted,
+          i18nStopReason: buildHumanSystemStopReasonTextI18n({
+            detail,
+            providerName:
+              params.providerConfig.name.trim().length > 0
+                ? params.providerConfig.name
+                : params.provider,
+            fallbackKind: 'request_failed',
+          }),
+        });
       }
 
       const conservativeRampAttempt = Math.max(0, Math.floor(attempt / 10));

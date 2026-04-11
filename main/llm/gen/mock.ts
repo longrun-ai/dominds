@@ -71,13 +71,15 @@ import {
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';
-import type {
-  LlmBatchResult,
-  LlmGenerator,
-  LlmRequestContext,
-  LlmStreamReceiver,
-  LlmStreamResult,
+import {
+  LlmStreamErrorEmittedError,
+  type LlmBatchResult,
+  type LlmGenerator,
+  type LlmRequestContext,
+  type LlmStreamReceiver,
+  type LlmStreamResult,
 } from '../gen';
+import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 
 interface MockResponse {
   /** The input message to match (required) */
@@ -107,6 +109,9 @@ interface MockResponse {
 
   /** If set, throws error instead of returning response */
   streamError?: string;
+
+  /** Emit receiver.streamError(detail) before throwing streamError. */
+  emitStreamErrorBeforeThrow?: boolean;
 
   /**
    * When true, the mock generator reports usage as unavailable.
@@ -524,6 +529,16 @@ responses:
     await receiver.thinkingFinish();
 
     if (matched?.streamError) {
+      if (matched.emitStreamErrorBeforeThrow && receiver.streamError) {
+        await receiver.streamError(matched.streamError);
+        throw new LlmStreamErrorEmittedError({
+          detail: matched.streamError,
+          i18nStopReason: buildHumanSystemStopReasonTextI18n({
+            detail: matched.streamError,
+            fallbackKind: 'request_failed',
+          }),
+        });
+      }
       throw new Error(matched.streamError);
     }
 

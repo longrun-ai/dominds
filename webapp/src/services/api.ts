@@ -43,6 +43,13 @@ import type {
 } from '@longrun-ai/kernel/types/snippets';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
+type PersistableDialogStatus = Exclude<DialogStatusKind, 'quarantining'>;
+type ResolvedDialogStatus = {
+  rootId: string;
+  selfId: string;
+  status: PersistableDialogStatus;
+};
+
 export interface FrontendTeamMember {
   id: string;
   name: string;
@@ -365,7 +372,7 @@ export class ApiClient {
    * Get root dialogs in a specific status directory.
    */
   async getRootDialogsByStatus(
-    status: DialogStatusKind,
+    status: PersistableDialogStatus,
   ): Promise<ApiResponse<ApiRootDialogResponse[]>> {
     const query = new URLSearchParams({ status }).toString();
     const response = await this.request(`/api/dialogs?${query}`);
@@ -436,7 +443,7 @@ export class ApiClient {
   async getDialog(
     rootDialogId: string,
     selfDialogId?: string,
-    status: DialogStatusKind = 'running',
+    status: PersistableDialogStatus = 'running',
   ): Promise<ApiResponse<ApiSubdialogResponse | ApiRootDialogResponse>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
     const query = new URLSearchParams({ status }).toString();
@@ -448,7 +455,7 @@ export class ApiClient {
    */
   async getDialogHierarchy(
     rootDialogId: string,
-    status: DialogStatusKind = 'running',
+    status: PersistableDialogStatus = 'running',
   ): Promise<ApiResponse<ApiDialogHierarchyResponse['hierarchy']>> {
     const query = new URLSearchParams({ status }).toString();
     const response = await this.request(
@@ -468,6 +475,48 @@ export class ApiClient {
       }
     }
     return response as ApiResponse<ApiDialogHierarchyResponse['hierarchy']>;
+  }
+
+  async resolveDialogStatus(
+    rootDialogId: string,
+    selfDialogId?: string,
+  ): Promise<ApiResponse<ResolvedDialogStatus>> {
+    const params = new URLSearchParams({ rootId: rootDialogId });
+    if (typeof selfDialogId === 'string' && selfDialogId.trim() !== '') {
+      params.set('selfId', selfDialogId.trim());
+    }
+    const response = await this.request(`/api/dialogs/resolve-status?${params.toString()}`);
+    if (response.success && response.data) {
+      const payload = response.data as { dialog?: unknown };
+      const dialog = typeof payload === 'object' && payload !== null ? payload.dialog : undefined;
+      if (
+        typeof dialog === 'object' &&
+        dialog !== null &&
+        typeof (dialog as { rootId?: unknown }).rootId === 'string' &&
+        typeof (dialog as { selfId?: unknown }).selfId === 'string'
+      ) {
+        const status = (dialog as { status?: unknown }).status;
+        if (status === 'running' || status === 'completed' || status === 'archived') {
+          return {
+            success: true,
+            status: response.status,
+            data: {
+              rootId: (dialog as { rootId: string }).rootId,
+              selfId: (dialog as { selfId: string }).selfId,
+              status,
+            },
+            timestamp: response.timestamp,
+          };
+        }
+      }
+      return {
+        success: false,
+        status: response.status,
+        error: 'Invalid resolve-status response payload',
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<ResolvedDialogStatus>;
   }
 
   /**
@@ -549,9 +598,9 @@ export class ApiClient {
    */
   async deleteDialog(
     rootDialogId: string,
-    fromStatus: DialogStatusKind,
+    fromStatus: PersistableDialogStatus,
     selfDialogId?: string,
-  ): Promise<ApiResponse<{ deleted: boolean; fromStatus: DialogStatusKind }>> {
+  ): Promise<ApiResponse<{ deleted: boolean; fromStatus: PersistableDialogStatus }>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
     const query = new URLSearchParams({ fromStatus }).toString();
     return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}?${query}`, {
@@ -666,7 +715,7 @@ export class ApiClient {
     taskDocPath?: string;
     rootId?: string;
     selfId?: string;
-    status?: DialogStatusKind;
+    status?: PersistableDialogStatus;
   }): Promise<
     ApiResponse<{
       toolsets: ToolsetInfo[];

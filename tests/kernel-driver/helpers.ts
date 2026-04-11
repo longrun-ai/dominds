@@ -23,6 +23,7 @@ export type MockEntry = {
   delayMs?: number;
   chunkDelayMs?: number;
   streamError?: string;
+  emitStreamErrorBeforeThrow?: boolean;
   usageUnavailable?: boolean;
   usage?: Readonly<{
     promptTokens: number;

@@ -48,7 +48,7 @@ export type SaveCurrentCoursePrimingRequest = {
   dialog: {
     rootId: string;
     selfId: string;
-    status?: DialogStatusKind;
+    status?: Exclude<DialogStatusKind, 'quarantining'>;
   };
   course: number;
   slug: string;

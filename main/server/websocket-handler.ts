@@ -18,7 +18,6 @@ import type {
   CreateDialogResult,
   DeclareSubdialogDeadRequest,
   DialogReadyMessage,
-  DialogStatusKind,
   DiligencePushUpdatedMessage,
   DisplayCourseRequest,
   DisplayDialogRequest,
@@ -57,11 +56,15 @@ import { shutdownAppsRuntime } from '../apps/runtime';
 import { installGlobalDialogEventBroadcaster } from '../bootstrap/global-dialog-event-broadcaster';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import {
+  clearRootDialogQuarantining,
+  clearRootDialogQuarantiningIfIdle,
+  forceStopActiveRunsForRootDialog,
   getRunControlCountsSnapshot,
   getStopRequestedReason,
   hasActiveRun,
   isDialogLatestResumable,
   loadDialogExecutionMarker,
+  markRootDialogQuarantining,
   requestEmergencyStopAll,
   requestInterruptDialog,
   setDialogDisplayState,
@@ -69,12 +72,23 @@ import {
   setDisplayStateBroadcaster,
 } from '../dialog-display-state';
 import { globalDialogRegistry } from '../dialog-global-registry';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
+import {
+  ensureDialogLoaded,
+  getOrRestoreRootDialog,
+  type DialogPersistenceStatus,
+} from '../dialog-instance-registry';
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToSupdialog } from '../llm/kernel-driver';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/kernel-driver/runtime';
 import { createLogger } from '../log';
-import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import {
+  DialogPersistence,
+  DiskFileDialogStore,
+  setDialogsQuarantinedBroadcaster,
+  setFinalizeDialogQuarantineHook,
+  setPrepareDialogQuarantineHook,
+} from '../persistence';
+import { findDomindsPersistenceFileError } from '../persistence-errors';
 import {
   applyPrimingScriptsToDialog,
   buildRootDialogPrimingMetadata,
@@ -124,11 +138,32 @@ function normalizeDiligencePushMax(value: number): number {
   return Math.floor(value);
 }
 
-function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
+function parsePersistableDialogStatus(raw: unknown): DialogPersistenceStatus | null {
   if (raw !== 'running' && raw !== 'completed' && raw !== 'archived') {
     return null;
   }
   return raw;
+}
+
+function readOptionalPersistableDialogStatus(raw: unknown):
+  | {
+      kind: 'missing';
+    }
+  | {
+      kind: 'invalid';
+    }
+  | {
+      kind: 'value';
+      status: DialogPersistenceStatus;
+    } {
+  if (raw === undefined) {
+    return { kind: 'missing' };
+  }
+  const status = parsePersistableDialogStatus(raw);
+  if (status === null) {
+    return { kind: 'invalid' };
+  }
+  return { kind: 'value', status };
 }
 
 function formatDeclaredDeadSubdialogNotice(
@@ -461,7 +496,18 @@ async function handleDeclareSubdialogDead(
   }
 
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
-  const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+  const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
+  if (requestedStatusInput.kind === 'invalid') {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'declare_subdialog_dead requires status running, completed, or archived',
+      }),
+    );
+    return;
+  }
+  const requestedStatus =
+    requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
   if (requestedStatus !== 'running') {
     ws.send(
       JSON.stringify({
@@ -582,7 +628,18 @@ async function handleSetDiligencePush(
 
     // Diligence Push is root-dialog state. Even if a subdialog is displayed, always mutate the root.
     const dialogIdObj = new DialogID(rootId);
-    const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+    const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
+    if (requestedStatusInput.kind === 'invalid') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'set_diligence_push requires status running, completed, or archived',
+        }),
+      );
+      return;
+    }
+    const requestedStatus =
+      requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
     const rootMeta = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
     if (!rootMeta) {
       ws.send(
@@ -730,7 +787,18 @@ async function handleRefillDiligencePushBudget(
   }
 
   const rootDialogId = new DialogID(rootId);
-  const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+  const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
+  if (requestedStatusInput.kind === 'invalid') {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'refill_diligence_push_budget requires status running, completed, or archived',
+      }),
+    );
+    return;
+  }
+  const requestedStatus =
+    requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
   const rootMeta = await DialogPersistence.loadDialogMetadata(rootDialogId, requestedStatus);
   if (!rootMeta) {
     ws.send(
@@ -1007,8 +1075,20 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     }
 
     const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const requestedStatusInput = readOptionalPersistableDialogStatus(
+      (dialogIdent as { status?: unknown }).status,
+    );
+    if (requestedStatusInput.kind === 'invalid') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'display_dialog requires status running, completed, or archived',
+        }),
+      );
+      return;
+    }
     const requestedStatus =
-      parseDialogStatusKind((dialogIdent as { status?: unknown }).status) ?? 'running';
+      requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
     const dialogState = await DialogPersistence.restoreDialog(dialogIdObj, requestedStatus);
     const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
 
@@ -1268,7 +1348,18 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
     const dialogId = new DialogID(dialogIdStr, rootDialogIdStr);
 
     try {
-      const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+      const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
+      if (requestedStatusInput.kind === 'invalid') {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: 'display_course requires status running, completed, or archived',
+          }),
+        );
+        return;
+      }
+      const requestedStatus =
+        requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
       const metadata = await DialogPersistence.loadDialogMetadata(dialogId, requestedStatus);
       if (!metadata) {
         log.warn('Metadata not found for display_course', undefined, {
@@ -1568,20 +1659,31 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
   }
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const id of dialogIds) {
-    const latest = await DialogPersistence.loadDialogLatest(id, 'running');
-    if (!isDialogLatestResumable(latest)) continue;
-    void (async () => {
-      try {
-        const dlg = await restoreDialogForDrive(id, 'running');
-        await driveDialogStream(dlg, undefined, true, {
-          allowResumeFromInterrupted: true,
-          source: 'ws_resume_all',
-          reason: 'resume_all',
-        });
-      } catch (err) {
-        log.warn('resume_all: failed to resume dialog', err, { dialogId: id.valueOf() });
+    try {
+      // listAllDialogIds() only gives candidate IDs. A malformed dialog can still quarantine itself
+      // during lazy latest lookup here without preventing resume-all for the rest.
+      const latest = await DialogPersistence.loadDialogLatest(id, 'running');
+      if (!isDialogLatestResumable(latest)) continue;
+      void (async () => {
+        try {
+          const dlg = await restoreDialogForDrive(id, 'running');
+          await driveDialogStream(dlg, undefined, true, {
+            allowResumeFromInterrupted: true,
+            source: 'ws_resume_all',
+            reason: 'resume_all',
+          });
+        } catch (err) {
+          log.warn('resume_all: failed to resume dialog', err, { dialogId: id.valueOf() });
+        }
+      })();
+    } catch (error: unknown) {
+      if (!findDomindsPersistenceFileError(error)) {
+        throw error;
       }
-    })();
+      log.warn('resume_all: skipping malformed dialog during latest lookup', error, {
+        dialogId: id.valueOf(),
+      });
+    }
   }
   emitRunControlRefresh('resume_all');
 }
@@ -1832,6 +1934,47 @@ export function setupWebSocketServer(
     broadcastToClients(msg);
   };
 
+  setPrepareDialogQuarantineHook(async ({ rootDialogId, status }) => {
+    if (status !== 'running') {
+      return;
+    }
+    markRootDialogQuarantining(rootDialogId);
+    await forceStopActiveRunsForRootDialog(rootDialogId);
+  });
+
+  setFinalizeDialogQuarantineHook(({ rootDialogId, status, quarantined }) => {
+    if (status !== 'running') {
+      return;
+    }
+    if (quarantined) {
+      clearRootDialogQuarantiningIfIdle(rootDialogId);
+      return;
+    }
+    clearRootDialogQuarantining(rootDialogId);
+  });
+
+  setDialogsQuarantinedBroadcaster((msg) => {
+    broadcastToClients(msg);
+    if (msg.fromStatus !== 'running') {
+      return;
+    }
+    void getRunControlCountsSnapshot()
+      .then((counts) => {
+        broadcastToClients({
+          type: 'run_control_counts_evt',
+          proceeding: counts.proceeding,
+          resumable: counts.resumable,
+          timestamp: formatUnifiedTimestamp(new Date()),
+        });
+      })
+      .catch((error: unknown) => {
+        log.warn('Failed to broadcast run-control counts after dialog quarantine', error, {
+          rootId: msg.rootId,
+          dialogId: msg.dialogId,
+        });
+      });
+  });
+
   // Broadcast global run-control refresh hints so all clients converge from persisted dialog index.
   broadcastRunControlRefreshMessage = (msg: RunControlRefreshMessage) => {
     broadcastToClients(msg);
@@ -1863,6 +2006,9 @@ export function setupWebSocketServer(
     stopTeamConfigWatcher();
     clearTeamConfigBroadcaster();
     setDomindsSelfUpdateBroadcaster(null);
+    setFinalizeDialogQuarantineHook(null);
+    setPrepareDialogQuarantineHook(null);
+    setDialogsQuarantinedBroadcaster(null);
     void wss.close();
   });
 

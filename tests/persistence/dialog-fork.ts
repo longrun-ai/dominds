@@ -71,6 +71,7 @@ async function main(): Promise<void> {
         callId: 'call-sub-1',
       },
     };
+    await DialogPersistence.ensureSubdialogDirectory(subId, 'running');
     await DialogPersistence.saveDialogMetadata(subId, subMeta);
     await writeLatest(subId, 1);
 
@@ -89,6 +90,7 @@ async function main(): Promise<void> {
         effectiveFbrEffort: 1,
       },
     };
+    await DialogPersistence.ensureSubdialogDirectory(nestedSubId, 'running');
     await DialogPersistence.saveDialogMetadata(nestedSubId, nestedSubMeta);
     await writeLatest(nestedSubId, 1);
 

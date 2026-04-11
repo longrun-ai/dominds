@@ -53,6 +53,32 @@ async function main(): Promise<void> {
       updatedAt: new Date().toISOString(),
     });
 
+    // Dialog C: malformed q4h should quarantine only itself instead of aborting the whole rebuild.
+    const cRoot = 'dlg-c';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'dialog.yaml'), { id: cRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: true,
+      displayState: { kind: 'proceeding' },
+    });
+    await fs.writeFile(
+      path.join(tmpRoot, '.dialogs', 'run', cRoot, 'q4h.yaml'),
+      'questions: [',
+      'utf-8',
+    );
+
+    // Dialog D: healthy idle dialog without displayState should still be backfilled after C quarantines.
+    const dRoot = 'dlg-d';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', dRoot, 'dialog.yaml'), { id: dRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', dRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+    });
+
     await reconcileDisplayStatesAfterRestart();
 
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
@@ -69,6 +95,17 @@ async function main(): Promise<void> {
     assert.ok(latestB.displayState);
     assert.equal(latestB.displayState.kind, 'blocked');
     assert.equal(latestB.displayState.reason.kind, 'needs_human_input');
+
+    assert.equal(await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running'), null);
+    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot));
+
+    const latestD = await DialogPersistence.loadDialogLatest(new DialogID(dRoot), 'running');
+    assert.ok(latestD, 'latest.yaml for dlg-d should exist');
+    assert.ok(latestD.displayState);
+    assert.equal(latestD.displayState.kind, 'idle_waiting_user');
+
+    // Let buffered latest.yaml write-backs drain before we restore cwd and remove the temp rtws.
+    await new Promise((resolve) => setTimeout(resolve, 700));
 
     console.log('✅ interruption-resumption reconcile smoke test passed');
   } finally {

@@ -12,6 +12,7 @@ import type {
   Questions4HumanReconciledRecord,
   ReminderSnapshotItem,
   RemindersReconciledRecord,
+  RootDialogMetadataFile,
   RootGenerationAnchor,
   SubdialogCreatedRecord,
   SubdialogRegistryReconciledRecord,
@@ -673,25 +674,34 @@ async function persistForkPlan(args: {
   latestDiligencePushRemainingBudget: number | undefined;
 }): Promise<void> {
   const { plan } = args;
-  let rewrittenMetadata: DialogMetadataFile;
   if (plan.targetId.selfId === plan.targetId.rootId) {
-    rewrittenMetadata = {
-      ...plan.metadata,
+    if (
+      plan.metadata.supdialogId !== undefined ||
+      plan.metadata.sessionSlug !== undefined ||
+      plan.metadata.assignmentFromSup !== undefined
+    ) {
+      throw new Error(`fork root plan received subdialog metadata: ${plan.targetId.valueOf()}`);
+    }
+    const rewrittenMetadata: RootDialogMetadataFile = {
       id: plan.targetId.selfId,
+      agentId: plan.metadata.agentId,
+      taskDocPath: plan.metadata.taskDocPath,
       createdAt: args.now,
+      ...(plan.metadata.priming ? { priming: plan.metadata.priming } : {}),
     };
+    await DialogPersistence.saveRootDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
   } else {
     if (plan.metadata.supdialogId === undefined) {
       throw new Error(`fork subdialog plan missing supdialog metadata: ${plan.targetId.valueOf()}`);
     }
-    rewrittenMetadata = rewriteSubdialogMetadataForFork(
+    const rewrittenMetadata = rewriteSubdialogMetadataForFork(
       plan.metadata,
       plan.sourceId.rootId,
       plan.targetId.rootId,
     );
+    await DialogPersistence.ensureSubdialogDirectory(plan.targetId, 'running');
+    await DialogPersistence.saveSubdialogMetadata(plan.targetId, rewrittenMetadata, 'running');
   }
-
-  await DialogPersistence.saveDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
 
   for (const course of plan.retainedCourses) {
     for (const event of course.events) {

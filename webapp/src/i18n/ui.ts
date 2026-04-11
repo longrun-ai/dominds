@@ -185,10 +185,14 @@ export type UiStrings = {
   toastDefaultNotice: string;
   dialogCreatedToastPrefix: string;
   dialogLoadedToast: string;
+  dialogStatusUnavailableToast: string;
+  dialogUnavailableRemovedPrefix: string;
   deepLinkDialogNotFoundPrefix: string;
+  deepLinkDialogLoadFailedPrefix: string;
   dialogDeleteFailedToast: string;
   moveDialogsFailedToast: string;
   movedDialogsToastPrefix: string;
+  dialogQuarantinedToast: string;
   reminderConnectionIssueToast: string;
   reminderSyncIssueToast: string;
   unknownStreamErrorToast: string;
@@ -560,10 +564,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toastDefaultNotice: '通知',
       dialogCreatedToastPrefix: '已创建对话：',
       dialogLoadedToast: '对话加载成功。',
+      dialogStatusUnavailableToast: '无法确定对话当前状态，请刷新列表后重试。',
+      dialogUnavailableRemovedPrefix: '对话已不存在，已从当前界面移除：',
       deepLinkDialogNotFoundPrefix: '未找到深链对话：',
+      deepLinkDialogLoadFailedPrefix: '加载深链对话失败：',
       dialogDeleteFailedToast: '删除对话失败',
       moveDialogsFailedToast: '移动对话失败',
       movedDialogsToastPrefix: '已移动对话数量：',
+      dialogQuarantinedToast: '检测到对话持久记录损坏，已将该对话移入隔离区并从当前列表移除。',
       reminderConnectionIssueToast: '检测到连接问题，提醒数据可能暂时不可用。',
       reminderSyncIssueToast: '提醒同步出现问题。如问题持续，请刷新页面。',
       unknownStreamErrorToast: '未知流错误',
@@ -945,10 +953,17 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toastDefaultNotice: 'Notice',
     dialogCreatedToastPrefix: 'Dialog created:',
     dialogLoadedToast: 'Dialog loaded successfully.',
+    dialogStatusUnavailableToast:
+      'Unable to determine the current dialog status. Refresh the list and try again.',
+    dialogUnavailableRemovedPrefix:
+      'Dialog is no longer available and was removed from the current view:',
     deepLinkDialogNotFoundPrefix: 'Deep link dialog not found:',
+    deepLinkDialogLoadFailedPrefix: 'Failed to load deep link dialog:',
     dialogDeleteFailedToast: 'Failed to delete dialog',
     moveDialogsFailedToast: 'Failed to move dialogs',
     movedDialogsToastPrefix: 'Moved dialog(s): ',
+    dialogQuarantinedToast:
+      'A dialog persistence record was found to be malformed. The dialog was quarantined and removed from the current list.',
     reminderConnectionIssueToast:
       'Connection issue detected. Reminder data may be temporarily unavailable.',
     reminderSyncIssueToast:

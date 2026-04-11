@@ -57,18 +57,20 @@ import type {
   ThinkingMsg,
 } from '../client';
 import { LlmConfig } from '../client';
-import type {
-  LlmBatchOutput,
-  LlmBatchResult,
-  LlmStreamReceiver,
-  LlmWebSearchCall,
-  OpenAiResponsesNativeToolCall,
+import {
+  LlmStreamErrorEmittedError,
+  type LlmBatchOutput,
+  type LlmBatchResult,
+  type LlmStreamReceiver,
+  type LlmWebSearchCall,
+  type OpenAiResponsesNativeToolCall,
 } from '../gen';
 import { getLlmGenerator } from '../gen/registry';
 import {
   formatToolCallAdjacencyViolation,
   sanitizeToolContextForProvider,
 } from '../gen/tool-call-context';
+import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { projectFuncToolsForProvider } from '../tools-projection';
 import { assembleDriveContextMessages } from './context';
 import {
@@ -95,6 +97,7 @@ import {
 } from './guardrails';
 import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
+  LlmRequestFailedError,
   LlmRetryStoppedError,
   maybePrepareDiligenceAutoContinuePrompt,
   runLlmRequestWithRetry,
@@ -210,6 +213,20 @@ function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolea
   return reason.kind !== 'llm_retry_stopped';
 }
 
+function buildAbortedSystemStopReason(): Extract<
+  DialogInterruptionReason,
+  { kind: 'system_stop' }
+> {
+  return {
+    kind: 'system_stop',
+    detail: 'Aborted.',
+    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+      detail: 'Aborted.',
+      kind: 'aborted',
+    }),
+  };
+}
+
 function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void {
   if (!abortSignal?.aborted) return;
   const stopRequested = getStopRequestedReason(dlg.id);
@@ -219,7 +236,7 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void
   if (stopRequested === 'user_stop') {
     throw new KernelDriverInterruptedError({ kind: 'user_stop' });
   }
-  throw new KernelDriverInterruptedError({ kind: 'system_stop', detail: 'Aborted.' });
+  throw new KernelDriverInterruptedError(buildAbortedSystemStopReason());
 }
 
 function isFbrSubdialogDialog(dlg: Dialog): dlg is SubDialog {
@@ -2091,7 +2108,13 @@ export async function driveDialogStreamCore(
               if (streamActive.kind !== 'idle') {
                 const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active`;
                 await dlg.streamError(detail);
-                throw new Error(detail);
+                throw new LlmStreamErrorEmittedError({
+                  detail,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                    detail,
+                    kind: 'conflicting_stream',
+                  }),
+                });
               }
               streamActive = { kind: 'thinking' };
               currentThinkingContent = '';
@@ -2108,7 +2131,13 @@ export async function driveDialogStreamCore(
               if (streamActive.kind !== 'thinking') {
                 const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active`;
                 await dlg.streamError(detail);
-                throw new Error(detail);
+                throw new LlmStreamErrorEmittedError({
+                  detail,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                    detail,
+                    kind: 'conflicting_stream',
+                  }),
+                });
               }
               streamActive = { kind: 'idle' };
               if (reasoning) currentThinkingReasoning = reasoning;
@@ -2130,7 +2159,13 @@ export async function driveDialogStreamCore(
               if (streamActive.kind !== 'idle') {
                 const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active`;
                 await dlg.streamError(detail);
-                throw new Error(detail);
+                throw new LlmStreamErrorEmittedError({
+                  detail,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                    detail,
+                    kind: 'conflicting_stream',
+                  }),
+                });
               }
               streamActive = { kind: 'saying' };
               currentSayingContent = '';
@@ -2146,7 +2181,13 @@ export async function driveDialogStreamCore(
               if (streamActive.kind !== 'saying') {
                 const detail = `Protocol violation: sayingFinish while ${streamActive.kind} is active`;
                 await dlg.streamError(detail);
-                throw new Error(detail);
+                throw new LlmStreamErrorEmittedError({
+                  detail,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                    detail,
+                    kind: 'conflicting_stream',
+                  }),
+                });
               }
               streamActive = { kind: 'idle' };
               await dlg.sayingFinish();
@@ -2550,7 +2591,14 @@ export async function driveDialogStreamCore(
             consecutiveIdenticalUpdatePlanOnlyRounds,
             identicalUpdatePlanRoundSignature,
           });
-          throw new KernelDriverInterruptedError({ kind: 'system_stop', detail });
+          throw new KernelDriverInterruptedError({
+            kind: 'system_stop',
+            detail,
+            i18nStopReason: buildHumanSystemStopReasonTextI18n({
+              detail,
+              kind: 'identical_update_plan_loop',
+            }),
+          });
         }
 
         // Start an immediate post-tool generation only when this round produced tool outputs that
@@ -2608,7 +2656,7 @@ export async function driveDialogStreamCore(
               ? { kind: 'emergency_stop' }
               : stopRequested === 'user_stop'
                 ? { kind: 'user_stop' }
-                : { kind: 'system_stop', detail: 'Aborted.' }
+                : buildAbortedSystemStopReason()
             : undefined;
 
     if (interruptedReason) {
@@ -2619,20 +2667,53 @@ export async function driveDialogStreamCore(
       };
       broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
     } else {
-      const errText = extractErrorDetails(err).message;
-      try {
-        await dlg.streamError(errText);
-      } catch {
-        // best-effort
+      const llmRequestFailure = err instanceof LlmRequestFailedError ? err : undefined;
+      const emittedStreamError = err instanceof LlmStreamErrorEmittedError ? err : undefined;
+      const errText =
+        llmRequestFailure?.detail ?? emittedStreamError?.detail ?? extractErrorDetails(err).message;
+      if (!llmRequestFailure?.streamErrorEmitted && !emittedStreamError) {
+        try {
+          await dlg.streamError(errText);
+        } catch {
+          // best-effort
+        }
       }
       finalDisplayState = {
         kind: 'stopped',
-        reason: { kind: 'system_stop', detail: errText },
+        reason:
+          (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
+            ? {
+                kind: 'system_stop',
+                detail: errText,
+                i18nStopReason:
+                  llmRequestFailure?.i18nStopReason ??
+                  emittedStreamError?.i18nStopReason ??
+                  buildHumanSystemStopReasonTextI18n({ detail: errText }),
+              }
+            : {
+                kind: 'system_stop',
+                detail: errText,
+                i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
+              },
         continueEnabled: true,
       };
       broadcastDisplayStateMarker(dlg.id, {
         kind: 'interrupted',
-        reason: { kind: 'system_stop', detail: errText },
+        reason:
+          (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
+            ? {
+                kind: 'system_stop',
+                detail: errText,
+                i18nStopReason:
+                  llmRequestFailure?.i18nStopReason ??
+                  emittedStreamError?.i18nStopReason ??
+                  buildHumanSystemStopReasonTextI18n({ detail: errText }),
+              }
+            : {
+                kind: 'system_stop',
+                detail: errText,
+                i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
+              },
       });
     }
   } finally {
@@ -2662,7 +2743,7 @@ export async function driveDialogStreamCore(
           ? { kind: 'emergency_stop' }
           : stopRequested === 'user_stop'
             ? { kind: 'user_stop' }
-            : { kind: 'system_stop', detail: 'Aborted.' };
+            : buildAbortedSystemStopReason();
       finalDisplayState = {
         kind: 'stopped',
         reason: lateInterruptedReason,
