@@ -3878,6 +3878,7 @@ export class DialogPersistence {
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
   private static readonly SUBDIALOGS_DIR = 'subdialogs';
+  private static readonly quarantinedRootDialogScopes = new Set<string>();
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
   private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
@@ -3980,6 +3981,9 @@ export class DialogPersistence {
     token: RootDialogWriteBackCancellationToken,
     phase: string,
   ): void {
+    if (this.quarantinedRootDialogScopes.has(token.scopeKey)) {
+      throw new DialogWriteBackCanceledError(token, phase);
+    }
     const currentGeneration = this.rootDialogWriteBackCancelGenerations.get(token.scopeKey) ?? 0;
     if (currentGeneration !== token.generation) {
       throw new DialogWriteBackCanceledError(token, phase);
@@ -4012,6 +4016,45 @@ export class DialogPersistence {
     const nextGeneration = (this.rootDialogWriteBackCancelGenerations.get(scopeKey) ?? 0) + 1;
     this.rootDialogWriteBackCancelGenerations.set(scopeKey, nextGeneration);
     this.clearWriteBackEntriesForRootDialog(rootDialogId, status);
+  }
+
+  private static getDialogMetadataPath(dialogId: DialogID, status: DialogStatusKind): string {
+    const dialogPath =
+      dialogId.rootId === dialogId.selfId
+        ? this.getRootDialogPath(dialogId, status)
+        : this.getSubdialogPath(dialogId, status);
+    return path.join(dialogPath, 'dialog.yaml');
+  }
+
+  private static async assertDialogMetadataExistsForAppend(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+    cancellationToken: RootDialogWriteBackCancellationToken,
+    phase: string,
+  ): Promise<void> {
+    this.assertRootDialogWriteBackNotCanceled(cancellationToken, phase);
+    const metadataPath = this.getDialogMetadataPath(dialogId, status);
+    try {
+      await fs.promises.access(metadataPath);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        this.assertRootDialogWriteBackNotCanceled(cancellationToken, `${phase}:metadata-missing`);
+        throw new Error(
+          `Refusing to append events for dialog ${dialogId.valueOf()}: missing dialog metadata at ${metadataPath}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private static async cleanupCanceledAppendPlaceholder(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<void> {
+    const rootDialogId =
+      dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
+    const rootPath = this.getRootDialogPath(rootDialogId, status);
+    await fs.promises.rm(rootPath, { recursive: true, force: true });
   }
 
   private static clonePendingSubdialogRecords(
@@ -4226,8 +4269,66 @@ export class DialogPersistence {
     if (subdialogsIndex === -1) {
       return segments.join('/');
     }
-    const selfId = segments[segments.length - 1];
-    return typeof selfId === 'string' && selfId !== '' ? selfId : null;
+    const subdialogSegments = segments.slice(subdialogsIndex + 1);
+    if (subdialogSegments.length === 0) {
+      return null;
+    }
+    return subdialogSegments.join('/');
+  }
+
+  private static async listSubdialogIdsUnderRoot(
+    rootDialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<string[]> {
+    const subdialogsPath = path.join(
+      this.getRootDialogPath(rootDialogId, status),
+      this.SUBDIALOGS_DIR,
+    );
+    const subdialogIds = new Set<string>();
+
+    const visit = async (dirPath: string, relativePath: string = ''): Promise<void> => {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      } catch (error: unknown) {
+        if (getErrorCode(error) === 'ENOENT') {
+          return;
+        }
+        throw error;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const fullPath = path.join(dirPath, entry.name);
+        const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+        const dialogYamlPath = path.join(fullPath, 'dialog.yaml');
+
+        try {
+          await fs.promises.access(dialogYamlPath);
+          const inferredId = this.inferExpectedDialogIdFromMetadataRelativeDir(
+            path.join(this.SUBDIALOGS_DIR, entryRelativePath),
+          );
+          if (!inferredId) {
+            throw new Error(
+              `Failed to infer subdialog id from relative path ${entryRelativePath} under root ${rootDialogId.selfId}`,
+            );
+          }
+          subdialogIds.add(inferredId);
+          continue;
+        } catch (error: unknown) {
+          if (getErrorCode(error) !== 'ENOENT') {
+            throw error;
+          }
+        }
+
+        await visit(fullPath, entryRelativePath);
+      }
+    };
+
+    await visit(subdialogsPath);
+    return [...subdialogIds];
   }
 
   private static async pathExists(targetPath: string): Promise<boolean> {
@@ -4328,6 +4429,9 @@ export class DialogPersistence {
         reason,
         error,
       });
+      this.quarantinedRootDialogScopes.add(
+        this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status),
+      );
       this.cancelRootDialogWriteBacks(rootDialogId, status);
 
       const sourcePath = this.getRootDialogPath(rootDialogId, status);
@@ -4789,22 +4893,42 @@ export class DialogPersistence {
   ): Promise<void> {
     const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
+    const cancellationToken = this.createRootDialogWriteBackCancellationToken(dialogId, status);
     try {
       if (events.length === 0) {
         return;
       }
+      await this.assertDialogMetadataExistsForAppend(
+        dialogId,
+        status,
+        cancellationToken,
+        'appendEvents:start',
+      );
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const courseFilename = this.getCourseFilename(course);
       const courseFilePath = path.join(dialogPath, courseFilename);
-
-      // Ensure directory exists
-      await fs.promises.mkdir(dialogPath, { recursive: true });
 
       // Serialize appends per dialog+course file. Concurrent `appendFile` calls can interleave and
       // corrupt JSONL lines (e.g. tool results appended in parallel), which later manifests as
       // `Unterminated string in JSON ...` during resume.
       const serialized = events.map((event) => JSON.stringify(event)).join('\n') + '\n';
-      await fs.promises.appendFile(courseFilePath, serialized, 'utf-8');
+      try {
+        await fs.promises.appendFile(courseFilePath, serialized, 'utf-8');
+      } catch (error: unknown) {
+        await this.rethrowWriteBackPathMissingAsCanceled(
+          error,
+          dialogPath,
+          cancellationToken,
+          'appendEvents:append-file',
+        );
+        throw error;
+      }
+      await this.assertDialogMetadataExistsForAppend(
+        dialogId,
+        status,
+        cancellationToken,
+        'appendEvents:after-append',
+      );
 
       // Update latest.yaml with new lastModified timestamp
       await this.mutateDialogLatest(
@@ -4817,8 +4941,13 @@ export class DialogPersistence {
           },
         }),
         status,
+        cancellationToken,
       );
     } catch (error) {
+      if (isDialogWriteBackCanceledError(error)) {
+        await this.cleanupCanceledAppendPlaceholder(dialogId, status);
+        return;
+      }
       log.error(`Failed to append events to dialog ${dialogId} course ${course}:`, error);
       throw error;
     } finally {
@@ -6734,12 +6863,16 @@ export class DialogPersistence {
     dialogId: DialogID,
     mutator: (previous: DialogLatestFile) => DialogLatestMutation,
     status: DialogStatusKind = 'running',
+    cancellationToken?: RootDialogWriteBackCancellationToken,
   ): Promise<DialogLatestFile> {
     const key = this.getLatestWriteBackKey(dialogId, status);
     const mutex = this.getLatestWriteBackMutex(key);
+    const effectiveCancellationToken =
+      cancellationToken ?? this.createRootDialogWriteBackCancellationToken(dialogId, status);
 
     const release = await mutex.acquire();
     try {
+      this.assertRootDialogWriteBackNotCanceled(effectiveCancellationToken, 'mutateDialogLatest');
       const staged = this.latestWriteBack.get(key);
       const existing = (staged
         ? staged.latest
@@ -6770,6 +6903,10 @@ export class DialogPersistence {
         throw new Error(`Unhandled dialog latest mutation: ${String(_exhaustive)}`);
       }
 
+      this.assertRootDialogWriteBackNotCanceled(
+        effectiveCancellationToken,
+        'mutateDialogLatest:before-stage',
+      );
       const pending = this.latestWriteBack.get(key);
       if (!pending) {
         const timer = setTimeout(() => {
@@ -7035,17 +7172,8 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<number> {
     try {
-      const rootPath = this.getRootDialogPath(rootDialogId, status);
-      const subdialogsPath = path.join(rootPath, this.SUBDIALOGS_DIR);
-      try {
-        const entries = await fs.promises.readdir(subdialogsPath, { withFileTypes: true });
-        return entries.filter((entry) => entry.isDirectory()).length;
-      } catch (error) {
-        if (getErrorCode(error) === 'ENOENT') {
-          return 0;
-        }
-        throw error;
-      }
+      const subdialogIds = await this.listSubdialogIdsUnderRoot(rootDialogId, status);
+      return subdialogIds.length;
     } catch (error) {
       log.error(`Failed to count all subdialogs under root ${rootDialogId.selfId}:`, error);
       return 0;
@@ -7069,17 +7197,7 @@ export class DialogPersistence {
       }
 
       // Recursively restore subdialogs
-      const rootPath = this.getRootDialogPath(rootDialogId, status);
-      const subdialogsPath = path.join(rootPath, this.SUBDIALOGS_DIR);
-      let subdialogIds: string[] = [];
-      try {
-        const entries = await fs.promises.readdir(subdialogsPath, { withFileTypes: true });
-        subdialogIds = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-      } catch (err) {
-        if (getErrorCode(err) !== 'ENOENT') {
-          throw err;
-        }
-      }
+      const subdialogIds = await this.listSubdialogIdsUnderRoot(rootDialogId, status);
       for (const subdialogId of subdialogIds) {
         await this.restoreDialogTree(new DialogID(subdialogId, rootDialogId.rootId), status);
       }
