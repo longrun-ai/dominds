@@ -9,6 +9,8 @@
  * This script is intentionally small and self-contained; it runs against a temp rtws.
  */
 
+import type { RootDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -50,6 +52,13 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
     const dialogId = new DialogID('61/5a/da8d0169');
+    const metadata: RootDialogMetadataFile = {
+      id: dialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:00:00.000Z')),
+    };
+    await DialogPersistence.saveRootDialogMetadata(dialogId, metadata, 'running');
 
     // Invariant 1: concurrent patch mutations must merge (no lost fields).
     await Promise.all([

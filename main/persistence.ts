@@ -3986,6 +3986,24 @@ export class DialogPersistence {
     }
   }
 
+  private static async rethrowWriteBackPathMissingAsCanceled(
+    error: unknown,
+    dialogPath: string,
+    cancellationToken: RootDialogWriteBackCancellationToken | undefined,
+    phase: string,
+  ): Promise<void> {
+    if (getErrorCode(error) !== 'ENOENT') {
+      throw error;
+    }
+    if (cancellationToken) {
+      this.assertRootDialogWriteBackNotCanceled(cancellationToken, phase);
+      if (!(await this.pathExists(dialogPath))) {
+        throw new DialogWriteBackCanceledError(cancellationToken, `${phase}:dialog-path-missing`);
+      }
+    }
+    throw error;
+  }
+
   private static cancelRootDialogWriteBacks(
     rootDialogId: DialogID,
     status: DialogStatusKind,
@@ -5507,7 +5525,17 @@ export class DialogPersistence {
       dialogPath,
       `.${path.basename(questionsFilePath)}.${process.pid}.${randomUUID()}.tmp`,
     );
-    await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+    try {
+      await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+    } catch (error: unknown) {
+      await this.rethrowWriteBackPathMissingAsCanceled(
+        error,
+        dialogPath,
+        cancellationToken,
+        'writeQ4HStateToDisk:write-temp',
+      );
+      throw error;
+    }
     await this.renameWithRetry(tempFile, questionsFilePath, 5, cancellationToken);
   }
 
@@ -5975,7 +6003,17 @@ export class DialogPersistence {
       dialogPath,
       `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
     );
-    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    try {
+      await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    } catch (error: unknown) {
+      await this.rethrowWriteBackPathMissingAsCanceled(
+        error,
+        dialogPath,
+        cancellationToken,
+        'writePendingSubdialogsToDisk:write-temp',
+      );
+      throw error;
+    }
     await this.renameWithRetry(tempFile, filePath, 5, cancellationToken);
   }
 
@@ -6588,7 +6626,17 @@ export class DialogPersistence {
         `.${path.basename(latestFilePath)}.${process.pid}.${randomUUID()}.tmp`,
       );
       const yamlContent = yaml.stringify(latest);
-      await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+      try {
+        await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+      } catch (error: unknown) {
+        await this.rethrowWriteBackPathMissingAsCanceled(
+          error,
+          dialogPath,
+          cancellationToken,
+          'writeDialogLatestToDisk:write-temp',
+        );
+        throw error;
+      }
 
       // Rename with retry logic for filesystem sync issues
       await this.renameWithRetry(tempFile, latestFilePath, 5, cancellationToken);
@@ -7374,6 +7422,7 @@ export class DialogPersistence {
     // Best-effort cleanup: remove the dialog from all status directories to avoid leaving behind
     // orphaned placeholder paths (e.g. `run/<id>/latest.yaml`) after a delete.
     for (const candidate of PERSISTABLE_DIALOG_STATUSES) {
+      this.cancelRootDialogWriteBacks(rootDialogId, candidate);
       const candidatePath = this.getRootDialogPath(rootDialogId, candidate);
       await fs.promises.rm(candidatePath, { recursive: true, force: true });
     }
