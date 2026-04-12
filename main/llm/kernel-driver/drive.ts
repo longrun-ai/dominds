@@ -23,6 +23,7 @@ import {
   setDialogDisplayState,
   setDialogExecutionMarker,
 } from '../../dialog-display-state';
+import { isInterruptionReasonManualResumeEligible } from '../../dialog-interruption';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
@@ -210,7 +211,7 @@ class KernelDriverInterruptedError extends Error {
 }
 
 function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
-  return reason.kind !== 'llm_retry_stopped';
+  return isInterruptionReasonManualResumeEligible(reason);
 }
 
 function buildAbortedSystemStopReason(): Extract<

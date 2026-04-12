@@ -979,6 +979,11 @@ export async function runLlmRequestWithRetry<T>(params: {
             errorText: detail,
             display,
           });
+          // Keep the retry-stop progress event non-resumable by default. Do not flip this to true
+          // just because the eventual finalized stopped state may allow manual Continue: this
+          // event is emitted before the driver has fully unwound, cleared interrupted markers, and
+          // persisted the terminal projection, so enabling Continue here would advertise a resume
+          // action that is not yet safe or actually available.
           emitLlmRetryEventBestEffort({
             dlg: params.dlg,
             phase: 'stopped',

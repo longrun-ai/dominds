@@ -1259,6 +1259,10 @@ export class DomindsDialogContainer extends HTMLElement {
         if (event.kind === 'interrupted') {
           const t = getUiStrings(this.uiLanguage);
           const reason = event.reason ?? { kind: 'system_stop', detail: t.stoppedPanelTitle };
+          // Keep interruption markers pessimistic by default. Do not make this button clickable
+          // here just because a later finalized stopped state may become resumable: marker events
+          // arrive before the backend has confirmed the terminal stopped projection, so enabling
+          // Continue at this stage would create a misleading and racy false-positive affordance.
           this.displayState = {
             kind: 'stopped',
             reason,

@@ -325,12 +325,12 @@ function buildXcodeBestEmptyResponseGiveUpText(
     zh:
       `${providerName} 在同一对话上下文中连续返回 empty response。` +
       `Dominds 已在 ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} 次 empty response 后停止继续重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
-      '继续调整常规重试策略也无助于恢复。请新开对话继续。',
+      '如果直接点继续，大概率仍然无法有真实进展；更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
     en:
       `${providerName} returned empty responses repeatedly for the same dialog context. ` +
       `Dominds stopped retrying after ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} empty responses because this usually means the provider-side conversation ` +
-      'context is stuck; adjusting the normal retry policies will not recover it. ' +
-      'Start a new dialog to continue.',
+      'context is stuck; simply pressing Continue is still unlikely to make real progress, ' +
+      'but trying again with some fresh user instructions may still have a chance to recover.',
   };
   return {
     providerName,
@@ -362,7 +362,7 @@ function createXcodeBestFailureQuirkHandlerSession(
           kind: 'give_up',
           message:
             `${providerName} returned empty responses repeatedly for the same dialog context; ` +
-            'automatic retries will not help until a new dialog is started.',
+            'automatic retries were stopped; simply continuing is still unlikely to make real progress, but retrying with some fresh user instructions may still have a chance to recover.',
           summaryTextI18n,
         };
       }

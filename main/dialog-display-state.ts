@@ -24,6 +24,7 @@ import type { DialogExecutionMarker, DialogLatestFile } from '@longrun-ai/kernel
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
+import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
@@ -71,7 +72,7 @@ function syncRunControlCountsAfterActiveRunChange(
 type RunControlBucket = 'proceeding' | 'resumable' | 'none';
 
 export function isStoppedReasonResumable(reason: DialogInterruptionReason): boolean {
-  return reason.kind !== 'llm_retry_stopped';
+  return isInterruptionReasonManualResumeEligible(reason);
 }
 
 export function isDisplayStateResumable(state: DialogDisplayState | undefined): boolean {

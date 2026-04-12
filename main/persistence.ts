@@ -95,6 +95,7 @@ import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
 import type { PendingSubdialog } from './dialog';
 import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
+import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import { log } from './log';
@@ -504,7 +505,7 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
 }
 
 function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
-  return reason.kind !== 'llm_retry_stopped';
+  return isInterruptionReasonManualResumeEligible(reason);
 }
 
 function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {

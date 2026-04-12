@@ -327,10 +327,15 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
         'Expected LlmRetryStoppedError to be thrown',
       );
       assert.equal(error.reason.kind, 'llm_retry_stopped');
-      assert.equal(error.reason.display.summaryTextI18n.zh?.includes('请新开对话继续。'), true);
+      assert.equal(
+        error.reason.display.summaryTextI18n.zh?.includes(
+          '更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
+        ),
+        true,
+      );
       assert.equal(error.reason.display.titleTextI18n.zh, '重试已停止');
       assert.match(error.reason.error, /LLM returned empty response/u);
-      assert.match(error.message, /请新开对话继续/u);
+      assert.match(error.message, /更建议先输入一些新的指令再尝试/u);
       assert.match(error.message, /最后错误：LLM returned empty response/u);
       assert.doesNotMatch(error.message, /若想增加重试次数/u);
       return true;
@@ -360,7 +365,12 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
   assert.equal(stopped.continueEnabled, false);
   assert.equal(stopped.reason.kind, 'llm_retry_stopped');
   assert.equal(stopped.reason.display.titleTextI18n.zh, '重试已停止');
-  assert.equal(stopped.reason.display.summaryTextI18n.zh?.includes('请新开对话继续。'), true);
+  assert.equal(
+    stopped.reason.display.summaryTextI18n.zh?.includes(
+      '更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
+    ),
+    true,
+  );
 }
 
 async function verifyResolvedRetryLifecycle(): Promise<void> {
