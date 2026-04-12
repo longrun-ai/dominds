@@ -39,6 +39,7 @@ import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
 import { formatRetryStoppedReason, formatSystemStopReason } from '../utils/localized-text';
+import { dispatchDomindsEvent, type DomindsCustomEventMap, type UiToastKind } from './dom-events';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -85,72 +86,11 @@ type TellaskCallSiteTarget = {
   course?: CallerCourseNumber | CalleeCourseNumber;
 };
 
-type ScrollToCallIdDetail = {
-  course: number;
-  callId: string;
-};
-
-type ScrollToGenseqDetail = {
-  course: number;
-  genseq: number;
-};
-
-type ScrollToCallSiteDetail =
-  | {
-      course: number;
-      callId: string;
-      messageIndex?: undefined;
-    }
-  | {
-      course: number;
-      messageIndex: number;
-      callId?: undefined;
-    };
 type AutoScrollMode = 'following' | 'paused';
 type AutoScrollKeyboardIntent = 'none' | 'toward_latest';
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function parsePositiveIntField(value: unknown): number | null {
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Math.floor(parsed);
-}
-
-function readScrollToCallIdDetail(value: unknown): ScrollToCallIdDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const course = parsePositiveIntField(value['course']);
-  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
-  if (course === null || callId === '') return null;
-  return { course, callId };
-}
-
-function readScrollToGenseqDetail(value: unknown): ScrollToGenseqDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const course = parsePositiveIntField(value['course']);
-  const genseq = parsePositiveIntField(value['genseq']);
-  if (course === null || genseq === null) return null;
-  return { course, genseq };
-}
-
-function readScrollToCallSiteDetail(value: unknown): ScrollToCallSiteDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const course = parsePositiveIntField(value['course']);
-  if (course === null) return null;
-  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
-  if (callId !== '') {
-    return { course, callId };
-  }
-  const messageIndex = parsePositiveIntField(value['messageIndex']);
-  if (messageIndex === null) return null;
-  return { course, messageIndex };
 }
 
 function isSystemNoticeMarkdownContent(value: string): boolean {
@@ -483,18 +423,17 @@ export class DomindsDialogContainer extends HTMLElement {
           const seqRaw = Number.parseInt(bubble.getAttribute('data-seq') ?? '', 10);
           if (!Number.isFinite(courseRaw) || courseRaw <= 0) return;
           if (!Number.isFinite(seqRaw) || seqRaw <= 0) return;
-          this.dispatchEvent(
-            new CustomEvent('fork-dialog-request', {
-              detail: {
-                rootId: dialog.rootId,
-                selfId: dialog.selfId,
-                status: dialog.status ?? 'running',
-                course: Math.floor(courseRaw),
-                genseq: Math.floor(seqRaw),
-              },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            this,
+            'fork-dialog-request',
+            {
+              rootId: dialog.rootId,
+              selfId: dialog.selfId,
+              status: dialog.status ?? 'running',
+              course: Math.floor(courseRaw),
+              genseq: Math.floor(seqRaw),
+            },
+            { bubbles: true, composed: true },
           );
           return;
         }
@@ -541,19 +480,16 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private installCallSiteScrollListeners(): void {
-    this.removeEventListener('scroll-to-call-site', this.onScrollToCallSite as EventListener);
-    this.removeEventListener('scroll-to-call-id', this.onScrollToCallId as EventListener);
-    this.removeEventListener('scroll-to-genseq', this.onScrollToGenSeq as EventListener);
-    this.addEventListener('scroll-to-call-site', this.onScrollToCallSite as EventListener);
-    this.addEventListener('scroll-to-call-id', this.onScrollToCallId as EventListener);
-    this.addEventListener('scroll-to-genseq', this.onScrollToGenSeq as EventListener);
+    this.removeEventListener('scroll-to-call-site', this.onScrollToCallSite);
+    this.removeEventListener('scroll-to-call-id', this.onScrollToCallId);
+    this.removeEventListener('scroll-to-genseq', this.onScrollToGenSeq);
+    this.addEventListener('scroll-to-call-site', this.onScrollToCallSite);
+    this.addEventListener('scroll-to-call-id', this.onScrollToCallId);
+    this.addEventListener('scroll-to-genseq', this.onScrollToGenSeq);
   }
 
-  private onScrollToCallSite = (event: Event): void => {
-    const ce = event as CustomEvent<unknown>;
-    const detail = readScrollToCallSiteDetail(ce.detail);
-    if (!detail) return;
-
+  private onScrollToCallSite = (event: DomindsCustomEventMap['scroll-to-call-site']): void => {
+    const detail = event.detail;
     if (detail.callId !== undefined) {
       this.pendingScrollRequest = {
         kind: 'by_call_id',
@@ -572,11 +508,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.maybeApplyPendingScrollRequest();
   };
 
-  private onScrollToCallId = (event: Event): void => {
-    const ce = event as CustomEvent<unknown>;
-    const detail = readScrollToCallIdDetail(ce.detail);
-    if (!detail) return;
-
+  private onScrollToCallId = (event: DomindsCustomEventMap['scroll-to-call-id']): void => {
+    const detail = event.detail;
     this.pendingScrollRequest = {
       kind: 'by_call_id',
       course: detail.course,
@@ -585,11 +518,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.maybeApplyPendingScrollRequest();
   };
 
-  private onScrollToGenSeq = (event: Event): void => {
-    const ce = event as CustomEvent<unknown>;
-    const detail = readScrollToGenseqDetail(ce.detail);
-    if (!detail) return;
-
+  private onScrollToGenSeq = (event: DomindsCustomEventMap['scroll-to-genseq']): void => {
+    const detail = event.detail;
     this.pendingScrollRequest = { kind: 'by_genseq', course: detail.course, genseq: detail.genseq };
     this.maybeApplyPendingScrollRequest();
   };
@@ -1452,9 +1382,9 @@ export class DomindsDialogContainer extends HTMLElement {
             message: String(event.error || t.unknownStreamErrorToast),
             kind: 'error' as const,
           };
-          host?.dispatchEvent(
-            new CustomEvent('ui-toast', { detail, bubbles: true, composed: true }),
-          );
+          if (host) {
+            dispatchDomindsEvent(host, 'ui-toast', detail, { bubbles: true, composed: true });
+          }
           break;
         }
         if (
@@ -3143,16 +3073,17 @@ export class DomindsDialogContainer extends HTMLElement {
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       const t = getUiStrings(this.uiLanguage);
-      host?.dispatchEvent(
-        new CustomEvent('ui-toast', {
-          detail: {
+      if (host) {
+        dispatchDomindsEvent(
+          host,
+          'ui-toast',
+          {
             message: String(event.content || t.teammateCallFailedToast),
             kind: 'error',
           },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+          { bubbles: true, composed: true },
+        );
+      }
     }
     const agentId = event.responder.agentId || event.responder.responderId;
     const requesterId = event.responder.originMemberId;
@@ -3237,16 +3168,17 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Dispatch event for dialog list to update callee dialog count
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-    host?.dispatchEvent(
-      new CustomEvent('subdialog-created', {
-        detail: {
+    if (host) {
+      dispatchDomindsEvent(
+        host,
+        'subdialog-created',
+        {
           rootId: subDialog.rootId,
-          calleeDialogId: calleeDialogId,
+          calleeDialogId,
         },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+        { bubbles: true, composed: true },
+      );
+    }
   }
 
   // Create teammate bubble for subagent responses
@@ -3587,17 +3519,16 @@ export class DomindsDialogContainer extends HTMLElement {
 
       const dialog = this.currentDialog;
       if (!dialog) return;
-      this.dispatchEvent(
-        new CustomEvent('navigate-callsite', {
-          detail: {
-            rootId: dialog.rootId,
-            selfId: dialog.selfId,
-            course,
-            callId: rawCallId,
-          },
-          bubbles: true,
-          composed: true,
-        }),
+      dispatchDomindsEvent(
+        this,
+        'navigate-callsite',
+        {
+          rootId: dialog.rootId,
+          selfId: dialog.selfId,
+          course,
+          callId: rawCallId,
+        },
+        { bubbles: true, composed: true },
       );
       return;
     }
@@ -3622,17 +3553,16 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    this.dispatchEvent(
-      new CustomEvent('navigate-genseq', {
-        detail: {
-          rootId: dialog.rootId,
-          selfId: dialog.selfId,
-          course: normalizedCourse,
-          genseq: normalizedGenseq,
-        },
-        bubbles: true,
-        composed: true,
-      }),
+    dispatchDomindsEvent(
+      this,
+      'navigate-genseq',
+      {
+        rootId: dialog.rootId,
+        selfId: dialog.selfId,
+        course: normalizedCourse,
+        genseq: normalizedGenseq,
+      },
+      { bubbles: true, composed: true },
     );
   }
 
@@ -3716,10 +3646,8 @@ export class DomindsDialogContainer extends HTMLElement {
     await this.copyLinkToClipboardWithToast(url.toString());
   }
 
-  private emitToast(message: string, kind: 'error' | 'warning' | 'info' = 'info'): void {
-    this.dispatchEvent(
-      new CustomEvent('ui-toast', { detail: { message, kind }, bubbles: true, composed: true }),
-    );
+  private emitToast(message: string, kind: UiToastKind = 'info'): void {
+    dispatchDomindsEvent(this, 'ui-toast', { message, kind }, { bubbles: true, composed: true });
   }
 
   private async copyTextToClipboard(text: string): Promise<boolean> {
@@ -3758,13 +3686,17 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleFullRemindersUpdate(event: FullRemindersEvent): void {
     // Dispatch custom event for reminders widget to listen to
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-    host?.dispatchEvent(
-      new CustomEvent('reminders-update', {
-        detail: { reminders: event.reminders },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    if (host) {
+      dispatchDomindsEvent(
+        host,
+        'reminders-update',
+        { reminders: event.reminders },
+        {
+          bubbles: true,
+          composed: true,
+        },
+      );
+    }
   }
 
   private formatAgentLabel(agentId: string): string {
@@ -4427,12 +4359,11 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private emitViewportPanelStateChanged(): void {
-    this.dispatchEvent(
-      new CustomEvent<{ state: DialogViewportPanelState }>('dialog-viewport-panel-state', {
-        detail: { state: this.viewportPanelState },
-        bubbles: true,
-        composed: true,
-      }),
+    dispatchDomindsEvent(
+      this,
+      'dialog-viewport-panel-state',
+      { state: this.viewportPanelState },
+      { bubbles: true, composed: true },
     );
   }
 

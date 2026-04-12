@@ -7,6 +7,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import { getUiStrings } from '../i18n/ui';
+import { dispatchDomindsEvent } from './dom-events';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -79,19 +80,18 @@ export class DomindsQ4HPanel extends HTMLElement {
    * Dispatches event for parent component to handle navigation
    */
   private navigateToCallSite(question: HumanQuestion, dialogContext: Q4HDialogContext): void {
-    this.dispatchEvent(
-      new CustomEvent('q4h-navigate-call-site', {
-        detail: {
-          questionId: question.id,
-          dialogId: dialogContext.selfId,
-          rootId: dialogContext.rootId,
-          course: question.callSiteRef.course,
-          messageIndex: question.callSiteRef.messageIndex,
-          callId: question.callId,
-        },
-        bubbles: true,
-        composed: true,
-      }),
+    dispatchDomindsEvent(
+      this,
+      'q4h-navigate-call-site',
+      {
+        questionId: question.id,
+        dialogId: dialogContext.selfId,
+        rootId: dialogContext.rootId,
+        course: question.callSiteRef.course,
+        messageIndex: question.callSiteRef.messageIndex,
+        callId: question.callId,
+      },
+      { bubbles: true, composed: true },
     );
   }
 
@@ -105,12 +105,14 @@ export class DomindsQ4HPanel extends HTMLElement {
 
     this.expandedQuestions.add(questionId);
     this.applyExpandedUi(questionId);
-    this.dispatchEvent(
-      new CustomEvent('q4h-question-expanded', {
-        detail: { questionId },
+    dispatchDomindsEvent(
+      this,
+      'q4h-question-expanded',
+      { questionId },
+      {
         bubbles: true,
         composed: true,
-      }),
+      },
     );
   }
 
@@ -173,29 +175,30 @@ export class DomindsQ4HPanel extends HTMLElement {
       const wasExpanded = this.expandedQuestions.has(question.id);
       this.expandedQuestions.add(question.id);
       if (!wasExpanded || prevSelectedId !== question.id) {
-        this.dispatchEvent(
-          new CustomEvent('q4h-question-expanded', {
-            detail: { questionId: question.id },
+        dispatchDomindsEvent(
+          this,
+          'q4h-question-expanded',
+          { questionId: question.id },
+          {
             bubbles: true,
             composed: true,
-          }),
+          },
         );
       }
     }
     this.applySelectionUi();
 
     // Dispatch selection event for parent components
-    this.dispatchEvent(
-      new CustomEvent('q4h-select-question', {
-        detail: {
-          questionId: this.selectedQuestionId,
-          dialogId: dialogContext.selfId,
-          rootId: dialogContext.rootId,
-          tellaskContent: question.tellaskContent,
-        },
-        bubbles: true,
-        composed: true,
-      }),
+    dispatchDomindsEvent(
+      this,
+      'q4h-select-question',
+      {
+        questionId: this.selectedQuestionId,
+        dialogId: dialogContext.selfId,
+        rootId: dialogContext.rootId,
+        tellaskContent: question.tellaskContent,
+      },
+      { bubbles: true, composed: true },
     );
   }
 
@@ -310,19 +313,18 @@ export class DomindsQ4HPanel extends HTMLElement {
         const callId = target.getAttribute('data-call-id');
 
         if (questionId && dialogId && rootId && course && messageIndex) {
-          this.dispatchEvent(
-            new CustomEvent('q4h-navigate-call-site', {
-              detail: {
-                questionId,
-                dialogId,
-                rootId,
-                course: parseInt(course, 10),
-                messageIndex: parseInt(messageIndex, 10),
-                callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
-              },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            this,
+            'q4h-navigate-call-site',
+            {
+              questionId,
+              dialogId,
+              rootId,
+              course: parseInt(course, 10),
+              messageIndex: parseInt(messageIndex, 10),
+              callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
+            },
+            { bubbles: true, composed: true },
           );
         }
       });
@@ -346,19 +348,18 @@ export class DomindsQ4HPanel extends HTMLElement {
         const parsedMsg = Number.parseInt(messageIndex, 10);
         if (!Number.isFinite(parsedCourse) || !Number.isFinite(parsedMsg)) return;
 
-        this.dispatchEvent(
-          new CustomEvent('q4h-open-external', {
-            detail: {
-              questionId,
-              dialogId,
-              rootId,
-              course: parsedCourse,
-              messageIndex: parsedMsg,
-              callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
-            },
-            bubbles: true,
-            composed: true,
-          }),
+        dispatchDomindsEvent(
+          this,
+          'q4h-open-external',
+          {
+            questionId,
+            dialogId,
+            rootId,
+            course: parsedCourse,
+            messageIndex: parsedMsg,
+            callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
+          },
+          { bubbles: true, composed: true },
         );
       });
     });
@@ -381,19 +382,18 @@ export class DomindsQ4HPanel extends HTMLElement {
         const parsedMsg = Number.parseInt(messageIndex, 10);
         if (!Number.isFinite(parsedCourse) || !Number.isFinite(parsedMsg)) return;
 
-        this.dispatchEvent(
-          new CustomEvent('q4h-share-link', {
-            detail: {
-              questionId,
-              dialogId,
-              rootId,
-              course: parsedCourse,
-              messageIndex: parsedMsg,
-              callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
-            },
-            bubbles: true,
-            composed: true,
-          }),
+        dispatchDomindsEvent(
+          this,
+          'q4h-share-link',
+          {
+            questionId,
+            dialogId,
+            rootId,
+            course: parsedCourse,
+            messageIndex: parsedMsg,
+            callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
+          },
+          { bubbles: true, composed: true },
         );
       });
     });

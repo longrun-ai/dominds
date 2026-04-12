@@ -6,6 +6,7 @@ import type {
 } from '@longrun-ai/kernel/types/snippets';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
+import { dispatchDomindsEvent } from './dom-events';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 type LoadState =
@@ -53,14 +54,16 @@ export class DomindsSnippetsPanel extends HTMLElement {
       const catalogResp = await api.getSnippetCatalog(this.uiLanguage);
 
       if (!catalogResp.success && catalogResp.status === 401) {
-        this.dispatchEvent(
-          new CustomEvent('ui-toast', {
-            detail: { message: t.unauthorized, kind: 'warning' },
-            bubbles: true,
-            composed: true,
-          }),
+        dispatchDomindsEvent(
+          this,
+          'ui-toast',
+          { message: t.unauthorized, kind: 'warning' },
+          { bubbles: true, composed: true },
         );
-        this.dispatchEvent(new CustomEvent('auth-required', { bubbles: true, composed: true }));
+        dispatchDomindsEvent(this, 'auth-required', undefined, {
+          bubbles: true,
+          composed: true,
+        });
       }
 
       if (!catalogResp.success || !catalogResp.data) {
@@ -100,12 +103,14 @@ export class DomindsSnippetsPanel extends HTMLElement {
   private emitInsertContent(content: string): void {
     const normalized = typeof content === 'string' ? content : '';
     if (normalized.trim() === '') return;
-    this.dispatchEvent(
-      new CustomEvent('snippet-insert', {
-        detail: { content: normalized },
+    dispatchDomindsEvent(
+      this,
+      'snippet-insert',
+      { content: normalized },
+      {
         bubbles: true,
         composed: true,
-      }),
+      },
     );
   }
 
@@ -251,12 +256,14 @@ export class DomindsSnippetsPanel extends HTMLElement {
       await this.load();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : t.snippetsLoadFailed;
-      this.dispatchEvent(
-        new CustomEvent('ui-toast', {
-          detail: { message, kind: 'error' },
+      dispatchDomindsEvent(
+        this,
+        'ui-toast',
+        { message, kind: 'error' },
+        {
           bubbles: true,
           composed: true,
-        }),
+        },
       );
       this.newGroupPendingFocus = true;
       this.render();

@@ -6,6 +6,11 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatTeamMembersTitle, getUiStrings } from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
+import {
+  dispatchDomindsEvent,
+  type TeamMembersMentionEventDetail,
+  type UiToastKind,
+} from './dom-events';
 
 export interface TeamMembersProps {
   members: FrontendTeamMember[];
@@ -23,11 +28,6 @@ type TeamMembersUiState =
       selectedMemberId: string | null;
       message: string;
     };
-
-export type TeamMembersMentionEventDetail = {
-  memberId: string;
-  mention: string;
-};
 
 export class DomindsTeamMembers extends HTMLElement {
   private props: TeamMembersProps = {
@@ -449,9 +449,10 @@ export class DomindsTeamMembers extends HTMLElement {
     const refresh = root.querySelector('#team-members-refresh');
     if (refresh instanceof HTMLButtonElement) {
       refresh.onclick = () => {
-        this.dispatchEvent(
-          new CustomEvent('team-members-refresh', { bubbles: true, composed: true }),
-        );
+        dispatchDomindsEvent(this, 'team-members-refresh', undefined, {
+          bubbles: true,
+          composed: true,
+        });
       };
     }
 
@@ -527,13 +528,7 @@ export class DomindsTeamMembers extends HTMLElement {
   private emitMention(memberId: string): void {
     const mention = `@${memberId}`;
     const detail: TeamMembersMentionEventDetail = { memberId, mention };
-    this.dispatchEvent(
-      new CustomEvent<TeamMembersMentionEventDetail>('team-member-mention', {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    dispatchDomindsEvent(this, 'team-member-mention', detail, { bubbles: true, composed: true });
   }
 
   private async copyMention(memberId: string): Promise<void> {
@@ -563,10 +558,8 @@ export class DomindsTeamMembers extends HTMLElement {
     }
   }
 
-  private emitToast(message: string, kind: 'error' | 'warning' | 'info' = 'info'): void {
-    this.dispatchEvent(
-      new CustomEvent('ui-toast', { detail: { message, kind }, bubbles: true, composed: true }),
-    );
+  private emitToast(message: string, kind: UiToastKind = 'info'): void {
+    dispatchDomindsEvent(this, 'ui-toast', { message, kind }, { bubbles: true, composed: true });
   }
 
   private filterMembers(

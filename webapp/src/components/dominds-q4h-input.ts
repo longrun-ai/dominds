@@ -17,6 +17,7 @@ import {
   saveViewportScopedNumber,
 } from '../services/viewport-size-storage';
 import { getWebSocketManager } from '../services/websocket.js';
+import { dispatchDomindsEvent } from './dom-events';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface Q4HQuestion {
@@ -232,17 +233,16 @@ export class DomindsQ4HInput extends HTMLElement {
 
     const question = this.questions.find((q) => q.id === questionId);
     if (question) {
-      this.dispatchEvent(
-        new CustomEvent('q4h-select-question', {
-          detail: {
-            questionId,
-            dialogId: question.dialogContext.selfId,
-            rootId: question.dialogContext.rootId,
-            tellaskContent: question.tellaskContent,
-          },
-          bubbles: true,
-          composed: true,
-        }),
+      dispatchDomindsEvent(
+        this,
+        'q4h-select-question',
+        {
+          questionId,
+          dialogId: question.dialogContext.selfId,
+          rootId: question.dialogContext.rootId,
+          tellaskContent: question.tellaskContent,
+        },
+        { bubbles: true, composed: true },
       );
     }
   }
@@ -567,12 +567,14 @@ export class DomindsQ4HInput extends HTMLElement {
       }, 3000);
     }
 
-    this.dispatchEvent(
-      new CustomEvent('input-error', {
-        detail: { message, type: 'error' },
+    dispatchDomindsEvent(
+      this,
+      'input-error',
+      { message, type: 'error' },
+      {
         bubbles: true,
         composed: true,
-      }),
+      },
     );
   }
 
@@ -911,30 +913,23 @@ export class DomindsQ4HInput extends HTMLElement {
         const dialogId = answeredQuestion.dialogContext.selfId;
         const rootId = answeredQuestion.dialogContext.rootId;
         if (typeof dialogId === 'string' && typeof rootId === 'string') {
-          this.dispatchEvent(
-            new CustomEvent('q4h-select-question', {
-              detail: {
-                questionId: null,
-                dialogId,
-                rootId,
-                tellaskContent: '',
-              },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            this,
+            'q4h-select-question',
+            {
+              questionId: null,
+              dialogId,
+              rootId,
+              tellaskContent: '',
+            },
+            { bubbles: true, composed: true },
           );
         }
       } else {
         // Normal user-message flow: no Q4H style transition side effects.
       }
       this.clear();
-      this.dispatchEvent(
-        new CustomEvent('usersend', {
-          detail: { content },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      dispatchDomindsEvent(this, 'usersend', { content }, { bubbles: true, composed: true });
 
       if (restoreFocus) {
         queueMicrotask(() => {

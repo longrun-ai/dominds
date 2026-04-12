@@ -91,6 +91,13 @@ import {
   type CreateDialogSuccess,
   type DialogCreateAction,
 } from './create-dialog-flow';
+import {
+  dispatchDomindsEvent,
+  type ForkDialogRequestDetail,
+  type PersistableDialogStatus,
+  type Q4HCallSiteNavigationDetail,
+  type ToastHistoryPolicy,
+} from './dom-events';
 import './dominds-dialog-container.js';
 import {
   DomindsDialogContainer,
@@ -105,7 +112,7 @@ import type { DomindsQ4HPanel } from './dominds-q4h-panel';
 import './dominds-snippets-panel';
 import './dominds-team-manual-panel';
 import './dominds-team-members.js';
-import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
+import { DomindsTeamMembers } from './dominds-team-members.js';
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
@@ -126,8 +133,6 @@ type ToolsWidgetRequestOptions = {
   selfId?: string;
   status?: PersistableDialogStatus;
 };
-
-type PersistableDialogStatus = Exclude<DialogStatusKind, 'quarantining'>;
 
 type ToolsWidgetSnapshot = {
   toolsets: ToolsetInfo[];
@@ -183,120 +188,11 @@ type Q4HDeepLinkParams = {
   callId?: string;
 };
 
-type Q4HCallSiteNavigation = {
-  questionId: string;
-  dialogId: string;
-  rootId: string;
-  course: number;
-  messageIndex: number;
-  callId?: string;
-};
-
-type DialogDeepLinkEventDetail = {
-  rootId: string;
-  selfId: string;
-};
-
-type NavigateGenseqEventDetail = {
-  rootId: string;
-  selfId: string;
-  course: number;
-  genseq: number;
-};
-
-type NavigateCallsiteEventDetail = {
-  rootId: string;
-  selfId: string;
-  course: number;
-  callId: string;
-};
-
-type ScrollToCallIdDetail = {
-  course: number;
-  callId: string;
-};
-
-type ScrollToGenseqDetail = {
-  course: number;
-  genseq: number;
-};
-
-type ScrollToCallSiteDetail = {
-  course: number;
-  messageIndex: number;
-  callId?: string;
-};
-
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function readDialogDeepLinkEventDetail(value: unknown): DialogDeepLinkEventDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
-  if (rootId === '') return null;
-  const selfRaw = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
-  return {
-    rootId,
-    selfId: selfRaw === '' ? rootId : selfRaw,
-  };
-}
-
-function readQ4HCallSiteNavigation(value: unknown): Q4HCallSiteNavigation | null {
-  if (!isObjectRecord(value)) return null;
-  const questionId = typeof value['questionId'] === 'string' ? value['questionId'].trim() : '';
-  const dialogId = typeof value['dialogId'] === 'string' ? value['dialogId'].trim() : '';
-  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
-  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
-  const messageIndex =
-    typeof value['messageIndex'] === 'number' ? value['messageIndex'] : Number.NaN;
-  const callIdRaw = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
-  if (questionId === '' || dialogId === '' || rootId === '') return null;
-  if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return null;
-  return {
-    questionId,
-    dialogId,
-    rootId,
-    course: Math.floor(course),
-    messageIndex: Math.floor(messageIndex),
-    callId: callIdRaw === '' ? undefined : callIdRaw,
-  };
-}
-
-function readNavigateGenseqEventDetail(value: unknown): NavigateGenseqEventDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
-  const selfId = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
-  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
-  const genseq = typeof value['genseq'] === 'number' ? value['genseq'] : Number.NaN;
-  if (rootId === '' || selfId === '') return null;
-  if (!Number.isFinite(course) || !Number.isFinite(genseq)) return null;
-  return {
-    rootId,
-    selfId,
-    course: Math.floor(course),
-    genseq: Math.floor(genseq),
-  };
-}
-
-function readNavigateCallsiteEventDetail(value: unknown): NavigateCallsiteEventDetail | null {
-  if (!isObjectRecord(value)) return null;
-  const rootId = typeof value['rootId'] === 'string' ? value['rootId'].trim() : '';
-  const selfId = typeof value['selfId'] === 'string' ? value['selfId'].trim() : '';
-  const callId = typeof value['callId'] === 'string' ? value['callId'].trim() : '';
-  const course = typeof value['course'] === 'number' ? value['course'] : Number.NaN;
-  if (rootId === '' || selfId === '' || callId === '') return null;
-  if (!Number.isFinite(course)) return null;
-  return {
-    rootId,
-    selfId,
-    course: Math.floor(course),
-    callId,
-  };
-}
-
 type ToastKind = 'error' | 'warning' | 'info';
-type ToastHistoryPolicy = 'default' | 'persist' | 'skip';
 type ToastOptions = {
   history?: ToastHistoryPolicy;
 };
@@ -6422,16 +6318,12 @@ export class DomindsApp extends HTMLElement {
     this.setupWebSocketEventHandlers();
 
     // Toast relay from child components (e.g., dialog-container)
-    this.shadowRoot.addEventListener('ui-toast', (e: Event) => {
-      const ce = e as CustomEvent<{
-        message: string;
-        kind?: 'error' | 'warning' | 'info';
-        history?: ToastHistoryPolicy;
-      }>;
+    this.shadowRoot.addEventListener('ui-toast', (event) => {
+      const detail = event.detail;
       const t = getUiStrings(this.uiLanguage);
-      const msg = ce.detail?.message || t.toastDefaultNotice;
-      const kind = ce.detail?.kind || 'error';
-      this.showToast(msg, kind, { history: ce.detail?.history ?? 'default' });
+      const msg = detail.message || t.toastDefaultNotice;
+      const kind = detail.kind || 'error';
+      this.showToast(msg, kind, { history: detail.history ?? 'default' });
     });
 
     // Auth escalation from child panels (HTTP 401)
@@ -6440,11 +6332,8 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Template insertion from snippets panel
-    this.shadowRoot.addEventListener('snippet-insert', (e: Event) => {
-      const ce = e as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
-      const content = detail && typeof detail['content'] === 'string' ? detail['content'] : '';
+    this.shadowRoot.addEventListener('snippet-insert', (event) => {
+      const content = event.detail.content;
       if (!content) return;
       const input = this.q4hInput;
       if (!input) return;
@@ -6460,24 +6349,23 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Input area error events (e.g., no dialog selected)
-    this.shadowRoot.addEventListener('input-error', (e: Event) => {
-      const ce = e as CustomEvent<{ message: string; type?: 'error' | 'warning' | 'info' }>;
+    this.shadowRoot.addEventListener('input-error', (event) => {
+      const detail = event.detail;
       const t = getUiStrings(this.uiLanguage);
-      const msg = ce.detail?.message || t.toastDefaultNotice;
-      const kind = ce.detail?.type || 'error';
+      const msg = detail.message || t.toastDefaultNotice;
+      const kind = detail.type || 'error';
       this.showToast(msg, kind);
     });
 
     // Reminder events from dialog-container
-    this.shadowRoot.addEventListener('reminders-update', (e: Event) => {
+    this.shadowRoot.addEventListener('reminders-update', () => {
       this.updateRemindersWidget();
     });
 
-    this.shadowRoot.addEventListener('reminder-text', (e: Event) => {
-      const ce = e as CustomEvent<{ index: number; content: string }>;
-      this.toolbarReminders[ce.detail.index] = {
-        reminder_id: `transient-${String(ce.detail.index)}`,
-        content: ce.detail.content,
+    this.shadowRoot.addEventListener('reminder-text', (event) => {
+      this.toolbarReminders[event.detail.index] = {
+        reminder_id: `transient-${String(event.detail.index)}`,
+        content: event.detail.content,
       };
       this.updateRemindersWidget();
     });
@@ -6486,32 +6374,26 @@ export class DomindsApp extends HTMLElement {
     // Policy: unresolved nodes always fetch from backend; no preloaded global cache.
     // The list event must carry an already-known persisted status. Expands are list-scoped
     // business actions, not id-only lookups that are allowed to guess a directory.
-    this.shadowRoot.addEventListener('dialog-expand', ((event: Event) => {
-      const ce = event as CustomEvent<{ rootId?: string; status?: PersistableDialogStatus }>;
-      const rootId = ce.detail ? ce.detail.rootId : undefined;
-      const status = ce.detail ? ce.detail.status : undefined;
-      if (typeof rootId === 'string' && rootId && status) {
+    this.shadowRoot.addEventListener('dialog-expand', (event) => {
+      const { rootId, status } = event.detail;
+      if (rootId && status) {
         this.requestRootHierarchyFromList(rootId, status);
       }
-    }) as EventListener);
+    });
     // Collapse explicitly drops subdialog nodes from frontend memory.
-    this.shadowRoot.addEventListener('dialog-collapse', ((event: Event) => {
-      const ce = event as CustomEvent<{ rootId?: string; status?: PersistableDialogStatus }>;
-      const rootId = ce.detail ? ce.detail.rootId : undefined;
-      const status = ce.detail ? ce.detail.status : undefined;
-      if (typeof rootId !== 'string' || rootId.trim() === '') return;
+    this.shadowRoot.addEventListener('dialog-collapse', (event) => {
+      const { rootId, status } = event.detail;
+      if (rootId.trim() === '') return;
       this.pruneSubdialogsForRoot(rootId, status);
-    }) as EventListener);
+    });
 
     // Team members events from dominds-team-members (sidebar activity)
     this.shadowRoot.addEventListener('team-members-refresh', () => {
       void this.loadTeamMembers();
     });
 
-    this.shadowRoot.addEventListener('team-member-mention', (event: Event) => {
-      const ce = event as CustomEvent<TeamMembersMentionEventDetail>;
-      const detail = ce.detail;
-      const mention = detail && typeof detail.mention === 'string' ? detail.mention : '';
+    this.shadowRoot.addEventListener('team-member-mention', (event) => {
+      const mention = event.detail.mention;
       if (!mention) return;
 
       const input = this.q4hInput;
@@ -6529,56 +6411,41 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Dialog status actions (mark done/archive/revive) across all list views
-    this.shadowRoot.addEventListener('dialog-status-action', ((event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      void this.handleDialogStatusAction(ce.detail);
-    }) as EventListener);
+    this.shadowRoot.addEventListener('dialog-status-action', (event) => {
+      void this.handleDialogStatusAction(event.detail);
+    });
 
     // Dialog creation shortcuts (create new dialog from task/root nodes)
-    this.shadowRoot.addEventListener('dialog-create-action', ((event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      void this.handleDialogCreateAction(ce.detail);
-    }) as EventListener);
+    this.shadowRoot.addEventListener('dialog-create-action', (event) => {
+      void this.handleDialogCreateAction(event.detail);
+    });
 
     // Dialog deletion actions (delete root dialogs) across done/archived list views
-    this.shadowRoot.addEventListener('dialog-delete-action', ((event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      void this.handleDialogDeleteAction(ce.detail);
-    }) as EventListener);
+    this.shadowRoot.addEventListener('dialog-delete-action', (event) => {
+      void this.handleDialogDeleteAction(event.detail);
+    });
 
-    this.shadowRoot.addEventListener('dialog-open-external', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readDialogDeepLinkEventDetail(ce.detail);
-      if (!detail) return;
-      const url = this.buildDialogDeepLinkUrl(detail);
+    this.shadowRoot.addEventListener('dialog-open-external', (event) => {
+      const url = this.buildDialogDeepLinkUrl(event.detail);
       const urlStr = url.toString();
       const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
       if (w) w.opener = null;
     });
 
-    this.shadowRoot.addEventListener('dialog-share-link', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readDialogDeepLinkEventDetail(ce.detail);
-      if (!detail) return;
-      const url = this.buildDialogDeepLinkUrl(detail);
+    this.shadowRoot.addEventListener('dialog-share-link', (event) => {
+      const url = this.buildDialogDeepLinkUrl(event.detail);
       void this.copyLinkToClipboardWithToast(url.toString());
     });
 
     // ========== Q4H Event Handlers ==========
     // Q4H navigate to call site event - delegated to q4h-input component
-    this.shadowRoot.addEventListener('q4h-navigate-call-site', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readQ4HCallSiteNavigation(ce.detail);
-      if (!detail) return;
-      this.navigateToQ4HCallSite(detail);
+    this.shadowRoot.addEventListener('q4h-navigate-call-site', (event) => {
+      this.navigateToQ4HCallSite(event.detail);
     });
 
     // Q4H external deep link (open in new tab/window + copy URL)
-    this.shadowRoot.addEventListener('q4h-open-external', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readQ4HCallSiteNavigation(ce.detail);
-      if (!detail) return;
-
+    this.shadowRoot.addEventListener('q4h-open-external', (event) => {
+      const detail = event.detail;
       const url = this.buildQ4HDeepLinkUrl({
         questionId: detail.questionId,
         rootId: detail.rootId,
@@ -6594,11 +6461,8 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Q4H share link (copy URL only)
-    this.shadowRoot.addEventListener('q4h-share-link', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readQ4HCallSiteNavigation(ce.detail);
-      if (!detail) return;
-
+    this.shadowRoot.addEventListener('q4h-share-link', (event) => {
+      const detail = event.detail;
       const url = this.buildQ4HDeepLinkUrl({
         questionId: detail.questionId,
         rootId: detail.rootId,
@@ -6613,25 +6477,11 @@ export class DomindsApp extends HTMLElement {
 
     // Q4H selection event from the inline panel - keeps q4h-input selection in sync so answers
     // are routed to the intended question/dialog context.
-    this.shadowRoot.addEventListener('q4h-select-question', (event: Event) => {
-      const ce = event as CustomEvent<{
-        questionId: string | null;
-        dialogId: string;
-        rootId: string;
-        tellaskContent: string;
-      }>;
-      const questionId = ce.detail?.questionId ?? null;
-      const dialogId = ce.detail?.dialogId;
-      const rootId = ce.detail?.rootId;
+    this.shadowRoot.addEventListener('q4h-select-question', (event) => {
+      const { questionId, dialogId, rootId } = event.detail;
       const input = this.q4hInput;
       if (!input) return;
-      if (
-        questionId &&
-        typeof dialogId === 'string' &&
-        typeof rootId === 'string' &&
-        dialogId &&
-        rootId
-      ) {
+      if (questionId && dialogId && rootId) {
         input.setDialog({ selfId: dialogId, rootId });
       } else if (!questionId && this.currentDialog) {
         input.setDialog({ selfId: this.currentDialog.selfId, rootId: this.currentDialog.rootId });
@@ -6651,10 +6501,8 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Call-site navigation requests from dialog bubbles (internal link icon).
-    this.shadowRoot.addEventListener('navigate-genseq', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readNavigateGenseqEventDetail(ce.detail);
-      if (!detail) return;
+    this.shadowRoot.addEventListener('navigate-genseq', (event) => {
+      const detail = event.detail;
       this.pendingDeepLink = {
         kind: 'genseq',
         rootId: detail.rootId,
@@ -6666,10 +6514,8 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Call-site navigation requests from dialog bubbles (internal link icon).
-    this.shadowRoot.addEventListener('navigate-callsite', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail = readNavigateCallsiteEventDetail(ce.detail);
-      if (!detail) return;
+    this.shadowRoot.addEventListener('navigate-callsite', (event) => {
+      const detail = event.detail;
       this.pendingDeepLink = {
         kind: 'callsite',
         rootId: detail.rootId,
@@ -6680,12 +6526,8 @@ export class DomindsApp extends HTMLElement {
       this.continuePendingDeepLink();
     });
 
-    this.shadowRoot.addEventListener('fork-dialog-request', (event: Event) => {
-      const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
-      if (!detail) return;
-      void this.handleForkDialogRequest(detail);
+    this.shadowRoot.addEventListener('fork-dialog-request', (event) => {
+      void this.handleForkDialogRequest(event.detail);
     });
 
     // ========== Delegated Keyboard Handlers ==========
@@ -6918,15 +6760,6 @@ export class DomindsApp extends HTMLElement {
       }
     });
 
-    // Listen for dialog-selected events from dialog list (delegated)
-    this.shadowRoot.addEventListener('dialog-selected', async (event: Event) => {
-      const customEvent = event as CustomEvent<{ dialog: DialogInfo }>;
-      const dialog = customEvent.detail?.dialog;
-      if (dialog && dialog.selfId) {
-        await this.selectDialog(dialog);
-      }
-    });
-
     // Keyboard shortcut: Ctrl+Shift+R to toggle reminders widget
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
@@ -6991,34 +6824,8 @@ export class DomindsApp extends HTMLElement {
     // Dialog container listeners
     const dialogContainerEl = this.shadowRoot.querySelector('#dialog-container') as HTMLElement;
     if (dialogContainerEl) {
-      dialogContainerEl.addEventListener('course-selected', (e: Event) => {
-        const detail = (e as CustomEvent).detail || {};
-        const course = detail.course;
-        const totalCourses = detail.totalCourses;
-        const latest = typeof totalCourses === 'number' ? totalCourses : course;
-        this.toolbarCurrentCourse = course || this.toolbarCurrentCourse;
-        this.toolbarTotalCourses = latest || this.toolbarTotalCourses;
-        this.updateToolbarCourseDisplay();
-
-        const input = this.q4hInput as HTMLElement & {
-          setDisabled?: (disabled: boolean) => void;
-        };
-        if (input && typeof input.setDisabled === 'function') {
-          input.setDisabled(course !== latest);
-        }
-      });
-      dialogContainerEl.addEventListener('dialog-viewport-panel-state', (e: Event) => {
-        const ce = e as CustomEvent<unknown>;
-        const detail =
-          ce.detail && typeof ce.detail === 'object'
-            ? (ce.detail as { state?: DialogViewportPanelState })
-            : null;
-        const state = detail?.state;
-        if (!state || typeof state !== 'object' || !('kind' in state)) {
-          console.warn('Invalid dialog-viewport-panel-state payload', ce.detail);
-          return;
-        }
-        this.viewportPanelState = state;
+      dialogContainerEl.addEventListener('dialog-viewport-panel-state', (event) => {
+        this.viewportPanelState = event.detail.state;
         this.updateDialogViewportPanels();
       });
     }
@@ -7282,14 +7089,11 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    this.shadowRoot.addEventListener('q4h-question-expanded', (event: Event) => {
+    this.shadowRoot.addEventListener('q4h-question-expanded', (event) => {
       if (!bottomPanel) return;
       setBottomPanelExpanded(true);
       if (this.bottomPanelUserResized) return;
-      const ce = event as CustomEvent<unknown>;
-      const detail =
-        ce.detail && typeof ce.detail === 'object' ? (ce.detail as { questionId?: unknown }) : null;
-      const questionId = detail && typeof detail.questionId === 'string' ? detail.questionId : '';
+      const questionId = event.detail.questionId;
       if (!questionId) return;
       requestAnimationFrame(() => {
         this.autoFitBottomPanelForExpandedQ4HCard(questionId);
@@ -8084,12 +7888,11 @@ export class DomindsApp extends HTMLElement {
         ) as DomindsDialogContainer | null;
         if (dialogContainer) {
           await dialogContainer.setCurrentCourse(intent.course);
-          dialogContainer.dispatchEvent(
-            new CustomEvent<ScrollToCallIdDetail>('scroll-to-call-id', {
-              detail: { course: intent.course, callId: intent.callId },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            dialogContainer,
+            'scroll-to-call-id',
+            { course: intent.course, callId: intent.callId },
+            { bubbles: true, composed: true },
           );
         }
 
@@ -8116,12 +7919,11 @@ export class DomindsApp extends HTMLElement {
         ) as DomindsDialogContainer | null;
         if (dialogContainer) {
           await dialogContainer.setCurrentCourse(intent.course);
-          dialogContainer.dispatchEvent(
-            new CustomEvent<ScrollToGenseqDetail>('scroll-to-genseq', {
-              detail: { course: intent.course, genseq: intent.genseq },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            dialogContainer,
+            'scroll-to-genseq',
+            { course: intent.course, genseq: intent.genseq },
+            { bubbles: true, composed: true },
           );
         }
 
@@ -8158,20 +7960,18 @@ export class DomindsApp extends HTMLElement {
       if (dialogContainer) {
         await dialogContainer.setCurrentCourse(course);
         if (typeof callId === 'string' && callId.trim() !== '') {
-          dialogContainer.dispatchEvent(
-            new CustomEvent<ScrollToCallIdDetail>('scroll-to-call-id', {
-              detail: { course, callId },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            dialogContainer,
+            'scroll-to-call-id',
+            { course, callId },
+            { bubbles: true, composed: true },
           );
         } else if (typeof messageIndex === 'number') {
-          dialogContainer.dispatchEvent(
-            new CustomEvent<ScrollToCallSiteDetail>('scroll-to-call-site', {
-              detail: { course, messageIndex },
-              bubbles: true,
-              composed: true,
-            }),
+          dispatchDomindsEvent(
+            dialogContainer,
+            'scroll-to-call-site',
+            { course, messageIndex },
+            { bubbles: true, composed: true },
           );
         }
       }
@@ -9586,14 +9386,12 @@ export class DomindsApp extends HTMLElement {
     await this.openVisibleDialog(dialog);
   }
 
-  private async handleForkDialogRequest(detail: Record<string, unknown>): Promise<void> {
-    const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
-    const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
-    const statusRaw = detail['status'];
-    const course = typeof detail['course'] === 'number' ? Math.floor(detail['course']) : 0;
-    const genseq = typeof detail['genseq'] === 'number' ? Math.floor(detail['genseq']) : 0;
-    const status: PersistableDialogStatus =
-      statusRaw === 'completed' || statusRaw === 'archived' ? statusRaw : 'running';
+  private async handleForkDialogRequest(detail: ForkDialogRequestDetail): Promise<void> {
+    const rootId = detail.rootId.trim();
+    const selfId = detail.selfId.trim();
+    const course = Math.floor(detail.course);
+    const genseq = Math.floor(detail.genseq);
+    const status = detail.status;
     const t = getUiStrings(this.uiLanguage);
 
     if (rootId === '' || selfId === '' || rootId !== selfId || course <= 0 || genseq <= 0) {
@@ -12117,7 +11915,7 @@ export class DomindsApp extends HTMLElement {
   /**
    * Navigate to a Q4H call site in the conversation
    */
-  private navigateToQ4HCallSite(args: Q4HCallSiteNavigation): void {
+  private navigateToQ4HCallSite(args: Q4HCallSiteNavigationDetail): void {
     const { questionId, dialogId, rootId, course, messageIndex, callId } = args;
     // Navigate to the dialog if needed
     if (this.currentDialog?.selfId !== dialogId) {
@@ -12148,17 +11946,22 @@ export class DomindsApp extends HTMLElement {
         void dialogContainer.setCurrentCourse(course);
       }
       // Scroll to call site - dispatch event for dialog container to handle
-      dialogContainer.dispatchEvent(
-        new CustomEvent<ScrollToCallSiteDetail>('scroll-to-call-site', {
-          detail: {
-            course,
-            messageIndex,
-            callId: typeof callId === 'string' && callId.trim() !== '' ? callId.trim() : undefined,
-          },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      const trimmedCallId = typeof callId === 'string' ? callId.trim() : '';
+      if (trimmedCallId !== '') {
+        dispatchDomindsEvent(
+          dialogContainer,
+          'scroll-to-call-site',
+          { course, callId: trimmedCallId },
+          { bubbles: true, composed: true },
+        );
+      } else {
+        dispatchDomindsEvent(
+          dialogContainer,
+          'scroll-to-call-site',
+          { course, messageIndex },
+          { bubbles: true, composed: true },
+        );
+      }
     }
 
     // Focus the q4h-input for answering

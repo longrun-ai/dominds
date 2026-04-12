@@ -19,7 +19,7 @@
     "serve": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" && prettier --write \"src/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\" && prettier --check \"src/**/*.{css,md,json,html}\"",
-    "lint:types": "tsc -p src/tsconfig.json --noEmit"
+    "lint:types": "tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs"
   },
   "dependencies": {
     "@longrun-ai/kernel": "workspace:*",

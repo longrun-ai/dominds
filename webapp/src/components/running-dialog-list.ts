@@ -13,6 +13,8 @@ import {
   displayStateClassSuffixFromDisplayState,
   runControlVisualStateFromDisplayState,
 } from '../utils/run-control-visual';
+import type { DialogCreateAction } from './create-dialog-flow';
+import { dispatchDomindsEvent, type DialogDeepLinkDetail } from './dom-events';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface RunningDialogListProps {
@@ -20,15 +22,6 @@ export interface RunningDialogListProps {
   uiLanguage: LanguageCode;
   loading: boolean;
 }
-
-export type DialogCreateAction =
-  | { kind: 'task'; taskDocPath: string }
-  | { kind: 'root'; rootId: string; taskDocPath: string; agentId: string };
-
-type DialogLinkAction = {
-  rootId: string;
-  selfId: string;
-};
 
 type RootGroup = {
   rootId: string;
@@ -1392,12 +1385,14 @@ export class RunningDialogList extends HTMLElement {
       !this.hasSubdialogsLoaded(dialog.rootId)
     ) {
       this.requestedSubdialogRoots.add(dialog.rootId);
-      this.dispatchEvent(
-        new CustomEvent('dialog-expand', {
-          detail: { rootId: dialog.rootId },
+      dispatchDomindsEvent(
+        this,
+        'dialog-expand',
+        { rootId: dialog.rootId, status: 'running' },
+        {
           bubbles: true,
           composed: true,
-        }),
+        },
       );
     }
   }
@@ -1490,24 +1485,28 @@ export class RunningDialogList extends HTMLElement {
       this.collapsedRoots.delete(rootId);
       if (!this.requestedSubdialogRoots.has(rootId) && !hasLoadedSubdialogs) {
         this.requestedSubdialogRoots.add(rootId);
-        this.dispatchEvent(
-          new CustomEvent('dialog-expand', {
-            detail: { rootId, status: 'running' },
+        dispatchDomindsEvent(
+          this,
+          'dialog-expand',
+          { rootId, status: 'running' },
+          {
             bubbles: true,
             composed: true,
-          }),
+          },
         );
       }
     } else {
       this.collapsedRoots.add(rootId);
       if (hasLoadedSubdialogs) {
         this.requestedSubdialogRoots.delete(rootId);
-        this.dispatchEvent(
-          new CustomEvent('dialog-collapse', {
-            detail: { rootId, status: 'running' },
+        dispatchDomindsEvent(
+          this,
+          'dialog-collapse',
+          { rootId, status: 'running' },
+          {
             bubbles: true,
             composed: true,
-          }),
+          },
         );
       }
     }
@@ -1529,46 +1528,28 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private emitStatusAction(detail: ApiMoveDialogsRequest): void {
-    this.dispatchEvent(
-      new CustomEvent('dialog-status-action', {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    dispatchDomindsEvent(this, 'dialog-status-action', detail, { bubbles: true, composed: true });
   }
 
   private emitCreateDialogAction(detail: DialogCreateAction): void {
-    this.dispatchEvent(
-      new CustomEvent('dialog-create-action', {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    dispatchDomindsEvent(this, 'dialog-create-action', detail, { bubbles: true, composed: true });
   }
 
-  private emitDialogOpenExternal(detail: DialogLinkAction): void {
-    this.dispatchEvent(
-      new CustomEvent('dialog-open-external', {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+  private emitDialogOpenExternal(detail: DialogDeepLinkDetail): void {
+    dispatchDomindsEvent(this, 'dialog-open-external', detail, {
+      bubbles: true,
+      composed: true,
+    });
   }
 
-  private emitDialogShareLink(detail: DialogLinkAction): void {
-    this.dispatchEvent(
-      new CustomEvent('dialog-share-link', {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+  private emitDialogShareLink(detail: DialogDeepLinkDetail): void {
+    dispatchDomindsEvent(this, 'dialog-share-link', detail, {
+      bubbles: true,
+      composed: true,
+    });
   }
 
-  private resolveDialogLinkAction(actionEl: HTMLElement): DialogLinkAction | null {
+  private resolveDialogLinkAction(actionEl: HTMLElement): DialogDeepLinkDetail | null {
     const rootId = (actionEl.getAttribute('data-root-id') ?? '').trim();
     if (rootId === '') return null;
     const selfRaw = (actionEl.getAttribute('data-self-id') ?? '').trim();

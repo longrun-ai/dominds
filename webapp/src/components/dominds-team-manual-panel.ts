@@ -8,6 +8,7 @@ import {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
+import { dispatchDomindsEvent } from './dom-events';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -56,14 +57,16 @@ export class DomindsTeamManualPanel extends HTMLElement {
         uiLanguage: this.uiLanguage,
       });
       if (!resp.success && resp.status === 401) {
-        this.dispatchEvent(
-          new CustomEvent('ui-toast', {
-            detail: { message: t.unauthorized, kind: 'warning' },
-            bubbles: true,
-            composed: true,
-          }),
+        dispatchDomindsEvent(
+          this,
+          'ui-toast',
+          { message: t.unauthorized, kind: 'warning' },
+          { bubbles: true, composed: true },
         );
-        this.dispatchEvent(new CustomEvent('auth-required', { bubbles: true, composed: true }));
+        dispatchDomindsEvent(this, 'auth-required', undefined, {
+          bubbles: true,
+          composed: true,
+        });
       }
       if (!resp.success || !resp.data) {
         this.state = { kind: 'error', message: resp.error ?? t.teamMgmtLoadFailed };
