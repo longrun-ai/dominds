@@ -1056,7 +1056,7 @@ type RoutedFunctionResult = {
   shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
-  updatePlanOnlyRawArgumentsSignature?: string;
+  updatePlanOnlyRound: boolean;
 };
 
 const KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD = 3;
@@ -1228,6 +1228,7 @@ async function executeFunctionRound(args: {
       shouldStopAfterReplyTool: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
+      updatePlanOnlyRound: false,
     };
   }
   throwIfAborted(args.abortSignal, args.dlg);
@@ -1279,27 +1280,23 @@ async function executeFunctionRound(args: {
     }
     return shouldImmediatelyFollowUpToolOutcome(tool, outcome);
   });
-  const updatePlanOnlyRawArgumentsSignature = (() => {
+  const updatePlanOnlyRound = (() => {
     if (tellaskRound.normalCalls.length === 0) {
-      return undefined;
+      return false;
     }
     if (tellaskRound.handledCallIds.length > 0 || tellaskRound.toolOutputs.length > 0) {
-      return undefined;
+      return false;
     }
-    const signatures: string[] = [];
     for (const call of tellaskRound.normalCalls) {
       if (call.name !== 'update_plan') {
-        return undefined;
+        return false;
       }
       const outcome = genericOutcomeByCallId.get(call.id);
       if (outcome !== 'success') {
-        return undefined;
+        return false;
       }
-      const argsStr =
-        typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
-      signatures.push(argsStr);
     }
-    return JSON.stringify(signatures);
+    return true;
   })();
 
   const resultByCallId = new Map<string, FuncResultMsg>();
@@ -1360,7 +1357,7 @@ async function executeFunctionRound(args: {
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
-    updatePlanOnlyRawArgumentsSignature,
+    updatePlanOnlyRound,
   };
 }
 
@@ -2454,14 +2451,11 @@ export async function driveDialogStreamCore(
         await dlg.addChatMessages(...newMsgs);
 
         const assistantSayingRoundSignature = extractAssistantSayingRoundSignature(newMsgs);
-        const identicalUpdatePlanRoundSignature =
-          routed.updatePlanOnlyRawArgumentsSignature !== undefined &&
-          assistantSayingRoundSignature !== undefined
-            ? JSON.stringify({
-                assistantSayingRoundSignature,
-                updatePlanRawArgumentsSignature: routed.updatePlanOnlyRawArgumentsSignature,
-              })
-            : undefined;
+        const identicalUpdatePlanRoundSignature = routed.updatePlanOnlyRound
+          ? JSON.stringify({
+              assistantSayingRoundSignature: assistantSayingRoundSignature ?? '',
+            })
+          : undefined;
 
         if (identicalUpdatePlanRoundSignature !== undefined) {
           if (identicalUpdatePlanRoundSignature === lastIdenticalUpdatePlanRoundSignature) {
