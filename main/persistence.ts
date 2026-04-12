@@ -34,7 +34,10 @@ import type {
   WebSearchCallEvent,
   WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
-import type { DialogInterruptionReason } from '@longrun-ai/kernel/types/display-state';
+import type {
+  DialogInterruptionReason,
+  DialogLlmRetryRecoveryAction,
+} from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
@@ -468,6 +471,21 @@ function parseDialogRetryDisplay(value: unknown): {
   };
 }
 
+function parseDialogLlmRetryRecoveryAction(value: unknown): DialogLlmRetryRecoveryAction | null {
+  if (value === undefined) {
+    return { kind: 'none' };
+  }
+  if (!isRecord(value) || typeof value.kind !== 'string') return null;
+  switch (value.kind) {
+    case 'none':
+      return { kind: 'none' };
+    case 'diligence_push_once':
+      return { kind: 'diligence_push_once' };
+    default:
+      return null;
+  }
+}
+
 function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason | null {
   if (!isRecord(value) || typeof value.kind !== 'string') return null;
   switch (value.kind) {
@@ -493,10 +511,13 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
       if (typeof error !== 'string') return null;
       const display = parseDialogRetryDisplay(value.display);
       if (display === null) return null;
+      const recoveryAction = parseDialogLlmRetryRecoveryAction(value.recoveryAction);
+      if (recoveryAction === null) return null;
       return {
         kind: 'llm_retry_stopped',
         error,
         display,
+        recoveryAction,
       };
     }
     default:

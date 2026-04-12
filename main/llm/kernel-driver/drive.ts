@@ -3,6 +3,7 @@ import type { ContextHealthSnapshot, LlmUsageStats } from '@longrun-ai/kernel/ty
 import type {
   DialogDisplayState,
   DialogInterruptionReason,
+  DialogLlmRetryExhaustedReason,
 } from '@longrun-ai/kernel/types/display-state';
 import {
   toRootGenerationAnchor,
@@ -48,6 +49,10 @@ import {
   type ToolOutcome,
 } from '../../tool';
 import { formatTaskDocContent } from '../../utils/taskdoc';
+import {
+  createLlmFailureQuirkHandlerSession,
+  type LlmFailureQuirkHandlerSession,
+} from '../api-quirks';
 import type {
   ChatMessage,
   FuncCallMsg,
@@ -1443,6 +1448,22 @@ async function maybeContinueWithDiligencePrompt(args: {
   return { kind: 'break' };
 }
 
+async function maybePrepareRetryStoppedRecoveryPrompt(args: {
+  dlg: Dialog;
+  team: Team;
+  suppressDiligencePushForDrive: boolean;
+  reason: DialogLlmRetryExhaustedReason;
+}): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverHumanPrompt }> {
+  if (args.reason.recoveryAction.kind !== 'diligence_push_once') {
+    return { kind: 'break' };
+  }
+  return await maybeContinueWithDiligencePrompt({
+    dlg: args.dlg,
+    team: args.team,
+    suppressDiligencePushForDrive: args.suppressDiligencePushForDrive,
+  });
+}
+
 async function maybeContinueWithHealthPromptBeforeDiligence(args: {
   dlg: Dialog;
   providerCfg: ProviderConfig;
@@ -1549,10 +1570,15 @@ export async function driveDialogStreamCore(
   let pubRemindersVer = dlg.remindersVer;
 
   let pendingPrompt: KernelDriverHumanPrompt | undefined = humanPrompt;
+  let retryStoppedRecoveryPrompt: KernelDriverHumanPrompt | undefined;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   let genIterNo = 0;
   let consecutiveIdenticalUpdatePlanOnlyRounds = 0;
   let lastIdenticalUpdatePlanRoundSignature: string | undefined;
+  // Quirk retry state intentionally spans multiple request invocations in the same driver run,
+  // including course changes. Provider/API retry heuristics are tracked independently from
+  // user-facing course boundaries.
+  const retryQuirkSessionByProviderModel = new Map<string, LlmFailureQuirkHandlerSession>();
 
   if (!humanPrompt) {
     try {
@@ -1570,436 +1596,698 @@ export async function driveDialogStreamCore(
   await clearDialogInterruptedExecutionMarker(dlg.id);
   await setDialogDisplayState(dlg.id, { kind: 'proceeding' });
 
-  try {
-    for (;;) {
-      genIterNo += 1;
-      throwIfAborted(abortSignal, dlg);
+  driveCoreLoop: for (;;) {
+    try {
+      for (;;) {
+        genIterNo += 1;
+        throwIfAborted(abortSignal, dlg);
 
-      const activeFbrState = await loadDialogFbrState(dlg);
-      if (isFbrSubdialogDialog(dlg)) {
-        dlg.setFbrConclusionToolsEnabled(
-          activeFbrState !== undefined && isFbrFinalizationState(activeFbrState),
-        );
-        if (
-          pendingPrompt === undefined &&
-          activeFbrState &&
-          activeFbrState.promptDelivered !== true
-        ) {
-          pendingPrompt = buildKernelDriverFbrPrompt(dlg, activeFbrState);
-        }
-      }
-
-      const minds = await loadAgentMinds(dlg.agentId, dlg);
-      const team = minds.team;
-      const policy = buildKernelDriverPolicy({
-        dlg,
-        agent: minds.agent,
-        systemPrompt: minds.systemPrompt,
-        agentTools: minds.agentTools,
-        language: getWorkLanguage(),
-      });
-      const policyValidation = validateKernelDriverPolicyInvariants(policy, getWorkLanguage());
-      if (!policyValidation.ok) {
-        throw new Error(`kernel-driver policy invariant violation: ${policyValidation.detail}`);
-      }
-
-      const agent = policy.effectiveAgent;
-      const systemPrompt = policy.effectiveSystemPrompt;
-      const agentTools: readonly Tool[] = policy.effectiveAgentTools;
-
-      const provider = agent.provider ?? team.memberDefaults.provider;
-      const model = agent.model ?? team.memberDefaults.model;
-      if (!provider) {
-        throw new Error(
-          `Configuration Error: No provider configured for agent '${dlg.agentId}'. Please specify a provider in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
-        );
-      }
-      if (!model) {
-        throw new Error(
-          `Configuration Error: No model configured for agent '${dlg.agentId}'. Please specify a model in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
-        );
-      }
-
-      const llmCfg = await LlmConfig.load();
-      const providerCfg = llmCfg.getProvider(provider);
-      if (!providerCfg) {
-        throw new Error(
-          `Provider configuration error: Provider '${provider}' not found for agent '${dlg.agentId}'. Please check .minds/llm.yaml and .minds/team.yaml configuration.`,
-        );
-      }
-      if (!providerCfg.models || !providerCfg.models[model]) {
-        throw new Error(
-          `Configuration error: invalid model '${model}' for provider '${provider}' (agent='${dlg.agentId}').`,
-        );
-      }
-
-      const llmGen = getLlmGenerator(providerCfg.apiType);
-      if (!llmGen) {
-        throw new Error(
-          `LLM generator not found: API type '${providerCfg.apiType}' for provider '${provider}' in agent '${dlg.agentId}'. Please check .minds/llm.yaml configuration.`,
-        );
-      }
-      const retryPolicy = resolveKernelDriverRetryPolicy(providerCfg);
-
-      const canonicalFuncTools: FuncTool[] = agentTools.filter(
-        (t): t is FuncTool => t.type === 'func',
-      );
-      const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
-      const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
-      const effectiveFuncTools: FuncTool[] =
-        policy.mode === 'default'
-          ? mergeTellaskVirtualTools(canonicalFuncTools, {
-              includeTellaskBack: isSubdialog,
-              fbrEffortDefault,
-            })
-          : canonicalFuncTools;
-      const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
-      const funcTools = projected.tools;
-
-      if (genIterNo > 1) {
-        const snapshot = dlg.getLastContextHealth();
-        const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
-        const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
-        const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
-          modelInfoForRemediation?.caution_remediation_cadence_generations,
-        );
-        const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
-          dlg.id.key(),
-          snapshot,
-        );
-        const healthDecision = decideKernelDriverContextHealth({
-          dialogKey: dlg.id.key(),
-          snapshot,
-          hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
-          canInjectPromptThisGen: !hasQueuedUpNext,
-          cautionRemediationCadenceGenerations,
-          criticalCountdownRemaining,
-        });
-
-        if (healthDecision.kind === 'suspend') {
-          log.debug(
-            'kernel-driver suspend iterative generation due to critical context while waiting for human prompt',
-            undefined,
-            {
-              dialogId: dlg.id.valueOf(),
-              rootId: dlg.id.rootId,
-              selfId: dlg.id.selfId,
-              genIterNo,
-              pendingPromptOrigin: pendingPrompt?.origin ?? null,
-            },
+        const activeFbrState = await loadDialogFbrState(dlg);
+        if (isFbrSubdialogDialog(dlg)) {
+          dlg.setFbrConclusionToolsEnabled(
+            activeFbrState !== undefined && isFbrFinalizationState(activeFbrState),
           );
-          break;
-        }
-
-        if (healthDecision.kind === 'continue') {
-          if (healthDecision.reason === 'critical_force_new_course') {
-            const language = getWorkLanguage();
-            const newCoursePrompt = formatNewCourseStartPrompt(language, {
-              nextCourse: dlg.currentCourse + 1,
-              source: 'critical_auto_clear',
-            });
-            await dlg.startNewCourse(newCoursePrompt);
-            dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
-            resetContextHealthRoundState(dlg.id.key());
-
-            const nextPrompt = resolveUpNextPrompt(dlg);
-            if (!nextPrompt) {
-              throw new Error(
-                `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
-              );
-            }
-            pendingPrompt = nextPrompt;
-            skipTaskdocForThisDrive = false;
-          } else if (!hasQueuedUpNext) {
-            const language = getWorkLanguage();
-            const guideText =
-              healthDecision.reason === 'caution_soft_remediation'
-                ? formatAgentFacingContextHealthV3RemediationGuide(language, {
-                    kind: 'caution',
-                    mode: 'soft',
-                  })
-                : formatAgentFacingContextHealthV3RemediationGuide(language, {
-                    kind: 'critical',
-                    mode: 'countdown',
-                    promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
-                    promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
-                  });
-            pendingPrompt = {
-              content: guideText,
-              msgId: generateShortId(),
-              grammar: 'markdown',
-              origin: 'runtime',
-              userLanguageCode: language,
-            };
+          if (
+            pendingPrompt === undefined &&
+            activeFbrState &&
+            activeFbrState.promptDelivered !== true
+          ) {
+            pendingPrompt = buildKernelDriverFbrPrompt(dlg, activeFbrState);
           }
         }
-      }
 
-      let contextHealthForGen: ContextHealthSnapshot | undefined;
-      let llmGenModelForGen: string = model;
-      const currentPrompt = pendingPrompt;
-      const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
-      const currentFbrState = await loadDialogFbrState(dlg);
-      let currentRuntimeGuideMsg: Extract<ChatMessage, { type: 'transient_guide_msg' }> | undefined;
-      const currentPromptFromFbrState =
-        currentPrompt !== undefined &&
-        currentFbrState !== undefined &&
-        currentFbrState.promptDelivered !== true;
-      pendingPrompt = undefined;
+        const minds = await loadAgentMinds(dlg.agentId, dlg);
+        const team = minds.team;
+        const policy = buildKernelDriverPolicy({
+          dlg,
+          agent: minds.agent,
+          systemPrompt: minds.systemPrompt,
+          agentTools: minds.agentTools,
+          language: getWorkLanguage(),
+        });
+        const policyValidation = validateKernelDriverPolicyInvariants(policy, getWorkLanguage());
+        if (!policyValidation.ok) {
+          throw new Error(`kernel-driver policy invariant violation: ${policyValidation.detail}`);
+        }
 
-      await dlg.notifyGeneratingStart(currentPrompt?.msgId);
-      try {
-        if (currentPrompt) {
-          const origin = currentPrompt.origin;
-          if (
-            origin === 'diligence_push' &&
-            (dlg.disableDiligencePush || suppressDiligencePushForDrive)
-          ) {
-            log.debug('kernel-driver skip diligence prompt after disable toggle', undefined, {
-              dialogId: dlg.id.valueOf(),
-              msgId: currentPrompt.msgId,
-            });
+        const agent = policy.effectiveAgent;
+        const systemPrompt = policy.effectiveSystemPrompt;
+        const agentTools: readonly Tool[] = policy.effectiveAgentTools;
+        const prepareRetryStoppedRecovery = async (
+          reason: DialogLlmRetryExhaustedReason,
+        ): Promise<'continue' | 'stop'> => {
+          retryStoppedRecoveryPrompt = undefined;
+          const recovery = await maybePrepareRetryStoppedRecoveryPrompt({
+            dlg,
+            team,
+            suppressDiligencePushForDrive,
+            reason,
+          });
+          if (recovery.kind !== 'continue') {
+            return 'stop';
+          }
+          retryStoppedRecoveryPrompt = recovery.prompt;
+          return 'continue';
+        };
+
+        const provider = agent.provider ?? team.memberDefaults.provider;
+        const model = agent.model ?? team.memberDefaults.model;
+        if (!provider) {
+          throw new Error(
+            `Configuration Error: No provider configured for agent '${dlg.agentId}'. Please specify a provider in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
+          );
+        }
+        if (!model) {
+          throw new Error(
+            `Configuration Error: No model configured for agent '${dlg.agentId}'. Please specify a model in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
+          );
+        }
+
+        const llmCfg = await LlmConfig.load();
+        const providerCfg = llmCfg.getProvider(provider);
+        if (!providerCfg) {
+          throw new Error(
+            `Provider configuration error: Provider '${provider}' not found for agent '${dlg.agentId}'. Please check .minds/llm.yaml and .minds/team.yaml configuration.`,
+          );
+        }
+        if (!providerCfg.models || !providerCfg.models[model]) {
+          throw new Error(
+            `Configuration error: invalid model '${model}' for provider '${provider}' (agent='${dlg.agentId}').`,
+          );
+        }
+
+        const llmGen = getLlmGenerator(providerCfg.apiType);
+        if (!llmGen) {
+          throw new Error(
+            `LLM generator not found: API type '${providerCfg.apiType}' for provider '${provider}' in agent '${dlg.agentId}'. Please check .minds/llm.yaml configuration.`,
+          );
+        }
+        const resolveRetryQuirkSession = (): LlmFailureQuirkHandlerSession | undefined => {
+          const key = `${provider}::${model}`;
+          const existing = retryQuirkSessionByProviderModel.get(key);
+          if (existing) {
+            return existing;
+          }
+          const created = createLlmFailureQuirkHandlerSession(providerCfg);
+          if (!created) {
+            return undefined;
+          }
+          retryQuirkSessionByProviderModel.set(key, created);
+          return created;
+        };
+        const retryPolicy = resolveKernelDriverRetryPolicy(providerCfg);
+
+        const canonicalFuncTools: FuncTool[] = agentTools.filter(
+          (t): t is FuncTool => t.type === 'func',
+        );
+        const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
+        const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
+        const effectiveFuncTools: FuncTool[] =
+          policy.mode === 'default'
+            ? mergeTellaskVirtualTools(canonicalFuncTools, {
+                includeTellaskBack: isSubdialog,
+                fbrEffortDefault,
+              })
+            : canonicalFuncTools;
+        const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
+        const funcTools = projected.tools;
+
+        if (genIterNo > 1) {
+          const snapshot = dlg.getLastContextHealth();
+          const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
+          const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
+          const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+            modelInfoForRemediation?.caution_remediation_cadence_generations,
+          );
+          const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
+            dlg.id.key(),
+            snapshot,
+          );
+          const healthDecision = decideKernelDriverContextHealth({
+            dialogKey: dlg.id.key(),
+            snapshot,
+            hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
+            canInjectPromptThisGen: !hasQueuedUpNext,
+            cautionRemediationCadenceGenerations,
+            criticalCountdownRemaining,
+          });
+
+          if (healthDecision.kind === 'suspend') {
+            log.debug(
+              'kernel-driver suspend iterative generation due to critical context while waiting for human prompt',
+              undefined,
+              {
+                dialogId: dlg.id.valueOf(),
+                rootId: dlg.id.rootId,
+                selfId: dlg.id.selfId,
+                genIterNo,
+                pendingPromptOrigin: pendingPrompt?.origin ?? null,
+              },
+            );
             break;
           }
 
-          if (currentPrompt.skipTaskdoc === true) {
-            skipTaskdocForThisDrive = true;
-          }
+          if (healthDecision.kind === 'continue') {
+            if (healthDecision.reason === 'critical_force_new_course') {
+              const language = getWorkLanguage();
+              const newCoursePrompt = formatNewCourseStartPrompt(language, {
+                nextCourse: dlg.currentCourse + 1,
+                source: 'critical_auto_clear',
+              });
+              await dlg.startNewCourse(newCoursePrompt);
+              dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+              resetContextHealthRoundState(dlg.id.key());
 
-          const persistedUserLanguageCode =
-            currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
-          const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt.q4hAnswerCallId);
-          // `q4hAnswerCallId` marks a continuation input for an already-materialized askHuman
-          // answer. It is not a second business-level user prompt that should re-enter transcript.
-          const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
-          const promptLanguage =
-            persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
-              ? persistedUserLanguageCode
-              : getWorkLanguage();
-          const replyGuidance = await resolvePromptReplyGuidance({
-            dlg,
-            prompt: currentPrompt,
-            language: promptLanguage,
-          });
-          if (
-            currentPrompt.origin === 'user' &&
-            replyGuidance.suppressInterDialogReplyGuidance &&
-            replyGuidance.deferredReplyReassertionDirective !== undefined
-          ) {
-            const existingDeferredReplyReassertion =
-              await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
-            const nextDeferredReplyReassertion = {
-              reason: 'user_interjection_while_pending_subdialog' as const,
-              directive: replyGuidance.deferredReplyReassertionDirective,
-            };
-            if (
-              existingDeferredReplyReassertion === undefined ||
-              !hasSameReplyDirective(
-                existingDeferredReplyReassertion.directive,
-                nextDeferredReplyReassertion.directive,
-              )
-            ) {
-              await DialogPersistence.setDeferredReplyReassertion(
-                dlg.id,
-                nextDeferredReplyReassertion,
-                dlg.status,
-              );
+              const nextPrompt = resolveUpNextPrompt(dlg);
+              if (!nextPrompt) {
+                throw new Error(
+                  `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
+                );
+              }
+              pendingPrompt = nextPrompt;
+              skipTaskdocForThisDrive = false;
+            } else if (!hasQueuedUpNext) {
+              const language = getWorkLanguage();
+              const guideText =
+                healthDecision.reason === 'caution_soft_remediation'
+                  ? formatAgentFacingContextHealthV3RemediationGuide(language, {
+                      kind: 'caution',
+                      mode: 'soft',
+                    })
+                  : formatAgentFacingContextHealthV3RemediationGuide(language, {
+                      kind: 'critical',
+                      mode: 'countdown',
+                      promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+                      promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+                    });
+              pendingPrompt = {
+                content: guideText,
+                msgId: generateShortId(),
+                grammar: 'markdown',
+                origin: 'runtime',
+                userLanguageCode: language,
+              };
             }
-            if (existingDeferredReplyReassertion === undefined) {
-              currentRuntimeGuideMsg = replyGuidance.transientGuideContent
-                ? {
-                    type: 'transient_guide_msg',
-                    role: 'assistant',
-                    content: replyGuidance.transientGuideContent,
-                  }
-                : undefined;
-            }
-          } else if (
-            currentPrompt.origin === 'user' &&
-            !replyGuidance.suppressInterDialogReplyGuidance
-          ) {
-            await DialogPersistence.setDeferredReplyReassertion(dlg.id, undefined, dlg.status);
-          }
-          if (
-            !replyGuidance.suppressInterDialogReplyGuidance &&
-            !currentRuntimeGuideMsg &&
-            replyGuidance.transientGuideContent
-          ) {
-            currentRuntimeGuideMsg = {
-              type: 'transient_guide_msg',
-              role: 'assistant',
-              content: replyGuidance.transientGuideContent,
-            };
-          }
-          if (replyGuidance.promptContent === undefined) {
-            throw new Error(
-              `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
-            );
-          }
-          const renderPromptAsRuntimeGuideBubble =
-            origin === 'runtime' &&
-            isStandaloneRuntimeGuidePromptContent(replyGuidance.promptContent);
-
-          if (currentRuntimeGuideMsg) {
-            await dlg.addChatMessages(currentRuntimeGuideMsg);
-            await DialogPersistence.persistRuntimeGuide(
-              dlg,
-              currentRuntimeGuideMsg.content,
-              dlg.activeGenSeq,
-            );
-            postDialogEvent(dlg, {
-              type: 'runtime_guide_evt',
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeq,
-              content: currentRuntimeGuideMsg.content,
-            });
-            currentRuntimeGuideMsg = undefined;
-          }
-
-          if (isQ4HAnswerPrompt) {
-            // Record only the answered call correlation / user language for the resumed round.
-            // The actual human answer fact was already persisted via askHuman tellask result flow.
-            await dlg.receiveHumanReply({
-              content: replyGuidance.promptContent,
-              userLanguageCode: persistedUserLanguageCode,
-              q4hAnswerCallId,
-            });
-          } else {
-            await dlg.addChatMessages({
-              type: 'prompting_msg',
-              role: 'user',
-              genseq: dlg.activeGenSeq,
-              msgId: currentPrompt.msgId,
-              grammar: 'markdown',
-              content: replyGuidance.promptContent,
-            });
-            await dlg.persistUserMessage(
-              replyGuidance.promptContent,
-              currentPrompt.msgId,
-              'markdown',
-              origin,
-              persistedUserLanguageCode,
-              q4hAnswerCallId,
-              replyGuidance.persistedTellaskReplyDirective,
-            );
-          }
-
-          if (renderPromptAsRuntimeGuideBubble) {
-            postDialogEvent(dlg, {
-              type: 'runtime_guide_evt',
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeq,
-              content: replyGuidance.promptContent,
-            });
-          } else if (!isQ4HAnswerPrompt) {
-            // Emit the live user-side boundary event for UI generation bubbles.
-            // Without this, realtime turns can miss user content + divider (<hr/>).
-            postDialogEvent(dlg, {
-              type: 'end_of_user_saying_evt',
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeq,
-              msgId: currentPrompt.msgId,
-              content: replyGuidance.promptContent,
-              grammar: 'markdown',
-              origin,
-              userLanguageCode: persistedUserLanguageCode,
-              q4hAnswerCallId,
-            });
-          }
-
-          if (currentPromptFromFbrState && currentFbrState) {
-            await persistDialogFbrState(dlg, markFbrPromptDelivered(currentFbrState));
-          }
-
-          // Ideal: provider SDKs should support a dedicated role='environment' for runtime
-          // metadata. Today, most providers only accept user/assistant (and tool as a special
-          // case), so Dominds must project environment/system-like content as role='user'.
-          const replyTarget = currentPrompt.subdialogReplyTarget;
-          if (replyTarget) {
-            const normalizedCallId = replyTarget.callId.trim();
-            if (normalizedCallId === '') {
-              throw new Error(
-                `kernel-driver assignment anchor invariant violation: empty callId (dialog=${dlg.id.valueOf()})`,
-              );
-            }
-            const record: TellaskCallAnchorRecord = {
-              ts: formatUnifiedTimestamp(new Date()),
-              type: 'tellask_call_anchor_record',
-              anchorRole: 'assignment',
-              callId: normalizedCallId,
-              genseq: dlg.activeGenSeq,
-              ...toRootGenerationAnchor({
-                rootCourse: (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
-                rootGenseq:
-                  (dlg instanceof SubDialog ? dlg.rootDialog : dlg).activeGenSeqOrUndefined ?? 0,
-              }),
-            };
-            const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-            await DialogPersistence.appendEvent(dlg.id, course, record, dlg.status);
           }
         }
 
-        await dlg.processReminderUpdates();
-        pubRemindersVer = dlg.remindersVer;
+        let contextHealthForGen: ContextHealthSnapshot | undefined;
+        let llmGenModelForGen: string = model;
+        const currentPrompt = pendingPrompt;
+        const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
+        const currentFbrState = await loadDialogFbrState(dlg);
+        let currentRuntimeGuideMsg:
+          | Extract<ChatMessage, { type: 'transient_guide_msg' }>
+          | undefined;
+        const currentPromptFromFbrState =
+          currentPrompt !== undefined &&
+          currentFbrState !== undefined &&
+          currentFbrState.promptDelivered !== true;
+        pendingPrompt = undefined;
 
-        const taskDocMsg =
-          dlg.taskDocPath && !skipTaskdocForThisDrive ? await formatTaskDocContent(dlg) : undefined;
+        await dlg.notifyGeneratingStart(currentPrompt?.msgId);
+        try {
+          if (currentPrompt) {
+            const origin = currentPrompt.origin;
+            if (
+              origin === 'diligence_push' &&
+              (dlg.disableDiligencePush || suppressDiligencePushForDrive)
+            ) {
+              log.debug('kernel-driver skip diligence prompt after disable toggle', undefined, {
+                dialogId: dlg.id.valueOf(),
+                msgId: currentPrompt.msgId,
+              });
+              break;
+            }
 
-        const renderedReminders = await renderRemindersForContext(dlg);
-        const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
-          base: {
-            prependedContextMessages: policy.prependedContextMessages,
-            memories: minds.memories,
-            taskDocMsg,
-            coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
-            dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
-          },
-          ephemeral: {
-            runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : undefined,
-          },
-          tail: { renderedReminders },
-        });
+            if (currentPrompt.skipTaskdoc === true) {
+              skipTaskdocForThisDrive = true;
+            }
 
-        const newMsgs: ChatMessage[] = [];
-        const streamedFuncCalls: FuncCallMsg[] = [];
-        let sawWebSearchSideChannelOutput = false;
-        let sawNativeToolSideChannelOutput = false;
-
-        const streamOrBatch = async (): Promise<{
-          usage: LlmUsageStats;
-          llmGenModel?: string;
-          batchMessages?: ChatMessage[];
-          batchOutputs?: LlmBatchOutput[];
-        }> => {
-          let batchAttemptCourse: number | undefined;
-          let batchAttemptCheckpointOffset: number | undefined;
-          const rollbackBatchAttempt = async (): Promise<void> => {
-            if (batchAttemptCourse === undefined || batchAttemptCheckpointOffset === undefined) {
+            const persistedUserLanguageCode =
+              currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
+            const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt.q4hAnswerCallId);
+            // `q4hAnswerCallId` marks a continuation input for an already-materialized askHuman
+            // answer. It is not a second business-level user prompt that should re-enter transcript.
+            const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
+            const promptLanguage =
+              persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
+                ? persistedUserLanguageCode
+                : getWorkLanguage();
+            const replyGuidance = await resolvePromptReplyGuidance({
+              dlg,
+              prompt: currentPrompt,
+              language: promptLanguage,
+            });
+            if (
+              currentPrompt.origin === 'user' &&
+              replyGuidance.suppressInterDialogReplyGuidance &&
+              replyGuidance.deferredReplyReassertionDirective !== undefined
+            ) {
+              const existingDeferredReplyReassertion =
+                await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
+              const nextDeferredReplyReassertion = {
+                reason: 'user_interjection_while_pending_subdialog' as const,
+                directive: replyGuidance.deferredReplyReassertionDirective,
+              };
+              if (
+                existingDeferredReplyReassertion === undefined ||
+                !hasSameReplyDirective(
+                  existingDeferredReplyReassertion.directive,
+                  nextDeferredReplyReassertion.directive,
+                )
+              ) {
+                await DialogPersistence.setDeferredReplyReassertion(
+                  dlg.id,
+                  nextDeferredReplyReassertion,
+                  dlg.status,
+                );
+              }
+              if (existingDeferredReplyReassertion === undefined) {
+                currentRuntimeGuideMsg = replyGuidance.transientGuideContent
+                  ? {
+                      type: 'transient_guide_msg',
+                      role: 'assistant',
+                      content: replyGuidance.transientGuideContent,
+                    }
+                  : undefined;
+              }
+            } else if (
+              currentPrompt.origin === 'user' &&
+              !replyGuidance.suppressInterDialogReplyGuidance
+            ) {
+              await DialogPersistence.setDeferredReplyReassertion(dlg.id, undefined, dlg.status);
+            }
+            if (
+              !replyGuidance.suppressInterDialogReplyGuidance &&
+              !currentRuntimeGuideMsg &&
+              replyGuidance.transientGuideContent
+            ) {
+              currentRuntimeGuideMsg = {
+                type: 'transient_guide_msg',
+                role: 'assistant',
+                content: replyGuidance.transientGuideContent,
+              };
+            }
+            if (replyGuidance.promptContent === undefined) {
               throw new Error(
-                `kernel-driver batch retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+                `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
               );
             }
-            await DialogPersistence.rollbackCourseFileToOffset(
-              dlg.id,
-              batchAttemptCourse,
-              batchAttemptCheckpointOffset,
-              dlg.status,
-            );
-            postDialogEvent(dlg, {
-              type: 'genseq_discard_evt',
-              course: batchAttemptCourse,
-              genseq: dlg.activeGenSeq,
-              reason: 'retry',
-            });
+            const renderPromptAsRuntimeGuideBubble =
+              origin === 'runtime' &&
+              isStandaloneRuntimeGuidePromptContent(replyGuidance.promptContent);
 
-            sawWebSearchSideChannelOutput = false;
-            sawNativeToolSideChannelOutput = false;
-            streamedFuncCalls.length = 0;
-            newMsgs.length = 0;
-          };
+            if (currentRuntimeGuideMsg) {
+              await dlg.addChatMessages(currentRuntimeGuideMsg);
+              await DialogPersistence.persistRuntimeGuide(
+                dlg,
+                currentRuntimeGuideMsg.content,
+                dlg.activeGenSeq,
+              );
+              postDialogEvent(dlg, {
+                type: 'runtime_guide_evt',
+                course: dlg.currentCourse,
+                genseq: dlg.activeGenSeq,
+                content: currentRuntimeGuideMsg.content,
+              });
+              currentRuntimeGuideMsg = undefined;
+            }
 
-          if (agent.streaming === false) {
-            const batch = await runLlmRequestWithRetry({
+            if (isQ4HAnswerPrompt) {
+              // Record only the answered call correlation / user language for the resumed round.
+              // The actual human answer fact was already persisted via askHuman tellask result flow.
+              await dlg.receiveHumanReply({
+                content: replyGuidance.promptContent,
+                userLanguageCode: persistedUserLanguageCode,
+                q4hAnswerCallId,
+              });
+            } else {
+              await dlg.addChatMessages({
+                type: 'prompting_msg',
+                role: 'user',
+                genseq: dlg.activeGenSeq,
+                msgId: currentPrompt.msgId,
+                grammar: 'markdown',
+                content: replyGuidance.promptContent,
+              });
+              await dlg.persistUserMessage(
+                replyGuidance.promptContent,
+                currentPrompt.msgId,
+                'markdown',
+                origin,
+                persistedUserLanguageCode,
+                q4hAnswerCallId,
+                replyGuidance.persistedTellaskReplyDirective,
+              );
+            }
+
+            if (renderPromptAsRuntimeGuideBubble) {
+              postDialogEvent(dlg, {
+                type: 'runtime_guide_evt',
+                course: dlg.currentCourse,
+                genseq: dlg.activeGenSeq,
+                content: replyGuidance.promptContent,
+              });
+            } else if (!isQ4HAnswerPrompt) {
+              // Emit the live user-side boundary event for UI generation bubbles.
+              // Without this, realtime turns can miss user content + divider (<hr/>).
+              postDialogEvent(dlg, {
+                type: 'end_of_user_saying_evt',
+                course: dlg.currentCourse,
+                genseq: dlg.activeGenSeq,
+                msgId: currentPrompt.msgId,
+                content: replyGuidance.promptContent,
+                grammar: 'markdown',
+                origin,
+                userLanguageCode: persistedUserLanguageCode,
+                q4hAnswerCallId,
+              });
+            }
+
+            if (currentPromptFromFbrState && currentFbrState) {
+              await persistDialogFbrState(dlg, markFbrPromptDelivered(currentFbrState));
+            }
+
+            // Ideal: provider SDKs should support a dedicated role='environment' for runtime
+            // metadata. Today, most providers only accept user/assistant (and tool as a special
+            // case), so Dominds must project environment/system-like content as role='user'.
+            const replyTarget = currentPrompt.subdialogReplyTarget;
+            if (replyTarget) {
+              const normalizedCallId = replyTarget.callId.trim();
+              if (normalizedCallId === '') {
+                throw new Error(
+                  `kernel-driver assignment anchor invariant violation: empty callId (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              const record: TellaskCallAnchorRecord = {
+                ts: formatUnifiedTimestamp(new Date()),
+                type: 'tellask_call_anchor_record',
+                anchorRole: 'assignment',
+                callId: normalizedCallId,
+                genseq: dlg.activeGenSeq,
+                ...toRootGenerationAnchor({
+                  rootCourse: (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
+                  rootGenseq:
+                    (dlg instanceof SubDialog ? dlg.rootDialog : dlg).activeGenSeqOrUndefined ?? 0,
+                }),
+              };
+              const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+              await DialogPersistence.appendEvent(dlg.id, course, record, dlg.status);
+            }
+          }
+
+          await dlg.processReminderUpdates();
+          pubRemindersVer = dlg.remindersVer;
+
+          const taskDocMsg =
+            dlg.taskDocPath && !skipTaskdocForThisDrive
+              ? await formatTaskDocContent(dlg)
+              : undefined;
+
+          const renderedReminders = await renderRemindersForContext(dlg);
+          const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
+            base: {
+              prependedContextMessages: policy.prependedContextMessages,
+              memories: minds.memories,
+              taskDocMsg,
+              coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
+              dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
+            },
+            ephemeral: {
+              runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : undefined,
+            },
+            tail: { renderedReminders },
+          });
+
+          const newMsgs: ChatMessage[] = [];
+          const streamedFuncCalls: FuncCallMsg[] = [];
+          let sawWebSearchSideChannelOutput = false;
+          let sawNativeToolSideChannelOutput = false;
+
+          const streamOrBatch = async (): Promise<{
+            usage: LlmUsageStats;
+            llmGenModel?: string;
+            batchMessages?: ChatMessage[];
+            batchOutputs?: LlmBatchOutput[];
+          }> => {
+            let batchAttemptCourse: number | undefined;
+            let batchAttemptCheckpointOffset: number | undefined;
+            const rollbackBatchAttempt = async (): Promise<void> => {
+              if (batchAttemptCourse === undefined || batchAttemptCheckpointOffset === undefined) {
+                throw new Error(
+                  `kernel-driver batch retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              await DialogPersistence.rollbackCourseFileToOffset(
+                dlg.id,
+                batchAttemptCourse,
+                batchAttemptCheckpointOffset,
+                dlg.status,
+              );
+              postDialogEvent(dlg, {
+                type: 'genseq_discard_evt',
+                course: batchAttemptCourse,
+                genseq: dlg.activeGenSeq,
+                reason: 'retry',
+              });
+
+              sawWebSearchSideChannelOutput = false;
+              sawNativeToolSideChannelOutput = false;
+              streamedFuncCalls.length = 0;
+              newMsgs.length = 0;
+            };
+
+            if (agent.streaming === false) {
+              const batch = await runLlmRequestWithRetry({
+                dlg,
+                provider,
+                modelId: model,
+                providerConfig: providerCfg,
+                abortSignal,
+                maxRetries: retryPolicy.maxRetries,
+                retryInitialDelayMs: retryPolicy.initialDelayMs,
+                retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
+                retryBackoffMultiplier: retryPolicy.backoffMultiplier,
+                retryMaxDelayMs: retryPolicy.maxDelayMs,
+                classifyFailure: llmGen.classifyFailure?.bind(llmGen),
+                quirkFailureHandlerSession: resolveRetryQuirkSession(),
+                canRetry: () => true,
+                onRetry: rollbackBatchAttempt,
+                onGiveUp: rollbackBatchAttempt,
+                onRetryStopped: prepareRetryStoppedRecovery,
+                doRequest: async () => {
+                  batchAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+                  batchAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
+                    dlg.id,
+                    batchAttemptCourse,
+                    dlg.status,
+                  );
+                  sawWebSearchSideChannelOutput = false;
+                  sawNativeToolSideChannelOutput = false;
+                  streamedFuncCalls.length = 0;
+                  newMsgs.length = 0;
+                  const batchResult = await llmGen.genMoreMessages(
+                    providerCfg,
+                    agent,
+                    systemPrompt,
+                    funcTools,
+                    {
+                      dialogSelfId: dlg.id.selfId,
+                      dialogRootId: dlg.id.rootId,
+                      promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                    },
+                    ctxMsgs,
+                    dlg.activeGenSeq,
+                    abortSignal,
+                  );
+                  if (!hasMeaningfulBatchOutput(batchResult)) {
+                    throw {
+                      status: 503,
+                      code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
+                      message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=false).`,
+                    };
+                  }
+                  return batchResult;
+                },
+              });
+              return {
+                usage: batch.usage,
+                llmGenModel: batch.llmGenModel,
+                batchMessages: batch.messages,
+                batchOutputs: batch.outputs,
+              };
+            }
+
+            let currentSayingContent = '';
+            let currentThinkingContent = '';
+            let currentThinkingReasoning: ThinkingMsg['reasoning'] = undefined;
+            let streamAttemptCourse: number | undefined;
+            let streamAttemptCheckpointOffset: number | undefined;
+            let streamAttemptSayingContent: string | undefined;
+            let streamAttemptSayingGenseq: number | undefined;
+            type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
+            let streamActive: StreamActiveState = { kind: 'idle' };
+            const rollbackStreamAttempt = async (): Promise<void> => {
+              if (
+                streamAttemptCourse === undefined ||
+                streamAttemptCheckpointOffset === undefined
+              ) {
+                throw new Error(
+                  `kernel-driver stream retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              await DialogPersistence.rollbackCourseFileToOffset(
+                dlg.id,
+                streamAttemptCourse,
+                streamAttemptCheckpointOffset,
+                dlg.status,
+              );
+              postDialogEvent(dlg, {
+                type: 'genseq_discard_evt',
+                course: streamAttemptCourse,
+                genseq: dlg.activeGenSeq,
+                reason: 'retry',
+              });
+
+              streamActive = { kind: 'idle' };
+              currentThinkingContent = '';
+              currentThinkingReasoning = undefined;
+              currentSayingContent = '';
+              streamAttemptSayingContent = undefined;
+              streamAttemptSayingGenseq = undefined;
+              sawWebSearchSideChannelOutput = false;
+              sawNativeToolSideChannelOutput = false;
+              streamedFuncCalls.length = 0;
+              newMsgs.length = 0;
+            };
+
+            const receiver: LlmStreamReceiver = {
+              streamError: async (detail: string) => {
+                await dlg.streamError(detail);
+              },
+              thinkingStart: async () => {
+                throwIfAborted(abortSignal, dlg);
+                if (streamActive.kind !== 'idle') {
+                  const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active`;
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                streamActive = { kind: 'thinking' };
+                currentThinkingContent = '';
+                currentThinkingReasoning = undefined;
+                await dlg.thinkingStart();
+              },
+              thinkingChunk: async (chunk: string) => {
+                throwIfAborted(abortSignal, dlg);
+                currentThinkingContent += chunk;
+                await dlg.thinkingChunk(chunk);
+              },
+              thinkingFinish: async (reasoning) => {
+                throwIfAborted(abortSignal, dlg);
+                if (streamActive.kind !== 'thinking') {
+                  const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active`;
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                streamActive = { kind: 'idle' };
+                if (reasoning) currentThinkingReasoning = reasoning;
+                await dlg.thinkingFinish(reasoning);
+                if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
+                  newMsgs.push({
+                    type: 'thinking_msg',
+                    role: 'assistant',
+                    genseq: dlg.activeGenSeq,
+                    content: currentThinkingContent,
+                    reasoning: currentThinkingReasoning,
+                  });
+                }
+                currentThinkingContent = '';
+                currentThinkingReasoning = undefined;
+              },
+              sayingStart: async () => {
+                throwIfAborted(abortSignal, dlg);
+                if (streamActive.kind !== 'idle') {
+                  const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active`;
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                streamActive = { kind: 'saying' };
+                currentSayingContent = '';
+                await dlg.sayingStart();
+              },
+              sayingChunk: async (chunk: string) => {
+                throwIfAborted(abortSignal, dlg);
+                currentSayingContent += chunk;
+                await dlg.sayingChunk(chunk);
+              },
+              sayingFinish: async () => {
+                throwIfAborted(abortSignal, dlg);
+                if (streamActive.kind !== 'saying') {
+                  const detail = `Protocol violation: sayingFinish while ${streamActive.kind} is active`;
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                streamActive = { kind: 'idle' };
+                await dlg.sayingFinish();
+                const sayingMessage: SayingMsg = {
+                  type: 'saying_msg',
+                  role: 'assistant',
+                  genseq: dlg.activeGenSeq,
+                  content: currentSayingContent,
+                };
+                newMsgs.push(sayingMessage);
+                streamAttemptSayingContent = currentSayingContent;
+                streamAttemptSayingGenseq = sayingMessage.genseq;
+              },
+              funcCall: async (callId: string, name: string, argsStr: string) => {
+                throwIfAborted(abortSignal, dlg);
+                streamedFuncCalls.push({
+                  type: 'func_call_msg',
+                  role: 'assistant',
+                  genseq: dlg.activeGenSeq,
+                  id: callId,
+                  name,
+                  arguments: argsStr,
+                });
+              },
+              webSearchCall: async (call) => {
+                throwIfAborted(abortSignal, dlg);
+                sawWebSearchSideChannelOutput = true;
+                await dlg.webSearchCall(projectLlmWebSearchCall(call));
+              },
+              nativeToolCall: async (call: OpenAiResponsesNativeToolCall) => {
+                throwIfAborted(abortSignal, dlg);
+                sawNativeToolSideChannelOutput = true;
+                await dlg.nativeToolCall(call);
+              },
+            };
+
+            const res = await runLlmRequestWithRetry({
               dlg,
               provider,
               modelId: model,
@@ -2011,21 +2299,29 @@ export async function driveDialogStreamCore(
               retryBackoffMultiplier: retryPolicy.backoffMultiplier,
               retryMaxDelayMs: retryPolicy.maxDelayMs,
               classifyFailure: llmGen.classifyFailure?.bind(llmGen),
+              quirkFailureHandlerSession: resolveRetryQuirkSession(),
               canRetry: () => true,
-              onRetry: rollbackBatchAttempt,
-              onGiveUp: rollbackBatchAttempt,
+              onRetry: rollbackStreamAttempt,
+              onGiveUp: rollbackStreamAttempt,
+              onRetryStopped: prepareRetryStoppedRecovery,
               doRequest: async () => {
-                batchAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-                batchAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
+                streamAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+                streamAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
                   dlg.id,
-                  batchAttemptCourse,
+                  streamAttemptCourse,
                   dlg.status,
                 );
+                streamActive = { kind: 'idle' };
+                currentThinkingContent = '';
+                currentThinkingReasoning = undefined;
+                currentSayingContent = '';
+                streamAttemptSayingContent = undefined;
+                streamAttemptSayingGenseq = undefined;
                 sawWebSearchSideChannelOutput = false;
                 sawNativeToolSideChannelOutput = false;
                 streamedFuncCalls.length = 0;
                 newMsgs.length = 0;
-                const batchResult = await llmGen.genMoreMessages(
+                const streamResult = await llmGen.genToReceiver(
                   providerCfg,
                   agent,
                   systemPrompt,
@@ -2036,738 +2332,520 @@ export async function driveDialogStreamCore(
                     promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
                   },
                   ctxMsgs,
+                  receiver,
                   dlg.activeGenSeq,
                   abortSignal,
                 );
-                if (!hasMeaningfulBatchOutput(batchResult)) {
+                const hasThinkingContent = currentThinkingContent.trim() !== '';
+                const hasSayingContent = (streamAttemptSayingContent ?? '').trim() !== '';
+                const hasFunctionCall = streamedFuncCalls.length > 0;
+                if (
+                  !hasThinkingContent &&
+                  !hasSayingContent &&
+                  !hasFunctionCall &&
+                  !sawWebSearchSideChannelOutput &&
+                  !sawNativeToolSideChannelOutput
+                ) {
                   throw {
                     status: 503,
                     code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
-                    message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=false).`,
+                    message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=true).`,
                   };
                 }
-                return batchResult;
+                return streamResult;
               },
             });
-            return {
-              usage: batch.usage,
-              llmGenModel: batch.llmGenModel,
-              batchMessages: batch.messages,
-              batchOutputs: batch.outputs,
-            };
-          }
-
-          let currentSayingContent = '';
-          let currentThinkingContent = '';
-          let currentThinkingReasoning: ThinkingMsg['reasoning'] = undefined;
-          let streamAttemptCourse: number | undefined;
-          let streamAttemptCheckpointOffset: number | undefined;
-          let streamAttemptSayingContent: string | undefined;
-          let streamAttemptSayingGenseq: number | undefined;
-          type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
-          let streamActive: StreamActiveState = { kind: 'idle' };
-          const rollbackStreamAttempt = async (): Promise<void> => {
-            if (streamAttemptCourse === undefined || streamAttemptCheckpointOffset === undefined) {
-              throw new Error(
-                `kernel-driver stream retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
-              );
+            if (streamAttemptSayingContent !== undefined) {
+              lastAssistantSayingContent = streamAttemptSayingContent;
+              lastAssistantSayingGenseq =
+                streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
+              lastAssistantReplyTarget = currentReplyTarget;
             }
-            await DialogPersistence.rollbackCourseFileToOffset(
-              dlg.id,
-              streamAttemptCourse,
-              streamAttemptCheckpointOffset,
-              dlg.status,
-            );
-            postDialogEvent(dlg, {
-              type: 'genseq_discard_evt',
-              course: streamAttemptCourse,
-              genseq: dlg.activeGenSeq,
-              reason: 'retry',
-            });
-
-            streamActive = { kind: 'idle' };
-            currentThinkingContent = '';
-            currentThinkingReasoning = undefined;
-            currentSayingContent = '';
-            streamAttemptSayingContent = undefined;
-            streamAttemptSayingGenseq = undefined;
-            sawWebSearchSideChannelOutput = false;
-            sawNativeToolSideChannelOutput = false;
-            streamedFuncCalls.length = 0;
-            newMsgs.length = 0;
+            return { usage: res.usage, llmGenModel: res.llmGenModel };
           };
 
-          const receiver: LlmStreamReceiver = {
-            streamError: async (detail: string) => {
-              await dlg.streamError(detail);
-            },
-            thinkingStart: async () => {
-              throwIfAborted(abortSignal, dlg);
-              if (streamActive.kind !== 'idle') {
-                const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active`;
-                await dlg.streamError(detail);
-                throw new LlmStreamErrorEmittedError({
-                  detail,
-                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                    detail,
-                    kind: 'conflicting_stream',
-                  }),
-                });
-              }
-              streamActive = { kind: 'thinking' };
-              currentThinkingContent = '';
-              currentThinkingReasoning = undefined;
-              await dlg.thinkingStart();
-            },
-            thinkingChunk: async (chunk: string) => {
-              throwIfAborted(abortSignal, dlg);
-              currentThinkingContent += chunk;
-              await dlg.thinkingChunk(chunk);
-            },
-            thinkingFinish: async (reasoning) => {
-              throwIfAborted(abortSignal, dlg);
-              if (streamActive.kind !== 'thinking') {
-                const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active`;
-                await dlg.streamError(detail);
-                throw new LlmStreamErrorEmittedError({
-                  detail,
-                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                    detail,
-                    kind: 'conflicting_stream',
-                  }),
-                });
-              }
-              streamActive = { kind: 'idle' };
-              if (reasoning) currentThinkingReasoning = reasoning;
-              await dlg.thinkingFinish(reasoning);
-              if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
-                newMsgs.push({
-                  type: 'thinking_msg',
-                  role: 'assistant',
-                  genseq: dlg.activeGenSeq,
-                  content: currentThinkingContent,
-                  reasoning: currentThinkingReasoning,
-                });
-              }
-              currentThinkingContent = '';
-              currentThinkingReasoning = undefined;
-            },
-            sayingStart: async () => {
-              throwIfAborted(abortSignal, dlg);
-              if (streamActive.kind !== 'idle') {
-                const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active`;
-                await dlg.streamError(detail);
-                throw new LlmStreamErrorEmittedError({
-                  detail,
-                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                    detail,
-                    kind: 'conflicting_stream',
-                  }),
-                });
-              }
-              streamActive = { kind: 'saying' };
-              currentSayingContent = '';
-              await dlg.sayingStart();
-            },
-            sayingChunk: async (chunk: string) => {
-              throwIfAborted(abortSignal, dlg);
-              currentSayingContent += chunk;
-              await dlg.sayingChunk(chunk);
-            },
-            sayingFinish: async () => {
-              throwIfAborted(abortSignal, dlg);
-              if (streamActive.kind !== 'saying') {
-                const detail = `Protocol violation: sayingFinish while ${streamActive.kind} is active`;
-                await dlg.streamError(detail);
-                throw new LlmStreamErrorEmittedError({
-                  detail,
-                  i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                    detail,
-                    kind: 'conflicting_stream',
-                  }),
-                });
-              }
-              streamActive = { kind: 'idle' };
-              await dlg.sayingFinish();
-              const sayingMessage: SayingMsg = {
-                type: 'saying_msg',
-                role: 'assistant',
-                genseq: dlg.activeGenSeq,
-                content: currentSayingContent,
-              };
-              newMsgs.push(sayingMessage);
-              streamAttemptSayingContent = currentSayingContent;
-              streamAttemptSayingGenseq = sayingMessage.genseq;
-            },
-            funcCall: async (callId: string, name: string, argsStr: string) => {
-              throwIfAborted(abortSignal, dlg);
-              streamedFuncCalls.push({
-                type: 'func_call_msg',
-                role: 'assistant',
-                genseq: dlg.activeGenSeq,
-                id: callId,
-                name,
-                arguments: argsStr,
-              });
-            },
-            webSearchCall: async (call) => {
-              throwIfAborted(abortSignal, dlg);
-              sawWebSearchSideChannelOutput = true;
-              await dlg.webSearchCall(projectLlmWebSearchCall(call));
-            },
-            nativeToolCall: async (call: OpenAiResponsesNativeToolCall) => {
-              throwIfAborted(abortSignal, dlg);
-              sawNativeToolSideChannelOutput = true;
-              await dlg.nativeToolCall(call);
-            },
-          };
-
-          const res = await runLlmRequestWithRetry({
-            dlg,
-            provider,
-            modelId: model,
-            providerConfig: providerCfg,
-            abortSignal,
-            maxRetries: retryPolicy.maxRetries,
-            retryInitialDelayMs: retryPolicy.initialDelayMs,
-            retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
-            retryBackoffMultiplier: retryPolicy.backoffMultiplier,
-            retryMaxDelayMs: retryPolicy.maxDelayMs,
-            classifyFailure: llmGen.classifyFailure?.bind(llmGen),
-            canRetry: () => true,
-            onRetry: rollbackStreamAttempt,
-            onGiveUp: rollbackStreamAttempt,
-            doRequest: async () => {
-              streamAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-              streamAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
-                dlg.id,
-                streamAttemptCourse,
-                dlg.status,
-              );
-              streamActive = { kind: 'idle' };
-              currentThinkingContent = '';
-              currentThinkingReasoning = undefined;
-              currentSayingContent = '';
-              streamAttemptSayingContent = undefined;
-              streamAttemptSayingGenseq = undefined;
-              sawWebSearchSideChannelOutput = false;
-              sawNativeToolSideChannelOutput = false;
-              streamedFuncCalls.length = 0;
-              newMsgs.length = 0;
-              const streamResult = await llmGen.genToReceiver(
-                providerCfg,
-                agent,
-                systemPrompt,
-                funcTools,
-                {
-                  dialogSelfId: dlg.id.selfId,
-                  dialogRootId: dlg.id.rootId,
-                  promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
-                },
-                ctxMsgs,
-                receiver,
-                dlg.activeGenSeq,
-                abortSignal,
-              );
-              const hasThinkingContent = currentThinkingContent.trim() !== '';
-              const hasSayingContent = (streamAttemptSayingContent ?? '').trim() !== '';
-              const hasFunctionCall = streamedFuncCalls.length > 0;
-              if (
-                !hasThinkingContent &&
-                !hasSayingContent &&
-                !hasFunctionCall &&
-                !sawWebSearchSideChannelOutput &&
-                !sawNativeToolSideChannelOutput
-              ) {
-                throw {
-                  status: 503,
-                  code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
-                  message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=true).`,
-                };
-              }
-              return streamResult;
-            },
-          });
-          if (streamAttemptSayingContent !== undefined) {
-            lastAssistantSayingContent = streamAttemptSayingContent;
-            lastAssistantSayingGenseq =
-              streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
-            lastAssistantReplyTarget = currentReplyTarget;
+          const llmOutput = await streamOrBatch();
+          if (typeof llmOutput.llmGenModel === 'string' && llmOutput.llmGenModel.trim() !== '') {
+            llmGenModelForGen = llmOutput.llmGenModel.trim();
           }
-          return { usage: res.usage, llmGenModel: res.llmGenModel };
-        };
 
-        const llmOutput = await streamOrBatch();
-        if (typeof llmOutput.llmGenModel === 'string' && llmOutput.llmGenModel.trim() !== '') {
-          llmGenModelForGen = llmOutput.llmGenModel.trim();
-        }
+          contextHealthForGen = computeContextHealthSnapshot({
+            providerCfg,
+            model,
+            usage: llmOutput.usage,
+          });
+          dlg.setLastContextHealth(contextHealthForGen);
 
-        contextHealthForGen = computeContextHealthSnapshot({
-          providerCfg,
-          model,
-          usage: llmOutput.usage,
-        });
-        dlg.setLastContextHealth(contextHealthForGen);
-
-        const batchOutputs =
-          Array.isArray(llmOutput.batchOutputs) && llmOutput.batchOutputs.length > 0
-            ? llmOutput.batchOutputs
-            : Array.isArray(llmOutput.batchMessages)
-              ? llmOutput.batchMessages.map(
-                  (message): LlmBatchOutput => ({ kind: 'message', message }),
-                )
-              : [];
-        for (const output of batchOutputs) {
-          switch (output.kind) {
-            case 'message': {
-              const msg = output.message;
-              if (msg.type === 'thinking_msg' || msg.type === 'saying_msg') {
-                newMsgs.push(msg);
-                if (msg.type === 'thinking_msg') {
-                  await emitThinkingEvents(dlg, msg.content, msg.reasoning);
-                } else {
-                  lastAssistantSayingContent = msg.content;
-                  lastAssistantSayingGenseq = msg.genseq;
-                  lastAssistantReplyTarget = currentReplyTarget;
-                  await emitAssistantSaying(dlg, msg.content);
+          const batchOutputs =
+            Array.isArray(llmOutput.batchOutputs) && llmOutput.batchOutputs.length > 0
+              ? llmOutput.batchOutputs
+              : Array.isArray(llmOutput.batchMessages)
+                ? llmOutput.batchMessages.map(
+                    (message): LlmBatchOutput => ({ kind: 'message', message }),
+                  )
+                : [];
+          for (const output of batchOutputs) {
+            switch (output.kind) {
+              case 'message': {
+                const msg = output.message;
+                if (msg.type === 'thinking_msg' || msg.type === 'saying_msg') {
+                  newMsgs.push(msg);
+                  if (msg.type === 'thinking_msg') {
+                    await emitThinkingEvents(dlg, msg.content, msg.reasoning);
+                  } else {
+                    lastAssistantSayingContent = msg.content;
+                    lastAssistantSayingGenseq = msg.genseq;
+                    lastAssistantReplyTarget = currentReplyTarget;
+                    await emitAssistantSaying(dlg, msg.content);
+                  }
+                  break;
+                }
+                if (msg.type === 'func_call_msg') {
+                  streamedFuncCalls.push(msg);
                 }
                 break;
               }
-              if (msg.type === 'func_call_msg') {
-                streamedFuncCalls.push(msg);
+              case 'web_search_call': {
+                sawWebSearchSideChannelOutput = true;
+                await dlg.webSearchCall(projectLlmWebSearchCall(output.call));
+                break;
               }
-              break;
-            }
-            case 'web_search_call': {
-              sawWebSearchSideChannelOutput = true;
-              await dlg.webSearchCall(projectLlmWebSearchCall(output.call));
-              break;
-            }
-            case 'native_tool_call': {
-              sawNativeToolSideChannelOutput = true;
-              await dlg.nativeToolCall(output.call);
-              break;
-            }
-            default: {
-              const _exhaustive: never = output;
-              throw new Error(`Unhandled batch output kind: ${String(_exhaustive)}`);
+              case 'native_tool_call': {
+                sawNativeToolSideChannelOutput = true;
+                await dlg.nativeToolCall(output.call);
+                break;
+              }
+              default: {
+                const _exhaustive: never = output;
+                throw new Error(`Unhandled batch output kind: ${String(_exhaustive)}`);
+              }
             }
           }
-        }
 
-        const tellaskCallCount = policy.allowTellaskFunctions
-          ? streamedFuncCalls.filter(
-              (c) =>
-                c.name === 'tellask' ||
-                c.name === 'tellaskSessionless' ||
-                c.name === 'tellaskBack' ||
-                c.name === 'askHuman' ||
-                c.name === 'freshBootsReasoning',
-            ).length
-          : 0;
-        const policyViolationKind = resolveKernelDriverPolicyViolationKind({
-          policy,
-          tellaskCallCount,
-          functionCallCount: streamedFuncCalls.length,
-        });
-        if (policyViolationKind) {
-          const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
-            kind: policyViolationKind,
+          const tellaskCallCount = policy.allowTellaskFunctions
+            ? streamedFuncCalls.filter(
+                (c) =>
+                  c.name === 'tellask' ||
+                  c.name === 'tellaskSessionless' ||
+                  c.name === 'tellaskBack' ||
+                  c.name === 'askHuman' ||
+                  c.name === 'freshBootsReasoning',
+              ).length
+            : 0;
+          const policyViolationKind = resolveKernelDriverPolicyViolationKind({
+            policy,
+            tellaskCallCount,
+            functionCallCount: streamedFuncCalls.length,
           });
-          const genseq = dlg.activeGenSeq;
-          const violationMsg: SayingMsg = {
-            type: 'saying_msg',
-            role: 'assistant',
-            genseq,
-            content: violationText,
-          };
-          await emitAssistantSaying(dlg, violationText);
-          newMsgs.push(violationMsg);
-          await dlg.addChatMessages(...newMsgs);
-          lastAssistantSayingContent = violationText;
-          lastAssistantSayingGenseq = genseq;
-          lastAssistantReplyTarget = currentReplyTarget;
-          const persistedFbrState = await loadDialogFbrState(dlg);
-          if (!persistedFbrState) {
-            return {
-              lastAssistantSayingContent,
-              lastAssistantSayingGenseq,
-              lastFunctionCallGenseq,
-              lastAssistantReplyTarget,
+          if (policyViolationKind) {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind: policyViolationKind,
+            });
+            const genseq = dlg.activeGenSeq;
+            const violationMsg: SayingMsg = {
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
             };
-          }
-          const nextFbrState = advanceFbrState(persistedFbrState);
-          if (nextFbrState) {
-            if (!isFbrSubdialogDialog(dlg)) {
-              throw new Error(
-                `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
-              );
-            }
-            await persistDialogFbrState(dlg, nextFbrState);
-            dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
-            pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
-            continue;
-          }
-          fbrConclusion = {
-            responseText: buildProgrammaticFbrUnreasonableSituationContent({
-              language: getWorkLanguage(),
-              finalizationAttempts: persistedFbrState.effort,
-            }),
-            responseGenseq: genseq,
-          };
-          if (!isFbrSubdialogDialog(dlg)) {
-            throw new Error(
-              `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
-            );
-          }
-          await persistDialogFbrState(dlg, undefined);
-          dlg.setFbrConclusionToolsEnabled(false);
-          break;
-        }
-
-        for (const call of streamedFuncCalls) {
-          const rawCallGenseq = call.genseq;
-          if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) continue;
-          const callGenseq = Math.floor(rawCallGenseq);
-          if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
-            lastFunctionCallGenseq = callGenseq;
-          }
-        }
-
-        const routed = await executeFunctionRound({
-          dlg,
-          agent,
-          agentTools,
-          funcCalls: streamedFuncCalls,
-          callbacks,
-          abortSignal,
-          allowTellaskFunctions: policy.allowTellaskFunctions,
-        });
-        if (routed.tellaskToolOutputs.length > 0) {
-          newMsgs.push(...routed.tellaskToolOutputs);
-        }
-        if (routed.pairedMessages.length > 0) {
-          newMsgs.push(...routed.pairedMessages);
-        }
-        await dlg.addChatMessages(...newMsgs);
-
-        const assistantSayingRoundSignature = extractAssistantSayingRoundSignature(newMsgs);
-        const identicalUpdatePlanRoundSignature = routed.updatePlanOnlyRound
-          ? JSON.stringify({
-              assistantSayingRoundSignature: assistantSayingRoundSignature ?? '',
-            })
-          : undefined;
-
-        if (identicalUpdatePlanRoundSignature !== undefined) {
-          if (identicalUpdatePlanRoundSignature === lastIdenticalUpdatePlanRoundSignature) {
-            consecutiveIdenticalUpdatePlanOnlyRounds += 1;
-          } else {
-            consecutiveIdenticalUpdatePlanOnlyRounds = 1;
-            lastIdenticalUpdatePlanRoundSignature = identicalUpdatePlanRoundSignature;
-          }
-        } else {
-          consecutiveIdenticalUpdatePlanOnlyRounds = 0;
-          lastIdenticalUpdatePlanRoundSignature = undefined;
-        }
-
-        const persistedFbrState = await loadDialogFbrState(dlg);
-        if (persistedFbrState) {
-          if (persistedFbrState.phase === 'finalization') {
-            const inspection = inspectFbrConclusionAttempt(newMsgs);
-            if (inspection.kind === 'accepted') {
-              log.debug('kernel-driver accepted FBR conclusion attempt', undefined, {
-                dialogId: dlg.id.valueOf(),
-                toolName: inspection.toolName,
-                callId: inspection.callId,
-              });
-              fbrConclusion = {
-                responseText: inspection.content,
-                responseGenseq: inspection.genseq,
+            await emitAssistantSaying(dlg, violationText);
+            newMsgs.push(violationMsg);
+            await dlg.addChatMessages(...newMsgs);
+            lastAssistantSayingContent = violationText;
+            lastAssistantSayingGenseq = genseq;
+            lastAssistantReplyTarget = currentReplyTarget;
+            const persistedFbrState = await loadDialogFbrState(dlg);
+            if (!persistedFbrState) {
+              return {
+                lastAssistantSayingContent,
+                lastAssistantSayingGenseq,
+                lastFunctionCallGenseq,
+                lastAssistantReplyTarget,
               };
+            }
+            const nextFbrState = advanceFbrState(persistedFbrState);
+            if (nextFbrState) {
               if (!isFbrSubdialogDialog(dlg)) {
                 throw new Error(
                   `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
                 );
               }
-              await persistDialogFbrState(dlg, undefined);
-              dlg.setFbrConclusionToolsEnabled(false);
-              break;
+              await persistDialogFbrState(dlg, nextFbrState);
+              dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
+              pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
+              continue;
             }
-            if (inspection.kind === 'rejected') {
-              const detail = `FBR conclusion attempt rejected: ${inspection.reason}`;
-              await dlg.streamError(detail);
-              log.warn(detail, undefined, {
-                rootId: dlg.id.rootId,
-                selfId: dlg.id.selfId,
-              });
-            }
-          }
-
-          const nextFbrState = advanceFbrState(persistedFbrState);
-          if (nextFbrState) {
+            fbrConclusion = {
+              responseText: buildProgrammaticFbrUnreasonableSituationContent({
+                language: getWorkLanguage(),
+                finalizationAttempts: persistedFbrState.effort,
+              }),
+              responseGenseq: genseq,
+            };
             if (!isFbrSubdialogDialog(dlg)) {
               throw new Error(
                 `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
               );
             }
-            await persistDialogFbrState(dlg, nextFbrState);
-            dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
-            pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
-            continue;
-          }
-
-          fbrConclusion = {
-            responseText: buildProgrammaticFbrUnreasonableSituationContent({
-              language: getWorkLanguage(),
-              finalizationAttempts: persistedFbrState.effort,
-            }),
-            responseGenseq:
-              lastAssistantSayingGenseq ??
-              lastFunctionCallGenseq ??
-              dlg.activeGenSeqOrUndefined ??
-              1,
-          };
-          if (!isFbrSubdialogDialog(dlg)) {
-            throw new Error(
-              `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
-            );
-          }
-          await persistDialogFbrState(dlg, undefined);
-          dlg.setFbrConclusionToolsEnabled(false);
-          break;
-        }
-
-        if (routed.shouldStopAfterReplyTool) {
-          log.debug('kernel-driver stop round after explicit replyTellask* tool', undefined, {
-            dialogId: dlg.id.valueOf(),
-            toolNames: streamedFuncCalls
-              .filter(
-                (call) =>
-                  call.name === 'replyTellask' ||
-                  call.name === 'replyTellaskSessionless' ||
-                  call.name === 'replyTellaskBack',
-              )
-              .map((call) => call.name),
-          });
-          break;
-        }
-
-        if (dlg.hasUpNext()) {
-          pendingPrompt = resolveUpNextPrompt(dlg);
-          continue;
-        }
-
-        if (dlg.remindersVer > pubRemindersVer) {
-          await dlg.processReminderUpdates();
-          pubRemindersVer = dlg.remindersVer;
-        }
-
-        // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
-        // dialog's actual suspension state here so auto-continue is decided in one place.
-        const suspensionAfterToolRound = await dlg.getSuspensionStatus({
-          allowPendingSubdialogs: routed.hasImmediateFollowupToolCalls,
-        });
-        if (!suspensionAfterToolRound.canDrive) {
-          await resetDiligenceBudgetAfterQ4H(dlg, team);
-          break;
-        }
-
-        if (
-          consecutiveIdenticalUpdatePlanOnlyRounds >=
-          KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD
-        ) {
-          const detail = formatIdenticalUpdatePlanLoopStopDetail(getWorkLanguage());
-          log.error(detail, new Error('kernel_driver_identical_update_plan_loop_stopped'), {
-            dialogId: dlg.id.valueOf(),
-            rootId: dlg.id.rootId,
-            selfId: dlg.id.selfId,
-            course: dlg.currentCourse,
-            genseq: dlg.activeGenSeqOrUndefined ?? null,
-            consecutiveIdenticalUpdatePlanOnlyRounds,
-            identicalUpdatePlanRoundSignature,
-          });
-          throw new KernelDriverInterruptedError({
-            kind: 'system_stop',
-            detail,
-            i18nStopReason: buildHumanSystemStopReasonTextI18n({
-              detail,
-              kind: 'identical_update_plan_loop',
-            }),
-          });
-        }
-
-        // Start an immediate post-tool generation only when this round produced tool outputs that
-        // warrant same-drive LLM reaction right away. Provider-native side-channel UI events are
-        // meaningful output, but they are not transcript/context inputs and therefore must not
-        // trigger another immediate generation round by themselves.
-        const shouldStartImmediatePostToolGeneration =
-          routed.hasImmediateFollowupToolCalls || routed.tellaskToolOutputs.length > 0;
-        if (!shouldStartImmediatePostToolGeneration) {
-          const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
-            dlg,
-            providerCfg,
-            model,
-          });
-          if (healthFirst.kind === 'health_continue') {
-            pendingPrompt = healthFirst.prompt;
-            if (healthFirst.resetTaskdoc) {
-              skipTaskdocForThisDrive = false;
-            }
-            continue;
-          }
-          if (healthFirst.kind === 'health_suspend') {
+            await persistDialogFbrState(dlg, undefined);
+            dlg.setFbrConclusionToolsEnabled(false);
             break;
           }
-          const next = await maybeContinueWithDiligencePrompt({
-            dlg,
-            team,
-            suppressDiligencePushForDrive: suppressDiligencePushForDrive,
-          });
-          if (next.kind === 'continue') {
-            pendingPrompt = next.prompt;
-            continue;
-          }
-          break;
-        }
-        if (shouldStartImmediatePostToolGeneration) {
-          continue;
-        }
-      } finally {
-        await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
-      }
-    }
 
-    throwIfAborted(abortSignal, dlg);
-    finalDisplayState = await computeIdleDisplayState(dlg);
-  } catch (err) {
-    const stopRequested = getStopRequestedReason(dlg.id);
-    const interruptedReason: DialogInterruptionReason | undefined =
-      err instanceof LlmRetryStoppedError
-        ? err.reason
-        : err instanceof KernelDriverInterruptedError
-          ? err.reason
-          : abortSignal.aborted
-            ? stopRequested === 'emergency_stop'
-              ? { kind: 'emergency_stop' }
-              : stopRequested === 'user_stop'
-                ? { kind: 'user_stop' }
-                : buildAbortedSystemStopReason()
+          for (const call of streamedFuncCalls) {
+            const rawCallGenseq = call.genseq;
+            if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) continue;
+            const callGenseq = Math.floor(rawCallGenseq);
+            if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
+              lastFunctionCallGenseq = callGenseq;
+            }
+          }
+
+          const routed = await executeFunctionRound({
+            dlg,
+            agent,
+            agentTools,
+            funcCalls: streamedFuncCalls,
+            callbacks,
+            abortSignal,
+            allowTellaskFunctions: policy.allowTellaskFunctions,
+          });
+          if (routed.tellaskToolOutputs.length > 0) {
+            newMsgs.push(...routed.tellaskToolOutputs);
+          }
+          if (routed.pairedMessages.length > 0) {
+            newMsgs.push(...routed.pairedMessages);
+          }
+          await dlg.addChatMessages(...newMsgs);
+
+          const assistantSayingRoundSignature = extractAssistantSayingRoundSignature(newMsgs);
+          const identicalUpdatePlanRoundSignature = routed.updatePlanOnlyRound
+            ? JSON.stringify({
+                assistantSayingRoundSignature: assistantSayingRoundSignature ?? '',
+              })
             : undefined;
 
-    if (interruptedReason) {
-      finalDisplayState = {
-        kind: 'stopped',
-        reason: interruptedReason,
-        continueEnabled: resolveStoppedContinueEnabled(interruptedReason),
-      };
-      broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
-    } else {
-      const llmRequestFailure = err instanceof LlmRequestFailedError ? err : undefined;
-      const emittedStreamError = err instanceof LlmStreamErrorEmittedError ? err : undefined;
-      const errText =
-        llmRequestFailure?.detail ?? emittedStreamError?.detail ?? extractErrorDetails(err).message;
-      if (!llmRequestFailure?.streamErrorEmitted && !emittedStreamError) {
-        try {
-          await dlg.streamError(errText);
-        } catch {
-          // best-effort
+          if (identicalUpdatePlanRoundSignature !== undefined) {
+            if (identicalUpdatePlanRoundSignature === lastIdenticalUpdatePlanRoundSignature) {
+              consecutiveIdenticalUpdatePlanOnlyRounds += 1;
+            } else {
+              consecutiveIdenticalUpdatePlanOnlyRounds = 1;
+              lastIdenticalUpdatePlanRoundSignature = identicalUpdatePlanRoundSignature;
+            }
+          } else {
+            consecutiveIdenticalUpdatePlanOnlyRounds = 0;
+            lastIdenticalUpdatePlanRoundSignature = undefined;
+          }
+
+          const persistedFbrState = await loadDialogFbrState(dlg);
+          if (persistedFbrState) {
+            if (persistedFbrState.phase === 'finalization') {
+              const inspection = inspectFbrConclusionAttempt(newMsgs);
+              if (inspection.kind === 'accepted') {
+                log.debug('kernel-driver accepted FBR conclusion attempt', undefined, {
+                  dialogId: dlg.id.valueOf(),
+                  toolName: inspection.toolName,
+                  callId: inspection.callId,
+                });
+                fbrConclusion = {
+                  responseText: inspection.content,
+                  responseGenseq: inspection.genseq,
+                };
+                if (!isFbrSubdialogDialog(dlg)) {
+                  throw new Error(
+                    `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+                  );
+                }
+                await persistDialogFbrState(dlg, undefined);
+                dlg.setFbrConclusionToolsEnabled(false);
+                break;
+              }
+              if (inspection.kind === 'rejected') {
+                const detail = `FBR conclusion attempt rejected: ${inspection.reason}`;
+                await dlg.streamError(detail);
+                log.warn(detail, undefined, {
+                  rootId: dlg.id.rootId,
+                  selfId: dlg.id.selfId,
+                });
+              }
+            }
+
+            const nextFbrState = advanceFbrState(persistedFbrState);
+            if (nextFbrState) {
+              if (!isFbrSubdialogDialog(dlg)) {
+                throw new Error(
+                  `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+                );
+              }
+              await persistDialogFbrState(dlg, nextFbrState);
+              dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
+              pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
+              continue;
+            }
+
+            fbrConclusion = {
+              responseText: buildProgrammaticFbrUnreasonableSituationContent({
+                language: getWorkLanguage(),
+                finalizationAttempts: persistedFbrState.effort,
+              }),
+              responseGenseq:
+                lastAssistantSayingGenseq ??
+                lastFunctionCallGenseq ??
+                dlg.activeGenSeqOrUndefined ??
+                1,
+            };
+            if (!isFbrSubdialogDialog(dlg)) {
+              throw new Error(
+                `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
+              );
+            }
+            await persistDialogFbrState(dlg, undefined);
+            dlg.setFbrConclusionToolsEnabled(false);
+            break;
+          }
+
+          if (routed.shouldStopAfterReplyTool) {
+            log.debug('kernel-driver stop round after explicit replyTellask* tool', undefined, {
+              dialogId: dlg.id.valueOf(),
+              toolNames: streamedFuncCalls
+                .filter(
+                  (call) =>
+                    call.name === 'replyTellask' ||
+                    call.name === 'replyTellaskSessionless' ||
+                    call.name === 'replyTellaskBack',
+                )
+                .map((call) => call.name),
+            });
+            break;
+          }
+
+          if (dlg.hasUpNext()) {
+            pendingPrompt = resolveUpNextPrompt(dlg);
+            continue;
+          }
+
+          if (dlg.remindersVer > pubRemindersVer) {
+            await dlg.processReminderUpdates();
+            pubRemindersVer = dlg.remindersVer;
+          }
+
+          // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
+          // dialog's actual suspension state here so auto-continue is decided in one place.
+          const suspensionAfterToolRound = await dlg.getSuspensionStatus({
+            allowPendingSubdialogs: routed.hasImmediateFollowupToolCalls,
+          });
+          if (!suspensionAfterToolRound.canDrive) {
+            await resetDiligenceBudgetAfterQ4H(dlg, team);
+            break;
+          }
+
+          if (
+            consecutiveIdenticalUpdatePlanOnlyRounds >=
+            KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD
+          ) {
+            const detail = formatIdenticalUpdatePlanLoopStopDetail(getWorkLanguage());
+            log.error(detail, new Error('kernel_driver_identical_update_plan_loop_stopped'), {
+              dialogId: dlg.id.valueOf(),
+              rootId: dlg.id.rootId,
+              selfId: dlg.id.selfId,
+              course: dlg.currentCourse,
+              genseq: dlg.activeGenSeqOrUndefined ?? null,
+              consecutiveIdenticalUpdatePlanOnlyRounds,
+              identicalUpdatePlanRoundSignature,
+            });
+            throw new KernelDriverInterruptedError({
+              kind: 'system_stop',
+              detail,
+              i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                detail,
+                kind: 'identical_update_plan_loop',
+              }),
+            });
+          }
+
+          // Start an immediate post-tool generation only when this round produced tool outputs that
+          // warrant same-drive LLM reaction right away. Provider-native side-channel UI events are
+          // meaningful output, but they are not transcript/context inputs and therefore must not
+          // trigger another immediate generation round by themselves.
+          const shouldStartImmediatePostToolGeneration =
+            routed.hasImmediateFollowupToolCalls || routed.tellaskToolOutputs.length > 0;
+          if (!shouldStartImmediatePostToolGeneration) {
+            const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
+              dlg,
+              providerCfg,
+              model,
+            });
+            if (healthFirst.kind === 'health_continue') {
+              pendingPrompt = healthFirst.prompt;
+              if (healthFirst.resetTaskdoc) {
+                skipTaskdocForThisDrive = false;
+              }
+              continue;
+            }
+            if (healthFirst.kind === 'health_suspend') {
+              break;
+            }
+            const next = await maybeContinueWithDiligencePrompt({
+              dlg,
+              team,
+              suppressDiligencePushForDrive: suppressDiligencePushForDrive,
+            });
+            if (next.kind === 'continue') {
+              pendingPrompt = next.prompt;
+              continue;
+            }
+            break;
+          }
+          if (shouldStartImmediatePostToolGeneration) {
+            continue;
+          }
+        } finally {
+          await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
         }
       }
-      finalDisplayState = {
-        kind: 'stopped',
-        reason:
-          (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
-            ? {
-                kind: 'system_stop',
-                detail: errText,
-                i18nStopReason:
-                  llmRequestFailure?.i18nStopReason ??
-                  emittedStreamError?.i18nStopReason ??
-                  buildHumanSystemStopReasonTextI18n({ detail: errText }),
-              }
-            : {
-                kind: 'system_stop',
-                detail: errText,
-                i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
-              },
-        continueEnabled: true,
-      };
-      broadcastDisplayStateMarker(dlg.id, {
-        kind: 'interrupted',
-        reason:
-          (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
-            ? {
-                kind: 'system_stop',
-                detail: errText,
-                i18nStopReason:
-                  llmRequestFailure?.i18nStopReason ??
-                  emittedStreamError?.i18nStopReason ??
-                  buildHumanSystemStopReasonTextI18n({ detail: errText }),
-              }
-            : {
-                kind: 'system_stop',
-                detail: errText,
-                i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
-              },
-      });
-    }
-  } finally {
-    if (!finalDisplayState) {
-      try {
-        finalDisplayState = await computeIdleDisplayState(dlg);
-      } catch (stateErr) {
-        log.warn(
-          'kernel-driver failed to compute final display-state projection; falling back to idle',
-          stateErr,
-          {
-            dialogId: dlg.id.valueOf(),
-          },
-        );
-        finalDisplayState = { kind: 'idle_waiting_user' };
-      }
-    }
 
-    if (
-      abortSignal.aborted &&
-      finalDisplayState.kind !== 'stopped' &&
-      finalDisplayState.kind !== 'dead'
-    ) {
-      const stopRequested = getStopRequestedReason(dlg.id);
-      const lateInterruptedReason: DialogInterruptionReason =
-        stopRequested === 'emergency_stop'
-          ? { kind: 'emergency_stop' }
-          : stopRequested === 'user_stop'
-            ? { kind: 'user_stop' }
-            : buildAbortedSystemStopReason();
-      finalDisplayState = {
-        kind: 'stopped',
-        reason: lateInterruptedReason,
-        continueEnabled: resolveStoppedContinueEnabled(lateInterruptedReason),
-      };
-      broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
-    }
-
-    try {
-      const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
-      if (dlg.id.selfId !== dlg.id.rootId && latest?.executionMarker?.kind === 'dead') {
-        finalDisplayState = { kind: 'dead', reason: latest.executionMarker.reason };
-      }
+      throwIfAborted(abortSignal, dlg);
+      finalDisplayState = await computeIdleDisplayState(dlg);
+      break driveCoreLoop;
     } catch (err) {
-      log.warn('kernel-driver failed to re-check displayState before finalizing', err, {
-        dialogId: dlg.id.valueOf(),
-      });
-    }
+      if (err instanceof LlmRetryStoppedError && retryStoppedRecoveryPrompt !== undefined) {
+        pendingPrompt = retryStoppedRecoveryPrompt;
+        retryStoppedRecoveryPrompt = undefined;
+        continue driveCoreLoop;
+      }
+      retryStoppedRecoveryPrompt = undefined;
 
-    if (finalDisplayState.kind === 'stopped') {
-      await setDialogExecutionMarker(dlg.id, {
-        kind: 'interrupted',
-        reason: finalDisplayState.reason,
-      });
-    } else if (finalDisplayState.kind !== 'dead') {
-      await clearDialogInterruptedExecutionMarker(dlg.id);
+      const stopRequested = getStopRequestedReason(dlg.id);
+      const interruptedReason: DialogInterruptionReason | undefined =
+        err instanceof LlmRetryStoppedError
+          ? err.reason
+          : err instanceof KernelDriverInterruptedError
+            ? err.reason
+            : abortSignal.aborted
+              ? stopRequested === 'emergency_stop'
+                ? { kind: 'emergency_stop' }
+                : stopRequested === 'user_stop'
+                  ? { kind: 'user_stop' }
+                  : buildAbortedSystemStopReason()
+              : undefined;
+
+      if (interruptedReason) {
+        finalDisplayState = {
+          kind: 'stopped',
+          reason: interruptedReason,
+          continueEnabled: resolveStoppedContinueEnabled(interruptedReason),
+        };
+        broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
+      } else {
+        const llmRequestFailure = err instanceof LlmRequestFailedError ? err : undefined;
+        const emittedStreamError = err instanceof LlmStreamErrorEmittedError ? err : undefined;
+        const errText =
+          llmRequestFailure?.detail ??
+          emittedStreamError?.detail ??
+          extractErrorDetails(err).message;
+        if (!llmRequestFailure?.streamErrorEmitted && !emittedStreamError) {
+          try {
+            await dlg.streamError(errText);
+          } catch {
+            // best-effort
+          }
+        }
+        finalDisplayState = {
+          kind: 'stopped',
+          reason:
+            (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
+              ? {
+                  kind: 'system_stop',
+                  detail: errText,
+                  i18nStopReason:
+                    llmRequestFailure?.i18nStopReason ??
+                    emittedStreamError?.i18nStopReason ??
+                    buildHumanSystemStopReasonTextI18n({ detail: errText }),
+                }
+              : {
+                  kind: 'system_stop',
+                  detail: errText,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
+                },
+          continueEnabled: true,
+        };
+        broadcastDisplayStateMarker(dlg.id, {
+          kind: 'interrupted',
+          reason:
+            (llmRequestFailure?.i18nStopReason ?? emittedStreamError?.i18nStopReason) !== undefined
+              ? {
+                  kind: 'system_stop',
+                  detail: errText,
+                  i18nStopReason:
+                    llmRequestFailure?.i18nStopReason ??
+                    emittedStreamError?.i18nStopReason ??
+                    buildHumanSystemStopReasonTextI18n({ detail: errText }),
+                }
+              : {
+                  kind: 'system_stop',
+                  detail: errText,
+                  i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail: errText }),
+                },
+        });
+      }
+      break driveCoreLoop;
     }
-    await setDialogDisplayState(dlg.id, finalDisplayState);
   }
+  if (!finalDisplayState) {
+    try {
+      finalDisplayState = await computeIdleDisplayState(dlg);
+    } catch (stateErr) {
+      log.warn(
+        'kernel-driver failed to compute final display-state projection; falling back to idle',
+        stateErr,
+        {
+          dialogId: dlg.id.valueOf(),
+        },
+      );
+      finalDisplayState = { kind: 'idle_waiting_user' };
+    }
+  }
+
+  if (
+    abortSignal.aborted &&
+    finalDisplayState.kind !== 'stopped' &&
+    finalDisplayState.kind !== 'dead'
+  ) {
+    const stopRequested = getStopRequestedReason(dlg.id);
+    const lateInterruptedReason: DialogInterruptionReason =
+      stopRequested === 'emergency_stop'
+        ? { kind: 'emergency_stop' }
+        : stopRequested === 'user_stop'
+          ? { kind: 'user_stop' }
+          : buildAbortedSystemStopReason();
+    finalDisplayState = {
+      kind: 'stopped',
+      reason: lateInterruptedReason,
+      continueEnabled: resolveStoppedContinueEnabled(lateInterruptedReason),
+    };
+    broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
+  }
+
+  try {
+    const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
+    if (dlg.id.selfId !== dlg.id.rootId && latest?.executionMarker?.kind === 'dead') {
+      finalDisplayState = { kind: 'dead', reason: latest.executionMarker.reason };
+    }
+  } catch (err) {
+    log.warn('kernel-driver failed to re-check displayState before finalizing', err, {
+      dialogId: dlg.id.valueOf(),
+    });
+  }
+
+  if (finalDisplayState.kind === 'stopped') {
+    await setDialogExecutionMarker(dlg.id, {
+      kind: 'interrupted',
+      reason: finalDisplayState.reason,
+    });
+  } else if (finalDisplayState.kind !== 'dead') {
+    await clearDialogInterruptedExecutionMarker(dlg.id);
+  }
+  await setDialogDisplayState(dlg.id, finalDisplayState);
 
   return {
     lastAssistantSayingContent,

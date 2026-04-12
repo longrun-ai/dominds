@@ -1,3 +1,4 @@
+import type { DialogLlmRetryRecoveryAction } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { findDomindsPersistenceFileError } from '../persistence-errors';
 import type { ProviderConfig } from './client';
@@ -12,12 +13,17 @@ export type LlmFailureSummary = {
   code?: string;
 };
 
-export type LlmQuirkFailureHandling =
+// `sourceQuirk` is runtime-facing metadata used to route follow-up bookkeeping back to the quirk
+// that produced the handling. It is not part of user-facing display-state/persistence semantics.
+export type LlmQuirkFailureHandling = { sourceQuirk?: string } & (
   | { kind: 'default' }
   | {
       kind: 'give_up';
       message?: string;
       summaryTextI18n?: Partial<Record<LanguageCode, string>>;
+      // Optional structured follow-up for the driver after this quirk has already decided to stop.
+      // Each quirk still hard-codes its own behavior; omitting this field means "stop here".
+      recoveryAction?: DialogLlmRetryRecoveryAction;
     }
   | {
       kind: 'retry_strategy';
@@ -28,15 +34,24 @@ export type LlmQuirkFailureHandling =
       kind: 'single_retry';
       delayMs: number;
       message?: string;
-    };
+    }
+);
+
+export type LlmQuirkRecoveryUsage = {
+  action: DialogLlmRetryRecoveryAction;
+  sourceQuirk?: string;
+};
 
 export type LlmFailureQuirkHandlerSession = {
+  quirkName: string;
   onFailure: (args: {
     provider: string;
     providerConfig: ProviderConfig;
     failure: LlmFailureSummary;
     error: unknown;
   }) => LlmQuirkFailureHandling;
+  onRequestSucceeded?: () => void;
+  onRecoveryActionUsed?: (usage: LlmQuirkRecoveryUsage) => void;
 };
 
 type LlmFailureQuirkHandlerFactory = (
@@ -319,22 +334,24 @@ function buildXcodeBestEmptyResponseGiveUpText(
 ): {
   providerName: string;
   summaryTextI18n: Partial<Record<LanguageCode, string>>;
+  recoveryAction: DialogLlmRetryRecoveryAction;
 } {
   const providerName = providerConfig.name.trim().length > 0 ? providerConfig.name : provider;
   const summaryTextI18n: Partial<Record<LanguageCode, string>> = {
     zh:
       `${providerName} 在同一对话上下文中连续返回 empty response。` +
       `Dominds 已在 ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} 次 empty response 后停止继续重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
-      '如果直接点继续，大概率仍然无法有真实进展；更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
+      '如果直接点继续，大概率仍然无真实进展；更建议结合真实情况灵活尝试多种新的指令，例如改写问题、补充上下文、换一个切入方式。',
     en:
       `${providerName} returned empty responses repeatedly for the same dialog context. ` +
       `Dominds stopped retrying after ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} empty responses because this usually means the provider-side conversation ` +
       'context is stuck; simply pressing Continue is still unlikely to make real progress, ' +
-      'but trying again with some fresh user instructions may still have a chance to recover.',
+      'so it is better to try different fresh instructions based on the real situation, such as reframing the ask, adding context, or changing the angle.',
   };
   return {
     providerName,
     summaryTextI18n,
+    recoveryAction: { kind: 'diligence_push_once' },
   };
 }
 
@@ -342,13 +359,13 @@ function createXcodeBestFailureQuirkHandlerSession(
   providerConfig: ProviderConfig,
 ): LlmFailureQuirkHandlerSession {
   let consecutiveEmptyResponseCount = 0;
+  let consumedDiligencePushRecoverySinceLastSuccess = false;
 
   return {
+    quirkName: 'xcode.best',
     onFailure(args) {
-      const { providerName, summaryTextI18n } = buildXcodeBestEmptyResponseGiveUpText(
-        providerConfig,
-        args.provider,
-      );
+      const { providerName, summaryTextI18n, recoveryAction } =
+        buildXcodeBestEmptyResponseGiveUpText(providerConfig, args.provider);
       if (args.failure.code === DOMINDS_LLM_EMPTY_RESPONSE_ERROR_CODE) {
         consecutiveEmptyResponseCount += 1;
         if (consecutiveEmptyResponseCount < XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD) {
@@ -362,8 +379,11 @@ function createXcodeBestFailureQuirkHandlerSession(
           kind: 'give_up',
           message:
             `${providerName} returned empty responses repeatedly for the same dialog context; ` +
-            'automatic retries were stopped; simply continuing is still unlikely to make real progress, but retrying with some fresh user instructions may still have a chance to recover.',
+            'automatic retries were stopped; simply continuing is still unlikely to make real progress, so it is better to flexibly try different fresh instructions based on the real situation.',
           summaryTextI18n,
+          recoveryAction: consumedDiligencePushRecoverySinceLastSuccess
+            ? { kind: 'none' }
+            : recoveryAction,
         };
       }
 
@@ -384,6 +404,21 @@ function createXcodeBestFailureQuirkHandlerSession(
       }
 
       return { kind: 'default' };
+    },
+    onRequestSucceeded() {
+      consecutiveEmptyResponseCount = 0;
+      consumedDiligencePushRecoverySinceLastSuccess = false;
+    },
+    onRecoveryActionUsed(usage) {
+      if (usage.action.kind !== 'diligence_push_once') {
+        return;
+      }
+      // This state intentionally spans multiple request invocations in the same driver run, even if
+      // the dialog opens a new course in between; provider/API retry heuristics are treated as
+      // independent from course boundaries. Once the driver accepts and reserves this automatic
+      // recovery path for the current stop decision, consider it consumed immediately.
+      consecutiveEmptyResponseCount = 0;
+      consumedDiligencePushRecoverySinceLastSuccess = true;
     },
   };
 }
@@ -422,14 +457,31 @@ export function createLlmFailureQuirkHandlerSession(
     return undefined;
   }
   return {
+    quirkName: 'aggregate',
     onFailure(args) {
       for (const session of sessions) {
         const handling = session.onFailure(args);
         if (handling.kind !== 'default') {
-          return handling;
+          return {
+            ...handling,
+            sourceQuirk: handling.sourceQuirk ?? session.quirkName,
+          };
         }
       }
       return { kind: 'default' };
+    },
+    onRequestSucceeded() {
+      for (const session of sessions) {
+        session.onRequestSucceeded?.();
+      }
+    },
+    onRecoveryActionUsed(usage) {
+      for (const session of sessions) {
+        if (usage.sourceQuirk !== undefined && usage.sourceQuirk !== session.quirkName) {
+          continue;
+        }
+        session.onRecoveryActionUsed?.(usage);
+      }
     },
   };
 }

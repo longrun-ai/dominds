@@ -19,6 +19,7 @@ const reason = {
   kind: 'llm_retry_stopped',
   error: 'LLM returned empty response',
   display,
+  recoveryAction: { kind: 'none' },
 } as const;
 
 const resumableLatest: DialogLatestFile = {

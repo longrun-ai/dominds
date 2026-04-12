@@ -5,6 +5,7 @@ import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import type {
   DialogDisplayTextI18n,
   DialogLlmRetryExhaustedReason,
+  DialogLlmRetryRecoveryAction,
   DialogRetryDisplay,
 } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
@@ -24,6 +25,7 @@ import { validateArgs } from '../../tool';
 import {
   createLlmFailureQuirkHandlerSession,
   type LlmFailureKind,
+  type LlmFailureQuirkHandlerSession,
   type LlmQuirkFailureHandling,
 } from '../api-quirks';
 import type { ProviderConfig } from '../client';
@@ -777,11 +779,13 @@ function emitLlmRetryEventBestEffort(
 function buildLlmRetryExhaustedReason(args: {
   errorText: string;
   display: DialogRetryDisplay;
+  recoveryAction?: DialogLlmRetryRecoveryAction;
 }): DialogLlmRetryExhaustedReason {
   return {
     kind: 'llm_retry_stopped',
     error: args.errorText,
     display: args.display,
+    recoveryAction: args.recoveryAction ?? { kind: 'none' },
   };
 }
 
@@ -797,9 +801,22 @@ export async function runLlmRequestWithRetry<T>(params: {
   retryBackoffMultiplier: number;
   retryMaxDelayMs: number;
   classifyFailure?: LlmFailureClassifier;
+  // Optional opaque per-drive quirk session supplied by the caller. The driver/runtime may carry
+  // this session across multiple request invocations, including course changes within the same
+  // driver run, but all provider-specific state transitions remain encapsulated inside the quirk
+  // handler itself.
+  quirkFailureHandlerSession?: LlmFailureQuirkHandlerSession;
   canRetry: () => boolean;
   onRetry?: () => Promise<void> | void;
   onGiveUp?: () => Promise<void> | void;
+  // Driver hook for quirk-authored structured recovery actions. Returning 'continue' means the
+  // caller has accepted/reserved that recovery path for this stop decision, so the quirk session
+  // should treat the recovery budget as consumed immediately even before the follow-up request
+  // actually starts. The transient retry-stopped event should stay suppressed for this stop
+  // decision.
+  onRetryStopped?: (
+    reason: DialogLlmRetryExhaustedReason,
+  ) => Promise<'continue' | 'stop'> | 'continue' | 'stop';
   doRequest: () => Promise<T>;
 }): Promise<T> {
   const providerProblemId = `llm/provider_rejected/${params.dlg.id.valueOf()}`;
@@ -821,7 +838,8 @@ export async function runLlmRequestWithRetry<T>(params: {
         handling: LlmQuirkFailureHandling;
       }
     | undefined;
-  const quirkFailureHandler = createLlmFailureQuirkHandlerSession(params.providerConfig);
+  const quirkFailureHandler =
+    params.quirkFailureHandlerSession ?? createLlmFailureQuirkHandlerSession(params.providerConfig);
   let policyRetryCount = 0;
 
   for (let attempt = 0; ; attempt++) {
@@ -843,6 +861,7 @@ export async function runLlmRequestWithRetry<T>(params: {
         });
       }
       const res = await params.doRequest();
+      quirkFailureHandler?.onRequestSucceeded?.();
       decaySmartRateAdaptiveState({
         providerId: params.provider,
         modelId: params.modelId,
@@ -903,6 +922,7 @@ export async function runLlmRequestWithRetry<T>(params: {
         policyRetryCount,
         failureKind: failure.kind,
         quirkHandling: handledFailure.handling.kind,
+        quirkSource: handledFailure.handling.sourceQuirk,
         status: failure.status,
         code: failure.code,
         errorCode,
@@ -978,18 +998,33 @@ export async function runLlmRequestWithRetry<T>(params: {
           const interruptionReason = buildLlmRetryExhaustedReason({
             errorText: detail,
             display,
+            recoveryAction:
+              handledFailure.handling.kind === 'give_up'
+                ? handledFailure.handling.recoveryAction
+                : undefined,
           });
-          // Keep the retry-stop progress event non-resumable by default. Do not flip this to true
-          // just because the eventual finalized stopped state may allow manual Continue: this
-          // event is emitted before the driver has fully unwound, cleared interrupted markers, and
-          // persisted the terminal projection, so enabling Continue here would advertise a resume
-          // action that is not yet safe or actually available.
-          emitLlmRetryEventBestEffort({
-            dlg: params.dlg,
-            phase: 'stopped',
-            continueEnabled: false,
-            reason: interruptionReason,
-          });
+          const retryStoppedDecision = params.onRetryStopped
+            ? await params.onRetryStopped(interruptionReason)
+            : 'stop';
+          if (retryStoppedDecision === 'continue') {
+            quirkFailureHandler?.onRecoveryActionUsed?.({
+              action: interruptionReason.recoveryAction,
+              sourceQuirk: handledFailure.handling.sourceQuirk,
+            });
+          }
+          if (retryStoppedDecision !== 'continue') {
+            // Keep the retry-stop progress event non-resumable by default. Do not flip this to
+            // true just because the eventual finalized stopped state may allow manual Continue:
+            // this event is emitted before the driver has fully unwound, cleared interrupted
+            // markers, and persisted the terminal projection, so enabling Continue here would
+            // advertise a resume action that is not yet safe or actually available.
+            emitLlmRetryEventBestEffort({
+              dlg: params.dlg,
+              phase: 'stopped',
+              continueEnabled: false,
+              reason: interruptionReason,
+            });
+          }
           log.warn('LLM retriable failure stopped retry flow', undefined, {
             provider: params.provider,
             dialogId: params.dlg.id.valueOf(),
@@ -1006,6 +1041,8 @@ export async function runLlmRequestWithRetry<T>(params: {
             retryMaxDelayMs,
             stopRetryByQuirk,
             errorText: detail,
+            retryStoppedDecision,
+            quirkSource: handledFailure.handling.sourceQuirk,
             summaryTextI18nOverride,
           });
           const interruptionDetail = formatLlmRetryExhaustedInterruptionDetail({

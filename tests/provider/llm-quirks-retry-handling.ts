@@ -170,15 +170,18 @@ async function verifyQuirkSessionStateMachine(): Promise<void> {
     }).kind,
     'single_retry',
   );
-  assert.equal(
-    session.onFailure({
-      provider: 'xcode1',
-      providerConfig,
-      failure: emptyFailure,
-      error: new Error('empty response'),
-    }).kind,
-    'give_up',
-  );
+  const giveUpHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: emptyFailure,
+    error: new Error('empty response'),
+  });
+  assert.equal(giveUpHandling.kind, 'give_up');
+  if (giveUpHandling.kind !== 'give_up') {
+    throw new Error(`Expected give_up, got ${giveUpHandling.kind}`);
+  }
+  assert.equal(giveUpHandling.recoveryAction?.kind, 'diligence_push_once');
+  assert.equal(giveUpHandling.sourceQuirk, 'xcode.best');
 
   assert.equal(
     session.onFailure({
@@ -327,15 +330,14 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
         'Expected LlmRetryStoppedError to be thrown',
       );
       assert.equal(error.reason.kind, 'llm_retry_stopped');
+      assert.equal(error.reason.recoveryAction.kind, 'diligence_push_once');
       assert.equal(
-        error.reason.display.summaryTextI18n.zh?.includes(
-          '更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
-        ),
+        error.reason.display.summaryTextI18n.zh?.includes('更建议结合真实情况灵活尝试多种新的指令'),
         true,
       );
       assert.equal(error.reason.display.titleTextI18n.zh, '重试已停止');
       assert.match(error.reason.error, /LLM returned empty response/u);
-      assert.match(error.message, /更建议先输入一些新的指令再尝试/u);
+      assert.match(error.message, /灵活尝试多种新的指令/u);
       assert.match(error.message, /最后错误：LLM returned empty response/u);
       assert.doesNotMatch(error.message, /若想增加重试次数/u);
       return true;
@@ -364,12 +366,248 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
   }
   assert.equal(stopped.continueEnabled, false);
   assert.equal(stopped.reason.kind, 'llm_retry_stopped');
+  assert.equal(stopped.reason.recoveryAction.kind, 'diligence_push_once');
   assert.equal(stopped.reason.display.titleTextI18n.zh, '重试已停止');
   assert.equal(
-    stopped.reason.display.summaryTextI18n.zh?.includes(
-      '更建议先输入一些新的指令再尝试，或许还有恢复的机会。',
-    ),
+    stopped.reason.display.summaryTextI18n.zh?.includes('更建议结合真实情况灵活尝试多种新的指令'),
     true,
+  );
+}
+
+async function verifyRetryStoppedRecoveryHookSuppressesStoppedEvent(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('zh');
+  const retryEventsPromise = readRetryEvents(dialog.id, 8);
+  let attempts = 0;
+  let recoveryHookCalls = 0;
+
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'xcode1',
+        modelId: 'test',
+        providerConfig,
+        maxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        canRetry: () => true,
+        onRetryStopped: async (reason) => {
+          recoveryHookCalls += 1;
+          assert.equal(reason.recoveryAction.kind, 'diligence_push_once');
+          return 'continue';
+        },
+        doRequest: async () => {
+          attempts += 1;
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message: 'LLM returned empty response (provider=xcode1, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => error instanceof LlmRetryStoppedError,
+  );
+
+  assert.equal(attempts, 5);
+  assert.equal(recoveryHookCalls, 1);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'waiting', 'running', 'waiting', 'running', 'waiting', 'running'],
+  );
+}
+
+async function verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('zh');
+  const sharedQuirkSession = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(sharedQuirkSession, 'Expected shared xcode.best quirk session');
+  let recoveryHookCalls = 0;
+  const decideRecovery = async (
+    reason: Parameters<
+      NonNullable<Parameters<typeof runLlmRequestWithRetry<string>>[0]['onRetryStopped']>
+    >[0],
+  ): Promise<'continue' | 'stop'> => {
+    recoveryHookCalls += 1;
+    return reason.recoveryAction.kind === 'diligence_push_once' ? 'continue' : 'stop';
+  };
+
+  const firstRetryEventsPromise = readRetryEvents(dialog.id, 8);
+  let firstAttempts = 0;
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'xcode1',
+        modelId: 'test',
+        providerConfig,
+        maxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        quirkFailureHandlerSession: sharedQuirkSession ?? undefined,
+        canRetry: () => true,
+        onRetryStopped: decideRecovery,
+        doRequest: async () => {
+          firstAttempts += 1;
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message: 'LLM returned empty response (provider=xcode1, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => error instanceof LlmRetryStoppedError,
+  );
+  assert.equal(firstAttempts, 5);
+  assert.equal(recoveryHookCalls, 1);
+  const firstRetryEvents = await firstRetryEventsPromise;
+  assert.deepEqual(
+    firstRetryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'waiting', 'running', 'waiting', 'running', 'waiting', 'running'],
+  );
+
+  const secondRetryEventsPromise = readRetryEvents(dialog.id, 9);
+  let secondAttempts = 0;
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'xcode1',
+        modelId: 'test',
+        providerConfig,
+        maxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        quirkFailureHandlerSession: sharedQuirkSession ?? undefined,
+        canRetry: () => true,
+        onRetryStopped: decideRecovery,
+        doRequest: async () => {
+          secondAttempts += 1;
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message: 'LLM returned empty response (provider=xcode1, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmRetryStoppedError);
+      if (!(error instanceof LlmRetryStoppedError)) {
+        return false;
+      }
+      assert.equal(error.reason.recoveryAction.kind, 'none');
+      return true;
+    },
+  );
+  assert.equal(secondAttempts, 5);
+  assert.equal(recoveryHookCalls, 2);
+  const secondRetryEvents = await secondRetryEventsPromise;
+  assert.deepEqual(
+    secondRetryEvents.map((event) => event.phase),
+    [
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'stopped',
+    ],
+  );
+}
+
+async function verifySharedQuirkSessionRecoveryResetsAfterSuccess(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('zh');
+  const sharedQuirkSession = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(sharedQuirkSession, 'Expected shared xcode.best quirk session');
+
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'xcode1',
+        modelId: 'test',
+        providerConfig,
+        maxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        quirkFailureHandlerSession: sharedQuirkSession ?? undefined,
+        canRetry: () => true,
+        onRetryStopped: async (reason) =>
+          reason.recoveryAction.kind === 'diligence_push_once' ? 'continue' : 'stop',
+        doRequest: async () => {
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message: 'LLM returned empty response (provider=xcode1, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => error instanceof LlmRetryStoppedError,
+  );
+
+  const success = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    maxRetries: 0,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    quirkFailureHandlerSession: sharedQuirkSession ?? undefined,
+    canRetry: () => true,
+    doRequest: async () => 'ok',
+  });
+  assert.equal(success, 'ok');
+
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'xcode1',
+        modelId: 'test',
+        providerConfig,
+        maxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        quirkFailureHandlerSession: sharedQuirkSession ?? undefined,
+        canRetry: () => true,
+        onRetryStopped: async (reason) => {
+          assert.equal(reason.recoveryAction.kind, 'diligence_push_once');
+          return 'stop';
+        },
+        doRequest: async () => {
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message: 'LLM returned empty response (provider=xcode1, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmRetryStoppedError);
+      if (!(error instanceof LlmRetryStoppedError)) {
+        return false;
+      }
+      assert.equal(error.reason.recoveryAction.kind, 'diligence_push_once');
+      return true;
+    },
   );
 }
 
@@ -683,6 +921,9 @@ async function verifyXcodeBestUnexpectedEofUsesConservativeRetry(): Promise<void
 async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
   await verifySingleRetryBypassesDriverRetryLimit();
+  await verifyRetryStoppedRecoveryHookSuppressesStoppedEvent();
+  await verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery();
+  await verifySharedQuirkSessionRecoveryResetsAfterSuccess();
   await verifyResolvedRetryLifecycle();
   await verifyPolicyRetryLifecycleDisplay();
   verifySmartRateClassification();
