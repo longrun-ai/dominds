@@ -38,6 +38,15 @@ async function driveQueuedDialogsOnce(): Promise<void> {
       }
 
       if (hasActiveRun(rootDialog.id)) {
+        log.debug(
+          'Backend driver deferred queued root drive because dialog already has an active run',
+          undefined,
+          {
+            dialogId: rootDialog.id.valueOf(),
+            rootId: rootDialog.id.rootId,
+          },
+        );
+        globalDialogRegistry.noteActiveRunBlockedQueuedDrive(rootDialog.id.rootId);
         continue;
       }
 

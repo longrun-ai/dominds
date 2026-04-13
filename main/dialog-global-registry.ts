@@ -11,11 +11,12 @@ import { DialogPersistence } from './persistence';
 type RegistryEntry = {
   rootDialog: RootDialog;
   needsDrive: boolean;
+  activeRunClearedWakePending: boolean;
 };
 
 export type DriveTriggerEvent = Readonly<{
   type: 'drive_trigger_evt';
-  action: 'mark_needs_drive' | 'mark_not_needing_drive';
+  action: 'mark_needs_drive' | 'mark_not_needing_drive' | 'active_run_cleared';
   rootId: string;
   entryFound: boolean;
   previousNeedsDrive: boolean | null;
@@ -59,7 +60,11 @@ class GlobalDialogRegistry {
     if (existing) {
       return;
     }
-    this.entries.set(rootDialog.id.rootId, { rootDialog, needsDrive: false });
+    this.entries.set(rootDialog.id.rootId, {
+      rootDialog,
+      needsDrive: false,
+      activeRunClearedWakePending: false,
+    });
     void (async () => {
       try {
         const needsDrive = await DialogPersistence.getNeedsDrive(rootDialog.id);
@@ -122,6 +127,8 @@ class GlobalDialogRegistry {
     const previousNeedsDrive = entry ? entry.needsDrive : null;
     if (entry) {
       entry.needsDrive = true;
+      // A fresh queueing trigger supersedes any earlier "wake me once active run clears" debt.
+      entry.activeRunClearedWakePending = false;
     }
     this.publishDriveTrigger({
       action: 'mark_needs_drive',
@@ -142,6 +149,7 @@ class GlobalDialogRegistry {
     const previousNeedsDrive = entry ? entry.needsDrive : null;
     if (entry) {
       entry.needsDrive = false;
+      entry.activeRunClearedWakePending = false;
     }
     this.publishDriveTrigger({
       action: 'mark_not_needing_drive',
@@ -151,6 +159,47 @@ class GlobalDialogRegistry {
       nextNeedsDrive: false,
       meta: triggerMeta,
     });
+  }
+
+  notifyActiveRunCleared(rootId: string, meta?: DriveTriggerMeta): void {
+    const triggerMeta: DriveTriggerMeta = meta ?? {
+      source: 'unknown',
+      reason: 'unspecified',
+    };
+    const entry = this.entries.get(rootId);
+    if (!entry) {
+      return;
+    }
+    if (!entry.activeRunClearedWakePending || !entry.needsDrive) {
+      entry.activeRunClearedWakePending = false;
+      return;
+    }
+    const currentNeedsDrive = entry ? entry.needsDrive : null;
+    entry.activeRunClearedWakePending = false;
+    this.publishDriveTrigger({
+      action: 'active_run_cleared',
+      rootId,
+      entryFound: true,
+      previousNeedsDrive: currentNeedsDrive,
+      nextNeedsDrive: entry.needsDrive,
+      meta: triggerMeta,
+    });
+  }
+
+  noteActiveRunBlockedQueuedDrive(rootId: string): void {
+    const entry = this.entries.get(rootId);
+    if (!entry || !entry.needsDrive) {
+      return;
+    }
+    entry.activeRunClearedWakePending = true;
+  }
+
+  hasPendingActiveRunClearedWake(rootId: string): boolean {
+    return this.entries.get(rootId)?.activeRunClearedWakePending === true;
+  }
+
+  isMarkedNeedingDrive(rootId: string): boolean {
+    return this.entries.get(rootId)?.needsDrive === true;
   }
 
   getDialogsNeedingDrive(): RootDialog[] {

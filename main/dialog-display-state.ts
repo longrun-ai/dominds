@@ -24,6 +24,7 @@ import type { DialogExecutionMarker, DialogLatestFile } from '@longrun-ai/kernel
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
+import { globalDialogRegistry } from './dialog-global-registry';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
@@ -196,13 +197,24 @@ export function createActiveRun(dialogId: DialogID): AbortSignal {
   return run.abortController.signal;
 }
 
-export function clearActiveRun(dialogId: DialogID): void {
+export function clearActiveRun(
+  dialogId: DialogID,
+  options?: Readonly<{
+    notifyBackendLoop?: boolean;
+  }>,
+): void {
   const deleted = activeRunsByDialogKey.delete(dialogId.key());
   if (!deleted) {
     clearQuarantiningRootDialogIfIdle(dialogId.rootId);
     return;
   }
   clearQuarantiningRootDialogIfIdle(dialogId.rootId);
+  if (dialogId.selfId === dialogId.rootId && options?.notifyBackendLoop !== false) {
+    globalDialogRegistry.notifyActiveRunCleared(dialogId.rootId, {
+      source: 'dialog_display_state_active_run_clear',
+      reason: 'root_active_run_cleared',
+    });
+  }
   syncRunControlCountsAfterActiveRunChange('clear_active_run', dialogId);
 }
 
