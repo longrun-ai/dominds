@@ -45,6 +45,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
+import type { ToolResultImageIngest } from './llm/gen';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
@@ -1632,6 +1633,10 @@ export abstract class Dialog {
     await this.dlgStore.nativeToolCall(this, payload);
   }
 
+  public async toolResultImageIngest(payload: ToolResultImageIngest): Promise<void> {
+    await this.dlgStore.toolResultImageIngest(this, payload);
+  }
+
   // Tellask-special call lifecycle events
   public async callingStart(payload: {
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -2357,6 +2362,11 @@ export abstract class DialogStore {
   ): Promise<void> {}
 
   public async nativeToolCall(_dialog: Dialog, _payload: NativeToolCallPayload): Promise<void> {}
+
+  public async toolResultImageIngest(
+    _dialog: Dialog,
+    _payload: ToolResultImageIngest,
+  ): Promise<void> {}
 
   /**
    * Load current course number from persisted metadata

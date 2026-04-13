@@ -195,6 +195,11 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
   private nativeToolSectionByIdentity = new Map<string, HTMLElement>();
   private nativeToolSectionBySeq = new Map<number, HTMLElement>();
+  private toolResultImageStatusByKey = new Map<
+    string,
+    { message: string; disposition: string; genseq: number }
+  >();
+  private toolResultImageStatusElByKey = new Map<string, HTMLElement>();
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
@@ -1053,6 +1058,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionBySeq.clear();
     this.nativeToolSectionByIdentity.clear();
     this.nativeToolSectionBySeq.clear();
+    this.toolResultImageStatusByKey.clear();
+    this.toolResultImageStatusElByKey.clear();
     this.queuedUserBubbleByMsgId.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
@@ -1082,6 +1089,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionBySeq.clear();
     this.nativeToolSectionByIdentity.clear();
     this.nativeToolSectionBySeq.clear();
+    this.toolResultImageStatusByKey.clear();
+    this.toolResultImageStatusElByKey.clear();
     this.queuedUserBubbleByMsgId.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
@@ -1335,6 +1344,9 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
       case 'native_tool_call_evt':
         this.handleNativeToolCall(event);
+        break;
+      case 'tool_result_image_ingest_evt':
+        this.handleToolResultImageIngest(event);
         break;
 
       // Function results
@@ -1794,6 +1806,16 @@ export class DomindsDialogContainer extends HTMLElement {
         pending.section.getAttribute('data-genseq') === String(seq)
       ) {
         this.pendingCallTimingById.delete(callId);
+      }
+    }
+    for (const key of Array.from(this.toolResultImageStatusByKey.keys())) {
+      if (key.startsWith(`${String(seq)}::`)) {
+        this.toolResultImageStatusByKey.delete(key);
+      }
+    }
+    for (const [key, statusEl] of this.toolResultImageStatusElByKey.entries()) {
+      if (key.startsWith(`${String(seq)}::`) || !statusEl.isConnected) {
+        this.toolResultImageStatusElByKey.delete(key);
       }
     }
     if (this.pendingCallTimingById.size === 0) {
@@ -2745,6 +2767,45 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
+  private makeToolResultImageStatusKey(
+    genseq: number,
+    toolCallId: string,
+    relPath: string,
+  ): string {
+    return `${String(genseq)}::${toolCallId}::${relPath}`;
+  }
+
+  private updateToolResultImageStatusDisplay(args: {
+    genseq: number;
+    toolCallId: string;
+    relPath: string;
+    message: string;
+    disposition: string;
+  }): void {
+    const key = this.makeToolResultImageStatusKey(args.genseq, args.toolCallId, args.relPath);
+    this.toolResultImageStatusByKey.set(key, {
+      message: args.message,
+      disposition: args.disposition,
+      genseq: args.genseq,
+    });
+    const existing = this.toolResultImageStatusElByKey.get(key);
+    if (!existing) return;
+    existing.textContent = args.message;
+    existing.setAttribute('data-image-ingest-disposition', args.disposition);
+  }
+
+  private handleToolResultImageIngest(
+    event: Extract<TypedDialogEvent, { type: 'tool_result_image_ingest_evt' }>,
+  ): void {
+    this.updateToolResultImageStatusDisplay({
+      genseq: event.genseq,
+      toolCallId: event.toolCallId,
+      relPath: event.artifact.relPath,
+      message: event.message,
+      disposition: event.disposition,
+    });
+  }
+
   // === FUNCTION RESULTS ===
   private handleFuncResult(event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>): void {
     // Try to find the func-call section this result belongs to by funcId
@@ -2759,6 +2820,11 @@ export class DomindsDialogContainer extends HTMLElement {
         if (resultEl) {
           const items = event.contentItems;
           if (Array.isArray(items) && items.length > 0) {
+            for (const key of Array.from(this.toolResultImageStatusElByKey.keys())) {
+              if (key.startsWith(`${String(event.genseq)}::${event.id}::`)) {
+                this.toolResultImageStatusElByKey.delete(key);
+              }
+            }
             resultEl.innerHTML = '';
             for (const item of items) {
               if (item.type === 'input_text') {
@@ -2776,19 +2842,43 @@ export class DomindsDialogContainer extends HTMLElement {
               }
 
               if (item.type === 'input_image') {
+                const figure = document.createElement('figure');
+                figure.className = 'tool-result-image';
+                figure.setAttribute('data-tool-call-id', event.id);
+                figure.setAttribute('data-artifact-rel-path', item.artifact.relPath);
+
                 const img = document.createElement('img');
                 img.alt = 'tool image';
                 img.style.maxWidth = '100%';
                 img.style.height = 'auto';
                 img.style.display = 'block';
 
+                const ingestStatus = document.createElement('figcaption');
+                ingestStatus.className = 'tool-result-image-ingest-status';
+                const imageStatusKey = this.makeToolResultImageStatusKey(
+                  event.genseq,
+                  event.id,
+                  item.artifact.relPath,
+                );
+                this.toolResultImageStatusElByKey.set(imageStatusKey, ingestStatus);
+                const existingStatus = this.toolResultImageStatusByKey.get(imageStatusKey);
+                if (existingStatus) {
+                  ingestStatus.textContent = existingStatus.message;
+                  ingestStatus.setAttribute(
+                    'data-image-ingest-disposition',
+                    existingStatus.disposition,
+                  );
+                }
+
                 const placeholder = document.createElement('div');
                 placeholder.textContent = `Loading image (${item.mimeType}, ${item.byteLength} bytes)…`;
                 placeholder.style.opacity = '0.8';
                 placeholder.style.fontSize = '12px';
                 placeholder.style.margin = '6px 0';
-                resultEl.appendChild(placeholder);
-                resultEl.appendChild(img);
+                figure.appendChild(placeholder);
+                figure.appendChild(img);
+                figure.appendChild(ingestStatus);
+                resultEl.appendChild(figure);
 
                 const api = getApiClient();
                 const params = new URLSearchParams();
@@ -5532,6 +5622,27 @@ export class DomindsDialogContainer extends HTMLElement {
       .func-call-result.failed {
         border-color: var(--color-danger, #ef4444);
         color: var(--color-danger, #ef4444);
+      }
+
+      .tool-result-image {
+        margin: 8px 0;
+      }
+
+      .tool-result-image > img {
+        border-radius: 8px;
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        background: var(--color-bg-tertiary, #f8fafc);
+      }
+
+      .tool-result-image-ingest-status {
+        margin-top: 6px;
+        font-size: var(--dominds-font-size-xs, 11px);
+        line-height: 1.45;
+        color: var(--dominds-fg-muted, var(--color-fg-tertiary, #64748b));
+      }
+
+      .tool-result-image-ingest-status[data-image-ingest-disposition^='filtered_'] {
+        color: var(--color-warning-strong, #b45309);
       }
 
       .func-call-section.failed {

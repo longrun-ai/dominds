@@ -1,6 +1,10 @@
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import type { DialogDisplayTextI18n } from '@longrun-ai/kernel/types/display-state';
-import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
+import type {
+  ReasoningPayload,
+  ToolResultImageArtifact,
+  ToolResultImageDisposition,
+} from '@longrun-ai/kernel/types/storage';
 import { Team } from '../team';
 import { FuncTool } from '../tool';
 import { ChatMessage, ProviderConfig } from './client';
@@ -25,7 +29,8 @@ export class LlmStreamErrorEmittedError extends Error {
 export type LlmBatchOutput =
   | { kind: 'message'; message: ChatMessage }
   | { kind: 'web_search_call'; call: LlmWebSearchCall }
-  | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall };
+  | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall }
+  | { kind: 'tool_result_image_ingest'; ingest: ToolResultImageIngest };
 
 export interface LlmBatchResult {
   messages: ChatMessage[];
@@ -52,8 +57,21 @@ export type LlmFailureClassifier = (error: unknown) => LlmFailureDisposition | u
 export interface LlmRequestContext {
   dialogSelfId: string;
   dialogRootId: string;
+  providerKey?: string;
+  modelKey?: string;
   promptCacheKey?: string;
 }
+
+export type ToolResultImageIngest = {
+  toolCallId: string;
+  toolName: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
+};
 
 // Provider-isolated wrapper event types.
 // Keep provider-native semantics inside each wrapper and only converge at the driver boundary via
@@ -142,6 +160,7 @@ export interface LlmStreamReceiver {
   funcCall: (callId: string, name: string, args: string) => Promise<void>;
   webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
   nativeToolCall?: (call: OpenAiResponsesNativeToolCall) => Promise<void>;
+  toolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;
 
   // Optional hook for generators to surface protocol/streaming anomalies (e.g. overlap) via the runtime.
   // Used only for debugging; generators should still attempt best-effort recovery.

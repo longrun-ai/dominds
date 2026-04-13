@@ -41,13 +41,25 @@ export type FuncResultContentItem =
       type: 'input_image';
       mimeType: string;
       byteLength: number;
-      artifact: {
-        rootId: string;
-        selfId: string;
-        status: 'running' | 'completed' | 'archived';
-        relPath: string;
-      };
+      artifact: ToolResultImageArtifact;
     };
+
+export type ToolResultImageArtifact = {
+  rootId: string;
+  selfId: string;
+  status: 'running' | 'completed' | 'archived';
+  relPath: string;
+};
+
+export type ToolResultImageDisposition =
+  | 'fed_native'
+  | 'fed_provider_transformed'
+  | 'filtered_provider_unsupported'
+  | 'filtered_model_unsupported'
+  | 'filtered_mime_unsupported'
+  | 'filtered_size_limit'
+  | 'filtered_read_failed'
+  | 'filtered_missing';
 
 export interface RootDialogMetadataFile {
   id: string;
@@ -550,6 +562,25 @@ export interface FuncResultRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
+export interface ToolResultImageIngestRecord extends RootGenerationRef {
+  // Attempt-scoped UI diagnostic for how the current generation projected a tool-result image into
+  // the provider request. These records are safe to append before request success is known because
+  // failed/retried generation attempts are truncated by course-file rollback, and live UIs are
+  // expected to clear the corresponding state on genseq_discard_evt.
+  ts: string;
+  type: 'tool_result_image_ingest_record';
+  genseq: number;
+  toolCallId: string;
+  toolName: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
+  sourceTag?: 'priming_script';
+}
+
 export interface QuestForSupRecord extends RootGenerationRef {
   ts: string;
   type: 'quest_for_sup_record';
@@ -845,6 +876,7 @@ export type PersistedDialogRecord =
   | NativeToolCallRecord
   | HumanTextRecord
   | FuncResultRecord
+  | ToolResultImageIngestRecord
   | QuestForSupRecord
   | TellaskReplyResolutionRecord
   | TellaskCallAnchorRecord

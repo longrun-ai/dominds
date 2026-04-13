@@ -23,6 +23,8 @@ import type {
   CallingGenerationSeqNumber,
   DialogCourseNumber,
   FuncResultContentItem,
+  ToolResultImageArtifact,
+  ToolResultImageDisposition,
 } from './storage';
 
 export interface DialogDisplayStateEvent {
@@ -192,7 +194,19 @@ export interface FunctionResultEvent {
   content: string;
   contentItems?: FuncResultContentItem[];
   course: number;
-  genseq?: number;
+  genseq: number;
+}
+
+export interface ToolResultImageIngestEvent extends LlmGenDlgEvent {
+  type: 'tool_result_image_ingest_evt';
+  toolCallId: string;
+  toolName: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
 }
 
 export type WebSearchCallSource = 'codex' | 'openai_responses';
@@ -556,6 +570,7 @@ export type DialogEvent =
   | UiOnlyMarkdownEvent
   | FuncCallStartEvent
   | FunctionResultEvent
+  | ToolResultImageIngestEvent
   | WebSearchCallEvent
   | NativeToolCallEvent
   | GenerationDiscardEvent

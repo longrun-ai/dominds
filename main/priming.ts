@@ -23,6 +23,7 @@ import type {
   TellaskReplyDirective,
   TellaskReplyResolutionRecord,
   TellaskResultRecord,
+  ToolResultImageIngestRecord,
   UiOnlyMarkdownRecord,
   WebSearchCallActionRecord,
   WebSearchCallRecord,
@@ -345,6 +346,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'func_call_record' ||
     raw === 'tellask_call_record' ||
     raw === 'web_search_call_record' ||
+    raw === 'tool_result_image_ingest_record' ||
     raw === 'human_text_record' ||
     raw === 'func_result_record' ||
     raw === 'tellask_result_record' ||
@@ -376,6 +378,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
       return 'response';
     case 'func_call_record':
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'native_tool_call_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
@@ -981,6 +984,62 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (status !== undefined) record.status = status;
       if (title !== undefined) record.title = title;
       if (summary !== undefined) record.summary = summary;
+      if (detail !== undefined) record.detail = detail;
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
+    case 'tool_result_image_ingest_record': {
+      const disposition = raw['disposition'];
+      if (
+        disposition !== 'fed_native' &&
+        disposition !== 'fed_provider_transformed' &&
+        disposition !== 'filtered_provider_unsupported' &&
+        disposition !== 'filtered_model_unsupported' &&
+        disposition !== 'filtered_mime_unsupported' &&
+        disposition !== 'filtered_size_limit' &&
+        disposition !== 'filtered_read_failed' &&
+        disposition !== 'filtered_missing'
+      ) {
+        throw new Error(`${context}.disposition is invalid`);
+      }
+      const artifactRaw = raw['artifact'];
+      if (!isRecord(artifactRaw)) {
+        throw new Error(`${context}.artifact must be an object`);
+      }
+      const rootId = artifactRaw['rootId'];
+      const selfId = artifactRaw['selfId'];
+      const status = artifactRaw['status'];
+      const relPath = artifactRaw['relPath'];
+      if (
+        typeof rootId !== 'string' ||
+        typeof selfId !== 'string' ||
+        typeof relPath !== 'string' ||
+        (status !== 'running' && status !== 'completed' && status !== 'archived')
+      ) {
+        throw new Error(`${context}.artifact has invalid fields`);
+      }
+      const detail = raw['detail'];
+      if (detail !== undefined && typeof detail !== 'string') {
+        throw new Error(`${context}.detail must be a string when provided`);
+      }
+      const record: ToolResultImageIngestRecord = {
+        ts: '',
+        type,
+        genseq: expectIntegerField(raw, 'genseq', context),
+        toolCallId: expectStringField(raw, 'toolCallId', context),
+        toolName: expectStringField(raw, 'toolName', context),
+        artifact: {
+          rootId,
+          selfId,
+          status,
+          relPath,
+        },
+        provider: expectStringField(raw, 'provider', context),
+        model: expectStringField(raw, 'model', context),
+        disposition,
+        message: expectStringField(raw, 'message', context, true),
+      };
       if (detail !== undefined) record.detail = detail;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
@@ -1947,6 +2006,7 @@ function remapRecordGenseq(
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -2013,6 +2073,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -2040,6 +2101,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
@@ -2183,6 +2245,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         ...(record.calleeGenseq !== undefined ? { calleeGenseq: record.calleeGenseq } : {}),
       };
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'native_tool_call_record':
     case 'quest_for_sup_record':
     case 'tellask_call_anchor_record':
@@ -2338,6 +2401,19 @@ function formatScriptMarkdown(args: {
         if (record.status !== undefined) blockMeta['status'] = record.status;
         if (record.action !== undefined) blockMeta['action'] = record.action;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        break;
+      }
+      case 'tool_result_image_ingest_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockMeta['toolCallId'] = record.toolCallId;
+        blockMeta['toolName'] = record.toolName;
+        blockMeta['artifact'] = record.artifact;
+        blockMeta['provider'] = record.provider;
+        blockMeta['model'] = record.model;
+        blockMeta['disposition'] = record.disposition;
+        if (record.detail !== undefined) blockMeta['detail'] = record.detail;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        blockBody = record.message;
         break;
       }
       case 'human_text_record': {
@@ -2505,6 +2581,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'func_call_record':
     case 'tellask_call_record':
     case 'web_search_call_record':
+    case 'tool_result_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':

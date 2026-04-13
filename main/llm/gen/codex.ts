@@ -36,8 +36,9 @@ import type {
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
+  ToolResultImageIngest,
 } from '../gen';
-import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { bytesToDataUrl, isVisionImageMimeType } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
@@ -48,6 +49,14 @@ import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
 } from './tool-output-limit';
+import {
+  buildToolResultImageBudgetKeyForMsg,
+  buildToolResultImageBudgetLimitDetail,
+  buildToolResultImageIngest,
+  CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  readToolResultImageBytesSafe,
+  selectLatestToolResultImagesWithinBudget,
+} from './tool-result-image-ingest';
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
@@ -403,6 +412,9 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
 async function buildCodexFunctionCallOutput(
   msg: FuncResultMsg,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<string | ChatGptFunctionCallOutputContentItem[]> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
@@ -418,22 +430,97 @@ async function buildCodexFunctionCallOutput(
 
     if (item.type === 'input_image') {
       if (!isVisionImageMimeType(item.mimeType)) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'Codex path',
+            }),
+          );
+        }
         out.push({
           type: 'input_text',
           text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
         });
         continue;
       }
-      const bytes = await readDialogArtifactBytes({
-        rootId: item.artifact.rootId,
-        selfId: item.artifact.selfId,
-        status: item.artifact.status,
-        relPath: item.artifact.relPath,
-      });
-      if (!bytes) {
+      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(msg, item.artifact))) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildToolResultImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'Codex path',
+            }),
+          );
+        }
+        out.push({
+          type: 'input_text',
+          text: `[image omitted: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'Codex path',
+            }),
+          );
+        }
         out.push({ type: 'input_text', text: `[image missing: ${item.artifact.relPath}]` });
         continue;
       }
+      if (bytesResult.kind === 'read_failed') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'Codex path',
+            }),
+          );
+        }
+        out.push({ type: 'input_text', text: `[image unreadable: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (onToolResultImageIngest) {
+        await onToolResultImageIngest(
+          buildToolResultImageIngest({
+            requestContext,
+            toolCallId: msg.id,
+            toolName: msg.name,
+            artifact: item.artifact,
+            disposition: 'fed_native',
+            providerPathLabel: 'Codex path',
+          }),
+        );
+      }
+      const bytes = bytesResult.bytes;
       out.push({
         type: 'input_image',
         image_url: bytesToDataUrl({ mimeType: item.mimeType, bytes }),
@@ -452,7 +539,9 @@ async function buildCodexFunctionCallOutput(
 
 async function buildCodexInput(
   context: ChatMessage[],
+  requestContext: LlmRequestContext,
   providerConfig?: ProviderConfig,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<ChatGptResponseItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
@@ -468,6 +557,10 @@ async function buildCodexInput(
   }
   const input: ChatGptResponseItem[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
+  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+    normalized,
+    CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
 
   for (const msg of normalized) {
     if (msg.type === 'func_call_msg') {
@@ -484,7 +577,13 @@ async function buildCodexInput(
       input.push({
         type: 'function_call_output',
         call_id: msg.id,
-        output: await buildCodexFunctionCallOutput(msg, toolResultMaxChars),
+        output: await buildCodexFunctionCallOutput(
+          msg,
+          toolResultMaxChars,
+          requestContext,
+          allowedImageKeys,
+          onToolResultImageIngest,
+        ),
       });
       continue;
     }
@@ -505,12 +604,18 @@ async function buildCodexRequest(
   funcTools: FuncTool[],
   requestContext: LlmRequestContext,
   context: ChatMessage[],
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<ChatGptResponsesRequest> {
   if (!agent.model) {
     throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
   }
 
-  const input = await buildCodexInput(context, providerConfig);
+  const input = await buildCodexInput(
+    context,
+    requestContext,
+    providerConfig,
+    onToolResultImageIngest,
+  );
 
   // Provider isolation rule: request construction must only read Codex-native params here.
   const codexParams = agent.model_params?.codex;
@@ -591,6 +696,7 @@ export class CodexGen implements LlmGenerator {
       funcTools,
       requestContext,
       context,
+      receiver.toolResultImageIngest,
     );
 
     let sayingStarted = false;

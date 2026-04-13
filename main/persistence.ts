@@ -29,6 +29,7 @@ import type {
   ThinkingChunkEvent,
   ThinkingFinishEvent,
   ThinkingStartEvent,
+  ToolResultImageIngestEvent,
   UiOnlyMarkdownEvent,
   WebSearchCallAction,
   WebSearchCallEvent,
@@ -78,6 +79,7 @@ import type {
   TellaskReplyDirective,
   TellaskReplyResolutionRecord,
   TellaskResultRecord,
+  ToolResultImageIngestRecord,
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -101,6 +103,7 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
+import type { ToolResultImageIngest } from './llm/gen';
 import { log } from './log';
 import {
   DomindsPersistenceFileError,
@@ -587,6 +590,25 @@ function buildFuncResultRecord(funcResult: FuncResultMsg, genseq: number): FuncR
     content: funcResult.content,
     contentItems: funcResult.contentItems,
     genseq,
+  };
+}
+
+function buildToolResultImageIngestRecord(
+  ingest: ToolResultImageIngest,
+  genseq: number,
+): ToolResultImageIngestRecord {
+  return {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'tool_result_image_ingest_record',
+    genseq,
+    toolCallId: ingest.toolCallId,
+    toolName: ingest.toolName,
+    artifact: ingest.artifact,
+    provider: ingest.provider,
+    model: ingest.model,
+    disposition: ingest.disposition,
+    message: ingest.message,
+    detail: ingest.detail,
   };
 }
 
@@ -1683,6 +1705,7 @@ export class DiskFileDialogStore extends DialogStore {
         content: funcResult.content,
         contentItems: funcResult.contentItems,
         course,
+        genseq,
       };
       postDialogEvent(dialog, funcResultEvt);
     }
@@ -2225,6 +2248,87 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
+  public async toolResultImageIngest(
+    dialog: Dialog,
+    payload: ToolResultImageIngest,
+  ): Promise<void> {
+    // This is an attempt-scoped projection diagnostic, not a durable semantic fact about the
+    // transcript. We append it immediately so live UIs can explain the current request shape, and
+    // rely on generation rollback + genseq_discard_evt to erase failed attempts.
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const toolCallId = payload.toolCallId.trim();
+    const toolName = payload.toolName.trim();
+    const model = payload.model.trim();
+    const provider = payload.provider.trim();
+    const relPath = payload.artifact.relPath.trim();
+    if (toolCallId === '') {
+      log.error(
+        'Protocol violation: toolResultImageIngest called with empty toolCallId; dropping event',
+        new Error('tool_result_image_ingest_empty_tool_call_id'),
+        { dialog, payload },
+      );
+      return;
+    }
+    if (toolName === '') {
+      log.error(
+        'Protocol violation: toolResultImageIngest called with empty toolName; dropping event',
+        new Error('tool_result_image_ingest_empty_tool_name'),
+        { dialog, payload },
+      );
+      return;
+    }
+    if (provider === '' || model === '') {
+      log.error(
+        'Protocol violation: toolResultImageIngest missing provider/model; dropping event',
+        new Error('tool_result_image_ingest_missing_provider_or_model'),
+        { dialog, payload },
+      );
+      return;
+    }
+    if (relPath === '') {
+      log.error(
+        'Protocol violation: toolResultImageIngest called with empty artifact relPath; dropping event',
+        new Error('tool_result_image_ingest_empty_rel_path'),
+        { dialog, payload },
+      );
+      return;
+    }
+
+    const normalizedPayload: ToolResultImageIngest = {
+      toolCallId,
+      toolName,
+      artifact: {
+        rootId: payload.artifact.rootId,
+        selfId: payload.artifact.selfId,
+        status: payload.artifact.status,
+        relPath,
+      },
+      provider,
+      model,
+      disposition: payload.disposition,
+      message: payload.message,
+      ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
+    };
+
+    const record = buildToolResultImageIngestRecord(normalizedPayload, dialog.activeGenSeq);
+    await this.appendEvent(dialog, course, record);
+
+    const evt: ToolResultImageIngestEvent = {
+      type: 'tool_result_image_ingest_evt',
+      course,
+      genseq: dialog.activeGenSeq,
+      toolCallId,
+      toolName,
+      artifact: normalizedPayload.artifact,
+      provider,
+      model,
+      disposition: normalizedPayload.disposition,
+      message: normalizedPayload.message,
+      ...(normalizedPayload.detail !== undefined ? { detail: normalizedPayload.detail } : {}),
+    };
+    postDialogEvent(dialog, evt);
+  }
+
   /**
    * Emit stream error for current generation lifecycle (uses active genseq when present)
    */
@@ -2510,6 +2614,7 @@ export class DiskFileDialogStore extends DialogStore {
         content: result.content,
         contentItems: result.contentItems,
         course,
+        genseq,
       };
       postDialogEvent(dialog, funcResultEvt);
     }
@@ -2561,6 +2666,7 @@ export class DiskFileDialogStore extends DialogStore {
           content: args.result.content,
           contentItems: args.result.contentItems,
           course,
+          genseq: resultGenseq,
         };
         postDialogEvent(dialog, funcResultEvt);
       }
@@ -3520,6 +3626,7 @@ export class DiskFileDialogStore extends DialogStore {
           content: event.content,
           contentItems: event.contentItems,
           course,
+          genseq: event.genseq,
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
@@ -3529,6 +3636,35 @@ export class DiskFileDialogStore extends DialogStore {
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(funcResult));
+        }
+        break;
+      }
+
+      case 'tool_result_image_ingest_record': {
+        const toolResultImageIngestEvt: ToolResultImageIngestEvent = {
+          type: 'tool_result_image_ingest_evt',
+          course,
+          genseq: event.genseq,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          artifact: event.artifact,
+          provider: event.provider,
+          model: event.model,
+          disposition: event.disposition,
+          message: event.message,
+          ...(event.detail !== undefined ? { detail: event.detail } : {}),
+        };
+        if (ws.readyState === 1) {
+          ws.send(
+            JSON.stringify({
+              ...toolResultImageIngestEvt,
+              dialog: {
+                selfId: dialog.id.selfId,
+                rootId: dialog.id.rootId,
+              },
+              timestamp: event.ts,
+            }),
+          );
         }
         break;
       }
@@ -7378,6 +7514,10 @@ export class DialogPersistence {
           break;
         case 'native_tool_call_record':
           // UI-only timeline event for OpenAI Responses native tool visualization.
+          // Must not be injected into LLM context reconstruction.
+          break;
+        case 'tool_result_image_ingest_record':
+          // UI-only per-generation image projection diagnostics for tool results.
           // Must not be injected into LLM context reconstruction.
           break;
 

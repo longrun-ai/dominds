@@ -227,6 +227,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     // not contribute to message-count / context reconstruction semantics.
     case 'web_search_call_record':
     case 'native_tool_call_record':
+    case 'tool_result_image_ingest_record':
     case 'quest_for_sup_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
@@ -328,6 +329,14 @@ function rewriteRecordForFork(
       return {
         ...record,
         contentItems: rewriteFuncResultContentItems(record.contentItems, newRootId),
+      };
+    case 'tool_result_image_ingest_record':
+      return {
+        ...record,
+        artifact: {
+          ...record.artifact,
+          rootId: newRootId,
+        },
       };
     case 'subdialog_created_record':
     case 'reminders_reconciled_record':

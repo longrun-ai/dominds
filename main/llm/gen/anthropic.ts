@@ -23,14 +23,16 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
+  LlmBatchOutput,
   LlmBatchResult,
   LlmFailureDisposition,
   LlmGenerator,
   LlmRequestContext,
   LlmStreamReceiver,
   LlmStreamResult,
+  ToolResultImageIngest,
 } from '../gen';
-import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { isVisionImageMimeType } from './artifacts';
 import { classifyAnthropicFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
@@ -41,6 +43,14 @@ import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
 } from './tool-output-limit';
+import {
+  ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  buildToolResultImageBudgetKeyForMsg,
+  buildToolResultImageBudgetLimitDetail,
+  buildToolResultImageIngest,
+  readToolResultImageBytesSafe,
+  selectLatestToolResultImagesWithinBudget,
+} from './tool-result-image-ingest';
 
 const log = createLogger('llm/anthropic');
 const ANTHROPIC_JSON_RESPONSE_TOOL_NAME = 'dominds_json_response';
@@ -135,6 +145,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonArrayRecord(value: unknown): value is Record<string, unknown> {
   return isRecord(value) && !Array.isArray(value);
+}
+
+function isLlmRequestContext(value: unknown): value is LlmRequestContext {
+  return (
+    isNonArrayRecord(value) &&
+    typeof value.dialogSelfId === 'string' &&
+    typeof value.dialogRootId === 'string' &&
+    typeof value.providerKey === 'string' &&
+    typeof value.modelKey === 'string'
+  );
 }
 
 function tryExtractApiReturnedModel(value: unknown): string | undefined {
@@ -258,6 +278,9 @@ function parseForcedJsonToolInput(rawJson: string, fallbackInput: unknown, at: s
 async function funcResultToAnthropicToolResultBlock(
   chatMsg: FuncResultMsg,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<Extract<AnthropicContentBlock, { type: 'tool_result' }>> {
   const items = chatMsg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
@@ -277,22 +300,97 @@ async function funcResultToAnthropicToolResultBlock(
 
     if (item.type === 'input_image') {
       if (!isVisionImageMimeType(item.mimeType)) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: chatMsg.id,
+              toolName: chatMsg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
         content.push({
           type: 'text',
           text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
         });
         continue;
       }
-      const bytes = await readDialogArtifactBytes({
-        rootId: item.artifact.rootId,
-        selfId: item.artifact.selfId,
-        status: item.artifact.status,
-        relPath: item.artifact.relPath,
-      });
-      if (!bytes) {
+      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(chatMsg, item.artifact))) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: chatMsg.id,
+              toolName: chatMsg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildToolResultImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
+        content.push({
+          type: 'text',
+          text: `[image omitted: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: chatMsg.id,
+              toolName: chatMsg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
         content.push({ type: 'text', text: `[image missing: ${item.artifact.relPath}]` });
         continue;
       }
+      if (bytesResult.kind === 'read_failed') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: chatMsg.id,
+              toolName: chatMsg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
+        content.push({ type: 'text', text: `[image unreadable: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (onToolResultImageIngest) {
+        await onToolResultImageIngest(
+          buildToolResultImageIngest({
+            requestContext,
+            toolCallId: chatMsg.id,
+            toolName: chatMsg.name,
+            artifact: item.artifact,
+            disposition: 'fed_native',
+            providerPathLabel: 'Anthropic Messages path',
+          }),
+        );
+      }
+      const bytes = bytesResult.bytes;
       const base64 = bytes.toString('base64');
       content.push({
         type: 'image',
@@ -327,18 +425,38 @@ async function funcResultToAnthropicToolResultBlock(
 async function chatMessageToContentBlocksAsync(
   chatMsg: ChatMessage,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<AnthropicContentBlock[]> {
   if (chatMsg.type !== 'func_result_msg') {
     return chatMessageToContentBlocks(chatMsg);
   }
-  return [await funcResultToAnthropicToolResultBlock(chatMsg, limitChars)];
+  return [
+    await funcResultToAnthropicToolResultBlock(
+      chatMsg,
+      limitChars,
+      requestContext,
+      allowedImageKeys,
+      onToolResultImageIngest,
+    ),
+  ];
 }
 
 async function chatMessageToAnthropicAsync(
   chatMsg: ChatMessage,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<MessageParam> {
-  const contentBlocks = await chatMessageToContentBlocksAsync(chatMsg, limitChars);
+  const contentBlocks = await chatMessageToContentBlocksAsync(
+    chatMsg,
+    limitChars,
+    requestContext,
+    allowedImageKeys,
+    onToolResultImageIngest,
+  );
   if (contentBlocks.length === 0) {
     throw new Error(`No content blocks generated for message: ${JSON.stringify(chatMsg)}`);
   }
@@ -355,7 +473,9 @@ async function chatMessageToAnthropicAsync(
 
 async function buildAnthropicRequestMessages(
   context: ChatMessage[],
+  requestContext: LlmRequestContext,
   providerConfig?: ProviderConfig,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<MessageParam[]> {
   // We keep the async path for func_result_msg because it may contain image artifacts.
   const normalized = normalizeToolCallPairs(context);
@@ -372,9 +492,21 @@ async function buildAnthropicRequestMessages(
   }
   const messages: MessageParam[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
+  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+    normalized,
+    ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
 
   for (const msg of normalized) {
-    messages.push(await chatMessageToAnthropicAsync(msg, toolResultMaxChars));
+    messages.push(
+      await chatMessageToAnthropicAsync(
+        msg,
+        toolResultMaxChars,
+        requestContext,
+        allowedImageKeys,
+        onToolResultImageIngest,
+      ),
+    );
   }
 
   return assembleAnthropicTurns(messages);
@@ -382,9 +514,21 @@ async function buildAnthropicRequestMessages(
 
 export async function buildAnthropicRequestMessagesWrapper(
   context: ChatMessage[],
-  providerConfig?: ProviderConfig,
+  requestContextOrProviderConfig?: LlmRequestContext | ProviderConfig,
+  providerConfigMaybe?: ProviderConfig,
 ): Promise<MessageParam[]> {
-  return await buildAnthropicRequestMessages(context, providerConfig);
+  const requestContext = isLlmRequestContext(requestContextOrProviderConfig)
+    ? requestContextOrProviderConfig
+    : {
+        dialogSelfId: '',
+        dialogRootId: '',
+        providerKey: 'anthropic',
+        modelKey: 'unknown',
+      };
+  const providerConfig = isLlmRequestContext(requestContextOrProviderConfig)
+    ? providerConfigMaybe
+    : requestContextOrProviderConfig;
+  return await buildAnthropicRequestMessages(context, requestContext, providerConfig);
 }
 
 /**
@@ -1008,7 +1152,12 @@ export function reconstructAnthropicContextWrapper(
 export async function reconstructAnthropicContextWrapperAsync(
   persistedMessages: ChatMessage[],
 ): Promise<MessageParam[]> {
-  const reconstructed = await buildAnthropicRequestMessages(persistedMessages);
+  const reconstructed = await buildAnthropicRequestMessages(persistedMessages, {
+    dialogSelfId: '',
+    dialogRootId: '',
+    providerKey: 'anthropic',
+    modelKey: 'unknown',
+  });
 
   // Validate the reconstructed context
   try {
@@ -1041,7 +1190,7 @@ export class AnthropicGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
@@ -1054,7 +1203,9 @@ export class AnthropicGen implements LlmGenerator {
 
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(
       context,
+      requestContext,
       providerConfig,
+      receiver.toolResultImageIngest,
     );
 
     const anthropicParams = agent.model_params?.anthropic || {};
@@ -1121,7 +1272,7 @@ export class AnthropicGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
@@ -1131,9 +1282,14 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
+    const outputs: LlmBatchOutput[] = [];
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(
       context,
+      requestContext,
       providerConfig,
+      async (ingest) => {
+        outputs.push({ kind: 'tool_result_image_ingest', ingest });
+      },
     );
 
     const anthropicParams = agent.model_params?.anthropic || {};
@@ -1213,6 +1369,7 @@ export class AnthropicGen implements LlmGenerator {
         genseq,
         forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
       ),
+      ...(outputs.length > 0 ? { outputs } : {}),
       usage,
       llmGenModel: returnedModel,
     };

@@ -378,6 +378,9 @@ function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriv
 function hasMeaningfulBatchOutput(batch: Pick<LlmBatchResult, 'messages' | 'outputs'>): boolean {
   if (Array.isArray(batch.outputs) && batch.outputs.length > 0) {
     for (const output of batch.outputs) {
+      if (output.kind === 'tool_result_image_ingest') {
+        continue;
+      }
       if (output.kind !== 'message') {
         return true;
       }
@@ -2095,6 +2098,8 @@ export async function driveDialogStreamCore(
                     {
                       dialogSelfId: dlg.id.selfId,
                       dialogRootId: dlg.id.rootId,
+                      providerKey: provider,
+                      modelKey: model,
                       promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
                     },
                     ctxMsgs,
@@ -2285,6 +2290,10 @@ export async function driveDialogStreamCore(
                 sawNativeToolSideChannelOutput = true;
                 await dlg.nativeToolCall(call);
               },
+              toolResultImageIngest: async (ingest) => {
+                throwIfAborted(abortSignal, dlg);
+                await dlg.toolResultImageIngest(ingest);
+              },
             };
 
             const res = await runLlmRequestWithRetry({
@@ -2329,6 +2338,8 @@ export async function driveDialogStreamCore(
                   {
                     dialogSelfId: dlg.id.selfId,
                     dialogRootId: dlg.id.rootId,
+                    providerKey: provider,
+                    modelKey: model,
                     promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
                   },
                   ctxMsgs,
@@ -2413,6 +2424,10 @@ export async function driveDialogStreamCore(
               case 'native_tool_call': {
                 sawNativeToolSideChannelOutput = true;
                 await dlg.nativeToolCall(output.call);
+                break;
+              }
+              case 'tool_result_image_ingest': {
+                await dlg.toolResultImageIngest(output.ingest);
                 break;
               }
               default: {

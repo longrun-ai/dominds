@@ -33,12 +33,14 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
+  type LlmBatchOutput,
   type LlmBatchResult,
   type LlmFailureDisposition,
   type LlmGenerator,
   type LlmRequestContext,
   type LlmStreamReceiver,
   type LlmStreamResult,
+  type ToolResultImageIngest,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
@@ -52,6 +54,14 @@ import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
 } from './tool-output-limit';
+import {
+  buildToolResultImageBudgetKeyForMsg,
+  buildToolResultImageBudgetLimitDetail,
+  buildToolResultImageIngest,
+  OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  readToolResultImageBytesSafe,
+  selectLatestToolResultImagesWithinBudget,
+} from './tool-result-image-ingest';
 
 const log = createLogger('llm/openai-compatible');
 
@@ -78,6 +88,16 @@ function limitOpenAiCompatibleToolOutputText(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isLlmRequestContext(value: unknown): value is LlmRequestContext {
+  return (
+    isRecord(value) &&
+    typeof value.dialogSelfId === 'string' &&
+    typeof value.dialogRootId === 'string' &&
+    typeof value.providerKey === 'string' &&
+    typeof value.modelKey === 'string'
+  );
 }
 
 function tryExtractChatUsage(usage: unknown): LlmUsageStats {
@@ -233,6 +253,10 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
 async function funcResultToChatCompletionMessages(
   msg: FuncResultMsg,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  providerConfig: ProviderConfig | undefined,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<ChatCompletionMessageParam[]> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
@@ -261,33 +285,137 @@ async function funcResultToChatCompletionMessages(
     text: `Tool output images (${msg.name}, call_id=${msg.id}):`,
   });
 
+  const supportsImageInput = (() => {
+    if (!providerConfig) return false;
+    const modelKey =
+      typeof requestContext.modelKey === 'string' ? requestContext.modelKey.trim() : '';
+    const modelInfo = modelKey.length > 0 ? providerConfig.models[modelKey] : undefined;
+    return isRecord(modelInfo) && modelInfo['supports_image_input'] === true;
+  })();
+
   for (const item of items) {
     if (item.type === 'input_text') continue;
 
     if (item.type === 'input_image') {
       sawAnyImage = true;
+      if (!supportsImageInput) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_provider_unsupported',
+              providerPathLabel: 'OpenAI-compatible path',
+            }),
+          );
+        }
+        parts.push({
+          type: 'text',
+          text: `[image not sent: current openai-compatible image input is disabled for model=${typeof requestContext.modelKey === 'string' && requestContext.modelKey.trim().length > 0 ? requestContext.modelKey.trim() : 'unknown'}]`,
+        });
+        continue;
+      }
       if (!isVisionImageMimeType(item.mimeType)) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'OpenAI-compatible path',
+            }),
+          );
+        }
         parts.push({
           type: 'text',
           text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
         });
         continue;
       }
+      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(msg, item.artifact))) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildToolResultImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'OpenAI-compatible path',
+            }),
+          );
+        }
+        parts.push({
+          type: 'text',
+          text: `[image omitted: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
 
-      const bytes = await readDialogArtifactBytes({
-        rootId: item.artifact.rootId,
-        selfId: item.artifact.selfId,
-        status: item.artifact.status,
-        relPath: item.artifact.relPath,
-      });
-      if (!bytes) {
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'OpenAI-compatible path',
+            }),
+          );
+        }
         parts.push({
           type: 'text',
           text: `[image missing: ${item.artifact.relPath}]`,
         });
         continue;
       }
-
+      if (bytesResult.kind === 'read_failed') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'OpenAI-compatible path',
+            }),
+          );
+        }
+        parts.push({
+          type: 'text',
+          text: `[image unreadable: ${item.artifact.relPath}]`,
+        });
+        continue;
+      }
+      if (onToolResultImageIngest) {
+        await onToolResultImageIngest(
+          buildToolResultImageIngest({
+            requestContext,
+            toolCallId: msg.id,
+            toolName: msg.name,
+            artifact: item.artifact,
+            disposition: 'fed_provider_transformed',
+            providerPathLabel: 'OpenAI-compatible path',
+          }),
+        );
+      }
+      const bytes = bytesResult.bytes;
       parts.push({
         type: 'image_url',
         image_url: {
@@ -456,7 +584,12 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
 async function buildChatCompletionMessages(
   systemPrompt: string,
   context: ChatMessage[],
-  options?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
+  requestContext: LlmRequestContext,
+  options?: {
+    reasoningContentMode?: boolean;
+    providerConfig?: ProviderConfig;
+    onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;
+  },
 ): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
@@ -476,6 +609,10 @@ async function buildChatCompletionMessages(
   const input: ChatCompletionMessageParam[] = [];
   const reasoningContentMode = options?.reasoningContentMode === true;
   const toolResultMaxChars = resolveProviderToolResultMaxChars(options?.providerConfig);
+  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+    normalized,
+    OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
   let pendingReasoningContent: string | undefined;
 
   const takePendingReasoningContent = (): string | undefined => {
@@ -524,7 +661,16 @@ async function buildChatCompletionMessages(
 
     if (msg.type === 'func_result_msg') {
       flushPendingReasoningAsAssistantMessage();
-      input.push(...(await funcResultToChatCompletionMessages(msg, toolResultMaxChars)));
+      input.push(
+        ...(await funcResultToChatCompletionMessages(
+          msg,
+          toolResultMaxChars,
+          requestContext,
+          options?.providerConfig,
+          allowedImageKeys,
+          options?.onToolResultImageIngest,
+        )),
+      );
       continue;
     }
 
@@ -540,9 +686,23 @@ async function buildChatCompletionMessages(
 export async function buildOpenAiCompatibleRequestMessagesWrapper(
   systemPrompt: string,
   context: ChatMessage[],
-  options?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
+  requestContextOrOptions?:
+    | LlmRequestContext
+    | { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
+  optionsMaybe?: { reasoningContentMode?: boolean; providerConfig?: ProviderConfig },
 ): Promise<ChatCompletionMessageParam[]> {
-  return await buildChatCompletionMessages(systemPrompt, context, options);
+  const requestContext = isLlmRequestContext(requestContextOrOptions)
+    ? requestContextOrOptions
+    : {
+        dialogSelfId: '',
+        dialogRootId: '',
+        providerKey: 'openai-compatible',
+        modelKey: 'unknown',
+      };
+  const options = isLlmRequestContext(requestContextOrOptions)
+    ? optionsMaybe
+    : requestContextOrOptions;
+  return await buildChatCompletionMessages(systemPrompt, context, requestContext, options);
 }
 
 function applyArgsDelta(state: { argsJson: string }, chunk: string): void {
@@ -650,7 +810,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     genseq: number,
@@ -666,9 +826,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
     const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
-    const messages = await buildChatCompletionMessages(systemPrompt, context, {
+    const messages = await buildChatCompletionMessages(systemPrompt, context, requestContext, {
       reasoningContentMode,
       providerConfig,
+      onToolResultImageIngest: receiver.toolResultImageIngest,
     });
 
     const openAiParams = agent.model_params?.openai || {};
@@ -889,7 +1050,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
@@ -903,9 +1064,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
     const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
-    const messages = await buildChatCompletionMessages(systemPrompt, context, {
+    const outputs: LlmBatchOutput[] = [];
+    const messages = await buildChatCompletionMessages(systemPrompt, context, requestContext, {
       reasoningContentMode,
       providerConfig,
+      onToolResultImageIngest: async (ingest) => {
+        outputs.push({ kind: 'tool_result_image_ingest', ingest });
+      },
     });
 
     const openAiParams = agent.model_params?.openai || {};
@@ -946,6 +1111,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
           : undefined;
       return {
         messages: messagesOut,
+        ...(outputs.length > 0 ? { outputs } : {}),
         usage,
         ...(model ? { llmGenModel: model } : {}),
       };

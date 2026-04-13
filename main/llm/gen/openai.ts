@@ -43,9 +43,10 @@ import {
   type OpenAiResponsesNativeToolCall,
   type OpenAiResponsesNativeToolItemType,
   type OpenAiResponsesNonCustomNativeToolItemType,
+  type ToolResultImageIngest,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
-import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { bytesToDataUrl, isVisionImageMimeType } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
@@ -56,6 +57,14 @@ import {
   resolveProviderToolResultMaxChars,
   truncateProviderToolOutputText,
 } from './tool-output-limit';
+import {
+  buildToolResultImageBudgetKeyForMsg,
+  buildToolResultImageBudgetLimitDetail,
+  buildToolResultImageIngest,
+  OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  readToolResultImageBytesSafe,
+  selectLatestToolResultImagesWithinBudget,
+} from './tool-result-image-ingest';
 
 const log = createLogger('llm/openai');
 
@@ -303,6 +312,9 @@ function thinkingMessageToOpenAiReasoningItem(
 async function funcResultToOpenAiInputItemWithLimit(
   msg: FuncResultMsg,
   limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<ResponseInputItem> {
   const items = msg.contentItems;
   if (!Array.isArray(items) || items.length === 0) {
@@ -322,27 +334,104 @@ async function funcResultToOpenAiInputItemWithLimit(
 
     if (item.type === 'input_image') {
       if (!isVisionImageMimeType(item.mimeType)) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'OpenAI Responses path',
+            }),
+          );
+        }
         output.push({
           type: 'input_text',
           text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
         });
         continue;
       }
+      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(msg, item.artifact))) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildToolResultImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'OpenAI Responses path',
+            }),
+          );
+        }
+        output.push({
+          type: 'input_text',
+          text: `[image omitted: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
 
-      const bytes = await readDialogArtifactBytes({
-        rootId: item.artifact.rootId,
-        selfId: item.artifact.selfId,
-        status: item.artifact.status,
-        relPath: item.artifact.relPath,
-      });
-      if (!bytes) {
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'OpenAI Responses path',
+            }),
+          );
+        }
         output.push({
           type: 'input_text',
           text: `[image missing: ${item.artifact.relPath}]`,
         });
         continue;
       }
-
+      if (bytesResult.kind === 'read_failed') {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'OpenAI Responses path',
+            }),
+          );
+        }
+        output.push({
+          type: 'input_text',
+          text: `[image unreadable: ${item.artifact.relPath}]`,
+        });
+        continue;
+      }
+      const bytes = bytesResult.bytes;
+      if (onToolResultImageIngest) {
+        await onToolResultImageIngest(
+          buildToolResultImageIngest({
+            requestContext,
+            toolCallId: msg.id,
+            toolName: msg.name,
+            artifact: item.artifact,
+            disposition: 'fed_native',
+            providerPathLabel: 'OpenAI Responses path',
+          }),
+        );
+      }
       output.push({
         type: 'input_image',
         detail: 'auto',
@@ -415,7 +504,9 @@ function shouldIncludeOpenAiEncryptedReasoning(
 
 async function buildOpenAiRequestInput(
   context: ChatMessage[],
+  requestContext: LlmRequestContext,
   providerConfig?: ProviderConfig,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<ResponseInputItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
@@ -431,8 +522,24 @@ async function buildOpenAiRequestInput(
   }
   const input: ResponseInputItem[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
+  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+    normalized,
+    OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
 
   for (const msg of normalized) {
+    if (msg.type === 'func_result_msg') {
+      input.push(
+        await funcResultToOpenAiInputItemWithLimit(
+          msg,
+          toolResultMaxChars,
+          requestContext,
+          allowedImageKeys,
+          onToolResultImageIngest,
+        ),
+      );
+      continue;
+    }
     input.push(chatMessageToOpenAiInputItem(msg));
   }
 
@@ -1016,7 +1123,16 @@ export async function buildOpenAiRequestInputWrapper(
   context: ChatMessage[],
   providerConfig?: ProviderConfig,
 ): Promise<ResponseInputItem[]> {
-  return await buildOpenAiRequestInput(context, providerConfig);
+  return await buildOpenAiRequestInput(
+    context,
+    {
+      dialogSelfId: '',
+      dialogRootId: '',
+      providerKey: 'openai',
+      modelKey: 'unknown',
+    },
+    providerConfig,
+  );
 }
 
 function extractOutputMessageText(item: ResponseOutputItem): string {
@@ -1198,7 +1314,7 @@ export class OpenAiGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
@@ -1215,7 +1331,9 @@ export class OpenAiGen implements LlmGenerator {
 
     const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(
       context,
+      requestContext,
       providerConfig,
+      receiver.toolResultImageIngest,
     );
 
     const openAiParams = agent.model_params?.openai || {};
@@ -2118,7 +2236,7 @@ export class OpenAiGen implements LlmGenerator {
     agent: Team.Member,
     systemPrompt: string,
     funcTools: FuncTool[],
-    _requestContext: LlmRequestContext,
+    requestContext: LlmRequestContext,
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
@@ -2132,9 +2250,14 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
+    const outputs: LlmBatchOutput[] = [];
     const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(
       context,
+      requestContext,
       providerConfig,
+      async (ingest) => {
+        outputs.push({ kind: 'tool_result_image_ingest', ingest });
+      },
     );
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -2180,7 +2303,7 @@ export class OpenAiGen implements LlmGenerator {
 
     const returnedModel = typeof response.model === 'string' ? response.model : undefined;
     const usage = parseOpenAiUsage(response.usage);
-    const outputs = openAiResponseToBatchOutputs(response, genseq);
+    outputs.push(...openAiResponseToBatchOutputs(response, genseq));
 
     return {
       messages: outputs
