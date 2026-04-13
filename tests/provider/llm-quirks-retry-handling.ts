@@ -718,6 +718,18 @@ function verifySmartRateClassification(): void {
   assert.equal(failure?.retryAfterMs, 2000);
 }
 
+function verifySmartRateClassificationFromConcurrencyLimitMessage(): void {
+  const failure = classifyOpenAiLikeFailure(
+    new Error('Concurrency limit exceeded for account, please retry later'),
+  );
+  assert.ok(
+    failure,
+    'Expected OpenAI-like classifier to classify concurrency-limit messages as retriable',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+}
+
 async function verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax(): Promise<void> {
   const providerConfig = buildPlainProviderConfig();
   const dialog = buildFakeDialog('en');
@@ -927,6 +939,7 @@ async function main(): Promise<void> {
   await verifyResolvedRetryLifecycle();
   await verifyPolicyRetryLifecycleDisplay();
   verifySmartRateClassification();
+  verifySmartRateClassificationFromConcurrencyLimitMessage();
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
   await verifyRuntimeDoesNotInferProviderRateLimitWithoutWrapperClassifier();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();

@@ -236,6 +236,18 @@ export function isOpenAiLikeRateLimitFailure(error: unknown): boolean {
   if (lowerMessage.includes('rate limit')) {
     return true;
   }
+  if (lowerMessage.includes('concurrency limit exceeded')) {
+    return true;
+  }
+  if (lowerMessage.includes('concurrent request limit')) {
+    return true;
+  }
+  if (
+    lowerMessage.includes('concurrency limit') &&
+    (lowerMessage.includes('retry later') || lowerMessage.includes('try again later'))
+  ) {
+    return true;
+  }
   if (lowerMessage.includes('requests per min')) {
     return true;
   }
