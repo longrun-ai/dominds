@@ -34,6 +34,7 @@ import type {
   RefillDiligencePushBudgetRequest,
   ResumeAllRequest,
   ResumeDialogRequest,
+  ResumeNotEligibleReason,
   RunControlRefreshMessage,
   SetDiligencePushRequest,
   WebSocketMessage,
@@ -65,6 +66,7 @@ import {
   isDialogLatestResumable,
   loadDialogExecutionMarker,
   markRootDialogQuarantining,
+  refreshRunControlProjectionFromPersistenceFacts,
   requestEmergencyStopAll,
   requestInterruptDialog,
   setDialogDisplayState,
@@ -207,6 +209,81 @@ function emitRunControlRefresh(reason: RunControlRefreshMessage['reason']): void
     reason,
     timestamp: formatUnifiedTimestamp(new Date()),
   });
+}
+
+function buildResumeIneligibleMessage(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): {
+  message: string;
+  reason: ResumeNotEligibleReason;
+} {
+  const state = latest?.displayState;
+  if (!state) {
+    return {
+      reason: 'missing',
+      message: 'Dialog is not currently eligible for resumption.',
+    };
+  }
+  switch (state.kind) {
+    case 'blocked':
+      switch (state.reason.kind) {
+        case 'needs_human_input_and_subdialogs':
+          return {
+            reason: 'needs_human_input_and_subdialogs',
+            message:
+              'Fresh state scan shows this dialog is waiting for both human input and sideline dialogs, so it cannot resume yet.',
+          };
+        case 'needs_human_input':
+          return {
+            reason: 'needs_human_input',
+            message:
+              'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
+          };
+        case 'waiting_for_subdialogs':
+          return {
+            reason: 'waiting_for_subdialogs',
+            message:
+              'Fresh state scan shows this dialog is waiting for sideline dialogs, so it cannot resume yet.',
+          };
+        default: {
+          const _exhaustive: never = state.reason;
+          return {
+            reason: 'missing',
+            message: `Dialog is not currently eligible for resumption: ${String(_exhaustive)}`,
+          };
+        }
+      }
+    case 'idle_waiting_user':
+      return {
+        reason: 'idle_waiting_user',
+        message:
+          'Fresh state scan shows this dialog is no longer interrupted and is now waiting for a new user input.',
+      };
+    case 'proceeding':
+    case 'proceeding_stop_requested':
+      return {
+        reason: 'already_running',
+        message:
+          'Fresh state scan shows this dialog is already running, so it cannot be resumed again.',
+      };
+    case 'stopped':
+      return {
+        reason: 'stopped_not_resumable',
+        message: 'Fresh state scan shows this dialog is stopped but not currently resumable.',
+      };
+    case 'dead':
+      return {
+        reason: 'dead',
+        message: 'Fresh state scan shows this dialog has been declared dead and cannot be resumed.',
+      };
+    default: {
+      const _exhaustive: never = state;
+      return {
+        reason: 'missing',
+        message: `Dialog is not currently eligible for resumption: ${String(_exhaustive)}`,
+      };
+    }
+  }
 }
 
 async function syncPendingTellaskReminderBestEffort(dialog: Dialog, where: string): Promise<void> {
@@ -1639,9 +1716,27 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
     return;
   }
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
-  const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+  const latest = await refreshRunControlProjectionFromPersistenceFacts(
+    dialogIdObj,
+    'resume_dialog',
+  );
   if (!isDialogLatestResumable(latest)) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Dialog is not eligible for resumption.' }));
+    const ineligible = buildResumeIneligibleMessage(latest);
+    log.warn('resume_dialog rejected after fresh fact scan', undefined, {
+      dialogId: dialogIdObj.valueOf(),
+      displayState: latest?.displayState ?? null,
+      executionMarker: latest?.executionMarker ?? null,
+      resumeNotEligibleReason: ineligible.reason,
+    });
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        code: 'resume_dialog_not_eligible',
+        resumeNotEligibleReason: ineligible.reason,
+        message: ineligible.message,
+      }),
+    );
+    emitRunControlRefresh('resume_dialog');
     return;
   }
 
@@ -1651,6 +1746,7 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
     source: 'ws_resume_dialog',
     reason: 'resume_dialog',
   });
+  emitRunControlRefresh('resume_dialog');
 }
 
 async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise<void> {
@@ -1658,12 +1754,14 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
     throw new Error('Internal error: handleResumeAll called with non resume_all packet');
   }
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
+  let resumableCount = 0;
   for (const id of dialogIds) {
     try {
       // listAllDialogIds() only gives candidate IDs. A malformed dialog can still quarantine itself
       // during lazy latest lookup here without preventing resume-all for the rest.
-      const latest = await DialogPersistence.loadDialogLatest(id, 'running');
+      const latest = await refreshRunControlProjectionFromPersistenceFacts(id, 'resume_all');
       if (!isDialogLatestResumable(latest)) continue;
+      resumableCount += 1;
       void (async () => {
         try {
           const dlg = await restoreDialogForDrive(id, 'running');
@@ -1684,6 +1782,15 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
         dialogId: id.valueOf(),
       });
     }
+  }
+  if (resumableCount === 0) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        code: 'resume_all_not_eligible',
+        message: 'No dialogs are currently eligible for resumption.',
+      }),
+    );
   }
   emitRunControlRefresh('resume_all');
 }

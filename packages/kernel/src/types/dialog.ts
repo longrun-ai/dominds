@@ -107,6 +107,7 @@ export type LlmRetryEvent =
   | (LlmRetryEventBase & {
       phase: 'waiting';
       error: string;
+      nextRetryAtMs: number;
     })
   | (LlmRetryEventBase & {
       phase: 'running';

@@ -197,29 +197,51 @@ function isOpenAiRetriableProcessingFailureMessage(lowerMessage: string): boolea
   return lowerMessage.includes('help.openai.com') && lowerMessage.includes('request id');
 }
 
-export function isConservativeRetryMessage(lowerMessage: string): boolean {
-  if (lowerMessage.includes('servers are currently overloaded')) {
+const OPENAI_LIKE_AGGRESSIVE_TRANSPORT_CODES = new Set<string>([
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+function isOpenAiLikeAggressiveTransportFailure(error: unknown, lowerMessage: string): boolean {
+  const code = readErrorCode(error);
+  if (typeof code === 'string' && OPENAI_LIKE_AGGRESSIVE_TRANSPORT_CODES.has(code)) {
     return true;
   }
-  if (lowerMessage.includes('server is currently overloaded')) {
+  if (lowerMessage.includes('fetch failed') || lowerMessage.includes('socket hang up')) {
     return true;
   }
-  if (lowerMessage.includes('currently overloaded')) {
+  if (lowerMessage.includes('terminated')) {
     return true;
   }
-  if (lowerMessage.includes('temporarily overloaded')) {
+  if (lowerMessage.includes('timeout') || lowerMessage.includes('timed out')) {
     return true;
   }
-  if (lowerMessage.includes('service unavailable')) {
-    return true;
-  }
-  return lowerMessage.includes('overloaded') && lowerMessage.includes('try again later');
+  return false;
 }
 
-export function isOpenAiLikeOverloadFailure(error: unknown): boolean {
-  const lowerMessage = buildFailureMessage(error).toLowerCase();
+function isHighConfidenceRejectedStatus(status: number | undefined): boolean {
+  return (
+    status === 400 ||
+    status === 401 ||
+    status === 403 ||
+    status === 404 ||
+    status === 413 ||
+    status === 422
+  );
+}
+
+function isOpenAiLikeRejectedFailure(error: unknown): boolean {
   const status = readErrorStatus(error);
-  return status === 503 || status === 529 || isConservativeRetryMessage(lowerMessage);
+  return isHighConfidenceRejectedStatus(status);
 }
 
 export function isOpenAiLikeRateLimitFailure(error: unknown): boolean {
@@ -260,6 +282,15 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
   const status = readErrorStatus(error);
   const code = readErrorCode(error);
 
+  if (isOpenAiLikeRejectedFailure(error)) {
+    return {
+      kind: 'rejected',
+      message,
+      status,
+      code,
+    };
+  }
+
   if (code === 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM') {
     return {
       kind: 'fatal',
@@ -279,16 +310,6 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
     };
   }
 
-  if (isOpenAiLikeOverloadFailure(error)) {
-    return {
-      kind: 'retriable',
-      message,
-      status,
-      code,
-      retryStrategy: 'conservative',
-    };
-  }
-
   if (isOpenAiLikeRateLimitFailure(error)) {
     return {
       kind: 'retriable',
@@ -300,7 +321,7 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
     };
   }
 
-  if (isOpenAiRetriableProcessingFailureMessage(lowerMessage)) {
+  if (isOpenAiLikeAggressiveTransportFailure(error, lowerMessage)) {
     return {
       kind: 'retriable',
       message,
@@ -310,21 +331,80 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
     };
   }
 
+  if (isOpenAiRetriableProcessingFailureMessage(lowerMessage)) {
+    return {
+      kind: 'retriable',
+      message,
+      status,
+      code,
+      retryStrategy: 'conservative',
+    };
+  }
+
+  if (status !== undefined || code !== undefined) {
+    return {
+      kind: 'retriable',
+      message,
+      status,
+      code,
+      retryStrategy: 'conservative',
+    };
+  }
+
   return undefined;
+}
+
+function isAnthropicRejectedFailure(error: unknown): boolean {
+  const status = readErrorStatus(error);
+  const errorType = readErrorType(error);
+  if (isHighConfidenceRejectedStatus(status)) {
+    return true;
+  }
+  return (
+    errorType === 'invalid_request_error' ||
+    errorType === 'authentication_error' ||
+    errorType === 'permission_error' ||
+    errorType === 'not_found_error'
+  );
+}
+
+function isAnthropicRateLimitFailure(error: unknown): boolean {
+  const status = readErrorStatus(error);
+  const errorType = readErrorType(error);
+  const lowerMessage = buildFailureMessage(error).toLowerCase();
+
+  if (status === 429 || errorType === 'rate_limit_error') {
+    return true;
+  }
+  return lowerMessage.includes('rate limit');
 }
 
 export function classifyAnthropicFailure(error: unknown): LlmFailureDisposition | undefined {
   const message = buildFailureMessage(error);
-  const lowerMessage = message.toLowerCase();
   const status = readErrorStatus(error);
   const code = readErrorCode(error);
-  const errorType = readErrorType(error);
 
-  if (
-    errorType === 'overloaded_error' ||
-    status === 529 ||
-    isConservativeRetryMessage(lowerMessage)
-  ) {
+  if (isAnthropicRejectedFailure(error)) {
+    return {
+      kind: 'rejected',
+      message,
+      status,
+      code,
+    };
+  }
+
+  if (isAnthropicRateLimitFailure(error)) {
+    return {
+      kind: 'retriable',
+      message,
+      status,
+      code,
+      retryStrategy: 'smart_rate',
+      retryAfterMs: readProviderSuggestedRetryAfterMs(error),
+    };
+  }
+
+  if (status !== undefined || readErrorType(error) !== undefined) {
     return {
       kind: 'retriable',
       message,

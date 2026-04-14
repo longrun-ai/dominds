@@ -96,6 +96,13 @@ export function isDialogLatestResumable(latest: DialogLatestFile | null | undefi
   );
 }
 
+function isSameDisplayState(
+  left: DialogDisplayState | undefined,
+  right: DialogDisplayState,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
   if (!state) return 'none';
   if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
@@ -137,8 +144,18 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
       const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
       if (latest?.generating === true) {
         proceeding++;
-      } else if (isDialogLatestResumable(latest)) {
-        resumable++;
+      } else if (
+        latest?.executionMarker?.kind === 'interrupted' &&
+        isStoppedReasonResumable(latest.executionMarker.reason)
+      ) {
+        const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+        const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+          dialogId,
+          'running',
+        );
+        if (q4h.length === 0 && pendingSubdialogs.length === 0) {
+          resumable++;
+        }
       }
     } catch (error: unknown) {
       if (!findDomindsPersistenceFileError(error)) {
@@ -509,6 +526,85 @@ async function computeIdleDisplayStateFromPersistence(
     return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
   }
   return { kind: 'idle_waiting_user' };
+}
+
+export async function refreshRunControlProjectionFromPersistenceFacts(
+  dialogId: DialogID,
+  trigger:
+    | 'resume_dialog'
+    | 'resume_all'
+    | 'run_control_snapshot'
+    | 'pending_subdialogs_changed'
+    | 'q4h_changed',
+): Promise<DialogLatestFile | null> {
+  const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+  if (!latest) {
+    return null;
+  }
+
+  if (latest.generating === true) {
+    return latest;
+  }
+  if (hasActiveRun(dialogId)) {
+    return latest;
+  }
+
+  const desired = await (async (): Promise<DialogDisplayState> => {
+    if (
+      dialogId.selfId !== dialogId.rootId &&
+      latest.executionMarker &&
+      latest.executionMarker.kind === 'dead'
+    ) {
+      return { kind: 'dead', reason: latest.executionMarker.reason };
+    }
+
+    const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialogId, 'running');
+    const hasQ4H = q4h.length > 0;
+    const hasSubdialogs = pendingSubdialogs.length > 0;
+
+    if (hasQ4H && hasSubdialogs) {
+      return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+    }
+    if (hasQ4H) {
+      return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
+    }
+    if (hasSubdialogs) {
+      return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+    }
+    if (latest.executionMarker?.kind === 'interrupted') {
+      return {
+        kind: 'stopped',
+        reason: latest.executionMarker.reason,
+        continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+      };
+    }
+    return { kind: 'idle_waiting_user' };
+  })();
+
+  const executionMarkerNeedsHealing =
+    desired.kind === 'stopped'
+      ? latest.executionMarker?.kind !== 'interrupted' ||
+        JSON.stringify(latest.executionMarker.reason) !== JSON.stringify(desired.reason)
+      : desired.kind === 'dead'
+        ? latest.executionMarker?.kind !== 'dead' ||
+          JSON.stringify(latest.executionMarker.reason) !== JSON.stringify(desired.reason)
+        : latest.executionMarker?.kind === 'interrupted';
+  const displayStateNeedsHealing = !isSameDisplayState(latest.displayState, desired);
+
+  if (!displayStateNeedsHealing && !executionMarkerNeedsHealing) {
+    return latest;
+  }
+
+  log.warn('Healing stale run-control projection from persistence facts', undefined, {
+    dialogId: dialogId.valueOf(),
+    trigger,
+    previousDisplayState: latest.displayState ?? null,
+    previousExecutionMarker: latest.executionMarker ?? null,
+    healedDisplayState: desired,
+  });
+  await setDialogDisplayState(dialogId, desired);
+  return await DialogPersistence.loadDialogLatest(dialogId, 'running');
 }
 
 async function computeIdleDisplayStateForReconciliation(

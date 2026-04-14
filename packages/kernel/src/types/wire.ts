@@ -145,8 +145,20 @@ export interface DomindsRuntimeStatusMessage {
   timestamp: string;
 }
 
+export type ResumeNotEligibleReason =
+  | 'missing'
+  | 'waiting_for_subdialogs'
+  | 'needs_human_input'
+  | 'needs_human_input_and_subdialogs'
+  | 'idle_waiting_user'
+  | 'already_running'
+  | 'stopped_not_resumable'
+  | 'dead';
+
 export interface ErrorMessage {
   type: 'error';
+  code?: 'resume_dialog_not_eligible' | 'resume_all_not_eligible';
+  resumeNotEligibleReason?: ResumeNotEligibleReason;
   message: string;
 }
 
@@ -361,6 +373,7 @@ export interface DialogsQuarantinedMessage {
 }
 
 export type RunControlRefreshReason =
+  | 'resume_dialog'
   | 'resume_all'
   | 'emergency_stop'
   | 'run_state_marker_resumed'

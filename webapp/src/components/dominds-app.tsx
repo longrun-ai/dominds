@@ -255,6 +255,7 @@ export class DomindsApp extends HTMLElement {
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: PersistableDialogStatus | null = null;
   private viewportPanelState: DialogViewportPanelState = { kind: 'hidden' };
+  private retryCountdownTimer: number | null = null;
   private teamMembers: FrontendTeamMember[] = [];
   private defaultResponder: string | null = null;
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
@@ -1696,7 +1697,8 @@ export class DomindsApp extends HTMLElement {
       window.removeEventListener('mouseup', onUp);
     };
     header.onmousedown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement | null)?.closest('#reminders-widget-close')) {
+      const target = e.target;
+      if (target instanceof Element && target.closest('#reminders-widget-close')) {
         return;
       }
       e.preventDefault();
@@ -1791,7 +1793,8 @@ export class DomindsApp extends HTMLElement {
       window.removeEventListener('mouseup', onUp);
     };
     header.onmousedown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement | null)?.closest('.tools-widget-actions')) {
+      const target = e.target;
+      if (target instanceof Element && target.closest('.tools-widget-actions')) {
         return;
       }
       e.preventDefault();
@@ -1876,6 +1879,7 @@ export class DomindsApp extends HTMLElement {
   disconnectedCallback(): void {
     this.wsManager.disconnect();
     window.removeEventListener('resize', this.boundOnWindowResize);
+    this.clearRetryCountdownTimer();
 
     for (const t of this.runControlRefreshTimers) {
       clearTimeout(t);
@@ -6550,8 +6554,8 @@ export class DomindsApp extends HTMLElement {
 
     // ========== Delegated Click Handlers ==========
     this.shadowRoot.addEventListener('click', async (evt: Event) => {
-      const target = evt.target as HTMLElement | null;
-      if (!target) return;
+      const target = evt.target;
+      if (!(target instanceof Element)) return;
 
       // New dialog button
       if (target.id === 'new-dialog-btn' || target.closest('#new-dialog-btn')) {
@@ -6780,6 +6784,8 @@ export class DomindsApp extends HTMLElement {
 
     const delaysMs = (() => {
       switch (reason) {
+        case 'resume_dialog':
+          return [250, 900, 1800, 3200];
         case 'resume_all':
           // Keep a later refresh because resume work is fan-out async on backend.
           return [250, 900, 1800, 3200, 4800];
@@ -9010,6 +9016,85 @@ export class DomindsApp extends HTMLElement {
     );
   }
 
+  private formatResumeRejectedStoppedPanelSummary(
+    reason: ErrorMessage['resumeNotEligibleReason'],
+  ): string {
+    const t = getUiStrings(this.uiLanguage);
+    switch (reason) {
+      case 'waiting_for_subdialogs':
+        return t.resumeRejectedStoppedPanelWaitingSubdialogs;
+      case 'needs_human_input':
+        return t.resumeRejectedStoppedPanelNeedsHumanInput;
+      case 'needs_human_input_and_subdialogs':
+        return t.resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs;
+      case 'idle_waiting_user':
+        return t.resumeRejectedStoppedPanelIdleWaitingUser;
+      case 'already_running':
+        return t.resumeRejectedStoppedPanelAlreadyRunning;
+      case 'stopped_not_resumable':
+        return t.resumeRejectedStoppedPanelStoppedNotResumable;
+      case 'dead':
+        return t.resumeRejectedStoppedPanelDead;
+      case 'missing':
+      case undefined:
+        return t.resumeRejectedStoppedPanelSummary;
+      default: {
+        const _exhaustive: never = reason;
+        return String(_exhaustive);
+      }
+    }
+  }
+
+  private annotateStoppedPanelAfterResumeRejected(args: {
+    detailMessage: string;
+    reason: ErrorMessage['resumeNotEligibleReason'];
+  }): void {
+    const summary = this.formatResumeRejectedStoppedPanelSummary(args.reason);
+    const i18nStopReason: Extract<
+      DialogInterruptionReason,
+      { kind: 'system_stop' }
+    >['i18nStopReason'] = {
+      [this.uiLanguage]: summary,
+    };
+    const reason: Extract<DialogInterruptionReason, { kind: 'system_stop' }> = {
+      kind: 'system_stop',
+      detail: args.detailMessage,
+      i18nStopReason,
+    };
+    const currentDisplayState = this.getCurrentDialogDisplayState();
+    if (this.currentDialog && currentDisplayState?.kind === 'stopped') {
+      const nextDisplayState: DialogDisplayState = {
+        kind: 'stopped',
+        reason,
+        continueEnabled: false,
+      };
+      this.dialogDisplayStatesByKey.set(
+        this.dialogKey(this.currentDialog.rootId, this.currentDialog.selfId),
+        nextDisplayState,
+      );
+      if (this.currentDialogStatus === 'running') {
+        const input = this.q4hInput as HTMLElement & {
+          setDisplayState?: (state: DialogDisplayState | null) => void;
+        };
+        if (input && typeof input.setDisplayState === 'function') {
+          input.setDisplayState(nextDisplayState);
+        }
+        this.updateInputPanelVisibility();
+      }
+      this.updateDialogViewportPanels();
+      return;
+    }
+    if (this.viewportPanelState.kind === 'stopped') {
+      this.viewportPanelState = {
+        kind: 'stopped',
+        genseq: this.viewportPanelState.genseq,
+        reason,
+        continueEnabled: false,
+      };
+      this.updateDialogViewportPanels();
+    }
+  }
+
   private isViewingLatestCourse(): boolean {
     return this.currentDialog !== null && this.toolbarCurrentCourse === this.toolbarTotalCourses;
   }
@@ -9034,6 +9119,60 @@ export class DomindsApp extends HTMLElement {
         return String(_exhaustive);
       }
     }
+  }
+
+  private clearRetryCountdownTimer(): void {
+    if (this.retryCountdownTimer !== null) {
+      window.clearTimeout(this.retryCountdownTimer);
+      this.retryCountdownTimer = null;
+    }
+  }
+
+  private formatRetryCountdownDuration(msRemaining: number): string {
+    const totalSeconds = Math.max(0, Math.ceil(msRemaining / 1000));
+    if (totalSeconds < 60) {
+      return this.uiLanguage === 'zh' ? `${String(totalSeconds)} 秒` : `${String(totalSeconds)}s`;
+    }
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (this.uiLanguage === 'zh') {
+      return seconds === 0
+        ? `${String(minutes)} 分钟`
+        : `${String(minutes)} 分 ${String(seconds)} 秒`;
+    }
+    return seconds === 0 ? `${String(minutes)}m` : `${String(minutes)}m ${String(seconds)}s`;
+  }
+
+  private formatRetrySummaryWithCountdown(
+    summary: string,
+    nextRetryAtMs: number | undefined,
+  ): string {
+    if (nextRetryAtMs === undefined) {
+      return summary;
+    }
+    const t = getUiStrings(this.uiLanguage);
+    const countdown = this.formatRetryCountdownDuration(nextRetryAtMs - Date.now());
+    const countdownText = `${t.retryCountdownPrefix}${countdown}${t.retryCountdownSuffix}`;
+    if (summary.trim() === '') {
+      return countdownText;
+    }
+    return `${summary} ${countdownText}`;
+  }
+
+  private syncRetryCountdownTimer(nextRetryAtMs: number | undefined): void {
+    this.clearRetryCountdownTimer();
+    if (nextRetryAtMs === undefined) {
+      return;
+    }
+    const remainingMs = nextRetryAtMs - Date.now();
+    if (remainingMs <= 0) {
+      return;
+    }
+    const delayMs = Math.min(1000, Math.max(100, remainingMs % 1000 || 1000));
+    this.retryCountdownTimer = window.setTimeout(() => {
+      this.retryCountdownTimer = null;
+      this.updateDialogViewportPanels();
+    }, delayMs);
   }
 
   private updateDialogViewportPanels(): void {
@@ -9081,6 +9220,7 @@ export class DomindsApp extends HTMLElement {
         : null;
 
     const panelVisible = retryingState !== null || stoppedReason !== null;
+    this.syncRetryCountdownTimer(retryingState?.nextRetryAtMs);
     statusPanel.classList.toggle('hidden', !panelVisible);
     statusBtn.classList.toggle('hidden', stoppedReason === null);
     statusBtn.textContent = t.continueLabel;
@@ -9095,9 +9235,9 @@ export class DomindsApp extends HTMLElement {
       statusError.textContent = '';
     } else if (retryingState !== null) {
       statusTitle.textContent = resolveRetryDisplayTitle(retryingState.display, this.uiLanguage);
-      statusSummary.textContent = resolveRetryDisplaySummary(
-        retryingState.display,
-        this.uiLanguage,
+      statusSummary.textContent = this.formatRetrySummaryWithCountdown(
+        resolveRetryDisplaySummary(retryingState.display, this.uiLanguage),
+        retryingState.nextRetryAtMs,
       );
       statusError.textContent = retryingState.errorText;
     } else if (stoppedReason?.kind === 'llm_retry_stopped') {
@@ -10617,6 +10757,18 @@ export class DomindsApp extends HTMLElement {
       }
       case 'error': {
         console.error('Server error:', message.message);
+        if (message.code === 'resume_dialog_not_eligible') {
+          this.annotateStoppedPanelAfterResumeRejected({
+            detailMessage: message.message,
+            reason: message.resumeNotEligibleReason,
+          });
+          this.showToast(getUiStrings(this.uiLanguage).resumeDialogNotResumableToast, 'warning');
+          return true;
+        }
+        if (message.code === 'resume_all_not_eligible') {
+          this.showToast(getUiStrings(this.uiLanguage).resumeAllNoResumableToast, 'warning');
+          return true;
+        }
         this.showToast(message.message, 'error');
         return true;
       }

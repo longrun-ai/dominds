@@ -1195,8 +1195,8 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private handleClick = (event: Event): void => {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
     const actionEl = target.closest('[data-action]') as HTMLElement | null;
     if (actionEl) {
       const action = actionEl.getAttribute('data-action');

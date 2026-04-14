@@ -335,9 +335,13 @@ Policy:
     reduce tool set, etc.).
 - **Network/retriable errors**: Dominds may auto-retry only for clearly retriable classes such as
   transient network failures/timeouts and provider transient errors (e.g. rate limits or 5xx), using
-  bounded backoff and a max retry count.
+  strategy-specific backoff. Explicit short transport failures may use a brief aggressive burst, explicit
+  rate-limit signals may use smart-rate backoff, and everything else should default to conservative
+  keepalive retry instead of stopping just because a fixed retry-count ceiling was reached. Only
+  high-confidence non-progress cases should stop automatic retry.
 
-This keeps the system responsive and avoids infinite “retry loops” caused by invalid tool schemas.
+This keeps the system responsive while still avoiding pointless automatic loops caused by invalid tool
+schemas or other high-confidence non-retriable failures.
 
 ## Environment Variables (`env`)
 

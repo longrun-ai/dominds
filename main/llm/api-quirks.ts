@@ -63,6 +63,8 @@ const XCODE_BEST_EMPTY_RESPONSE_SINGLE_RETRY_DELAY_MS = 3000;
 const XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD = 5;
 const XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE =
   'xcode.best gateway returned an HTML 502 Bad Gateway page; retrying conservatively.';
+const XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE =
+  'xcode.best upstream returned 500 auth_unavailable: no auth available; treating it as an infrastructure failure and retrying conservatively.';
 const XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE =
   'xcode.best upstream stream ended unexpectedly (unexpected EOF); retrying conservatively.';
 const LOCAL_FILE_IO_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM']);
@@ -103,6 +105,24 @@ function isXcodeBestUnexpectedEofFailure(failure: LlmFailureSummary, error: unkn
       failure.message.toLowerCase().includes('unexpected eof')) &&
     !hasLikelyLocalFileErrorContext(error)
   );
+}
+
+function isXcodeBestAuthUnavailableFailure(failure: LlmFailureSummary, error: unknown): boolean {
+  const status = failure.status ?? readErrorStatus(error);
+  if (status !== 500) {
+    return false;
+  }
+
+  const code = (failure.code ?? readErrorCode(error))?.trim().toLowerCase();
+  if (code === 'auth_unavailable') {
+    return true;
+  }
+
+  const message = (readErrorMessage(error) ?? failure.message).toLowerCase();
+  if (message.includes('auth_unavailable')) {
+    return true;
+  }
+  return code === 'internal_server_error' && message.includes('no auth available');
 }
 
 function getErrorChain(error: unknown): unknown[] {
@@ -340,13 +360,13 @@ function buildXcodeBestEmptyResponseGiveUpText(
   const summaryTextI18n: Partial<Record<LanguageCode, string>> = {
     zh:
       `${providerName} 在同一对话上下文中连续返回 empty response。` +
-      `Dominds 已在 ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} 次 empty response 后停止继续重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
-      '如果直接点继续，大概率仍然无真实进展；更建议结合真实情况灵活尝试多种新的指令，例如改写问题、补充上下文、换一个切入方式。',
+      `Dominds 已在 ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} 次 empty response 后停止沿用同一上下文继续自动重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
+      '如果不引入新的信息或新的指令，直接点继续大概率仍然无真实进展；更建议补充上下文、改写问题、换一个切入方式，或在确实需要人类判断时调用 askHuman。',
     en:
       `${providerName} returned empty responses repeatedly for the same dialog context. ` +
-      `Dominds stopped retrying after ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} empty responses because this usually means the provider-side conversation ` +
-      'context is stuck; simply pressing Continue is still unlikely to make real progress, ' +
-      'so it is better to try different fresh instructions based on the real situation, such as reframing the ask, adding context, or changing the angle.',
+      `Dominds stopped repeating the same-context automatic retry path after ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} empty responses because this usually means the provider-side conversation ` +
+      'context is stuck; simply pressing Continue without new information or fresh instructions is still unlikely to make real progress, ' +
+      'so it is better to add context, reframe the ask, change the angle, or call askHuman when human judgment is genuinely needed.',
   };
   return {
     providerName,
@@ -367,6 +387,11 @@ function createXcodeBestFailureQuirkHandlerSession(
       const { providerName, summaryTextI18n, recoveryAction } =
         buildXcodeBestEmptyResponseGiveUpText(providerConfig, args.provider);
       if (args.failure.code === DOMINDS_LLM_EMPTY_RESPONSE_ERROR_CODE) {
+        // xcode.best can enter a same-context deadlock where the upstream keeps returning empty
+        // responses forever until the dialog context changes materially. A short burst of
+        // temporary retries is still worthwhile for transient glitches, but once the streak reaches
+        // the threshold we must stop repeating the exact same automatic path and require fresh
+        // information / fresh instructions instead of hiding the deadlock behind slow retries.
         consecutiveEmptyResponseCount += 1;
         if (consecutiveEmptyResponseCount < XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD) {
           return {
@@ -379,7 +404,7 @@ function createXcodeBestFailureQuirkHandlerSession(
           kind: 'give_up',
           message:
             `${providerName} returned empty responses repeatedly for the same dialog context; ` +
-            'automatic retries were stopped; simply continuing is still unlikely to make real progress, so it is better to flexibly try different fresh instructions based on the real situation.',
+            'Dominds stopped repeating the same-context automatic retry path; continuing without new information is still unlikely to make real progress, so it is better to introduce fresh instructions or new context based on the real situation.',
           summaryTextI18n,
           recoveryAction: consumedDiligencePushRecoverySinceLastSuccess
             ? { kind: 'none' }
@@ -400,6 +425,13 @@ function createXcodeBestFailureQuirkHandlerSession(
           kind: 'retry_strategy',
           retryStrategy: 'conservative',
           message: XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE,
+        };
+      }
+      if (isXcodeBestAuthUnavailableFailure(args.failure, args.error)) {
+        return {
+          kind: 'retry_strategy',
+          retryStrategy: 'conservative',
+          message: XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE,
         };
       }
 

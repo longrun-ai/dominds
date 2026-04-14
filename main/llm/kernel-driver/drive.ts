@@ -123,7 +123,7 @@ import type {
 } from './types';
 
 type KernelDriverRetryPolicy = Readonly<{
-  maxRetries: number;
+  aggressiveMaxRetries: number;
   initialDelayMs: number;
   conservativeDelayMs: number;
   backoffMultiplier: number;
@@ -131,7 +131,7 @@ type KernelDriverRetryPolicy = Readonly<{
 }>;
 
 const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
-  maxRetries: 99, // long total retry window to survive major down-time by llm providers
+  aggressiveMaxRetries: 3, // short fast burst; persistent failures automatically downgrade to conservative
   initialDelayMs: 1000,
   conservativeDelayMs: 30_000,
   backoffMultiplier: 1.5,
@@ -303,13 +303,13 @@ function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo
   return providerCfg.models[model];
 }
 
-function resolveRetryMaxRetries(raw: number | undefined): number {
+function resolveRetryAggressiveMaxRetries(raw: number | undefined): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
-    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxRetries;
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.aggressiveMaxRetries;
   }
   const normalized = Math.floor(raw);
   if (normalized < 0) {
-    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxRetries;
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.aggressiveMaxRetries;
   }
   return normalized;
 }
@@ -358,7 +358,9 @@ function resolveRetryMaxDelayMs(raw: number | undefined): number {
 }
 
 function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriverRetryPolicy {
-  const maxRetries = resolveRetryMaxRetries(providerCfg.llm_retry_max_retries);
+  const aggressiveMaxRetries = resolveRetryAggressiveMaxRetries(
+    providerCfg.llm_retry_aggressive_max_retries,
+  );
   const initialDelayMs = resolveRetryInitialDelayMs(providerCfg.llm_retry_initial_delay_ms);
   const conservativeDelayMs = resolveRetryConservativeDelayMs(
     providerCfg.llm_retry_conservative_delay_ms,
@@ -367,7 +369,7 @@ function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriv
   const maxDelayMs = resolveRetryMaxDelayMs(providerCfg.llm_retry_max_delay_ms);
 
   return {
-    maxRetries,
+    aggressiveMaxRetries,
     initialDelayMs,
     conservativeDelayMs: Math.max(initialDelayMs, conservativeDelayMs),
     backoffMultiplier,
@@ -2068,7 +2070,7 @@ export async function driveDialogStreamCore(
                 modelId: model,
                 providerConfig: providerCfg,
                 abortSignal,
-                maxRetries: retryPolicy.maxRetries,
+                aggressiveRetryMaxRetries: retryPolicy.aggressiveMaxRetries,
                 retryInitialDelayMs: retryPolicy.initialDelayMs,
                 retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
                 retryBackoffMultiplier: retryPolicy.backoffMultiplier,
@@ -2302,7 +2304,7 @@ export async function driveDialogStreamCore(
               modelId: model,
               providerConfig: providerCfg,
               abortSignal,
-              maxRetries: retryPolicy.maxRetries,
+              aggressiveRetryMaxRetries: retryPolicy.aggressiveMaxRetries,
               retryInitialDelayMs: retryPolicy.initialDelayMs,
               retryConservativeDelayMs: retryPolicy.conservativeDelayMs,
               retryBackoffMultiplier: retryPolicy.backoffMultiplier,

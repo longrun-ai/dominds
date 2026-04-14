@@ -178,6 +178,17 @@ export type UiStrings = {
   noActiveDialogToast: string;
   emergencyStopNoProceedingToast: string;
   resumeAllNoResumableToast: string;
+  resumeDialogNotResumableToast: string;
+  resumeRejectedStoppedPanelSummary: string;
+  resumeRejectedStoppedPanelWaitingSubdialogs: string;
+  resumeRejectedStoppedPanelNeedsHumanInput: string;
+  resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs: string;
+  resumeRejectedStoppedPanelIdleWaitingUser: string;
+  resumeRejectedStoppedPanelAlreadyRunning: string;
+  resumeRejectedStoppedPanelStoppedNotResumable: string;
+  resumeRejectedStoppedPanelDead: string;
+  retryCountdownPrefix: string;
+  retryCountdownSuffix: string;
   invalidMessageFormatToast: string;
   linkCopiedToast: string;
   linkCopyFailedToast: string;
@@ -557,6 +568,25 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       noActiveDialogToast: '当前没有活跃对话。',
       emergencyStopNoProceedingToast: '当前没有进行中的对话，无法紧急停止。',
       resumeAllNoResumableToast: '当前没有可继续的已中断对话。',
+      resumeDialogNotResumableToast:
+        '已重新扫描对话真源：这个对话现在不能继续了。请先查看最新阻塞原因，或等待状态变化。',
+      resumeRejectedStoppedPanelSummary:
+        '已重新扫描对话真源：当前并不满足“继续”的条件。界面上刚才的已停止状态可能是过时投影；请先查看最新阻塞原因或等待状态变化。',
+      resumeRejectedStoppedPanelWaitingSubdialogs:
+        '已重新扫描对话真源：当前主线正在等待支线对话完成，因此现在不能继续。',
+      resumeRejectedStoppedPanelNeedsHumanInput:
+        '已重新扫描对话真源：当前主线正在等待人类输入，因此现在不能继续。',
+      resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs:
+        '已重新扫描对话真源：当前主线同时在等待人类输入和支线对话，因此现在不能继续。',
+      resumeRejectedStoppedPanelIdleWaitingUser:
+        '已重新扫描对话真源：这个对话已经不再处于可继续的中断态，当前是在等待新的用户输入。',
+      resumeRejectedStoppedPanelAlreadyRunning:
+        '已重新扫描对话真源：这个对话已经在运行中，无需再次点击继续。',
+      resumeRejectedStoppedPanelStoppedNotResumable:
+        '已重新扫描对话真源：这个对话虽然处于停止态，但当前停止原因不支持继续。',
+      resumeRejectedStoppedPanelDead: '已重新扫描对话真源：这个对话已被宣布卡死，不能继续。',
+      retryCountdownPrefix: '将在 ',
+      retryCountdownSuffix: ' 后重试。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
       linkCopiedToast: '链接已复制。',
       linkCopyFailedToast: '复制链接失败。',
@@ -946,6 +976,26 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     noActiveDialogToast: 'No active dialog.',
     emergencyStopNoProceedingToast: 'No proceeding dialogs to stop.',
     resumeAllNoResumableToast: 'No interrupted dialogs to resume.',
+    resumeDialogNotResumableToast:
+      'A fresh scan of the dialog facts shows this dialog is not resumable right now. Check the latest blocker or wait for the state to change.',
+    resumeRejectedStoppedPanelSummary:
+      'A fresh scan of the dialog facts shows it is not currently resumable. The stopped panel you just saw may have been stale; check the latest blocker or wait for the state to change.',
+    resumeRejectedStoppedPanelWaitingSubdialogs:
+      'A fresh scan of the dialog facts shows this mainline dialog is waiting for sideline dialogs, so it cannot resume yet.',
+    resumeRejectedStoppedPanelNeedsHumanInput:
+      'A fresh scan of the dialog facts shows this mainline dialog is waiting for human input, so it cannot resume yet.',
+    resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs:
+      'A fresh scan of the dialog facts shows this mainline dialog is waiting for both human input and sideline dialogs, so it cannot resume yet.',
+    resumeRejectedStoppedPanelIdleWaitingUser:
+      'A fresh scan of the dialog facts shows this dialog is no longer interrupted and is now waiting for a new user input.',
+    resumeRejectedStoppedPanelAlreadyRunning:
+      'A fresh scan of the dialog facts shows this dialog is already running, so there is nothing to resume.',
+    resumeRejectedStoppedPanelStoppedNotResumable:
+      'A fresh scan of the dialog facts shows this dialog is stopped, but the current stop reason is not resumable.',
+    resumeRejectedStoppedPanelDead:
+      'A fresh scan of the dialog facts shows this dialog has been declared dead and cannot be resumed.',
+    retryCountdownPrefix: 'Retrying in ',
+    retryCountdownSuffix: '.',
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
     linkCopiedToast: 'Link copied.',
     linkCopyFailedToast: 'Failed to copy link.',

@@ -4,7 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 import { DialogID } from '../main/dialog';
-import { reconcileDisplayStatesAfterRestart } from '../main/dialog-display-state';
+import {
+  getRunControlCountsSnapshot,
+  reconcileDisplayStatesAfterRestart,
+  refreshRunControlProjectionFromPersistenceFacts,
+} from '../main/dialog-display-state';
 import { DialogPersistence } from '../main/persistence';
 
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
@@ -79,6 +83,75 @@ async function main(): Promise<void> {
       generating: false,
     });
 
+    // Dialog E: stale stopped projection should self-heal to blocked when pending subdialogs exist.
+    const eRoot = 'dlg-e';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'dialog.yaml'), { id: eRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      displayState: {
+        kind: 'stopped',
+        reason: { kind: 'system_stop', detail: 'upstream failed' },
+        continueEnabled: true,
+      },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'system_stop', detail: 'upstream failed' },
+      },
+    });
+    await fs.writeFile(
+      path.join(tmpRoot, '.dialogs', 'run', eRoot, 'pending-subdialogs.json'),
+      JSON.stringify(
+        [
+          {
+            subdialogId: 'sub-e',
+            createdAt: new Date().toISOString(),
+            callName: 'tellask',
+            mentionList: ['@worker'],
+            tellaskContent: 'Keep going',
+            targetAgentId: 'worker',
+            callId: 'call-sub-e',
+            callingCourse: 1,
+            callType: 'B',
+            sessionSlug: 'session-e',
+          },
+        ],
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    // Dialog F: stale blocked projection should self-heal back to stopped when interruption remains
+    // but the underlying blockers are already gone.
+    const fRoot = 'dlg-f';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'dialog.yaml'), { id: fRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'system_stop', detail: 'upstream failed' },
+      },
+    });
+
+    // Dialog G: a proceeding dialog left behind by restart reconcile becomes a resumable
+    // server-restart interruption and should be counted as resumable.
+    const gRoot = 'dlg-g';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'dialog.yaml'), { id: gRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      displayState: { kind: 'proceeding' },
+    });
+
     await reconcileDisplayStatesAfterRestart();
 
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
@@ -103,6 +176,57 @@ async function main(): Promise<void> {
     assert.ok(latestD, 'latest.yaml for dlg-d should exist');
     assert.ok(latestD.displayState);
     assert.equal(latestD.displayState.kind, 'idle_waiting_user');
+
+    const countsBeforeManualHealing = await getRunControlCountsSnapshot();
+    assert.equal(countsBeforeManualHealing.proceeding, 0);
+    assert.equal(countsBeforeManualHealing.resumable, 3);
+
+    const healedE = await refreshRunControlProjectionFromPersistenceFacts(
+      new DialogID(eRoot),
+      'resume_dialog',
+    );
+    assert.ok(healedE, 'latest.yaml for dlg-e should exist');
+    assert.ok(healedE.displayState);
+    assert.equal(healedE.displayState.kind, 'blocked');
+    assert.equal(healedE.displayState.reason.kind, 'waiting_for_subdialogs');
+    assert.equal(healedE.executionMarker, undefined);
+
+    const healedF = await refreshRunControlProjectionFromPersistenceFacts(
+      new DialogID(fRoot),
+      'resume_dialog',
+    );
+    assert.ok(healedF, 'latest.yaml for dlg-f should exist');
+    assert.ok(healedF.displayState);
+    assert.equal(healedF.displayState.kind, 'stopped');
+    assert.equal(healedF.displayState.reason.kind, 'system_stop');
+    assert.equal(healedF.displayState.continueEnabled, true);
+    assert.equal(healedF.executionMarker?.kind, 'interrupted');
+
+    const latestG = await DialogPersistence.loadDialogLatest(new DialogID(gRoot), 'running');
+    assert.ok(latestG, 'latest.yaml for dlg-g should exist');
+    assert.ok(latestG.displayState);
+    assert.equal(latestG.displayState.kind, 'stopped');
+    assert.equal(latestG.displayState.reason.kind, 'server_restart');
+    assert.equal(latestG.executionMarker?.kind, 'interrupted');
+
+    const hRoot = 'dlg-h';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', hRoot, 'dialog.yaml'), { id: hRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', hRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      displayState: { kind: 'proceeding' },
+    });
+
+    const healedH = await refreshRunControlProjectionFromPersistenceFacts(
+      new DialogID(hRoot),
+      'resume_dialog',
+    );
+    assert.ok(healedH, 'latest.yaml for dlg-h should exist');
+    assert.ok(healedH.displayState);
+    assert.equal(healedH.displayState.kind, 'idle_waiting_user');
+    assert.equal(healedH.executionMarker, undefined);
 
     // Let buffered latest.yaml write-backs drain before we restore cwd and remove the temp rtws.
     await new Promise((resolve) => setTimeout(resolve, 700));

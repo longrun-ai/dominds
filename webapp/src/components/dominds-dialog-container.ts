@@ -115,6 +115,7 @@ type ViewportPanelState =
       genseq: number;
       display: DialogRetryDisplay;
       errorText: string;
+      nextRetryAtMs?: number;
     }
   | {
       kind: 'stopped';
@@ -347,8 +348,8 @@ export class DomindsDialogContainer extends HTMLElement {
     const sr = this.shadowRoot;
     if (sr) {
       sr.addEventListener('click', async (e: Event) => {
-        const target = e.target as HTMLElement | null;
-        if (!target) return;
+        const target = e.target;
+        if (!(target instanceof Element)) return;
         const assignmentBtn = target.closest(
           '.bubble-anchor-assignment-btn',
         ) as HTMLButtonElement | null;
@@ -4439,6 +4440,7 @@ export class DomindsDialogContainer extends HTMLElement {
       genseq: event.genseq,
       display: event.display,
       errorText: this.summarizeRetryError(event.error),
+      nextRetryAtMs: event.phase === 'waiting' ? event.nextRetryAtMs : undefined,
     };
     this.emitViewportPanelStateChanged();
   }

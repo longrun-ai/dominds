@@ -93,8 +93,9 @@ export type ProviderConfig = {
   // Different providers / gateways may enforce different per-item string limits.
   tool_result_max_chars?: number;
   // LLM retry policy knobs for kernel dialog driving.
-  // maxRetries means "extra retries after initial attempt". For example, 5 => up to 6 attempts total.
-  llm_retry_max_retries?: number;
+  // aggressive_max_retries limits only the front-loaded fast retry burst. Once exhausted,
+  // provider/runtime failures still keep retrying automatically after downgrading to conservative.
+  llm_retry_aggressive_max_retries?: number;
   llm_retry_initial_delay_ms?: number;
   llm_retry_conservative_delay_ms?: number;
   llm_retry_backoff_multiplier?: number;

@@ -47,23 +47,11 @@ async function main(): Promise<void> {
 
     await writeMockDb(tmpRoot, [
       {
-        message: 'Trigger a mock transport failure.',
-        role: 'user',
-        response: '',
-        streamError: 'unexpected EOF',
-      },
-      {
         message: 'Trigger a mock provider-emitted stream failure.',
         role: 'user',
         response: '',
         streamError: 'OPENAI-COMPATIBLE invalid tool call index: null',
         emitStreamErrorBeforeThrow: true,
-      },
-      {
-        message: 'Trigger a generic upstream failure.',
-        role: 'user',
-        response: '',
-        streamError: 'remote gateway says nope',
       },
       {
         message: 'Trigger a generic emitted upstream failure.',
@@ -74,17 +62,12 @@ async function main(): Promise<void> {
       },
     ]);
 
+    // Under the new long-run retry model, generic transport/upstream failures no longer stop after
+    // a fixed retry-count ceiling; they keep the dialog alive via conservative retry. This
+    // regression test should therefore stay focused on the single-stream-error contract: when the
+    // provider path has already emitted stream_error_evt before throwing, the driver must not emit
+    // a wrapped duplicate error for the same failure.
     for (const scenario of [
-      {
-        trigger: 'Trigger a mock transport failure.',
-        msgId: 'kernel-driver-llm-request-failure-single-stream-error-runtime',
-        expectedDetail: 'unexpected EOF',
-        forbiddenDetail: 'LLM failed: unexpected EOF',
-        expectedI18nStopReason: {
-          zh: '与模型服务的连接意外中断，本次生成已停止。',
-          en: 'The connection to the LLM service ended unexpectedly. This generation was stopped.',
-        },
-      },
       {
         trigger: 'Trigger a mock provider-emitted stream failure.',
         msgId: 'kernel-driver-llm-request-failure-single-stream-error-emitted',
@@ -93,16 +76,6 @@ async function main(): Promise<void> {
         expectedI18nStopReason: {
           zh: '模型服务返回了无效的工具调用信息，本次生成已停止。',
           en: 'The LLM service returned invalid tool-call data. This generation was stopped.',
-        },
-      },
-      {
-        trigger: 'Trigger a generic upstream failure.',
-        msgId: 'kernel-driver-llm-request-failure-single-stream-error-generic',
-        expectedDetail: 'remote gateway says nope',
-        forbiddenDetail: 'LLM failed: remote gateway says nope',
-        expectedI18nStopReason: {
-          zh: '本次生成因上游报错而停止。上游原文：remote gateway says nope',
-          en: 'This generation was stopped because the upstream service returned an error. Upstream message: remote gateway says nope',
         },
       },
       {
@@ -115,7 +88,7 @@ async function main(): Promise<void> {
           en: 'This generation was stopped because the upstream service returned an error. Upstream message: upstream stream exploded',
         },
       },
-    ]) {
+    ] as const) {
       const dlg = await createRootDialog('tester');
       dlg.disableDiligencePush = true;
       const ch = dialogEventRegistry.createSubChan(dlg.id);

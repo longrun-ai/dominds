@@ -63,6 +63,14 @@ function makeGatewayHtml502Error(): { status: number; message: string } {
   };
 }
 
+function makeAuthUnavailableError(): { status: number; code: string; message: string } {
+  return {
+    status: 500,
+    code: 'internal_server_error',
+    message: '500 auth_unavailable: no auth available',
+  };
+}
+
 function makeUnexpectedEofError(): Error {
   return new Error('unexpected EOF');
 }
@@ -220,6 +228,23 @@ async function verifyQuirkSessionStateMachine(): Promise<void> {
   assert.equal(gatewayHtmlHandling.retryStrategy, 'conservative');
   assert.match(gatewayHtmlHandling.message ?? '', /html 502 bad gateway page/iu);
 
+  const authUnavailableHandling = session.onFailure({
+    provider: 'xcode1',
+    providerConfig,
+    failure: {
+      kind: 'fatal',
+      status: 500,
+      message: makeAuthUnavailableError().message,
+    },
+    error: makeAuthUnavailableError(),
+  });
+  assert.equal(authUnavailableHandling.kind, 'retry_strategy');
+  if (authUnavailableHandling.kind !== 'retry_strategy') {
+    throw new Error(`Expected retry_strategy, got ${authUnavailableHandling.kind}`);
+  }
+  assert.equal(authUnavailableHandling.retryStrategy, 'conservative');
+  assert.match(authUnavailableHandling.message ?? '', /auth_unavailable/iu);
+
   const unexpectedEofHandling = session.onFailure({
     provider: 'xcode1',
     providerConfig,
@@ -295,7 +320,7 @@ async function verifyQuirkSessionStateMachine(): Promise<void> {
   assert.equal(providerHttpPathUnexpectedEofHandling.retryStrategy, 'conservative');
 }
 
-async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
+async function verifySingleRetryBypassesAggressiveBurstLimit(): Promise<void> {
   const providerConfig = buildProviderConfig();
   const dialog = buildFakeDialog('zh');
   const retryEventsPromise = readRetryEvents(dialog.id, 9);
@@ -308,7 +333,7 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -332,12 +357,12 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
       assert.equal(error.reason.kind, 'llm_retry_stopped');
       assert.equal(error.reason.recoveryAction.kind, 'diligence_push_once');
       assert.equal(
-        error.reason.display.summaryTextI18n.zh?.includes('更建议结合真实情况灵活尝试多种新的指令'),
+        error.reason.display.summaryTextI18n.zh?.includes('如果不引入新的信息或新的指令'),
         true,
       );
       assert.equal(error.reason.display.titleTextI18n.zh, '重试已停止');
       assert.match(error.reason.error, /LLM returned empty response/u);
-      assert.match(error.message, /灵活尝试多种新的指令/u);
+      assert.match(error.message, /不引入新的信息或新的指令/u);
       assert.match(error.message, /最后错误：LLM returned empty response/u);
       assert.doesNotMatch(error.message, /若想增加重试次数/u);
       return true;
@@ -369,7 +394,7 @@ async function verifySingleRetryBypassesDriverRetryLimit(): Promise<void> {
   assert.equal(stopped.reason.recoveryAction.kind, 'diligence_push_once');
   assert.equal(stopped.reason.display.titleTextI18n.zh, '重试已停止');
   assert.equal(
-    stopped.reason.display.summaryTextI18n.zh?.includes('更建议结合真实情况灵活尝试多种新的指令'),
+    stopped.reason.display.summaryTextI18n.zh?.includes('如果不引入新的信息或新的指令'),
     true,
   );
 }
@@ -388,7 +413,7 @@ async function verifyRetryStoppedRecoveryHookSuppressesStoppedEvent(): Promise<v
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -444,7 +469,7 @@ async function verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery(): Promise<
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -480,7 +505,7 @@ async function verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery(): Promise<
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -538,7 +563,7 @@ async function verifySharedQuirkSessionRecoveryResetsAfterSuccess(): Promise<voi
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -563,7 +588,7 @@ async function verifySharedQuirkSessionRecoveryResetsAfterSuccess(): Promise<voi
     provider: 'xcode1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 0,
+    aggressiveRetryMaxRetries: 0,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -581,7 +606,7 @@ async function verifySharedQuirkSessionRecoveryResetsAfterSuccess(): Promise<voi
         provider: 'xcode1',
         modelId: 'test',
         providerConfig,
-        maxRetries: 0,
+        aggressiveRetryMaxRetries: 0,
         retryInitialDelayMs: 0,
         retryConservativeDelayMs: 0,
         retryBackoffMultiplier: 1,
@@ -622,7 +647,7 @@ async function verifyResolvedRetryLifecycle(): Promise<void> {
     provider: 'xcode1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 0,
+    aggressiveRetryMaxRetries: 0,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -668,7 +693,7 @@ async function verifyPolicyRetryLifecycleDisplay(): Promise<void> {
     provider: 'openai1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 2,
+    aggressiveRetryMaxRetries: 2,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -697,10 +722,12 @@ async function verifyPolicyRetryLifecycleDisplay(): Promise<void> {
   const waiting = retryEvents[0];
   const resolved = retryEvents[2];
   assert.equal(waiting?.display.titleTextI18n.en, 'Retrying');
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
   assert.equal(waiting?.display.summaryTextI18n.en?.includes('backing off'), true);
   assert.equal(waiting?.display.summaryTextI18n.en?.includes('retry in 0ms'), false);
   assert.match(waiting?.error ?? '', /socket hang up/u);
   assert.equal(resolved?.display.titleTextI18n.en, 'Retry recovered');
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
 }
 
 function verifySmartRateClassification(): void {
@@ -730,6 +757,34 @@ function verifySmartRateClassificationFromConcurrencyLimitMessage(): void {
   assert.equal(failure?.retryStrategy, 'smart_rate');
 }
 
+function verifyOpenAiProcessingFailureDefaultsToConservative(): void {
+  const failure = classifyOpenAiLikeFailure(
+    new Error(
+      'We are currently processing your request. Please retry your request. Request ID: req_test',
+    ),
+  );
+  assert.ok(
+    failure,
+    'Expected OpenAI-like classifier to classify processing-retry messages as retriable',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'conservative');
+}
+
+function verifyOpenAiTransportFailureWithStatusStaysAggressive(): void {
+  const failure = classifyOpenAiLikeFailure({
+    status: 503,
+    code: 'ECONNRESET',
+    message: 'socket hang up',
+  });
+  assert.ok(
+    failure,
+    'Expected OpenAI-like classifier to preserve explicit transport short-errors as retriable',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'aggressive');
+}
+
 async function verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax(): Promise<void> {
   const providerConfig = buildPlainProviderConfig();
   const dialog = buildFakeDialog('en');
@@ -741,7 +796,7 @@ async function verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax(): Pr
     provider: 'openai1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 1,
+    aggressiveRetryMaxRetries: 1,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -772,47 +827,48 @@ async function verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax(): Pr
   );
 }
 
-async function verifyRuntimeDoesNotInferProviderRateLimitWithoutWrapperClassifier(): Promise<void> {
+async function verifyRuntimeDefaultsUnknownProviderFailuresToConservativeRetry(): Promise<void> {
   const providerConfig = buildPlainProviderConfig();
   const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
   let attempts = 0;
 
-  await assert.rejects(
-    async () =>
-      runLlmRequestWithRetry({
-        dlg: dialog,
-        provider: 'openai1',
-        modelId: 'test',
-        providerConfig,
-        maxRetries: 1,
-        retryInitialDelayMs: 0,
-        retryConservativeDelayMs: 0,
-        retryBackoffMultiplier: 1,
-        retryMaxDelayMs: 0,
-        canRetry: () => true,
-        doRequest: async () => {
-          attempts += 1;
-          throw {
-            status: 429,
-            code: 'rate_limit_exceeded',
-            message: 'RPM exceeded: requests per min exceeded',
-            headers: {
-              'retry-after': '1',
-            },
-          };
-        },
-      }),
-    (error: unknown) => {
-      assert.equal(
-        attempts,
-        1,
-        'Expected runtime generic classifier to avoid provider-specific 429 retries',
-      );
-      assert.ok(error instanceof Error);
-      assert.match(error.message, /RPM exceeded/u);
-      return true;
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'openai1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 0,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw {
+          status: 429,
+          code: 'rate_limit_exceeded',
+          message: 'RPM exceeded: requests per min exceeded',
+          headers: {
+            'retry-after': '1',
+          },
+        };
+      }
+      return 'ok';
     },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
   );
+  const waiting = retryEvents[0];
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
 }
 
 async function verifyRuntimeStillRetriesPlainObjectTransportFailures(): Promise<void> {
@@ -825,7 +881,7 @@ async function verifyRuntimeStillRetriesPlainObjectTransportFailures(): Promise<
     provider: 'openai1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 1,
+    aggressiveRetryMaxRetries: 1,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -857,7 +913,7 @@ async function verifyXcodeBestGatewayHtml502UsesConservativeRetry(): Promise<voi
     provider: 'xcode1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 1,
+    aggressiveRetryMaxRetries: 1,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -899,7 +955,7 @@ async function verifyXcodeBestUnexpectedEofUsesConservativeRetry(): Promise<void
     provider: 'xcode1',
     modelId: 'test',
     providerConfig,
-    maxRetries: 0,
+    aggressiveRetryMaxRetries: 0,
     retryInitialDelayMs: 0,
     retryConservativeDelayMs: 0,
     retryBackoffMultiplier: 1,
@@ -930,20 +986,111 @@ async function verifyXcodeBestUnexpectedEofUsesConservativeRetry(): Promise<void
   assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
 }
 
+async function verifyXcodeBestAuthUnavailableUsesConservativeRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 0,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeAuthUnavailableError();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.titleTextI18n.en, 'Retrying');
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+  assert.match(waiting?.error ?? '', /auth_unavailable/iu);
+  assert.equal(resolved?.display.titleTextI18n.en, 'Retry recovered');
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+}
+
+async function verifyAggressiveRetriesDowngradeToConservative(): Promise<void> {
+  const providerConfig = buildPlainProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 5);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'openai1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw {
+          status: 503,
+          code: 'ECONNRESET',
+          message: 'socket hang up',
+        };
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 3);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'waiting', 'running', 'resolved'],
+  );
+  const firstWaiting = retryEvents[0];
+  const secondWaiting = retryEvents[2];
+  const finalResolved = retryEvents[4];
+  assert.equal(firstWaiting?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+  assert.equal(secondWaiting?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+  assert.equal(finalResolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
+}
+
 async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
-  await verifySingleRetryBypassesDriverRetryLimit();
+  await verifySingleRetryBypassesAggressiveBurstLimit();
   await verifyRetryStoppedRecoveryHookSuppressesStoppedEvent();
   await verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery();
   await verifySharedQuirkSessionRecoveryResetsAfterSuccess();
   await verifyResolvedRetryLifecycle();
   await verifyPolicyRetryLifecycleDisplay();
+  await verifyAggressiveRetriesDowngradeToConservative();
   verifySmartRateClassification();
   verifySmartRateClassificationFromConcurrencyLimitMessage();
+  verifyOpenAiProcessingFailureDefaultsToConservative();
+  verifyOpenAiTransportFailureWithStatusStaysAggressive();
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
-  await verifyRuntimeDoesNotInferProviderRateLimitWithoutWrapperClassifier();
+  await verifyRuntimeDefaultsUnknownProviderFailuresToConservativeRetry();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();
   await verifyXcodeBestGatewayHtml502UsesConservativeRetry();
+  await verifyXcodeBestAuthUnavailableUsesConservativeRetry();
   await verifyXcodeBestUnexpectedEofUsesConservativeRetry();
   console.log('provider llm-quirks-retry-handling: PASS');
 }

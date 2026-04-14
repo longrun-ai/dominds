@@ -299,8 +299,7 @@ type SmartRateAdaptiveState = {
 const SMART_RATE_DECAY_WINDOW_MS = 5 * 60 * 1000;
 const smartRateAdaptiveStateByKey = new Map<string, SmartRateAdaptiveState>();
 
-const RETRIABLE_LLM_ERROR_CODES = new Set<string>([
-  'DOMINDS_LLM_EMPTY_RESPONSE',
+const AGGRESSIVE_RETRY_LLM_ERROR_CODES = new Set<string>([
   'ETIMEDOUT',
   'ECONNRESET',
   'ECONNREFUSED',
@@ -340,7 +339,7 @@ function readErrorCode(error: unknown): string | undefined {
 
 function isRetriableLlmErrorCode(code: string | undefined): boolean {
   if (!code) return false;
-  return RETRIABLE_LLM_ERROR_CODES.has(code);
+  return AGGRESSIVE_RETRY_LLM_ERROR_CODES.has(code);
 }
 
 function isRetriableLlmMessage(message: string): boolean {
@@ -479,7 +478,12 @@ function classifyGenericLlmFailure(err: unknown): ClassifiedLlmFailure {
     }
   }
 
-  return { kind: 'fatal', message: fallbackMessage };
+  return {
+    kind: 'retriable',
+    code: errCode ?? causeCode,
+    message: fallbackMessage,
+    retryStrategy: 'conservative',
+  };
 }
 
 function classifyLlmFailure(
@@ -528,7 +532,7 @@ function applyQuirkFailureHandling(
           ...failure,
           kind: 'retriable',
           message: nextMessage,
-          retryStrategy: failure.retryStrategy ?? 'aggressive',
+          retryStrategy: failure.retryStrategy ?? 'conservative',
         },
         handling,
       };
@@ -698,6 +702,20 @@ function resolveRetryModeFromHandling(
     : 'policy';
 }
 
+function resolveEffectivePolicyRetryStrategy(args: {
+  retryStrategy: LlmRetryStrategy;
+  aggressiveRetryCount: number;
+  aggressiveRetryMaxRetries: number;
+}): LlmRetryStrategy {
+  if (args.retryStrategy !== 'aggressive') {
+    return args.retryStrategy;
+  }
+  if (args.aggressiveRetryCount < args.aggressiveRetryMaxRetries) {
+    return 'aggressive';
+  }
+  return 'conservative';
+}
+
 function emitLlmRetryEventBestEffort(
   args:
     | {
@@ -705,6 +723,7 @@ function emitLlmRetryEventBestEffort(
         phase: 'waiting';
         display: DialogRetryDisplay;
         errorText: string;
+        nextRetryAtMs: number;
       }
     | {
         dlg: Dialog;
@@ -738,6 +757,7 @@ function emitLlmRetryEventBestEffort(
         phase: 'waiting',
         display: args.display,
         error: args.errorText,
+        nextRetryAtMs: args.nextRetryAtMs,
       });
       return;
     case 'running':
@@ -795,7 +815,7 @@ export async function runLlmRequestWithRetry<T>(params: {
   modelId: string;
   providerConfig: ProviderConfig;
   abortSignal?: AbortSignal;
-  maxRetries: number;
+  aggressiveRetryMaxRetries: number;
   retryInitialDelayMs: number;
   retryConservativeDelayMs: number;
   retryBackoffMultiplier: number;
@@ -840,12 +860,12 @@ export async function runLlmRequestWithRetry<T>(params: {
     | undefined;
   const quirkFailureHandler =
     params.quirkFailureHandlerSession ?? createLlmFailureQuirkHandlerSession(params.providerConfig);
-  let policyRetryCount = 0;
+  let aggressiveRetryCount = 0;
 
   for (let attempt = 0; ; attempt++) {
     try {
       if (attempt > 0 && activeRetryContext) {
-        const retryStrategy = activeRetryContext.failure.retryStrategy ?? 'aggressive';
+        const retryStrategy = activeRetryContext.failure.retryStrategy ?? 'conservative';
         const retryMode = resolveRetryModeFromHandling(activeRetryContext.handling);
         emitLlmRetryEventBestEffort({
           dlg: params.dlg,
@@ -867,7 +887,7 @@ export async function runLlmRequestWithRetry<T>(params: {
         modelId: params.modelId,
       });
       if (attempt > 0 && activeRetryContext) {
-        const retryStrategy = activeRetryContext.failure.retryStrategy ?? 'aggressive';
+        const retryStrategy = activeRetryContext.failure.retryStrategy ?? 'conservative';
         const retryMode = resolveRetryModeFromHandling(activeRetryContext.handling);
         emitLlmRetryEventBestEffort({
           dlg: params.dlg,
@@ -908,7 +928,8 @@ export async function runLlmRequestWithRetry<T>(params: {
       const causeMessage =
         cause === undefined || cause === null ? undefined : extractErrorDetails(cause).message;
       const attemptNo = attempt + 1;
-      const retryStrategy = failure.retryStrategy ?? 'aggressive';
+      const retryStrategy =
+        failure.kind === 'retriable' ? (failure.retryStrategy ?? 'conservative') : undefined;
       const retryMode = resolveRetryModeFromHandling(handledFailure.handling);
 
       log.warn('LLM request attempt failed', err, {
@@ -919,7 +940,8 @@ export async function runLlmRequestWithRetry<T>(params: {
         retryStrategy,
         retryMode,
         attemptNumber: attemptNo,
-        policyRetryCount,
+        aggressiveRetryCount,
+        aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
         failureKind: failure.kind,
         quirkHandling: handledFailure.handling.kind,
         quirkSource: handledFailure.handling.sourceQuirk,
@@ -970,9 +992,7 @@ export async function runLlmRequestWithRetry<T>(params: {
       const canRetry = failure.kind === 'retriable' && params.canRetry();
       const stopRetryByQuirk = handledFailure.handling.kind === 'give_up';
       const canScheduleAnotherAttempt =
-        handledFailure.handling.kind === 'single_retry' ||
-        (retryMode === 'policy' &&
-          (retryStrategy === 'conservative' || policyRetryCount < params.maxRetries));
+        handledFailure.handling.kind === 'single_retry' || retryMode === 'policy';
       if (!canRetry || stopRetryByQuirk || !canScheduleAnotherAttempt) {
         if (params.onGiveUp) {
           await params.onGiveUp();
@@ -986,7 +1006,7 @@ export async function runLlmRequestWithRetry<T>(params: {
           const display = buildRetryExhaustedDisplay({
             provider: params.provider,
             attemptsMade: attemptNo,
-            maxRetries: params.maxRetries,
+            aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
             elapsedMs: Date.now() - retryFlowStartedAtMs,
             retryInitialDelayMs,
             retryConservativeDelayMs,
@@ -1033,8 +1053,8 @@ export async function runLlmRequestWithRetry<T>(params: {
             retryStrategy,
             retryMode,
             attemptNumber: attemptNo,
-            policyRetryCount,
-            maxRetries: params.maxRetries,
+            aggressiveRetryCount,
+            aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
             retryInitialDelayMs,
             retryConservativeDelayMs,
             retryBackoffMultiplier,
@@ -1077,11 +1097,19 @@ export async function runLlmRequestWithRetry<T>(params: {
         });
       }
 
+      const effectiveRetryStrategy =
+        handledFailure.handling.kind === 'single_retry'
+          ? (failure.retryStrategy ?? 'conservative')
+          : resolveEffectivePolicyRetryStrategy({
+              retryStrategy: failure.retryStrategy ?? 'conservative',
+              aggressiveRetryCount,
+              aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
+            });
       const conservativeRampAttempt = Math.max(0, Math.floor(attempt / 10));
       const backoffMs =
         handledFailure.handling.kind === 'single_retry'
           ? handledFailure.handling.delayMs
-          : retryStrategy === 'conservative'
+          : effectiveRetryStrategy === 'conservative'
             ? Math.min(
                 retryMaxDelayMs,
                 Math.max(
@@ -1091,7 +1119,7 @@ export async function runLlmRequestWithRetry<T>(params: {
                   ),
                 ),
               )
-            : retryStrategy === 'smart_rate'
+            : effectiveRetryStrategy === 'smart_rate'
               ? recordSmartRateFailureAndResolveBackoffMs({
                   providerId: params.provider,
                   modelId: params.modelId,
@@ -1110,22 +1138,28 @@ export async function runLlmRequestWithRetry<T>(params: {
           phase: 'waiting',
           provider: params.provider,
           retryMode,
-          retryStrategy,
+          retryStrategy: effectiveRetryStrategy,
           attemptNumber: attemptNo,
         }),
         errorText: detail,
+        nextRetryAtMs: Date.now() + backoffMs,
       });
       activeRetryContext = {
-        failure,
+        failure: {
+          ...failure,
+          retryStrategy: effectiveRetryStrategy,
+        },
         errorText: detail,
         handling: handledFailure.handling,
       };
       log.warn(`Retrying LLM request after retriable error`, undefined, {
         provider: params.provider,
-        retryStrategy,
+        retryStrategy: effectiveRetryStrategy,
+        classifiedRetryStrategy: failure.retryStrategy,
         retryMode,
         attemptNumber: attemptNo,
-        policyRetryCount,
+        aggressiveRetryCount,
+        aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
         backoffMs,
         retryInitialDelayMs,
         retryConservativeDelayMs,
@@ -1133,8 +1167,11 @@ export async function runLlmRequestWithRetry<T>(params: {
         retryMaxDelayMs,
         failure,
       });
-      if (handledFailure.handling.kind !== 'single_retry') {
-        policyRetryCount += 1;
+      if (
+        handledFailure.handling.kind !== 'single_retry' &&
+        effectiveRetryStrategy === 'aggressive'
+      ) {
+        aggressiveRetryCount += 1;
       }
       if (params.onRetry) {
         await params.onRetry();
@@ -1237,8 +1274,8 @@ function buildRetryProgressDisplay(args: {
           en: 'Temporary retry',
         }),
         summaryTextI18n: buildRetryDisplayTextI18n({
-          zh: `${providerTextZh} 返回了需要 quirk 处理的可重试错误。Dominds 正在执行一次不占用常规重试预算的临时退避，并将在退避结束后再次尝试。`,
-          en: `${providerTextEn} returned a quirk-handled retriable failure. Dominds is performing a temporary backoff and will try once more without consuming the normal retry budget.`,
+          zh: `${providerTextZh} 返回了需要 quirk 处理的可重试错误。Dominds 正在执行一次临时退避，并将在退避结束后再次尝试。`,
+          en: `${providerTextEn} returned a quirk-handled retriable failure. Dominds is performing a temporary backoff and will try once more after that backoff.`,
         }),
       };
     }
@@ -1302,7 +1339,7 @@ function buildRetryProgressDisplay(args: {
 function buildRetryExhaustedSummaryTextI18n(args: {
   provider: string;
   attemptsMade: number;
-  maxRetries: number;
+  aggressiveRetryMaxRetries: number;
   elapsedMs: number;
   retryInitialDelayMs: number;
   retryConservativeDelayMs: number;
@@ -1321,15 +1358,16 @@ function buildRetryExhaustedSummaryTextI18n(args: {
   const zhBase =
     `LLM 自动重试已停止：provider=${args.provider}，共尝试 ${args.attemptsMade} 次` +
     `（初始请求 1 次 + 重试 ${actualRetryCount} 次），总耗时 ${durationTextZh}。` +
-    `当前重试配置：llm_retry_max_retries=${args.maxRetries}，` +
+    `当前重试配置：llm_retry_aggressive_max_retries=${args.aggressiveRetryMaxRetries}，` +
     `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}，` +
     `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}，` +
     `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}，` +
-    `llm_retry_max_delay_ms=${args.retryMaxDelayMs}。`;
+    `llm_retry_max_delay_ms=${args.retryMaxDelayMs}。` +
+    'Dominds 只会在高置信度判断继续原样自动重试已无真实进展时停止自动重试。';
   const zhTuningHint = args.suppressRetryTuningHint
     ? ''
-    : `若想增加重试次数或拉长重试间隔，请编辑 \`.minds/llm.yaml\` 中的 ` +
-      `\`${providerPath}.llm_retry_max_retries\`、` +
+    : `若想调整前期快速重试窗口或后续慢速退避节奏，请编辑 \`.minds/llm.yaml\` 中的 ` +
+      `\`${providerPath}.llm_retry_aggressive_max_retries\`、` +
       `\`${providerPath}.llm_retry_initial_delay_ms\`、` +
       `\`${providerPath}.llm_retry_conservative_delay_ms\`、` +
       `\`${providerPath}.llm_retry_backoff_multiplier\`、` +
@@ -1337,15 +1375,16 @@ function buildRetryExhaustedSummaryTextI18n(args: {
   const enBase =
     `LLM automatic retries stopped: provider=${args.provider}, ${args.attemptsMade} attempts total ` +
     `(1 initial request + ${actualRetryCount} retries), elapsed ${durationTextEn}. ` +
-    `Current retry config: llm_retry_max_retries=${args.maxRetries}, ` +
+    `Current retry config: llm_retry_aggressive_max_retries=${args.aggressiveRetryMaxRetries}, ` +
     `llm_retry_initial_delay_ms=${args.retryInitialDelayMs}, ` +
     `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}, ` +
     `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}, ` +
-    `llm_retry_max_delay_ms=${args.retryMaxDelayMs}. `;
+    `llm_retry_max_delay_ms=${args.retryMaxDelayMs}. ` +
+    `Dominds stops automatic retry only when it has high confidence that repeating the same retry path is no longer making real progress. `;
   const enTuningHint = args.suppressRetryTuningHint
     ? ''
-    : `If you want more retries or longer retry intervals, edit ` +
-      `\`.minds/llm.yaml\`: \`${providerPath}.llm_retry_max_retries\`, ` +
+    : `If you want to tune the front-loaded fast retry burst or the later slow backoff cadence, edit ` +
+      `\`.minds/llm.yaml\`: \`${providerPath}.llm_retry_aggressive_max_retries\`, ` +
       `\`${providerPath}.llm_retry_initial_delay_ms\`, ` +
       `\`${providerPath}.llm_retry_conservative_delay_ms\`, ` +
       `\`${providerPath}.llm_retry_backoff_multiplier\`, ` +
@@ -1402,7 +1441,7 @@ function buildRetryResolvedDisplay(args: {
 function buildRetryExhaustedDisplay(args: {
   provider: string;
   attemptsMade: number;
-  maxRetries: number;
+  aggressiveRetryMaxRetries: number;
   elapsedMs: number;
   retryInitialDelayMs: number;
   retryConservativeDelayMs: number;
