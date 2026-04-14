@@ -918,7 +918,7 @@ export async function executeDriveRound(args: {
             );
           } else {
             await deliverTellaskBackReplyFromDirective({
-              dlg: dialog,
+              replyingDialog: dialog,
               directive: activeTellaskReplyDirective,
               replyContent: driveResult.lastAssistantSayingContent,
               callbacks: {

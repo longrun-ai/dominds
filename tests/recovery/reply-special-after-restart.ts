@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
     const liveRoot = await createRootDialog('tester');
     await deliverTellaskBackReplyFromDirective({
-      dlg: liveRoot,
+      replyingDialog: liveRoot,
       directive: {
         expectedReplyCallName: 'replyTellaskBack',
         targetDialogId: liveRoot.id.selfId,

@@ -289,57 +289,73 @@ function buildTellaskBackReplyDirective(args: {
 }
 
 export async function deliverTellaskBackReplyFromDirective(args: {
-  dlg: Dialog;
+  replyingDialog: Dialog;
   directive: Extract<TellaskReplyDirective, { expectedReplyCallName: 'replyTellaskBack' }>;
   replyContent: string;
   callbacks: KernelDriverDriveCallbacks;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
 }): Promise<void> {
+  // Type-A ask-back is the one place where the local "caller/callee" intuition flips:
+  // the dialog running `replyTellaskBack` is the ask-back responder, while
+  // directive.targetDialogId points to the ask-back requester that must receive the canonical
+  // tellaskBack result. Keep those roles explicit, otherwise it is very easy to accidentally
+  // write the same business result once from the reply-tool path and then again from a fallback
+  // path that treats the responder's plain assistant words as if they were the canonical reply.
   const rootDialog =
-    args.dlg instanceof RootDialog
-      ? args.dlg
-      : args.dlg instanceof SubDialog
-        ? args.dlg.rootDialog
+    args.replyingDialog instanceof RootDialog
+      ? args.replyingDialog
+      : args.replyingDialog instanceof SubDialog
+        ? args.replyingDialog.rootDialog
         : undefined;
   if (!rootDialog) {
     throw new Error('replyTellaskBack invariant violation: missing root dialog');
   }
-  const targetDialogId = new DialogID(args.directive.targetDialogId, rootDialog.id.rootId);
-  const targetDialog =
-    rootDialog.lookupDialog(targetDialogId.selfId) ??
-    (await ensureDialogLoaded(rootDialog, targetDialogId, rootDialog.status));
-  if (!targetDialog) {
+  const askBackRequesterDialogId = new DialogID(
+    args.directive.targetDialogId,
+    rootDialog.id.rootId,
+  );
+  const askBackRequesterDialog =
+    rootDialog.lookupDialog(askBackRequesterDialogId.selfId) ??
+    (await ensureDialogLoaded(rootDialog, askBackRequesterDialogId, rootDialog.status));
+  if (!askBackRequesterDialog) {
     throw new Error(
-      `replyTellaskBack invariant violation: target dialog ${targetDialogId.selfId} not found`,
+      `replyTellaskBack invariant violation: target dialog ${askBackRequesterDialogId.selfId} not found`,
     );
   }
-  targetDialog.setSuspensionState('resumed');
   const response = formatTellaskResponseContent({
     callName: 'tellaskBack',
-    responderId: args.dlg.agentId,
-    requesterId: targetDialog.agentId,
+    responderId: args.replyingDialog.agentId,
+    requesterId: askBackRequesterDialog.agentId,
     tellaskContent: args.directive.tellaskContent,
     responseBody: args.replyContent,
     status: 'completed',
     deliveryMode: args.deliveryMode,
     language: getWorkLanguage(),
   });
-  const replyMirror = await targetDialog.receiveTellaskResponse(
-    args.dlg.agentId,
+  const replyMirror = await askBackRequesterDialog.receiveTellaskResponse(
+    args.replyingDialog.agentId,
     'tellaskBack',
     undefined,
     args.directive.tellaskContent,
     'completed',
-    args.dlg.id,
+    args.replyingDialog.id,
     {
       response,
-      agentId: args.dlg.agentId,
+      agentId: args.replyingDialog.agentId,
       callId: args.directive.targetCallId,
-      originMemberId: targetDialog.agentId,
+      originMemberId: askBackRequesterDialog.agentId,
     },
   );
-  await targetDialog.addChatMessages(replyMirror);
-  await reviveDialogIfUnblocked(targetDialog, args.callbacks, 'reply_tellask_back_delivered');
+  await askBackRequesterDialog.addChatMessages(replyMirror);
+  // Do not mark the requester resumed until the canonical tellaskBack result has actually been
+  // persisted and mirrored locally. Otherwise a write failure here would leave suspension state
+  // claiming "resumed" while the business fact never landed.
+  askBackRequesterDialog.setSuspensionState('resumed');
+  await reviveDialogIfUnblocked(
+    askBackRequesterDialog,
+    args.callbacks,
+    'reply_tellask_back_delivered',
+  );
 }
 
 function isReplyTellaskCallRecord(record: TellaskCallRecord): record is ReplyTellaskCallRecord {
@@ -1249,10 +1265,36 @@ function extractLastAssistantResponse(
   return responseText;
 }
 
-async function extractSupdialogResponseForTypeA(supdialog: Dialog): Promise<string> {
+function findDeliveredTellaskBackReplyOnAskBackRequester(args: {
+  requesterDialog: Dialog;
+  targetCallId: string;
+}): Extract<ChatMessage, { type: 'tellask_result_msg' }> | undefined {
+  // `replyTellaskBack` persists the canonical tellaskBack business result onto the ask-back
+  // requester dialog immediately. Type-A orchestration must check that canonical delivery first
+  // before it even considers any fallback extraction from responder plaintext, or we risk a
+  // second final result with the same target callId.
+  for (let i = args.requesterDialog.msgs.length - 1; i >= 0; i -= 1) {
+    const msg = args.requesterDialog.msgs[i];
+    if (msg.type !== 'tellask_result_msg' || msg.callName !== 'tellaskBack') {
+      continue;
+    }
+    if (msg.callId !== args.targetCallId) {
+      continue;
+    }
+    return msg;
+  }
+  return undefined;
+}
+
+async function extractAskBackResponderPlaintextFallback(args: {
+  responderDialog: Dialog;
+}): Promise<string> {
+  // This fallback is intentionally second-class: it exists only for legacy/plain-reply flows
+  // where no explicit `replyTellaskBack` canonical result has been delivered. It must never
+  // compete with or overwrite an already delivered canonical tellaskBack result.
   try {
     return extractLastAssistantResponse(
-      supdialog.msgs,
+      args.responderDialog.msgs,
       'Supdialog completed without producing output.',
     );
   } catch (err) {
@@ -1629,15 +1671,21 @@ async function executeTellaskCall(
 
     if (parseResult.type === 'A') {
       if (dlg instanceof SubDialog) {
-        const supdialog = dlg.supdialog;
-        dlg.setSuspensionState('suspended');
+        // Identity map for Type-A ask-back:
+        // - `askBackRequesterDialog` is the sideline dialog that asked upstream for clarification.
+        // - `askBackResponderDialog` is the upstream dialog that must answer that ask-back.
+        // The original tellask relationship is the opposite of the current ask-back relationship,
+        // so variable names like "supdialog" or "target" are too lossy here and invite bugs.
+        const askBackRequesterDialog = dlg;
+        const askBackResponderDialog = dlg.supdialog;
+        askBackRequesterDialog.setSuspensionState('suspended');
 
         try {
-          const assignment = dlg.assignmentFromSup;
+          const assignment = askBackRequesterDialog.assignmentFromSup;
           const supPrompt: KernelDriverHumanPrompt = {
             content: formatSupdialogCallPrompt({
-              fromAgentId: dlg.agentId,
-              toAgentId: supdialog.agentId,
+              fromAgentId: askBackRequesterDialog.agentId,
+              toAgentId: askBackResponderDialog.agentId,
               subdialogRequest: {
                 callName,
                 mentionList,
@@ -1654,12 +1702,12 @@ async function executeTellaskCall(
             grammar: 'markdown',
             origin: 'runtime',
             tellaskReplyDirective: buildTellaskBackReplyDirective({
-              targetDialogId: dlg.id.selfId,
+              targetDialogId: askBackRequesterDialog.id.selfId,
               targetCallId: callId,
               tellaskContent: body,
             }),
           };
-          await callbacks.driveDialog(supdialog, {
+          await callbacks.driveDialog(askBackResponderDialog, {
             humanPrompt: supPrompt,
             waitInQue: true,
             driveOptions: {
@@ -1668,11 +1716,26 @@ async function executeTellaskCall(
             },
           });
 
-          const responseText = await extractSupdialogResponseForTypeA(supdialog);
+          const explicitReplyDelivery = findDeliveredTellaskBackReplyOnAskBackRequester({
+            requesterDialog: askBackRequesterDialog,
+            targetCallId: callId,
+          });
+          if (explicitReplyDelivery) {
+            // Important invariant: once the responder used `replyTellaskBack`, that write is the
+            // single source of truth. Do not also synthesize another tellask result from the
+            // responder's generic assistant words, even if those words look "compatible".
+            askBackRequesterDialog.setSuspensionState('resumed');
+            toolOutputs.push(explicitReplyDelivery);
+            return toolOutputs;
+          }
+
+          const responseText = await extractAskBackResponderPlaintextFallback({
+            responderDialog: askBackResponderDialog,
+          });
           const responseContent = formatTellaskResponseContent({
             callName,
             responderId: parseResult.agentId,
-            requesterId: dlg.agentId,
+            requesterId: askBackRequesterDialog.agentId,
             mentionList,
             tellaskContent: body,
             responseBody: responseText,
@@ -1680,11 +1743,11 @@ async function executeTellaskCall(
             language: getWorkLanguage(),
           });
 
-          dlg.setSuspensionState('resumed');
+          askBackRequesterDialog.setSuspensionState('resumed');
 
           toolOutputs.push(
             buildTellaskResultToolOutput({
-              genseq: dlg.activeGenSeqOrUndefined ?? 1,
+              genseq: askBackRequesterDialog.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               content: responseContent,
@@ -1693,32 +1756,32 @@ async function executeTellaskCall(
               tellaskContent: body,
               mentionList,
               agentId: parseResult.agentId,
-              originMemberId: dlg.agentId,
-              calleeDialogId: supdialog.id.selfId,
+              originMemberId: askBackRequesterDialog.agentId,
+              calleeDialogId: askBackResponderDialog.id.selfId,
             }),
           );
-          await dlg.receiveTellaskResponse(
+          await askBackRequesterDialog.receiveTellaskResponse(
             parseResult.agentId,
             callName,
             mentionList,
             body,
             'completed',
-            supdialog.id,
+            askBackResponderDialog.id,
             {
               response: responseContent,
               agentId: parseResult.agentId,
               callId,
-              originMemberId: dlg.agentId,
+              originMemberId: askBackRequesterDialog.agentId,
             },
           );
         } catch (err) {
           log.warn('Type A supdialog processing error:', err);
-          dlg.setSuspensionState('resumed');
+          askBackRequesterDialog.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
           const errorContent = formatTellaskResponseContent({
             callName,
             responderId: parseResult.agentId,
-            requesterId: dlg.agentId,
+            requesterId: askBackRequesterDialog.agentId,
             mentionList,
             tellaskContent: body,
             responseBody: errorText,
@@ -1727,7 +1790,7 @@ async function executeTellaskCall(
           });
           toolOutputs.push(
             buildTellaskResultToolOutput({
-              genseq: dlg.activeGenSeqOrUndefined ?? 1,
+              genseq: askBackRequesterDialog.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               content: errorContent,
@@ -1736,22 +1799,22 @@ async function executeTellaskCall(
               tellaskContent: body,
               mentionList,
               agentId: parseResult.agentId,
-              originMemberId: dlg.agentId,
-              calleeDialogId: supdialog.id.selfId,
+              originMemberId: askBackRequesterDialog.agentId,
+              calleeDialogId: askBackResponderDialog.id.selfId,
             }),
           );
-          await dlg.receiveTellaskResponse(
+          await askBackRequesterDialog.receiveTellaskResponse(
             parseResult.agentId,
             callName,
             mentionList,
             body,
             'failed',
-            supdialog.id,
+            askBackResponderDialog.id,
             {
               response: errorContent,
               agentId: parseResult.agentId,
               callId,
-              originMemberId: dlg.agentId,
+              originMemberId: askBackRequesterDialog.agentId,
             },
           );
         }
@@ -2402,7 +2465,7 @@ async function executeReplyTellaskCall(args: {
         throw new Error('replyTellaskBack invariant violation: unexpected active reply directive');
       }
       await deliverTellaskBackReplyFromDirective({
-        dlg: args.dlg,
+        replyingDialog: args.dlg,
         directive: activeDirective,
         replyContent: args.call.replyContent,
         callbacks: args.callbacks,

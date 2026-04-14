@@ -1688,6 +1688,19 @@ export class DiskFileDialogStore extends DialogStore {
         `receiveFuncResult invariant violation: missing valid genseq for func result ${funcResult.id}`,
       );
     }
+    const existingFuncResult = await this.findExistingFuncResultRecord(dialog, funcResult.id);
+    if (existingFuncResult) {
+      await this.raiseDuplicateCallResultInvariantViolation({
+        dialog,
+        kind: 'func_result',
+        callId: funcResult.id,
+        callName: funcResult.name,
+        incomingCourse: course,
+        incomingGenseq: genseq,
+        existingCourse: existingFuncResult.course,
+        existingGenseq: existingFuncResult.record.genseq,
+      });
+    }
     const funcResultRecord = buildFuncResultRecord(funcResult, genseq);
     await this.appendEvent(dialog, course, funcResultRecord);
 
@@ -1726,6 +1739,22 @@ export class DiskFileDialogStore extends DialogStore {
             ...result,
             genseq,
           };
+    const existingTellaskResult = await this.findExistingTellaskResultRecord(
+      dialog,
+      normalizedResult.callId,
+    );
+    if (existingTellaskResult) {
+      await this.raiseDuplicateCallResultInvariantViolation({
+        dialog,
+        kind: 'tellask_result',
+        callId: normalizedResult.callId,
+        callName: normalizedResult.callName,
+        incomingCourse: course,
+        incomingGenseq: genseq,
+        existingCourse: existingTellaskResult.course,
+        existingGenseq: existingTellaskResult.record.genseq,
+      });
+    }
     const record = buildTellaskResultRecord(normalizedResult, genseq);
     await this.appendEvent(dialog, course, record);
     postDialogEvent(dialog, buildTellaskResultEvent(normalizedResult, course));
@@ -1755,6 +1784,105 @@ export class DiskFileDialogStore extends DialogStore {
    */
   private async ensureSubdialogDirectory(dialogId: DialogID): Promise<string> {
     return await DialogPersistence.ensureSubdialogDirectory(dialogId);
+  }
+
+  private async findExistingFuncResultRecord(
+    dialog: Dialog,
+    callId: string,
+  ): Promise<
+    | {
+        course: number;
+        record: FuncResultRecord;
+      }
+    | undefined
+  > {
+    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
+    for (let course = 1; course <= maxCourse; course += 1) {
+      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+      for (const event of events) {
+        if (event.type !== 'func_result_record') {
+          continue;
+        }
+        if (event.id !== callId) {
+          continue;
+        }
+        return { course, record: event };
+      }
+    }
+    return undefined;
+  }
+
+  private async findExistingTellaskResultRecord(
+    dialog: Dialog,
+    callId: string,
+  ): Promise<
+    | {
+        course: number;
+        record: TellaskResultRecord;
+      }
+    | undefined
+  > {
+    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
+    for (let course = 1; course <= maxCourse; course += 1) {
+      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+      for (const event of events) {
+        if (event.type !== 'tellask_result_record') {
+          continue;
+        }
+        if (event.callId !== callId) {
+          continue;
+        }
+        return { course, record: event };
+      }
+    }
+    return undefined;
+  }
+
+  private async raiseDuplicateCallResultInvariantViolation(args: {
+    dialog: Dialog;
+    kind: 'func_result' | 'tellask_result';
+    callId: string;
+    callName: string;
+    incomingCourse: number;
+    incomingGenseq: number;
+    existingCourse: number;
+    existingGenseq: number;
+  }): Promise<never> {
+    // Duplicate final results are not harmless transcript noise. They mean two different program
+    // paths both believed they owned the same business-level completion fact for one callId.
+    // In ask-back flows this usually points to identity confusion between requester/responder or
+    // canonical reply-tool delivery versus fallback plaintext synthesis. We fail fast here so the
+    // second writer keeps its own stack trace instead of silently corrupting the dialog transcript.
+    const err = new Error(
+      `${args.kind} duplicate callId invariant violation: rootId=${args.dialog.id.rootId} selfId=${args.dialog.id.selfId} ` +
+        `callId=${args.callId} callName=${args.callName} existingCourse=${args.existingCourse} ` +
+        `existingGenseq=${args.existingGenseq} incomingCourse=${args.incomingCourse} incomingGenseq=${args.incomingGenseq}`,
+    );
+    log.error('Duplicate call result detected; rejecting second write', err, {
+      rootId: args.dialog.id.rootId,
+      selfId: args.dialog.id.selfId,
+      callId: args.callId,
+      callName: args.callName,
+      kind: args.kind,
+      existingCourse: args.existingCourse,
+      existingGenseq: args.existingGenseq,
+      incomingCourse: args.incomingCourse,
+      incomingGenseq: args.incomingGenseq,
+    });
+    try {
+      await this.streamError(args.dialog, err.message);
+    } catch (streamErr) {
+      log.warn('Failed to emit stream_error_evt for duplicate call result', streamErr, {
+        rootId: args.dialog.id.rootId,
+        selfId: args.dialog.id.selfId,
+        callId: args.callId,
+        callName: args.callName,
+        kind: args.kind,
+      });
+    }
+    throw err;
   }
 
   /**
@@ -2336,7 +2464,7 @@ export class DiskFileDialogStore extends DialogStore {
     log.error(`Dialog stream error '${error}'`, new Error(), { dialog });
 
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const genseq = typeof dialog.activeGenSeq === 'number' ? dialog.activeGenSeq : undefined;
+    const genseq = dialog.activeGenSeqOrUndefined;
 
     // Enhanced stream error event with better error classification
     const streamErrorEvent: StreamErrorEvent = {
