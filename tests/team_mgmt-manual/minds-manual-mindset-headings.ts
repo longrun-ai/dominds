@@ -30,8 +30,20 @@ async function main(): Promise<void> {
     'zh minds manual should explain auto-added system-prompt headings',
   );
   assert.ok(
+    zh.includes(
+      '它会进入该成员的 `role=system` 提示，因此默认应直接写给该智能体本人，使用第二人称“你”',
+    ),
+    'zh minds manual should require second-person authoring for persona files',
+  );
+  assert.ok(
     en.includes('The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons`'),
     'en minds manual should explain auto-added system-prompt headings',
+  );
+  assert.ok(
+    en.includes(
+      'It is injected into that member\'s `role=system` prompt, so write it directly to the agent in second person ("you")',
+    ),
+    'en minds manual should require second-person authoring for persona files',
   );
 
   assertNotIncludes(zh, '# @coder 角色设定');

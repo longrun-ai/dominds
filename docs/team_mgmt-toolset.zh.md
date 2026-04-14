@@ -42,6 +42,15 @@
 - 该手册与工具行为版本化，因此保持准确
 - 框架源代码树不应是团队配置格式被解释的"主要"地方。每个 rtws 可能具有不同的策略和默认值
 
+### 本文档的粒度边界（重要）
+
+- 本文档只负责说明稳定的设计目标、概念边界、职责划分，以及为什么这样设计。
+- 本文档**不应**承载过细的运行时规格，例如精确的注入顺序、当前回退规则、完整 topic 列表、动态枚举结果、逐字段渲染细节、或会随实现演进而频繁变化的 authoring 细则。
+- 这类“当前实现到底怎么做”的信息，应统一以下列入口为准：
+  - `man({ "toolsetId": "team_mgmt" })`
+  - 对应实现代码与运行时校验
+- 如果设计文档与运行时手册在“当前行为”上发生冲突，应默认以运行时手册为准，并回头修正文档，而不是让读者继续把设计文档当成运行时规格书。
+
 ## 当前问题陈述
 
 在典型部署中，我们通过通用 rtws 文件工具拒绝直接的 `.minds/` 访问：
@@ -137,7 +146,10 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
 - `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowledge/lessons）
+- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → 如何管理 `.minds/skills/*`（skills 的注入位置、口吻、标题层级、迁移边界）
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
+- `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → 如何管理 `.minds/env.*.md`（运行环境提示的注入位置、口吻、标题层级）
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` → 查看当前安装/rtws 下实际可见的 toolsets 及常见授权模式
 - `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` → `read_dirs`/`write_dirs` 和拒绝列表如何工作
 - `man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })` → 常见故障模式及如何恢复
 
@@ -163,6 +175,16 @@
   - 解释 MCP 服务器如何映射到工具集（`<serverId>`）以及如何通过 `.minds/team.yaml` 授予这些工具集
   - 解释工具暴露控制（白名单/黑名单）和命名转换（前缀/后缀）
   - 解释密钥/env 接线模式和问题排查（问题 + 日志、重启、热重载语义）
+- `!skills`：
+  - 解释 `.minds/skills/*` 属于可复用的团队技能资产
+  - 解释 skill 的职责边界：它是提示/指导资产，不是权限系统
+  - 解释何时应继续保留为 skill，何时应升级为 app / toolset / teammates contract
+- `!env`：
+  - 解释 `.minds/env.*.md` 用于描述当前 rtws 的运行环境，而不是定义人格或复制仓库总规范
+  - 解释它与 `persona/knowledge/lessons`、skills、priming 的分工边界
+- `!toolsets`：
+  - 解释当前可见 toolsets 包含内建 toolsets、已安装 apps 暴露的 toolsets、以及由 `.minds/mcp.yaml` 动态注册的 MCP toolsets
+  - 解释为什么该主题必须以运行时动态视图为准，而不是在设计文档里维护一份静态名单
 
 ## 从 Dominds 安装动态加载（运行时资源）
 
@@ -179,8 +201,22 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })`
   - 从运行时用于默认值的同一安装资源加载：`dominds/main/llm/defaults.yaml`（通过后端构建输出中的 `__dirname` 解析）
   - 优先重用 `LlmConfig.load()` 并格式化其合并视图，或添加一个返回"仅默认值"和"合并"提供商映射的助手
-- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })`（如果添加）
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })`
   - 在运行时从内存中注册表加载（`dominds/main/tools/registry.ts` 中的 `listToolsets()` / `listTools()`），而不是维护单独的列表
+
+### 为什么 `toolsets` 必须是动态主题
+
+- `toolsets` 不是一份稳定、可写死在设计文档里的清单。
+- 当前可见的 toolsets 由三部分共同决定：
+  - 框架内建 toolsets
+  - 当前安装的 Dominds apps 所暴露的 toolsets
+  - `.minds/mcp.yaml` 中 `servers.<serverId>` 在运行时映射出来的 MCP toolsets
+- 其中 MCP 部分天然是**动态的**：团队可以按 rtws 需要增删 server、调整命名、控制工具暴露；因此 toolset 集合会随当前安装状态与当前 rtws 配置而变化。
+- 这样设计的原因，是把“能力发现”绑定到当前实际运行环境，而不是绑定到一份很快过时的静态文档：
+  - 避免设计文档维护一份注定漂移的 toolset 名单
+  - 避免读者误以为某个 MCP toolset 是框架内建常量
+  - 让团队管理者面对的始终是“此刻这个安装与这个 rtws 真实可用的能力”
+- 因此，设计文档只需要解释机制与原因；“当前有哪些 toolsets”应由运行时 `man(...topics:[\"toolsets\"])` 动态呈现。
 
 将这些保持为**静态/手册文本**（而非动态加载）：
 
@@ -197,13 +233,17 @@
 核心原则：
 
 - 启动脚本会映射为真实对话历史；它不是只读日志，而是可编辑的启动引导剧本。
+- 其运行时语义不是 system prompt，而是“创建对话时先恢复 reminders，再把 records 尽可能回放成对话历史消息”。
+- 因此内容口吻必须跟着 record 类型走：`human_text_record` 写成用户/诉请者对智能体说的话；`agent_words_record` 写成智能体已经说出口的话；`agent_thought_record` 仅适合非常克制地承载内部推理痕迹。
+- `ui_only_markdown_record` 等部分技术 record 不会变成喂给模型的 chat message，因此不能拿它们充当主要行为引导。
+- 外层结构应是“顶层 frontmatter + 多个 `### record <type>` 块”；不要再包一层 `# 启动脚本` / `## 历史` 这类装饰标题。
 - 团队管理者应鼓励按业务场景维护脚本，并可直接增删改 assistant/user 消息内容。
 - 允许完全重写脚本以匹配新的协作模式、质量标准和语言风格。
 
 推荐格式：
 
 - frontmatter（可选但推荐）：`title`、`applicableMemberIds` 等元数据。
-- 消息块（必填）：使用 `### user` / `### assistant`，支持 fenced markdown 块。
+- record 块（必填）：使用 `### record <type>`；具体内容放在对应的 markdown/json block 中。
 
 维护建议：
 
@@ -421,13 +461,19 @@ members:
 
 ## 管理 `.minds/team/<member>/*.md`（智能体心智）
 
-运行时在每次对话开始时读取这些：
+运行时在每次对话开始时会读取该成员的 `persona.*.md` / `knowledge.*.md` / `lessons.*.md` 资产。
 
-- `.minds/team/<id>/persona.md`
-- `.minds/team/<id>/knowledge.md`
-- `.minds/team/<id>/lessons.md`
+- 具体语言文件选择、回退规则、注入顺序与其它 authoring 细则，请以 `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` 为准。
 
 见 `dominds/main/minds/load.ts`（`readAgentMind()`）。
+
+写法约束（重要）：
+
+- `persona.*.md` 会被拼进该成员的 `role=system` 提示，因此默认应该直接写给“这个成员智能体本人”。
+- 也就是说，`persona.*.md` 应优先使用第二人称“你”来规定职责边界、工作方式与交付标准。
+- 不要把 `persona.*.md` 写成第三人称人物简介，不要把它当成给团队管理员/人类读者的说明书，也不要使用“祂”这类旁白口吻。
+- `knowledge.*.md` / `lessons.*.md` 也同样会进入该成员的系统提示，分别落在 `## 知识` / `## 经验`。`knowledge` 更适合稳定事实、索引、约定、判断依据；`lessons` 更适合复用型经验规则（例如“遇到 X 信号先做 Y，不要做 Z”）。两者都应以“帮助该成员当下工作”为目标，而不是面向旁观者写注释。
+- 标题层级也要按 system prompt 模板来写：系统外层已经自动提供 `## 角色设定` / `## 知识` / `## 经验`，所以正文通常应从 `###` 或普通 bullet 开始，不要再写 `#` / `##`，也不要把文件名或这些章节名重复当标题。
 
 建议的结构：
 
@@ -445,6 +491,24 @@ members:
       knowledge.md
       lessons.md
 ```
+
+## 管理 `.minds/skills/*`（技能资产）
+
+设计层面的定位：
+
+- `.minds/skills/*` 用来承载可复用的团队技能/操作指导资产。
+- 它的重点是“什么时候用、怎么做、边界是什么”，而不是授予权限。
+- 如果某个 skill 需要脚本、专有工具、MCP、外部二进制、或稳定复用的执行能力，那么设计上通常更适合上升为 Dominds app / toolset / teammates contract，而不应只停留在 markdown 文案。
+- 设计文档在这里仅说明边界与迁移方向；具体文件命名、注入位置、标题层级、语言文件选择等，以运行时 `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` 为准。
+
+## 管理 `.minds/env.*.md`（运行环境说明）
+
+设计层面的定位：
+
+- `.minds/env.*.md` 用来描述“当前 rtws 运行环境”的稳定背景信息，帮助成员理解所处环境。
+- 它不应承担 persona 定义、skill 教程、团队制度大全、或仓库全局规范汇总的职责。
+- 这类内容按分工应分别落在 `persona/knowledge/lessons`、skills、priming、或仓库自己的规范文件中。
+- 设计文档在这里仅强调用途边界；具体注入位置、回退规则、标题建议等，以运行时 `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` 为准。
 
 ## 引导策略：影子成员引导
 

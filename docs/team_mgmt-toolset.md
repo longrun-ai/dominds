@@ -55,6 +55,20 @@ Rationale:
 - The framework source tree should not be the “primary” place the team config format is explained.
   Each rtws may have different policies and defaults.
 
+### Scope Boundary of This Document (important)
+
+- This document is responsible for stable design intent, conceptual boundaries, responsibility split,
+  and why the system is designed this way.
+- This document should **not** become a home for overly detailed runtime specifications such as exact
+  injection order, current fallback rules, full topic inventories, dynamic enumeration results,
+  field-by-field rendering details, or authoring rules that are expected to evolve with the implementation.
+- For “what the runtime does today”, use:
+  - `man({ "toolsetId": "team_mgmt" })`
+  - the corresponding implementation and runtime validators
+- If the design document and the runtime handbook disagree about current behavior, the runtime handbook
+  wins and the design doc should be corrected afterward. Readers should not treat this design doc as a
+  runtime specification manual.
+
 ## Current Problem Statement
 
 In typical deployments we deny direct `.minds/` access via the general-purpose rtws tools:
@@ -166,7 +180,10 @@ reading source code.
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
 - `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
+- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → how to manage `.minds/skills/*` (injection point, tone, heading levels, migration boundaries).
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
+- `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → how to manage `.minds/env.*.md` (runtime-environment injection point, tone, heading levels).
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` → inspect the actually visible toolsets in the current installation/rtws and common grant patterns.
 - `man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })` → how `read_dirs`/`write_dirs` and deny-lists work.
 - `man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })` → common failure modes and how to recover.
 
@@ -200,6 +217,20 @@ must cover (at minimum) the information that used to live there:
   - Explain tool exposure controls (whitelist/blacklist) and naming transforms (prefix/suffix).
   - Explain secret/env wiring patterns and operational troubleshooting (Problems + logs, restart,
     hot reload semantics).
+- `!skills`:
+  - Explain `.minds/skills/*` as reusable team skill assets.
+  - Explain the boundary that a skill is prompt/guidance content, not a permission system.
+  - Explain when content should remain a skill versus being elevated into an app / toolset /
+    teammate contract.
+- `!env`:
+  - Explain `.minds/env.*.md` as the place for current-rtws runtime-environment orientation, not
+    persona definition or a dump of repo-wide policy.
+  - Explain its boundary relative to `persona/knowledge/lessons`, skills, and priming.
+- `!toolsets`:
+  - Explain that the visible toolsets include built-in toolsets, toolsets exposed by installed
+    apps, and MCP toolsets dynamically registered from `.minds/mcp.yaml`.
+  - Explain why this topic must be rendered from runtime state rather than maintained as a static
+    list in the design docs.
 
 ## Dynamic Loading from the Dominds Installation (Runtime Resources)
 
@@ -220,9 +251,28 @@ Recommended sources by topic:
     `dominds/main/llm/defaults.yaml` (via `__dirname` resolution in the backend build output).
   - Prefer reusing `LlmConfig.load()` and formatting its merged view, or adding a helper that returns
     both “defaults-only” and “merged” provider maps.
-- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` (if added)
+- `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })`
   - Load from the in-memory registries at runtime (`listToolsets()` / `listTools()` in
     `dominds/main/tools/registry.ts`), rather than maintaining a separate list.
+
+### Why `toolsets` Must Stay a Dynamic Topic
+
+- `toolsets` is not a stable inventory that should be hardcoded in a design document.
+- The visible toolsets are jointly determined by:
+  - framework built-ins
+  - toolsets exposed by the currently installed Dominds apps
+  - MCP toolsets mapped at runtime from `.minds/mcp.yaml` `servers.<serverId>`
+- The MCP portion is inherently **dynamic**: teams can add/remove servers, rename exposure, and
+  constrain tool exposure per rtws, so the resulting toolset set changes with the live installation
+  and workspace state.
+- This is intentional. The design binds capability discovery to the actual runtime environment
+  instead of to a static document that will drift:
+  - it avoids maintaining a doomed-to-drift toolset list in the design docs
+  - it avoids misleading readers into treating MCP-derived toolsets as framework built-ins
+  - it ensures the team manager sees the capabilities that are truly available in this installation
+    and this rtws right now
+- Therefore the design docs should explain the mechanism and rationale only; the current toolset list
+  belongs to runtime `man(...topics:["toolsets"])`.
 
 Keep these as **static/manual text** (not dynamically loaded):
 
@@ -240,13 +290,17 @@ Startup script directories:
 Core principles:
 
 - Startup scripts are mapped into real dialog history; they are not read-only logs.
+- Their runtime semantics are not “extra system prompt text”, but “restore reminders first, then replay records into dialog history where possible”.
+- Therefore tone must follow the chosen record type: write `human_text_record` as what a user/requester says to the agent; write `agent_words_record` as what the agent has already said; use `agent_thought_record` only sparingly for internal reasoning traces.
+- Some technical record types such as `ui_only_markdown_record` are persisted but do not become model-facing chat messages, so they should not be your main steering layer.
+- The outer file structure should be “top-level frontmatter + repeated `### record <type>` blocks”; do not wrap the file in decorative `# Startup Script` / `## History` headings.
 - Team managers should treat them as editable startup playbooks.
 - Freely add/edit assistant or user messages, and fully rewrite scripts when workflows evolve.
 
 Recommended format:
 
 - Frontmatter (optional, recommended): metadata such as `title` and `applicableMemberIds`.
-- Message blocks (required): `### user` / `### assistant`, optionally fenced markdown blocks.
+- Record blocks (required): `### record <type>` with the actual content inside the corresponding markdown/json block.
 
 Maintenance guidance:
 
@@ -488,13 +542,21 @@ Best practices:
 
 ## Managing `.minds/team/<member>/*.md` (agent minds)
 
-The runtime reads these on every dialog start:
+At dialog start, the runtime reads that member’s `persona.*.md` / `knowledge.*.md` / `lessons.*.md`
+assets.
 
-- `.minds/team/<id>/persona.md`
-- `.minds/team/<id>/knowledge.md`
-- `.minds/team/<id>/lessons.md`
+- For exact language-file selection, fallback rules, injection order, and other current authoring
+  details, use `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })`.
 
 See `dominds/main/minds/load.ts` (`readAgentMind()`).
+
+Authoring rule (important):
+
+- `persona.*.md` is spliced into that member's `role=system` prompt, so it should normally be written directly to the agent itself.
+- In practice, prefer second-person "you" when defining responsibilities, boundaries, working style, and delivery expectations.
+- Do not write `persona.*.md` as a third-person biography or as operator-facing documentation for a human/team manager.
+- `knowledge.*.md` / `lessons.*.md` also end up in the member's system prompt, specifically under `## Knowledge` / `## Lessons`. `knowledge` is better for stable facts, indexes, conventions, and decision cues; `lessons` is better for reusable heuristics such as “if X happens, do Y, avoid Z”. Both should still be written to help that member act, not to narrate the member from the outside.
+- Heading levels should follow the system-prompt wrapper too: the outer template already provides `## Persona` / `## Knowledge` / `## Lessons`, so bodies should usually start at `###` or plain bullets instead of repeating `#` / `##` or restating the wrapper title.
 
 Suggested structure:
 
@@ -512,6 +574,33 @@ Suggested structure:
       knowledge.md
       lessons.md
 ```
+
+## Managing `.minds/skills/*` (skill assets)
+
+Design-level positioning:
+
+- `.minds/skills/*` stores reusable team skill / operating-guidance assets.
+- Its job is to capture “when to use this, how to do it, and where the boundary is”, not to grant
+  permissions.
+- If a skill depends on scripts, privileged tools, MCP, external binaries, or reusable execution
+  capability, the design should usually elevate it into a Dominds app / toolset / teammate contract
+  rather than stopping at Markdown alone.
+- This design doc intentionally limits itself to boundary and migration guidance. For current file
+  naming, injection semantics, heading levels, and language-file rules, use
+  `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })`.
+
+## Managing `.minds/env.*.md` (runtime-environment notes)
+
+Design-level positioning:
+
+- `.minds/env.*.md` exists to describe stable facts about the current rtws runtime environment so
+  members can orient themselves quickly.
+- It should not take on the role of persona definition, skill tutorial, giant operating manual, or
+  repo-wide policy dump.
+- Those responsibilities belong, respectively, in `persona/knowledge/lessons`, skills, priming, or
+  the repo’s own policy files.
+- This design doc only defines that boundary. For the current injection position, fallback behavior,
+  and authoring guidance, use `man({ "toolsetId": "team_mgmt", "topics": ["env"] })`.
 
 ## Bootstrap Policy: Shadow bootstrap members
 
