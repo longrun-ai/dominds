@@ -38,7 +38,7 @@ function main(): void {
       requesterId: 'tester',
       expectedReplyTool: 'replyTellask',
     }),
-    '@tester 的【长线诉请】已交给你处理。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有需要回问时，才调用 `tellaskBack`。',
+    '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有需要回问时，才调用 `tellaskBack`。',
   );
   assert.equal(
     buildSubdialogRoleHeaderCopy({
@@ -46,7 +46,7 @@ function main(): void {
       requesterId: 'tester',
       expectedReplyTool: 'replyTellaskSessionless',
     }),
-    "@tester's 【Fresh Tellask】 is now assigned to you. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask back.",
+    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask back.',
   );
 
   const startAssignment = formatAssignmentFromSupdialog({
@@ -59,7 +59,7 @@ function main(): void {
     sessionSlug: 'sticky',
     collectiveTargets: ['pangu'],
   });
-  assert.match(startAssignment, /@tester 的【长线诉请】已交给你处理/u);
+  assert.match(startAssignment, /@tester 已通过【长线诉请】安排你处理下述诉请内容/u);
   assert.match(startAssignment, /诉请内容（sticky）：/u);
 
   const askBackPrompt = formatSupdialogCallPrompt({

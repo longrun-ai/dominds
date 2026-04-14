@@ -80,17 +80,6 @@ async function main(): Promise<void> {
       language,
     });
 
-    const tellaskBackFallbackResponse = formatTellaskResponseContent({
-      callName: 'tellaskBack',
-      responderId: 'tester',
-      requesterId: 'pangu',
-      tellaskContent: askBackBody,
-      responseBody: rootAskBackNarration,
-      status: 'completed',
-      deliveryMode: 'direct_fallback',
-      language,
-    });
-
     await writeMockDb(tmpRoot, [
       {
         message: trigger,
@@ -138,11 +127,6 @@ async function main(): Promise<void> {
       },
       {
         message: tellaskBackResponse,
-        role: 'tool',
-        response: subdialogFinalResponse,
-      },
-      {
-        message: tellaskBackFallbackResponse,
         role: 'tool',
         response: subdialogFinalResponse,
       },

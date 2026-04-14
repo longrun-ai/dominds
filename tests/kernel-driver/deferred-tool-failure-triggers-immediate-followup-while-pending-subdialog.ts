@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       tellaskContent: tellaskBody,
       responseBody: delayedSubdialogResponse,
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
     });
     const invalidUpdatePlanArgsError = 'Invalid arguments: Field plan does not match expected type';

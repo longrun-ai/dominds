@@ -59,7 +59,7 @@ async function main(): Promise<void> {
       tellaskContent,
       responseBody: finalSubdialogReply,
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
     });
     const rootAfterReply = 'Received the continued answer from @pangu.';

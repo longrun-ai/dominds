@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       tellaskContent: updatedBody,
       responseBody: 'Updated assignment adopted.',
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
       sessionSlug,
     });

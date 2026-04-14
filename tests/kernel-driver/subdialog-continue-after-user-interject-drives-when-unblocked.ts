@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 
 import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { getRunControlCountsSnapshot } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
@@ -33,9 +32,7 @@ async function main(): Promise<void> {
     };
     const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
     const interjectResponse = 'Handled the local interruption only.';
-    const followupInterjectPrompt = 'One more temporary question before we resume the main task.';
-    const followupInterjectResponse = 'Handled the follow-up interruption locally as well.';
-    const finalResponse = 'Nested work is back, so I can now finalize the parent sideline.';
+    const finalResponse = 'Nested work is back, and I am now replying upstream.';
 
     const root = await createRootDialog('tester');
     root.disableDiligencePush = true;
@@ -59,10 +56,6 @@ async function main(): Promise<void> {
       directive: assignmentDirective,
       language: 'en',
     });
-    assert.match(reassertionPrompt, /@tester's 【Fresh Tellask】 is still waiting for your reply/u);
-    assert.match(reassertionPrompt, /call `replyTellaskSessionless` to deliver it/u);
-    assert.match(reassertionPrompt, /not asking you to reply immediately/u);
-
     await writeMockDb(process.cwd(), [
       {
         message: interjectPrompt,
@@ -70,14 +63,23 @@ async function main(): Promise<void> {
         response: interjectResponse,
       },
       {
-        message: followupInterjectPrompt,
-        role: 'user',
-        response: followupInterjectResponse,
-      },
-      {
         message: reassertionPrompt,
         role: 'user',
-        response: finalResponse,
+        response: 'Replying upstream now.',
+        funcCalls: [
+          {
+            id: 'call-subdialog-reply-sessionless-after-continue',
+            name: 'replyTellaskSessionless',
+            arguments: {
+              replyContent: finalResponse,
+            },
+          },
+        ],
+      },
+      {
+        message: 'Reply delivered via `replyTellaskSessionless`.',
+        role: 'tool',
+        response: 'The upstream reply has now been delivered.',
       },
     ]);
 
@@ -128,7 +130,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       subdialog,
-      makeUserPrompt(interjectPrompt, 'subdialog-user-interject-before-resume', {
+      makeUserPrompt(interjectPrompt, 'subdialog-user-interject-before-direct-continue', {
         userLanguageCode: 'en',
       }),
       true,
@@ -136,62 +138,22 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
-    const deferredAfterInterjection = await DialogPersistence.getDeferredReplyReassertion(
-      subdialog.id,
-      subdialog.status,
-    );
-    assert.deepEqual(
-      deferredAfterInterjection,
-      {
-        reason: 'user_interjection_while_pending_subdialog',
-        directive: assignmentDirective,
-      },
-      'user interjection while nested subdialog is pending should arm deferred reply reassertion',
-    );
     const latestAfterInterjection = await DialogPersistence.loadDialogLatest(
       subdialog.id,
       subdialog.status,
     );
-    assert.equal(
-      latestAfterInterjection?.displayState?.kind,
-      'stopped',
-      'local interjection reply should stop the original task until the user explicitly continues',
-    );
-    assert.equal(
-      latestAfterInterjection?.displayState?.continueEnabled,
-      true,
-      'interjection stop should expose Continue in the UI',
-    );
+    assert.equal(latestAfterInterjection?.displayState?.kind, 'stopped');
     assert.ok(
       latestAfterInterjection?.displayState?.kind === 'stopped' &&
         isUserInterjectionPauseStopReason(latestAfterInterjection.displayState.reason),
-      'interjection stop should use the dedicated paused-original-task stop reason',
-    );
-    const countsWhileInterjectionPaused = await getRunControlCountsSnapshot();
-    assert.equal(
-      countsWhileInterjectionPaused.resumable,
-      1,
-      'interjection-paused dialogs should count as resumable even while blocker facts still remain',
+      'interjection should park the original task in the dedicated stopped state',
     );
 
-    await driveDialogStream(
-      subdialog,
-      makeUserPrompt(followupInterjectPrompt, 'subdialog-user-interject-while-stopped', {
-        userLanguageCode: 'en',
-      }),
-      true,
-      makeDriveOptions({
-        suppressDiligencePush: true,
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
-    assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
-      {
-        reason: 'user_interjection_while_pending_subdialog',
-        directive: assignmentDirective,
-      },
-      'new user messages while stopped should keep chatting locally instead of resuming the parent task',
+    await DialogPersistence.removePendingSubdialog(
+      subdialog.id,
+      nestedSubdialog.id.selfId,
+      undefined,
+      subdialog.status,
     );
 
     await driveDialogStream(
@@ -207,52 +169,25 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
-    const latestAfterContinueWhileBlocked = await DialogPersistence.loadDialogLatest(
+    assert.equal(
+      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      undefined,
+      'manual Continue should consume the deferred reply reassertion when the dialog is unblocked',
+    );
+
+    const latestAfterContinue = await DialogPersistence.loadDialogLatest(
       subdialog.id,
       subdialog.status,
     );
     assert.deepEqual(
-      latestAfterContinueWhileBlocked?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
-      'Continue should exit the temporary interjection stop and restore the true blocked state when nested work is still pending',
+      latestAfterContinue?.displayState,
+      { kind: 'idle_waiting_user' },
+      'manual Continue should drive through immediately instead of falling back to a blocked placeholder state',
     );
-    const countsAfterContinueWhileBlocked = await getRunControlCountsSnapshot();
     assert.equal(
-      countsAfterContinueWhileBlocked.resumable,
-      0,
-      'once Continue exits the temporary interjection pause, the dialog should no longer count as resumable while truly blocked',
-    );
-
-    await DialogPersistence.removePendingSubdialog(
-      subdialog.id,
-      nestedSubdialog.id.selfId,
+      latestAfterContinue?.executionMarker,
       undefined,
-      subdialog.status,
-    );
-
-    await driveDialogStream(
-      subdialog,
-      undefined,
-      true,
-      makeDriveOptions({
-        source: 'kernel_driver_supply_response_parent_revive',
-        reason: 'nested_subdialog_resolved',
-        suppressDiligencePush: true,
-        noPromptSubdialogResumeEntitlement: {
-          ownerDialogId: subdialog.id.selfId,
-          reason: 'resolved_pending_subdialog_reply',
-          subdialogId: nestedSubdialog.id.selfId,
-          callType: 'C',
-          callId: 'pangu-to-nuwa-call',
-        },
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
-
-    assert.equal(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
-      undefined,
-      'deferred reply reassertion should be consumed on resume',
+      'successful resumed drive should clear the interrupted marker',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
@@ -267,23 +202,23 @@ async function main(): Promise<void> {
         event.origin === 'runtime' &&
         event.content === reassertionPrompt,
     );
-    assert.ok(reassertionRecord, 'expected runtime reassertion prompt before resumed reply');
-    assert.deepEqual(reassertionRecord?.tellaskReplyDirective, assignmentDirective);
+    assert.ok(reassertionRecord, 'expected runtime reply reassertion prompt during resumed drive');
 
     const pendingAtRoot = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
-    assert.equal(pendingAtRoot.length, 0, 'resumed reply should clear the parent pending sideline');
+    assert.equal(
+      pendingAtRoot.length,
+      0,
+      'manual Continue should let the subdialog finish the upstream reply immediately once unblocked',
+    );
   });
 
-  console.log(
-    'kernel-driver subdialog-resume-after-user-interject-reasserts-reply-obligation: PASS',
-  );
+  console.log('kernel-driver subdialog-continue-after-user-interject-drives-when-unblocked: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    'kernel-driver subdialog-resume-after-user-interject-reasserts-reply-obligation: FAIL\n' +
-      message,
+    'kernel-driver subdialog-continue-after-user-interject-drives-when-unblocked: FAIL\n' + message,
   );
   process.exit(1);
 });

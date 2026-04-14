@@ -54,7 +54,7 @@ async function main(): Promise<void> {
       tellaskContent: tellaskBody,
       responseBody: subdialogResponseText,
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
     });
     const resumeResponse = 'Ack: restore/live comparison ready.';

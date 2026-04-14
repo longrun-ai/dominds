@@ -1,6 +1,8 @@
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
+import { DialogPersistence } from '../../persistence';
+import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pause-stop';
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
@@ -106,6 +108,17 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   dlg: Dialog;
   prompt: KernelDriverHumanPrompt | undefined;
 }): Promise<boolean> {
+  // WARNING:
+  // This suppression decision is not a cosmetic prompt tweak. It is one leg of the full
+  // interjection-pause state machine:
+  // 1. user interjection suppresses the live reply obligation here;
+  // 2. `flow.ts` answers locally and parks the original task in a resumable stopped state;
+  // 3. manual Continue later decides from fresh persistence facts whether the dialog should stay
+  //    blocked or resume real driving.
+  //
+  // Do not "simplify" this into a pure display-state check or a pure pending-subdialog check.
+  // The business anchor is the deferred reply reassertion, while the paused execution marker keeps
+  // repeated interjection turns behaving as local side conversation until explicit Continue.
   const prompt = args.prompt;
   if (!prompt) {
     return false;
@@ -116,7 +129,23 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   if (prompt.tellaskReplyDirective !== undefined) {
     return false;
   }
-  return await args.dlg.hasPendingSubdialogs();
+  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  if (latest?.deferredReplyReassertion?.reason === 'user_interjection_while_pending_subdialog') {
+    return true;
+  }
+  if (
+    latest?.executionMarker?.kind === 'interrupted' &&
+    isUserInterjectionPauseStopReason(latest.executionMarker.reason)
+  ) {
+    return true;
+  }
+  // Use strict persistence reads here. This branch changes business behavior, so a read failure
+  // must loud-fail the round instead of being silently treated as "pending subdialogs exist".
+  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+    args.dlg.id,
+    args.dlg.status,
+  );
+  return pendingSubdialogs.length > 0;
 }
 
 export async function resolvePromptReplyGuidance(args: {

@@ -299,8 +299,8 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // the dialog running `replyTellaskBack` is the ask-back responder, while
   // directive.targetDialogId points to the ask-back requester that must receive the canonical
   // tellaskBack result. Keep those roles explicit, otherwise it is very easy to accidentally
-  // write the same business result once from the reply-tool path and then again from a fallback
-  // path that treats the responder's plain assistant words as if they were the canonical reply.
+  // write the same business result twice by confusing the responder's local plaintext with the
+  // canonical upstream delivery that must come only from an explicit reply tool call.
   const rootDialog =
     args.replyingDialog instanceof RootDialog
       ? args.replyingDialog
@@ -1289,9 +1289,6 @@ function findDeliveredTellaskBackReplyOnAskBackRequester(args: {
 async function extractAskBackResponderPlaintextFallback(args: {
   responderDialog: Dialog;
 }): Promise<string> {
-  // This fallback is intentionally second-class: it exists only for legacy/plain-reply flows
-  // where no explicit `replyTellaskBack` canonical result has been delivered. It must never
-  // compete with or overwrite an already delivered canonical tellaskBack result.
   try {
     return extractLastAssistantResponse(
       args.responderDialog.msgs,
@@ -1740,6 +1737,7 @@ async function executeTellaskCall(
             tellaskContent: body,
             responseBody: responseText,
             status: 'completed',
+            deliveryMode: 'direct_fallback',
             language: getWorkLanguage(),
           });
 

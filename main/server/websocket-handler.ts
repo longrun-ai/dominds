@@ -217,6 +217,15 @@ function buildResumeIneligibleMessage(
   message: string;
   reason: ResumeNotEligibleReason;
 } {
+  // WARNING:
+  // `resume_dialog` eligibility is intentionally based on the freshly healed projection, not on a
+  // naive local check of raw blocker facts. In particular, the paused-interjection stopped state
+  // must remain resumable here so the user can explicitly press Continue even while the underlying
+  // dialog may still be blocked.
+  //
+  // The actual outcome of that Continue attempt is decided later in `flow.ts` from fresh facts:
+  // it may restore `blocked`, or it may immediately continue driving. Do not reinterpret a
+  // resumable stopped state here as "guaranteed to run now".
   const state = latest?.displayState;
   if (!state) {
     return {
@@ -1720,6 +1729,11 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
     dialogIdObj,
     'resume_dialog',
   );
+  // WARNING:
+  // Passing this gate only means "a manual Continue attempt is allowed". It does not mean the
+  // dialog is guaranteed to re-enter proceeding immediately. For the paused-interjection flow, the
+  // resumed drive itself performs a second fresh-fact decision and may land in true `blocked`
+  // instead of proceeding.
   if (!isDialogLatestResumable(latest)) {
     const ineligible = buildResumeIneligibleMessage(latest);
     log.warn('resume_dialog rejected after fresh fact scan', undefined, {

@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       tellaskContent: panguTellaskBody,
       responseBody: coderReply,
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
     });
     const panguFinalResponse = 'Verified. Final answer remains 2.';
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       tellaskContent: rootTellaskBody,
       responseBody: panguFinalResponse,
       status: 'completed',
-      deliveryMode: 'direct_fallback',
+      deliveryMode: 'reply_tool',
       language,
     });
 

@@ -1853,7 +1853,7 @@ export class DiskFileDialogStore extends DialogStore {
     // Duplicate final results are not harmless transcript noise. They mean two different program
     // paths both believed they owned the same business-level completion fact for one callId.
     // In ask-back flows this usually points to identity confusion between requester/responder or
-    // canonical reply-tool delivery versus fallback plaintext synthesis. We fail fast here so the
+    // canonical reply-tool delivery versus another mistaken write path. We fail fast here so the
     // second writer keeps its own stack trace instead of silently corrupting the dialog transcript.
     const err = new Error(
       `${args.kind} duplicate callId invariant violation: rootId=${args.dialog.id.rootId} selfId=${args.dialog.id.selfId} ` +

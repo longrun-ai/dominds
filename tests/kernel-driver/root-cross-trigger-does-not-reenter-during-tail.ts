@@ -30,6 +30,15 @@ async function main(): Promise<void> {
         message: prompt,
         role: 'user',
         response,
+        funcCalls: [
+          {
+            id: 'root-cross-trigger-explicit-reply',
+            name: 'replyTellaskBack',
+            arguments: {
+              replyContent: response,
+            },
+          },
+        ],
       },
     ]);
 

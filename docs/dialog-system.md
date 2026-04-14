@@ -155,6 +155,51 @@ Dialog state is persisted to storage at key points:
 
 This ensures crash recovery and enables the backend to resume from any persisted state without depending on frontend state.
 
+### User Interjection Pause And Continue Semantics
+
+When a dialog still carries an inter-dialog reply obligation, but the user temporarily interjects and asks it to handle a local question first, the system must distinguish between the **UI projection** and the **true driving source state**.
+
+**Normative semantics**:
+
+1. Every user interjection message is driven as a complete normal round.
+2. If that round needs tools, the system MUST finish the full tool round and any post-tool follow-up before pausing.
+3. The system only projects the original task as resumable `stopped` when this interjection has actually parked an original task that still needs explicit restoration.
+4. If there is no parked original task to resume afterwards (for example, no inter-dialog reply obligation needs reassertion), the interjection round should simply finish and return to the true underlying state without showing this special `stopped` panel.
+5. As long as the user keeps sending new messages, the dialog stays in temporary interjection-chat handling, and that paused projection remains in place only if it was established in the first place.
+6. Only an explicit UI `Continue` attempts to restore the original task.
+
+**Key point**: this `stopped` state is only a temporary run-control / UI projection. It is not the same as an ordinary system-stop failure, and it is not the final business source of truth. It also does not apply to every interjection; it exists only when there really is a parked original task to resume.
+
+After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence facts and decide which true-source case now applies. It must not infer the result purely from the visible `displayState`:
+
+- **Case 1: the dialog no longer has a reply obligation**
+  If there is also no blocker, the dialog should simply continue driving. If it has already become ordinary idle-waiting-user, then `resume_dialog` is no longer actually resumable.
+- **Case 2: the dialog still has a reply obligation and is still suspended**
+  Typical examples are pending Q4H or pending subdialogs. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
+- **Case 3: the dialog still has a reply obligation but is no longer suspended and is eligible to proceed**
+  For example, the blocker has disappeared, or a queued prompt provides a valid continuation path. In this case, `Continue` must not first fall back to an intermediate placeholder `blocked/idle` state; it should keep driving immediately.
+
+**This leads to two implementation constraints**:
+
+- `refreshRunControlProjectionFromPersistenceFacts()` MUST preserve the special "interjection handled; original task paused" `stopped` projection until the user explicitly clicks `Continue`; otherwise the UI collapses back to ordinary `blocked` too early and breaks multi-turn interjection UX. Conversely, when there is no parked original task, this paused projection should not be created at all.
+- The actual outcome of `Continue` MUST be decided in the resume drive path by re-reading fresh persistence facts. "Continue is clickable" does not mean "the dialog will definitely enter proceeding immediately".
+- The run-control toolbar's `resumable` count should align with "manual Continue attempt is meaningful". Therefore an interjection-paused `stopped` dialog still counts as resumable even when underlying blocker facts remain, because the business meaning of `Continue` there is "exit the temporary paused projection and re-evaluate from source-of-truth facts".
+
+**Mental-model warning**:
+
+- Do not reason about this flow from `displayState.kind === 'stopped'` alone.
+- Do not reason about it from blocker facts alone and then wonder why the UI still shows `stopped`.
+- Do not reason about it from `resume_dialog` eligibility alone and assume resumption always means immediate running.
+
+You need all of the following together to understand the behavior correctly:
+
+- reply-guidance suppression / deferred reassertion for interjection turns
+- flow logic for "pause after local interjection reply" plus "fresh-fact second decision after Continue"
+- dialog-display-state projection preservation
+- websocket resume entry semantics distinguishing "allowed to attempt Continue" from "actually re-entered driving"
+
+This is an intentionally cross-module semantic contract. Do not locally "simplify" one piece based only on its surface meaning.
+
 ---
 
 ## 3-Type Teammate Tellask Taxonomy

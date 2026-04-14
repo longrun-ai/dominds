@@ -154,6 +154,51 @@
 
 这确保了崩溃恢复，并使后端能够从任何持久化状态恢复，而不依赖于前端状态。
 
+### 用户插话暂停与 Continue 语义
+
+当某个对话仍带有跨对话回复义务，但用户临时插话要求它先处理本地问题时，系统必须区分**UI 投影**与**真实驱动源状态**。
+
+**规范语义**：
+
+1. 每条用户插话消息都按正常驱动轮完整执行。
+2. 若该轮需要工具，则必须先完整跑完该工具轮及其 post-tool follow-up。
+3. 只有当这条插话确实打断了一个仍待恢复的“原任务”时，系统才把该原任务投影为可 `Continue` 的 `stopped`，让用户先看到最后一条回复。
+4. 若当前并不存在待恢复的原任务（例如没有待重申的跨对话回复义务），则插话轮结束后应直接回到真实 underlying state，而不显示这个特殊 `stopped` 面板。
+5. 只要用户继续发送新消息，就继续作为插话临时对话处理；这个 paused projection 仅在它已被建立时持续保持。
+6. 只有用户显式点击 UI `Continue`，系统才尝试恢复原任务。
+
+**关键点**：这里的 `stopped` 只是一个临时 run-control / UI 投影，不等于普通 system-stop 失败，也不是最终的业务真源；并且它不是所有插话都会出现，只在“确有一个待恢复的原任务被临时停靠”时出现。
+
+点击 `Continue` 后，后端必须重新从 persistence 真源判定当前对话属于哪一种情况，而不能只根据表面的 `displayState` 做静态推断：
+
+- **情况 1：当前对话没有回复义务**
+  这时若也没有其他 blocker，就应直接继续 drive；若已回到普通待用户输入态，则 `resume_dialog` 不应再被视为可继续。
+- **情况 2：当前对话仍有回复义务，但处于 suspend 状态**
+  常见于仍在等待 Q4H / pending subdialogs。此时 `Continue` 应退出插话 paused projection，并恢复成真实的 `blocked`。
+- **情况 3：当前对话仍有回复义务，但已不再 suspend，具备继续推进条件**
+  例如 blocker 已消失，或存在允许继续的 queued prompt。此时 `Continue` 不应先落一个中间 `blocked/idle` 占位态，而应直接继续 drive。
+
+**因此有两个实现约束**：
+
+- `refreshRunControlProjectionFromPersistenceFacts()` 在用户尚未点击 `Continue` 前，必须保留这层“插话已处理；原任务已暂停”的 `stopped` 投影；否则 UI 会过早塌回普通 `blocked`，破坏多轮插话体验。反过来，如果当前其实没有待恢复原任务，则根本不应建立这层 paused projection。
+- 真正决定 `Continue` 结果的逻辑，必须在恢复驱动路径中重新读取 fresh persistence facts；不能把“可点 Continue”误解为“必然立即 proceeding”。
+- run-control 工具栏中的 `resumable` 计数，应与“是否允许手动 Continue 尝试”保持一致。因此，处于 interjection-paused `stopped` 的对话即便底层仍有 blocker，也应计入 `resumable`；因为 `Continue` 的业务语义正是“退出这层临时 paused projection，并从真源重判下一步”。
+
+**心智模型提醒**：
+
+- 不能只看 `displayState.kind === 'stopped'` 就理解这条链路。
+- 不能只看 blocker facts 就理解为什么 UI 仍显示 `stopped`。
+- 也不能只看 `resume_dialog` eligibility 就推断恢复后一定马上运行。
+
+必须把以下几块一起看，才能形成完整且精确的理解：
+
+- reply-guidance 中对插话轮的回复义务 suppression / deferred reassertion
+- flow 中“插话回复后停车”与“Continue 后 fresh fact 二次判定”
+- dialog-display-state 中 paused projection 的保留策略
+- websocket resume 入口对“可尝试 Continue”与“实际已恢复 drive”的区分
+
+这是一条跨模块协同语义，不允许在单点上做“表面看起来更简单”的局部简化。
+
 ---
 
 ## 三类队友诉请分类

@@ -30,6 +30,7 @@ import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
 import { findDomindsPersistenceFileError } from './persistence-errors';
+import { isUserInterjectionPauseStopReason } from './runtime/interjection-pause-stop';
 
 const log = createLogger('dialog-display-state');
 
@@ -148,13 +149,22 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
         latest?.executionMarker?.kind === 'interrupted' &&
         isStoppedReasonResumable(latest.executionMarker.reason)
       ) {
-        const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-        const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
-          dialogId,
-          'running',
-        );
-        if (q4h.length === 0 && pendingSubdialogs.length === 0) {
+        // Keep run-control counts aligned with actual Continue affordance:
+        // - ordinary interrupted dialogs count as resumable only when no blocker remains
+        // - interjection-paused dialogs still count as resumable even if blocker facts remain,
+        //   because the intended UX is that Continue exits the temporary paused projection
+        //   and re-evaluates the original task from fresh facts
+        if (isUserInterjectionPauseStopReason(latest.executionMarker.reason)) {
           resumable++;
+        } else {
+          const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+          const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+            dialogId,
+            'running',
+          );
+          if (q4h.length === 0 && pendingSubdialogs.length === 0) {
+            resumable++;
+          }
         }
       }
     } catch (error: unknown) {
@@ -556,6 +566,29 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       latest.executionMarker.kind === 'dead'
     ) {
       return { kind: 'dead', reason: latest.executionMarker.reason };
+    }
+    if (
+      latest.executionMarker?.kind === 'interrupted' &&
+      isUserInterjectionPauseStopReason(latest.executionMarker.reason)
+    ) {
+      // WARNING:
+      // This is the one place where the projection intentionally preserves the paused-interjection
+      // stopped state ahead of the current blocker facts. That is not a bug: after a user
+      // interjection we want the UI to keep showing "original task paused; click Continue" even if
+      // the underlying dialog is still waiting on Q4H/subdialogs.
+      //
+      // The true source-of-truth decision about what Continue should do next lives in
+      // `flow.ts`'s resume path, which performs a fresh fact scan at resume time and then either:
+      // - restores `blocked`, or
+      // - keeps driving immediately.
+      //
+      // Do not "heal" this branch away by prioritizing blocker facts here; that would collapse the
+      // temporary interjection UX and make repeated interjection turns revert too early.
+      return {
+        kind: 'stopped',
+        reason: latest.executionMarker.reason,
+        continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+      };
     }
 
     const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');

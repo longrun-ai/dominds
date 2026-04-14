@@ -22,13 +22,22 @@ async function main(): Promise<void> {
       '',
       'Please now call `replyTellaskBack({ replyContent })` to deliver the reply.',
     ].join('\n');
-    const plainReply = 'Plain reply content that still reaches the tail fallback.';
+    const plainReply = 'Plain reply content that stays local unless replyTellaskBack is called.';
 
     await writeMockDb(tmpRoot, [
       {
         message: replyReminderPrompt,
         role: 'user',
         response: plainReply,
+        funcCalls: [
+          {
+            id: 'root-tail-explicit-reply',
+            name: 'replyTellaskBack',
+            arguments: {
+              replyContent: plainReply,
+            },
+          },
+        ],
       },
     ]);
 
@@ -66,53 +75,48 @@ async function main(): Promise<void> {
     });
     globalDialogRegistry.noteActiveRunBlockedQueuedDrive(root.id.rootId);
 
-    let thrown: unknown;
-    try {
-      await executeDriveRound({
-        runtime: createKernelDriverRuntimeState(),
-        driveArgs: [
-          root,
-          {
-            content: replyReminderPrompt,
-            msgId: 'root-tail-failure-prompt',
-            grammar: 'markdown',
-            origin: 'runtime',
-            tellaskReplyDirective: {
-              expectedReplyCallName: 'replyTellaskBack',
-              targetCallId: 'reply-back-target',
-              targetDialogId: pendingSubdialog.id.selfId,
-              tellaskContent: 'Please confirm the sideline result.',
-            },
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        root,
+        {
+          content: replyReminderPrompt,
+          msgId: 'root-tail-failure-prompt',
+          grammar: 'markdown',
+          origin: 'runtime',
+          tellaskReplyDirective: {
+            expectedReplyCallName: 'replyTellaskBack',
+            targetCallId: 'reply-back-target',
+            targetDialogId: pendingSubdialog.id.selfId,
+            tellaskContent: 'Please confirm the sideline result.',
           },
-          true,
-          makeDriveOptions({
-            source: 'kernel_driver_follow_up',
-            reason: 'reply_tool_reminder',
-            suppressDiligencePush: true,
-          }),
-        ],
-        scheduleDrive: (_dialog, options) => {
-          if (options.driveOptions.reason === 'reply_tellask_back_delivered') {
-            throw new Error('synthetic tail scheduleDrive failure');
-          }
         },
-        driveDialog: async () => {},
-      });
-    } catch (error: unknown) {
-      thrown = error;
-    }
-
-    assert.ok(
-      thrown instanceof Error,
-      'expected tail failure to propagate out of executeDriveRound',
-    );
-    assert.match(
-      thrown instanceof Error ? thrown.message : String(thrown),
-      /synthetic tail scheduleDrive failure/u,
-      'expected synthetic scheduleDrive failure to remain the surfaced tail error',
-    );
+        true,
+        makeDriveOptions({
+          source: 'kernel_driver_follow_up',
+          reason: 'reply_tool_reminder',
+          suppressDiligencePush: true,
+        }),
+      ],
+      scheduleDrive: (_dialog, options) => {
+        if (options.driveOptions.reason === 'reply_tellask_back_delivered') {
+          throw new Error('synthetic tail scheduleDrive failure');
+        }
+      },
+      driveDialog: async () => {},
+    });
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+    assert.equal(
+      latest?.displayState?.kind,
+      'stopped',
+      'tail scheduleDrive failure should stop the dialog rather than silently continuing',
+    );
+    assert.match(
+      latest?.displayState?.kind === 'stopped' ? latest.displayState.reason.detail : '',
+      /synthetic tail scheduleDrive failure/u,
+      'stopped state should retain the surfaced tail failure detail',
+    );
     assert.equal(
       latest?.needsDrive,
       true,

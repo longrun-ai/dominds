@@ -235,7 +235,7 @@ function main(): void {
   assert.ok(zhAskBackReply.startsWith(`${zhMarkers.tellaskBack}\n\n@tester 已回复：`));
   assert.equal(zhMarkers.tellaskBack, '【回问诉请】');
 
-  const enFallbackReply = formatTellaskResponseContent({
+  const enReply = formatTellaskResponseContent({
     callName: 'tellaskSessionless',
     responderId: 'tester',
     requesterId: 'caller',
@@ -243,10 +243,10 @@ function main(): void {
     tellaskContent: 'Please summarize the blocker.',
     responseBody: 'The blocker is still pending.',
     status: 'completed',
-    deliveryMode: 'direct_fallback',
+    deliveryMode: 'reply_tool',
     language: 'en',
   });
-  assert.ok(enFallbackReply.includes('did not use a replyTellask* tool'));
+  assert.ok(enReply.startsWith(`${enMarkers.finalCompleted}\n\n@tester provided response:`));
 
   console.log('✅ system-prompt-collab-marker-scope: ok');
 }
