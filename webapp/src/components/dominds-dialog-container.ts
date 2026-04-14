@@ -1185,6 +1185,11 @@ export class DomindsDialogContainer extends HTMLElement {
         this.displayState = event.displayState;
         if (event.displayState.kind === 'stopped' || event.displayState.kind === 'dead') {
           this.clearViewportPanel();
+        } else if (this.viewportPanelState.kind === 'stopped') {
+          // Clear stale stopped-panel viewport state as soon as the persisted display-state leaves
+          // stopped/dead. Without this, a manual Continue that restores true blocked state can keep
+          // showing the old stopped panel until some later unrelated event arrives.
+          this.clearViewportPanel();
         }
         break;
 

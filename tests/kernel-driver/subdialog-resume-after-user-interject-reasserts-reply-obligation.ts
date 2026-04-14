@@ -35,6 +35,9 @@ async function main(): Promise<void> {
     const interjectResponse = 'Handled the local interruption only.';
     const followupInterjectPrompt = 'One more temporary question before we resume the main task.';
     const followupInterjectResponse = 'Handled the follow-up interruption locally as well.';
+    const secondCycleInterjectPrompt =
+      'Pause again after Continue; I still want one more temporary local answer.';
+    const secondCycleInterjectResponse = 'Handled the second-cycle interruption locally too.';
     const finalResponse = 'Nested work is back, so I can now finalize the parent sideline.';
 
     const root = await createRootDialog('tester');
@@ -78,6 +81,11 @@ async function main(): Promise<void> {
         message: reassertionPrompt,
         role: 'user',
         response: finalResponse,
+      },
+      {
+        message: secondCycleInterjectPrompt,
+        role: 'user',
+        response: secondCycleInterjectResponse,
       },
     ]);
 
@@ -143,7 +151,7 @@ async function main(): Promise<void> {
     assert.deepEqual(
       deferredAfterInterjection,
       {
-        reason: 'user_interjection_while_pending_subdialog',
+        reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
       },
       'user interjection while nested subdialog is pending should arm deferred reply reassertion',
@@ -188,7 +196,7 @@ async function main(): Promise<void> {
     assert.deepEqual(
       await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
       {
-        reason: 'user_interjection_while_pending_subdialog',
+        reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
       },
       'new user messages while stopped should keep chatting locally instead of resuming the parent task',
@@ -216,11 +224,99 @@ async function main(): Promise<void> {
       { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
       'Continue should exit the temporary interjection stop and restore the true blocked state when nested work is still pending',
     );
+    const eventsAfterContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
+      subdialog.id,
+      subdialog.currentCourse,
+      subdialog.status,
+    );
+    const surfacedRuntimeGuides = eventsAfterContinueWhileBlocked.filter(
+      (
+        event,
+      ): event is Extract<
+        (typeof eventsAfterContinueWhileBlocked)[number],
+        { type: 'runtime_guide_record' }
+      > => event.type === 'runtime_guide_record' && event.content === reassertionPrompt,
+    );
+    assert.equal(
+      surfacedRuntimeGuides.length,
+      1,
+      'Continue while still blocked should immediately surface the reply reassertion guide exactly once',
+    );
+    assert.deepEqual(
+      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      {
+        reason: 'user_interjection_with_parked_original_task',
+        directive: assignmentDirective,
+        resumeGuideSurfaced: true,
+      },
+      'blocked Continue should mark the deferred reply reassertion as already surfaced',
+    );
     const countsAfterContinueWhileBlocked = await getRunControlCountsSnapshot();
     assert.equal(
       countsAfterContinueWhileBlocked.resumable,
       0,
       'once Continue exits the temporary interjection pause, the dialog should no longer count as resumable while truly blocked',
+    );
+
+    await driveDialogStream(
+      subdialog,
+      makeUserPrompt(secondCycleInterjectPrompt, 'subdialog-user-interject-second-cycle', {
+        userLanguageCode: 'en',
+      }),
+      true,
+      makeDriveOptions({
+        suppressDiligencePush: true,
+      }),
+    );
+    await waitForAllDialogsUnlocked(root, 2_000);
+    assert.deepEqual(
+      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      {
+        reason: 'user_interjection_with_parked_original_task',
+        directive: assignmentDirective,
+      },
+      'a new interjection after blocked Continue should suppress the restored reply obligation again instead of staying latched in surfaced state',
+    );
+
+    await driveDialogStream(
+      subdialog,
+      undefined,
+      true,
+      makeDriveOptions({
+        allowResumeFromInterrupted: true,
+        source: 'ws_resume_dialog',
+        reason: 'resume_dialog',
+        suppressDiligencePush: true,
+      }),
+    );
+    await waitForAllDialogsUnlocked(root, 2_000);
+
+    const eventsAfterSecondContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
+      subdialog.id,
+      subdialog.currentCourse,
+      subdialog.status,
+    );
+    const surfacedRuntimeGuidesAfterSecondContinue = eventsAfterSecondContinueWhileBlocked.filter(
+      (
+        event,
+      ): event is Extract<
+        (typeof eventsAfterSecondContinueWhileBlocked)[number],
+        { type: 'runtime_guide_record' }
+      > => event.type === 'runtime_guide_record' && event.content === reassertionPrompt,
+    );
+    assert.equal(
+      surfacedRuntimeGuidesAfterSecondContinue.length,
+      2,
+      'each blocked Continue after a fresh interjection should surface a fresh reply reassertion guide',
+    );
+    assert.deepEqual(
+      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      {
+        reason: 'user_interjection_with_parked_original_task',
+        directive: assignmentDirective,
+        resumeGuideSurfaced: true,
+      },
+      'the second blocked Continue should mark the reassertion as surfaced again',
     );
 
     await DialogPersistence.removePendingSubdialog(
@@ -260,15 +356,27 @@ async function main(): Promise<void> {
       subdialog.currentCourse,
       subdialog.status,
     );
-    const reassertionRecord = events.find(
+    const repeatedReassertionPrompt = events.find(
       (event): event is Extract<(typeof events)[number], { type: 'human_text_record' }> =>
         event.type === 'human_text_record' &&
         event.msgId !== 'subdialog-runtime-assignment' &&
         event.origin === 'runtime' &&
         event.content === reassertionPrompt,
     );
-    assert.ok(reassertionRecord, 'expected runtime reassertion prompt before resumed reply');
-    assert.deepEqual(reassertionRecord?.tellaskReplyDirective, assignmentDirective);
+    assert.equal(
+      repeatedReassertionPrompt,
+      undefined,
+      'actual resume should not synthesize a second runtime human prompt once blocked Continue already injected the guide into dialog history',
+    );
+    const surfacedGuidesAfterResume = events.filter(
+      (event): event is Extract<(typeof events)[number], { type: 'runtime_guide_record' }> =>
+        event.type === 'runtime_guide_record' && event.content === reassertionPrompt,
+    );
+    assert.equal(
+      surfacedGuidesAfterResume.length,
+      2,
+      'actual resume should not emit any duplicate reassertion guide beyond the two blocked-Continue surfacings',
+    );
 
     const pendingAtRoot = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
     assert.equal(pendingAtRoot.length, 0, 'resumed reply should clear the parent pending sideline');

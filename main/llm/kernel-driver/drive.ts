@@ -1849,26 +1849,37 @@ export async function driveDialogStreamCore(
               replyGuidance.suppressInterDialogReplyGuidance &&
               replyGuidance.deferredReplyReassertionDirective !== undefined
             ) {
+              // WARNING:
+              // User interjection suppression is a reversible state transition, not a one-shot
+              // latch. The normal cycle is:
+              // - user interjects -> suppress reply obligation
+              // - operator clicks Continue -> restore reply obligation
+              // - user interjects again -> suppress it again
+              //
+              // Therefore a repeated interjection after a blocked Continue MUST re-arm the deferred
+              // state and re-materialize the suppression guide, even when the underlying reply
+              // directive itself did not change.
               const existingDeferredReplyReassertion =
                 await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
               const nextDeferredReplyReassertion = {
-                reason: 'user_interjection_while_pending_subdialog' as const,
+                reason: 'user_interjection_with_parked_original_task' as const,
                 directive: replyGuidance.deferredReplyReassertionDirective,
               };
-              if (
+              const mustRearmDeferredReplyReassertion =
                 existingDeferredReplyReassertion === undefined ||
+                existingDeferredReplyReassertion.resumeGuideSurfaced === true ||
                 !hasSameReplyDirective(
                   existingDeferredReplyReassertion.directive,
                   nextDeferredReplyReassertion.directive,
-                )
-              ) {
+                );
+              if (mustRearmDeferredReplyReassertion) {
                 await DialogPersistence.setDeferredReplyReassertion(
                   dlg.id,
                   nextDeferredReplyReassertion,
                   dlg.status,
                 );
               }
-              if (existingDeferredReplyReassertion === undefined) {
+              if (mustRearmDeferredReplyReassertion) {
                 currentRuntimeGuideMsg = replyGuidance.transientGuideContent
                   ? {
                       type: 'transient_guide_msg',
@@ -1920,6 +1931,11 @@ export async function driveDialogStreamCore(
             }
 
             if (isQ4HAnswerPrompt) {
+              if (!replyGuidance.isQ4HAnswerPrompt) {
+                throw new Error(
+                  `kernel-driver q4h answer classification invariant violation: msgId=${currentPrompt.msgId} was parsed as q4h answer before reply-guidance but not after`,
+                );
+              }
               // Record only the answered call correlation / user language for the resumed round.
               // The actual human answer fact was already persisted via askHuman tellask result flow.
               await dlg.receiveHumanReply({
@@ -1927,6 +1943,10 @@ export async function driveDialogStreamCore(
                 userLanguageCode: persistedUserLanguageCode,
                 q4hAnswerCallId,
               });
+            } else if (replyGuidance.isQ4HAnswerPrompt) {
+              throw new Error(
+                `kernel-driver q4h answer classification invariant violation: msgId=${currentPrompt.msgId} was classified as q4h answer by reply-guidance without a normalized q4hAnswerCallId`,
+              );
             } else {
               await dlg.addChatMessages({
                 type: 'prompting_msg',

@@ -168,6 +168,8 @@ When a dialog still carries an inter-dialog reply obligation, but the user tempo
 5. As long as the user keeps sending new messages, the dialog stays in temporary interjection-chat handling, and that paused projection remains in place only if it was established in the first place.
 6. Only an explicit UI `Continue` attempts to restore the original task.
 
+**Strict boundary**: a formal `askHuman` answer is not part of this "user interjection" category. As soon as a prompt carries a real `q4hAnswerCallId`, it belongs to the askHuman reply channel and semantically continues an already-materialized question/answer chain; it must never be downgraded into temporary local side-chat.
+
 **Key point**: this `stopped` state is only a temporary run-control / UI projection. It is not the same as an ordinary system-stop failure, and it is not the final business source of truth. It also does not apply to every interjection; it exists only when there really is a parked original task to resume.
 
 After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence facts and decide which true-source case now applies. It must not infer the result purely from the visible `displayState`:
@@ -183,6 +185,7 @@ After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence
 
 - `refreshRunControlProjectionFromPersistenceFacts()` MUST preserve the special "interjection handled; original task paused" `stopped` projection until the user explicitly clicks `Continue`; otherwise the UI collapses back to ordinary `blocked` too early and breaks multi-turn interjection UX. Conversely, when there is no parked original task, this paused projection should not be created at all.
 - The actual outcome of `Continue` MUST be decided in the resume drive path by re-reading fresh persistence facts. "Continue is clickable" does not mean "the dialog will definitely enter proceeding immediately".
+- If `Continue` reveals that the true state is still `blocked`, the reply-obligation reassertion copy should be materialized immediately as a runtime guide in both `dlg.msgs` and persisted course history, while also surfacing as a frontend bubble. That lets the later real resume path rely on ordinary context replay instead of synthesizing a second duplicate runtime prompt.
 - The run-control toolbar's `resumable` count should align with "manual Continue attempt is meaningful". Therefore an interjection-paused `stopped` dialog still counts as resumable even when underlying blocker facts remain, because the business meaning of `Continue` there is "exit the temporary paused projection and re-evaluate from source-of-truth facts".
 
 **Mental-model warning**:
@@ -190,6 +193,7 @@ After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence
 - Do not reason about this flow from `displayState.kind === 'stopped'` alone.
 - Do not reason about it from blocker facts alone and then wonder why the UI still shows `stopped`.
 - Do not reason about it from `resume_dialog` eligibility alone and assume resumption always means immediate running.
+- Do not flatten every `origin === 'user'` prompt into "interjection"; a non-empty `q4hAnswerCallId` means askHuman answer continuation and follows a different semantic path.
 
 You need all of the following together to understand the behavior correctly:
 

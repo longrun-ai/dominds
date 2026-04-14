@@ -117,6 +117,8 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   //    blocked or resume real driving.
   //
   // Do not "simplify" this into a pure display-state check or a pure pending-subdialog check.
+  // Proceeding dialogs with a still-active reply obligation are part of the same rule: a fresh
+  // user interjection should still suppress the live reply obligation and answer locally first.
   // The business anchor is the deferred reply reassertion, while the paused execution marker keeps
   // repeated interjection turns behaving as local side conversation until explicit Continue.
   const prompt = args.prompt;
@@ -130,13 +132,17 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
     return false;
   }
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
-  if (latest?.deferredReplyReassertion?.reason === 'user_interjection_while_pending_subdialog') {
+  if (latest?.deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task') {
     return true;
   }
   if (
     latest?.executionMarker?.kind === 'interrupted' &&
     isUserInterjectionPauseStopReason(latest.executionMarker.reason)
   ) {
+    return true;
+  }
+  const activeReplyDirective = await loadLatestActiveTellaskReplyDirective(args.dlg);
+  if (activeReplyDirective) {
     return true;
   }
   // Use strict persistence reads here. This branch changes business behavior, so a read failure
@@ -155,17 +161,21 @@ export async function resolvePromptReplyGuidance(args: {
 }): Promise<{
   activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
   deferredReplyReassertionDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
+  isQ4HAnswerPrompt: boolean;
   promptContent: string | undefined;
   persistedTellaskReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
   suppressInterDialogReplyGuidance: boolean;
   transientGuideContent: string | undefined;
 }> {
   const prompt = args.prompt;
-  const suppressInterDialogReplyGuidance =
-    await shouldSuppressInterDialogReplyGuidanceForUserInterjection({
-      dlg: args.dlg,
-      prompt,
-    });
+  const isQ4HAnswerPrompt =
+    typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
+  const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
+    ? false
+    : await shouldSuppressInterDialogReplyGuidanceForUserInterjection({
+        dlg: args.dlg,
+        prompt,
+      });
   const availableReplyDirective =
     prompt?.tellaskReplyDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
   const activeReplyDirective = suppressInterDialogReplyGuidance
@@ -187,6 +197,7 @@ export async function resolvePromptReplyGuidance(args: {
     deferredReplyReassertionDirective: suppressInterDialogReplyGuidance
       ? availableReplyDirective
       : undefined,
+    isQ4HAnswerPrompt,
     promptContent,
     persistedTellaskReplyDirective: prompt?.tellaskReplyDirective ?? activeReplyDirective,
     suppressInterDialogReplyGuidance,

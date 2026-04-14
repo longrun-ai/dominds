@@ -15,6 +15,7 @@ import {
   setDialogDisplayState,
 } from '../../dialog-display-state';
 import { globalDialogRegistry } from '../../dialog-global-registry';
+import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
@@ -447,6 +448,15 @@ async function maybeResolveDeferredReplyReassertionPrompt(
     await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
     return undefined;
   }
+  // WARNING:
+  // `resumeGuideSurfaced` means the reply-obligation reassertion has already been materialized as a
+  // runtime guide and injected into both dialog.msgs and persisted course history at blocked
+  // Continue time. Once that has happened, later real resume must not emit a second visible prompt:
+  // normal context replay is now the source of truth for the model-facing reminder.
+  if (deferredReplyReassertion.resumeGuideSurfaced === true) {
+    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+    return undefined;
+  }
   await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
   const language = getWorkLanguage();
   return {
@@ -461,6 +471,63 @@ async function maybeResolveDeferredReplyReassertionPrompt(
     userLanguageCode: language,
     tellaskReplyDirective: deferredReplyReassertion.directive,
   };
+}
+
+async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
+  dialog: Dialog,
+): Promise<void> {
+  const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
+    dialog.id,
+    dialog.status,
+  );
+  if (!deferredReplyReassertion || deferredReplyReassertion.resumeGuideSurfaced === true) {
+    return;
+  }
+  const activeDirective = await loadLatestActiveTellaskReplyDirective(dialog);
+  if (
+    !activeDirective ||
+    activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
+  ) {
+    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+    return;
+  }
+  const language = getWorkLanguage();
+  const content = await buildReplyObligationReassertionPrompt({
+    dlg: dialog,
+    directive: deferredReplyReassertion.directive,
+    language,
+  });
+  const genseq = dialog.activeGenSeqOrUndefined ?? 1;
+  // WARNING:
+  // This helper intentionally does three things at once:
+  // 1. append the guide into dialog.msgs so an in-memory later resume sees it naturally;
+  // 2. persist a runtime_guide_record so reload/replay reconstructs the same context;
+  // 3. emit runtime_guide_evt so the user immediately sees the reassertion bubble after Continue.
+  //
+  // Do not "optimize" this into only an event or only a deferred prompt. The whole point is that
+  // once blocked Continue is clicked, the guide becomes a first-class historical context fact and
+  // later real driving should need no special duplicate reassertion path.
+  await dialog.addChatMessages({
+    type: 'transient_guide_msg',
+    role: 'assistant',
+    content,
+  });
+  await DialogPersistence.persistRuntimeGuide(dialog, content, genseq);
+  postDialogEvent(dialog, {
+    type: 'runtime_guide_evt',
+    course: dialog.currentCourse,
+    genseq,
+    content,
+  });
+  await DialogPersistence.setDeferredReplyReassertion(
+    dialog.id,
+    {
+      reason: 'user_interjection_with_parked_original_task',
+      directive: deferredReplyReassertion.directive,
+      resumeGuideSurfaced: true,
+    },
+    dialog.status,
+  );
 }
 
 async function resolveEffectivePrompt(
@@ -651,6 +718,7 @@ export async function executeDriveRound(args: {
             subdialogs: suspension.subdialogs,
           });
           await setDialogDisplayState(dialog.id, restoredState);
+          await maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(dialog);
           log.debug(
             'kernel-driver continue after interjection pause restored true suspended state from fresh persistence facts',
             undefined,
@@ -814,8 +882,13 @@ export async function executeDriveRound(args: {
     // suppressed a still-pending inter-dialog reply obligation that must be reasserted later.
     // User interjections without a parked original task should simply finish and fall back to the
     // dialog's true underlying state, without showing the special stopped panel.
+    //
+    // Q4H answers are explicitly outside this branch even though they also come from the human.
+    // They belong to the askHuman reply channel and must continue the suspended askHuman round,
+    // never be mistaken for ad hoc interjection chat.
     shouldPauseAfterLocalUserInterjection =
       effectivePrompt?.origin === 'user' &&
+      !replyGuidance.isQ4HAnswerPrompt &&
       replyGuidance.suppressInterDialogReplyGuidance &&
       replyGuidance.deferredReplyReassertionDirective !== undefined;
     activeTellaskReplyDirective = replyGuidance.activeReplyDirective;

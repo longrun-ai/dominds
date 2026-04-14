@@ -167,6 +167,8 @@
 5. 只要用户继续发送新消息，就继续作为插话临时对话处理；这个 paused projection 仅在它已被建立时持续保持。
 6. 只有用户显式点击 UI `Continue`，系统才尝试恢复原任务。
 
+**严格边界**：`askHuman` 的正式回答不属于这里的“用户插话”。只要一条 prompt 带着真实的 `q4hAnswerCallId`，它就属于 askHuman 回复通道，语义上是在继续已 materialize 的提问/应答链路，绝不能被压入“本地临时插话聊天”。
+
 **关键点**：这里的 `stopped` 只是一个临时 run-control / UI 投影，不等于普通 system-stop 失败，也不是最终的业务真源；并且它不是所有插话都会出现，只在“确有一个待恢复的原任务被临时停靠”时出现。
 
 点击 `Continue` 后，后端必须重新从 persistence 真源判定当前对话属于哪一种情况，而不能只根据表面的 `displayState` 做静态推断：
@@ -182,6 +184,7 @@
 
 - `refreshRunControlProjectionFromPersistenceFacts()` 在用户尚未点击 `Continue` 前，必须保留这层“插话已处理；原任务已暂停”的 `stopped` 投影；否则 UI 会过早塌回普通 `blocked`，破坏多轮插话体验。反过来，如果当前其实没有待恢复原任务，则根本不应建立这层 paused projection。
 - 真正决定 `Continue` 结果的逻辑，必须在恢复驱动路径中重新读取 fresh persistence facts；不能把“可点 Continue”误解为“必然立即 proceeding”。
+- 若 `Continue` 后真源仍是 `blocked`，回复责任重申文案应当立即作为 runtime guide 同时进入 `dlg.msgs` 与持久化课程历史，并同步发前端气泡；这样后面真正恢复 drive 时只需正常读取上下文，不应再额外补发一条重复的 runtime prompt。
 - run-control 工具栏中的 `resumable` 计数，应与“是否允许手动 Continue 尝试”保持一致。因此，处于 interjection-paused `stopped` 的对话即便底层仍有 blocker，也应计入 `resumable`；因为 `Continue` 的业务语义正是“退出这层临时 paused projection，并从真源重判下一步”。
 
 **心智模型提醒**：
@@ -189,6 +192,7 @@
 - 不能只看 `displayState.kind === 'stopped'` 就理解这条链路。
 - 不能只看 blocker facts 就理解为什么 UI 仍显示 `stopped`。
 - 也不能只看 `resume_dialog` eligibility 就推断恢复后一定马上运行。
+- 更不能把所有 `origin === 'user'` 的输入都笼统视作“用户插话”；`q4hAnswerCallId` 非空的 prompt 是 askHuman answer continuation，必须按另一条语义链处理。
 
 必须把以下几块一起看，才能形成完整且精确的理解：
 

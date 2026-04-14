@@ -97,8 +97,9 @@ export interface SubdialogMetadataFile {
 export type DialogMetadataFile = RootDialogMetadataFile | SubdialogMetadataFile;
 
 export type DialogDeferredReplyReassertion = Readonly<{
-  reason: 'user_interjection_while_pending_subdialog';
+  reason: 'user_interjection_with_parked_original_task';
   directive: TellaskReplyDirective;
+  resumeGuideSurfaced?: boolean;
 }>;
 
 export interface DialogLatestFile {

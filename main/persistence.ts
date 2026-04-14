@@ -1190,11 +1190,15 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   const deferredReplyReassertion: DialogDeferredReplyReassertion | null | undefined = (() => {
     if (deferredReplyReassertionRaw === undefined) return undefined;
     if (!isRecord(deferredReplyReassertionRaw)) return null;
-    if (deferredReplyReassertionRaw.reason !== 'user_interjection_while_pending_subdialog') {
+    if (deferredReplyReassertionRaw.reason !== 'user_interjection_with_parked_original_task') {
       return null;
     }
     const directiveRaw = deferredReplyReassertionRaw.directive;
     if (!isRecord(directiveRaw)) return null;
+    const resumeGuideSurfacedRaw = deferredReplyReassertionRaw.resumeGuideSurfaced;
+    if (resumeGuideSurfacedRaw !== undefined && typeof resumeGuideSurfacedRaw !== 'boolean') {
+      return null;
+    }
     const expectedReplyCallName = directiveRaw.expectedReplyCallName;
     const targetCallId = directiveRaw.targetCallId;
     const tellaskContent = directiveRaw.tellaskContent;
@@ -1212,22 +1216,28 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       const targetDialogId = directiveRaw.targetDialogId;
       if (typeof targetDialogId !== 'string') return null;
       return {
-        reason: 'user_interjection_while_pending_subdialog',
+        reason: 'user_interjection_with_parked_original_task',
         directive: {
           expectedReplyCallName,
           targetCallId,
           targetDialogId,
           tellaskContent,
         },
+        ...(resumeGuideSurfacedRaw === undefined
+          ? {}
+          : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
       };
     }
     return {
-      reason: 'user_interjection_while_pending_subdialog',
+      reason: 'user_interjection_with_parked_original_task',
       directive: {
         expectedReplyCallName,
         targetCallId,
         tellaskContent,
       },
+      ...(resumeGuideSurfacedRaw === undefined
+        ? {}
+        : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
     };
   })();
   if (deferredReplyReassertion === null) return null;

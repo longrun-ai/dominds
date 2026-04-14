@@ -57,6 +57,12 @@ export interface KernelDriverHumanPrompt {
   msgId: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
+  // `q4hAnswerCallId` is not an ordinary user-chat turn marker. It means this prompt is the
+  // continuation input for an already-materialized `askHuman` tellask answer and therefore belongs
+  // to the askHuman reply channel, not to the "user interjection / local side-chat" channel.
+  //
+  // Any logic that classifies user-origin prompts MUST treat non-empty `q4hAnswerCallId` as
+  // semantically distinct from ad hoc user interjections.
   q4hAnswerCallId?: string;
   tellaskReplyDirective?: TellaskReplyDirective;
   origin: 'user' | 'diligence_push' | 'runtime';

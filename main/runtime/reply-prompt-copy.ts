@@ -99,14 +99,14 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
       REPLY_SUPPRESSION_PREFIX_ZH,
       '先把用户刚插进来的这轮正常接住，按眼前的话题继续回答。',
       '原来那条长线先放一放，别急着顺着它往下收口。',
-      '等相关支线结果回来后，运行时会再提醒你把那条线接回去。',
+      '等原任务允许恢复时，运行时会再提醒你把那条线接回去。',
     ].join('\n');
   }
   return [
     REPLY_SUPPRESSION_PREFIX_EN,
     "First, handle the user's interjection normally and keep answering the topic in front of you.",
     'Set the earlier long-line thread aside for now; do not rush to close it yet.',
-    'When the related sideline result comes back, runtime will remind you to pick that thread up again.',
+    'When the original task becomes resumable again, runtime will remind you to pick that thread up again.',
   ].join('\n');
 }
 

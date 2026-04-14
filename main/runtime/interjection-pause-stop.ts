@@ -11,6 +11,10 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 // resume afterwards, the interjection should simply complete and the dialog should fall back to
 // its true underlying state without showing this stopped panel.
 //
+// In particular, askHuman answers are NOT "user interjections" for this purpose. A prompt carrying
+// a real `q4hAnswerCallId` belongs to the askHuman reply channel and must never be routed through
+// this paused-original-task stop semantics.
+//
 // Do not change this file in isolation. The complete behavior depends on coordinated logic across:
 // - `reply-guidance.ts`          suppressing upstream reply obligation during interjection chat
 // - `flow.ts`                   parking after the local reply, then re-running fresh-fact resume

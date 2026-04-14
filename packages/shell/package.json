@@ -1,6 +1,6 @@
 {
   "name": "@longrun-ai/shell",
-  "version": "1.8.13",
+  "version": "1.8.14",
   "description": "Dominds shell-facing contract package.",
   "type": "commonjs",
   "private": false,
