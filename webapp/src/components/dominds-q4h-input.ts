@@ -43,6 +43,10 @@ const RESIZE_HANDLE_ARIA_LABEL_I18N = {
 } as const;
 
 export class DomindsQ4HInput extends HTMLElement {
+  private static readonly MIN_HOST_HEIGHT_PX = 100;
+  private static readonly AUTO_RESIZE_MAX_VIEWPORT_RATIO = 0.5;
+  private static readonly MANUAL_RESIZE_MAX_VIEWPORT_RATIO = 2 / 3;
+  private static readonly AUTO_RESIZE_EXTRA_GAP_PX = 0;
   private wsManager = getWebSocketManager();
   private uiLanguage: LanguageCode = 'en';
 
@@ -72,12 +76,15 @@ export class DomindsQ4HInput extends HTMLElement {
   private inputHistoryDraft: string | null = null;
 
   private textInput!: HTMLTextAreaElement;
+  private measureTextarea!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
   private declareDeathButton!: HTMLButtonElement;
   private inputWrapper!: HTMLElement;
 
   private resizeHandle!: HTMLDivElement;
   private manualHeightPx: number | null = null;
+  private autoResizeBaseHostHeightPx: number | null = null;
+  private autoResizeCaptureArmed = false;
   private manualResizeMinPx: number = 0;
   private manualResizeMaxPx: number = 0;
   private manualResizeStartY: number = 0;
@@ -85,6 +92,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private isManualResizing: boolean = false;
   private boundManualMove?: (e: PointerEvent) => void;
   private boundManualUp?: (e: PointerEvent) => void;
+  private boundManualLostCapture?: (e: PointerEvent) => void;
   private activePointerId: number | null = null;
 
   constructor() {
@@ -100,7 +108,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.updateUI();
     this.recomputeResizeBounds();
     this.restoreManualHeightForCurrentViewport();
-    this.applyManualHeight();
+    this.applyHeightConstraints();
     // Ensure initial textarea height is stable (avoid "growing a bit" on first blur).
     this.scheduleInputUiUpdate();
   }
@@ -127,6 +135,11 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    if (this.inputUiRafId !== null) {
+      window.cancelAnimationFrame(this.inputUiRafId);
+      this.inputUiRafId = null;
+    }
+    this.finishManualResize(false);
     if (this.boundOnWindowResize) {
       window.removeEventListener('resize', this.boundOnWindowResize);
     }
@@ -135,42 +148,57 @@ export class DomindsQ4HInput extends HTMLElement {
   private boundOnWindowResize = (): void => {
     this.recomputeResizeBounds();
     this.restoreManualHeightForCurrentViewport();
-    this.applyManualHeight();
+    if (this.manualHeightPx === null) {
+      this.autoResizeBaseHostHeightPx = null;
+      this.autoResizeCaptureArmed = false;
+    }
+    this.applyHeightConstraints();
+    this.scheduleInputUiUpdate();
   };
 
   private recomputeResizeBounds(): void {
-    const lineHeight = this.getMessageInputLineHeightPx();
-    const minLines = 3;
-    const minTextHeight = lineHeight * minLines;
-    const minHost = Math.ceil(minTextHeight + 32 + 24);
-    const maxHost = Math.floor(window.innerHeight * 0.5);
-    this.manualResizeMinPx = Math.max(120, minHost);
+    const maxHost = Math.floor(
+      window.innerHeight * DomindsQ4HInput.MANUAL_RESIZE_MAX_VIEWPORT_RATIO,
+    );
+    this.manualResizeMinPx = DomindsQ4HInput.MIN_HOST_HEIGHT_PX;
     this.manualResizeMaxPx = Math.max(this.manualResizeMinPx, maxHost);
   }
 
-  private getMessageInputLineHeightPx(): number {
-    if (!this.textInput) return 20;
-    const computed = window.getComputedStyle(this.textInput);
-    const lh = Number.parseFloat(computed.lineHeight);
-    if (Number.isFinite(lh) && lh > 0) return lh;
-    const fs = Number.parseFloat(computed.fontSize);
-    if (Number.isFinite(fs) && fs > 0) return fs * 1.4;
-    return 20;
+  private getHostChromeHeightPx(): number {
+    const container = this.shadowRoot?.querySelector('.q4h-input-container');
+    const section = this.shadowRoot?.querySelector('.input-section');
+    const wrapper = this.inputWrapper;
+    if (!(container instanceof HTMLElement) || !(section instanceof HTMLElement) || !wrapper) {
+      return 38;
+    }
+
+    const containerStyle = window.getComputedStyle(container);
+    const sectionStyle = window.getComputedStyle(section);
+    const wrapperStyle = window.getComputedStyle(wrapper);
+
+    const borderBottom = Number.parseFloat(containerStyle.borderBottomWidth) || 0;
+    const borderTop = Number.parseFloat(sectionStyle.borderTopWidth) || 0;
+    const paddingTop = Number.parseFloat(sectionStyle.paddingTop) || 0;
+    const paddingBottom = Number.parseFloat(sectionStyle.paddingBottom) || 0;
+    const wrapperBorderTop = Number.parseFloat(wrapperStyle.borderTopWidth) || 0;
+    const wrapperBorderBottom = Number.parseFloat(wrapperStyle.borderBottomWidth) || 0;
+
+    return (
+      borderBottom + borderTop + paddingTop + paddingBottom + wrapperBorderTop + wrapperBorderBottom
+    );
   }
 
-  private applyManualHeight(): void {
-    if (this.manualHeightPx === null) {
+  private applyHeightConstraints(): void {
+    const baselineHeightPx = this.getBaselineHostHeightPx();
+    if (baselineHeightPx === null) {
       this.style.height = '';
       this.style.maxHeight = '';
+      this.style.minHeight = `${this.manualResizeMinPx}px`;
       return;
     }
-    const clamped = Math.max(
-      this.manualResizeMinPx,
-      Math.min(this.manualResizeMaxPx, this.manualHeightPx),
-    );
-    this.manualHeightPx = clamped;
-    this.style.height = `${clamped}px`;
-    this.style.maxHeight = `${clamped}px`;
+    this.style.height = `${baselineHeightPx}px`;
+    this.style.maxHeight = `${baselineHeightPx}px`;
+    this.style.minHeight = `${this.manualResizeMinPx}px`;
   }
 
   private restoreManualHeightForCurrentViewport(): void {
@@ -181,6 +209,100 @@ export class DomindsQ4HInput extends HTMLElement {
   private persistManualHeightForCurrentViewport(): void {
     if (this.manualHeightPx === null) return;
     saveViewportScopedNumber(DomindsQ4HInput.MANUAL_HEIGHT_STORAGE_KEY, this.manualHeightPx);
+  }
+
+  private clampHostHeightPx(heightPx: number): number {
+    return Math.max(this.manualResizeMinPx, Math.min(this.manualResizeMaxPx, heightPx));
+  }
+
+  private getCurrentHostHeightPx(): number {
+    const rect = this.getBoundingClientRect();
+    if (rect.height > 0) return rect.height;
+    return this.offsetHeight;
+  }
+
+  private getBaselineHostHeightPx(): number | null {
+    const baselineHeightPx = this.manualHeightPx ?? this.autoResizeBaseHostHeightPx;
+    if (baselineHeightPx === null) return null;
+    return this.clampHostHeightPx(baselineHeightPx);
+  }
+
+  private setHostHeightPx(heightPx: number | null): void {
+    if (heightPx === null) {
+      this.style.height = '';
+      this.style.maxHeight = '';
+      this.style.minHeight = `${this.manualResizeMinPx}px`;
+      return;
+    }
+    const clamped = this.clampHostHeightPx(heightPx);
+    this.style.height = `${clamped}px`;
+    this.style.maxHeight = `${clamped}px`;
+    this.style.minHeight = `${this.manualResizeMinPx}px`;
+  }
+
+  private finishManualResize(shouldPersist: boolean): void {
+    const pointerId = this.activePointerId;
+
+    if (this.boundManualMove) {
+      window.removeEventListener('pointermove', this.boundManualMove, true);
+    }
+    if (this.boundManualUp) {
+      window.removeEventListener('pointerup', this.boundManualUp, true);
+      window.removeEventListener('pointercancel', this.boundManualUp, true);
+      this.resizeHandle?.removeEventListener('pointerup', this.boundManualUp);
+      this.resizeHandle?.removeEventListener('pointercancel', this.boundManualUp);
+    }
+    if (this.boundManualLostCapture) {
+      this.resizeHandle?.removeEventListener('lostpointercapture', this.boundManualLostCapture);
+    }
+
+    this.isManualResizing = false;
+    this.activePointerId = null;
+    this.boundManualMove = undefined;
+    this.boundManualUp = undefined;
+    this.boundManualLostCapture = undefined;
+
+    if (pointerId !== null) {
+      try {
+        if (this.resizeHandle?.hasPointerCapture(pointerId)) {
+          this.resizeHandle.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (shouldPersist && this.manualHeightPx !== null) {
+      this.persistManualHeightForCurrentViewport();
+    }
+  }
+
+  private getMeasuredTextareaScrollHeightPx(): number {
+    const input = this.textInput;
+    const measurer = this.measureTextarea;
+    if (!input || !measurer) {
+      return 0;
+    }
+
+    const computed = window.getComputedStyle(input);
+    measurer.style.width = `${input.clientWidth}px`;
+    measurer.style.paddingTop = computed.paddingTop;
+    measurer.style.paddingRight = computed.paddingRight;
+    measurer.style.paddingBottom = computed.paddingBottom;
+    measurer.style.paddingLeft = computed.paddingLeft;
+    measurer.style.font = computed.font;
+    measurer.style.lineHeight = computed.lineHeight;
+    measurer.style.letterSpacing = computed.letterSpacing;
+    measurer.style.textIndent = computed.textIndent;
+    measurer.style.textTransform = computed.textTransform;
+    measurer.style.wordSpacing = computed.wordSpacing;
+    measurer.style.tabSize = computed.tabSize;
+    measurer.style.whiteSpace = computed.whiteSpace;
+    measurer.style.overflowWrap = computed.overflowWrap;
+
+    const value = input.value.endsWith('\n') ? `${input.value} ` : input.value;
+    measurer.value = value.length > 0 ? value : ' ';
+    return measurer.scrollHeight;
   }
 
   public setUiLanguage(language: LanguageCode): void {
@@ -454,7 +576,7 @@ export class DomindsQ4HInput extends HTMLElement {
       this.textInput.value = '';
       this.resetInputHistoryNavigation();
       this.updateSendButton();
-      this.scheduleInputUiUpdate();
+      this.autoResizeTextarea();
     }
   }
 
@@ -508,16 +630,12 @@ export class DomindsQ4HInput extends HTMLElement {
     const selectionEnd = active === this.textInput ? this.textInput.selectionEnd : null;
 
     const currentValue = this.textInput?.value || '';
-    const currentHeight = this.textInput?.style.height || '';
 
     this.render();
     this.setupEventListeners();
 
     if (this.textInput) {
       this.textInput.value = currentValue;
-      if (currentHeight) {
-        this.textInput.style.height = currentHeight;
-      }
     }
     this.updateUI();
 
@@ -537,12 +655,45 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private autoResizeTextarea(): void {
     if (!this.textInput) return;
-    this.textInput.style.height = 'auto';
-    const scrollHeight = this.textInput.scrollHeight;
-    const lineHeight = this.getMessageInputLineHeightPx();
-    const minHeight = Math.ceil(lineHeight * 3);
-    const maxHeight = Math.ceil(lineHeight * 20);
-    this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
+    const previousHostHeightPx = this.getCurrentHostHeightPx();
+    const hostChromeHeightPx = this.getHostChromeHeightPx();
+    const minHeight = Math.max(0, this.manualResizeMinPx - hostChromeHeightPx);
+    const maxHeight = Math.max(
+      minHeight,
+      Math.floor(window.innerHeight * DomindsQ4HInput.AUTO_RESIZE_MAX_VIEWPORT_RATIO) -
+        hostChromeHeightPx,
+    );
+
+    this.textInput.style.height = '';
+    const scrollHeight = this.getMeasuredTextareaScrollHeightPx();
+    const desiredTextHeight =
+      scrollHeight <= minHeight + 1
+        ? minHeight
+        : scrollHeight + DomindsQ4HInput.AUTO_RESIZE_EXTRA_GAP_PX;
+    const nextHeight = Math.max(minHeight, Math.min(desiredTextHeight, maxHeight));
+
+    const desiredHostHeightPx = Math.ceil(hostChromeHeightPx + nextHeight);
+    const baselineHostHeightPx = this.getBaselineHostHeightPx();
+
+    if (baselineHostHeightPx !== null) {
+      this.autoResizeCaptureArmed = true;
+      this.setHostHeightPx(Math.max(baselineHostHeightPx, desiredHostHeightPx));
+      return;
+    }
+
+    if (!this.autoResizeCaptureArmed) {
+      this.autoResizeCaptureArmed = true;
+      this.setHostHeightPx(null);
+      return;
+    }
+
+    if (desiredHostHeightPx > previousHostHeightPx + 1) {
+      this.autoResizeBaseHostHeightPx = this.clampHostHeightPx(previousHostHeightPx);
+      this.setHostHeightPx(desiredHostHeightPx);
+      return;
+    }
+
+    this.setHostHeightPx(null);
   }
 
   private scheduleInputUiUpdate(): void {
@@ -550,7 +701,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.inputUiRafId = window.requestAnimationFrame(() => {
       this.inputUiRafId = null;
       this.updateSendButton();
-      if (!this.isComposing && this.manualHeightPx === null) {
+      if (!this.isComposing) {
         this.autoResizeTextarea();
       }
     });
@@ -722,13 +873,19 @@ export class DomindsQ4HInput extends HTMLElement {
 
     if (this.resizeHandle) {
       this.resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+        if (!e.isPrimary || e.button !== 0) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
+        this.finishManualResize(false);
         this.recomputeResizeBounds();
         if (this.textInput) {
           // Clear any inline height set by auto-resize so the textarea can stretch.
           this.textInput.style.height = '';
         }
+        this.autoResizeBaseHostHeightPx = null;
+        this.autoResizeCaptureArmed = false;
         const current = this.getBoundingClientRect().height;
         const startHeight = this.manualHeightPx ?? current;
         this.manualResizeStartHeight = startHeight;
@@ -736,38 +893,32 @@ export class DomindsQ4HInput extends HTMLElement {
         this.isManualResizing = true;
         this.activePointerId = e.pointerId;
         this.manualHeightPx = startHeight;
-        this.applyManualHeight();
+        this.applyHeightConstraints();
 
         this.resizeHandle.setPointerCapture(e.pointerId);
 
         this.boundManualMove = (evt: PointerEvent) => {
-          if (!this.isManualResizing) return;
+          if (!this.isManualResizing || evt.pointerId !== this.activePointerId) return;
           const delta = evt.clientY - this.manualResizeStartY;
           const next = this.manualResizeStartHeight - delta;
           this.manualHeightPx = next;
-          this.applyManualHeight();
+          this.applyHeightConstraints();
         };
-        this.boundManualUp = () => {
-          this.isManualResizing = false;
-          if (this.activePointerId !== null) {
-            try {
-              this.resizeHandle.releasePointerCapture(this.activePointerId);
-            } catch {
-              // ignore
-            }
-          }
-          this.activePointerId = null;
-          if (this.boundManualMove) {
-            this.resizeHandle.removeEventListener('pointermove', this.boundManualMove);
-          }
-          this.persistManualHeightForCurrentViewport();
-          this.boundManualMove = undefined;
-          this.boundManualUp = undefined;
+        this.boundManualUp = (evt: PointerEvent) => {
+          if (evt.pointerId !== this.activePointerId) return;
+          this.finishManualResize(true);
+        };
+        this.boundManualLostCapture = (evt: PointerEvent) => {
+          if (evt.pointerId !== this.activePointerId) return;
+          this.finishManualResize(true);
         };
 
-        this.resizeHandle.addEventListener('pointermove', this.boundManualMove);
-        this.resizeHandle.addEventListener('pointerup', this.boundManualUp, { once: true });
-        this.resizeHandle.addEventListener('pointercancel', this.boundManualUp, { once: true });
+        window.addEventListener('pointermove', this.boundManualMove, true);
+        window.addEventListener('pointerup', this.boundManualUp, true);
+        window.addEventListener('pointercancel', this.boundManualUp, true);
+        this.resizeHandle.addEventListener('pointerup', this.boundManualUp);
+        this.resizeHandle.addEventListener('pointercancel', this.boundManualUp);
+        this.resizeHandle.addEventListener('lostpointercapture', this.boundManualLostCapture);
       });
     }
   }
@@ -1049,6 +1200,7 @@ export class DomindsQ4HInput extends HTMLElement {
     `;
 
     this.textInput = this.shadowRoot.querySelector('.message-input')!;
+    this.measureTextarea = this.shadowRoot.querySelector('.message-input-measurer')!;
     this.sendButton = this.shadowRoot.querySelector('.send-button')!;
     this.declareDeathButton = this.shadowRoot.querySelector('.declare-death-button')!;
     this.inputWrapper = this.shadowRoot.querySelector('.input-wrapper')!;
@@ -1081,6 +1233,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     return `
       <div class="q4h-input-container">
+        <textarea class="message-input-measurer" tabindex="-1" aria-hidden="true"></textarea>
         <div class="input-section">
           <div class="input-resize-handle" role="separator" aria-orientation="horizontal" aria-label="${RESIZE_HANDLE_ARIA_LABEL_I18N[this.uiLanguage]}"></div>
           <div class="input-wrapper ${this.selectedQuestionId !== null ? 'q4h-active' : ''} ${this.props.disabled ? 'disabled' : ''}">
@@ -1149,6 +1302,24 @@ export class DomindsQ4HInput extends HTMLElement {
         border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
         background: var(--dominds-sidebar-bg, #f8f9fa);
         box-sizing: border-box;
+      }
+
+      .message-input-measurer {
+        position: absolute;
+        top: 0;
+        left: -9999px;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        margin: 0;
+        border: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        visibility: hidden;
+        pointer-events: none;
+        resize: none;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
       }
 
       .input-resize-handle {
@@ -1297,12 +1468,13 @@ export class DomindsQ4HInput extends HTMLElement {
         background: transparent;
         border: none;
         outline: none;
+        box-sizing: border-box;
         padding: 9px 12px;
         font-size: 13px;
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg, #333333);
         resize: none;
-        min-height: 42px;
+        min-height: 0;
         font-family: inherit;
         white-space: pre-wrap;
         overflow-y: auto;
