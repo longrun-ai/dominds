@@ -238,6 +238,41 @@ export interface AssignmentFromSup {
   effectiveFbrEffort?: number;
 }
 
+function buildSubdialogAssignmentPromptMeta(
+  subdialog: SubDialog,
+): Pick<DialogPrompt, 'tellaskReplyDirective' | 'subdialogReplyTarget'> {
+  const assignment = subdialog.assignmentFromSup;
+  switch (assignment.callName) {
+    case 'tellask':
+      return {
+        tellaskReplyDirective: {
+          expectedReplyCallName: 'replyTellask',
+          targetCallId: assignment.callId,
+          tellaskContent: assignment.tellaskContent,
+        },
+        subdialogReplyTarget: {
+          ownerDialogId: assignment.callerDialogId,
+          callType: 'B',
+          callId: assignment.callId,
+        },
+      };
+    case 'tellaskSessionless':
+    case 'freshBootsReasoning':
+      return {
+        tellaskReplyDirective: {
+          expectedReplyCallName: 'replyTellaskSessionless',
+          targetCallId: assignment.callId,
+          tellaskContent: assignment.tellaskContent,
+        },
+        subdialogReplyTarget: {
+          ownerDialogId: assignment.callerDialogId,
+          callType: 'C',
+          callId: assignment.callId,
+        },
+      };
+  }
+}
+
 /**
  * Abstract base class for all dialog types.
  * Contains common properties and methods shared between RootDialog and SubDialog.
@@ -1253,6 +1288,7 @@ export abstract class Dialog {
       grammar: 'markdown',
       userLanguageCode: this._lastUserLanguageCode,
       origin: 'runtime',
+      ...(this instanceof SubDialog ? buildSubdialogAssignmentPromptMeta(this) : {}),
     };
 
     const runControlSpec = options?.runControl ?? this._activeRunControlSpec;
