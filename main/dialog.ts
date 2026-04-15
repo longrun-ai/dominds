@@ -201,6 +201,7 @@ export interface DialogInitParams {
     createdAt?: string;
     updatedAt?: string;
     contextHealth?: ContextHealthSnapshot;
+    pendingCourseStartPrompt?: DialogPrompt;
   };
 }
 
@@ -375,6 +376,9 @@ export abstract class Dialog {
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
     this._lastContextHealthGenseq = undefined;
+    if (initialState?.pendingCourseStartPrompt) {
+      this.setNewCourseStartPrompt(initialState.pendingCourseStartPrompt);
+    }
     this.resetCourseLanguageNotice();
   }
 
@@ -1312,7 +1316,7 @@ export abstract class Dialog {
 
     // Delegate to DialogStore for course start persistence
     if (this.dlgStore) {
-      await this.dlgStore.startNewCourse(this, nextPrompt.content);
+      await this.dlgStore.startNewCourse(this, nextPrompt);
     }
 
     const storeCourse = this.dlgStore
@@ -2518,7 +2522,7 @@ export abstract class DialogStore {
   /**
    * Start a new course in storage
    */
-  public async startNewCourse(_dialog: Dialog, _newCoursePrompt: string): Promise<void> {}
+  public async startNewCourse(_dialog: Dialog, _newCoursePrompt: DialogPrompt): Promise<void> {}
 
   /**
    * Handle stream error

@@ -39,6 +39,7 @@ import type {
   DialogInterruptionReason,
   DialogLlmRetryRecoveryAction,
 } from '@longrun-ai/kernel/types/display-state';
+import type { DialogPrompt } from '@longrun-ai/kernel/types/drive-intent';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
@@ -48,6 +49,8 @@ import type {
   DialogFbrState,
   DialogLatestFile,
   DialogMetadataFile,
+  DialogPendingCourseStartPrompt,
+  DialogSubdialogReplyTarget,
   FuncCallRecord,
   FuncResultRecord,
   HumanQuestion,
@@ -1047,6 +1050,113 @@ function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
   return isRootDialogMetadataFile(value) || isSubdialogMetadataFile(value);
 }
 
+function parseTellaskReplyDirective(value: unknown): TellaskReplyDirective | null {
+  if (!isRecord(value)) return null;
+  const expectedReplyCallName = value.expectedReplyCallName;
+  const targetCallId = value.targetCallId;
+  const tellaskContent = value.tellaskContent;
+  if (
+    expectedReplyCallName !== 'replyTellask' &&
+    expectedReplyCallName !== 'replyTellaskSessionless' &&
+    expectedReplyCallName !== 'replyTellaskBack'
+  ) {
+    return null;
+  }
+  if (typeof targetCallId !== 'string' || typeof tellaskContent !== 'string') {
+    return null;
+  }
+  if (expectedReplyCallName === 'replyTellaskBack') {
+    const targetDialogId = value.targetDialogId;
+    if (typeof targetDialogId !== 'string') return null;
+    return {
+      expectedReplyCallName,
+      targetCallId,
+      targetDialogId,
+      tellaskContent,
+    };
+  }
+  return {
+    expectedReplyCallName,
+    targetCallId,
+    tellaskContent,
+  };
+}
+
+function parseDialogSubdialogReplyTarget(value: unknown): DialogSubdialogReplyTarget | null {
+  if (!isRecord(value)) return null;
+  const ownerDialogId = value.ownerDialogId;
+  const callType = value.callType;
+  const callId = value.callId;
+  if (typeof ownerDialogId !== 'string' || typeof callId !== 'string') {
+    return null;
+  }
+  if (callType !== 'A' && callType !== 'B' && callType !== 'C') {
+    return null;
+  }
+  return {
+    ownerDialogId,
+    callType,
+    callId,
+  };
+}
+
+function parseDialogPendingCourseStartPrompt(
+  value: unknown,
+): DialogPendingCourseStartPrompt | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.content !== 'string' || typeof value.msgId !== 'string') {
+    return null;
+  }
+  if (value.grammar !== 'markdown' || value.origin !== 'runtime') {
+    return null;
+  }
+  const userLanguageCodeRaw = value.userLanguageCode;
+  if (
+    userLanguageCodeRaw !== undefined &&
+    (typeof userLanguageCodeRaw !== 'string' || !isLanguageCode(userLanguageCodeRaw))
+  ) {
+    return null;
+  }
+  const skipTaskdocRaw = value.skipTaskdoc;
+  if (skipTaskdocRaw !== undefined && typeof skipTaskdocRaw !== 'boolean') {
+    return null;
+  }
+  const tellaskReplyDirective =
+    value.tellaskReplyDirective === undefined
+      ? undefined
+      : parseTellaskReplyDirective(value.tellaskReplyDirective);
+  if (value.tellaskReplyDirective !== undefined && tellaskReplyDirective === null) {
+    return null;
+  }
+  const subdialogReplyTarget =
+    value.subdialogReplyTarget === undefined
+      ? undefined
+      : parseDialogSubdialogReplyTarget(value.subdialogReplyTarget);
+  if (value.subdialogReplyTarget !== undefined && subdialogReplyTarget === null) {
+    return null;
+  }
+  const userLanguageCode = userLanguageCodeRaw;
+  const skipTaskdoc = skipTaskdocRaw;
+  const normalizedTellaskReplyDirective =
+    tellaskReplyDirective === null ? undefined : tellaskReplyDirective;
+  const normalizedSubdialogReplyTarget =
+    subdialogReplyTarget === null ? undefined : subdialogReplyTarget;
+  return {
+    content: value.content,
+    msgId: value.msgId,
+    grammar: 'markdown',
+    origin: 'runtime',
+    ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
+    ...(normalizedTellaskReplyDirective === undefined
+      ? {}
+      : { tellaskReplyDirective: normalizedTellaskReplyDirective }),
+    ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
+    ...(normalizedSubdialogReplyTarget === undefined
+      ? {}
+      : { subdialogReplyTarget: normalizedSubdialogReplyTarget }),
+  };
+}
+
 function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (!isRecord(value)) return null;
 
@@ -1193,54 +1303,28 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     if (deferredReplyReassertionRaw.reason !== 'user_interjection_with_parked_original_task') {
       return null;
     }
-    const directiveRaw = deferredReplyReassertionRaw.directive;
-    if (!isRecord(directiveRaw)) return null;
+    const directive = parseTellaskReplyDirective(deferredReplyReassertionRaw.directive);
+    if (directive === null) return null;
     const resumeGuideSurfacedRaw = deferredReplyReassertionRaw.resumeGuideSurfaced;
     if (resumeGuideSurfacedRaw !== undefined && typeof resumeGuideSurfacedRaw !== 'boolean') {
       return null;
     }
-    const expectedReplyCallName = directiveRaw.expectedReplyCallName;
-    const targetCallId = directiveRaw.targetCallId;
-    const tellaskContent = directiveRaw.tellaskContent;
-    if (
-      expectedReplyCallName !== 'replyTellask' &&
-      expectedReplyCallName !== 'replyTellaskSessionless' &&
-      expectedReplyCallName !== 'replyTellaskBack'
-    ) {
-      return null;
-    }
-    if (typeof targetCallId !== 'string' || typeof tellaskContent !== 'string') {
-      return null;
-    }
-    if (expectedReplyCallName === 'replyTellaskBack') {
-      const targetDialogId = directiveRaw.targetDialogId;
-      if (typeof targetDialogId !== 'string') return null;
-      return {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: {
-          expectedReplyCallName,
-          targetCallId,
-          targetDialogId,
-          tellaskContent,
-        },
-        ...(resumeGuideSurfacedRaw === undefined
-          ? {}
-          : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
-      };
-    }
     return {
       reason: 'user_interjection_with_parked_original_task',
-      directive: {
-        expectedReplyCallName,
-        targetCallId,
-        tellaskContent,
-      },
+      directive,
       ...(resumeGuideSurfacedRaw === undefined
         ? {}
         : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
     };
   })();
   if (deferredReplyReassertion === null) return null;
+
+  const pendingCourseStartPromptRaw = (value as Record<string, unknown>).pendingCourseStartPrompt;
+  const pendingCourseStartPrompt: DialogPendingCourseStartPrompt | null | undefined = (() => {
+    if (pendingCourseStartPromptRaw === undefined) return undefined;
+    return parseDialogPendingCourseStartPrompt(pendingCourseStartPromptRaw);
+  })();
+  if (pendingCourseStartPrompt === null) return null;
 
   return {
     currentCourse,
@@ -1255,6 +1339,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     executionMarker,
     fbrState,
     deferredReplyReassertion,
+    pendingCourseStartPrompt,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };
@@ -2490,9 +2575,14 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Start new course (append-only JSONL + exceptional reminder persistence)
    */
-  public async startNewCourse(dialog: Dialog, _newCoursePrompt: string): Promise<void> {
+  public async startNewCourse(dialog: Dialog, newCoursePrompt: DialogPrompt): Promise<void> {
     const previousCourse = dialog.currentCourse;
     const newCourse = previousCourse + 1;
+    if (newCoursePrompt.origin !== 'runtime') {
+      throw new Error(
+        `startNewCourse invariant violation: pending new-course prompt must have runtime origin for dialog=${dialog.id.valueOf()}`,
+      );
+    }
 
     // Persist reminders state for new course (exceptional overwrite)
     // Use the currently attached dialog's reminders to avoid stale state
@@ -2501,7 +2591,28 @@ export class DiskFileDialogStore extends DialogStore {
     // Update latest.yaml with new course (lastModified is set by persistence layer)
     await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
       kind: 'patch',
-      patch: { currentCourse: newCourse },
+      patch: {
+        currentCourse: newCourse,
+        needsDrive: true,
+        pendingCourseStartPrompt: {
+          content: newCoursePrompt.content,
+          msgId: newCoursePrompt.msgId,
+          grammar: 'markdown',
+          origin: 'runtime',
+          ...(newCoursePrompt.userLanguageCode === undefined
+            ? {}
+            : { userLanguageCode: newCoursePrompt.userLanguageCode }),
+          ...(newCoursePrompt.tellaskReplyDirective === undefined
+            ? {}
+            : { tellaskReplyDirective: newCoursePrompt.tellaskReplyDirective }),
+          ...(newCoursePrompt.skipTaskdoc === undefined
+            ? {}
+            : { skipTaskdoc: newCoursePrompt.skipTaskdoc }),
+          ...(newCoursePrompt.subdialogReplyTarget === undefined
+            ? {}
+            : { subdialogReplyTarget: newCoursePrompt.subdialogReplyTarget }),
+        },
+      },
     }));
 
     // Post course update event
@@ -7393,6 +7504,36 @@ export class DialogPersistence {
   ): Promise<boolean> {
     const latest = await this.loadDialogLatest(dialogId, status);
     return latest?.needsDrive === true;
+  }
+
+  static async clearPendingCourseStartPrompt(
+    dialogId: DialogID,
+    msgId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    const normalizedMsgId = msgId.trim();
+    if (normalizedMsgId === '') {
+      throw new Error(
+        `clearPendingCourseStartPrompt invariant violation: empty msgId for dialog=${dialogId.valueOf()}`,
+      );
+    }
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const pending = previous.pendingCourseStartPrompt;
+        if (!pending || pending.msgId !== normalizedMsgId) {
+          return { kind: 'noop' };
+        }
+        return {
+          kind: 'patch',
+          patch: {
+            pendingCourseStartPrompt: undefined,
+            needsDrive: false,
+          },
+        };
+      },
+      status,
+    );
   }
 
   static async setDeferredReplyReassertion(

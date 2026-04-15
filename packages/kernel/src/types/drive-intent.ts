@@ -1,5 +1,6 @@
 import type { LanguageCode } from './language';
-import type { TellaskReplyDirective } from './storage';
+import type { DialogSubdialogReplyTarget, TellaskReplyDirective } from './storage';
+export type { DialogSubdialogReplyTarget } from './storage';
 
 export type DialogRunControlSource =
   | 'drive_dlg_by_user_msg'
@@ -14,12 +15,6 @@ export type DialogRunControlSpec = Readonly<{
     questionId: string;
     continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
   }>;
-}>;
-
-export type DialogSubdialogReplyTarget = Readonly<{
-  ownerDialogId: string;
-  callType: 'A' | 'B' | 'C';
-  callId: string;
 }>;
 
 export type DialogPrompt = Readonly<{

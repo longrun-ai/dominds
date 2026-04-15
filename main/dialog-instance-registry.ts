@@ -1,4 +1,5 @@
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
+import type { DialogPrompt } from '@longrun-ai/kernel/types/drive-intent';
 import { Dialog, DialogID, RootDialog, SubDialog } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { DialogPersistence, DiskFileDialogStore } from './persistence';
@@ -24,6 +25,51 @@ function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
   return Math.max(0, Math.floor(value));
 }
 
+async function resolvePendingCourseStartPromptForRestore(args: {
+  dialogId: DialogID;
+  status: DialogPersistenceStatus;
+  messages: Dialog['msgs'];
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+}): Promise<{
+  pendingCourseStartPrompt: DialogPrompt | undefined;
+}> {
+  const pending = args.latest?.pendingCourseStartPrompt;
+  if (!pending) {
+    return { pendingCourseStartPrompt: undefined };
+  }
+  const alreadyPersisted = args.messages.some((message) => {
+    return message.type === 'prompting_msg' && message.msgId === pending.msgId;
+  });
+  if (alreadyPersisted) {
+    if (args.status === 'running') {
+      await DialogPersistence.clearPendingCourseStartPrompt(
+        args.dialogId,
+        pending.msgId,
+        args.status,
+      );
+    }
+    return { pendingCourseStartPrompt: undefined };
+  }
+  return {
+    pendingCourseStartPrompt: {
+      content: pending.content,
+      msgId: pending.msgId,
+      grammar: 'markdown',
+      origin: 'runtime',
+      ...(pending.userLanguageCode === undefined
+        ? {}
+        : { userLanguageCode: pending.userLanguageCode }),
+      ...(pending.tellaskReplyDirective === undefined
+        ? {}
+        : { tellaskReplyDirective: pending.tellaskReplyDirective }),
+      ...(pending.skipTaskdoc === undefined ? {} : { skipTaskdoc: pending.skipTaskdoc }),
+      ...(pending.subdialogReplyTarget === undefined
+        ? {}
+        : { subdialogReplyTarget: pending.subdialogReplyTarget }),
+    } as const,
+  };
+}
+
 export async function getOrRestoreRootDialog(
   rootId: string,
   status: DialogPersistenceStatus,
@@ -45,6 +91,12 @@ export async function getOrRestoreRootDialog(
   }
 
   const latest = await DialogPersistence.loadDialogLatest(rootDialogId, status);
+  const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
+    dialogId: rootDialogId,
+    status,
+    messages: rootState.messages,
+    latest,
+  });
   let diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
   try {
     const team = await Team.load();
@@ -67,6 +119,7 @@ export async function getOrRestoreRootDialog(
       reminders: rootState.reminders,
       currentCourse: rootState.currentCourse,
       contextHealth: rootState.contextHealth,
+      pendingCourseStartPrompt,
     },
   );
   const persistedDisableDiligencePush =
@@ -129,6 +182,12 @@ export async function ensureDialogLoaded(
   if (!state) return undefined;
 
   const latest = await DialogPersistence.loadDialogLatest(targetId, status);
+  const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
+    dialogId: targetId,
+    status,
+    messages: state.messages,
+    latest,
+  });
 
   const assignmentFromSup = state.metadata.assignmentFromSup;
   if (!assignmentFromSup) return undefined;
@@ -161,6 +220,7 @@ export async function ensureDialogLoaded(
       reminders: state.reminders,
       currentCourse: state.currentCourse,
       contextHealth: state.contextHealth,
+      pendingCourseStartPrompt,
     },
   );
   subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;

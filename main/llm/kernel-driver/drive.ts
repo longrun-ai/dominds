@@ -1921,6 +1921,11 @@ export async function driveDialogStreamCore(
                 q4hAnswerCallId,
                 replyGuidance.persistedTellaskReplyDirective,
               );
+              await DialogPersistence.clearPendingCourseStartPrompt(
+                dlg.id,
+                currentPrompt.msgId,
+                dlg.status,
+              );
             }
 
             if (renderPromptAsRuntimeGuideBubble) {

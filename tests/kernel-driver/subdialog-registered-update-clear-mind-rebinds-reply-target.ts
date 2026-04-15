@@ -154,6 +154,15 @@ async function main(): Promise<void> {
       subdialog.currentCourse,
       subdialog.status,
     );
+    const latestAfterDrive = await DialogPersistence.loadDialogLatest(
+      subdialog.id,
+      subdialog.status,
+    );
+    assert.equal(
+      latestAfterDrive?.needsDrive,
+      false,
+      'subdialog latest.yaml should clear needsDrive after the rebound clear-mind prompt is consumed',
+    );
     const latestPromptRecord = courseTwoEvents.find(
       (event): event is Extract<(typeof courseTwoEvents)[number], { type: 'human_text_record' }> =>
         event.type === 'human_text_record' &&

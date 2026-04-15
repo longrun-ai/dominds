@@ -102,6 +102,23 @@ export type DialogDeferredReplyReassertion = Readonly<{
   resumeGuideSurfaced?: boolean;
 }>;
 
+export type DialogSubdialogReplyTarget = Readonly<{
+  ownerDialogId: string;
+  callType: 'A' | 'B' | 'C';
+  callId: string;
+}>;
+
+export type DialogPendingCourseStartPrompt = Readonly<{
+  content: string;
+  msgId: string;
+  grammar: 'markdown';
+  origin: 'runtime';
+  userLanguageCode?: LanguageCode;
+  tellaskReplyDirective?: TellaskReplyDirective;
+  skipTaskdoc?: boolean;
+  subdialogReplyTarget?: DialogSubdialogReplyTarget;
+}>;
+
 export interface DialogLatestFile {
   currentCourse: number;
   lastModified: string;
@@ -115,6 +132,7 @@ export interface DialogLatestFile {
   executionMarker?: DialogExecutionMarker;
   fbrState?: DialogFbrState;
   deferredReplyReassertion?: DialogDeferredReplyReassertion;
+  pendingCourseStartPrompt?: DialogPendingCourseStartPrompt;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;
 }
