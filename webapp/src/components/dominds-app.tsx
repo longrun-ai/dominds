@@ -5844,86 +5844,6 @@ export class DomindsApp extends HTMLElement {
         background: color-mix(in srgb, var(--dominds-hover) 65%, var(--dominds-bg) 35%);
       }
 
-      .rem-plan-reminder {
-        --rem-plan-spinner-track: #b9c9da;
-        --rem-plan-spinner-head: #3f78af;
-        --rem-plan-done: #2f8a56;
-        --rem-plan-pending: #6f7a8a;
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 6px;
-        padding: 6px 8px;
-      }
-
-      :host-context(html[data-theme='dark']) .rem-plan-reminder {
-        --rem-plan-spinner-track: #4f647a;
-        --rem-plan-spinner-head: #8fb6de;
-        --rem-plan-done: #78c79b;
-        --rem-plan-pending: #9ca9bd;
-      }
-
-      .rem-plan-explanation {
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .rem-plan-list-wrap {
-        width: 100%;
-      }
-
-      .rem-plan-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      .rem-plan-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .rem-plan-icon {
-        width: 12px;
-        height: 12px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-
-      .rem-plan-icon .icon-mask {
-        width: 12px;
-        height: 12px;
-      }
-
-      .rem-plan-icon-spinner {
-        width: 12px;
-        height: 12px;
-        border: 1.5px solid var(--rem-plan-spinner-track);
-        border-top-color: var(--rem-plan-spinner-head);
-        border-radius: 50%;
-        animation: spin 0.9s linear infinite;
-        box-sizing: border-box;
-      }
-
-      .rem-plan-icon-done {
-        color: var(--rem-plan-done);
-      }
-
-      .rem-plan-icon-pending {
-        color: var(--rem-plan-pending);
-      }
-
-      .rem-plan-text {
-        flex: 1;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
     `;
   }
 
@@ -11594,10 +11514,6 @@ export class DomindsApp extends HTMLElement {
         }
         const meta =
           r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : undefined;
-        const kind = typeof meta?.kind === 'string' ? meta.kind : '';
-        if (kind === 'plan') {
-          return this.renderPlanVirtualReminderItem(r.content);
-        }
         const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
         return `<div class="rem-item rem-item-virtual"><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
       });
@@ -11654,78 +11570,6 @@ export class DomindsApp extends HTMLElement {
 
   private renderReminderPlainHtml(content: string): string {
     return escapeHtml(content).replace(/\n/g, '<br>');
-  }
-
-  private renderPlanVirtualReminderItem(content: string): string {
-    const parsed = this.parsePlanReminderContent(content);
-    if (parsed.items.length === 0) {
-      return `<div class="rem-item rem-item-virtual rem-plan-reminder"><div class="rem-item-content">${this.renderReminderPlainHtml(content)}</div></div>`;
-    }
-    const listItems = parsed.items
-      .map((item) => {
-        if (item.status === 'in_progress') {
-          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-spinner" aria-hidden="true"></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
-        }
-        if (item.status === 'completed') {
-          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-done" aria-hidden="true"><span class="icon-mask app-icon-check"></span></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
-        }
-        return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-pending" aria-hidden="true"><span class="icon-mask app-icon-circle"></span></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
-      })
-      .join('');
-
-    // Design decision:
-    // - Keep Codex VSCode parity for empty todo lists (not shown; backend deletes reminder).
-    // - Preserve optional explanation in Dominds when todo items exist for added context.
-    const explanationHtml =
-      parsed.explanation && parsed.explanation.trim().length > 0
-        ? `<div class="rem-plan-explanation">${this.renderReminderPlainHtml(parsed.explanation)}</div>`
-        : '';
-
-    return `<div class="rem-item rem-item-virtual rem-plan-reminder">${explanationHtml}<div class="rem-plan-list-wrap"><ul class="rem-plan-list">${listItems}</ul></div></div>`;
-  }
-
-  private parsePlanReminderContent(content: string): {
-    explanation?: string;
-    items: Array<{ status: 'pending' | 'in_progress' | 'completed'; text: string }>;
-  } {
-    const items: Array<{ status: 'pending' | 'in_progress' | 'completed'; text: string }> = [];
-    let explanation: string | undefined;
-    const lines = content.split('\n');
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (line === '') {
-        continue;
-      }
-      if (explanation === undefined) {
-        const explanationMatch = line.match(/^(?:Explanation|说明)\s*[:：]\s*(.+)$/i);
-        if (explanationMatch?.[1]) {
-          const parsedExplanation = explanationMatch[1].trim();
-          if (parsedExplanation.length > 0) {
-            explanation = parsedExplanation;
-          }
-          continue;
-        }
-      }
-      const m = line.match(/^\d+\)\s*\[([^\]]+)\]\s*(.+)$/);
-      if (!m) {
-        continue;
-      }
-      const statusRaw = m[1]?.trim().toLowerCase();
-      const text = m[2]?.trim() ?? '';
-      if (text === '') {
-        continue;
-      }
-      let status: 'pending' | 'in_progress' | 'completed';
-      if (statusRaw === 'in_progress' || statusRaw === '进行中') {
-        status = 'in_progress';
-      } else if (statusRaw === 'completed' || statusRaw === '已完成') {
-        status = 'completed';
-      } else {
-        status = 'pending';
-      }
-      items.push({ status, text });
-    }
-    return { explanation, items };
   }
 
   /**

@@ -60,8 +60,6 @@ import {
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
-const CODEX_SYSTEM_PROMPT_DIRECTIVE_PATTERN =
-  /^([ \t]*)@codex-system-prompt(?::([A-Za-z0-9._-]+))?([ \t]*)$/gm;
 
 export function resolveCodexServiceTier(
   serviceTier: ChatGptResponsesRequest['service_tier'] | undefined,
@@ -147,44 +145,8 @@ function tryExtractApiReturnedModel(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function spliceCodexBuiltinPrompt(params: {
-  template: string;
-  defaultModel: string;
-  loadPrompt: (model: string) => string | null;
-}): string {
-  let replaced = false;
-  const resolved = params.template.replace(
-    CODEX_SYSTEM_PROMPT_DIRECTIVE_PATTERN,
-    (_match: string, leading: string, overrideModel: string | undefined, trailing: string) => {
-      const selectedModel = overrideModel ?? params.defaultModel;
-      const prompt = params.loadPrompt(selectedModel);
-      if (prompt === null) {
-        throw new Error(`Bundled Codex prompt template not found for model: ${selectedModel}`);
-      }
-      replaced = true;
-      return `${leading}${prompt}${trailing}`;
-    },
-  );
-  return replaced ? resolved : params.template;
-}
-
-export function resolveCodexInstructions(
-  systemPrompt: string,
-  options?: {
-    defaultModel?: string;
-    loadPrompt?: (model: string) => string | null;
-  },
-): string {
-  const baseInstructions =
-    systemPrompt.trim().length > 0 ? systemPrompt : codexFallbackInstructions;
-  if (options?.defaultModel === undefined || options.loadPrompt === undefined) {
-    return baseInstructions;
-  }
-  return spliceCodexBuiltinPrompt({
-    template: baseInstructions,
-    defaultModel: options.defaultModel,
-    loadPrompt: options.loadPrompt,
-  });
+export function resolveCodexInstructions(systemPrompt: string): string {
+  return systemPrompt.trim().length > 0 ? systemPrompt : codexFallbackInstructions;
 }
 
 function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
@@ -685,10 +647,7 @@ export class CodexGen implements LlmGenerator {
     if (!agent.model) {
       throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
     }
-    const instructions = resolveCodexInstructions(systemPrompt, {
-      defaultModel: agent.model,
-      loadPrompt: codexAuth.loadCodexPromptSync,
-    });
+    const instructions = resolveCodexInstructions(systemPrompt);
     const payload = await buildCodexRequest(
       providerConfig,
       agent,

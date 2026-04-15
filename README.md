@@ -203,7 +203,7 @@ Then:
 
 Platform note:
 
-- On Windows, the runtime does not register the `codex_style_tools` toolset. Do not grant `codex_style_tools` in `.minds/team.yaml` for Windows hosts.
+- On Windows, the runtime does not register the `codex_inspect_and_patch_tools` toolset. Do not grant `codex_inspect_and_patch_tools` in `.minds/team.yaml` for Windows hosts.
 
 ## Start from scratch
 

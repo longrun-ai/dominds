@@ -137,12 +137,6 @@ Opt into the bundled Codex prompt for the selected model:
 npx @longrun-ai/codex-auth --builtin-instructions
 ```
 
-Compose your own prompt around the bundled one with the `@codex-system-prompt` directive:
-
-```sh
-npx @longrun-ai/codex-auth --instructions $'@codex-system-prompt\n\nThen answer in one short sentence.'
-```
-
 Refresh tokens (if available):
 
 ```sh
@@ -190,9 +184,11 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 
 - Default `CODEX_HOME` is `~/.codex` unless overridden.
 - The CLI uses the same file schema as Codex Rust.
-- `@codex-system-prompt` and `@codex-system-prompt:<model>` are reserved directives understood by
-  `auth-doctor` instruction parsing. Use them inside `--instructions` text or an
-  `--instructions-file` to splice in a bundled Codex prompt explicitly.
+- `auth-doctor` accepts either explicit instructions text or `--builtin-instructions`
+  when you want the bundled Codex prompt as-is.
+- Library callers should load bundled prompts explicitly via `loadCodexPrompt*` /
+  `requireCodexPrompt*` and then decide for themselves how to compose or hardcode
+  surrounding instructions.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
 - Reusing the same `conversationId` across turns also reuses the same `prompt_cache_key`.

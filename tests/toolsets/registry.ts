@@ -75,28 +75,38 @@ async function main(): Promise<void> {
     const listDirTool = getTool('list_dir');
     const readFileTool = getTool('read_file');
     const addPersonalMemoryTool = getTool('add_personal_memory');
-    const updatePlanTool = getTool('update_plan');
+    const readonlyShellTool = getTool('readonly_shell');
+    const applyPatchTool = getTool('apply_patch');
     const nonexistentTool = getTool('nonexistent');
 
     assertTrue(!!listDirTool, 'list_dir tool should exist');
     assertTrue(!!readFileTool, 'read_file tool should exist');
     assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
-    assertTrue(!!updatePlanTool, 'update_plan tool should exist');
+    assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
+    assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
     assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
 
     console.log('Tool lookup verification passed');
   });
 
-  await runTest('codex_style_tools platform behavior', () => {
-    const codexTools = getToolset('codex_style_tools');
+  await runTest('codex_inspect_and_patch_tools platform behavior', () => {
+    const codexTools = getToolset('codex_inspect_and_patch_tools');
     if (process.platform === 'win32') {
-      assertEqual(codexTools, undefined, 'codex_style_tools should not be registered on Windows');
+      assertEqual(
+        codexTools,
+        undefined,
+        'codex_inspect_and_patch_tools should not be registered on Windows',
+      );
       return;
     }
-    assertTrue(Array.isArray(codexTools), 'codex_style_tools should be an array');
+    assertTrue(Array.isArray(codexTools), 'codex_inspect_and_patch_tools should be an array');
     if (!codexTools) throw new Error('unreachable');
     const names = codexTools.map((t) => t.name);
-    assertTrue(names.includes('update_plan'), 'codex_style_tools should include update_plan');
+    assertEqual(
+      [...names].sort(),
+      ['apply_patch', 'readonly_shell'],
+      'codex_inspect_and_patch_tools should expose only inspect-and-patch tools',
+    );
   });
 
   // Test 4: Member with toolsets

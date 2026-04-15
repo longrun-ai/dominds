@@ -1067,10 +1067,7 @@ type RoutedFunctionResult = {
   shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
-  updatePlanOnlyRound: boolean;
 };
-
-const KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD = 3;
 
 function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
   return tool?.followupMode ?? 'immediate';
@@ -1088,25 +1085,6 @@ function shouldImmediatelyFollowUpToolOutcome(
     return true;
   }
   return shouldImmediatelyFollowUpSuccessfulToolResult(tool);
-}
-
-function formatIdenticalUpdatePlanLoopStopDetail(language: 'en' | 'zh'): string {
-  return language === 'zh'
-    ? `检测到连续 ${String(KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD)} 次完全相同的 update_plan 自动续跑，已停止本次自动执行以避免自激发循环。你可以点击“继续”人工观察，或先修改计划内容再继续。`
-    : `Detected ${String(KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD)} consecutive identical update_plan auto-follow-up rounds. Stopped this automatic run to avoid a self-trigger loop. You can click Continue to inspect manually, or change the plan content before resuming.`;
-}
-
-function extractAssistantSayingRoundSignature(newMsgs: readonly ChatMessage[]): string | undefined {
-  const contents = newMsgs
-    .filter(
-      (msg): msg is Extract<ChatMessage, { type: 'saying_msg'; role: 'assistant' }> =>
-        msg.type === 'saying_msg' && msg.role === 'assistant',
-    )
-    .map((msg) => msg.content);
-  if (contents.length === 0) {
-    return undefined;
-  }
-  return JSON.stringify(contents);
 }
 
 type ExecutedFuncCallResult = Readonly<{
@@ -1239,7 +1217,6 @@ async function executeFunctionRound(args: {
       shouldStopAfterReplyTool: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
-      updatePlanOnlyRound: false,
     };
   }
   throwIfAborted(args.abortSignal, args.dlg);
@@ -1291,24 +1268,6 @@ async function executeFunctionRound(args: {
     }
     return shouldImmediatelyFollowUpToolOutcome(tool, outcome);
   });
-  const updatePlanOnlyRound = (() => {
-    if (tellaskRound.normalCalls.length === 0) {
-      return false;
-    }
-    if (tellaskRound.handledCallIds.length > 0 || tellaskRound.toolOutputs.length > 0) {
-      return false;
-    }
-    for (const call of tellaskRound.normalCalls) {
-      if (call.name !== 'update_plan') {
-        return false;
-      }
-      const outcome = genericOutcomeByCallId.get(call.id);
-      if (outcome !== 'success') {
-        return false;
-      }
-    }
-    return true;
-  })();
 
   const resultByCallId = new Map<string, FuncResultMsg>();
   const register = (result: FuncResultMsg): void => {
@@ -1368,7 +1327,6 @@ async function executeFunctionRound(args: {
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
-    updatePlanOnlyRound,
   };
 }
 
@@ -1578,8 +1536,6 @@ export async function driveDialogStreamCore(
   let retryStoppedRecoveryPrompt: KernelDriverHumanPrompt | undefined;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   let genIterNo = 0;
-  let consecutiveIdenticalUpdatePlanOnlyRounds = 0;
-  let lastIdenticalUpdatePlanRoundSignature: string | undefined;
   // Quirk retry state intentionally spans multiple request invocations in the same driver run,
   // including course changes. Provider/API retry heuristics are tracked independently from
   // user-facing course boundaries.
@@ -2555,25 +2511,6 @@ export async function driveDialogStreamCore(
           }
           await dlg.addChatMessages(...newMsgs);
 
-          const assistantSayingRoundSignature = extractAssistantSayingRoundSignature(newMsgs);
-          const identicalUpdatePlanRoundSignature = routed.updatePlanOnlyRound
-            ? JSON.stringify({
-                assistantSayingRoundSignature: assistantSayingRoundSignature ?? '',
-              })
-            : undefined;
-
-          if (identicalUpdatePlanRoundSignature !== undefined) {
-            if (identicalUpdatePlanRoundSignature === lastIdenticalUpdatePlanRoundSignature) {
-              consecutiveIdenticalUpdatePlanOnlyRounds += 1;
-            } else {
-              consecutiveIdenticalUpdatePlanOnlyRounds = 1;
-              lastIdenticalUpdatePlanRoundSignature = identicalUpdatePlanRoundSignature;
-            }
-          } else {
-            consecutiveIdenticalUpdatePlanOnlyRounds = 0;
-            lastIdenticalUpdatePlanRoundSignature = undefined;
-          }
-
           const persistedFbrState = await loadDialogFbrState(dlg);
           if (persistedFbrState) {
             if (persistedFbrState.phase === 'finalization') {
@@ -2674,30 +2611,6 @@ export async function driveDialogStreamCore(
           if (!suspensionAfterToolRound.canDrive) {
             await resetDiligenceBudgetAfterQ4H(dlg, team);
             break;
-          }
-
-          if (
-            consecutiveIdenticalUpdatePlanOnlyRounds >=
-            KERNEL_DRIVER_IDENTICAL_UPDATE_PLAN_ONLY_STOP_THRESHOLD
-          ) {
-            const detail = formatIdenticalUpdatePlanLoopStopDetail(getWorkLanguage());
-            log.error(detail, new Error('kernel_driver_identical_update_plan_loop_stopped'), {
-              dialogId: dlg.id.valueOf(),
-              rootId: dlg.id.rootId,
-              selfId: dlg.id.selfId,
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeqOrUndefined ?? null,
-              consecutiveIdenticalUpdatePlanOnlyRounds,
-              identicalUpdatePlanRoundSignature,
-            });
-            throw new KernelDriverInterruptedError({
-              kind: 'system_stop',
-              detail,
-              i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                detail,
-                kind: 'identical_update_plan_loop',
-              }),
-            });
           }
 
           // Start an immediate post-tool generation only when this round produced tool outputs that

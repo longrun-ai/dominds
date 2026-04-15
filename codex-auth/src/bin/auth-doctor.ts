@@ -35,7 +35,7 @@ import {
 } from '../llm/chatgpt.js';
 import { tryRefreshToken } from '../oauth/refresh.js';
 import { parseIdToken } from '../oauth/tokenParsing.js';
-import { builtinCodexPromptDirective, resolveCodexPromptTemplateSync } from '../prompts.js';
+import { requireCodexPromptSync } from '../prompts.js';
 
 interface DoctorOptions {
   codexHome?: string;
@@ -193,10 +193,7 @@ Options:
   --chatgpt-base-url URL  Override ChatGPT base URL
   --chatgpt-model NAME    Override ChatGPT model used for the chat probe
   --instructions TEXT     Use custom instructions text for verification/probe requests.
-                          The special token ${builtinCodexPromptDirective()} (or ${builtinCodexPromptDirective('MODEL')})
-                          may be embedded in TEXT to splice in a bundled Codex prompt.
-  --instructions-file PATH  Read instructions text from a file. Supports the same
-                          ${builtinCodexPromptDirective()} directive syntax as --instructions.
+  --instructions-file PATH  Read instructions text from a file.
   --builtin-instructions Use the bundled Codex prompt for the selected model.
   --no-verify         Skip the LLM verification request
   -h, --help          Show this help
@@ -383,12 +380,11 @@ function readRequiredTextFile(filePath: string, label: string): string {
   return raw;
 }
 
-function resolveInstructionTemplate(template: string, model: string): string {
-  const resolved = resolveCodexPromptTemplateSync(template, model);
-  if (resolved.trim().length === 0) {
+function resolveInstructionTemplate(template: string, _model: string): string {
+  if (template.trim().length === 0) {
     throw new Error('Resolved instructions are empty.');
   }
-  return resolved;
+  return template;
 }
 
 function validateInstructionOptionCombination(options: DoctorOptions): void {
@@ -399,7 +395,7 @@ function validateInstructionOptionCombination(options: DoctorOptions): void {
   ].filter(Boolean).length;
   if (customSources > 1) {
     throw new Error(
-      'Choose only one of --instructions, --instructions-file, or --builtin-instructions. To compose custom text with a bundled prompt, use the @codex-system-prompt directive inside the custom instructions content.',
+      'Choose only one of --instructions, --instructions-file, or --builtin-instructions.',
     );
   }
 }
@@ -416,7 +412,7 @@ function resolveInstructionsSelection(
 
   if (options.builtinInstructions) {
     return {
-      instructions: resolveInstructionTemplate(builtinCodexPromptDirective(), model),
+      instructions: requireCodexPromptSync(model),
       instructionSource: 'builtin',
       instructionSourceDetail: model,
     };

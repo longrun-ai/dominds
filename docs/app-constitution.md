@@ -444,7 +444,7 @@ Suggested team shape:
   - non-goal: does not directly edit product code or take over build/process management.
 - `web_developer`
   - primary responsibility: implement UI/interaction fixes, consume `web_tester` findings, and close the loop;
-  - default toolsets: code-edit/search tools such as `codex_style_tools` (or equivalent) plus optional access to read tester evidence;
+  - default toolsets: code-edit/search tools such as `codex_inspect_and_patch_tools` (or equivalent) plus optional access to read tester evidence;
   - non-goal: should not blur browser acceptance into an implicit “I also tested it” posture; when acceptance is needed, it should explicitly tell/ask `web_tester`.
 
 Suggested `team.yaml` fragment:
@@ -463,7 +463,7 @@ members:
     icon: '🛠️'
     toolsets:
       - ws_read
-      - codex_style_tools
+      - codex_inspect_and_patch_tools
 ```
 
 Requirements for the `playwright_interactive` toolset design:

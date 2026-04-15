@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveCodexInstructions, spliceCodexBuiltinPrompt } from '../../main/llm/gen/codex';
+import { resolveCodexInstructions } from '../../main/llm/gen/codex';
 
 async function main(): Promise<void> {
   assert.equal(resolveCodexInstructions(''), 'You are Codex CLI.');
@@ -19,34 +19,11 @@ async function main(): Promise<void> {
     'non-empty system prompt should be preserved verbatim instead of being normalized',
   );
 
+  const literalMarker = '@inline-builtin-prompt-marker\n\n### Persona\n- Follow local team rules.';
   assert.equal(
-    spliceCodexBuiltinPrompt({
-      template: '@codex-system-prompt',
-      defaultModel: 'gpt-5.4',
-      loadPrompt: (model) => `BUILTIN:${model}`,
-    }),
-    'BUILTIN:gpt-5.4',
-    'standalone @codex-system-prompt directive should splice the current model bundled prompt',
-  );
-
-  assert.equal(
-    spliceCodexBuiltinPrompt({
-      template:
-        '@codex-system-prompt:gpt-5.3-codex\n\n### Local Addendum\n- Keep Dominds-specific routing rules.',
-      defaultModel: 'gpt-5.4',
-      loadPrompt: (model) => `BUILTIN:${model}`,
-    }),
-    'BUILTIN:gpt-5.3-codex\n\n### Local Addendum\n- Keep Dominds-specific routing rules.',
-    '@codex-system-prompt:<model> should allow pinning a specific bundled prompt while preserving local addenda',
-  );
-
-  assert.equal(
-    resolveCodexInstructions('@codex-system-prompt\n\n### Persona\n- Follow local team rules.', {
-      defaultModel: 'gpt-5.4',
-      loadPrompt: (model) => `BUILTIN:${model}`,
-    }),
-    'BUILTIN:gpt-5.4\n\n### Persona\n- Follow local team rules.',
-    'resolveCodexInstructions should expand @codex-system-prompt inside non-empty custom system prompts',
+    resolveCodexInstructions(literalMarker),
+    literalMarker,
+    'Dominds should not special-case arbitrary inline marker text at all',
   );
 
   console.log('✓ Codex instructions mapping test passed');

@@ -35,7 +35,7 @@ async function main() {
     'Expected zh personal reminder guide to mark personal scope',
   );
   assert(
-    zhPersonal.includes('会跨同一 responder agent 的多个对话保留'),
+    zhPersonal.includes('在所有由我主理的后续对话里都会看到它'),
     'Expected zh personal reminder guide to explain cross-dialog persistence',
   );
 
@@ -57,14 +57,6 @@ async function main() {
   assert(
     zhToolManaged.includes('默认不在对外回复里专门确认、复述或总结它'),
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
-  );
-
-  const zhPlanManager = formatReminderItemGuide('zh', 'rem03abc', 'Managed content\n', {
-    meta: { kind: 'plan', manager: { tool: 'some_tool' } },
-  });
-  assert(
-    zhPlanManager.includes('some_tool'),
-    'Expected reminder meta manager.tool to be used (zh)',
   );
 
   const zhUpdateInstruction = formatReminderItemGuide('zh', 'rem04abc', 'Managed content\n', {
@@ -180,7 +172,7 @@ async function main() {
     'Expected en personal reminder guide to mark personal scope',
   );
   assert(
-    enPersonal.includes('persists across dialogs for the same responder agent'),
+    enPersonal.includes('I will keep seeing it in all later dialogs I lead'),
     'Expected en personal reminder guide to explain cross-dialog persistence',
   );
 

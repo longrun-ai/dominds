@@ -443,7 +443,7 @@ Web Dev App 需要明确区分三套命名，避免再次漂移：
   - 非目标：不直接修改业务代码；不接管构建/进程管理。
 - `web_developer`
   - 主要职责：实现页面/UI/交互修复，消费 `web_tester` 的缺陷报告并完成闭环。
-  - 默认工具集：代码修改/检索工具（如 `codex_style_tools` 或等价工具）+ 可选读取 `web_tester` 产出的证据。
+  - 默认工具集：代码修改/检索工具（如 `codex_inspect_and_patch_tools` 或等价工具）+ 可选读取 `web_tester` 产出的证据。
   - 非目标：不把浏览器验收职责模糊地“顺手做掉”；需要时应显式 tellask `web_tester` 做验收。
 
 建议的 `team.yaml` 片段：
@@ -462,7 +462,7 @@ members:
     icon: '🛠️'
     toolsets:
       - ws_read
-      - codex_style_tools
+      - codex_inspect_and_patch_tools
 ```
 
 关于 `playwright_interactive` 工具集的设计要求：

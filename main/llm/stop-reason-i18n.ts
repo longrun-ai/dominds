@@ -10,7 +10,6 @@ type HumanStopReasonKind =
   | 'invalid_tool_context'
   | 'provider_rejected'
   | 'request_failed'
-  | 'identical_update_plan_loop'
   | 'generic';
 
 function isNonEmptyString(value: string | undefined): value is string {
@@ -103,10 +102,6 @@ function renderHumanStopReason(args: {
       return args.language === 'zh'
         ? `本次生成因上游报错而停止。${formatUpstreamRawMessage(args.detail, 'zh')}`
         : `This generation was stopped because the upstream service returned an error. ${formatUpstreamRawMessage(args.detail, 'en')}`;
-    case 'identical_update_plan_loop':
-      return args.language === 'zh'
-        ? '模型连续重复相同的 update_plan 结果，本次生成已停止。'
-        : 'The model repeated the same update_plan result multiple times. This generation was stopped.';
     case 'generic':
       return args.language === 'zh'
         ? `本次生成已因系统错误停止。${formatUpstreamRawMessage(args.detail, 'zh')}`

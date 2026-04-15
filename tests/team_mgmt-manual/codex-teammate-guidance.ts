@@ -14,22 +14,12 @@ async function main(): Promise<void> {
   const enTeam = await render('en', ['team']);
 
   assert.ok(
-    zhMinds.includes('`@codex-system-prompt`') &&
-      zhMinds.includes('`@codex-system-prompt:<model>`'),
-    'zh minds manual should explain the codex persona directive and model-pinned form',
+    !zhMinds.includes('stock Codex 内置系统提示'),
+    'zh minds manual should avoid historical prompt-splicing baggage',
   );
   assert.ok(
-    zhMinds.includes('stock Codex 内置系统提示'),
-    'zh minds manual should explain what @codex-system-prompt imports',
-  );
-  assert.ok(
-    enMinds.includes('`@codex-system-prompt`') &&
-      enMinds.includes('`@codex-system-prompt:<model>`'),
-    'en minds manual should explain the codex persona directive and model-pinned form',
-  );
-  assert.ok(
-    enMinds.includes('stock Codex built-in system prompt'),
-    'en minds manual should explain what @codex-system-prompt imports',
+    !enMinds.includes('stock Codex built-in system prompt'),
+    'en minds manual should avoid historical prompt-splicing baggage',
   );
 
   assert.ok(
@@ -37,8 +27,9 @@ async function main(): Promise<void> {
     'zh team manual should guide team managers to create a visible codex teammate when needed',
   );
   assert.ok(
-    zhTeam.includes('`ws_read` / `ws_mod` / `codex_style_tools`'),
-    'zh team manual should explain the recommended codex teammate toolset combination',
+    zhTeam.includes('`ws_read` / `ws_mod` / `codex_inspect_and_patch_tools`') &&
+      zhTeam.includes('`gpt-5.x`'),
+    'zh team manual should recommend codex_inspect_and_patch_tools for gpt-5.x models',
   );
   assert.ok(
     enTeam.includes('visible teammate that behaves close to stock Codex') &&
@@ -46,15 +37,16 @@ async function main(): Promise<void> {
     'en team manual should guide team managers to create a visible codex teammate when needed',
   );
   assert.ok(
-    enTeam.includes('`ws_read` / `ws_mod` / `codex_style_tools`'),
-    'en team manual should explain the recommended codex teammate toolset combination',
+    enTeam.includes('`ws_read` / `ws_mod` / `codex_inspect_and_patch_tools`') &&
+      enTeam.includes('`gpt-5.x`'),
+    'en team manual should recommend codex_inspect_and_patch_tools for gpt-5.x models',
   );
 
-  console.log('team_mgmt manual codex-persona-directive tests: ok');
+  console.log('team_mgmt manual codex-teammate-guidance tests: ok');
 }
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt manual codex-persona-directive tests: failed: ${message}`);
+  console.error(`team_mgmt manual codex-teammate-guidance tests: failed: ${message}`);
   process.exit(1);
 });

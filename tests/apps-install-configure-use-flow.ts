@@ -137,7 +137,7 @@ async function writeLocalAppPackage(params: {
       '      - capture browser evidence',
       '  web_developer:',
       '    name: Web Developer From App',
-      '    toolsets: [ws_read, playwright_interactive, codex_style_tools]',
+      '    toolsets: [ws_read, playwright_interactive, codex_inspect_and_patch_tools]',
       '    gofor:',
       '      - attach to existing browser sessions with a provided sessionId before asking others for status relays',
       '',
@@ -275,7 +275,7 @@ async function main(): Promise<void> {
     assert.deepEqual(importedDeveloper?.toolsets, [
       'ws_read',
       'playwright_interactive',
-      'codex_style_tools',
+      'codex_inspect_and_patch_tools',
     ]);
     assert.deepEqual(importedDeveloper?.gofor, [
       'attach to existing browser sessions with a provided sessionId before asking others for status relays',

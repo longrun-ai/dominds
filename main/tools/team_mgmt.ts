@@ -3485,8 +3485,7 @@ function renderTeamManual(language: LanguageCode): string {
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 是给其他队友/人类看的“正向诉请路由卡”（建议 5 行内）：写什么时候应该找这个队友、适合把什么问题交给 TA、以及可以期待什么帮助/产出。\n`members.<id>.nogo` 是可选的“反向路由卡”：写哪些事项不要找这个队友、应改找哪类队友/路径。两者都只服务外部路由；不要把该成员自己的执行守则、工作模式、验收标准或完整职责文档堆在这里；这些应写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md`。它们都支持三种形态：string（单句）、YAML list（普通 bullet）、YAML object（带标签的结构化摘要，object key 完全 freeform，value 必须是 string）。\n示例（gofor / nogo）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - 适合在发布前需要回归把关时找 TA\n      - 适合让 TA 梳理高风险改动与手工核验点\n      - 可以期待 TA 返回回归结论、风险清单与建议动作\n    nogo:\n      - 不要找 TA 做主实现或新功能开发\n      - 若是产品文案/信息架构问题，应改找对应实现或设计角色\n```\n示例（gofor, object；按 YAML key 顺序渲染，key freeform）：\n```yaml\nmembers:\n  coordinator:\n    name: 协调者\n    gofor:\n      When: 当你需要协调跨成员推进、拆分任务或收口结果时\n      Ask: 让 TA 负责诉请路由、任务拆分与结果集成\n      Returns: 可期待计划主线、委派方案与验收结论\n    nogo:\n      Avoid: 不要把具体实现、测试细节或文档落地直接塞给 TA\n      RouteTo: 这些应改找对应专职队友\n      Note: 若要写该成员自己的执行守则，请改写进 persona/knowledge/lessons\n```\n如果你把这类结构化内容写成 `- When: ...` / `- Ask: ...` 或 `- Avoid: ...` / `- RouteTo: ...` 的 YAML list，也仍然允许；但 `team_mgmt_validate_team_cfg({})` 会给 warning，建议改用 object，因为可读性更好。',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
-        'Codex provider 专属能力：若成员使用 `provider: codex`，可在 `.minds/team/<id>/persona.*.md` 中单独写一行 `@codex-system-prompt`，显式引入该成员当前模型对应的 stock Codex 内置系统提示；若要固定某个模板版本，可写成 `@codex-system-prompt:<model>`。本地角色边界、交付要求、团队规则继续写在这行后面即可。',
-        '若团队需要一个行为接近 stock Codex 的显在队友，可新增如 `members.codex` 这样的成员，保持 `provider: codex`，默认授予 `ws_read` / `ws_mod` / `codex_style_tools`（除非人类明确要求其他组合），并在该成员 persona 文件开头先写 `@codex-system-prompt`，再补 Dominds 团队自己的约束。',
+        '若团队需要一个行为接近 stock Codex 的显在队友，可新增如 `members.codex` 这样的成员，保持 `provider: codex`，默认授予 `ws_read` / `ws_mod` / `codex_inspect_and_patch_tools`（除非人类明确要求其他组合），并把该成员 persona 直接写成清晰的角色边界、交付要求与团队规则。即使不是 `provider: codex`，只要目标模型属于 `gpt-5.x` 家族，也默认推荐把 `codex_inspect_and_patch_tools` 叠加在 `ws_read` / `ws_mod` 之上。',
         '重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。',
         '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示。这个问题不会让整个 Team.load() 崩掉，但相关成员可能缺少 shell 能力，仍应修复。',
 
@@ -3495,10 +3494,10 @@ function renderTeamManual(language: LanguageCode): string {
         windowsHost
           ? '默认策略（可被用户覆盖）：\n' +
             '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
-            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；在 Windows 环境下不要配置 `codex_style_tools`。如需读/探测 rtws，再按需授权 `os` 给少数专员成员。'
+            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；在 Windows 环境下不要配置 `codex_inspect_and_patch_tools`。如需读/探测 rtws，再按需授权 `os` 给少数专员成员。'
           : '默认策略（可被用户覆盖）：\n' +
             '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
-            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标是 `provider: codex` 时，在基线上追加 `codex_style_tools`（而不是替代），除非用户明确要求其他组合。',
+            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标模型属于 `gpt-5.x` 家族时，在基线上追加 `codex_inspect_and_patch_tools`（而不是替代），除非用户明确要求其他组合。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 做检查，避免把系统刷成板砖。',
@@ -3536,7 +3535,7 @@ function renderTeamManual(language: LanguageCode): string {
       '    toolsets:\n' +
       '      - ws_read\n' +
       '      - ws_mod\n' +
-      (windowsHost ? '' : '      - codex_style_tools\n') +
+      (windowsHost ? '' : '      - codex_inspect_and_patch_tools\n') +
       '  qa_guard:\n' +
       '    name: QA Guard\n' +
       '    gofor:\n' +
@@ -3561,12 +3560,11 @@ function renderTeamManual(language: LanguageCode): string {
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a positive routing card for other teammates/humans (≤ 5 lines): write when someone should ask this teammate, what kinds of asks fit, and what help/output to expect.\n`members.<id>.nogo` is an optional negative routing card: write what should not be routed to this teammate and what kind of teammate/path should take it instead. Both fields are external routing metadata; do not dump the member’s own operating rules, work mode, acceptance bar, or full role spec here. Those belong in `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nBoth fields support three shapes: string (single sentence), YAML list (plain bullets), and YAML object (structured labeled summary; object keys are fully freeform and values must be strings).\nExample (`gofor` / `nogo`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Go to this teammate for pre-release regression gating\n      - Ask this teammate to map high-risk changes and manual checks\n      - Expect a regression verdict, risk list, and recommended next actions\n    nogo:\n      - Do not route net-new feature implementation here\n      - For product copy or information architecture, ask the relevant implementer/designer instead\n```\nExample (object form; rendered in YAML key order, freeform keys):\n```yaml\nmembers:\n  coordinator:\n    name: Coordinator\n    gofor:\n      When: when you need cross-member coordination, task breakdown, or result convergence\n      Ask: route requests, split work, and integrate outcomes\n      Returns: an execution plan, delegation decisions, and acceptance conclusions\n    nogo:\n      Avoid: do not route concrete implementation, test-authoring, or doc-writing directly here\n      RouteTo: send those asks to the relevant specialist teammate instead\n      Note: put the member’s own operating rules in persona/knowledge/lessons instead\n```\nIf you write the same structured content as a YAML list like `- When: ...` / `- Ask: ...` or `- Avoid: ...` / `- RouteTo: ...`, it is still accepted, but `team_mgmt_validate_team_cfg({})` will warn and suggest YAML object form for readability.',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
-        'Codex-provider-specific capability: if a teammate uses `provider: codex`, you may place a standalone `@codex-system-prompt` line inside `.minds/team/<id>/persona.*.md` to splice in the stock Codex built-in system prompt for that member’s current model. Use `@codex-system-prompt:<model>` to pin a specific bundled prompt variant. Keep local role boundaries, delivery rules, and team guidance below that line.',
-        'If you want a visible teammate that behaves close to stock Codex, a practical pattern is to add a member such as `members.codex`, keep `provider: codex`, grant the normal coding toolsets (`ws_read` / `ws_mod` / `codex_style_tools` unless the human explicitly asks otherwise), and start that teammate persona file with `@codex-system-prompt` before your Dominds-specific addenda.',
+        'If you want a visible teammate that behaves close to stock Codex, a practical pattern is to add a member such as `members.codex`, keep `provider: codex`, grant the normal coding toolsets (`ws_read` / `ws_mod` / `codex_inspect_and_patch_tools` unless the human explicitly asks otherwise), and write that teammate persona as clear Dominds-native role boundaries, delivery rules, and team guidance. Even when the teammate does not use `provider: codex`, you should still recommend `codex_inspect_and_patch_tools` for `gpt-5.x` models as an extra inspect-and-patch layer on top of `ws_read` / `ws_mod`.',
         'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
         windowsHost
-          ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_style_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
-          : 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target is `provider: codex`, add `codex_style_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
+          ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_inspect_and_patch_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
+          : 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target model is in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.',
         'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`. Important: prepare only creates an in-memory preview and does not persist anything before apply, so re-reading the file at this point still returns the old content. If you only want to revise the same not-yet-persisted preview, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you want a further edit based on this change, you must apply the current hunk first, then read/prepare the next change. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
@@ -3600,7 +3598,7 @@ function renderTeamManual(language: LanguageCode): string {
     '    toolsets:\n' +
     '      - ws_read\n' +
     '      - ws_mod\n' +
-    (windowsHost ? '' : '      - codex_style_tools\n') +
+    (windowsHost ? '' : '      - codex_inspect_and_patch_tools\n') +
     '```\n'
   );
 }
@@ -3844,7 +3842,6 @@ function renderMindsManual(language: LanguageCode): string {
         '若该成员承担团队管理职责（尤其获得 `team_mgmt`），其 `persona.*.md` 必须明确写出：执行任何团队管理操作前先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。',
         '语言选择（按当前实现）：优先读取 `persona.zh.md` / `knowledge.zh.md` / `lessons.zh.md` 这类工作语言文件，其次才回退到无语言后缀的 `persona.md` / `knowledge.md` / `lessons.md`；不会跨语言回退到另一种语言文件。',
         '标题层级约束：`persona/knowledge/lessons` 文件里不要再写重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。因此正文通常应从 `###` 小节或普通 bullet 开始，而不是再写 `#` / `##`，也不要再把文件名或“角色设定/知识/经验”重复当标题写一遍。',
-        'Codex provider 专属能力：若该成员使用 `provider: codex`，可在 `persona.*.md` 中单独写一行 `@codex-system-prompt`，把 stock Codex 内置系统提示拼接进当前 persona；需要固定某个模板版本时写 `@codex-system-prompt:<model>`。建议把这行放在文件最前面，再继续写本团队自己的角色边界与交付要求。',
       ]) +
       fmtCodeBlock('text', [
         '.minds/',
@@ -3855,8 +3852,6 @@ function renderMindsManual(language: LanguageCode): string {
         '      lessons.zh.md',
       ]) +
       fmtCodeBlock('markdown', [
-        '@codex-system-prompt',
-        '',
         '### 核心身份',
         '- 你是专业程序员，负责按规格完成代码开发。',
         '### 工作边界',
@@ -3884,7 +3879,6 @@ function renderMindsManual(language: LanguageCode): string {
       'If the member carries team-management responsibility (especially with `team_mgmt`), `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow.',
       'Language selection (current implementation): prefer work-language variants such as `persona.en.md` / `knowledge.en.md` / `lessons.en.md`, then fall back to `persona.md` / `knowledge.md` / `lessons.md`. There is no cross-language fallback to another language-specific file.',
       'Heading rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`). In practice, bodies should usually start at `###` subsections or plain bullets rather than another `#` / `##`, and should not restate the filename or wrapper title as a heading.',
-      'Codex-provider-specific capability: if this member uses `provider: codex`, you may place a standalone `@codex-system-prompt` line inside `persona.*.md` to splice the stock Codex built-in system prompt into the current persona. Use `@codex-system-prompt:<model>` to pin a specific bundled prompt variant. Put that line near the top, then continue with your team-specific role boundaries and delivery rules.',
     ]) +
     fmtCodeBlock('text', [
       '.minds/',
@@ -3895,8 +3889,6 @@ function renderMindsManual(language: LanguageCode): string {
       '      lessons.en.md',
     ]) +
     fmtCodeBlock('markdown', [
-      '@codex-system-prompt',
-      '',
       '### Core Identity',
       '- You are a professional programmer responsible for implementing approved development specs.',
       '### Work Boundaries',
@@ -5044,8 +5036,8 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
           windowsHost
-            ? '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；在 Windows 环境下不要配置 `codex_style_tools`。如果还需要“读/探测 rtws”，通常再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。'
-            : '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，在基线上追加 `codex_style_tools`（`apply_patch` 等），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
+            ? '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；在 Windows 环境下不要配置 `codex_inspect_and_patch_tools`。如果还需要“读/探测 rtws”，通常再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。'
+            : '按模型/工作形态选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当目标模型属于 `gpt-5.x` 家族时，在基线上追加 `codex_inspect_and_patch_tools`（`apply_patch`、`readonly_shell`），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
           'MCP toolset 不是静态写死：它由 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射而来（toolset 名称 = `serverId`）。下方会展示当前映射快照。',
           '`os` 是 shell 工具集，当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。一旦成员拥有这些工具（包括通过 `os` 获得），其 id 必须出现在顶层 `shell_specialists`。',
           '`mcp_admin` 用于 MCP 运维：`mcp_restart` / `mcp_release` 管理 server 会话租用，并配有 `env_get` / `env_set` / `env_unset` 便于联调环境变量。',
@@ -5058,8 +5050,8 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
           windowsHost
-            ? 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; on Windows, do not configure `codex_style_tools`. If you also need to read/probe the rtws, grant `os` (`shell_cmd`) only to a small specialist operator set.'
-            : 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; for `provider: codex` (Codex CLI-style prompts/tool names), add `codex_style_tools` (`apply_patch`, etc.) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
+            ? 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; on Windows, do not configure `codex_inspect_and_patch_tools`. If you also need to read/probe the rtws, grant `os` (`shell_cmd`) only to a small specialist operator set.'
+            : 'Pick toolsets to match the model/work style: keep `ws_read` / `ws_mod` as the general baseline; for models in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` (`apply_patch`, `readonly_shell`) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
           'MCP toolsets are not hardcoded: they are dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). The current mapping snapshot is shown below.',
           '`os` is the shell toolset, currently including `shell_cmd`, `stop_daemon`, and `get_daemon_output`. If a member has any of these tools (including via `os`), that member id must appear in top-level `shell_specialists`.',
           '`mcp_admin` is for MCP operations: use `mcp_restart` / `mcp_release` to manage server leasing lifecycle, with `env_get` / `env_set` / `env_unset` available for environment debugging.',
@@ -5073,7 +5065,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     'toolsets:',
     '  - ws_read',
     '  - ws_mod',
-    ...(windowsHost ? [] : ['  - codex_style_tools']),
+    ...(windowsHost ? [] : ['  - codex_inspect_and_patch_tools']),
     '',
     '# Team manager (explicit, minimal)',
     'toolsets:',

@@ -64,11 +64,16 @@ If you pass `conversationId`, codex-auth will also use it as the default
 `prompt_cache_key`.
 
 Bundled Codex prompt files are not auto-injected by the library. Pass explicit
-`instructions` text yourself, or load/compose a bundled prompt intentionally via
-`loadCodexPrompt*` / `resolveCodexPromptTemplateSync`.
-Inside instruction templates, a standalone `@codex-system-prompt` or
-`@codex-system-prompt:<model>` line splices in the bundled Codex system prompt
-explicitly.
+`instructions` text yourself, or load a bundled prompt intentionally via
+`loadCodexPrompt*` / `requireCodexPrompt*`.
+
+Example:
+
+```ts
+import { requireCodexPromptSync } from '@longrun-ai/codex-auth';
+
+const instructions = requireCodexPromptSync('gpt-5.2');
+```
 
 `service_tier` is optional. For most callers, `default` and `priority` are the
 useful user-facing choices. `priority` corresponds to faster processing without
