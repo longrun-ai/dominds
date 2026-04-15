@@ -481,6 +481,13 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
     };
   }
+  if (latest?.pendingCourseStartPrompt) {
+    return {
+      kind: 'stopped',
+      reason: { kind: 'pending_course_start' },
+      continueEnabled: true,
+    };
+  }
 
   const hasQ4H = await dlg.hasPendingQ4H();
   const hasSubdialogs = await dlg.hasPendingSubdialogs();
@@ -518,6 +525,13 @@ async function computeIdleDisplayStateFromPersistence(
       kind: 'stopped',
       reason: latest.executionMarker.reason,
       continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+    };
+  }
+  if (latest?.pendingCourseStartPrompt) {
+    return {
+      kind: 'stopped',
+      reason: { kind: 'pending_course_start' },
+      continueEnabled: true,
     };
   }
 
@@ -588,6 +602,13 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         kind: 'stopped',
         reason: latest.executionMarker.reason,
         continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
+      };
+    }
+    if (latest.pendingCourseStartPrompt) {
+      return {
+        kind: 'stopped',
+        reason: { kind: 'pending_course_start' },
+        continueEnabled: true,
       };
     }
 
@@ -706,7 +727,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         continue;
       }
       const next =
-        nextIdle.kind === 'blocked'
+        nextIdle.kind === 'blocked' || nextIdle.kind === 'stopped' || nextIdle.kind === 'dead'
           ? nextIdle
           : ({
               kind: 'stopped',

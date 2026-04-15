@@ -8942,22 +8942,22 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     switch (reason) {
       case 'waiting_for_subdialogs':
-        return t.resumeRejectedStoppedPanelWaitingSubdialogs;
+        return t.resumeRejectedResumptionPanelWaitingSubdialogs;
       case 'needs_human_input':
-        return t.resumeRejectedStoppedPanelNeedsHumanInput;
+        return t.resumeRejectedResumptionPanelNeedsHumanInput;
       case 'needs_human_input_and_subdialogs':
-        return t.resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs;
+        return t.resumeRejectedResumptionPanelNeedsHumanInputAndSubdialogs;
       case 'idle_waiting_user':
-        return t.resumeRejectedStoppedPanelIdleWaitingUser;
+        return t.resumeRejectedResumptionPanelIdleWaitingUser;
       case 'already_running':
-        return t.resumeRejectedStoppedPanelAlreadyRunning;
+        return t.resumeRejectedResumptionPanelAlreadyRunning;
       case 'stopped_not_resumable':
-        return t.resumeRejectedStoppedPanelStoppedNotResumable;
+        return t.resumeRejectedResumptionPanelStoppedNotResumable;
       case 'dead':
-        return t.resumeRejectedStoppedPanelDead;
+        return t.resumeRejectedResumptionPanelDead;
       case 'missing':
       case undefined:
-        return t.resumeRejectedStoppedPanelSummary;
+        return t.resumeRejectedResumptionPanelSummary;
       default: {
         const _exhaustive: never = reason;
         return String(_exhaustive);
@@ -9028,6 +9028,8 @@ export class DomindsApp extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
+      case 'pending_course_start':
+        return t.pendingCourseStartReady;
       case 'fork_continue_ready':
         return t.forkContinueReady;
       case 'llm_retry_stopped':
@@ -9168,7 +9170,7 @@ export class DomindsApp extends HTMLElement {
       );
       statusError.textContent = stoppedReason.error.trim();
     } else if (stoppedReason !== null) {
-      statusTitle.textContent = t.stoppedPanelTitle;
+      statusTitle.textContent = t.resumptionPanelTitle;
       statusSummary.textContent = this.formatInterruptionReason(stoppedReason);
       statusError.textContent = '';
     }

@@ -9,7 +9,7 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 //
 // Not every user interjection should use this reason. If there is no parked original task to
 // resume afterwards, the interjection should simply complete and the dialog should fall back to
-// its true underlying state without showing this stopped panel.
+// its true underlying state without showing this resumption panel.
 //
 // In particular, askHuman answers are NOT "user interjections" for this purpose. A prompt carrying
 // a real `q4hAnswerCallId` belongs to the askHuman reply channel and must never be routed through

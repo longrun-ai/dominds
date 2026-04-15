@@ -119,6 +119,16 @@ async function main(): Promise<void> {
       false,
       'restore should clear stale needsDrive when the pending course-start prompt is already persisted',
     );
+    assert.equal(
+      latestAfterRestore?.executionMarker,
+      undefined,
+      'restore should clear the stale pending-course-start interruption marker as well',
+    );
+    assert.deepEqual(
+      latestAfterRestore?.displayState,
+      { kind: 'idle_waiting_user' },
+      'restore should clear the stale stopped projection once the pending prompt is already persisted',
+    );
   });
 
   console.log('kernel-driver subdialog-stale-pending-course-start-clears-on-restore: PASS');

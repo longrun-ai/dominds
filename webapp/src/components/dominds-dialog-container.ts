@@ -1186,9 +1186,9 @@ export class DomindsDialogContainer extends HTMLElement {
         if (event.displayState.kind === 'stopped' || event.displayState.kind === 'dead') {
           this.clearViewportPanel();
         } else if (this.viewportPanelState.kind === 'stopped') {
-          // Clear stale stopped-panel viewport state as soon as the persisted display-state leaves
+          // Clear stale resumption-panel viewport state as soon as the persisted display-state leaves
           // stopped/dead. Without this, a manual Continue that restores true blocked state can keep
-          // showing the old stopped panel until some later unrelated event arrives.
+          // showing the old resumption panel until some later unrelated event arrives.
           this.clearViewportPanel();
         }
         break;
@@ -1203,7 +1203,7 @@ export class DomindsDialogContainer extends HTMLElement {
         }
         if (event.kind === 'interrupted') {
           const t = getUiStrings(this.uiLanguage);
-          const reason = event.reason ?? { kind: 'system_stop', detail: t.stoppedPanelTitle };
+          const reason = event.reason ?? { kind: 'system_stop', detail: t.resumptionPanelTitle };
           // Keep interruption markers pessimistic by default. Do not make this button clickable
           // here just because a later finalized stopped state may become resumable: marker events
           // arrive before the backend has confirmed the terminal stopped projection, so enabling
@@ -4648,6 +4648,8 @@ export class DomindsDialogContainer extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
+      case 'pending_course_start':
+        return t.pendingCourseStartReady;
       case 'fork_continue_ready':
         return t.forkContinueReady;
       case 'llm_retry_stopped':

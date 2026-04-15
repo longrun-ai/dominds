@@ -73,6 +73,23 @@ async function main(): Promise<void> {
       true,
       'startNewCourse should keep needsDrive true while the new-course prompt is pending',
     );
+    assert.deepEqual(
+      latestBeforeRestore.displayState,
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_course_start' },
+        continueEnabled: true,
+      },
+      'startNewCourse should persist a stopped/resumable state for the durable pending prompt',
+    );
+    assert.deepEqual(
+      latestBeforeRestore.executionMarker,
+      {
+        kind: 'interrupted',
+        reason: { kind: 'pending_course_start' },
+      },
+      'startNewCourse should persist an interrupted marker for the durable pending prompt',
+    );
 
     const restoredRoot = await getOrRestoreRootDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'expected root dialog restore to succeed');
@@ -145,6 +162,11 @@ async function main(): Promise<void> {
       latestAfterDrive.needsDrive,
       false,
       'subdialog latest.yaml should clear needsDrive once the restored pending course-start prompt is consumed',
+    );
+    assert.equal(
+      latestAfterDrive.executionMarker,
+      undefined,
+      'subdialog latest.yaml should clear the pending-course-start interruption marker after drive resumes',
     );
 
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(subdialog.id, 2, 'running');

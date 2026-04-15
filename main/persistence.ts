@@ -501,6 +501,8 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
       return { kind: 'emergency_stop' };
     case 'server_restart':
       return { kind: 'server_restart' };
+    case 'pending_course_start':
+      return { kind: 'pending_course_start' };
     case 'fork_continue_ready':
       return { kind: 'fork_continue_ready' };
     case 'system_stop': {
@@ -2594,6 +2596,15 @@ export class DiskFileDialogStore extends DialogStore {
       patch: {
         currentCourse: newCourse,
         needsDrive: true,
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_course_start' },
+          continueEnabled: true,
+        },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: { kind: 'pending_course_start' },
+        },
         pendingCourseStartPrompt: {
           content: newCoursePrompt.content,
           msgId: newCoursePrompt.msgId,
@@ -7529,6 +7540,16 @@ export class DialogPersistence {
           patch: {
             pendingCourseStartPrompt: undefined,
             needsDrive: false,
+            displayState:
+              previous.displayState?.kind === 'stopped' &&
+              previous.displayState.reason.kind === 'pending_course_start'
+                ? { kind: 'idle_waiting_user' }
+                : previous.displayState,
+            executionMarker:
+              previous.executionMarker?.kind === 'interrupted' &&
+              previous.executionMarker.reason.kind === 'pending_course_start'
+                ? undefined
+                : previous.executionMarker,
           },
         };
       },

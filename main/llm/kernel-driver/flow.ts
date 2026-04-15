@@ -15,6 +15,7 @@ import {
   setDialogDisplayState,
 } from '../../dialog-display-state';
 import { globalDialogRegistry } from '../../dialog-global-registry';
+import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
@@ -629,6 +630,7 @@ export async function executeDriveRound(args: {
         latest &&
         latest.executionMarker &&
         latest.executionMarker.kind === 'interrupted' &&
+        doesInterruptionReasonRequireExplicitResume(latest.executionMarker.reason) &&
         !allowResumeFromInterrupted
       ) {
         log.debug(
@@ -696,7 +698,7 @@ export async function executeDriveRound(args: {
       // `allowResumeFromInterrupted` covers multiple stop reasons, but the interjection-pause case
       // is semantically special. Clicking Continue here does NOT mean "blindly clear stopped and
       // drive". We must re-read the fresh persistence facts first because there are three distinct
-      // true-source cases behind the same visible stopped panel:
+      // true-source cases behind the same visible resumption panel:
       // - no active reply obligation / not suspended anymore -> continue real driving now
       // - active reply obligation + suspended -> restore true blocked state
       // - active reply obligation + still proceeding entitlement (for example queued upNext) ->
@@ -878,10 +880,10 @@ export async function executeDriveRound(args: {
       dlg: dialog,
       prompt: effectivePrompt,
     });
-    // Only park into the special interjection stopped-panel state when this user turn has
+    // Only park into the special interjection resumption-panel state when this user turn has
     // suppressed a still-pending inter-dialog reply obligation that must be reasserted later.
     // User interjections without a parked original task should simply finish and fall back to the
-    // dialog's true underlying state, without showing the special stopped panel.
+    // dialog's true underlying state, without showing the special resumption panel.
     //
     // Q4H answers are explicitly outside this branch even though they also come from the human.
     // They belong to the askHuman reply channel and must continue the suspended askHuman round,

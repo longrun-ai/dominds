@@ -23,6 +23,27 @@ export function isInterruptionReasonManualResumeEligible(
     case 'user_stop':
     case 'emergency_stop':
     case 'server_restart':
+    case 'pending_course_start':
+    case 'fork_continue_ready':
+    case 'system_stop':
+    case 'llm_retry_stopped':
+      return true;
+    default: {
+      const _exhaustive: never = reason;
+      return _exhaustive;
+    }
+  }
+}
+
+export function doesInterruptionReasonRequireExplicitResume(
+  reason: DialogInterruptionReason,
+): boolean {
+  switch (reason.kind) {
+    case 'pending_course_start':
+      return false;
+    case 'user_stop':
+    case 'emergency_stop':
+    case 'server_restart':
     case 'fork_continue_ready':
     case 'system_stop':
     case 'llm_retry_stopped':

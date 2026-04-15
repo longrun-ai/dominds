@@ -179,14 +179,14 @@ export type UiStrings = {
   emergencyStopNoProceedingToast: string;
   resumeAllNoResumableToast: string;
   resumeDialogNotResumableToast: string;
-  resumeRejectedStoppedPanelSummary: string;
-  resumeRejectedStoppedPanelWaitingSubdialogs: string;
-  resumeRejectedStoppedPanelNeedsHumanInput: string;
-  resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs: string;
-  resumeRejectedStoppedPanelIdleWaitingUser: string;
-  resumeRejectedStoppedPanelAlreadyRunning: string;
-  resumeRejectedStoppedPanelStoppedNotResumable: string;
-  resumeRejectedStoppedPanelDead: string;
+  resumeRejectedResumptionPanelSummary: string;
+  resumeRejectedResumptionPanelWaitingSubdialogs: string;
+  resumeRejectedResumptionPanelNeedsHumanInput: string;
+  resumeRejectedResumptionPanelNeedsHumanInputAndSubdialogs: string;
+  resumeRejectedResumptionPanelIdleWaitingUser: string;
+  resumeRejectedResumptionPanelAlreadyRunning: string;
+  resumeRejectedResumptionPanelStoppedNotResumable: string;
+  resumeRejectedResumptionPanelDead: string;
   retryCountdownPrefix: string;
   retryCountdownSuffix: string;
   invalidMessageFormatToast: string;
@@ -241,11 +241,12 @@ export type UiStrings = {
   emergencyStop: string;
   resumeAll: string;
   continueLabel: string;
-  stoppedPanelTitle: string;
+  resumptionPanelTitle: string;
 
   stoppedByYou: string;
   stoppedByEmergencyStop: string;
   interruptedByServerRestart: string;
+  pendingCourseStartReady: string;
   forkContinueReady: string;
   runMarkerResumed: string;
   runMarkerInterrupted: string;
@@ -570,21 +571,22 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       resumeAllNoResumableToast: '当前没有可继续的已中断对话。',
       resumeDialogNotResumableToast:
         '已重新扫描对话真源：这个对话现在不能继续了。请先查看最新阻塞原因，或等待状态变化。',
-      resumeRejectedStoppedPanelSummary:
-        '已重新扫描对话真源：当前并不满足“继续”的条件。界面上刚才的已停止状态可能是过时投影；请先查看最新阻塞原因或等待状态变化。',
-      resumeRejectedStoppedPanelWaitingSubdialogs:
+      resumeRejectedResumptionPanelSummary:
+        '已重新扫描对话真源：当前并不满足“继续”的条件。界面上刚才的恢复面板可能是过时投影；请先查看最新阻塞原因或等待状态变化。',
+      resumeRejectedResumptionPanelWaitingSubdialogs:
         '已重新扫描对话真源：当前主线正在等待支线对话完成，因此现在不能继续。',
-      resumeRejectedStoppedPanelNeedsHumanInput:
+      resumeRejectedResumptionPanelNeedsHumanInput:
         '已重新扫描对话真源：当前主线正在等待人类输入，因此现在不能继续。',
-      resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs:
+      resumeRejectedResumptionPanelNeedsHumanInputAndSubdialogs:
         '已重新扫描对话真源：当前主线同时在等待人类输入和支线对话，因此现在不能继续。',
-      resumeRejectedStoppedPanelIdleWaitingUser:
+      resumeRejectedResumptionPanelIdleWaitingUser:
         '已重新扫描对话真源：这个对话已经不再处于可继续的中断态，当前是在等待新的用户输入。',
-      resumeRejectedStoppedPanelAlreadyRunning:
+      resumeRejectedResumptionPanelAlreadyRunning:
         '已重新扫描对话真源：这个对话已经在运行中，无需再次点击继续。',
-      resumeRejectedStoppedPanelStoppedNotResumable:
+      resumeRejectedResumptionPanelStoppedNotResumable:
         '已重新扫描对话真源：这个对话虽然处于停止态，但当前停止原因不支持继续。',
-      resumeRejectedStoppedPanelDead: '已重新扫描对话真源：这个对话已被宣布卡死，不能继续。',
+      resumeRejectedResumptionPanelDead:
+        '已重新扫描对话真源：这个对话已被宣布卡死，不能继续。',
       retryCountdownPrefix: '将在 ',
       retryCountdownSuffix: ' 后重试。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
@@ -640,11 +642,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       emergencyStop: '紧急停止',
       resumeAll: '全部继续',
       continueLabel: '继续',
-      stoppedPanelTitle: '已停止',
+      resumptionPanelTitle: '恢复',
 
       stoppedByYou: '已由你停止',
       stoppedByEmergencyStop: '已被紧急停止终止',
       interruptedByServerRestart: '因服务器重启而中断',
+      pendingCourseStartReady: '换程启动已就绪，可继续推进',
       forkContinueReady: '已创建继续分支，可继续推进',
       runMarkerResumed: '已继续',
       runMarkerInterrupted: '已停止',
@@ -978,21 +981,21 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     resumeAllNoResumableToast: 'No interrupted dialogs to resume.',
     resumeDialogNotResumableToast:
       'A fresh scan of the dialog facts shows this dialog is not resumable right now. Check the latest blocker or wait for the state to change.',
-    resumeRejectedStoppedPanelSummary:
-      'A fresh scan of the dialog facts shows it is not currently resumable. The stopped panel you just saw may have been stale; check the latest blocker or wait for the state to change.',
-    resumeRejectedStoppedPanelWaitingSubdialogs:
+    resumeRejectedResumptionPanelSummary:
+      'A fresh scan of the dialog facts shows it is not currently resumable. The resumption panel you just saw may have been stale; check the latest blocker or wait for the state to change.',
+    resumeRejectedResumptionPanelWaitingSubdialogs:
       'A fresh scan of the dialog facts shows this mainline dialog is waiting for sideline dialogs, so it cannot resume yet.',
-    resumeRejectedStoppedPanelNeedsHumanInput:
+    resumeRejectedResumptionPanelNeedsHumanInput:
       'A fresh scan of the dialog facts shows this mainline dialog is waiting for human input, so it cannot resume yet.',
-    resumeRejectedStoppedPanelNeedsHumanInputAndSubdialogs:
+    resumeRejectedResumptionPanelNeedsHumanInputAndSubdialogs:
       'A fresh scan of the dialog facts shows this mainline dialog is waiting for both human input and sideline dialogs, so it cannot resume yet.',
-    resumeRejectedStoppedPanelIdleWaitingUser:
+    resumeRejectedResumptionPanelIdleWaitingUser:
       'A fresh scan of the dialog facts shows this dialog is no longer interrupted and is now waiting for a new user input.',
-    resumeRejectedStoppedPanelAlreadyRunning:
+    resumeRejectedResumptionPanelAlreadyRunning:
       'A fresh scan of the dialog facts shows this dialog is already running, so there is nothing to resume.',
-    resumeRejectedStoppedPanelStoppedNotResumable:
+    resumeRejectedResumptionPanelStoppedNotResumable:
       'A fresh scan of the dialog facts shows this dialog is stopped, but the current stop reason is not resumable.',
-    resumeRejectedStoppedPanelDead:
+    resumeRejectedResumptionPanelDead:
       'A fresh scan of the dialog facts shows this dialog has been declared dead and cannot be resumed.',
     retryCountdownPrefix: 'Retrying in ',
     retryCountdownSuffix: '.',
@@ -1054,11 +1057,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     emergencyStop: 'Emergency stop',
     resumeAll: 'Resume all',
     continueLabel: 'Continue',
-    stoppedPanelTitle: 'Stopped',
+    resumptionPanelTitle: 'Resumption',
 
     stoppedByYou: 'Stopped by you',
     stoppedByEmergencyStop: 'Stopped by emergency stop',
     interruptedByServerRestart: 'Interrupted by server restart',
+    pendingCourseStartReady: 'A new course is ready to continue',
     forkContinueReady: 'A continuation fork is ready to proceed',
     runMarkerResumed: 'Resumed',
     runMarkerInterrupted: 'Stopped',
