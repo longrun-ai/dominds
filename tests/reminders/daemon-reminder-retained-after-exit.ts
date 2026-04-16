@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { DialogStore, RootDialog } from '../../main/dialog';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import {
   resetTrackedDaemonsForTests,
@@ -53,6 +54,7 @@ function requireReminder(dialog: RootDialog) {
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
+    setWorkLanguage('zh');
     registerReminderOwner(shellCmdReminderOwner);
     try {
       const dialog = createDialog('tester');
@@ -68,6 +70,11 @@ async function main(): Promise<void> {
       await dialog.processReminderUpdates();
 
       const finalizedReminder = await requireReminder(dialog);
+      assert.match(
+        finalizedReminder.content,
+        /🟡 .* 已退出（退出事件提示 \/ 确认看到后可删除）/,
+        'Expected exited daemon reminder to expose explicit exited phase summary',
+      );
       assert.match(
         finalizedReminder.content,
         /(手动删除|delete this reminder manually)/,

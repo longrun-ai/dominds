@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { materializeReminder, compareReminderDisplayOrder } from '../../main/tool';
+import { compareReminderDisplayOrder, materializeReminder } from '../../main/tool';
 
 (() => {
   const pendingReminder = materializeReminder({

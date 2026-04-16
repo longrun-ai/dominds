@@ -554,18 +554,39 @@ function buildShellCmdFinalizedMeta(
   };
 }
 
+type DaemonLifecyclePhase = 'running' | 'exited';
+
+function formatDaemonLifecyclePhaseSummary(
+  command: string,
+  phase: DaemonLifecyclePhase,
+  language: LanguageCode,
+): string {
+  if (language === 'zh') {
+    return phase === 'running'
+      ? `🟢 ${command} 运行中（系统维护 / 实时真源 / 不可删除）`
+      : `🟡 ${command} 已退出（退出事件提示 / 确认看到后可删除）`;
+  }
+  return phase === 'running'
+    ? `🟢 ${command} running (system-maintained / live source of truth / not deletable)`
+    : `🟡 ${command} exited (exit event notice / delete after acknowledgment)`;
+}
+
 function formatExitedDaemonReminderContent(
+  command: string,
   pid: number,
   language: LanguageCode,
   lastKnownSnapshot: string,
 ): string {
+  const phaseSummary = formatDaemonLifecyclePhaseSummary(command, 'exited', language);
   return language === 'zh'
-    ? `🏁 守护进程 ${pid} 已退出。
+    ? `${phaseSummary}
+
 如需核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下保留的是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
 
 最后一次已知状态快照：
 ${lastKnownSnapshot}`
-    : `🏁 Daemon process ${pid} has exited.
+    : `${phaseSummary}
+
 If you need to verify the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
 
 Last known status snapshot:
@@ -1180,7 +1201,7 @@ async function resolveDaemonFromMeta(
   }
 }
 
-function formatRunnerBackedDaemonStatus(
+function formatRunnerBackedDaemonStatusDetails(
   daemon: RunnerBackedDaemon,
   language: LanguageCode,
 ): string {
@@ -1254,6 +1275,16 @@ Stderr buffer snapshot:
 ${fenceConsole}
 ${stderrContent}
 ${fenceEnd}`;
+}
+
+function formatRunnerBackedDaemonStatus(
+  daemon: RunnerBackedDaemon,
+  language: LanguageCode,
+): string {
+  const phaseSummary = formatDaemonLifecyclePhaseSummary(daemon.command, 'running', language);
+  return `${phaseSummary}
+
+${formatRunnerBackedDaemonStatusDetails(daemon, language)}`;
 }
 
 function formatRunnerRecoveryError(pid: number, errorText: string, language: LanguageCode): string {
@@ -1447,7 +1478,12 @@ export const shellCmdReminderOwner: ReminderOwner = {
       }
       return {
         treatment: 'update',
-        updatedContent: formatExitedDaemonReminderContent(pid, getWorkLanguage(), reminder.content),
+        updatedContent: formatExitedDaemonReminderContent(
+          reminder.meta.initialCommandLine,
+          pid,
+          getWorkLanguage(),
+          reminder.content,
+        ),
         updatedMeta: buildShellCmdFinalizedMeta(reminder.meta, formatUnifiedTimestamp(new Date())),
       };
     }
@@ -1475,9 +1511,10 @@ export const shellCmdReminderOwner: ReminderOwner = {
 
     if (!daemon.isRunning) {
       const completedContent = formatExitedDaemonReminderContent(
+        daemon.command,
         pid,
         getWorkLanguage(),
-        formatRunnerBackedDaemonStatus(daemon, getWorkLanguage()),
+        formatRunnerBackedDaemonStatusDetails(daemon, getWorkLanguage()),
       );
       if (
         reminder.meta.completed === true &&
@@ -1519,11 +1556,11 @@ export const shellCmdReminderOwner: ReminderOwner = {
         role: 'user',
         content:
           language === 'zh'
-            ? `${prefix} 后台进程状态提醒 [${reminder.id}]
+            ? `${prefix} 后台进程生命周期状态卡 [${reminder.id}]
 这是系统维护的后台进程状态快照。把它当成环境信号，不是你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒在进程运行期间会自动更新；进程结束后会保留终态，等待你确认后手动删除。
 ---
 ${reminder.content}`
-            : `${prefix} Background process status reminder [${reminder.id}]
+            : `${prefix} Background process lifecycle card [${reminder.id}]
 This is a system-maintained background process snapshot. Treat it as an environment signal, not a self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); only reflect it inside the next substantive reply when it actually affects the next action. This reminder auto-updates while the process is running; after exit it keeps the terminal state until you delete it manually.
 ---
 ${reminder.content}`,
@@ -1539,16 +1576,21 @@ ${reminder.content}`,
         reminder.meta.runnerEndpoint !== undefined ||
         reminder.meta.runnerPid !== undefined;
       if (isTrackedDaemon) {
+        const exitedSummary = formatDaemonLifecyclePhaseSummary(
+          reminder.meta.initialCommandLine,
+          'exited',
+          language,
+        );
         return {
           type: 'environment_msg',
           role: 'user',
           content:
             language === 'zh'
-              ? `${prefix} 进程生命周期提醒 [${reminder.id}] - 后台进程已结束（PID ${pid}）
+              ? `${prefix} 守护进程生命周期状态卡 [${reminder.id}] - ${exitedSummary}｜PID ${pid}
 该后台进程已退出。若需要再核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
 ---
 ${reminder.content}`
-              : `${prefix} Process lifecycle reminder [${reminder.id}] - daemon terminated (PID ${pid})
+              : `${prefix} Daemon lifecycle card [${reminder.id}] - ${exitedSummary} | PID ${pid}
 This daemon has exited. If you still need to inspect the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
 ---
 ${reminder.content}`,
@@ -1584,19 +1626,20 @@ This daemon process has finished its lifecycle and is no longer running.`,
           ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
           : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
 
-    const statusInfo = formatRunnerBackedDaemonStatus(daemon, language);
+    const statusInfo = formatRunnerBackedDaemonStatusDetails(daemon, language);
+    const runningSummary = formatDaemonLifecyclePhaseSummary(daemon.command, 'running', language);
 
     return {
       type: 'environment_msg',
       role: 'user',
       content:
         language === 'zh'
-          ? `🔄 ${prefix} 运行中后台进程状态 [${reminder.id}] - PID ${pid}（已运行 ${uptimeStr}）
+          ? `🔄 ${prefix} 守护进程生命周期状态卡 [${reminder.id}] - ${runningSummary}｜PID ${pid}，已运行 ${uptimeStr}
 这是系统维护的状态快照，不是新的用户诉求，也不是默认需要单独汇报的事项。若下面的信息没有实质改变你的判断、计划、风险，且不需要调用守护进程相关工具，则禁止做任何用户可见回应；若它有实质影响，只在下一条有实质内容的回复中体现，禁止单独发送“静默吸收”“已收到”等占位语句。
 
 **状态快照：**
 ${statusInfo}`
-          : `🔄 ${prefix} Active daemon state [${reminder.id}] - PID ${pid} (uptime: ${uptimeStr})
+          : `🔄 ${prefix} Daemon lifecycle card [${reminder.id}] - ${runningSummary} | PID ${pid}, uptime: ${uptimeStr}
 This is a system-maintained snapshot, not a new user request and not something that normally deserves a standalone mention. If the information below does not materially change your judgment, plan, risk, or require a daemon-management action, make no user-visible reply at all; if it does matter, reflect it only inside the next substantive reply instead of sending filler like “silently noted” or “received”.
 
 **State snapshot:**

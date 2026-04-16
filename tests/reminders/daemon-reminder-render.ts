@@ -79,10 +79,15 @@ async function main(): Promise<void> {
       }
       assert.equal(rendered.type, 'environment_msg');
       assert.equal(rendered.role, 'user');
-      assert.match(rendered.content, /运行中后台进程状态 \[/);
+      assert.match(rendered.content, /守护进程生命周期状态卡 \[/);
+      assert.match(
+        rendered.content,
+        /🟢 node -e "console\.log\('daemon-ready'\); setInterval\(\(\) => \{\}, 10000\)" 运行中/,
+      );
       assert.match(rendered.content, /状态快照/);
       assert.match(rendered.content, /stdout 缓冲区快照/);
       assert.match(rendered.content, /daemon-ready/);
+      assert.match(rendered.content, /系统维护 \/ 实时真源 \/ 不可删除/);
       assert.match(rendered.content, /禁止做任何用户可见回应/);
       assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
       assert.doesNotMatch(rendered.content, /请按需要检查/);

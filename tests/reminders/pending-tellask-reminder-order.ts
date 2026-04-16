@@ -145,7 +145,11 @@ async function main(): Promise<void> {
 
     await syncPendingTellaskReminderState(root);
     let visible = await root.listVisibleReminders();
-    assert.equal(visible[0]?.id, 'daemon001', 'Expected newer daemon reminder to sort first initially');
+    assert.equal(
+      visible[0]?.id,
+      'daemon001',
+      'Expected newer daemon reminder to sort first initially',
+    );
 
     await persistPendingSubdialog({
       rootId: root.id.rootId,

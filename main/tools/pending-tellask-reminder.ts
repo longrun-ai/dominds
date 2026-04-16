@@ -120,8 +120,7 @@ function buildReminderMeta(
     pending.length === 0
       ? formatUnifiedTimestamp(new Date())
       : pending.reduce(
-          (latest, entry) =>
-            entry.latestActivityAt > latest ? entry.latestActivityAt : latest,
+          (latest, entry) => (entry.latestActivityAt > latest ? entry.latestActivityAt : latest),
           pending[0]?.latestActivityAt ?? formatUnifiedTimestamp(new Date()),
         );
   const deleteMeta =

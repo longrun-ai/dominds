@@ -239,9 +239,7 @@ function extractReminderDisplayTimestamp(reminder: Reminder): ReminderDisplayTim
 function parseReminderSortTimestamp(value: string): number | null {
   const trimmed = value.trim();
   if (trimmed === '') return null;
-  const unifiedMatch = trimmed.match(
-    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/,
-  );
+  const unifiedMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
   if (unifiedMatch) {
     const [, year, month, day, hour, minute, second] = unifiedMatch;
     const parsed = new Date(
