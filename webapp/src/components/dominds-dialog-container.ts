@@ -46,7 +46,11 @@ import {
 } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
-import { getProgressiveExpandLabel, setupProgressiveExpandBehavior } from './progressive-expand';
+import {
+  getProgressiveExpandLabel,
+  resolveProgressiveExpandStepParent,
+  setupProgressiveExpandBehavior,
+} from './progressive-expand';
 
 type DialogContext = DialogIdent & {
   status?: DialogStatusKind;
@@ -2608,11 +2612,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const footer = section.querySelector('.calling-expand-footer') as HTMLElement | null;
     const button = section.querySelector('.calling-expand-btn') as HTMLButtonElement | null;
     if (!content || !footer || !button) return;
-    const stepParent =
-      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
-    // Main dialog progressive expansion is keyed to the explicit dialog scroll container.
-    // Humans resize this region indirectly by resizing the browser/app layout, so it is the
-    // intended parent height for expansion steps.
+    // Main dialog progressive expansion is keyed to the explicitly marked dialog viewport parent.
+    // We never infer a step parent from whichever ancestor happens to scroll today.
+    const stepParent = resolveProgressiveExpandStepParent(section);
     this.setupProgressiveExpand({
       target: content,
       footer,
@@ -2630,8 +2632,7 @@ export class DomindsDialogContainer extends HTMLElement {
       '.func-call-arguments-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    const stepParent =
-      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    const stepParent = resolveProgressiveExpandStepParent(section);
     this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
@@ -2642,8 +2643,7 @@ export class DomindsDialogContainer extends HTMLElement {
       '.func-call-result-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    const stepParent =
-      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    const stepParent = resolveProgressiveExpandStepParent(section);
     this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
@@ -2652,8 +2652,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const footer = section.querySelector('.teammate-expand-footer') as HTMLElement | null;
     const button = section.querySelector('.teammate-expand-btn') as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    const stepParent =
-      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    const stepParent = resolveProgressiveExpandStepParent(section);
     this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
@@ -2664,8 +2663,7 @@ export class DomindsDialogContainer extends HTMLElement {
       '.ui-only-markdown-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    const stepParent =
-      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    const stepParent = resolveProgressiveExpandStepParent(section);
     this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 

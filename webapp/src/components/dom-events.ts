@@ -36,6 +36,10 @@ export type ReminderTextDetail = {
   renderMode?: 'plain' | 'markdown';
 };
 
+export type ProgressiveExpandContentGrownDetail = {
+  reason: 'expand-step' | 'content-growth';
+};
+
 export type DialogHierarchyToggleDetail = {
   rootId: string;
   status: PersistableDialogStatus;
@@ -144,6 +148,7 @@ export interface DomindsCustomEventMap {
   'input-error': CustomEvent<InputErrorDetail>;
   'navigate-callsite': CustomEvent<NavigateCallsiteEventDetail>;
   'navigate-genseq': CustomEvent<NavigateGenseqEventDetail>;
+  'progressive-expand-content-grown': CustomEvent<ProgressiveExpandContentGrownDetail>;
   'q4h-navigate-call-site': CustomEvent<Q4HCallSiteNavigationDetail>;
   'q4h-open-external': CustomEvent<Q4HCallSiteNavigationDetail>;
   'q4h-question-expanded': CustomEvent<Q4HQuestionExpandedDetail>;

@@ -651,6 +651,7 @@ export class DomindsApp extends HTMLElement {
   private toolsWidgetWidthPx: number = 380;
   private toolsWidgetHeightPx: number = 320;
   private sidebarResizeCleanup: (() => void) | null = null;
+  private reminderProgressiveExpandCleanups: Array<() => void> = [];
   private readonly boundOnWindowResize = (): void => {
     this.restoreViewportScopedResizableSizes();
     this.setupSidebarResizePersistence();
@@ -1911,6 +1912,11 @@ export class DomindsApp extends HTMLElement {
       this.sidebarResizeCleanup();
       this.sidebarResizeCleanup = null;
     }
+
+    for (const cleanup of this.reminderProgressiveExpandCleanups) {
+      cleanup();
+    }
+    this.reminderProgressiveExpandCleanups = [];
   }
 
   /**
@@ -6232,7 +6238,7 @@ export class DomindsApp extends HTMLElement {
                   <span class="icon-mask app-icon-close" aria-hidden="true"></span>
                 </button>
               </div>
-              <div id="reminders-widget-content">
+              <div id="reminders-widget-content" lang="${this.uiLanguage}" data-progressive-expand-step-parent="true">
                 ${
                   this.toolbarReminders.length === 0
                     ? `<div class="reminders-widget-empty">${t.noReminders}</div>`
@@ -6249,7 +6255,7 @@ export class DomindsApp extends HTMLElement {
 
 	            <div class="dialog-section">
                 <div class="conversation-viewport">
-	                <div class="conversation-scroll-area">
+	                <div class="conversation-scroll-area" lang="${this.uiLanguage}" data-progressive-expand-step-parent="true">
 	                  <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
 	                </div>
                 </div>
@@ -10614,6 +10620,10 @@ export class DomindsApp extends HTMLElement {
 
   private closeRemindersWidget(): void {
     this.remindersWidgetVisible = false;
+    for (const cleanup of this.reminderProgressiveExpandCleanups) {
+      cleanup();
+    }
+    this.reminderProgressiveExpandCleanups = [];
     const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     if (widget) widget.remove();
     this.updateToolbarDisplay();
@@ -11584,7 +11594,7 @@ export class DomindsApp extends HTMLElement {
               <span class="icon-mask app-icon-close" aria-hidden="true"></span>
             </button>
           </div>
-          <div id="reminders-widget-content"></div>
+          <div id="reminders-widget-content" lang="${this.uiLanguage}" data-progressive-expand-step-parent="true"></div>
 	          <div id="reminders-widget-resize-handle" aria-hidden="true">
 		            <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
 			          </div>
@@ -11619,10 +11629,17 @@ export class DomindsApp extends HTMLElement {
       console.warn('No reminders widget content container found');
       return;
     }
+    widgetContent.setAttribute('lang', this.uiLanguage);
+    widgetContent.setAttribute('data-progressive-expand-step-parent', 'true');
 
     if (widgetTitle) {
       widgetTitle.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
     }
+
+    for (const cleanup of this.reminderProgressiveExpandCleanups) {
+      cleanup();
+    }
+    this.reminderProgressiveExpandCleanups = [];
 
     const numberedReminders = this.toolbarReminders.filter((r) => r && r.echoback !== false);
     const virtualReminders = this.toolbarReminders.filter((r) => r && r.echoback === false);
@@ -11730,13 +11747,18 @@ export class DomindsApp extends HTMLElement {
       const button = sectionNode.querySelector('.rem-item-expand-btn') as HTMLButtonElement | null;
       if (!target || !footer || !button) continue;
 
-      setupProgressiveExpandBehavior({
+      const cleanup = setupProgressiveExpandBehavior({
         target,
         footer,
         button,
         stepParent,
         label,
+        // Reminder bodies can become long after first paint when a nested code block is expanded.
+        // Track only target self-growth until the first outer overflow appears; never track widget
+        // parent resize for this.
+        observeTargetUntilOverflow: true,
       });
+      this.reminderProgressiveExpandCleanups.push(cleanup);
     }
   }
 

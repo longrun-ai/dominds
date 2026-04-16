@@ -1,5 +1,11 @@
 import hljs from 'highlight.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
+import {
+  getProgressiveExpandLabel,
+  resolveProgressiveExpandStepParent,
+  setupProgressiveExpandBehavior,
+  type ProgressiveExpandState,
+} from './progressive-expand';
 
 /**
  * Custom Web Component for Syntax Highlighted Code Blocks
@@ -7,6 +13,8 @@ import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 export class DomindsCodeBlock extends HTMLElement {
   private _language: string = '';
   private _code: string = '';
+  private progressiveExpandCleanup: (() => void) | null = null;
+  private progressiveExpandState: ProgressiveExpandState = { kind: 'initial' };
 
   static get observedAttributes() {
     return ['language'];
@@ -19,6 +27,11 @@ export class DomindsCodeBlock extends HTMLElement {
 
   connectedCallback() {
     this.render();
+  }
+
+  disconnectedCallback() {
+    this.progressiveExpandCleanup?.();
+    this.progressiveExpandCleanup = null;
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
@@ -119,10 +132,81 @@ export class DomindsCodeBlock extends HTMLElement {
             background: var(--dominds-bg, var(--color-bg-primary, #f8f8f8));
             overflow: auto;
           }
+          .code-expand-footer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0 0 4px;
+            margin-top: -1px;
+            background: linear-gradient(
+              to bottom,
+              color-mix(in srgb, var(--dominds-bg-secondary, #ffffff) 0%, transparent),
+              var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff)) 72%
+            );
+          }
+          .code-expand-footer.is-hidden {
+            display: none;
+          }
+          .code-expand-btn {
+            width: 28px;
+            height: 20px;
+            border-radius: 999px;
+            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
+            background: var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff));
+            color: var(--dominds-muted, var(--color-fg-tertiary, #616161));
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+            transition:
+              background 0.2s ease,
+              border-color 0.2s ease,
+              color 0.2s ease,
+              box-shadow 0.2s ease;
+          }
+          .code-expand-btn:hover {
+            border-color: var(--dominds-primary, var(--color-accent-primary, #005fb8));
+            color: var(--dominds-primary, var(--color-accent-primary, #005fb8));
+            background: color-mix(
+              in srgb,
+              var(--dominds-bg-secondary, #ffffff) 85%,
+              var(--dominds-primary, #005fb8) 15%
+            );
+          }
+          .code-expand-btn:focus-visible {
+            outline: 2px solid var(--dominds-primary, var(--color-accent-primary, #005fb8));
+            outline-offset: 1px;
+          }
+          .code-expand-icon {
+            width: 12px;
+            height: 12px;
+            --icon-mask: ${ICON_MASK_URLS.chevronsDown};
+            animation: progressive-expand-flash 2.2s ease-in-out infinite;
+          }
+          .code-expand-btn:hover .code-expand-icon,
+          .code-expand-btn:focus-visible .code-expand-icon {
+            animation-play-state: paused;
+          }
           code.hljs {
             padding: 0;
             background: transparent;
             color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
+          }
+          @keyframes progressive-expand-flash {
+            0%,
+            100% {
+              opacity: 0.5;
+              transform: translateY(0);
+            }
+            35% {
+              opacity: 1;
+              transform: translateY(1px);
+            }
+            60% {
+              opacity: 0.75;
+              transform: translateY(3px);
+            }
           }
         </style>
         <div class="code-block-wrapper">
@@ -131,12 +215,46 @@ export class DomindsCodeBlock extends HTMLElement {
             <button class="copy-btn" title="Copy code" aria-label="Copy code" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.querySelector('code').textContent)"><span class="icon-mask" aria-hidden="true"></span></button>
           </div>
           <pre><code class="hljs language-${language}">${highlighted}</code></pre>
+          <div class="code-expand-footer is-hidden">
+            <button type="button" class="code-expand-btn">
+              <span class="code-expand-icon icon-mask" aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
       `;
+      this.setupProgressiveExpand();
     } catch (error) {
       console.error('Highlighting error:', error);
       this.innerHTML = `<pre><code>${this._code}</code></pre>`;
     }
+  }
+
+  private setupProgressiveExpand(): void {
+    const target = this.querySelector('pre');
+    const footer = this.querySelector('.code-expand-footer');
+    const button = this.querySelector('.code-expand-btn');
+    if (!(target instanceof HTMLElement)) return;
+    if (!(footer instanceof HTMLElement)) return;
+    if (!(button instanceof HTMLButtonElement)) return;
+
+    const stepParent = resolveProgressiveExpandStepParent(this);
+    const language = this.closest('[lang]')?.getAttribute('lang') ?? 'en';
+    this.progressiveExpandCleanup?.();
+    this.progressiveExpandCleanup = setupProgressiveExpandBehavior({
+      target,
+      footer,
+      button,
+      stepParent,
+      label: getProgressiveExpandLabel(language),
+      // Code blocks can keep growing while streaming output arrives. Observe only the code block
+      // itself until it first crosses the initial clamp threshold; never infer or observe parent
+      // containers here.
+      observeTargetUntilOverflow: true,
+      state: this.progressiveExpandState,
+      onStateChange: (state) => {
+        this.progressiveExpandState = state;
+      },
+    });
   }
 }
 
