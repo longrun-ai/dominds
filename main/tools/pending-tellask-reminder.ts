@@ -1,6 +1,6 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import type { Dialog } from '../dialog';
+import { DialogID, type Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { DialogPersistence } from '../persistence';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
@@ -10,6 +10,7 @@ import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
 type PendingSubdialogView = Readonly<{
   subdialogId: string;
+  latestActivityAt: string;
   mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
@@ -115,6 +116,14 @@ function buildReminderMeta(
   pending: ReadonlyArray<PendingSubdialogView>,
 ): PendingTellaskReminderMeta {
   const language = getWorkLanguage();
+  const latestActivityAt =
+    pending.length === 0
+      ? formatUnifiedTimestamp(new Date())
+      : pending.reduce(
+          (latest, entry) =>
+            entry.latestActivityAt > latest ? entry.latestActivityAt : latest,
+          pending[0]?.latestActivityAt ?? formatUnifiedTimestamp(new Date()),
+        );
   const deleteMeta =
     pending.length === 0
       ? {}
@@ -127,7 +136,7 @@ function buildReminderMeta(
     kind: 'pending_tellask',
     pendingCount: pending.length,
     pendingSignature: makePendingSignature(pending),
-    updatedAt: formatUnifiedTimestamp(new Date()),
+    updatedAt: latestActivityAt,
     update: {
       altInstruction: getPendingTellaskUpdateAltInstruction(language),
     },
@@ -193,15 +202,22 @@ function assertSingleOwnedReminder(dlg: Dialog): number | null {
 
 async function loadPendingSubdialogView(dlg: Dialog): Promise<PendingSubdialogView[]> {
   const pending = await DialogPersistence.loadPendingSubdialogs(dlg.id, dlg.status);
-  return pending.map((p) => ({
-    subdialogId: p.subdialogId,
-    mentionList: p.mentionList,
-    tellaskContent: p.tellaskContent,
-    targetAgentId: p.targetAgentId,
-    callType: p.callType,
-    callName: p.callName,
-    sessionSlug: p.sessionSlug,
-  }));
+  return await Promise.all(
+    pending.map(async (p) => {
+      const subdialogId = new DialogID(p.subdialogId, dlg.id.rootId);
+      const latest = await DialogPersistence.loadDialogLatest(subdialogId, dlg.status);
+      return {
+        subdialogId: p.subdialogId,
+        latestActivityAt: latest?.lastModified ?? p.createdAt,
+        mentionList: p.mentionList,
+        tellaskContent: p.tellaskContent,
+        targetAgentId: p.targetAgentId,
+        callType: p.callType,
+        callName: p.callName,
+        sessionSlug: p.sessionSlug,
+      };
+    }),
+  );
 }
 
 async function withDialogLockIfNeeded<T>(dlg: Dialog, fn: () => Promise<T>): Promise<T> {
@@ -233,7 +249,8 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
       current?.content === content &&
       isPendingTellaskReminderMeta(currentMeta) &&
       currentMeta.pendingSignature === nextMeta.pendingSignature &&
-      currentMeta.pendingCount === nextMeta.pendingCount;
+      currentMeta.pendingCount === nextMeta.pendingCount &&
+      currentMeta.updatedAt === nextMeta.updatedAt;
 
     if (unchanged) return false;
 
@@ -259,7 +276,8 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
       reminder.content === updatedContent &&
       isPendingTellaskReminderMeta(reminder.meta) &&
       reminder.meta.pendingSignature === updatedMeta.pendingSignature &&
-      reminder.meta.pendingCount === updatedMeta.pendingCount;
+      reminder.meta.pendingCount === updatedMeta.pendingCount &&
+      reminder.meta.updatedAt === updatedMeta.updatedAt;
 
     if (unchanged) {
       return { treatment: 'keep' };

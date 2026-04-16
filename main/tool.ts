@@ -205,14 +205,74 @@ export function cloneReminder(reminder: Reminder): Reminder {
   });
 }
 
+type ReminderDisplayTimestamp = Readonly<{
+  raw: string;
+  ms: number | null;
+}>;
+
+function extractReminderDisplayTimestamp(reminder: Reminder): ReminderDisplayTimestamp {
+  let displayTs = reminder.createdAt ?? '';
+  let displayTsMs = parseReminderSortTimestamp(displayTs);
+  const meta = reminder.meta;
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+    return { raw: displayTs, ms: displayTsMs };
+  }
+  const updatedAt = meta['updatedAt'];
+  if (typeof updatedAt === 'string') {
+    const updatedAtMs = parseReminderSortTimestamp(updatedAt);
+    if (updatedAtMs !== null && (displayTsMs === null || updatedAtMs > displayTsMs)) {
+      displayTs = updatedAt;
+      displayTsMs = updatedAtMs;
+    }
+  }
+  const lastUpdated = meta['lastUpdated'];
+  if (typeof lastUpdated === 'string') {
+    const lastUpdatedMs = parseReminderSortTimestamp(lastUpdated);
+    if (lastUpdatedMs !== null && (displayTsMs === null || lastUpdatedMs > displayTsMs)) {
+      displayTs = lastUpdated;
+      displayTsMs = lastUpdatedMs;
+    }
+  }
+  return { raw: displayTs, ms: displayTsMs };
+}
+
+function parseReminderSortTimestamp(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const unifiedMatch = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/,
+  );
+  if (unifiedMatch) {
+    const [, year, month, day, hour, minute, second] = unifiedMatch;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    ).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  const parsed = Date.parse(trimmed);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 // Reminder presentation order is a framework-level concern distinct from owner semantics.
 // Keep it centralized so dialog-local reminders and agent-shared reminders stay in the same
 // newest-first order everywhere they are merged, rendered, or injected.
 export function compareReminderDisplayOrder(a: Reminder, b: Reminder): number {
-  const aCreatedAt = a.createdAt ?? '';
-  const bCreatedAt = b.createdAt ?? '';
-  if (aCreatedAt !== bCreatedAt) {
-    return bCreatedAt.localeCompare(aCreatedAt);
+  const aDisplayTs = extractReminderDisplayTimestamp(a);
+  const bDisplayTs = extractReminderDisplayTimestamp(b);
+  if (aDisplayTs.ms !== null || bDisplayTs.ms !== null) {
+    if (aDisplayTs.ms === null) return 1;
+    if (bDisplayTs.ms === null) return -1;
+    if (aDisplayTs.ms !== bDisplayTs.ms) {
+      return bDisplayTs.ms - aDisplayTs.ms;
+    }
+  }
+  if (aDisplayTs.raw !== bDisplayTs.raw) {
+    return bDisplayTs.raw.localeCompare(aDisplayTs.raw);
   }
   return b.id.localeCompare(a.id);
 }
