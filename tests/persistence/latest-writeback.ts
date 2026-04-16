@@ -108,6 +108,79 @@ async function main(): Promise<void> {
     assert.equal(record['status'], 'active');
     assert.equal(record['messageCount'], 1 + increments);
     assert.equal(record['functionCallCount'], 2);
+
+    // Invariant 4: generating dialogs must not persist a non-running displayState snapshot.
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 3,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:01:00.000Z')),
+        status: 'active',
+        generating: true,
+        displayState: { kind: 'idle_waiting_user' },
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_course_start' } },
+      },
+    }));
+    const healedGenerating = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(healedGenerating, 'Expected latest after generating/displayState healing');
+    assert.equal(healedGenerating.generating, true);
+    assert.deepEqual(healedGenerating.displayState, { kind: 'proceeding' });
+    assert.equal(healedGenerating.executionMarker, undefined);
+
+    // Invariant 5: dead state must remain louder than the generic generating/proceeding healing.
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 4,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:02:00.000Z')),
+        status: 'active',
+        generating: true,
+        displayState: { kind: 'dead', reason: { kind: 'declared_by_user' } },
+        executionMarker: { kind: 'dead', reason: { kind: 'declared_by_user' } },
+      },
+    }));
+    const preservedDead = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(preservedDead, 'Expected latest after dead/generating mismatch write');
+    assert.equal(preservedDead.generating, true);
+    assert.deepEqual(preservedDead.displayState, {
+      kind: 'dead',
+      reason: { kind: 'declared_by_user' },
+    });
+    assert.deepEqual(preservedDead.executionMarker, {
+      kind: 'dead',
+      reason: { kind: 'declared_by_user' },
+    });
+
+    // Invariant 6: clearing a pending course-start prompt must not regress a live generating round
+    // back to idle if a newer write has already reasserted proceeding.
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 5,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:03:00.000Z')),
+        status: 'active',
+        generating: true,
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_course_start' },
+          continueEnabled: true,
+        },
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_course_start' } },
+        pendingCourseStartPrompt: {
+          content: 'resume current round',
+          msgId: 'pending-course-start-msg',
+          grammar: 'markdown',
+          origin: 'runtime',
+        },
+      },
+    }));
+    await DialogPersistence.clearPendingCourseStartPrompt(dialogId, 'pending-course-start-msg');
+    const clearedPendingCourseStart = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(clearedPendingCourseStart, 'Expected latest after clearing pending course-start');
+    assert.equal(clearedPendingCourseStart.generating, true);
+    assert.deepEqual(clearedPendingCourseStart.displayState, { kind: 'proceeding' });
+    assert.equal(clearedPendingCourseStart.pendingCourseStartPrompt, undefined);
+    assert.equal(clearedPendingCourseStart.executionMarker, undefined);
   });
 }
 

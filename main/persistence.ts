@@ -141,6 +141,201 @@ let finalizeDialogQuarantineHook:
       quarantined: boolean;
     }) => Promise<void> | void)
   | null = null;
+
+function captureInvariantWarningStack(): string[] | null {
+  const stack = new Error().stack;
+  if (typeof stack !== 'string' || stack.trim() === '') {
+    return null;
+  }
+  const frames = stack
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter((line) => {
+      return (
+        line !== '' &&
+        !line.includes('captureInvariantWarningStack') &&
+        !line.includes('normalizeGeneratingDisplayStateMismatch') &&
+        !line.includes('mutateDialogLatest')
+      );
+    });
+  if (frames.length === 0) {
+    return null;
+  }
+  return frames.slice(0, 8);
+}
+
+function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string, unknown> {
+  return {
+    currentCourse: latest.currentCourse,
+    lastModified: latest.lastModified,
+    status: latest.status,
+    messageCount: latest.messageCount ?? null,
+    functionCallCount: latest.functionCallCount ?? null,
+    subdialogCount: latest.subdialogCount ?? null,
+    generating: latest.generating ?? false,
+    needsDrive: latest.needsDrive ?? false,
+    disableDiligencePush: latest.disableDiligencePush ?? false,
+    diligencePushRemainingBudget: latest.diligencePushRemainingBudget ?? null,
+    displayState: latest.displayState ?? null,
+    executionMarker: latest.executionMarker ?? null,
+    pendingCourseStartPromptMsgId: latest.pendingCourseStartPrompt?.msgId ?? null,
+    pendingCourseStartPromptOrigin: latest.pendingCourseStartPrompt?.origin ?? null,
+    pendingCourseStartPromptGrammar: latest.pendingCourseStartPrompt?.grammar ?? null,
+    pendingCourseStartPromptUserLanguageCode:
+      latest.pendingCourseStartPrompt?.userLanguageCode ?? null,
+    pendingCourseStartPromptContentLength: latest.pendingCourseStartPrompt?.content.length ?? null,
+    pendingCourseStartPromptReplyTargetCallId:
+      latest.pendingCourseStartPrompt?.subdialogReplyTarget?.callId ?? null,
+    pendingCourseStartPromptReplyTargetOwnerDialogId:
+      latest.pendingCourseStartPrompt?.subdialogReplyTarget?.ownerDialogId ?? null,
+    pendingCourseStartPromptExpectedReplyCallName:
+      latest.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
+    pendingCourseStartPromptTargetCallId:
+      latest.pendingCourseStartPrompt?.tellaskReplyDirective?.targetCallId ?? null,
+  };
+}
+
+function summarizeLatestMutationPatch(
+  patch: Partial<DialogLatestFile>,
+): Record<string, unknown> | null {
+  const keys = Object.keys(patch as Record<string, unknown>);
+  if (keys.length === 0) {
+    return null;
+  }
+  return {
+    keys,
+    currentCourse: patch.currentCourse ?? null,
+    lastModified: patch.lastModified ?? null,
+    status: patch.status ?? null,
+    messageCount: patch.messageCount ?? null,
+    functionCallCount: patch.functionCallCount ?? null,
+    subdialogCount: patch.subdialogCount ?? null,
+    generating: patch.generating ?? null,
+    needsDrive: patch.needsDrive ?? null,
+    disableDiligencePush: patch.disableDiligencePush ?? null,
+    diligencePushRemainingBudget: patch.diligencePushRemainingBudget ?? null,
+    displayState: patch.displayState ?? null,
+    executionMarker: patch.executionMarker ?? null,
+    pendingCourseStartPromptMsgId: patch.pendingCourseStartPrompt?.msgId ?? null,
+    pendingCourseStartPromptOrigin: patch.pendingCourseStartPrompt?.origin ?? null,
+    pendingCourseStartPromptGrammar: patch.pendingCourseStartPrompt?.grammar ?? null,
+    pendingCourseStartPromptUserLanguageCode:
+      patch.pendingCourseStartPrompt?.userLanguageCode ?? null,
+    pendingCourseStartPromptContentLength: patch.pendingCourseStartPrompt?.content.length ?? null,
+    pendingCourseStartPromptReplyTargetOwnerDialogId:
+      patch.pendingCourseStartPrompt?.subdialogReplyTarget?.ownerDialogId ?? null,
+    pendingCourseStartPromptReplyTargetCallId:
+      patch.pendingCourseStartPrompt?.subdialogReplyTarget?.callId ?? null,
+    pendingCourseStartPromptExpectedReplyCallName:
+      patch.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
+    pendingCourseStartPromptTargetCallId:
+      patch.pendingCourseStartPrompt?.tellaskReplyDirective?.targetCallId ?? null,
+  };
+}
+
+function stringifyInvariantWarningDetails(details: Record<string, unknown>): string | null {
+  try {
+    return JSON.stringify(details);
+  } catch {
+    return null;
+  }
+}
+
+function chunkInvariantDiagnosticJson(value: string, maxChars: number): string[] {
+  if (maxChars <= 0 || value.length <= maxChars) {
+    return [value];
+  }
+  const chunks: string[] = [];
+  for (let start = 0; start < value.length; start += maxChars) {
+    chunks.push(value.slice(start, start + maxChars));
+  }
+  return chunks;
+}
+
+function emitInvariantWarning(message: string, details: Record<string, unknown>): void {
+  const diagnosticJson = stringifyInvariantWarningDetails(details);
+  log.warn(message, undefined, {
+    ...details,
+    diagnosticJson,
+  });
+  if (diagnosticJson !== null) {
+    const parts = chunkInvariantDiagnosticJson(diagnosticJson, 1600);
+    for (const [index, part] of parts.entries()) {
+      log.warn(`${message} FullDiagnosticJsonPart=${index + 1}/${parts.length} ${part}`);
+    }
+  }
+}
+
+function normalizeGeneratingDisplayStateMismatch(
+  dialogId: DialogID,
+  status: DialogStatusKind,
+  previous: DialogLatestFile,
+  latest: DialogLatestFile,
+  context: Readonly<{
+    trigger: string;
+    mutationKind: DialogLatestMutation['kind'];
+    patchSummary: Record<string, unknown> | null;
+    latestSource: 'staged' | 'disk' | 'default_bootstrap';
+    latestWriteBackKey: string;
+  }>,
+): DialogLatestFile {
+  if (status !== 'running' || latest.generating !== true) {
+    return latest;
+  }
+  const shouldPreserveDeadState =
+    latest.displayState?.kind === 'dead' || latest.executionMarker?.kind === 'dead';
+  const hasRunningDisplayState =
+    latest.displayState?.kind === 'proceeding' ||
+    latest.displayState?.kind === 'proceeding_stop_requested';
+  const hasInterruptedExecutionMarker = latest.executionMarker?.kind === 'interrupted';
+  if (hasRunningDisplayState && !hasInterruptedExecutionMarker) {
+    return latest;
+  }
+  const healedDisplayState: DialogLatestFile['displayState'] = hasRunningDisplayState
+    ? latest.displayState
+    : { kind: 'proceeding' };
+  const healingMessage = !hasRunningDisplayState
+    ? hasInterruptedExecutionMarker
+      ? 'Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker'
+      : 'Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding'
+    : 'Dialog latest projection invariant warning: generating dialog has stale interrupted executionMarker; clearing it while preserving running displayState';
+  const warningDetails: Record<string, unknown> = {
+    trigger: context.trigger,
+    mutationKind: context.mutationKind,
+    latestSource: context.latestSource,
+    latestWriteBackKey: context.latestWriteBackKey,
+    patchSummary: context.patchSummary,
+    dialogId: dialogId.valueOf(),
+    rootId: dialogId.rootId,
+    selfId: dialogId.selfId,
+    status,
+    before: summarizeLatestProjectionState(previous),
+    afterBeforeHealing: summarizeLatestProjectionState(latest),
+    healingApplied: !shouldPreserveDeadState,
+    healedTo: shouldPreserveDeadState
+      ? null
+      : {
+          displayState: healedDisplayState,
+          executionMarker: hasInterruptedExecutionMarker ? null : (latest.executionMarker ?? null),
+        },
+    callStack: captureInvariantWarningStack(),
+  };
+  emitInvariantWarning(
+    shouldPreserveDeadState
+      ? 'Dialog latest projection invariant warning: generating dialog has non-running run-control projection; preserved stronger dead state'
+      : healingMessage,
+    warningDetails,
+  );
+  if (shouldPreserveDeadState) {
+    return latest;
+  }
+  return {
+    ...latest,
+    displayState: healedDisplayState,
+    executionMarker: hasInterruptedExecutionMarker ? undefined : latest.executionMarker,
+  };
+}
 const quarantiningRootDialogs = new Set<string>();
 const PERSISTABLE_DIALOG_STATUSES = ['running', 'completed', 'archived'] as const;
 type PersistableDialogStatus = (typeof PERSISTABLE_DIALOG_STATUSES)[number];
@@ -7304,9 +7499,8 @@ export class DialogPersistence {
     try {
       this.assertRootDialogWriteBackNotCanceled(effectiveCancellationToken, 'mutateDialogLatest');
       const staged = this.latestWriteBack.get(key);
-      const existing = (staged
-        ? staged.latest
-        : await this.loadDialogLatestFromDisk(dialogId, status)) || {
+      const latestFromDisk = staged ? null : await this.loadDialogLatestFromDisk(dialogId, status);
+      const existing = (staged ? staged.latest : latestFromDisk) || {
         currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
@@ -7332,6 +7526,19 @@ export class DialogPersistence {
         const _exhaustive: never = mutation;
         throw new Error(`Unhandled dialog latest mutation: ${String(_exhaustive)}`);
       }
+
+      updated = normalizeGeneratingDisplayStateMismatch(dialogId, status, existing, updated, {
+        trigger: 'mutateDialogLatest',
+        mutationKind: mutation.kind,
+        patchSummary:
+          mutation.kind === 'patch'
+            ? summarizeLatestMutationPatch(mutation.patch)
+            : mutation.kind === 'replace'
+              ? summarizeLatestProjectionState(mutation.next)
+              : null,
+        latestSource: staged ? 'staged' : latestFromDisk ? 'disk' : 'default_bootstrap',
+        latestWriteBackKey: key,
+      });
 
       this.assertRootDialogWriteBackNotCanceled(
         effectiveCancellationToken,
@@ -7547,16 +7754,46 @@ export class DialogPersistence {
         if (!pending || pending.msgId !== normalizedMsgId) {
           return { kind: 'noop' };
         }
+        const previousDisplayState = previous.displayState;
+        const displayState =
+          previousDisplayState?.kind === 'stopped' &&
+          previousDisplayState.reason.kind === 'pending_course_start'
+            ? previous.generating === true
+              ? (() => {
+                  const warningDetails: Record<string, unknown> = {
+                    trigger: 'clearPendingCourseStartPrompt',
+                    dialogId: dialogId.valueOf(),
+                    rootId: dialogId.rootId,
+                    selfId: dialogId.selfId,
+                    status,
+                    pendingCourseStartMsgId: normalizedMsgId,
+                    previous: summarizeLatestProjectionState(previous),
+                    intendedPatch: summarizeLatestMutationPatch({
+                      pendingCourseStartPrompt: undefined,
+                      needsDrive: false,
+                      displayState: { kind: 'proceeding' },
+                      executionMarker:
+                        previous.executionMarker?.kind === 'interrupted' &&
+                        previous.executionMarker.reason.kind === 'pending_course_start'
+                          ? undefined
+                          : previous.executionMarker,
+                    }),
+                    callStack: captureInvariantWarningStack(),
+                  };
+                  emitInvariantWarning(
+                    'clearPendingCourseStartPrompt invariant warning: generating dialog still projected as pending_course_start; healing displayState to proceeding',
+                    warningDetails,
+                  );
+                  return { kind: 'proceeding' } as const;
+                })()
+              : ({ kind: 'idle_waiting_user' } as const)
+            : previousDisplayState;
         return {
           kind: 'patch',
           patch: {
             pendingCourseStartPrompt: undefined,
             needsDrive: false,
-            displayState:
-              previous.displayState?.kind === 'stopped' &&
-              previous.displayState.reason.kind === 'pending_course_start'
-                ? { kind: 'idle_waiting_user' }
-                : previous.displayState,
+            displayState,
             executionMarker:
               previous.executionMarker?.kind === 'interrupted' &&
               previous.executionMarker.reason.kind === 'pending_course_start'
