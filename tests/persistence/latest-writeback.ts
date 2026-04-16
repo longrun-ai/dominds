@@ -16,8 +16,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { DialogID } from '../../main/dialog';
-import { DialogPersistence } from '../../main/persistence';
+import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 const sleep = async (ms: number): Promise<void> =>
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -181,6 +181,59 @@ async function main(): Promise<void> {
     assert.deepEqual(clearedPendingCourseStart.displayState, { kind: 'proceeding' });
     assert.equal(clearedPendingCourseStart.pendingCourseStartPrompt, undefined);
     assert.equal(clearedPendingCourseStart.executionMarker, undefined);
+
+    // Invariant 7: startNewCourse during an active generation must only queue the pending prompt;
+    // it must not regress the live round into pending_course_start before the generation finishes.
+    const activeDialogId = new DialogID('71/6b/eb9d1270');
+    const activeMetadata: RootDialogMetadataFile = {
+      id: activeDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-active-course.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:04:00.000Z')),
+    };
+    await DialogPersistence.saveRootDialogMetadata(activeDialogId, activeMetadata, 'running');
+    await DialogPersistence.mutateDialogLatest(activeDialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:04:01.000Z')),
+        status: 'active',
+        generating: false,
+        displayState: { kind: 'proceeding' },
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
+    const activeStore = new DiskFileDialogStore(activeDialogId);
+    const activeDialog = new RootDialog(
+      activeStore,
+      'plans/latest-writeback-active-course.tsk',
+      activeDialogId,
+      'tester',
+    );
+    await activeDialog.notifyGeneratingStart('active-course-msg');
+    await activeStore.startNewCourse(activeDialog, {
+      content: 'continue in course two after current generation',
+      msgId: 'pending-active-course-start-msg',
+      grammar: 'markdown',
+      origin: 'runtime',
+      userLanguageCode: 'en',
+    });
+    const latestDuringActiveGeneration = await DialogPersistence.loadDialogLatest(activeDialogId);
+    assert.ok(
+      latestDuringActiveGeneration,
+      'Expected latest after queueing a new course during active generation',
+    );
+    assert.equal(latestDuringActiveGeneration.generating, true);
+    assert.deepEqual(latestDuringActiveGeneration.displayState, { kind: 'proceeding' });
+    assert.equal(latestDuringActiveGeneration.executionMarker, undefined);
+    assert.equal(
+      latestDuringActiveGeneration.pendingCourseStartPrompt?.msgId,
+      'pending-active-course-start-msg',
+    );
   });
 }
 

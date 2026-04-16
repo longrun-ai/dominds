@@ -2782,6 +2782,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async startNewCourse(dialog: Dialog, newCoursePrompt: DialogPrompt): Promise<void> {
     const previousCourse = dialog.currentCourse;
     const newCourse = previousCourse + 1;
+    const isGenerationActive = dialog.activeGenSeqOrUndefined !== undefined;
     if (newCoursePrompt.origin !== 'runtime') {
       throw new Error(
         `startNewCourse invariant violation: pending new-course prompt must have runtime origin for dialog=${dialog.id.valueOf()}`,
@@ -2798,15 +2799,19 @@ export class DiskFileDialogStore extends DialogStore {
       patch: {
         currentCourse: newCourse,
         needsDrive: true,
-        displayState: {
-          kind: 'stopped',
-          reason: { kind: 'pending_course_start' },
-          continueEnabled: true,
-        },
-        executionMarker: {
-          kind: 'interrupted',
-          reason: { kind: 'pending_course_start' },
-        },
+        ...(isGenerationActive
+          ? {}
+          : {
+              displayState: {
+                kind: 'stopped',
+                reason: { kind: 'pending_course_start' },
+                continueEnabled: true,
+              } as const,
+              executionMarker: {
+                kind: 'interrupted',
+                reason: { kind: 'pending_course_start' },
+              } as const,
+            }),
         pendingCourseStartPrompt: {
           content: newCoursePrompt.content,
           msgId: newCoursePrompt.msgId,
