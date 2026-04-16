@@ -13,8 +13,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
-import type { TeamMgmtGuideTopicKey } from '@longrun-ai/kernel';
-import { getTeamMgmtGuideTopicTitle, isTeamMgmtGuideTopicKey } from '@longrun-ai/kernel';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { WorkspaceProblem, WorkspaceProblemRecord } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -25,12 +23,7 @@ import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
 import { createLogger } from '../log';
 import { parseMcpYaml } from '../mcp/config';
-import {
-  mcpWorkspaceManualProblemPrefix,
-  parseMcpManualByServer,
-  type McpToolsetManual,
-  type McpToolsetManualState,
-} from '../mcp/manual-problems';
+import { mcpWorkspaceManualProblemPrefix } from '../mcp/manual-problems';
 import { requestMcpConfigReload } from '../mcp/supervisor';
 import { validateAllPrimingScriptsInRtws } from '../priming';
 import {
@@ -53,6 +46,12 @@ import {
   ripgrepSearchTool,
   ripgrepSnippetsTool,
 } from './ripgrep';
+import {
+  readMcpToolsetMappingSnapshot,
+  renderMcpToolsetManualDetailsSection,
+  renderMcpToolsetMappingSection,
+  renderMcpToolsetSetupGuideSection,
+} from './team_mgmt-mcp-manual';
 import {
   applyFileModificationTool,
   overwriteEntireFileTool,
@@ -3248,22 +3247,6 @@ export const teamMgmtRmDirTool: FuncTool = {
   },
 };
 
-type ManualTopic = TeamMgmtGuideTopicKey;
-
-function parseTeamMgmtGuideTopics(topicsRaw: readonly string[]): ManualTopic[] {
-  const topics: ManualTopic[] = [];
-  for (const token0 of topicsRaw) {
-    const token = token0.trim().startsWith('!') ? token0.trim().slice(1) : token0.trim();
-    if (token === '') continue;
-    if (isTeamMgmtGuideTopicKey(token)) {
-      topics.push(token);
-      continue;
-    }
-    throw new Error(`Unknown topic: ${token0}`);
-  }
-  return topics;
-}
-
 function fmtHeader(title: string): string {
   return `# ${title}\n`;
 }
@@ -3428,7 +3411,7 @@ async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
   return lines.length > 0 ? lines.join('\n') : '- (none)';
 }
 
-function renderMemberProperties(language: LanguageCode): string {
+export function renderMemberProperties(language: LanguageCode): string {
   const memberKeys = fmtKeyList(Team.TEAM_YAML_MEMBER_KEYS);
   if (language === 'zh') {
     return (
@@ -3464,7 +3447,7 @@ function renderMemberProperties(language: LanguageCode): string {
   );
 }
 
-function renderTeamManual(language: LanguageCode): string {
+export function renderTeamManual(language: LanguageCode): string {
   const windowsHost = isWindowsRuntimeHost();
   const common = [
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
@@ -3610,177 +3593,7 @@ function renderTeamManual(language: LanguageCode): string {
   );
 }
 
-async function renderMcpManual(language: LanguageCode): Promise<string> {
-  const mcpSnapshot = await readMcpToolsetMappingSnapshot();
-  const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
-  const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
-  const mcpManualDetails = renderMcpToolsetManualDetailsSection(language, mcpSnapshot);
-  if (language === 'zh') {
-    return (
-      fmtHeader('.minds/mcp.yaml') +
-      fmtList([
-        '每个 MCP `serverId` 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。成员通过 `members.<id>.toolsets` 选择能用哪些 MCP toolset。',
-        '支持热重载：编辑 `.minds/mcp.yaml` 后通常无需重启 Dominds；必要时用 `mcp_restart`。',
-        '默认按“每个对话租用一个 MCP client”运行（更安全）：首次使用该 toolset 会产生 sticky reminder，完成后用 `mcp_release` 释放；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
-        'stdio 配置格式：`command` 必须是字符串（可执行命令），参数放在 `args`（string[]，可省略，默认空数组）。`cwd` 可选（字符串）：用于固定相对路径解析目录。',
-        '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
-        '常见坑：stdio transport 需要可执行命令路径正确，且受成员权限（目录 + 扩展名：`*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
-        '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
-        '可选手册字段：你可以在 `servers.<serverId>.manual` 放手册内容。',
-        '如果你要控制最终 `man({ "toolsetId": "<serverId>" })` 给 LLM 看的正式手册，请使用 `manual.contentFile` 指向 topic 文件目录前缀。',
-        '如果你只是想在 `team_mgmt` 的 MCP 章节里补充团队管理说明，也可以使用 inline `content`（总说明）+ `sections`（章节列表）。这类 inline 内容会展示在 `team_mgmt` 指南里，但不会替代运行时 `contentFile` 手册。',
-        '重要：`manual` 缺失并不代表 MCP toolset 不可用；这只是团队管理工作不足。智能体应继续依据每个工具 description/参数自行判断并使用。',
-        '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，然后把正式手册沉淀到 `manual.contentFile`；若还需要在团队管理层额外解释业务边界，可再补 inline `content + sections`。',
-        '章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。应从真实业务目标出发，决定哪些章节需要展开、哪些只需一句话、哪些可以合并或另起更贴切的标题。',
-        '对每个 MCP toolset，团队管理者仍应刻意写明“不可用时业务处置规约”：至少回答 1) 当前 toolset 暂不可达时是否必须找协调者/专员接手；2) 是否允许走人工或其他工具链降级路径；3) 哪些业务动作在该 toolset 恢复前必须暂停，禁止擅自继续。',
-        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
-      ]) +
-      fmtCodeBlock('yaml', [
-        '# 最小模板（stdio）',
-        'version: 1',
-        'servers:',
-        '  sdk_stdio:',
-        '    truely-stateless: false',
-        '    transport: stdio',
-        '    command: npx',
-        "    args: ['-y', '@some/mcp-server@latest']",
-        '    cwd: "."',
-        '    env: {}',
-        '    tools: { whitelist: [], blacklist: [] }',
-        '    transform: []',
-        '    manual:',
-        '      content: |',
-        '        这个 MCP toolset 负责 xx，优先用于 xx 场景。',
-        '      sections:',
-        "        - title: '何时使用'",
-        '          content: |',
-        '            1) 当你需要 ...',
-        '            2) 执行前先确认 ...',
-        "        - title: '安全边界'",
-        '          content: |',
-        '            - 不要用于 ...',
-        '            - 若失败先看 ...',
-        "        - title: '不可用时业务处置'",
-        '          content: |',
-        '            - 若该 toolset 暂时不可达，先找 @coordinator（或指定协调者）确认是否改走降级路径。',
-        '            - 仅允许改用 ... 作为临时替代；若涉及 ...，必须等待该 MCP 恢复，不可继续。',
-      ]) +
-      fmtCodeBlock('yaml', [
-        '# stdio 路径示例（最小）',
-        '# 相对路径：配合 cwd 固定解析目录',
-        'command: node',
-        "args: ['./mcp/server.js']",
-        'cwd: "/absolute/path/to/project"',
-        '',
-        '# 绝对路径：更稳，不依赖 cwd',
-        'command: node',
-        "args: ['/absolute/path/to/mcp/server.js']",
-      ]) +
-      fmtCodeBlock('yaml', [
-        '# 最小模板（HTTP）',
-        'version: 1',
-        'servers:',
-        '  sdk_http:',
-        '    truely-stateless: false',
-        '    transport: streamable_http',
-        '    url: http://127.0.0.1:3000/mcp',
-        '    tools: { whitelist: [], blacklist: [] }',
-        '    transform: []',
-        '    manual:',
-        '      content: "用于远端 MCP 接口调用"',
-        '      sections:',
-        "        UseCases: '适用于 ...'",
-        "        Guardrails: '避免 ...'",
-      ]) +
-      mcpMapping +
-      mcpSetup +
-      mcpManualDetails
-    );
-  }
-
-  return (
-    fmtHeader('.minds/mcp.yaml') +
-    fmtList([
-      'Each MCP `serverId` registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix). Members choose MCP access via `members.<id>.toolsets`.',
-      'Hot reload: edits usually apply without restarting Dominds; use `mcp_restart` when needed.',
-      "Default is per-dialog MCP client leasing (safer): first use adds a sticky reminder; call `mcp_release` when you're sure you won't need the toolset soon. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
-      'Stdio shape: `command` must be a string executable; parameters go in `args` (string[], optional, defaults to empty). Optional `cwd` (string) fixes the working directory used for relative paths.',
-      'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
-      'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member permissions (directory + extension: `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`); HTTP transport requires the server URL to be reachable.',
-      'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
-      'Optional manual field: place guide text at `servers.<serverId>.manual`.',
-      'To control the final formal manual shown to the LLM by `man({ "toolsetId": "<serverId>" })`, use `manual.contentFile` and point it at the topic-file directory prefix.',
-      'If you only want extra team-management guidance inside the `team_mgmt` MCP chapter, you may also use inline `content` (overview) + `sections` (chapter list). That inline content is shown in the `team_mgmt` guide, but it does not replace runtime `contentFile` manuals.',
-      'Important: missing `manual` does not mean the MCP toolset is unavailable. It only indicates team-management coverage is incomplete; continue by reading each tool description/argument schema.',
-      'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write the formal manual into `manual.contentFile`; if extra team-management interpretation is still useful, add inline `content + sections` alongside it.',
-      'Use a semi-structured chapter shape: high-value sections often include `When To Use`, `Guardrails`, and `Business Handling When Unavailable`, but do not force every toolset into one fixed template. Start from the real business goal, then decide which sections deserve depth, which can stay brief, and which should be merged or renamed to fit the scenario.',
-      'For each MCP toolset, still document unavailable-case business rules explicitly: at minimum answer 1) whether a temporarily unavailable toolset must be escalated to a coordinator or specialist, 2) whether a manual or alternate-tool fallback path is allowed, and 3) which business actions must pause until this toolset recovers.',
-      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` to confirm the LLM provider works; 2) review member directory permissions (`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
-    ]) +
-    fmtCodeBlock('yaml', [
-      '# Minimal template (stdio)',
-      'version: 1',
-      'servers:',
-      '  sdk_stdio:',
-      '    truely-stateless: false',
-      '    transport: stdio',
-      '    command: npx',
-      "    args: ['-y', '@some/mcp-server@latest']",
-      '    cwd: "."',
-      '    env: {}',
-      '    tools: { whitelist: [], blacklist: [] }',
-      '    transform: []',
-      '    manual:',
-      '      content: |',
-      '        This MCP toolset is for xx and should be preferred in xx cases.',
-      '      sections:',
-      "        - title: 'When To Use'",
-      '          content: |',
-      '            1) Use when ...',
-      '            2) Confirm ... before execution.',
-      "        - title: 'Guardrails'",
-      '          content: |',
-      '            - Avoid using for ...',
-      '            - On failures, first inspect ...',
-      "        - title: 'Business Handling When Unavailable'",
-      '          content: |',
-      '            - If this toolset is temporarily unavailable, ask @coordinator (or the designated coordinator) whether to switch to the fallback path.',
-      '            - Only use ... as an interim fallback; if the task touches ..., wait for this MCP to recover instead of proceeding.',
-    ]) +
-    fmtCodeBlock('yaml', [
-      '# stdio path example (minimal)',
-      '# Relative path: stable with explicit cwd',
-      'command: node',
-      "args: ['./mcp/server.js']",
-      'cwd: "/absolute/path/to/project"',
-      '',
-      '# Absolute path: more stable, independent of cwd',
-      'command: node',
-      "args: ['/absolute/path/to/mcp/server.js']",
-    ]) +
-    fmtCodeBlock('yaml', [
-      '# Minimal template (HTTP)',
-      'version: 1',
-      'servers:',
-      '  sdk_http:',
-      '    truely-stateless: false',
-      '    transport: streamable_http',
-      '    url: http://127.0.0.1:3000/mcp',
-      '    tools: { whitelist: [], blacklist: [] }',
-      '    transform: []',
-      '    manual:',
-      '      content: "For remote MCP endpoint calls"',
-      '      sections:',
-      "        UseCases: 'Use for ...'",
-      "        Guardrails: 'Avoid ...'",
-    ]) +
-    mcpMapping +
-    mcpSetup +
-    mcpManualDetails
-  );
-}
-
-function renderPermissionsManual(language: LanguageCode): string {
+export function renderPermissionsManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('权限（目录 + 扩展名）') +
@@ -3839,7 +3652,7 @@ function renderPermissionsManual(language: LanguageCode): string {
   );
 }
 
-function renderMindsManual(language: LanguageCode): string {
+export function renderMindsManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('.minds/team/<id>/*') +
@@ -3930,7 +3743,7 @@ function renderMindsManual(language: LanguageCode): string {
   );
 }
 
-function renderSkillsManual(language: LanguageCode): string {
+export function renderSkillsManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('.minds/skills/*（技能）') +
@@ -4067,7 +3880,7 @@ function renderSkillsManual(language: LanguageCode): string {
   );
 }
 
-function renderPrimingManual(language: LanguageCode): string {
+export function renderPrimingManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('.minds/priming/*（启动脚本）') +
@@ -4173,7 +3986,7 @@ function renderPrimingManual(language: LanguageCode): string {
   );
 }
 
-function renderEnvManual(language: LanguageCode): string {
+export function renderEnvManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('.minds/env.*.md（运行环境提示）') +
@@ -4220,7 +4033,7 @@ function renderEnvManual(language: LanguageCode): string {
   );
 }
 
-function renderTroubleshooting(language: LanguageCode): string {
+export function renderTroubleshooting(language: LanguageCode): string {
   if (language === 'zh') {
     return (
       fmtHeader('排障（症状 → 原因 → 解决步骤）') +
@@ -4261,7 +4074,7 @@ function isLikelyAppToolsetBindingProblem(problem: WorkspaceProblem): boolean {
   );
 }
 
-async function renderModelParamsManual(language: LanguageCode): Promise<string> {
+export async function renderModelParamsManual(language: LanguageCode): Promise<string> {
   const header =
     language === 'zh'
       ? fmtHeader('model_params（成员模型参数）')
@@ -4333,569 +4146,6 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
   );
 }
 
-type McpToolsetMappingEntry = {
-  serverId: string;
-  transport: 'stdio' | 'streamable_http' | 'invalid';
-  status: 'registered' | 'declared_unloaded' | 'declared_invalid';
-  loadedToolCount?: number;
-  loadedToolNames?: string[];
-  loadedToolNamesPreview?: string[];
-  errorText?: string;
-  manualState: McpToolsetManualState;
-};
-
-type McpToolsetMappingSnapshot =
-  | { kind: 'missing' }
-  | { kind: 'invalid_yaml'; errorText: string }
-  | { kind: 'loaded'; entries: ReadonlyArray<McpToolsetMappingEntry> };
-
-function firstNonEmptyLine(raw: string): string {
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed !== '') return trimmed;
-  }
-  return raw.trim();
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function describeMcpManualState(language: LanguageCode, state: McpToolsetManualState): string {
-  if (state.kind === 'present') {
-    const contentText =
-      state.manual.content && state.manual.content.trim() !== ''
-        ? language === 'zh'
-          ? '有'
-          : 'yes'
-        : language === 'zh'
-          ? '无'
-          : 'no';
-    const contentFileText =
-      state.manual.contentFile && state.manual.contentFile.trim() !== ''
-        ? state.manual.contentFile
-        : language === 'zh'
-          ? '无'
-          : 'no';
-    return language === 'zh'
-      ? `手册=已配置（contentFile=${contentFileText}，content=${contentText}，sections=${state.manual.sections.length}）`
-      : `manual=configured (contentFile=${contentFileText}, content=${contentText}, sections=${state.manual.sections.length})`;
-  }
-  if (state.kind === 'invalid') {
-    return language === 'zh'
-      ? `手册=声明无效（${firstNonEmptyLine(state.errorText)}；不影响 toolset 可用性，但这是团队管理配置问题）`
-      : `manual=invalid declaration (${firstNonEmptyLine(state.errorText)}; toolset availability is unaffected, but team management should fix this)`;
-  }
-  return language === 'zh'
-    ? '手册=缺失（不影响 toolset 可用性；这是团队管理配置不足，请根据每个工具 description/参数自行判断使用）'
-    : 'manual=missing (toolset availability is unaffected; this is a team-management gap, so rely on each tool description/arguments and proceed)';
-}
-
-function renderMcpManualPresentBlock(
-  language: LanguageCode,
-  serverId: string,
-  manual: McpToolsetManual,
-): string {
-  let out = `\n### toolset \`${serverId}\`\n`;
-  if (manual.contentFile && manual.contentFile.trim() !== '') {
-    out += fmtList([
-      language === 'zh'
-        ? `运行时手册文件前缀（\`contentFile\`）：\`${manual.contentFile}\``
-        : `Runtime manual file prefix (\`contentFile\`): \`${manual.contentFile}\``,
-    ]);
-    if ((!manual.content || manual.content.trim() === '') && manual.sections.length === 0) {
-      out += fmtList([
-        language === 'zh'
-          ? `该 toolset 的最终 \`man({ "toolsetId": "${serverId}" })\` 正文会在运行时从该前缀下的 topic 文件加载；这里不直接内嵌正文。`
-          : `The final \`man({ "toolsetId": "${serverId}" })\` body is loaded at runtime from topic files under this prefix; it is not inlined here.`,
-      ]);
-    }
-  }
-  if (manual.content && manual.content.trim() !== '') {
-    out +=
-      fmtList([language === 'zh' ? '总说明（content）：' : 'Overview (`content`):']) +
-      fmtCodeBlock('markdown', [manual.content]);
-  } else {
-    out += fmtList([
-      language === 'zh' ? '总说明（content）：（未提供）' : 'Overview (`content`): (not provided)',
-    ]);
-  }
-  if (manual.sections.length > 0) {
-    for (const section of manual.sections) {
-      out +=
-        fmtList([language === 'zh' ? `章节：${section.title}` : `Section: ${section.title}`]) +
-        fmtCodeBlock('markdown', [section.content]);
-    }
-  } else {
-    out += fmtList([
-      language === 'zh' ? '章节（sections）：（未提供）' : 'Sections (`sections`): (not provided)',
-    ]);
-  }
-  return out;
-}
-
-export async function measureRenderedTeamMgmtMcpTopicRawChars(): Promise<number> {
-  const zh = await renderTeamMgmtGuideContent('zh', ['mcp']);
-  const en = await renderTeamMgmtGuideContent('en', ['mcp']);
-  return Math.max(zh.length, en.length);
-}
-
-function inferAutoGeneratedMcpIntentDirections(
-  language: LanguageCode,
-  toolNames: ReadonlyArray<string>,
-): string[] {
-  const names = toolNames.map((name) => name.toLowerCase());
-  const out: string[] = [];
-  const pushUnique = (line: string): void => {
-    if (!out.includes(line)) out.push(line);
-  };
-  const has = (needle: string): boolean => names.some((name) => name.includes(needle));
-
-  if (has('browser') || has('page') || has('playwright') || has('screenshot')) {
-    pushUnique(
-      language === 'zh'
-        ? '网页/浏览器自动化：用于页面操作、采样、信息抓取与可视化回归辅助。'
-        : 'Web/browser automation: page actions, sampling, information extraction, and visual-regression assistance.',
-    );
-  }
-  if (has('git') || has('repo') || has('diff') || has('pr') || has('commit')) {
-    pushUnique(
-      language === 'zh'
-        ? '仓库协作与变更分析：用于读取仓库状态、比较差异、辅助代码审查。'
-        : 'Repository collaboration and change analysis: inspect repo state, compare diffs, and support review workflows.',
-    );
-  }
-  if (has('sql') || has('db') || has('query') || has('table') || has('postgres')) {
-    pushUnique(
-      language === 'zh'
-        ? '数据查询/诊断：用于结构化检索与数据一致性排查。'
-        : 'Data query/diagnostics: structured retrieval and data-consistency investigation.',
-    );
-  }
-  if (has('k8s') || has('kubectl') || has('deploy') || has('cluster') || has('helm')) {
-    pushUnique(
-      language === 'zh'
-        ? '部署与运行状态诊断：用于集群状态检查、发布过程观测与故障定位。'
-        : 'Deployment/runtime diagnostics: cluster-state checks, release observation, and incident localization.',
-    );
-  }
-  if (has('ticket') || has('issue') || has('jira') || has('linear')) {
-    pushUnique(
-      language === 'zh'
-        ? '任务流转协作：用于工单读取、状态同步与流程追踪。'
-        : 'Ticket/workflow collaboration: ticket lookup, state synchronization, and process tracking.',
-    );
-  }
-
-  if (out.length === 0) {
-    out.push(
-      language === 'zh'
-        ? '未识别出明确领域特征：建议按工具 description/参数逐个确认用途，并与人类用户共同定义边界。'
-        : 'No clear domain signature detected: review each tool description/arguments and define boundaries jointly with the human user.',
-    );
-  }
-  return out;
-}
-
-function renderAutoGeneratedMcpManualDraftSection(
-  language: LanguageCode,
-  entry: McpToolsetMappingEntry,
-): string {
-  const lines: string[] = [];
-  const statusText =
-    entry.status === 'registered'
-      ? language === 'zh'
-        ? '已加载'
-        : 'loaded'
-      : entry.status === 'declared_unloaded'
-        ? language === 'zh'
-          ? '已声明但未加载'
-          : 'declared but not loaded'
-        : language === 'zh'
-          ? '声明无效'
-          : 'invalid declaration';
-  const transportText =
-    entry.transport === 'invalid' ? 'invalid' : entry.transport === 'stdio' ? 'stdio' : 'http';
-
-  lines.push(`\n### toolset \`${entry.serverId}\``);
-  lines.push(
-    ...fmtList([
-      language === 'zh'
-        ? '检测到 `servers.<serverId>.manual` 缺失，以下为自动生成的基础手册草稿（供临时使用）。'
-        : '`servers.<serverId>.manual` is missing. Below is an auto-generated baseline manual draft (temporary use).',
-      language === 'zh'
-        ? `运行时状态：status=${statusText}，transport=${transportText}。`
-        : `Runtime status: status=${statusText}, transport=${transportText}.`,
-      language === 'zh'
-        ? '关键提醒：该草稿不等于最终规范。团队管理者必须与人类用户确认本 rtws 的真实意图后，再写入更准确的正式手册。'
-        : 'Critical reminder: this draft is not the final policy. Team manager must confirm actual rtws intent with the human user, then author a more accurate final manual.',
-    ])
-      .trimEnd()
-      .split('\n'),
-  );
-
-  lines.push(
-    ...fmtList([
-      language === 'zh'
-        ? '章节：tools 列表（运行时快照）'
-        : 'Section: Tools list (runtime snapshot)',
-    ])
-      .trimEnd()
-      .split('\n'),
-  );
-  if ((entry.loadedToolNames?.length ?? 0) > 0) {
-    const tools = entry.loadedToolNames ?? [];
-    lines.push(
-      ...fmtCodeBlock(
-        'text',
-        tools.map((tool) => `- ${tool}`),
-      )
-        .trimEnd()
-        .split('\n'),
-    );
-  } else {
-    lines.push(
-      ...fmtList([
-        language === 'zh'
-          ? '当前无法给出已加载 tools 清单（通常因为该 server 尚未加载）。先运行 `team_mgmt_validate_mcp_cfg({})`，必要时再 `mcp_restart`。'
-          : 'Loaded tools are not currently available (usually because this server is not loaded yet). Run `team_mgmt_validate_mcp_cfg({})`, then `mcp_restart` if needed.',
-      ])
-        .trimEnd()
-        .split('\n'),
-    );
-  }
-
-  lines.push(
-    ...fmtList([
-      language === 'zh'
-        ? '章节：主要意图方向（自动推测，待确认）'
-        : 'Section: Primary intent directions (auto-inferred, pending confirmation)',
-    ])
-      .trimEnd()
-      .split('\n'),
-  );
-  lines.push(
-    ...fmtList(inferAutoGeneratedMcpIntentDirections(language, entry.loadedToolNames ?? []))
-      .trimEnd()
-      .split('\n'),
-  );
-
-  lines.push(
-    ...fmtList([
-      language === 'zh'
-        ? '团队管理者后续动作：精读每个工具说明 -> 与人类用户确认意图与边界 -> 明确不可用时是找谁协调、允许哪些降级路径、哪些动作必须暂停 -> 先把正式手册写到 `servers.<serverId>.manual.contentFile`，若还需团队管理补充说明，再追加 inline `content + sections`。'
-        : 'Team-manager follow-up: read each tool description carefully -> confirm intent/boundaries with the human user -> decide who coordinates when unavailable, which fallbacks are allowed, and which actions must pause -> put the formal manual in `servers.<serverId>.manual.contentFile` first, then add inline `content + sections` only if extra team-management guidance is still needed.',
-    ])
-      .trimEnd()
-      .split('\n'),
-  );
-
-  return lines.join('\n') + '\n';
-}
-
-function renderMcpToolsetManualDetailsSection(
-  language: LanguageCode,
-  snapshot: McpToolsetMappingSnapshot,
-): string {
-  const header =
-    language === 'zh'
-      ? fmtSubHeader('MCP toolset 手册（来自 `.minds/mcp.yaml` 的 `servers.<serverId>.manual`）')
-      : fmtSubHeader('MCP Toolset Manuals (from `.minds/mcp.yaml` `servers.<serverId>.manual`)');
-
-  if (snapshot.kind !== 'loaded') return '';
-  const entries = snapshot.entries;
-  if (entries.length === 0) {
-    return (
-      header +
-      fmtList([
-        language === 'zh'
-          ? '当前没有 MCP toolset 可展示。'
-          : 'There are currently no MCP toolsets to display.',
-      ])
-    );
-  }
-
-  let out =
-    header +
-    fmtList([
-      language === 'zh'
-        ? '若 `servers.<serverId>.manual` 已配置，这里会展示其 inline 说明或 `contentFile` 路径信息；若缺失，则自动生成基础草稿（含 tools 列表与意图方向草稿）供临时使用。'
-        : 'If `servers.<serverId>.manual` is configured, this section shows the inline guidance and/or the `contentFile` path information; if missing, an auto-generated baseline draft (including tools list and intent directions draft) is provided for temporary use.',
-    ]);
-  for (const entry of entries) {
-    if (entry.manualState.kind === 'missing') {
-      out += renderAutoGeneratedMcpManualDraftSection(language, entry);
-      continue;
-    }
-    if (entry.manualState.kind === 'invalid') {
-      out += `\n### toolset \`${entry.serverId}\`\n`;
-      out += fmtList([
-        language === 'zh'
-          ? `\`servers.${entry.serverId}.manual\` 声明无效：${firstNonEmptyLine(entry.manualState.errorText)}`
-          : `\`servers.${entry.serverId}.manual\` is invalid: ${firstNonEmptyLine(entry.manualState.errorText)}`,
-        language === 'zh'
-          ? '这不影响 toolset 可用性；请根据工具说明继续使用，并通知团队管理者修复手册字段。'
-          : 'Toolset availability is unaffected; continue by tool-level descriptions and ask the team manager to fix the manual field.',
-      ]);
-      continue;
-    }
-    if (entry.manualState.kind !== 'present') continue;
-    const manual = entry.manualState.manual;
-    out += renderMcpManualPresentBlock(language, entry.serverId, manual);
-  }
-  return out;
-}
-
-async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapshot> {
-  const mcpAbsPath = path.resolve(process.cwd(), MCP_YAML_REL);
-  let rawText: string;
-  try {
-    rawText = await fs.readFile(mcpAbsPath, 'utf8');
-  } catch (err: unknown) {
-    if (isFsErrWithCode(err) && err.code === 'ENOENT') {
-      return { kind: 'missing' };
-    }
-    return {
-      kind: 'invalid_yaml',
-      errorText: err instanceof Error ? err.message : String(err),
-    };
-  }
-
-  const parsed = parseMcpYaml(rawText);
-  if (!parsed.ok) {
-    return { kind: 'invalid_yaml', errorText: parsed.errorText };
-  }
-  const manualInfo = parseMcpManualByServer(rawText);
-
-  const registeredToolsets = listToolsets();
-  const invalidByServerId = new Map<string, string>();
-  for (const invalid of parsed.invalidServers) {
-    invalidByServerId.set(invalid.serverId, invalid.errorText);
-  }
-
-  const entries: McpToolsetMappingEntry[] = [];
-  for (const serverId of parsed.serverIdsInYamlOrder) {
-    const invalidError = invalidByServerId.get(serverId);
-    const manualError = manualInfo.invalidByServerId.get(serverId);
-    const manual = manualInfo.manualByServerId.get(serverId);
-    const manualState: McpToolsetManualState = manualError
-      ? { kind: 'invalid', errorText: manualError }
-      : manual
-        ? { kind: 'present', manual }
-        : { kind: 'missing' };
-    if (invalidError) {
-      entries.push({
-        serverId,
-        transport: 'invalid',
-        status: 'declared_invalid',
-        errorText: invalidError,
-        manualState,
-      });
-      continue;
-    }
-
-    const transport = parsed.config.servers[serverId]?.transport ?? 'invalid';
-    const loadedTools = registeredToolsets[serverId];
-    if (loadedTools) {
-      const loadedToolNames = loadedTools.map((t) => t.name);
-      entries.push({
-        serverId,
-        transport,
-        status: 'registered',
-        loadedToolCount: loadedTools.length,
-        loadedToolNames,
-        loadedToolNamesPreview: loadedToolNames.slice(0, 6),
-        manualState,
-      });
-      continue;
-    }
-
-    entries.push({
-      serverId,
-      transport,
-      status: 'declared_unloaded',
-      manualState,
-    });
-  }
-
-  return { kind: 'loaded', entries };
-}
-
-function renderMcpToolsetMappingSection(
-  language: LanguageCode,
-  snapshot: McpToolsetMappingSnapshot,
-): string {
-  const header =
-    language === 'zh'
-      ? fmtSubHeader('MCP serverId -> toolset 当前映射（动态读取 .minds/mcp.yaml）')
-      : fmtSubHeader('Current MCP serverId -> toolset mapping (from .minds/mcp.yaml)');
-
-  if (snapshot.kind === 'missing') {
-    const items =
-      language === 'zh'
-        ? [
-            `未发现 \`${MCP_YAML_REL}\`；当前没有可映射的 MCP toolset。`,
-            `设置方法：在 \`${MCP_YAML_REL}\` 增加 \`servers.<serverId>\`，该 \`serverId\` 会映射为同名 toolset。`,
-          ]
-        : [
-            `\`${MCP_YAML_REL}\` not found; there are currently no MCP toolsets to map.`,
-            `Setup rule: add \`servers.<serverId>\` in \`${MCP_YAML_REL}\`; that \`serverId\` maps to a toolset with the same name.`,
-          ];
-    return header + fmtList(items);
-  }
-
-  if (snapshot.kind === 'invalid_yaml') {
-    const items =
-      language === 'zh'
-        ? [
-            `\`${MCP_YAML_REL}\` 解析失败，暂时无法生成 serverId -> toolset 映射。`,
-            `错误：${firstNonEmptyLine(snapshot.errorText)}`,
-            `先运行 \`team_mgmt_validate_mcp_cfg({})\` 修复配置，再查看映射。`,
-          ]
-        : [
-            `Failed to parse \`${MCP_YAML_REL}\`; cannot build serverId -> toolset mapping yet.`,
-            `Error: ${firstNonEmptyLine(snapshot.errorText)}`,
-            `Run \`team_mgmt_validate_mcp_cfg({})\` first, then re-check mapping.`,
-          ];
-    return header + fmtList(items);
-  }
-
-  if (snapshot.entries.length === 0) {
-    const items =
-      language === 'zh'
-        ? [
-            `\`${MCP_YAML_REL}\` 已存在，但 \`servers\` 为空；当前没有 MCP toolset。`,
-            `添加 \`servers.<serverId>\` 后，对应 \`serverId\` 会映射为同名 toolset。`,
-          ]
-        : [
-            `\`${MCP_YAML_REL}\` exists but \`servers\` is empty; there are currently no MCP toolsets.`,
-            `After adding \`servers.<serverId>\`, that \`serverId\` maps to a same-name toolset.`,
-          ];
-    return header + fmtList(items);
-  }
-
-  const lines: string[] = [];
-  for (const entry of snapshot.entries) {
-    const transportText =
-      entry.transport === 'invalid' ? 'invalid' : entry.transport === 'stdio' ? 'stdio' : 'http';
-    const manualText = describeMcpManualState(language, entry.manualState);
-    if (entry.status === 'registered') {
-      const preview = entry.loadedToolNamesPreview ?? [];
-      const previewText =
-        preview.length > 0
-          ? preview.join(', ') +
-            (entry.loadedToolCount !== undefined && entry.loadedToolCount > preview.length
-              ? ', ...'
-              : '')
-          : '(none)';
-      lines.push(
-        language === 'zh'
-          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已加载，tools=${entry.loadedToolCount ?? 0}：${previewText}；${manualText}）`
-          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=loaded, tools=${entry.loadedToolCount ?? 0}: ${previewText}; ${manualText})`,
-      );
-      continue;
-    }
-    if (entry.status === 'declared_unloaded') {
-      lines.push(
-        language === 'zh'
-          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已声明但未加载；${manualText}）`
-          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=declared but not loaded; ${manualText})`,
-      );
-      continue;
-    }
-    lines.push(
-      language === 'zh'
-        ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（状态=声明无效：${firstNonEmptyLine(entry.errorText ?? '')}；${manualText}）`
-        : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (status=invalid declaration: ${firstNonEmptyLine(entry.errorText ?? '')}; ${manualText})`,
-    );
-  }
-
-  const tail =
-    language === 'zh'
-      ? [
-          '说明：`已声明但未加载` 通常表示当前会话尚未完成 MCP 重载，或 server 启动失败。',
-          '说明：MCP toolset “没有 manual” 不等于“不可用”。无 manual 仅表示团队管理者没有提供章节化手册；你应继续阅读每个工具的 description/参数并谨慎使用。',
-          '建议：运行 `team_mgmt_validate_mcp_cfg({})`，必要时执行 `mcp_restart`。',
-        ]
-      : [
-          '`declared but not loaded` usually means MCP reload has not completed in the current session, or server startup failed.',
-          'Important: “missing manual” for an MCP toolset does NOT mean unavailable. It only means the team manager did not provide chapterized manual text; continue by reading each tool description/arguments and use with care.',
-          'Recommendation: run `team_mgmt_validate_mcp_cfg({})`, then `mcp_restart` if needed.',
-        ];
-
-  return header + fmtList(lines.concat(tail));
-}
-
-function renderMcpToolsetSetupGuideSection(
-  language: LanguageCode,
-  snapshot: McpToolsetMappingSnapshot,
-): string {
-  const title =
-    language === 'zh'
-      ? fmtSubHeader('MCP toolset 设置方法与示例')
-      : fmtSubHeader('How To Set Up MCP Toolsets (with example)');
-
-  const fallbackServerId = 'your_mcp_server';
-  const exampleServerId =
-    snapshot.kind === 'loaded' && snapshot.entries.length > 0
-      ? (snapshot.entries[0]?.serverId ?? fallbackServerId)
-      : fallbackServerId;
-  const exampleTransport =
-    snapshot.kind === 'loaded'
-      ? (snapshot.entries.find((e) => e.transport !== 'invalid')?.transport ?? 'stdio')
-      : 'stdio';
-
-  const notes =
-    language === 'zh'
-      ? fmtList([
-          `步骤 1：在 \`${MCP_YAML_REL}\` 声明 \`servers.${exampleServerId}\`。`,
-          `步骤 2：在 \`${TEAM_YAML_REL}\` 的 \`members.<id>.toolsets\` 添加 \`${exampleServerId}\`。`,
-          `规则：MCP toolset 名称恒等于 \`serverId\`（不加前缀）。`,
-        ])
-      : fmtList([
-          `Step 1: declare \`servers.${exampleServerId}\` in \`${MCP_YAML_REL}\`.`,
-          `Step 2: add \`${exampleServerId}\` under \`members.<id>.toolsets\` in \`${TEAM_YAML_REL}\`.`,
-          `Rule: MCP toolset name is exactly the \`serverId\` (no prefix).`,
-        ]);
-
-  const mcpExample =
-    exampleTransport === 'streamable_http'
-      ? fmtCodeBlock('yaml', [
-          '# .minds/mcp.yaml',
-          'version: 1',
-          'servers:',
-          `  ${exampleServerId}:`,
-          '    truely-stateless: false',
-          '    transport: streamable_http',
-          '    url: http://127.0.0.1:3000/mcp',
-          '    tools: { whitelist: [], blacklist: [] }',
-          '    transform: []',
-        ])
-      : fmtCodeBlock('yaml', [
-          '# .minds/mcp.yaml',
-          'version: 1',
-          'servers:',
-          `  ${exampleServerId}:`,
-          '    truely-stateless: false',
-          '    transport: stdio',
-          '    command: npx',
-          "    args: ['-y', '@some/mcp-server@latest']",
-          '    tools: { whitelist: [], blacklist: [] }',
-          '    transform: []',
-        ]);
-
-  const teamExample = fmtCodeBlock('yaml', [
-    '# .minds/team.yaml',
-    'members:',
-    '  operator:',
-    '    toolsets:',
-    '      - ws_read',
-    `      - ${exampleServerId}`,
-  ]);
-
-  return title + notes + mcpExample + teamExample;
-}
-
 function renderToolsetCapabilitySummary(
   language: LanguageCode,
   ids: ReadonlyArray<string>,
@@ -4943,7 +4193,7 @@ function renderToolsetCapabilitySummary(
   return header + fmtList(lines);
 }
 
-async function renderToolsets(language: LanguageCode): Promise<string> {
+export async function renderToolsets(language: LanguageCode): Promise<string> {
   const windowsHost = isWindowsRuntimeHost();
   const toolsetsById = listToolsets();
   const ids = Object.keys(toolsetsById).filter((id) => id !== 'control');
@@ -5079,7 +4329,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
   );
 }
 
-async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
+export async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
   const header =
     language === 'zh'
       ? fmtHeader('内置 LLM Defaults（摘要）')
@@ -5832,158 +5082,6 @@ export const teamMgmtClearProblemsTool: FuncTool = {
     }
   },
 };
-
-export async function renderTeamMgmtGuideContent(
-  language: LanguageCode,
-  topicsRaw: readonly string[] = [],
-): Promise<string> {
-  const topics = parseTeamMgmtGuideTopics(topicsRaw);
-  const msgPrefix =
-    language === 'zh'
-      ? `（生成时间：${formatUnifiedTimestamp(new Date())}）\n\n`
-      : `(Generated: ${formatUnifiedTimestamp(new Date())})\n\n`;
-
-  const renderIndex = (): string => {
-    const topicTitle = (key: TeamMgmtGuideTopicKey): string =>
-      getTeamMgmtGuideTopicTitle(language, key);
-    if (language === 'zh') {
-      return (
-        fmtHeader('Team Management Manual') +
-        msgPrefix +
-        fmtList([
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["topics"] })\`：${topicTitle('topics')}（你在这里）`,
-          '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`。',
-          '',
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowhow/pitfalls 资产怎么写）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、app 化边界）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
-          '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })\`：${topicTitle('permissions')} — 目录+扩展名权限（*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names 语义与冲突规则）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })\`：${topicTitle('mcp')} — .minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })\`：${topicTitle('troubleshooting')} — 按症状定位；优先 list_providers/list_models → check_provider`,
-          '',
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["team","member-properties"] })\`：${topicTitle('team')} + ${topicTitle('member-properties')} — 成员字段表（members.<id> 字段参考）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","builtin-defaults"] })\`：${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — 内置 defaults 摘要（内置 provider/model 概览与合并语义）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","model-params"] })\`：${topicTitle('llm')} + ${topicTitle('model-params')} — 模型参数参考（model_params / model_param_options）`,
-        ])
-      );
-    }
-    return (
-      fmtHeader('Team Management Manual') +
-      msgPrefix +
-      fmtList([
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["topics"] })\`: ${topicTitle('topics')} (you are here)`,
-        'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`. ',
-        '',
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowhow/pitfalls assets)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`: ${topicTitle('skills')} — .minds/skills/* (public skill migration, field mapping, app boundary)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["priming"] })\`: ${topicTitle('priming')} — .minds/priming/* (how to author, maintain, and reuse startup scripts)`,
-        'After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.',
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["permissions"] })\`: ${topicTitle('permissions')} — directory + extension permissions (semantics + conflict rules)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })\`: ${topicTitle('mcp')} — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["troubleshooting"] })\`: ${topicTitle('troubleshooting')} — symptom → steps; start with list_providers/list_models, then check_provider`,
-        '',
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["team","member-properties"] })\`: ${topicTitle('team')} + ${topicTitle('member-properties')} — member field reference (members.<id>)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","builtin-defaults"] })\`: ${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — built-in defaults summary (what/when/merge behavior)`,
-        `\`man({ "toolsetId": "team_mgmt", "topics": ["llm","model-params"] })\`: ${topicTitle('llm')} + ${topicTitle('model-params')} — \`model_params\` and \`model_param_options\` reference`,
-      ])
-    );
-  };
-
-  const want = (t: ManualTopic): boolean => topics.includes(t);
-
-  try {
-    if (topics.length === 0) {
-      return renderIndex();
-    }
-    if (want('topics')) {
-      return renderIndex();
-    }
-    if (want('team') && want('member-properties')) {
-      return renderMemberProperties(language);
-    }
-    if (want('team')) {
-      return renderTeamManual(language);
-    }
-    if (want('llm') && want('builtin-defaults')) {
-      return await renderBuiltinDefaults(language);
-    }
-    if (want('llm') && want('model-params')) {
-      return await renderModelParamsManual(language);
-    }
-    if (want('llm')) {
-      return language === 'zh'
-        ? fmtHeader('.minds/llm.yaml') +
-            fmtList([
-              '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
-              '快速自检：用 `team_mgmt_list_providers({})` 列出内置/rtws provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
-              '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
-
-              '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
-
-              '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
-              'member_defaults.provider/model 需要引用这里的 key。',
-              '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
-              '`apiQuirks` 可选：写在 `providers.<providerKey>.apiQuirks`，类型是 `string|string[]`。它是 provider 级 transport / 网关兼容开关，用来描述“这个供应商/网关的 API 有非标准行为”，不是 `.minds/team.yaml` 的成员参数，也不是 `model_params`。',
-              '使用原则：只有在你确认某个上游网关确实偏离了标准协议，而且 Dominds 已为这个偏差实现了命名 quirk 时才配置；不要把它当作随意调参入口。当前实现里，未知 quirk 值通常不会报错，但也不会带来任何效果。',
-              '当前已知示例：OpenAI Responses 包装层支持 `apiQuirks: xcode.best`（或数组里包含它）。它一方面会把供应商额外发出的 `keepalive` 流事件识别为 heartbeat，而不是当作异常事件处理；另一方面也会对该网关特有的失败模式做 provider-specific failure handling，包括“同一对话上下文连续返回 empty response”时先做少量临时重试；如果在同一未变化上下文里连续达到阈值，就判定这是 provider 侧 same-context deadlock，而不是普通基础设施抖动：此时继续沿用同一上下文自动重试大概率仍然不会有真实进展，必须引入新的信息或新的指令（例如补充上下文、改写问题、换一个切入方式，或在确实需要人类判断时调用 askHuman）。这类 provider/API retry 状态在同一次 driver 自动续跑链里会继续沿用，不因中途换 course 而自动清零；若当前对话启用了鞭策，driver 也会优先判断是否能按鞭策逻辑直接续跑一次，而不是先落入 stopped，并且一旦 driver 接受这次自动恢复资格，就会立刻记作已消费；以及把网关返回的 HTML 版 502 Bad Gateway 错误页和 `500 auth_unavailable: no auth available` 这类基础设施失败归类为 conservative 策略重试。最小示例：\n```yaml\nproviders:\n  my_gateway:\n    apiType: openai\n    baseUrl: https://example.invalid/v1\n    apiKeyEnvVar: MY_GATEWAY_API_KEY\n    apiQuirks: xcode.best\n    models:\n      my_model: { name: \"upstream-model-id\" }\n```',
-              '边界提醒：`apiQuirks` 只影响实现里显式消费它的 provider/generator。就当前实现看，至少 OpenAI Responses 路径会读取它；不要假设所有 `apiType` 都支持或需要它。若配置后行为仍异常，应继续检查上游网关文档、抓流事件类型，并结合 `team_mgmt_check_provider(...)` / 运行日志排查。',
-            ])
-        : fmtHeader('.minds/llm.yaml') +
-            fmtList([
-              'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
-              'Quick checks: use `team_mgmt_list_providers({})` to list built-in/rtws providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
-              'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
-
-              'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',
-
-              'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
-              'member_defaults.provider/model must reference these keys.',
-              'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',
-              '`apiQuirks` is optional under `providers.<providerKey>.apiQuirks`, with type `string|string[]`. It is a provider-level transport / gateway compatibility switch for non-standard upstream API behavior. It is not a `.minds/team.yaml` member field and not part of `model_params`.',
-              'Use it only when you have confirmed that an upstream gateway deviates from the expected protocol and Dominds has an explicitly named quirk for that deviation. Do not treat it as a generic tuning field. In the current implementation, unknown quirk values are usually ignored rather than rejected, so a typo may silently do nothing.',
-              'Known current example: the OpenAI Responses wrapper supports `apiQuirks: xcode.best` (or an array containing it). It not only treats vendor-emitted `keepalive` stream events as heartbeat events instead of unexpected protocol noise, but also applies provider-specific failure handling for gateway-specific failures, including repeated empty responses in the same unchanged dialog context (a few temporary retries first; once the unchanged-context streak reaches the threshold, Dominds treats it as a provider-side same-context deadlock rather than ordinary infrastructure flakiness, which means repeating the same automatic retry path is no longer expected to make real progress and fresh information or fresh instructions are required, such as adding context, reframing the ask, changing the angle, or calling askHuman when human judgment is genuinely needed; this provider/API retry state intentionally continues across course changes within the same driver auto-continue chain; if Diligence Push is enabled for the dialog, the driver will first see whether it can continue once through that path before falling into stopped, and that recovery budget is considered consumed as soon as the driver accepts that path) and gateway-returned HTML 502 Bad Gateway pages plus `500 auth_unavailable: no auth available` infrastructure failures classified into conservative retry. Minimal example:\n```yaml\nproviders:\n  my_gateway:\n    apiType: openai\n    baseUrl: https://example.invalid/v1\n    apiKeyEnvVar: MY_GATEWAY_API_KEY\n    apiQuirks: xcode.best\n    models:\n      my_model: { name: \"upstream-model-id\" }\n```',
-              'Boundary reminder: `apiQuirks` only affects providers/generators that explicitly read it in code. In the current implementation, at least the OpenAI Responses path consumes it; do not assume every `apiType` supports or needs it. If behavior is still wrong after setting it, continue with upstream gateway docs, raw stream event inspection, and `team_mgmt_check_provider(...)` / runtime logs.',
-            ]);
-    }
-    if (want('mcp')) {
-      return await renderMcpManual(language);
-    }
-    if (want('minds')) {
-      return renderMindsManual(language);
-    }
-    if (want('skills')) {
-      return renderSkillsManual(language);
-    }
-    if (want('priming')) {
-      return renderPrimingManual(language);
-    }
-    if (want('env')) {
-      return renderEnvManual(language);
-    }
-    if (want('permissions')) {
-      return renderPermissionsManual(language);
-    }
-    if (want('toolsets')) {
-      return await renderToolsets(language);
-    }
-    if (want('troubleshooting')) {
-      return renderTroubleshooting(language);
-    }
-
-    return renderIndex();
-  } catch (err: unknown) {
-    throw err;
-  }
-}
 
 export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtCheckProviderTool,

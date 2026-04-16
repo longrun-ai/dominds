@@ -21,6 +21,7 @@ import {
   unregisterTool,
   unregisterToolset,
 } from '../tools/registry';
+import { measureRenderedTeamMgmtMcpTopicRawChars } from '../tools/team_mgmt-mcp-manual';
 import type { McpServerConfig, McpStreamableHttpServerConfig, McpWorkspaceConfig } from './config';
 import { parseMcpYaml } from './config';
 import {
@@ -728,10 +729,7 @@ async function reconcileMcpManualProblemsForRuntime(
   await reconcileMcpToolsetManualProblems({
     serverIds: serverIdsInYamlOrder,
     manualInfo,
-    measureRenderedWorkspaceMcpTopicRawChars: async () => {
-      const mod = await import('../tools/team_mgmt');
-      return await mod.measureRenderedTeamMgmtMcpTopicRawChars();
-    },
+    measureRenderedWorkspaceMcpTopicRawChars: measureRenderedTeamMgmtMcpTopicRawChars,
     workspaceManualPath: MCP_YAML_PATH,
   });
 }

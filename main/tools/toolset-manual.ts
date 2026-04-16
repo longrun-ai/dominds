@@ -8,7 +8,7 @@ import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from './manual/output-limit';
 import { renderToolsetManual } from './manual/render';
 import { MANUAL_TOPICS, type ManualTopic } from './manual/spec';
 import { getToolsetMeta, listToolsets } from './registry';
-import { renderTeamMgmtGuideContent } from './team_mgmt';
+import { renderTeamMgmtGuideContent } from './team_mgmt-manual';
 
 type ToolsetManualResult = {
   tools: FuncTool[];
