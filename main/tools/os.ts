@@ -593,6 +593,18 @@ Last known status snapshot:
 ${lastKnownSnapshot}`;
 }
 
+function stripDaemonLifecyclePhaseSummary(content: string): string {
+  const normalized = content.replace(/\r\n/g, '\n');
+  if (!normalized.startsWith('🟢 ') && !normalized.startsWith('🟡 ')) {
+    return content;
+  }
+  const separatorIndex = normalized.indexOf('\n\n');
+  if (separatorIndex === -1) {
+    return content;
+  }
+  return normalized.slice(separatorIndex + 2);
+}
+
 type OsToolMessages = Readonly<{
   daemonStarted: (pid: number, timeoutSeconds: number, command: string) => string;
   commandCompleted: (exitCode: number | null, scrollNotice: string) => string;
@@ -611,8 +623,8 @@ type OsToolMessages = Readonly<{
 function getOsToolMessages(language: LanguageCode): OsToolMessages {
   if (language === 'zh') {
     return {
-      daemonStarted: (pid, timeoutSeconds, _command) =>
-        `🔄 命令已作为守护进程启动（PID: ${pid}）\n该进程在 ${timeoutSeconds} 秒内未完成，已在后台继续运行。\n已添加提醒以跟踪其进度。\n\n需要时可使用 stop_daemon({"pid": ${pid}}) 终止该进程。`,
+      daemonStarted: (pid, timeoutSeconds, command) =>
+        `🟢 ${command} 已转入后台持续运行（PID: ${pid}）\n该进程在 ${timeoutSeconds} 秒内未完成，现已作为守护进程继续执行。你将看到同一张生命周期状态卡持续刷新：系统维护 / 实时真源 / 不可删除。\n\n需要时可使用 stop_daemon({"pid": ${pid}}) 终止该进程。`,
       commandCompleted: (exitCode, scrollNotice) =>
         `✅ 命令已完成（退出码：${exitCode ?? 'unknown'}）${scrollNotice}\n\n`,
       scrolledLinesNotice: (lines) => `\n⚠️  执行期间有 ${lines} 行已滚出可视范围`,
@@ -629,8 +641,8 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
   }
 
   return {
-    daemonStarted: (pid, timeoutSeconds, _command) =>
-      `🔄 Command started as daemon process (PID: ${pid})\nThe process didn't complete within ${timeoutSeconds} seconds and is now running in the background.\nA reminder has been added to track its progress.\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
+    daemonStarted: (pid, timeoutSeconds, command) =>
+      `🟢 ${command} is now running in the background (PID: ${pid})\nThe process did not finish within ${timeoutSeconds} seconds and has transitioned into a daemon. You will see the same lifecycle card keep updating: system-maintained / live source of truth / not deletable.\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
     commandCompleted: (exitCode, scrollNotice) =>
       `✅ Command completed (exit code: ${exitCode ?? 'unknown'})${scrollNotice}\n\n`,
     scrolledLinesNotice: (lines) => `\n⚠️  ${lines} lines scrolled out of view during execution`,
@@ -1482,7 +1494,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
           reminder.meta.initialCommandLine,
           pid,
           getWorkLanguage(),
-          reminder.content,
+          stripDaemonLifecyclePhaseSummary(reminder.content),
         ),
         updatedMeta: buildShellCmdFinalizedMeta(reminder.meta, formatUnifiedTimestamp(new Date())),
       };

@@ -114,11 +114,14 @@ function makePendingSignature(pending: ReadonlyArray<PendingSubdialogView>): str
 
 function buildReminderMeta(
   pending: ReadonlyArray<PendingSubdialogView>,
+  previousMeta?: PendingTellaskReminderMeta,
 ): PendingTellaskReminderMeta {
   const language = getWorkLanguage();
   const latestActivityAt =
     pending.length === 0
-      ? formatUnifiedTimestamp(new Date())
+      ? previousMeta?.pendingCount === 0
+        ? previousMeta.updatedAt
+        : formatUnifiedTimestamp(new Date())
       : pending.reduce(
           (latest, entry) => (entry.latestActivityAt > latest ? entry.latestActivityAt : latest),
           pending[0]?.latestActivityAt ?? formatUnifiedTimestamp(new Date()),
@@ -232,7 +235,11 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
     const reminderIndex = assertSingleOwnedReminder(dlg);
     const language = getWorkLanguage();
     const content = buildReminderContent(language, pending);
-    const nextMeta = buildReminderMeta(pending);
+    const currentReminder = reminderIndex === null ? undefined : dlg.reminders[reminderIndex];
+    const currentMeta = isPendingTellaskReminderMeta(currentReminder?.meta)
+      ? currentReminder.meta
+      : undefined;
+    const nextMeta = buildReminderMeta(pending, currentMeta);
 
     if (reminderIndex === null) {
       if (pending.length === 0) {
@@ -243,13 +250,13 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
     }
 
     const current = dlg.reminders[reminderIndex];
-    const currentMeta = current?.meta;
+    const persistedMeta = current?.meta;
     const unchanged =
       current?.content === content &&
-      isPendingTellaskReminderMeta(currentMeta) &&
-      currentMeta.pendingSignature === nextMeta.pendingSignature &&
-      currentMeta.pendingCount === nextMeta.pendingCount &&
-      currentMeta.updatedAt === nextMeta.updatedAt;
+      isPendingTellaskReminderMeta(persistedMeta) &&
+      persistedMeta.pendingSignature === nextMeta.pendingSignature &&
+      persistedMeta.pendingCount === nextMeta.pendingCount &&
+      persistedMeta.updatedAt === nextMeta.updatedAt;
 
     if (unchanged) return false;
 
@@ -269,7 +276,8 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
 
     const language = getWorkLanguage();
     const updatedContent = buildReminderContent(language, pending);
-    const updatedMeta = buildReminderMeta(pending);
+    const currentMeta = isPendingTellaskReminderMeta(reminder.meta) ? reminder.meta : undefined;
+    const updatedMeta = buildReminderMeta(pending, currentMeta);
 
     const unchanged =
       reminder.content === updatedContent &&

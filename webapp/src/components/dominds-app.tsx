@@ -11464,7 +11464,7 @@ export class DomindsApp extends HTMLElement {
 
   /**
    * Render reminders widget content with proper formatting
-   * Handles daemon reminders with PID and other metadata
+   * Preserve backend-authored reminder semantics in the widget.
    */
   private renderRemindersWidget(): void {
     if (!this.remindersWidgetVisible) return;
@@ -11550,23 +11550,8 @@ export class DomindsApp extends HTMLElement {
 
   private formatReminderDisplayContent(
     content: string,
-    meta: Record<string, unknown> | undefined,
+    _meta: Record<string, unknown> | undefined,
   ): string {
-    if (!meta) {
-      return content;
-    }
-    const metaPid = typeof meta.pid === 'number' ? meta.pid : undefined;
-    const metaKind = typeof meta.kind === 'string' ? meta.kind : undefined;
-    const metaInitialCommand =
-      typeof meta.initialCommandLine === 'string' ? meta.initialCommandLine : undefined;
-    const metaDaemonCommand =
-      typeof meta.daemonCommandLine === 'string' ? meta.daemonCommandLine : undefined;
-    if (metaKind === 'daemon' && metaPid) {
-      const t = getUiStrings(this.uiLanguage);
-      const pidStr = String(metaPid);
-      const commandStr = metaInitialCommand || metaDaemonCommand || t.unknownCommand;
-      return `🔄 ${t.daemonLabel} (PID: ${pidStr})\n${t.commandLabel}: ${commandStr}`;
-    }
     return content;
   }
 
