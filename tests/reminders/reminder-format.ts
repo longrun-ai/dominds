@@ -79,6 +79,38 @@ async function main() {
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (zh)',
   );
 
+  const zhDaemonRunning = formatReminderItemGuide('zh', 'rem10abc', 'daemon running\n', {
+    meta: {
+      kind: 'daemon',
+      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+      delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
+    },
+  });
+  assert(
+    zhDaemonRunning.includes('get_daemon_output({ "pid": 321 })'),
+    'Expected daemon reminder to guide updates via get_daemon_output (zh)',
+  );
+  assert(
+    !zhDaemonRunning.includes('如果我要更新这条提醒项，可执行：update_reminder'),
+    'Expected daemon reminder not to suggest update_reminder while running (zh)',
+  );
+
+  const zhDaemonCompleted = formatReminderItemGuide('zh', 'rem11abc', 'daemon exited\n', {
+    meta: {
+      kind: 'daemon',
+      completed: true,
+      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+    },
+  });
+  assert(
+    zhDaemonCompleted.includes('get_daemon_output({ "pid": 321 })'),
+    'Expected completed daemon reminder to keep optional output inspection guidance (zh)',
+  );
+  assert(
+    zhDaemonCompleted.includes('delete_reminder({ "reminder_id": "rem11abc" })'),
+    'Expected completed daemon reminder to allow manual delete_reminder (zh)',
+  );
+
   const zhMetaControlledUpdate = formatReminderItemGuide(
     'zh',
     'rem07abc',
@@ -214,6 +246,38 @@ async function main() {
   assert(
     !enDeleteExample.includes('delete_reminder({ "reminder_id": "rem06abc" })'),
     'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (en)',
+  );
+
+  const enDaemonRunning = formatReminderItemGuide('en', 'rem10abc', 'daemon running\n', {
+    meta: {
+      kind: 'daemon',
+      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+      delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
+    },
+  });
+  assert(
+    enDaemonRunning.includes('get_daemon_output({ "pid": 321 })'),
+    'Expected daemon reminder to guide updates via get_daemon_output (en)',
+  );
+  assert(
+    !enDaemonRunning.includes('If I need to update this reminder, run: update_reminder'),
+    'Expected daemon reminder not to suggest update_reminder while running (en)',
+  );
+
+  const enDaemonCompleted = formatReminderItemGuide('en', 'rem11abc', 'daemon exited\n', {
+    meta: {
+      kind: 'daemon',
+      completed: true,
+      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+    },
+  });
+  assert(
+    enDaemonCompleted.includes('get_daemon_output({ "pid": 321 })'),
+    'Expected completed daemon reminder to keep optional output inspection guidance (en)',
+  );
+  assert(
+    enDaemonCompleted.includes('delete_reminder({ "reminder_id": "rem11abc" })'),
+    'Expected completed daemon reminder to allow manual delete_reminder (en)',
   );
 
   const enMetaControlledUpdate = formatReminderItemGuide(

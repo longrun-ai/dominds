@@ -8,6 +8,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { ChildProcess, execFile, fork, spawn } from 'child_process';
+import crypto from 'crypto';
 import fsSync from 'fs';
 import { createRequire } from 'module';
 import net from 'net';
@@ -428,6 +429,11 @@ type ShellCmdReminderMeta = JsonObject & {
   originDialogId?: string;
   completed?: boolean;
   lastUpdated?: string;
+  stdoutDigestSha256?: string;
+  stdoutLinesScrolledOut?: number;
+  stderrDigestSha256?: string;
+  stderrLinesScrolledOut?: number;
+  recoveryErrorText?: string;
 };
 
 type ShellCmdOwnedReminder = Reminder & {
@@ -449,16 +455,22 @@ function buildShellCmdReminderMeta(
     lastUpdated?: string;
   }>,
 ): JsonObject {
+  const outputFingerprint = buildDaemonOutputFingerprint(daemon);
   const nextMeta: JsonObject = {
     kind: 'daemon',
     pid: daemon.pid,
     initialCommandLine: previousMeta.initialCommandLine,
     shell: previousMeta.shell,
     startTime: previousMeta.startTime,
-    delete: {
-      altInstruction: `stop_daemon({ "pid": ${daemon.pid} })`,
+    update: {
+      altInstruction: `get_daemon_output({ "pid": ${daemon.pid} })`,
     },
   };
+  if (!options?.completed) {
+    nextMeta['delete'] = {
+      altInstruction: `stop_daemon({ "pid": ${daemon.pid} })`,
+    };
+  }
   nextMeta['daemonCommandLine'] = daemon.daemonCommandLine;
   nextMeta['runnerPid'] = daemon.runnerPid;
   nextMeta['runnerEndpoint'] = daemon.runnerEndpoint;
@@ -474,7 +486,90 @@ function buildShellCmdReminderMeta(
   if (options?.lastUpdated !== undefined) {
     nextMeta['lastUpdated'] = options.lastUpdated;
   }
+  nextMeta['stdoutDigestSha256'] = outputFingerprint.stdoutDigestSha256;
+  nextMeta['stdoutLinesScrolledOut'] = outputFingerprint.stdoutLinesScrolledOut;
+  nextMeta['stderrDigestSha256'] = outputFingerprint.stderrDigestSha256;
+  nextMeta['stderrLinesScrolledOut'] = outputFingerprint.stderrLinesScrolledOut;
   return nextMeta;
+}
+
+function sha256HexUtf8(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+type DaemonOutputFingerprint = Readonly<{
+  stdoutDigestSha256: string;
+  stdoutLinesScrolledOut: number;
+  stderrDigestSha256: string;
+  stderrLinesScrolledOut: number;
+}>;
+
+function buildDaemonOutputFingerprint(daemon: RunnerBackedDaemon): DaemonOutputFingerprint {
+  return {
+    stdoutDigestSha256: sha256HexUtf8(daemon.stdoutContent),
+    stdoutLinesScrolledOut: daemon.stdoutLinesScrolledOut,
+    stderrDigestSha256: sha256HexUtf8(daemon.stderrContent),
+    stderrLinesScrolledOut: daemon.stderrLinesScrolledOut,
+  };
+}
+
+function daemonOutputFingerprintMatchesReminder(
+  meta: ShellCmdReminderMeta,
+  daemon: RunnerBackedDaemon,
+): boolean {
+  const current = buildDaemonOutputFingerprint(daemon);
+  return (
+    meta.stdoutDigestSha256 === current.stdoutDigestSha256 &&
+    meta.stdoutLinesScrolledOut === current.stdoutLinesScrolledOut &&
+    meta.stderrDigestSha256 === current.stderrDigestSha256 &&
+    meta.stderrLinesScrolledOut === current.stderrLinesScrolledOut
+  );
+}
+
+function buildShellCmdRecoveryErrorMeta(
+  previousMeta: ShellCmdReminderMeta,
+  errorText: string,
+  lastUpdated: string,
+): JsonObject {
+  return {
+    ...(previousMeta as JsonObject),
+    recoveryErrorText: errorText,
+    lastUpdated,
+  };
+}
+
+function buildShellCmdFinalizedMeta(
+  previousMeta: ShellCmdReminderMeta,
+  lastUpdated: string,
+): JsonObject {
+  const { delete: _delete, recoveryErrorText: _recoveryErrorText, ...rest } = previousMeta;
+  return {
+    ...rest,
+    kind: 'daemon',
+    completed: true,
+    lastUpdated,
+    update: {
+      altInstruction: `get_daemon_output({ "pid": ${previousMeta.pid} })`,
+    },
+  };
+}
+
+function formatExitedDaemonReminderContent(
+  pid: number,
+  language: LanguageCode,
+  lastKnownSnapshot: string,
+): string {
+  return language === 'zh'
+    ? `🏁 守护进程 ${pid} 已退出。
+如需核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下保留的是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
+
+最后一次已知状态快照：
+${lastKnownSnapshot}`
+    : `🏁 Daemon process ${pid} has exited.
+If you need to verify the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
+
+Last known status snapshot:
+${lastKnownSnapshot}`;
 }
 
 type OsToolMessages = Readonly<{
@@ -1340,31 +1435,69 @@ export const shellCmdReminderOwner: ReminderOwner = {
     const resolved = await resolveDaemonFromMeta(reminder.meta);
 
     if (resolved.kind === 'gone') {
-      return { treatment: 'drop' };
+      const isTrackedDaemon =
+        reminder.meta.completed === true ||
+        reminder.meta.runnerEndpoint !== undefined ||
+        reminder.meta.runnerPid !== undefined;
+      if (!isTrackedDaemon) {
+        return { treatment: 'drop' };
+      }
+      if (reminder.meta.completed === true) {
+        return { treatment: 'keep' };
+      }
+      return {
+        treatment: 'update',
+        updatedContent: formatExitedDaemonReminderContent(pid, getWorkLanguage(), reminder.content),
+        updatedMeta: buildShellCmdFinalizedMeta(reminder.meta, formatUnifiedTimestamp(new Date())),
+      };
     }
 
     if (resolved.kind === 'error') {
+      const errorContent = formatRunnerRecoveryError(pid, resolved.errorText, getWorkLanguage());
+      if (
+        reminder.meta.recoveryErrorText === resolved.errorText &&
+        reminder.content === errorContent
+      ) {
+        return { treatment: 'keep' };
+      }
       return {
         treatment: 'update',
-        updatedContent: formatRunnerRecoveryError(pid, resolved.errorText, getWorkLanguage()),
-        updatedMeta: {
-          ...(reminder.meta as JsonObject),
-          lastUpdated: formatUnifiedTimestamp(new Date()),
-        },
+        updatedContent: errorContent,
+        updatedMeta: buildShellCmdRecoveryErrorMeta(
+          reminder.meta,
+          resolved.errorText,
+          formatUnifiedTimestamp(new Date()),
+        ),
       };
     }
 
     const daemon = resolved.daemon;
 
     if (!daemon.isRunning) {
+      const completedContent = formatExitedDaemonReminderContent(
+        pid,
+        getWorkLanguage(),
+        formatRunnerBackedDaemonStatus(daemon, getWorkLanguage()),
+      );
+      if (
+        reminder.meta.completed === true &&
+        daemonOutputFingerprintMatchesReminder(reminder.meta, daemon) &&
+        reminder.content === completedContent
+      ) {
+        return { treatment: 'keep' };
+      }
       return {
         treatment: 'update',
-        updatedContent: `🏁 Process ${pid} has completed:\n\n${formatRunnerBackedDaemonStatus(daemon, getWorkLanguage())}`,
+        updatedContent: completedContent,
         updatedMeta: buildShellCmdReminderMeta(reminder.meta, daemon, {
           completed: true,
           lastUpdated: formatUnifiedTimestamp(new Date()),
         }),
       };
+    }
+
+    if (daemonOutputFingerprintMatchesReminder(reminder.meta, daemon)) {
+      return { treatment: 'keep' };
     }
 
     return {
@@ -1387,11 +1520,11 @@ export const shellCmdReminderOwner: ReminderOwner = {
         content:
           language === 'zh'
             ? `${prefix} 后台进程状态提醒 [${reminder.id}]
-这是系统维护的后台进程状态快照。把它当成环境信号，不是你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒会随进程生命周期自动更新或删除。
+这是系统维护的后台进程状态快照。把它当成环境信号，不是你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒在进程运行期间会自动更新；进程结束后会保留终态，等待你确认后手动删除。
 ---
 ${reminder.content}`
             : `${prefix} Background process status reminder [${reminder.id}]
-This is a system-maintained background process snapshot. Treat it as an environment signal, not a self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); only reflect it inside the next substantive reply when it actually affects the next action. This reminder will update or disappear automatically with the process lifecycle.
+This is a system-maintained background process snapshot. Treat it as an environment signal, not a self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like “silently noted” or “received”); only reflect it inside the next substantive reply when it actually affects the next action. This reminder auto-updates while the process is running; after exit it keeps the terminal state until you delete it manually.
 ---
 ${reminder.content}`,
       };
@@ -1401,15 +1534,35 @@ ${reminder.content}`,
     const resolved = await resolveDaemonFromMeta(reminder.meta);
 
     if (resolved.kind === 'gone') {
+      const isTrackedDaemon =
+        reminder.meta.completed === true ||
+        reminder.meta.runnerEndpoint !== undefined ||
+        reminder.meta.runnerPid !== undefined;
+      if (isTrackedDaemon) {
+        return {
+          type: 'environment_msg',
+          role: 'user',
+          content:
+            language === 'zh'
+              ? `${prefix} 进程生命周期提醒 [${reminder.id}] - 后台进程已结束（PID ${pid}）
+该后台进程已退出。若需要再核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
+---
+${reminder.content}`
+              : `${prefix} Process lifecycle reminder [${reminder.id}] - daemon terminated (PID ${pid})
+This daemon has exited. If you still need to inspect the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
+---
+${reminder.content}`,
+        };
+      }
       return {
         type: 'environment_msg',
         role: 'user',
         content:
           language === 'zh'
             ? `${prefix} 进程生命周期提醒 [${reminder.id}] - 后台进程已结束（PID ${pid}）
-该后台进程的生命周期已经结束，当前不再运行。这条提醒应当很快自动消失；你也可以直接忽略它。`
+该后台进程的生命周期已经结束，当前不再运行。`
             : `${prefix} Process lifecycle reminder [${reminder.id}] - daemon terminated (PID ${pid})
-This daemon process has finished its lifecycle and is no longer running. This reminder should disappear automatically soon, and you may also ignore it.`,
+This daemon process has finished its lifecycle and is no longer running.`,
       };
     }
 
