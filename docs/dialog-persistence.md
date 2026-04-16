@@ -62,8 +62,8 @@ rtws/
 │   ├── team/                 # Agent-specific configurations
 │   │   └── <member>/
 │   │       ├── persona.md    # Agent personality and role
-│   │       ├── knowledge.md  # Agent expertise and skills
-│   │       └── lessons.md    # Agent learning and adaptations
+│   │       ├── knowhow.md    # Agent positive know-how and proven methods
+│   │       └── pitfalls.md   # Agent anti-traps and negative lessons
 │   └── memory/               # rtws-persistent memories
 │       ├── team_shared/      # Team-shared memories (all `*.md` under this dir are loaded)
 │       │   └── *.md
@@ -121,17 +121,17 @@ providers:
 - Role-specific responsibilities and expertise
 - Collaboration preferences and patterns
 
-**Agent Knowledge** (`team/<member>/knowledge.md`):
+**Agent Know-How** (`team/<member>/knowhow.md`):
 
-- Technical expertise and specializations
-- Domain-specific knowledge and experience
-- Tool proficiencies and preferences
+- Positive, durable know-how and validated methods
+- Stable domain facts, conventions, and decision cues
+- Tool proficiencies, working preferences, and safety stance
 
-**Agent Lessons** (`team/<member>/lessons.md`):
+**Agent Pitfalls** (`team/<member>/pitfalls.md`):
 
-- Learning from past interactions and mistakes
-- Adaptation patterns and improvements
-- Performance optimizations and insights
+- Negative lessons and anti-traps
+- Risk signals, failure modes, and what not to repeat
+- “If X happens, do/avoid Y” style guardrails
 
 ### Memory Storage (`.minds/memory/`)
 

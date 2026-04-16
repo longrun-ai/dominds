@@ -19,7 +19,7 @@ We want a safe way for a “team manager” agent (typically the shadow teammate
 - Create/update `.minds/team.yaml` (team roster + permissions + toolsets).
 - Create/update `.minds/llm.yaml` (LLM provider definitions overriding defaults).
 - Create/update `.minds/mcp.yaml` (MCP server definitions that register dynamic toolsets).
-- Create/update `.minds/team/<member>/{persona,knowledge,lessons}.md` (agent minds).
+- Create/update `.minds/team/<member>/{persona,knowhow,pitfalls}.md` (agent minds).
 
 At the same time, we do **not** want to hand that agent full rtws read/write (e.g. the
 equivalent of the `ws_mod` toolset + unrestricted `read_dirs`/`write_dirs`), because:
@@ -179,7 +179,7 @@ reading source code.
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → common MCP failure modes and how to recover.
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
-- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
+- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowhow/pitfalls).
 - `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → how to manage `.minds/skills/*` (injection point, tone, heading levels, migration boundaries).
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
 - `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → how to manage `.minds/env.*.md` (runtime-environment injection point, tone, heading levels).
@@ -225,7 +225,7 @@ must cover (at minimum) the information that used to live there:
 - `!env`:
   - Explain `.minds/env.*.md` as the place for current-rtws runtime-environment orientation, not
     persona definition or a dump of repo-wide policy.
-  - Explain its boundary relative to `persona/knowledge/lessons`, skills, and priming.
+  - Explain its boundary relative to `persona/knowhow/pitfalls`, skills, and priming.
 - `!toolsets`:
   - Explain that the visible toolsets include built-in toolsets, toolsets exposed by installed
     apps, and MCP toolsets dynamically registered from `.minds/mcp.yaml`.
@@ -542,7 +542,7 @@ Best practices:
 
 ## Managing `.minds/team/<member>/*.md` (agent minds)
 
-At dialog start, the runtime reads that member’s `persona.*.md` / `knowledge.*.md` / `lessons.*.md`
+At dialog start, the runtime reads that member’s `persona.*.md` / `knowhow.*.md` / `pitfalls.*.md`
 assets.
 
 - For exact language-file selection, fallback rules, injection order, and other current authoring
@@ -555,8 +555,9 @@ Authoring rule (important):
 - `persona.*.md` is spliced into that member's `role=system` prompt, so it should normally be written directly to the agent itself.
 - In practice, prefer second-person "you" when defining responsibilities, boundaries, working style, and delivery expectations.
 - Do not write `persona.*.md` as a third-person biography or as operator-facing documentation for a human/team manager.
-- `knowledge.*.md` / `lessons.*.md` also end up in the member's system prompt, specifically under `## Knowledge` / `## Lessons`. `knowledge` is better for stable facts, indexes, conventions, and decision cues; `lessons` is better for reusable heuristics such as “if X happens, do Y, avoid Z”. Both should still be written to help that member act, not to narrate the member from the outside.
-- Heading levels should follow the system-prompt wrapper too: the outer template already provides `## Persona` / `## Knowledge` / `## Lessons`, so bodies should usually start at `###` or plain bullets instead of repeating `#` / `##` or restating the wrapper title.
+- `knowhow.*.md` / `pitfalls.*.md` also end up in the member's system prompt, specifically under `## Know-How` / `## Pitfalls`. `knowhow` should lean toward positive knowledge accumulation such as stable facts, indexes, conventions, decision cues, and validated methods; `pitfalls` should lean toward negative lessons and anti-traps such as what not to repeat, which signals imply risk, and “if X happens, do Y, avoid Z”. Both should still be written to help that member act, not to narrate the member from the outside.
+- Migration rule: rtws member files now prefer `knowhow/pitfalls`, and only fall back to legacy `knowledge/lessons` when the new filenames do not exist. Once a new filename exists, only the new file content is injected and the legacy file is ignored. Builtin minds only recognize canonical filenames and do not read legacy aliases. Rename promptly; after the transition period, a future release will stop recognizing `knowledge/lessons`.
+- Heading levels should follow the system-prompt wrapper too: the outer template already provides `## Persona` / `## Know-How` / `## Pitfalls`, so bodies should usually start at `###` or plain bullets instead of repeating `#` / `##` or restating the wrapper title.
 
 Suggested structure:
 
@@ -567,12 +568,12 @@ Suggested structure:
   team/
     fuxi/
       persona.md
-      knowledge.md
-      lessons.md
+      knowhow.md
+      pitfalls.md
     pangu/
       persona.md
-      knowledge.md
-      lessons.md
+      knowhow.md
+      pitfalls.md
 ```
 
 ## Managing `.minds/skills/*` (skill assets)
@@ -597,7 +598,7 @@ Design-level positioning:
   members can orient themselves quickly.
 - It should not take on the role of persona definition, skill tutorial, giant operating manual, or
   repo-wide policy dump.
-- Those responsibilities belong, respectively, in `persona/knowledge/lessons`, skills, priming, or
+- Those responsibilities belong, respectively, in `persona/knowhow/pitfalls`, skills, priming, or
   the repo’s own policy files.
 - This design doc only defines that boundary. For the current injection position, fallback behavior,
   and authoring guidance, use `man({ "toolsetId": "team_mgmt", "topics": ["env"] })`.

@@ -48,8 +48,8 @@ export type BuildSystemPromptInput = {
   contextHealthPromptMode: ContextHealthPromptMode;
   agent: Team.Member;
   persona: string;
-  knowledge: string;
-  lessons: string;
+  knowhow: string;
+  pitfalls: string;
   skillsText: string;
   envIntro: string;
   teamIntro: string;
@@ -472,13 +472,13 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 
 ${input.persona}
 
-## 知识
+## 经验知识
 
-${input.knowledge}
+${input.knowhow}
 
-## 经验
+## 避坑指南
 
-${input.lessons}
+${input.pitfalls}
 
 ${input.skillsText}
 
@@ -571,13 +571,13 @@ System notices convey important state changes (e.g., context caution/critical, D
 
 ${input.persona}
 
-## Knowledge
+## Know-How
 
-${input.knowledge}
+${input.knowhow}
 
-## Lessons
+## Pitfalls
 
-${input.lessons}
+${input.pitfalls}
 
 ${input.skillsText}
 

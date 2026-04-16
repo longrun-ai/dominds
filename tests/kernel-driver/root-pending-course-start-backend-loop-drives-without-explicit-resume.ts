@@ -64,7 +64,9 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver root-pending-course-start-backend-loop-drives-without-explicit-resume: PASS');
+  console.log(
+    'kernel-driver root-pending-course-start-backend-loop-drives-without-explicit-resume: PASS',
+  );
 }
 
 void main().catch((err: unknown) => {

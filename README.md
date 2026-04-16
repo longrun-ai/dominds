@@ -55,7 +55,7 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 
 - **Local-first Runtime**: The orchestration layer runs on your machine and persists team state locally in your rtws (runtime workspace). LLM calls still go to your configured provider (so apply normal cost/privacy discipline).
 
-- **Transparent rtws Integration**: Agent knowledge, personas, lessons learned, and mindset artifacts are stored locally as part of your rtws. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
+- **Transparent rtws Integration**: Agent personas, know-how, pitfalls, and other mindset artifacts are stored locally as part of your rtws. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
 
 - **Persistent Team Memory**: Agents maintain context across conversations, remember past decisions, and build upon learned patterns. Teams evolve their practices and knowledge over time, with all insights preserved in your rtws.
 
@@ -280,7 +280,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 > Start from a template team, then curate and evolve both individual and shared memory as versioned artifacts.
 
 - Bootstrap from a domain-specific scaffold (team + workflows).
-- Keep individual and shared memory in `.minds/**` (personas, lessons, playbooks).
+- Keep individual and shared memory in `.minds/**` (personas, know-how, pitfalls, playbooks).
 - Evolve mindsets and governance as the product evolves.
 - Keep it transparent to humans: plain Markdown, version-tracked.
 

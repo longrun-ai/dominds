@@ -16,7 +16,7 @@
 - 创建/更新 `.minds/team.yaml`（团队名单 + 权限 + 工具集）
 - 创建/更新 `.minds/llm.yaml`（覆盖默认值的 LLM 提供商定义）
 - 创建/更新 `.minds/mcp.yaml`（注册动态工具集的 MCP 服务器定义）
-- 创建/更新 `.minds/team/<member>/{persona,knowledge,lessons}.md`（智能体心智）
+- 创建/更新 `.minds/team/<member>/{persona,knowhow,pitfalls}.md`（智能体心智）
 
 同时，我们**不希望**赋予该智能体完整的 rtws 读写权限（例如 `ws_mod` 工具集 + 无限制的 `read_dirs`/`write_dirs`），因为：
 
@@ -145,7 +145,7 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → 常见 MCP 故障模式及如何恢复
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
-- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowledge/lessons）
+- `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowhow/pitfalls）
 - `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → 如何管理 `.minds/skills/*`（skills 的注入位置、口吻、标题层级、迁移边界）
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
 - `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → 如何管理 `.minds/env.*.md`（运行环境提示的注入位置、口吻、标题层级）
@@ -181,7 +181,7 @@
   - 解释何时应继续保留为 skill，何时应升级为 app / toolset / teammates contract
 - `!env`：
   - 解释 `.minds/env.*.md` 用于描述当前 rtws 的运行环境，而不是定义人格或复制仓库总规范
-  - 解释它与 `persona/knowledge/lessons`、skills、priming 的分工边界
+  - 解释它与 `persona/knowhow/pitfalls`、skills、priming 的分工边界
 - `!toolsets`：
   - 解释当前可见 toolsets 包含内建 toolsets、已安装 apps 暴露的 toolsets、以及由 `.minds/mcp.yaml` 动态注册的 MCP toolsets
   - 解释为什么该主题必须以运行时动态视图为准，而不是在设计文档里维护一份静态名单
@@ -461,7 +461,7 @@ members:
 
 ## 管理 `.minds/team/<member>/*.md`（智能体心智）
 
-运行时在每次对话开始时会读取该成员的 `persona.*.md` / `knowledge.*.md` / `lessons.*.md` 资产。
+运行时在每次对话开始时会读取该成员的 `persona.*.md` / `knowhow.*.md` / `pitfalls.*.md` 资产。
 
 - 具体语言文件选择、回退规则、注入顺序与其它 authoring 细则，请以 `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` 为准。
 
@@ -472,8 +472,9 @@ members:
 - `persona.*.md` 会被拼进该成员的 `role=system` 提示，因此默认应该直接写给“这个成员智能体本人”。
 - 也就是说，`persona.*.md` 应优先使用第二人称“你”来规定职责边界、工作方式与交付标准。
 - 不要把 `persona.*.md` 写成第三人称人物简介，不要把它当成给团队管理员/人类读者的说明书，也不要使用“祂”这类旁白口吻。
-- `knowledge.*.md` / `lessons.*.md` 也同样会进入该成员的系统提示，分别落在 `## 知识` / `## 经验`。`knowledge` 更适合稳定事实、索引、约定、判断依据；`lessons` 更适合复用型经验规则（例如“遇到 X 信号先做 Y，不要做 Z”）。两者都应以“帮助该成员当下工作”为目标，而不是面向旁观者写注释。
-- 标题层级也要按 system prompt 模板来写：系统外层已经自动提供 `## 角色设定` / `## 知识` / `## 经验`，所以正文通常应从 `###` 或普通 bullet 开始，不要再写 `#` / `##`，也不要把文件名或这些章节名重复当标题。
+- `knowhow.*.md` / `pitfalls.*.md` 也同样会进入该成员的系统提示，分别落在 `## 经验知识` / `## 避坑指南`。`knowhow` 应偏向正向的知识与经验沉淀，例如稳定事实、索引、约定、判断依据、已验证有效的方法；`pitfalls` 应偏向负向的教训与避坑规则，例如哪些坑不要再踩、哪些信号意味着风险、遇到 X 时先做 Y 不要做 Z。两者都应以“帮助该成员当下工作”为目标，而不是面向旁观者写注释。
+- 迁移规则：rtws 成员文件现已优先读取 `knowhow/pitfalls`，只有在新文件名不存在时，才回退兼容旧的 `knowledge/lessons`。一旦新文件名存在，就只注入新文件内容，旧文件内容会被忽略。builtin mind 只认 canonical 文件名，不读取旧别名。请尽快完成改名迁移；过渡期之后，未来版本将不再识别 `knowledge/lessons`。
+- 标题层级也要按 system prompt 模板来写：系统外层已经自动提供 `## 角色设定` / `## 经验知识` / `## 避坑指南`，所以正文通常应从 `###` 或普通 bullet 开始，不要再写 `#` / `##`，也不要把文件名或这些章节名重复当标题。
 
 建议的结构：
 
@@ -484,12 +485,12 @@ members:
   team/
     fuxi/
       persona.md
-      knowledge.md
-      lessons.md
+      knowhow.md
+      pitfalls.md
     pangu/
       persona.md
-      knowledge.md
-      lessons.md
+      knowhow.md
+      pitfalls.md
 ```
 
 ## 管理 `.minds/skills/*`（技能资产）
@@ -507,7 +508,7 @@ members:
 
 - `.minds/env.*.md` 用来描述“当前 rtws 运行环境”的稳定背景信息，帮助成员理解所处环境。
 - 它不应承担 persona 定义、skill 教程、团队制度大全、或仓库全局规范汇总的职责。
-- 这类内容按分工应分别落在 `persona/knowledge/lessons`、skills、priming、或仓库自己的规范文件中。
+- 这类内容按分工应分别落在 `persona/knowhow/pitfalls`、skills、priming、或仓库自己的规范文件中。
 - 设计文档在这里仅强调用途边界；具体注入位置、回退规则、标题建议等，以运行时 `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` 为准。
 
 ## 引导策略：影子成员引导

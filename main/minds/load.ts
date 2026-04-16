@@ -1,7 +1,7 @@
 /**
  * Module: minds/load
  *
- * Loads agent minds/persona/knowledge/lessons and memory files from `.minds`.
+ * Loads agent minds/persona/knowhow/pitfalls and memory files from `.minds`.
  * Composes the system prompt and aggregates memories with optional hints.
  */
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -59,30 +59,17 @@ import {
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
 type ReadMindsTextResult = { kind: 'found'; text: string } | { kind: 'missing' };
 
-async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMindResult> {
-  const mindFn = path.join('.minds', 'team', id, fn);
+async function readAgentMindResult(
+  id: string,
+  fn: string,
+  source: 'rtws' | 'builtin',
+): Promise<ReadAgentMindResult> {
+  const mindFn =
+    source === 'rtws'
+      ? path.join('.minds', 'team', id, fn)
+      : path.join(__dirname, 'builtin', id, fn);
   try {
     await access(mindFn);
-  } catch {
-    // no rtws mindset file, attempt builtin minds
-    const builtinMindFn = path.join(__dirname, 'builtin', id, fn);
-    try {
-      const text = await readFile(builtinMindFn, 'utf-8');
-      return { kind: 'found', text };
-    } catch (error: unknown) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
-      ) {
-        return { kind: 'missing' };
-      }
-      log.warn(`Failed reading file '${builtinMindFn}':`, error);
-      return { kind: 'missing' };
-    }
-  }
-  try {
     const text = await readFile(mindFn, 'utf-8');
     return { kind: 'found', text };
   } catch (error: unknown) {
@@ -101,11 +88,18 @@ async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMin
 
 async function readAgentMindPreferred(options: {
   id: string;
-  preferredFilenames: readonly string[];
+  rtwsPreferredFilenames: readonly string[];
+  builtinPreferredFilenames?: readonly string[];
   noFileDefault: string;
 }): Promise<string> {
-  for (const fn of options.preferredFilenames) {
-    const result = await readAgentMindResult(options.id, fn);
+  for (const fn of options.rtwsPreferredFilenames) {
+    const result = await readAgentMindResult(options.id, fn, 'rtws');
+    if (result.kind === 'found') return result.text;
+  }
+  const builtinPreferredFilenames =
+    options.builtinPreferredFilenames ?? options.rtwsPreferredFilenames;
+  for (const fn of builtinPreferredFilenames) {
+    const result = await readAgentMindResult(options.id, fn, 'builtin');
     if (result.kind === 'found') return result.text;
   }
   return options.noFileDefault;
@@ -219,17 +213,29 @@ export async function loadAgentMinds(
   // read disk file afresh, in case the contents have changed by human or ai meanwhile
   const personaRaw = await readAgentMindPreferred({
     id: agent.id,
-    preferredFilenames: [`persona.${workingLanguage}.md`, 'persona.md'],
+    rtwsPreferredFilenames: [`persona.${workingLanguage}.md`, 'persona.md'],
     noFileDefault: defaultPersonaText(workingLanguage),
   });
-  const knowledgeRaw = await readAgentMindPreferred({
+  const knowhowRaw = await readAgentMindPreferred({
     id: agent.id,
-    preferredFilenames: [`knowledge.${workingLanguage}.md`, 'knowledge.md'],
+    rtwsPreferredFilenames: [
+      `knowhow.${workingLanguage}.md`,
+      'knowhow.md',
+      `knowledge.${workingLanguage}.md`,
+      'knowledge.md',
+    ],
+    builtinPreferredFilenames: [`knowhow.${workingLanguage}.md`, 'knowhow.md'],
     noFileDefault: '',
   });
-  const lessonsRaw = await readAgentMindPreferred({
+  const pitfallsRaw = await readAgentMindPreferred({
     id: agent.id,
-    preferredFilenames: [`lessons.${workingLanguage}.md`, 'lessons.md'],
+    rtwsPreferredFilenames: [
+      `pitfalls.${workingLanguage}.md`,
+      'pitfalls.md',
+      `lessons.${workingLanguage}.md`,
+      'lessons.md',
+    ],
+    builtinPreferredFilenames: [`pitfalls.${workingLanguage}.md`, 'pitfalls.md'],
     noFileDefault: '',
   });
   const envIntroRaw = await readMindsTextPreferred({
@@ -238,8 +244,8 @@ export async function loadAgentMinds(
   });
   const none = noneText(workingLanguage);
   const persona = personaRaw && personaRaw.trim() !== '' ? personaRaw : none;
-  const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : none;
-  const lessons = lessonsRaw && lessonsRaw.trim() !== '' ? lessonsRaw : none;
+  const knowhow = knowhowRaw && knowhowRaw.trim() !== '' ? knowhowRaw : none;
+  const pitfalls = pitfallsRaw && pitfallsRaw.trim() !== '' ? pitfallsRaw : none;
   const envIntro = envIntroRaw && envIntroRaw.trim() !== '' ? envIntroRaw : '';
   const workspaceSkills = await loadWorkspaceSkills({
     rtwsRootAbs: process.cwd(),
@@ -409,8 +415,8 @@ export async function loadAgentMinds(
     contextHealthPromptMode,
     agent,
     persona,
-    knowledge,
-    lessons,
+    knowhow,
+    pitfalls,
     skillsText,
     envIntro,
     teamIntro,

@@ -585,8 +585,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
         '已重新扫描对话真源：这个对话已经在运行中，无需再次点击继续。',
       resumeRejectedResumptionPanelStoppedNotResumable:
         '已重新扫描对话真源：这个对话虽然处于停止态，但当前停止原因不支持继续。',
-      resumeRejectedResumptionPanelDead:
-        '已重新扫描对话真源：这个对话已被宣布卡死，不能继续。',
+      resumeRejectedResumptionPanelDead: '已重新扫描对话真源：这个对话已被宣布卡死，不能继续。',
       retryCountdownPrefix: '将在 ',
       retryCountdownSuffix: ' 后重试。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',

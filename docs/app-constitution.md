@@ -70,7 +70,7 @@ Goal: let an integrator app ship publishable default overrides for dependency ap
 
 - Key capabilities (target):
   - app override: app packages may ship default overrides for dependency apps (publishable integration config), while rtws overrides still take precedence.
-  - Override surface expands to more `.minds/**` assets (persona/knowledge/lessons, memory, mcp, etc.).
+  - Override surface expands to more `.minds/**` assets (persona/knowhow/pitfalls, memory, mcp, etc.).
   - Problems mechanism enhancements: record and display “occurred at / resolved at / resolved state”, and allow “clear resolved” in UI.
   - More complete error-path contracts (corrupt YAML, partial availability, recovery strategy) with regression coverage.
 
@@ -360,7 +360,7 @@ So `Web Dev App` should make the `playwright-interactive` relationship explicit 
 1. **Product-semantic layer (in scope for this design)**
    - define a stable toolset name such as `playwright_interactive`;
    - define which teammates receive it, what problem it solves, and when to use it;
-   - ship the related `.minds/team.yaml`, member persona/knowledge/lessons, `.minds/env.md`, toolset manual, etc.
+   - ship the related `.minds/team.yaml`, member persona/knowhow/pitfalls, `.minds/env.md`, toolset manual, etc.
 2. **Execution-backend layer (replaceable implementation detail)**
    - the app may provide its own dedicated tools and productize a browser-interaction capability in the same family as `playwright-interactive`;
    - or later be replaced by an equivalent MCP server / local App Host module;
@@ -368,7 +368,7 @@ So `Web Dev App` should make the `playwright-interactive` relationship explicit 
 
 It must be explicit that **an app is not the same thing as a skill**, and that both are now first-class mechanisms in the current implementation:
 
-- An **app** is a Dominds install/resolve/composition unit. It has an `id`, a manifest (`.minds/app.yaml`), team-facing assets (`.minds/team.yaml`, persona/knowledge/lessons), env docs (`.minds/env.md`), and participates in rtws-level lock/configuration/resolution.
+- An **app** is a Dominds install/resolve/composition unit. It has an `id`, a manifest (`.minds/app.yaml`), team-facing assets (`.minds/team.yaml`, persona/knowhow/pitfalls), env docs (`.minds/env.md`), and participates in rtws-level lock/configuration/resolution.
 - A **skill** is a pure-Markdown capability asset inside the rtws. It is currently loaded from `.minds/skills/team_shared/**` and `.minds/skills/individual/**`, selects `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md` by work language preference, and injects the body directly into the agent system prompt. It is best suited for soft guidance, checklists, decision heuristics, and team-specific methods, not for distributable product capability that depends on a stable tool contract.
 - Skill frontmatter currently supports `name`, `description`, `allowed-tools`, `user-invocable`, and `disable-model-invocation`; the last three are currently compatibility/migration metadata only. They do not automatically grant tool permissions and do not replace team/toolset runtime policy.
 - A **toolset manual / app-bundled manual** is a better place for guidance that is shipped together with tools: it is skill-like in tone, but distributed together with dedicated tools, toolsets, and app identity. That is a better fit for something like `web-dev`.
@@ -424,12 +424,12 @@ Suggested minimal asset shape:
 │   └── team/
 │       ├── web_tester/
 │       │   ├── persona.zh.md
-│       │   ├── knowledge.zh.md
-│       │   └── lessons.zh.md
+│       │   ├── knowhow.zh.md
+│       │   └── pitfalls.zh.md
 │       └── web_developer/
 │           ├── persona.zh.md
-│           ├── knowledge.zh.md
-│           └── lessons.zh.md
+│           ├── knowhow.zh.md
+│           └── pitfalls.zh.md
 ├── bin/
 │   └── <app>.js
 └── src/
@@ -506,7 +506,7 @@ Why this app shape matters:
 Intended uses:
 
 - store overrides for app assets.
-- provide complete override capability beyond team config, including persona/knowledge/lessons and memory.
+- provide complete override capability beyond team config, including persona/knowhow/pitfalls and memory.
 
 > Note: “runtime state” and “override” can be split structurally. This document focuses on override semantics and paths.
 
@@ -538,7 +538,7 @@ To allow an app to fully ship a reusable “team + knowledge/persona” bundle, 
 - `.minds/team.yaml`
 - `.minds/mcp.yaml`
 - `.minds/env.md`
-- `.minds/team/<memberId>/{persona,knowledge,lessons}.md` and work-language variants (e.g. `persona.zh.md`)
+- `.minds/team/<memberId>/{persona,knowhow,pitfalls}.md` and work-language variants (e.g. `persona.zh.md`)
 - `.minds/memory/**` (shared + personal memory; see `dominds/main/tools/mem.ts` and `dominds/main/minds/load.ts`)
 
 #### Override example: pinning a dependency app port (v0 draft)
@@ -668,7 +668,7 @@ Analogy: in Node.js development, a repo is both source tree and working director
 
 ### cfg-only apps (configuration-only apps)
 
-(Target: planned) Allow “cfg-only apps” that do not contribute tools (no `contributes.tools`). They only ship `.minds/**` assets to reorganize AI teams (persona/knowledge/lessons/memory and related config).
+(Target: planned) Allow “cfg-only apps” that do not contribute tools (no `contributes.tools`). They only ship `.minds/**` assets to reorganize AI teams (persona/knowhow/pitfalls/memory and related config).
 
 This makes it possible that:
 

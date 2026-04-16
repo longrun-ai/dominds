@@ -31,7 +31,7 @@ Related terminology: [dominds-terminology.md](./dominds-terminology.md)
 The same information can be categorized by “who needs to see it / who maintains it”. This axis is orthogonal to long‑term vs short‑term, and helps avoid treating team agreements as personal worklogs (or vice versa).
 
 - **Individual-scope (per-agent / per-dialog)**:
-  - `persona` / `knowledge` / `lessons` (role definitions assigned per member)
+  - `persona` / `knowhow` / `pitfalls` (role definitions assigned per member)
   - individual memory (`personal_memory`)
   - dialog history (including tool calls and outputs)
   - reminders (working set / worklog)
@@ -56,7 +56,7 @@ team governance and team management are functions too.
 This doc uses three time horizons: long-term / task-term / short-term (dialog). This axis is orthogonal to sharing scope (individual vs collective): the same fact has both a time horizon and a scope.
 
 - **A) Long-term memory (stable, cross-dialog)**
-  - **Org structure (static definitions)**: `persona` / `knowledge` / `lessons`
+  - **Org structure (static definitions)**: `persona` / `knowhow` / `pitfalls`
   - **Team governance (shared)**: team memory
   - **Agent-owned**: individual memory
 - **B) Task-term memory (survives dialog courses)**
@@ -72,13 +72,13 @@ This doc uses three time horizons: long-term / task-term / short-term (dialog). 
 
 Long-term memory is for things that should remain true across dialogs: who you are, what you own, and how the team operates.
 
-#### 1) `persona` / `knowledge` / `lessons`: static role allocation
+#### 1) `persona` / `knowhow` / `pitfalls`: static role allocation
 
 These docs “pin” an agent into a durable role in the team:
 
 - `persona`: identity + style (voice, working habits, scope boundaries, preference constraints)
-- `knowledge`: stable expertise and capability boundaries (what you’re good at; your tool/safety stance)
-- `lessons`: accumulated learnings (which paths are safer; which traps to avoid)
+- `knowhow`: positive, durable knowledge accumulation (what you’re good at, which methods are proven, your tool/safety stance)
+- `pitfalls`: negative lessons and anti-traps (which traps not to repeat, which signals imply risk, which paths are safer)
 
 They are not for task progress. Their job is to keep the division of labor stable, so the team doesn’t reinvent roles every time.
 
