@@ -385,15 +385,15 @@ Notes:
 - MCP tool names are global across all toolsets (built-in + MCP). Collisions cause tools to be
   skipped and should surface via Problems + logs.
 - `mcp_admin` is a built-in toolset that contains `mcp_restart` (best-effort per-server restart).
-- Optional per-toolset manual can live in `.minds/mcp.yaml` at `servers.<serverId>.manual` using:
-  - `content`: overview text
-  - `sections`: chapterized guidance (`[{ title, content }]` or `{ "<title>": "<content>" }`)
+- Optional manual information can live in `.minds/mcp.yaml` at `servers.<serverId>.manual`:
+  - `contentFile`: the topic-file directory prefix for the formal runtime manual; the final `man({ "toolsetId": "<serverId>" })` content shown to the LLM is loaded from here
+  - `content` / `sections`: inline team-management guidance shown in the `team_mgmt` MCP chapter (`sections` supports `[{ title, content }]` or `{ "<title>": "<content>" }`)
 - Missing manual does **not** mean the toolset is unavailable; it means team-manager documentation
   is incomplete. Agents should continue by reading each tool’s own description/arguments.
 - Team-manager recommendation: after MCP config validation passes, carefully read each exposed tool
-  description, discuss intended rtws usage with the human user, then write
-  `servers.<serverId>.manual` that captures typical usage patterns, primary intent directions, and
-  unavailable-case business handling rules.
+  description, discuss intended rtws usage with the human user, then write the formal manual into
+  `manual.contentFile`; if extra team-management interpretation is still useful, add inline
+  `content + sections` alongside it.
 - Use a semi-structured chapter shape: high-value sections often include `When To Use`,
   `Guardrails`, and `Business Handling When Unavailable`, but do not force every toolset into one
   fixed template. Start from the real business goal, then decide which sections deserve depth,
@@ -431,8 +431,9 @@ servers:
     # Tool name transforms
     transform: [] # optional
 
-    # Optional toolset manual for agents
+    # Optional manual information
     manual:
+      contentFile: ".minds/manuals/<serverId>" # formal runtime manual for man({ "toolsetId": "<serverId>" })
       content: "What this MCP toolset is for"
       sections:
         - title: "When To Use"

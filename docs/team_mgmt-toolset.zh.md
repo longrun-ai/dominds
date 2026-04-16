@@ -322,11 +322,11 @@ members:
 
 - MCP 工具名称在所有工具集（内置 + MCP）中是全局的。冲突导致工具被跳过，应通过问题 + 日志暴露
 - `mcp_admin` 是一个内置工具集，包含 `mcp_restart`（每个服务器最佳努力重启）
-- 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 为每个 MCP toolset 提供手册：
-  - `content`：总说明
-  - `sections`：章节化指导（`[{ title, content }]` 或 `{ "<title>": "<content>" }`）
+- 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 提供手册相关信息：
+  - `contentFile`：正式 runtime 手册的 topic 文件目录前缀；`man({ "toolsetId": "<serverId>" })` 最终给 LLM 看的正文从这里加载
+  - `content` / `sections`：补充给 `team_mgmt` MCP 章节看的 inline 团队管理说明（`sections` 支持 `[{ title, content }]` 或 `{ "<title>": "<content>" }`）
 - 没有手册 **不代表** 该 toolset 不可用；这只表示团队管理文档覆盖不足。智能体应继续依据每个工具自身的 description/参数来使用。
-- 建议团队管理者在 MCP 配置验证通过后：先精读该 server 暴露的每个工具说明，再与人类用户讨论本 rtws 的使用意图，最后把“典型用法 + 主要意图方向 + 不可用时业务处置规约”沉淀为 `servers.<serverId>.manual`。
+- 建议团队管理者在 MCP 配置验证通过后：先精读该 server 暴露的每个工具说明，再与人类用户讨论本 rtws 的使用意图，然后把正式手册沉淀到 `manual.contentFile`；如仍需额外写团队管理层解释，再补 inline `content + sections`。
 - 章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。应从真实业务目标出发，决定哪些章节需要展开、哪些只需一句话、哪些可以合并或改名成更贴切的标题。
 - 对每个 MCP toolset，建议刻意写明“不可用时业务处置规约”，至少回答：
   - 当前 toolset 暂不可达时，是否必须找协调者/专员接手
@@ -360,8 +360,9 @@ servers:
     # 工具名称转换
     transform: [] # 可选
 
-    # 可选：给智能体看的 toolset 手册
+    # 可选：手册相关信息
     manual:
+      contentFile: ".minds/manuals/<serverId>" # 正式 runtime 手册（供 man({ "toolsetId": "<serverId>" }) 读取）
       content: "该 MCP toolset 的用途说明"
       sections:
         - title: "何时使用"

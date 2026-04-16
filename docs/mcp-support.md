@@ -423,9 +423,12 @@ servers:
     # Tool name transforms (optional)
     transform: []
 
-    # Optional per-toolset manual shown to agents
+    # Optional manual information
+    # - contentFile: formal runtime manual for man({ "toolsetId": "<serverId>" })
+    # - content/sections: extra inline team-management guidance
     # (missing manual does NOT make the toolset unavailable)
     manual:
+      contentFile: ".minds/manuals/<serverId>"
       content: "What this MCP toolset is for"
       sections:
         - title: "When To Use"

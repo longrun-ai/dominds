@@ -92,7 +92,9 @@
     "toolset-registry": "tsx toolsets/registry.ts",
     "man-structure": "tsx toolsets/man-structure.ts",
     "man-missing-warning": "tsx toolsets/man-missing-warning.ts",
+    "man-single-topic-readability": "tsx toolsets/man-single-topic-readability.ts",
     "man-output-truncation": "tsx toolsets/man-output-truncation.ts",
+    "manual-size-guard": "tsx toolsets/manual-size-guard.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "shell-cmd-output-truncation": "tsx toolsets/shell-cmd-output-truncation.ts",
     "list-dir-output-truncation": "tsx toolsets/list-dir-output-truncation.ts",
@@ -167,6 +169,7 @@
     "team_mgmt-manual-minds-evidence": "tsx team_mgmt-manual/minds-manual-evidence.ts",
     "team_mgmt-manual-codex-teammate-guidance": "tsx team_mgmt-manual/codex-teammate-guidance.ts",
     "team_mgmt-manual-team-gofor-shapes": "tsx team_mgmt-manual/team-gofor-shapes.ts",
+    "team_mgmt-mcp-hot-reload-manual-problems": "tsx team_mgmt-manual/mcp-hot-reload-manual-problems.ts",
     "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
   },
   "devDependencies": {

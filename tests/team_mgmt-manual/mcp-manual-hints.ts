@@ -91,7 +91,8 @@ async function main(): Promise<void> {
         'en mcp manual should remind team manager to confirm intent with human user',
       );
       assert.ok(
-        en.includes('unavailable-case business handling rules'),
+        en.includes('unavailable-case business handling rules') ||
+          en.includes('which business actions must pause until this toolset recovers'),
         'en mcp manual should require unavailable-case business handling rules',
       );
       assert.ok(
@@ -157,6 +158,45 @@ async function main(): Promise<void> {
       assert.ok(
         en.includes('ask @coordinator before using fallback paths'),
         'mcp manual should render unavailable-case business handling section content',
+      );
+    },
+  );
+
+  await withTempRtws(
+    [
+      'version: 1',
+      'servers:',
+      '  sdk_stdio:',
+      '    transport: stdio',
+      '    command: npx',
+      "    args: ['-y', '@some/mcp-server@latest']",
+      '    tools: { whitelist: [], blacklist: [] }',
+      '    transform: []',
+      '    manual:',
+      '      contentFile: .minds/manuals/sdk',
+      '',
+    ].join('\n'),
+    async () => {
+      const zh = await render('zh', ['mcp']);
+      const en = await render('en', ['mcp']);
+
+      assert.ok(
+        zh.includes('运行时手册文件前缀（`contentFile`）：`.minds/manuals/sdk`'),
+        'zh mcp manual should surface contentFile-backed runtime manual prefixes accurately',
+      );
+      assert.ok(
+        zh.includes(
+          '最终 `man({ "toolsetId": "sdk_stdio" })` 正文会在运行时从该前缀下的 topic 文件加载',
+        ),
+        'zh mcp manual should explain that contentFile-backed toolset manuals load their final body at runtime',
+      );
+      assert.ok(
+        en.includes('Runtime manual file prefix (`contentFile`): `.minds/manuals/sdk`'),
+        'en mcp manual should surface contentFile-backed runtime manual prefixes accurately',
+      );
+      assert.ok(
+        en.includes('The final `man({ "toolsetId": "sdk_stdio" })` body is loaded at runtime'),
+        'en mcp manual should explain that contentFile-backed toolset manuals load their final body at runtime',
       );
     },
   );

@@ -42,7 +42,7 @@ export type WorkspaceProblem =
       kind: 'mcp_server_error';
       source: 'mcp';
       id: string;
-      severity: 'info' | 'error';
+      severity: 'info' | 'warning' | 'error';
       timestamp: string;
       message: string;
       messageI18n?: ProblemI18nText;

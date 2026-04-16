@@ -24,6 +24,11 @@ import {
 import type { McpServerConfig, McpStreamableHttpServerConfig, McpWorkspaceConfig } from './config';
 import { parseMcpYaml } from './config';
 import {
+  emptyMcpToolsetManualByServer,
+  parseMcpManualByServer,
+  reconcileMcpToolsetManualProblems,
+} from './manual-problems';
+import {
   extractMcpDiagnosticTextI18n,
   McpSdkClient,
   type McpDiagnosticTextI18n,
@@ -604,9 +609,11 @@ async function reloadNow(reason: string): Promise<void> {
         `missing file (${reason})`,
       );
       clearWorkspaceConfigProblem();
+      await reconcileMcpManualProblemsForRuntime([], null);
       return;
     }
     clearDeclaredServerRuntimeCatalog();
+    await reconcileMcpManualProblemsForRuntime([], null);
     upsertWorkspaceConfigProblem(`Failed to read ${MCP_YAML_PATH}: ${String(err)}`);
     return;
   }
@@ -614,6 +621,7 @@ async function reloadNow(reason: string): Promise<void> {
   const parsed = parseMcpYaml(rawText);
   if (!parsed.ok) {
     clearDeclaredServerRuntimeCatalog();
+    await reconcileMcpManualProblemsForRuntime([], null);
     upsertWorkspaceConfigProblem(parsed.errorText);
     return;
   }
@@ -626,6 +634,7 @@ async function reloadNow(reason: string): Promise<void> {
     parsed.validServerIdsInYamlOrder,
     reason,
   );
+  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
 }
 
 async function restartServerNow(
@@ -639,14 +648,17 @@ async function restartServerNow(
     if (code === 'ENOENT') {
       // Deletion is treated as empty config, so restart cannot proceed.
       clearWorkspaceConfigProblem();
+      await reconcileMcpManualProblemsForRuntime([], null);
       return { ok: false, errorText: `Cannot restart '${serverId}': ${MCP_YAML_PATH} is missing` };
     }
+    await reconcileMcpManualProblemsForRuntime([], null);
     upsertWorkspaceConfigProblem(`Failed to read ${MCP_YAML_PATH}: ${String(err)}`);
     return { ok: false, errorText: `Failed to read ${MCP_YAML_PATH}: ${String(err)}` };
   }
 
   const parsed = parseMcpYaml(rawText);
   if (!parsed.ok) {
+    await reconcileMcpManualProblemsForRuntime([], null);
     upsertWorkspaceConfigProblem(parsed.errorText);
     return { ok: false, errorText: parsed.errorText };
   }
@@ -660,12 +672,14 @@ async function restartServerNow(
       parsed.invalidServers,
       parsed.serverIdsInYamlOrder,
     );
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
     upsertMcpServerConfigInvalidProblem(serverId, invalid.errorText);
     return { ok: false, errorText: invalid.errorText };
   }
 
   const serverCfg = parsed.config.servers[serverId];
   if (!serverCfg) {
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
     return {
       ok: false,
       errorText: `MCP server '${serverId}' is not configured in ${MCP_YAML_PATH}`,
@@ -683,6 +697,7 @@ async function restartServerNow(
 
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
     upsertDeclaredServerRuntimeError(serverId, res.errorText);
     upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText, res.detailTextI18n);
     return { ok: false, errorText: res.errorText };
@@ -700,7 +715,25 @@ async function restartServerNow(
   serverStateById.set(serverId, res.state);
   reconcileProblemsByPrefix(problemPrefixForServer(serverId), res.state.problems);
   reorderMcpToolsetsInRegistry(parsed.serverIdsInYamlOrder);
+  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
   return { ok: true };
+}
+
+async function reconcileMcpManualProblemsForRuntime(
+  serverIdsInYamlOrder: ReadonlyArray<string>,
+  rawText: string | null,
+): Promise<void> {
+  const manualInfo =
+    rawText === null ? emptyMcpToolsetManualByServer() : parseMcpManualByServer(rawText);
+  await reconcileMcpToolsetManualProblems({
+    serverIds: serverIdsInYamlOrder,
+    manualInfo,
+    measureRenderedWorkspaceMcpTopicRawChars: async () => {
+      const mod = await import('../tools/team_mgmt');
+      return await mod.measureRenderedTeamMgmtMcpTopicRawChars();
+    },
+    workspaceManualPath: MCP_YAML_PATH,
+  });
 }
 
 function upsertWorkspaceConfigProblem(errorText: string): void {
@@ -835,7 +868,7 @@ async function applyWorkspaceConfig(
     unregisterServer(state);
     state.dispatch.requestStop();
     serverStateById.delete(serverId);
-    removeProblemsByPrefix(problemPrefixForServer(serverId));
+    reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
   }
 
   // Surface invalid server config errors (while keeping last-known-good runtimes registered).

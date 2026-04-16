@@ -4,12 +4,11 @@ import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type { FuncTool, JsonObject, ToolCallOutput } from '../tool';
 import { toolSuccess } from '../tool';
+import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from './manual/output-limit';
 import { renderToolsetManual } from './manual/render';
 import { MANUAL_TOPICS, type ManualTopic } from './manual/spec';
 import { getToolsetMeta, listToolsets } from './registry';
 import { renderTeamMgmtGuideContent } from './team_mgmt';
-
-const MANUAL_OUTPUT_CHAR_LIMIT = 8_000;
 
 type ToolsetManualResult = {
   tools: FuncTool[];
@@ -71,7 +70,7 @@ export async function renderToolsetManualContent(
 }
 
 function renderManualResult(language: LanguageCode, toolsetId: string, content: string): string {
-  if (content.length <= MANUAL_OUTPUT_CHAR_LIMIT) {
+  if (content.length <= MANUAL_SINGLE_REQUEST_CHAR_LIMIT) {
     return content;
   }
   return language === 'zh'
