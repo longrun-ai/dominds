@@ -50,6 +50,7 @@ function serializeReminder(reminder: Reminder): ReminderSnapshotItem {
     meta: reminder.meta,
     echoback: reminder.echoback,
     scope: reminder.scope ?? 'agent_shared',
+    renderMode: reminder.renderMode ?? 'markdown',
     createdAt: reminder.createdAt ?? formatUnifiedTimestamp(new Date()),
     priority: reminder.priority ?? 'medium',
   };
@@ -66,6 +67,7 @@ function materializeStoredReminder(snapshot: ReminderSnapshotItem): Reminder {
     meta: snapshot.meta,
     echoback: snapshot.echoback,
     scope: snapshot.scope ?? 'agent_shared',
+    renderMode: snapshot.renderMode ?? 'markdown',
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
   });

@@ -272,7 +272,15 @@ function parseReminderState(v: unknown, at: string): DomindsAppReminderState {
   const echoback =
     echobackRaw === undefined ? undefined : typeof echobackRaw === 'boolean' ? echobackRaw : null;
   if (echoback === null) throw new Error(`Invalid ${at}.echoback: must be boolean`);
-  return { content, meta: metaRaw as DomindsAppReminderState['meta'], echoback };
+  const renderModeRaw = v['renderMode'];
+  const renderMode =
+    renderModeRaw === undefined
+      ? undefined
+      : renderModeRaw === 'plain' || renderModeRaw === 'markdown'
+        ? renderModeRaw
+        : null;
+  if (renderMode === null) throw new Error(`Invalid ${at}.renderMode: must be plain|markdown`);
+  return { content, meta: metaRaw as DomindsAppReminderState['meta'], echoback, renderMode };
 }
 
 function parseReminderApplyRequest(v: unknown, at: string): DomindsAppReminderApplyRequest {
@@ -300,6 +308,14 @@ function parseReminderApplyRequest(v: unknown, at: string): DomindsAppReminderAp
     const echoback =
       echobackRaw === undefined ? undefined : typeof echobackRaw === 'boolean' ? echobackRaw : null;
     if (echoback === null) throw new Error(`Invalid ${at}.echoback: must be boolean`);
+    const renderModeRaw = v['renderMode'];
+    const renderMode =
+      renderModeRaw === undefined
+        ? undefined
+        : renderModeRaw === 'plain' || renderModeRaw === 'markdown'
+          ? renderModeRaw
+          : null;
+    if (renderMode === null) throw new Error(`Invalid ${at}.renderMode: must be plain|markdown`);
     return {
       kind: 'upsert',
       ownerRef,
@@ -307,6 +323,7 @@ function parseReminderApplyRequest(v: unknown, at: string): DomindsAppReminderAp
       meta: metaRaw as DomindsAppReminderApplyRequest['meta'],
       position,
       echoback,
+      renderMode,
     };
   }
 

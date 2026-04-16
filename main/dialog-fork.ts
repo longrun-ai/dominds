@@ -108,6 +108,7 @@ function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): Reminder {
     meta: snapshot.meta,
     echoback: snapshot.echoback,
     scope: snapshot.scope ?? 'dialog',
+    renderMode: snapshot.renderMode ?? 'markdown',
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
   });

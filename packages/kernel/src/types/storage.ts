@@ -296,6 +296,7 @@ export interface ReminderSnapshotItem {
   meta?: JsonValue;
   echoback?: boolean;
   scope?: 'dialog' | 'personal' | 'agent_shared';
+  renderMode?: 'plain' | 'markdown';
   createdAt: string;
   priority: 'high' | 'medium' | 'low';
 }
@@ -820,6 +821,7 @@ export interface ReminderStateFile {
     meta?: JsonValue;
     echoback?: boolean;
     scope?: 'dialog' | 'personal' | 'agent_shared';
+    renderMode?: 'plain' | 'markdown';
     createdAt: string;
     priority: 'high' | 'medium' | 'low';
   }>;

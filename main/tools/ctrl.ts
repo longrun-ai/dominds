@@ -46,6 +46,7 @@ import {
   type JsonObject,
   type JsonValue,
   type Reminder,
+  type ReminderRenderMode,
   type ReminderScope,
   type ToolArguments,
   type ToolCallOutput,
@@ -220,6 +221,11 @@ function computeReminderInsertIndex(
     insertIndex = targetIndex;
   }
   return insertIndex;
+}
+
+function parseReminderRenderMode(value: unknown): ReminderRenderMode | null {
+  if (value === undefined) return 'markdown';
+  return value === 'plain' || value === 'markdown' ? value : null;
 }
 
 type ContinuationPackageReminderMeta = Readonly<{
@@ -478,6 +484,11 @@ export const addReminderTool: FuncTool = {
         enum: ['dialog', 'personal'],
         description: 'Reminder visibility scope. Defaults to dialog.',
       },
+      render_mode: {
+        type: 'string',
+        enum: ['markdown', 'plain'],
+        description: 'How the reminder should render in WebUI. Defaults to markdown.',
+      },
     },
   },
   argsValidation: 'dominds',
@@ -498,6 +509,10 @@ export const addReminderTool: FuncTool = {
     if (reminderScope === null) {
       return toolFailure(t.invalidFormatAdd);
     }
+    const reminderRenderMode = parseReminderRenderMode(args['render_mode']);
+    if (reminderRenderMode === null) {
+      return toolFailure(t.invalidFormatAdd);
+    }
 
     const positionValue = args['position'];
     const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
@@ -512,7 +527,10 @@ export const addReminderTool: FuncTool = {
     if (reminderScope === 'dialog') {
       try {
         const insertIndex = computeReminderInsertIndex(dlg.reminders, positionValue, () => true);
-        dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex, { scope: 'dialog' });
+        dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex, {
+          scope: 'dialog',
+          renderMode: reminderRenderMode,
+        });
         return formatToolActionResult(language, 'added');
       } catch (error: unknown) {
         if (error instanceof InvalidReminderPositionError) {
@@ -534,6 +552,7 @@ export const addReminderTool: FuncTool = {
           content: reminderContent,
           meta: reminderMeta,
           scope: 'personal' satisfies ReminderScope,
+          renderMode: reminderRenderMode,
         });
         reminders.push(reminder);
       });
@@ -569,6 +588,11 @@ export const updateReminderTool: FuncTool = {
     properties: {
       reminder_id: { type: 'string', description: 'Stable reminder id.' },
       content: { type: 'string', description: 'New reminder content.' },
+      render_mode: {
+        type: 'string',
+        enum: ['markdown', 'plain'],
+        description: 'Optional render mode override. Defaults to preserving current mode.',
+      },
     },
   },
   argsValidation: 'dominds',
@@ -601,19 +625,30 @@ export const updateReminderTool: FuncTool = {
     const contentValue = args['content'];
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return toolFailure(t.reminderContentEmpty);
+    const requestedRenderMode = args['render_mode'];
+    const reminderRenderMode =
+      requestedRenderMode === undefined
+        ? reminder.renderMode
+        : parseReminderRenderMode(requestedRenderMode);
+    if (reminderRenderMode === null) {
+      return toolFailure(t.invalidFormatUpdate);
+    }
 
     const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
     if (contextHealthLevel === undefined) {
       const stripResult = removeContinuationPackageReminderMeta(reminder?.meta);
       if (stripResult.changed) {
         if (resolved.target.source === 'dialog') {
-          dlg.updateReminder(resolved.target.index, reminderContent, stripResult.nextMeta);
+          dlg.updateReminder(resolved.target.index, reminderContent, stripResult.nextMeta, {
+            renderMode: reminderRenderMode,
+          });
         } else {
           await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
             reminders[resolved.target.index] = {
               ...reminders[resolved.target.index],
               content: reminderContent,
               meta: stripResult.nextMeta,
+              renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
             };
           });
           dlg.touchReminders();
@@ -621,12 +656,15 @@ export const updateReminderTool: FuncTool = {
         return formatToolActionResult(language, 'updated');
       }
       if (resolved.target.source === 'dialog') {
-        dlg.updateReminder(resolved.target.index, reminderContent);
+        dlg.updateReminder(resolved.target.index, reminderContent, undefined, {
+          renderMode: reminderRenderMode,
+        });
       } else {
         await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
           reminders[resolved.target.index] = {
             ...reminders[resolved.target.index],
             content: reminderContent,
+            renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
           };
         });
         dlg.touchReminders();
@@ -641,13 +679,16 @@ export const updateReminderTool: FuncTool = {
     });
 
     if (resolved.target.source === 'dialog') {
-      dlg.updateReminder(resolved.target.index, reminderContent, reminderMeta);
+      dlg.updateReminder(resolved.target.index, reminderContent, reminderMeta, {
+        renderMode: reminderRenderMode,
+      });
     } else {
       await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
         reminders[resolved.target.index] = {
           ...reminders[resolved.target.index],
           content: reminderContent,
           meta: reminderMeta,
+          renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
         };
       });
       dlg.touchReminders();

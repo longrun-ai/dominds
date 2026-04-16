@@ -183,6 +183,7 @@ function toReminderState(reminder: Reminder): DomindsAppReminderState {
     content: reminder.content,
     meta: extractOwnerMeta(reminder.meta),
     echoback: reminder.echoback,
+    renderMode: reminder.renderMode ?? 'markdown',
   };
 }
 
@@ -228,6 +229,7 @@ async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
     reminder_id: reminder.id,
     echoback: reminderEchoBackEnabled(reminder),
     scope: reminder.scope,
+    renderMode: reminder.renderMode ?? 'markdown',
   }));
   const evt: FullRemindersEvent = { type: 'full_reminders_update', reminders };
   postDialogEvent(dlg, evt);
@@ -364,7 +366,10 @@ export async function applyAppReminderRequests(
           owner,
           buildAppReminderMeta(descriptor, result.reminder.meta),
           normalizeInsertPosition(dlg.reminders.length, result.position),
-          { echoback: result.reminder.echoback },
+          {
+            echoback: result.reminder.echoback,
+            renderMode: result.reminder.renderMode ?? 'markdown',
+          },
         );
         changed = true;
         break;
@@ -380,7 +385,11 @@ export async function applyAppReminderRequests(
           target.index,
           result.reminder.content,
           buildAppReminderMeta(descriptor, result.reminder.meta),
-          { echoback: result.reminder.echoback },
+          {
+            echoback: result.reminder.echoback,
+            // Preserve the existing render mode when the app does not explicitly override it.
+            renderMode: result.reminder.renderMode ?? target.reminder.renderMode ?? 'markdown',
+          },
         );
         changed = true;
         break;

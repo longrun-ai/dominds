@@ -112,7 +112,19 @@ function parseReminderRequest(value: unknown): DomindsAppReminderApplyRequest {
     if (echoback === null) {
       throw new Error('Invalid app tool reminder request: upsert.echoback must be boolean');
     }
-    return { kind: 'upsert', ownerRef, content, meta, position, echoback };
+    const renderModeRaw = value['renderMode'];
+    const renderMode =
+      renderModeRaw === undefined
+        ? undefined
+        : renderModeRaw === 'plain' || renderModeRaw === 'markdown'
+          ? renderModeRaw
+          : null;
+    if (renderMode === null) {
+      throw new Error(
+        'Invalid app tool reminder request: upsert.renderMode must be plain|markdown',
+      );
+    }
+    return { kind: 'upsert', ownerRef, content, meta, position, echoback, renderMode };
   }
   throw new Error(`Invalid app tool reminder request kind: ${String(kind)}`);
 }
@@ -168,7 +180,11 @@ function isReminderState(value: unknown): value is DomindsAppReminderState {
   const meta = value['meta'];
   if (meta !== undefined && !isJsonValue(meta)) return false;
   const echoback = value['echoback'];
-  return echoback === undefined || typeof echoback === 'boolean';
+  const renderMode = value['renderMode'];
+  return (
+    (echoback === undefined || typeof echoback === 'boolean') &&
+    (renderMode === undefined || renderMode === 'plain' || renderMode === 'markdown')
+  );
 }
 
 function isReminderApplyResult(value: unknown): value is DomindsAppReminderApplyResult {

@@ -122,9 +122,11 @@ const FUNC_TOOL_ARG_ALIASES: Readonly<Record<string, Readonly<Record<string, str
 export interface ReminderOptions {
   readonly echoback?: boolean;
   readonly scope?: ReminderScope;
+  readonly renderMode?: ReminderRenderMode;
 }
 
 export type ReminderScope = 'dialog' | 'personal' | 'agent_shared';
+export type ReminderRenderMode = 'plain' | 'markdown';
 
 export type ReminderPriority = 'high' | 'medium' | 'low';
 
@@ -141,6 +143,7 @@ export interface Reminder extends ReminderOptions {
   readonly meta?: JsonValue;
   readonly createdAt?: string;
   readonly priority?: ReminderPriority;
+  readonly renderMode?: ReminderRenderMode;
 }
 
 export function reminderEchoBackEnabled(reminder: Reminder): boolean {
@@ -178,6 +181,7 @@ export function materializeReminder(
     scope?: ReminderScope;
     createdAt?: string;
     priority?: ReminderPriority;
+    renderMode?: ReminderRenderMode;
   }>,
 ): Reminder {
   return {
@@ -189,6 +193,7 @@ export function materializeReminder(
     scope: input.scope ?? 'dialog',
     createdAt: input.createdAt,
     priority: input.priority,
+    renderMode: input.renderMode ?? 'markdown',
   };
 }
 
@@ -202,6 +207,7 @@ export function cloneReminder(reminder: Reminder): Reminder {
     scope: reminder.scope,
     createdAt: reminder.createdAt,
     priority: reminder.priority,
+    renderMode: reminder.renderMode,
   });
 }
 

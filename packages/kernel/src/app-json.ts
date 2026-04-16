@@ -437,6 +437,7 @@ export type DomindsAppReminderState = Readonly<{
   content: string;
   meta?: JsonValue;
   echoback?: boolean;
+  renderMode?: 'plain' | 'markdown';
 }>;
 
 export type DomindsAppReminderApplyRequest = Readonly<
@@ -447,6 +448,7 @@ export type DomindsAppReminderApplyRequest = Readonly<
       meta?: JsonValue;
       position?: number;
       echoback?: boolean;
+      renderMode?: 'plain' | 'markdown';
     }
   | {
       kind: 'delete';

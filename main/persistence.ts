@@ -545,6 +545,7 @@ function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {
     meta: reminder.meta,
     echoback: reminder.echoback,
     scope: reminder.scope ?? 'dialog',
+    renderMode: reminder.renderMode ?? 'markdown',
     createdAt: reminder.createdAt ?? formatUnifiedTimestamp(new Date()),
     priority: reminder.priority ?? 'medium',
   };
@@ -558,6 +559,7 @@ function cloneReminderSnapshot(snapshot: ReminderSnapshotItem): ReminderSnapshot
     meta: snapshot.meta,
     echoback: snapshot.echoback,
     scope: snapshot.scope,
+    renderMode: snapshot.renderMode,
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
   };
@@ -1391,6 +1393,10 @@ function isReminderScope(value: unknown): value is 'dialog' | 'personal' | 'agen
   return value === 'dialog' || value === 'personal' || value === 'agent_shared';
 }
 
+function isReminderRenderMode(value: unknown): value is 'plain' | 'markdown' {
+  return value === 'plain' || value === 'markdown';
+}
+
 function isReminderStateFile(value: unknown): value is ReminderStateFile {
   if (!isRecord(value)) return false;
   if (!Array.isArray(value.reminders)) return false;
@@ -1402,6 +1408,7 @@ function isReminderStateFile(value: unknown): value is ReminderStateFile {
     if (entry.ownerName !== undefined && typeof entry.ownerName !== 'string') return false;
     if (entry.echoback !== undefined && typeof entry.echoback !== 'boolean') return false;
     if (entry.scope !== undefined && !isReminderScope(entry.scope)) return false;
+    if (entry.renderMode !== undefined && !isReminderRenderMode(entry.renderMode)) return false;
     if (typeof entry.createdAt !== 'string') return false;
     if (!isReminderPriority(entry.priority)) return false;
     return true;
@@ -5623,6 +5630,9 @@ export class DialogPersistence {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const remindersFilePath = path.join(dialogPath, 'reminders.json');
+      // The dialog directory must already exist from the normal dialog lifecycle.
+      // Do not create it here just to save reminders: missing directories should stay loud
+      // so stale-path/status-transition bugs cannot silently recreate an old dialog location.
 
       const reminderState: ReminderStateFile = {
         reminders: reminders.map((r) => ({
@@ -5632,6 +5642,7 @@ export class DialogPersistence {
           meta: r.meta,
           echoback: r.echoback,
           scope: r.scope ?? 'dialog',
+          renderMode: r.renderMode ?? 'markdown',
           createdAt: r.createdAt ?? formatUnifiedTimestamp(new Date()),
           priority: r.priority ?? 'medium',
         })),
@@ -5692,6 +5703,7 @@ export class DialogPersistence {
             meta: r.meta,
             echoback: r.echoback,
             scope: r.scope ?? 'dialog',
+            renderMode: r.renderMode ?? 'markdown',
             createdAt: r.createdAt,
             priority: r.priority,
           });

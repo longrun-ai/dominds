@@ -1737,6 +1737,7 @@ export const shellCmdTool: FuncTool = {
         owner: shellCmdReminderOwner,
         meta: reminderMeta,
         scope: 'agent_shared',
+        renderMode: 'markdown',
       });
       try {
         await mutateAgentSharedReminders(dlg.agentId, (reminders) => {

@@ -656,6 +656,7 @@ export abstract class Dialog {
       meta,
       echoback: options?.echoback,
       scope: options?.scope ?? 'dialog',
+      renderMode: options?.renderMode,
     });
     const insertIndex = position !== undefined ? position : this.reminders.length;
     if (insertIndex < 0 || insertIndex > this.reminders.length) {
@@ -701,6 +702,7 @@ export abstract class Dialog {
       scope: oldReminder.scope,
       createdAt: oldReminder.createdAt,
       priority: oldReminder.priority,
+      renderMode: options?.renderMode ?? oldReminder.renderMode,
     });
     this.reminders[index] = updatedReminder;
     this.touchReminders();
@@ -785,6 +787,7 @@ export abstract class Dialog {
               scope: reminder.scope,
               createdAt: reminder.createdAt,
               priority: reminder.priority,
+              renderMode: reminder.renderMode,
             });
             const contentChanged = updatedReminder.content !== reminder.content;
             const metaChanged = updatedReminder.meta !== reminder.meta;
@@ -849,6 +852,7 @@ export abstract class Dialog {
       reminder_id: r.id,
       echoback: reminderEchoBackEnabled(r),
       scope: r.scope,
+      renderMode: r.renderMode ?? 'markdown',
     }));
 
     // Emit full_reminders_update event with complete reminder list including metadata

@@ -94,6 +94,7 @@ type PrimingReminderSnapshot = {
   meta?: JsonValue;
   echoback?: boolean;
   scope?: 'dialog' | 'personal' | 'agent_shared';
+  renderMode?: 'plain' | 'markdown';
   createdAt?: string;
   priority?: PrimingReminderPriority;
 };
@@ -284,6 +285,10 @@ function parseReminderSnapshots(
     if (createdAt !== undefined && typeof createdAt !== 'string') {
       throw new Error(`${context}.createdAt must be a string when provided`);
     }
+    const renderMode = item['renderMode'];
+    if (renderMode !== undefined && renderMode !== 'plain' && renderMode !== 'markdown') {
+      throw new Error(`${context}.renderMode must be "plain" or "markdown" when provided`);
+    }
     const priority = parseReminderPriority(item['priority'], context);
     reminders.push({
       id: typeof id === 'string' ? id : undefined,
@@ -293,6 +298,7 @@ function parseReminderSnapshots(
       echoback,
       scope:
         scope === 'dialog' || scope === 'personal' || scope === 'agent_shared' ? scope : undefined,
+      renderMode: renderMode === 'plain' || renderMode === 'markdown' ? renderMode : undefined,
       createdAt: typeof createdAt === 'string' ? createdAt : undefined,
       priority,
     });
@@ -309,6 +315,7 @@ function reminderToSnapshot(reminder: Reminder): PrimingReminderSnapshot {
     meta: reminder.meta,
     echoback: reminder.echoback,
     scope: reminder.scope,
+    renderMode: reminder.renderMode ?? 'markdown',
     createdAt: reminder.createdAt,
     priority: reminder.priority,
   };
@@ -332,6 +339,7 @@ function materializeReminderSnapshot(snapshot: PrimingReminderSnapshot, context:
     meta: snapshot.meta,
     echoback: snapshot.echoback,
     scope: snapshot.scope,
+    renderMode: snapshot.renderMode ?? 'markdown',
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
   });

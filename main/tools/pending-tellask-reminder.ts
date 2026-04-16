@@ -245,7 +245,9 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
       if (pending.length === 0) {
         return false;
       }
-      dlg.addReminder(content, pendingTellaskReminderOwner, nextMeta, 0);
+      dlg.addReminder(content, pendingTellaskReminderOwner, nextMeta, 0, {
+        renderMode: 'markdown',
+      });
       return true;
     }
 
@@ -260,7 +262,7 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
 
     if (unchanged) return false;
 
-    dlg.updateReminder(reminderIndex, content, nextMeta);
+    dlg.updateReminder(reminderIndex, content, nextMeta, { renderMode: 'markdown' });
     return true;
   });
 }

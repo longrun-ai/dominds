@@ -104,7 +104,10 @@ import {
   type DialogViewportPanelState,
 } from './dominds-dialog-container.js';
 import './dominds-docs-panel';
-import { renderDomindsMarkdown } from './dominds-markdown-render';
+import {
+  postprocessRenderedDomindsMarkdown,
+  renderDomindsMarkdown,
+} from './dominds-markdown-render';
 import './dominds-q4h-input';
 import type { DomindsQ4HInput, Q4HQuestion } from './dominds-q4h-input';
 import './dominds-q4h-panel';
@@ -116,6 +119,7 @@ import { DomindsTeamMembers } from './dominds-team-members.js';
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
+import { getProgressiveExpandLabel, setupProgressiveExpandBehavior } from './progressive-expand';
 import './running-dialog-list.js';
 import { RunningDialogList } from './running-dialog-list.js';
 
@@ -5814,6 +5818,133 @@ export class DomindsApp extends HTMLElement {
         min-width: 0;
       }
 
+      .rem-item-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown {
+        white-space: normal;
+        padding-right: 2px;
+      }
+
+      .rem-item-content.rem-item-content-expandable {
+        overflow-y: hidden;
+      }
+
+      .rem-item-expand-footer {
+        margin-top: 2px;
+        padding-top: 2px;
+        border-top: 1px solid var(--dominds-border, #e0e0e0);
+        display: flex;
+        justify-content: center;
+      }
+
+      .rem-item-expand-footer.is-hidden {
+        display: none;
+      }
+
+      .rem-item-expand-btn {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 86%, var(--dominds-hover, #f8f9fa) 14%);
+        color: var(--dominds-fg, #475569);
+        border-radius: 999px;
+        width: 26px;
+        height: 22px;
+        padding: 0;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .rem-item-expand-btn:hover {
+        background: var(--dominds-hover, #f1f5f9);
+      }
+
+      .rem-item-expand-btn:focus-visible {
+        outline: 2px solid var(--dominds-primary, #007acc);
+        outline-offset: 1px;
+      }
+
+      .rem-item-expand-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        animation: progressive-expand-flash 2.2s ease-in-out infinite;
+        width: 14px;
+        height: 14px;
+        --icon-mask: ${ICON_MASK_URLS.chevronsDown};
+      }
+
+      .rem-item-expand-btn:hover .rem-item-expand-icon,
+      .rem-item-expand-btn:focus-visible .rem-item-expand-icon {
+        animation-play-state: paused;
+      }
+
+
+      .rem-item-content.rem-item-content-markdown > :first-child {
+        margin-top: 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown > :last-child {
+        margin-bottom: 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown p {
+        margin: 0 0 0.55em;
+      }
+
+      .rem-item-content.rem-item-content-markdown ul,
+      .rem-item-content.rem-item-content-markdown ol {
+        margin: 0 0 0.65em 1.25em;
+        padding: 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown li {
+        margin: 0.18em 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown h1,
+      .rem-item-content.rem-item-content-markdown h2,
+      .rem-item-content.rem-item-content-markdown h3,
+      .rem-item-content.rem-item-content-markdown h4,
+      .rem-item-content.rem-item-content-markdown h5,
+      .rem-item-content.rem-item-content-markdown h6 {
+        margin: 0.75em 0 0.4em;
+        line-height: 1.3;
+      }
+
+      .rem-item-content.rem-item-content-markdown blockquote {
+        margin: 0.6em 0;
+        padding-left: 0.75em;
+        border-left: 3px solid color-mix(in srgb, var(--dominds-primary, #007acc) 45%, transparent);
+        color: color-mix(in srgb, var(--dominds-fg, #333333) 78%, var(--dominds-muted, #666666) 22%);
+      }
+
+      .rem-item-content.rem-item-content-markdown code:not([class]) {
+        background: color-mix(in srgb, var(--dominds-hover, #f8f9fa) 86%, var(--dominds-bg, #ffffff) 14%);
+        border-radius: 4px;
+        padding: 0.08em 0.32em;
+        font-size: 0.95em;
+      }
+
+      .rem-item-content.rem-item-content-markdown table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.6em 0;
+      }
+
+      .rem-item-content.rem-item-content-markdown th,
+      .rem-item-content.rem-item-content-markdown td {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        padding: 0.32em 0.45em;
+        text-align: left;
+        vertical-align: top;
+      }
+
       .rem-item-content-loading {
         color: var(--dominds-muted, #666666);
         font-style: italic;
@@ -5842,6 +5973,11 @@ export class DomindsApp extends HTMLElement {
       .rem-item-virtual {
         border-style: dashed;
         background: color-mix(in srgb, var(--dominds-hover) 65%, var(--dominds-bg) 35%);
+      }
+
+      @keyframes progressive-expand-flash {
+        0%, 100% { opacity: 0.46; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(1px); }
       }
 
     `;
@@ -6290,6 +6426,9 @@ export class DomindsApp extends HTMLElement {
       this.toolbarReminders[event.detail.index] = {
         reminder_id: `transient-${String(event.detail.index)}`,
         content: event.detail.content,
+        // `reminder-text` is a legacy/transient frontend text path; preserve its plain-text
+        // semantics unless the caller explicitly opts into markdown.
+        renderMode: event.detail.renderMode ?? 'plain',
       };
       this.updateRemindersWidget();
     });
@@ -11507,17 +11646,15 @@ export class DomindsApp extends HTMLElement {
               : `pending-${String(i + 1)}`;
           const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
           const scopeBadgeHtml = this.renderReminderScopeBadgeHtml(r.scope);
-          return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+          return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div>${this.renderReminderContentHtml(displayContent, r.renderMode)}</div>`;
         })
         .join('');
       const virtualItemsArray = virtualReminders.map((r) => {
         if (!r || !r.content) {
           return `<div class="rem-item rem-item-virtual"><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
         }
-        const meta =
-          r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : undefined;
         const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-        return `<div class="rem-item rem-item-virtual"><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+        return `<div class="rem-item rem-item-virtual">${this.renderReminderContentHtml(displayContent, r.renderMode)}</div>`;
       });
       const virtualItems = virtualItemsArray.join('<hr class="rem-divider">');
 
@@ -11535,6 +11672,8 @@ export class DomindsApp extends HTMLElement {
     }
 
     widgetContent.innerHTML = contentHTML;
+    postprocessRenderedDomindsMarkdown(widgetContent);
+    this.setupReminderProgressiveExpands(widgetContent);
   }
 
   private renderReminderScopeBadgeHtml(scope: ReminderContent['scope'] | undefined): string {
@@ -11555,8 +11694,50 @@ export class DomindsApp extends HTMLElement {
     return content;
   }
 
+  private renderReminderContentHtml(
+    content: string,
+    renderMode: ReminderContent['renderMode'] | undefined,
+  ): string {
+    if (renderMode === 'plain') {
+      return [
+        '<div class="rem-item-body">',
+        `<div class="rem-item-content rem-item-content-expandable">${this.renderReminderPlainHtml(content)}</div>`,
+        '<div class="rem-item-expand-footer is-hidden"><button type="button" class="rem-item-expand-btn"><span class="rem-item-expand-icon icon-mask" aria-hidden="true"></span></button></div>',
+        '</div>',
+      ].join('');
+    }
+    return [
+      '<div class="rem-item-body">',
+      `<div class="rem-item-content rem-item-content-markdown rem-item-content-expandable markdown-content">${renderDomindsMarkdown(content, { kind: 'chat' })}</div>`,
+      '<div class="rem-item-expand-footer is-hidden"><button type="button" class="rem-item-expand-btn"><span class="rem-item-expand-icon icon-mask" aria-hidden="true"></span></button></div>',
+      '</div>',
+    ].join('');
+  }
+
   private renderReminderPlainHtml(content: string): string {
     return escapeHtml(content).replace(/\n/g, '<br>');
+  }
+
+  private setupReminderProgressiveExpands(widgetContent: HTMLElement): void {
+    const stepParent = widgetContent;
+    const sections = widgetContent.querySelectorAll('.rem-item-body');
+    const label = getProgressiveExpandLabel(this.uiLanguage);
+
+    for (const sectionNode of sections) {
+      if (!(sectionNode instanceof HTMLElement)) continue;
+      const target = sectionNode.querySelector('.rem-item-content') as HTMLElement | null;
+      const footer = sectionNode.querySelector('.rem-item-expand-footer') as HTMLElement | null;
+      const button = sectionNode.querySelector('.rem-item-expand-btn') as HTMLButtonElement | null;
+      if (!target || !footer || !button) continue;
+
+      setupProgressiveExpandBehavior({
+        target,
+        footer,
+        button,
+        stepParent,
+        label,
+      });
+    }
   }
 
   /**

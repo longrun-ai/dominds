@@ -46,6 +46,7 @@ import {
 } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
+import { getProgressiveExpandLabel, setupProgressiveExpandBehavior } from './progressive-expand';
 
 type DialogContext = DialogIdent & {
   status?: DialogStatusKind;
@@ -98,8 +99,6 @@ function isSystemNoticeMarkdownContent(value: string): boolean {
   return trimmed.startsWith('【系统提示】') || trimmed.startsWith('[System notice]');
 }
 
-const CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX = 120;
-const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
 const AUTO_SCROLL_FOLLOW_THRESHOLD_PX = 32;
 const AUTO_SCROLL_WHEEL_RESISTANCE_PX = 56;
 const AUTO_SCROLL_WHEEL_DECAY_MS = 520;
@@ -203,7 +202,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private toolResultImageStatusElByKey = new Map<string, HTMLElement>();
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
-  private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
+  private progressiveExpandCleanupByTarget = new Map<HTMLElement, () => void>();
   private viewportPanelState: ViewportPanelState = { kind: 'hidden' };
 
   // Call-site navigation can be requested before course replay content is rendered.
@@ -1072,6 +1071,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Clean up current state and DOM content
   private cleanup(): void {
+    for (const cleanup of this.progressiveExpandCleanupByTarget.values()) {
+      cleanup();
+    }
+    this.progressiveExpandCleanupByTarget.clear();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearViewportPanel();
@@ -2571,78 +2574,33 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  private getProgressiveExpandLabel(): { text: string; title: string } {
-    if (this.uiLanguage === 'zh') {
-      return { text: '展开更多', title: '展开更多' };
-    }
-    return { text: 'Show more', title: 'Show more' };
-  }
-
   private setupProgressiveExpand(options: {
     target: HTMLElement;
     footer: HTMLElement;
     button: HTMLButtonElement;
+    stepParent: HTMLElement | null;
   }): void {
-    const { target, footer, button } = options;
-    const label = this.getProgressiveExpandLabel();
+    const { target, footer, button, stepParent } = options;
+    const label = getProgressiveExpandLabel(this.uiLanguage);
     button.innerHTML = `
       <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
     `;
-    button.setAttribute('aria-label', label.text);
-    button.title = label.title;
-
-    const collapseToInitial = (): void => {
-      target.style.maxHeight = `${CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX}px`;
-      target.style.overflowY = 'hidden';
-    };
-
-    const expandFully = (): void => {
-      target.style.maxHeight = 'none';
-      target.style.overflowY = 'visible';
-      footer.classList.add('is-hidden');
-    };
-
-    const refreshExpandFooter = (): void => {
-      if (!target.isConnected) return;
-      const overflow = target.scrollHeight > target.clientHeight + 1;
-      if (overflow) {
-        footer.classList.remove('is-hidden');
-        return;
-      }
-      expandFully();
-    };
-
-    button.onclick = () => {
-      const stepPx = Math.max(
-        1,
-        Math.floor(window.innerHeight * CALLING_EXPAND_STEP_VIEWPORT_RATIO),
-      );
-      const nextMaxHeightPx =
-        Math.max(target.clientHeight, CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX) + stepPx;
-      target.style.maxHeight = `${nextMaxHeightPx}px`;
-      target.style.overflowY = 'hidden';
-      requestAnimationFrame(() => {
-        refreshExpandFooter();
+    const previousCleanup = this.progressiveExpandCleanupByTarget.get(target);
+    previousCleanup?.();
+    const cleanup = setupProgressiveExpandBehavior({
+      target,
+      footer,
+      button,
+      stepParent,
+      label,
+      // Dialog blocks can still grow after first render while content streams in. Observe only
+      // the target itself and stop as soon as the first overflow threshold is crossed.
+      observeTargetUntilOverflow: true,
+      onAfterExpandStep: () => {
         this.scrollToBottom();
-      });
-    };
-
-    const previousObserver = this.progressiveExpandObserverByTarget.get(target);
-    if (previousObserver) {
-      previousObserver.disconnect();
-    }
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => {
-        refreshExpandFooter();
-      });
-      observer.observe(target);
-      this.progressiveExpandObserverByTarget.set(target, observer);
-    }
-
-    collapseToInitial();
-    requestAnimationFrame(() => {
-      refreshExpandFooter();
+      },
     });
+    this.progressiveExpandCleanupByTarget.set(target, cleanup);
   }
 
   private setupCallingProgressiveExpand(section: HTMLElement): void {
@@ -2650,7 +2608,17 @@ export class DomindsDialogContainer extends HTMLElement {
     const footer = section.querySelector('.calling-expand-footer') as HTMLElement | null;
     const button = section.querySelector('.calling-expand-btn') as HTMLButtonElement | null;
     if (!content || !footer || !button) return;
-    this.setupProgressiveExpand({ target: content, footer, button });
+    const stepParent =
+      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    // Main dialog progressive expansion is keyed to the explicit dialog scroll container.
+    // Humans resize this region indirectly by resizing the browser/app layout, so it is the
+    // intended parent height for expansion steps.
+    this.setupProgressiveExpand({
+      target: content,
+      footer,
+      button,
+      stepParent,
+    });
   }
 
   private setupFuncCallArgsProgressiveExpand(section: HTMLElement): void {
@@ -2662,7 +2630,9 @@ export class DomindsDialogContainer extends HTMLElement {
       '.func-call-arguments-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    this.setupProgressiveExpand({ target, footer, button });
+    const stepParent =
+      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupFuncCallResultProgressiveExpand(section: HTMLElement): void {
@@ -2672,7 +2642,9 @@ export class DomindsDialogContainer extends HTMLElement {
       '.func-call-result-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    this.setupProgressiveExpand({ target, footer, button });
+    const stepParent =
+      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupTellaskResponseProgressiveExpand(section: HTMLElement): void {
@@ -2680,7 +2652,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const footer = section.querySelector('.teammate-expand-footer') as HTMLElement | null;
     const button = section.querySelector('.teammate-expand-btn') as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    this.setupProgressiveExpand({ target, footer, button });
+    const stepParent =
+      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupUiOnlyMarkdownProgressiveExpand(section: HTMLElement): void {
@@ -2690,7 +2664,9 @@ export class DomindsDialogContainer extends HTMLElement {
       '.ui-only-markdown-expand-btn',
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    this.setupProgressiveExpand({ target, footer, button });
+    const stepParent =
+      this.parentElement instanceof HTMLElement ? this.parentElement : this.scrollContainer;
+    this.setupProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private handleToolCallStart(

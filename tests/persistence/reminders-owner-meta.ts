@@ -61,6 +61,10 @@ async function main(): Promise<void> {
     assert.ok(registeredAppOwner, 'Expected app reminder owner to be registered');
 
     const dialogId = new DialogID('11/22/33334444');
+    // This test writes reminder state directly for a synthetic dialog id without going through
+    // the normal dialog persistence bootstrap. Create the fixture directory explicitly here;
+    // production reminder persistence must not recreate missing dialog directories on demand.
+    await fs.mkdir(DialogPersistence.getDialogEventsPath(dialogId), { recursive: true });
     await DialogPersistence._saveReminderState(dialogId, [
       materializeReminder({ content: 'MCP lease reminder', owner: mcpLeaseOwner }),
       materializeReminder({
@@ -83,9 +87,9 @@ async function main(): Promise<void> {
           },
           workflow: 'playwright_interactive_manual',
         },
+        renderMode: 'plain',
       }),
     ]);
-
     const remindersPath = path.join(
       sandboxDir,
       '.dialogs',
@@ -111,6 +115,7 @@ async function main(): Promise<void> {
 
     assertRecord(reminders[2]);
     assert.equal(reminders[2]['ownerName'], appOwnerName);
+    assert.equal(reminders[2]['renderMode'], 'plain');
     assertRecord(reminders[2]['meta']);
     assert.equal(reminders[2]['meta']['appId'], appId);
     assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
@@ -133,6 +138,7 @@ async function main(): Promise<void> {
     assert.equal(loaded[1].meta['pid'], 123);
     assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
     assert.equal(loaded[2].owner.name, appOwnerName);
+    assert.equal(loaded[2].renderMode, 'plain');
     assertRecord(loaded[2].meta);
     assert.equal(loaded[2].meta['appId'], appId);
     assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');

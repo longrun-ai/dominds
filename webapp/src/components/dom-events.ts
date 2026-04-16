@@ -33,6 +33,7 @@ export type InputErrorDetail = {
 export type ReminderTextDetail = {
   index: number;
   content: string;
+  renderMode?: 'plain' | 'markdown';
 };
 
 export type DialogHierarchyToggleDetail = {
