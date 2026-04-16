@@ -85,6 +85,11 @@ async function main(): Promise<void> {
         /🟢 node -e "console\.log\('daemon-ready'\); setInterval\(\(\) => \{\}, 10000\)" 运行中/,
       );
       assert.match(rendered.content, /状态快照/);
+      const stderrIndex = rendered.content.indexOf('stderr 缓冲区快照');
+      const stdoutIndex = rendered.content.indexOf('stdout 缓冲区快照');
+      assert.ok(stderrIndex >= 0);
+      assert.ok(stdoutIndex >= 0);
+      assert.ok(stderrIndex < stdoutIndex);
       assert.match(rendered.content, /stdout 缓冲区快照/);
       assert.match(rendered.content, /daemon-ready/);
       assert.match(rendered.content, /系统维护 \/ 实时真源 \/ 不可删除/);

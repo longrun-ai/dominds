@@ -1262,14 +1262,14 @@ Shell: ${daemon.shell}
 已运行: ${uptime}s
 启动时间: ${formatUnifiedTimestamp(daemon.startTime)}${stdoutNotice}${stderrNotice}
 
-stdout 缓冲区快照：
-${fenceConsole}
-${stdoutContent}
-${fenceEnd}
-
 stderr 缓冲区快照：
 ${fenceConsole}
 ${stderrContent}
+${fenceEnd}
+
+stdout 缓冲区快照：
+${fenceConsole}
+${stdoutContent}
 ${fenceEnd}`
     : `Daemon PID: ${daemon.pid}
 Command: ${daemon.command}
@@ -1278,14 +1278,14 @@ Lifecycle status: ${status}
 Uptime: ${uptime}s
 Started at: ${formatUnifiedTimestamp(daemon.startTime)}${stdoutNotice}${stderrNotice}
 
-Stdout buffer snapshot:
-${fenceConsole}
-${stdoutContent}
-${fenceEnd}
-
 Stderr buffer snapshot:
 ${fenceConsole}
 ${stderrContent}
+${fenceEnd}
+
+Stdout buffer snapshot:
+${fenceConsole}
+${stdoutContent}
 ${fenceEnd}`;
 }
 
@@ -1439,14 +1439,14 @@ Shell: ${daemon.shell}
 已运行: ${uptime}s
 启动时间: ${formatUnifiedTimestamp(daemon.startTime)}${scrollNotice}
 
-stdout 缓冲区快照：
-${fenceConsole}
-${stdoutContent}
-${fenceEnd}
-
 stderr 缓冲区快照：
 ${fenceConsole}
 ${stderrContent}
+${fenceEnd}
+
+stdout 缓冲区快照：
+${fenceConsole}
+${stdoutContent}
 ${fenceEnd}`
     : `Daemon PID: ${daemon.pid}
 Command: ${daemon.command}
@@ -1455,14 +1455,14 @@ Lifecycle status: ${status}
 Uptime: ${uptime}s
 Started at: ${formatUnifiedTimestamp(daemon.startTime)}${scrollNotice}
 
-Stdout buffer snapshot:
-${fenceConsole}
-${stdoutContent}
-${fenceEnd}
-
 Stderr buffer snapshot:
 ${fenceConsole}
 ${stderrContent}
+${fenceEnd}
+
+Stdout buffer snapshot:
+${fenceConsole}
+${stdoutContent}
 ${fenceEnd}`;
 }
 
