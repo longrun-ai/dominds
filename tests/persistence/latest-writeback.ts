@@ -234,6 +234,68 @@ async function main(): Promise<void> {
       latestDuringActiveGeneration.pendingCourseStartPrompt?.msgId,
       'pending-active-course-start-msg',
     );
+
+    // Invariant 8: a finished generation must not keep poisoning later startNewCourse writes.
+    // activeGenSeq is monotonic across generations and remains defined after finish, so the
+    // runtime must key "currently generating" off live generation state instead.
+    const settledDialogId = new DialogID('72/6c/fc0a2381');
+    const settledMetadata: RootDialogMetadataFile = {
+      id: settledDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-settled-course.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:00.000Z')),
+    };
+    await DialogPersistence.saveRootDialogMetadata(settledDialogId, settledMetadata, 'running');
+    await DialogPersistence.mutateDialogLatest(settledDialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:01.000Z')),
+        status: 'active',
+        generating: false,
+        displayState: { kind: 'proceeding' },
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
+    const settledStore = new DiskFileDialogStore(settledDialogId);
+    const settledDialog = new RootDialog(
+      settledStore,
+      'plans/latest-writeback-settled-course.tsk',
+      settledDialogId,
+      'tester',
+    );
+    await settledDialog.notifyGeneratingStart('settled-course-msg');
+    await settledDialog.notifyGeneratingFinish();
+    await settledStore.startNewCourse(settledDialog, {
+      content: 'continue in course two after the previous generation already finished',
+      msgId: 'pending-settled-course-start-msg',
+      grammar: 'markdown',
+      origin: 'runtime',
+      userLanguageCode: 'en',
+    });
+    const latestAfterSettledGeneration = await DialogPersistence.loadDialogLatest(settledDialogId);
+    assert.ok(
+      latestAfterSettledGeneration,
+      'Expected latest after queueing a new course on a settled dialog',
+    );
+    assert.equal(latestAfterSettledGeneration.generating, false);
+    assert.deepEqual(latestAfterSettledGeneration.displayState, {
+      kind: 'stopped',
+      reason: { kind: 'pending_course_start' },
+      continueEnabled: true,
+    });
+    assert.deepEqual(latestAfterSettledGeneration.executionMarker, {
+      kind: 'interrupted',
+      reason: { kind: 'pending_course_start' },
+    });
+    assert.equal(
+      latestAfterSettledGeneration.pendingCourseStartPrompt?.msgId,
+      'pending-settled-course-start-msg',
+    );
   });
 }
 

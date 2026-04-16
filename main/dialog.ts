@@ -912,6 +912,10 @@ export abstract class Dialog {
     return this._activeGenCourse;
   }
 
+  public get hasActiveGeneration(): boolean {
+    return this._activeGenCourse !== undefined;
+  }
+
   /**
    * Check if generation has started for the current course.
    * Used to ensure subdialog_final_response_evt arrives after parent events.

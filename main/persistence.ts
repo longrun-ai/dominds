@@ -2782,7 +2782,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async startNewCourse(dialog: Dialog, newCoursePrompt: DialogPrompt): Promise<void> {
     const previousCourse = dialog.currentCourse;
     const newCourse = previousCourse + 1;
-    const isGenerationActive = dialog.activeGenSeqOrUndefined !== undefined;
+    const isGenerationActive = dialog.hasActiveGeneration;
     if (newCoursePrompt.origin !== 'runtime') {
       throw new Error(
         `startNewCourse invariant violation: pending new-course prompt must have runtime origin for dialog=${dialog.id.valueOf()}`,
