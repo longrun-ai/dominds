@@ -143,6 +143,14 @@ type ToolsWidgetSnapshot = {
   timestamp: string;
 };
 
+type ReminderSectionKind = 'virtual' | 'numbered';
+
+type ReminderRenderEntry = Readonly<{
+  key: string;
+  fingerprint: string;
+  html: string;
+}>;
+
 type AuthState =
   | { kind: 'uninitialized' }
   | { kind: 'none' }
@@ -651,7 +659,7 @@ export class DomindsApp extends HTMLElement {
   private toolsWidgetWidthPx: number = 380;
   private toolsWidgetHeightPx: number = 320;
   private sidebarResizeCleanup: (() => void) | null = null;
-  private reminderProgressiveExpandCleanups: Array<() => void> = [];
+  private reminderProgressiveExpandCleanupByKey = new Map<string, () => void>();
   private readonly boundOnWindowResize = (): void => {
     this.restoreViewportScopedResizableSizes();
     this.setupSidebarResizePersistence();
@@ -1912,11 +1920,7 @@ export class DomindsApp extends HTMLElement {
       this.sidebarResizeCleanup();
       this.sidebarResizeCleanup = null;
     }
-
-    for (const cleanup of this.reminderProgressiveExpandCleanups) {
-      cleanup();
-    }
-    this.reminderProgressiveExpandCleanups = [];
+    this.cleanupAllReminderProgressiveExpands();
   }
 
   /**
@@ -6428,17 +6432,6 @@ export class DomindsApp extends HTMLElement {
       this.updateRemindersWidget();
     });
 
-    this.shadowRoot.addEventListener('reminder-text', (event) => {
-      this.toolbarReminders[event.detail.index] = {
-        reminder_id: `transient-${String(event.detail.index)}`,
-        content: event.detail.content,
-        // `reminder-text` is a legacy/transient frontend text path; preserve its plain-text
-        // semantics unless the caller explicitly opts into markdown.
-        renderMode: event.detail.renderMode ?? 'plain',
-      };
-      this.updateRemindersWidget();
-    });
-
     // Dialog list expand (lazy subdialog loading) across all list views
     // Policy: unresolved nodes always fetch from backend; no preloaded global cache.
     // The list event must carry an already-known persisted status. Expands are list-scoped
@@ -10620,10 +10613,7 @@ export class DomindsApp extends HTMLElement {
 
   private closeRemindersWidget(): void {
     this.remindersWidgetVisible = false;
-    for (const cleanup of this.reminderProgressiveExpandCleanups) {
-      cleanup();
-    }
-    this.reminderProgressiveExpandCleanups = [];
+    this.cleanupAllReminderProgressiveExpands();
     const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     if (widget) widget.remove();
     this.updateToolbarDisplay();
@@ -11512,18 +11502,12 @@ export class DomindsApp extends HTMLElement {
    * Update reminder count badge based on actual operations
    */
   private updateReminderCountBadge(): void {
-    // Update count badge in toolbar to show actual reminder count
+    // Update the toolbar badge only. Widget DOM patching is handled by renderRemindersWidget().
     const remBtnCount = this.shadowRoot?.querySelector(
       '#navibar-reminders-toggle .reminders-count',
     ) as HTMLElement;
     if (remBtnCount) {
       remBtnCount.textContent = String(this.toolbarReminders.length);
-    }
-
-    // If widget is visible, update the header count and re-render content
-    if (this.remindersWidgetVisible) {
-      // Re-render the widget content to ensure synchronization.
-      this.renderRemindersWidget();
     }
   }
 
@@ -11635,62 +11619,27 @@ export class DomindsApp extends HTMLElement {
     if (widgetTitle) {
       widgetTitle.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
     }
-
-    for (const cleanup of this.reminderProgressiveExpandCleanups) {
-      cleanup();
-    }
-    this.reminderProgressiveExpandCleanups = [];
-
+    const shell = this.ensureRemindersWidgetShell(widgetContent);
     const numberedReminders = this.toolbarReminders.filter((r) => r && r.echoback !== false);
     const virtualReminders = this.toolbarReminders.filter((r) => r && r.echoback === false);
+    const t = getUiStrings(this.uiLanguage);
+    const virtualEntries = virtualReminders.map((r, i) =>
+      this.buildReminderRenderEntry('virtual', r, i, t),
+    );
+    const numberedEntries = numberedReminders.map((r, i) =>
+      this.buildReminderRenderEntry('numbered', r, i, t),
+    );
+    this.assertUniqueReminderRenderKeys('virtual', virtualEntries);
+    this.assertUniqueReminderRenderKeys('numbered', numberedEntries);
 
-    // Generate content HTML once
-    let contentHTML = '';
-    if (numberedReminders.length === 0 && virtualReminders.length === 0) {
-      const t = getUiStrings(this.uiLanguage);
-      contentHTML = `<div class="reminders-widget-empty">${t.noReminders}</div>`;
-    } else {
-      const t = getUiStrings(this.uiLanguage);
-      const numberedItems = numberedReminders
-        .map((r, i) => {
-          if (!r || !r.content) {
-            const pendingId = `pending-${String(i + 1)}`;
-            return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(pendingId)}">${this.escapeHtml(pendingId)}</div></div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
-          }
-          const reminderId =
-            typeof r.reminder_id === 'string' && r.reminder_id.trim() !== ''
-              ? r.reminder_id
-              : `pending-${String(i + 1)}`;
-          const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-          const scopeBadgeHtml = this.renderReminderScopeBadgeHtml(r.scope);
-          return `<div class="rem-item"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div>${this.renderReminderContentHtml(displayContent, r.renderMode)}</div>`;
-        })
-        .join('');
-      const virtualItemsArray = virtualReminders.map((r) => {
-        if (!r || !r.content) {
-          return `<div class="rem-item rem-item-virtual"><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
-        }
-        const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
-        return `<div class="rem-item rem-item-virtual">${this.renderReminderContentHtml(displayContent, r.renderMode)}</div>`;
-      });
-      const virtualItems = virtualItemsArray.join('<hr class="rem-divider">');
+    shell.empty.textContent = t.noReminders;
+    shell.empty.hidden = virtualEntries.length > 0 || numberedEntries.length > 0;
+    shell.virtualSection.hidden = virtualEntries.length < 1;
+    shell.numberedSection.hidden = numberedEntries.length < 1;
+    shell.sectionDivider.hidden = virtualEntries.length < 1 || numberedEntries.length < 1;
 
-      const sections: string[] = [];
-      if (virtualItems.length > 0) {
-        sections.push(`<div class="rem-section">${virtualItems}</div>`);
-      }
-      if (numberedItems.length > 0) {
-        if (virtualItems.length > 0) {
-          sections.push('<hr class="rem-divider rem-divider-section">');
-        }
-        sections.push(`<div class="rem-section">${numberedItems}</div>`);
-      }
-      contentHTML = sections.join('');
-    }
-
-    widgetContent.innerHTML = contentHTML;
-    postprocessRenderedDomindsMarkdown(widgetContent);
-    this.setupReminderProgressiveExpands(widgetContent);
+    this.patchReminderSection(shell.virtualSection, virtualEntries, widgetContent);
+    this.patchReminderSection(shell.numberedSection, numberedEntries, widgetContent);
   }
 
   private renderReminderScopeBadgeHtml(scope: ReminderContent['scope'] | undefined): string {
@@ -11735,30 +11684,232 @@ export class DomindsApp extends HTMLElement {
     return escapeHtml(content).replace(/\n/g, '<br>');
   }
 
-  private setupReminderProgressiveExpands(widgetContent: HTMLElement): void {
-    const stepParent = widgetContent;
-    const sections = widgetContent.querySelectorAll('.rem-item-body');
-    const label = getProgressiveExpandLabel(this.uiLanguage);
+  private ensureRemindersWidgetShell(widgetContent: HTMLElement): Readonly<{
+    empty: HTMLElement;
+    virtualSection: HTMLElement;
+    sectionDivider: HTMLHRElement;
+    numberedSection: HTMLElement;
+  }> {
+    let empty = widgetContent.querySelector('[data-reminders-role="empty"]') as HTMLElement | null;
+    if (!(empty instanceof HTMLElement)) {
+      empty = document.createElement('div');
+      empty.className = 'reminders-widget-empty';
+      empty.setAttribute('data-reminders-role', 'empty');
+      widgetContent.appendChild(empty);
+    }
 
-    for (const sectionNode of sections) {
-      if (!(sectionNode instanceof HTMLElement)) continue;
-      const target = sectionNode.querySelector('.rem-item-content') as HTMLElement | null;
-      const footer = sectionNode.querySelector('.rem-item-expand-footer') as HTMLElement | null;
-      const button = sectionNode.querySelector('.rem-item-expand-btn') as HTMLButtonElement | null;
-      if (!target || !footer || !button) continue;
+    let virtualSection = widgetContent.querySelector(
+      '[data-reminders-role="virtual-section"]',
+    ) as HTMLElement | null;
+    if (!(virtualSection instanceof HTMLElement)) {
+      virtualSection = document.createElement('div');
+      virtualSection.className = 'rem-section rem-section-virtual';
+      virtualSection.setAttribute('data-reminders-role', 'virtual-section');
+      widgetContent.appendChild(virtualSection);
+    }
 
-      const cleanup = setupProgressiveExpandBehavior({
-        target,
-        footer,
-        button,
-        stepParent,
-        label,
-        // Reminder bodies can become long after first paint when a nested code block is expanded.
-        // Track only target self-growth until the first outer overflow appears; never track widget
-        // parent resize for this.
-        observeTargetUntilOverflow: true,
-      });
-      this.reminderProgressiveExpandCleanups.push(cleanup);
+    let sectionDivider = widgetContent.querySelector(
+      '[data-reminders-role="section-divider"]',
+    ) as HTMLHRElement | null;
+    if (!(sectionDivider instanceof HTMLHRElement)) {
+      sectionDivider = document.createElement('hr');
+      sectionDivider.className = 'rem-divider rem-divider-section';
+      sectionDivider.setAttribute('data-reminders-role', 'section-divider');
+      widgetContent.appendChild(sectionDivider);
+    }
+
+    let numberedSection = widgetContent.querySelector(
+      '[data-reminders-role="numbered-section"]',
+    ) as HTMLElement | null;
+    if (!(numberedSection instanceof HTMLElement)) {
+      numberedSection = document.createElement('div');
+      numberedSection.className = 'rem-section rem-section-numbered';
+      numberedSection.setAttribute('data-reminders-role', 'numbered-section');
+      widgetContent.appendChild(numberedSection);
+    }
+
+    // Keep a stable shell order so keyed reminder nodes can be moved inside sections without
+    // root-level leftovers from older renders or partial migrations polluting the widget.
+    const orderedShellNodes: HTMLElement[] = [
+      empty,
+      virtualSection,
+      sectionDivider,
+      numberedSection,
+    ];
+    let rootReferenceNode: ChildNode | null = widgetContent.firstChild;
+    for (const shellNode of orderedShellNodes) {
+      if (shellNode !== rootReferenceNode) {
+        widgetContent.insertBefore(shellNode, rootReferenceNode);
+      }
+      rootReferenceNode = shellNode.nextSibling;
+    }
+    for (const child of Array.from(widgetContent.childNodes)) {
+      if (orderedShellNodes.includes(child as HTMLElement)) continue;
+      child.remove();
+    }
+
+    return {
+      empty,
+      virtualSection,
+      sectionDivider,
+      numberedSection,
+    };
+  }
+
+  private buildReminderRenderEntry(
+    section: ReminderSectionKind,
+    reminder: ReminderContent | undefined,
+    index: number,
+    t: ReturnType<typeof getUiStrings>,
+  ): ReminderRenderEntry {
+    const fallbackId = `pending-${String(index + 1)}`;
+    const reminderId =
+      typeof reminder?.reminder_id === 'string' && reminder.reminder_id.trim() !== ''
+        ? reminder.reminder_id
+        : fallbackId;
+
+    let html: string;
+    if (!reminder || !reminder.content) {
+      const scopeBadgeHtml =
+        section === 'numbered' ? '' : this.renderReminderScopeBadgeHtml(reminder?.scope);
+      const itemClass = section === 'virtual' ? 'rem-item rem-item-virtual' : 'rem-item';
+      html = `<div class="${itemClass}"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
+    } else {
+      const displayContent = this.formatReminderDisplayContent(reminder.content, reminder.meta);
+      const scopeBadgeHtml =
+        section === 'numbered' ? this.renderReminderScopeBadgeHtml(reminder.scope) : '';
+      const itemClass = section === 'virtual' ? 'rem-item rem-item-virtual' : 'rem-item';
+      html = `<div class="${itemClass}"><div class="rem-item-head"><div class="rem-item-number" title="${this.escapeHtml(reminderId)}">${this.escapeHtml(reminderId)}</div>${scopeBadgeHtml}</div>${this.renderReminderContentHtml(displayContent, reminder.renderMode)}</div>`;
+    }
+
+    return {
+      key: `${section}:${reminderId}`,
+      fingerprint: `${this.uiLanguage}\u0000${reminder?.renderRevision ?? `loading:${section}:${reminderId}`}`,
+      html,
+    };
+  }
+
+  private createReminderItemElement(
+    entry: ReminderRenderEntry,
+    widgetContent: HTMLElement,
+  ): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = entry.html;
+    const item = wrapper.firstElementChild;
+    if (!(item instanceof HTMLElement)) {
+      throw new Error(`Reminder render produced no root node for key=${entry.key}`);
+    }
+    item.dataset.reminderKey = entry.key;
+    item.dataset.reminderFingerprint = entry.fingerprint;
+    postprocessRenderedDomindsMarkdown(item);
+    this.setupReminderProgressiveExpandForItem(entry.key, item, widgetContent);
+    return item;
+  }
+
+  private setupReminderProgressiveExpandForItem(
+    key: string,
+    item: HTMLElement,
+    widgetContent: HTMLElement,
+  ): void {
+    this.cleanupReminderProgressiveExpand(key);
+    const target = item.querySelector('.rem-item-content') as HTMLElement | null;
+    const footer = item.querySelector('.rem-item-expand-footer') as HTMLElement | null;
+    const button = item.querySelector('.rem-item-expand-btn') as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    const cleanup = setupProgressiveExpandBehavior({
+      target,
+      footer,
+      button,
+      stepParent: widgetContent,
+      label: getProgressiveExpandLabel(this.uiLanguage),
+      // Reminder bodies can become long after first paint when a nested code block is expanded.
+      // Track only target self-growth until the first outer overflow appears; never track widget
+      // parent resize for this.
+      observeTargetUntilOverflow: true,
+    });
+    this.reminderProgressiveExpandCleanupByKey.set(key, cleanup);
+  }
+
+  private cleanupReminderProgressiveExpand(key: string): void {
+    const cleanup = this.reminderProgressiveExpandCleanupByKey.get(key);
+    if (!cleanup) return;
+    cleanup();
+    this.reminderProgressiveExpandCleanupByKey.delete(key);
+  }
+
+  private cleanupAllReminderProgressiveExpands(): void {
+    for (const cleanup of this.reminderProgressiveExpandCleanupByKey.values()) {
+      cleanup();
+    }
+    this.reminderProgressiveExpandCleanupByKey.clear();
+  }
+
+  private assertUniqueReminderRenderKeys(
+    section: ReminderSectionKind,
+    entries: readonly ReminderRenderEntry[],
+  ): void {
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (seen.has(entry.key)) {
+        throw new Error(`Duplicate reminder render key in ${section} section: ${entry.key}`);
+      }
+      seen.add(entry.key);
+    }
+  }
+
+  private patchReminderSection(
+    section: HTMLElement,
+    entries: readonly ReminderRenderEntry[],
+    widgetContent: HTMLElement,
+  ): void {
+    const existingByKey = new Map<string, HTMLElement>();
+    for (const child of Array.from(section.children)) {
+      if (!(child instanceof HTMLElement)) {
+        child.remove();
+        continue;
+      }
+      if (!child.classList.contains('rem-item')) {
+        child.remove();
+        continue;
+      }
+      const key = child.dataset.reminderKey;
+      if (typeof key === 'string' && key.length > 0) {
+        if (existingByKey.has(key)) {
+          throw new Error(`Duplicate reminder DOM key in widget section: ${key}`);
+        }
+        existingByKey.set(key, child);
+      } else {
+        child.remove();
+      }
+    }
+
+    let referenceNode: ChildNode | null = section.firstChild;
+    for (const entry of entries) {
+      const existing = existingByKey.get(entry.key) ?? null;
+      let item = existing;
+      if (existing !== null && existing.dataset.reminderFingerprint !== entry.fingerprint) {
+        const nextSibling = existing.nextSibling;
+        const wasReferenceNode = existing === referenceNode;
+        this.cleanupReminderProgressiveExpand(entry.key);
+        existing.remove();
+        if (wasReferenceNode) {
+          referenceNode = nextSibling;
+        }
+        item = null;
+      }
+      if (item === null) {
+        item = this.createReminderItemElement(entry, widgetContent);
+        section.insertBefore(item, referenceNode);
+      } else if (item !== referenceNode) {
+        section.insertBefore(item, referenceNode);
+      }
+      referenceNode = item.nextSibling;
+      existingByKey.delete(entry.key);
+    }
+
+    for (const [obsoleteKey, obsoleteNode] of existingByKey.entries()) {
+      this.cleanupReminderProgressiveExpand(obsoleteKey);
+      obsoleteNode.remove();
     }
   }
 

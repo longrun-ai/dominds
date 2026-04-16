@@ -10,7 +10,11 @@ import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
 import { formatReminderItemGuide } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
+import { loadAgentSharedReminders } from '../shared-reminders';
 import {
+  cloneReminder,
+  compareReminderDisplayOrder,
+  computeReminderRenderRevision,
   reminderEchoBackEnabled,
   type JsonValue,
   type Reminder,
@@ -223,10 +227,17 @@ function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
 
 async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
   await dlg.dlgStore.persistReminders(dlg, dlg.reminders);
-  const reminders: ReminderContent[] = dlg.reminders.map((reminder) => ({
+  const sharedReminders = await loadAgentSharedReminders(dlg.agentId);
+  const visibleReminders = [
+    ...dlg.reminders.map((reminder) => cloneReminder(reminder)),
+    ...sharedReminders,
+  ];
+  visibleReminders.sort(compareReminderDisplayOrder);
+  const reminders: ReminderContent[] = visibleReminders.map((reminder) => ({
     content: reminder.content,
     meta: isRecord(reminder.meta) ? reminder.meta : undefined,
     reminder_id: reminder.id,
+    renderRevision: computeReminderRenderRevision(reminder),
     echoback: reminderEchoBackEnabled(reminder),
     scope: reminder.scope,
     renderMode: reminder.renderMode ?? 'markdown',

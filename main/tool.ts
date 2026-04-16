@@ -21,6 +21,7 @@ import type {
 import type { I18nText } from '@longrun-ai/kernel/types/i18n';
 import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { createHash } from 'crypto';
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
 import { Team } from './team';
@@ -209,6 +210,18 @@ export function cloneReminder(reminder: Reminder): Reminder {
     priority: reminder.priority,
     renderMode: reminder.renderMode,
   });
+}
+
+export function computeReminderRenderRevision(reminder: Reminder): string {
+  const payload = JSON.stringify({
+    id: reminder.id,
+    content: reminder.content,
+    meta: reminder.meta ?? null,
+    echoback: reminder.echoback ?? true,
+    scope: reminder.scope ?? 'dialog',
+    renderMode: reminder.renderMode ?? 'markdown',
+  });
+  return `sha256:${createHash('sha256').update(payload, 'utf8').digest('hex')}`;
 }
 
 type ReminderDisplayTimestamp = Readonly<{

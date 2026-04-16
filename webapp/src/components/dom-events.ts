@@ -30,12 +30,6 @@ export type InputErrorDetail = {
   type?: UiToastKind;
 };
 
-export type ReminderTextDetail = {
-  index: number;
-  content: string;
-  renderMode?: 'plain' | 'markdown';
-};
-
 export type ProgressiveExpandContentGrownDetail = {
   reason: 'expand-step' | 'content-growth';
 };
@@ -155,7 +149,6 @@ export interface DomindsCustomEventMap {
   'q4h-select-question': CustomEvent<Q4HSelectQuestionDetail>;
   'q4h-share-link': CustomEvent<Q4HCallSiteNavigationDetail>;
   'reminders-update': CustomEvent<{ reminders: FullRemindersEvent['reminders'] }>;
-  'reminder-text': CustomEvent<ReminderTextDetail>;
   'scroll-to-call-id': CustomEvent<ScrollToCallIdDetail>;
   'scroll-to-call-site': CustomEvent<ScrollToCallSiteDetail>;
   'scroll-to-genseq': CustomEvent<ScrollToGenseqDetail>;

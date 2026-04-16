@@ -366,6 +366,7 @@ export interface ReminderContent {
   content: string;
   meta?: Record<string, unknown>;
   reminder_id: string;
+  renderRevision: string;
   echoback?: boolean;
   scope?: 'dialog' | 'personal' | 'agent_shared';
   renderMode?: 'plain' | 'markdown';

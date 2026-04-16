@@ -59,6 +59,7 @@ import type { JsonValue } from './tool';
 import {
   cloneReminder,
   compareReminderDisplayOrder,
+  computeReminderRenderRevision,
   materializeReminder,
   Reminder,
   reminderEchoBackEnabled,
@@ -850,6 +851,7 @@ export abstract class Dialog {
       content: r.content,
       meta: r.meta as Record<string, unknown> | undefined,
       reminder_id: r.id,
+      renderRevision: computeReminderRenderRevision(r),
       echoback: reminderEchoBackEnabled(r),
       scope: r.scope,
       renderMode: r.renderMode ?? 'markdown',
