@@ -51,14 +51,15 @@ function main(): void {
   const zhMainline = buildPrompt('mainline', 'zh');
   assert.ok(
     zhMainline.includes(
-      '发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，必须显式要求“禁止手写，Dominds 自动注入标记”。',
+      '发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，只描述业务交付结构即可。',
     ),
   );
   assert.ok(
     zhMainline.includes(
-      `当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：\`Dominds 会自动注入回贴标记，禁止手写标记\`；不得要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`）。`,
+      `当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 运行时自动注入。`,
     ),
   );
+  assert.ok(!zhMainline.includes('Dominds 会自动注入回贴标记，禁止手写标记'));
   assert.ok(
     zhMainline.includes(
       '“⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面：内容不可手改；当存在非 0 路进行中诉请时，不可删除，误删会被拒绝并返回引导文案。',
@@ -80,14 +81,15 @@ function main(): void {
   const enMainline = buildPrompt('mainline', 'en');
   assert.ok(
     enMainline.includes(
-      'When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as business body and must not hand-write reply markers; if you specify a reply format, explicitly require “no hand-written markers, Dominds auto-injects markers”.',
+      'When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as business body and must not hand-write reply markers; if you specify a reply format, describe only the business delivery structure.',
     ),
   );
   assert.ok(
     enMainline.includes(
-      `When you define a “reply/delivery format” inside tellask body, you must explicitly include: \`Dominds auto-injects reply markers; do not hand-write markers\`; do not require the responder to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`).`,
+      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the responder to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
     ),
   );
+  assert.ok(!enMainline.includes('Dominds auto-injects reply markers; do not hand-write markers'));
   assert.ok(
     enMainline.includes(
       'The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface: its content is not hand-editable; while any Tellask is still active, it is not deletable, and mistaken deletion will be rejected with guidance.',
@@ -114,7 +116,7 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '若你在正文中给下游写“回贴格式”，必须写明“Dominds 自动注入标记，禁止手写”；不得要求下游手写任何标记。',
+      '若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，运行时会自动注入。',
     ),
   );
   assert.ok(
@@ -152,7 +154,7 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'If you define a reply format for downstream, you must state “Dominds auto-injects markers; do not hand-write them”; do not require downstream to hand-write any marker.',
+      'If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because runtime injects markers automatically.',
     ),
   );
   assert.ok(

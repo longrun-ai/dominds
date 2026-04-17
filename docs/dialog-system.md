@@ -246,9 +246,9 @@ flowchart TD
 **Sideline delivery rule (normative)**:
 
 - If a sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
-- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, and the localized Chinese completion marker in Chinese work language).
+- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
-- **FBR exception**: FBR sideline dialogs are tellask-free (no `tellaskBack`); they must list missing context and return.
+- **FBR exception**: FBR sideline dialogs forbid all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); they must list missing context and return.
 
 **Inter-dialog transfer and markers (normative)**:
 
@@ -259,9 +259,10 @@ flowchart TD
     - Regular completed sideline reply: `【Completed】`
     - FBR sideline reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
   - Chinese work language:
-    - Ask-back reply: `【TellaskBack】`
-    - Regular completed sideline reply: `【Completed】`
-    - FBR sideline reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
+    - Ask-back reply: `【回问诉请】`
+    - Regular completed sideline reply: `【最终完成】`
+    - FBR sideline reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+- If the requester defines a “reply/delivery format” inside the tellask body, keep it to the business delivery structure; do not require responder-side hand-written markers, because runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: a model output from one dialog may be embedded into a runtime template and sent as the body to another dialog.
 

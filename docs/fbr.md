@@ -126,7 +126,7 @@ If the model attempts any other tool/function call, runtime MUST hard-reject it 
 
 ### 4.3 Tellask restriction: none allowed
 
-FBR sideline dialogs MUST NOT issue any teammate Tellasks (including `tellaskBack({ tellaskContent: "..." })` or `askHuman({ tellaskContent: "..." })`).
+FBR sideline dialogs MUST NOT issue any tellask call (including `tellaskBack({ tellaskContent: "..." })`, `tellask({ ... })`, `tellaskSessionless({ ... })`, or `askHuman({ tellaskContent: "..." })`).
 If critical context is missing, the FBR sideline should **list the missing items** and why they block reasoning, then return.
 
 ### 4.4 Output contract (easy to distill)

@@ -242,7 +242,7 @@ flowchart TD
 
 - 只有当所有目标完成时，支线对话才可直接正常回复诉请者对话。
 - 若任何目标未完成或关键信息缺失，必须先用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者对话再继续。
-- **FBR 例外**：FBR 支线对话禁止任何诉请（包括 `tellaskBack`），只能列出缺口与阻塞原因并直接回复。
+- **FBR 例外**：FBR 支线对话禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`），只能列出缺口与阻塞原因并直接回复。
 
 **跨对话传递与标记（强制）**：
 
@@ -256,6 +256,7 @@ flowchart TD
     - 回问诉请回贴：`【TellaskBack】`
     - 常规支线完成回贴：`【Completed】`
     - FBR 回贴：`【FBR-Direct Reply】` 或 `【FBR-Reasoning Only】`
+- 若诉请方在正文中定义“回贴格式/交付格式”，只写业务交付结构即可；不得要求被诉请者手写任何标记，因为这些标记由运行时自动注入。
 - 源对话的模型原始输出（raw）天然保留在源对话持久记录中；跨对话传递不得改写或覆盖该源 raw。
 - 允许将“某对话的模型原文”拼接进运行时模板后，作为传递到另一对话的正文（即模板化传递是规范路径）。
 
