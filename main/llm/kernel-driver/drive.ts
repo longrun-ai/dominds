@@ -11,7 +11,7 @@ import {
   type TellaskCallAnchorRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import { Dialog, RootDialog, SubDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
@@ -807,18 +807,6 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
     });
   }
   return rendered;
-}
-
-function parseUnifiedTimestampMs(ts: string): number | null {
-  const normalized = ts.trim();
-  if (normalized === '') {
-    return null;
-  }
-  const parsed = Date.parse(normalized.replace(' ', 'T'));
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return parsed;
 }
 
 function hasSameReplyDirective(

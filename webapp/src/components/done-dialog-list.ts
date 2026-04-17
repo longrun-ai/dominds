@@ -8,6 +8,7 @@ import type {
   DialogInfo,
 } from '@longrun-ai/kernel/types';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import { getUiStrings } from '../i18n/ui';
 import type { DialogCreateAction } from './create-dialog-flow';
 import {
@@ -300,9 +301,7 @@ export class DoneDialogList extends HTMLElement {
   }
 
   private parseTimestamp(value: string): number {
-    const ms = Date.parse(value);
-    if (Number.isNaN(ms)) return 0;
-    return ms;
+    return parseUnifiedTimestampMs(value) ?? 0;
   }
 
   private maxUpdatedAt(dialogs: ApiRootDialogResponse[]): number {

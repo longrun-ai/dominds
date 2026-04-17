@@ -68,6 +68,27 @@ export interface ApiSubdialogResponse {
   waitingForFreshBootsReasoning?: boolean;
 }
 
+export interface ApiDialogListSubdialogNode {
+  selfId: string;
+  rootId: string;
+  supdialogId?: string;
+  agentId: string;
+  taskDocPath: string;
+  status: Exclude<DialogStatusKind, 'quarantining'>;
+  currentCourse: number;
+  createdAt: string;
+  lastModified: string;
+  displayState?: DialogDisplayState;
+  sessionSlug?: string;
+  assignmentFromSup?: AssignmentFromSup;
+  waitingForFreshBootsReasoning?: boolean;
+}
+
+export interface ApiDialogListSubdialogNodeResponse {
+  success: boolean;
+  subdialogNode: ApiDialogListSubdialogNode;
+}
+
 export interface ApiDialogHierarchyResponse {
   success: boolean;
   hierarchy: {

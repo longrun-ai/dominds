@@ -1343,6 +1343,38 @@ export async function handleApiRoute(
       return await handleGetDialogHierarchy(res, rootId, status);
     }
 
+    // Get one subdialog node specifically for dialog-list backfill
+    if (
+      pathname.startsWith('/api/dialogs/') &&
+      pathname.endsWith('/list-node') &&
+      req.method === 'GET'
+    ) {
+      const parts = pathname.split('/');
+      let rootId = '';
+      let selfId: string | undefined;
+      try {
+        rootId = decodeURIComponent(parts[3] ?? '');
+        selfId = parts[5] ? decodeURIComponent(parts[5]) : undefined;
+      } catch {
+        respondJson(res, 400, { success: false, error: 'Invalid dialog id path encoding' });
+        return true;
+      }
+      const subdialogsSeg = parts[4];
+      const listNodeSeg = parts[6];
+      if (!rootId || subdialogsSeg !== 'subdialogs' || !selfId || listNodeSeg !== 'list-node') {
+        respondJson(res, 404, { success: false, error: 'Not Found' });
+        return true;
+      }
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
+      if (parsedStatus.kind === 'invalid') {
+        respondJson(res, 400, { success: false, error: 'Invalid status' });
+        return true;
+      }
+      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
+      return await handleGetDialogListSubdialogNode(res, { rootId, selfId, status });
+    }
+
     // Serve persisted dialog artifacts (binary)
     if (
       pathname.startsWith('/api/dialogs/') &&
@@ -1375,22 +1407,6 @@ export async function handleApiRoute(
       }
       const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
       return await handleGetDialogArtifact(req, res, { rootId, selfId }, status);
-    }
-
-    // Get specific dialog
-    if (pathname.startsWith('/api/dialogs/') && req.method === 'GET') {
-      const parts = pathname.split('/');
-      const selfId = (parts[4] || parts[3]).replace(/%2F/g, '/');
-      const rootId = parts[3].replace(/%2F/g, '/');
-      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-      const parsedStatus = readOptionalPersistableDialogStatusQuery(urlObj);
-      if (parsedStatus.kind === 'invalid') {
-        respondJson(res, 400, { success: false, error: 'Invalid status' });
-        return true;
-      }
-      const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
-      const dialog: DialogIdent = { selfId, rootId, status };
-      return await handleGetDialog(res, dialog, status);
     }
 
     // Taskdocs endpoint
@@ -2587,6 +2603,96 @@ async function handleGetDialogHierarchy(
 }
 
 /**
+ * Get one subdialog node for dialog-list backfill without reloading the whole hierarchy.
+ */
+async function handleGetDialogListSubdialogNode(
+  res: ServerResponse,
+  dialog: DialogIdent & { status: PersistableDialogStatus },
+): Promise<boolean> {
+  try {
+    const status = dialog.status;
+    if (dialog.selfId === dialog.rootId) {
+      respondJson(res, 400, {
+        success: false,
+        error: 'Dialog-list subdialog node requires a subdialog selfId',
+      });
+      return true;
+    }
+
+    const dialogId = new DialogID(dialog.selfId, dialog.rootId);
+    const metadata = await loadDialogMetadataForLookup(
+      dialogId,
+      status,
+      'handleGetDialogListSubdialogNode',
+    );
+    if (!metadata) {
+      respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
+      return true;
+    }
+    if (metadata.id !== dialog.selfId) {
+      throw new Error(
+        `CRITICAL: dialog-list subdialog node metadata id mismatch. expected=${dialog.selfId} actual=${metadata.id} rootId=${dialog.rootId} status=${status}`,
+      );
+    }
+    if (metadata.id === dialog.rootId) {
+      throw new Error(
+        `CRITICAL: dialog-list subdialog node lookup resolved root dialog. rootId=${dialog.rootId} selfId=${dialog.selfId} status=${status}`,
+      );
+    }
+
+    const latest = await loadDialogLatestForLookup(
+      dialogId,
+      status,
+      'handleGetDialogListSubdialogNode',
+    );
+    const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
+      dialogId,
+      status,
+    );
+    const subdialogPath = DialogPersistence.getSubdialogPath(dialogId, status);
+    if (!(await pathStillExistsForLookup(subdialogPath))) {
+      respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
+      return true;
+    }
+
+    const derivedSupdialogId =
+      metadata.assignmentFromSup?.callerDialogId &&
+      metadata.assignmentFromSup.callerDialogId.trim() !== ''
+        ? metadata.assignmentFromSup.callerDialogId
+        : typeof metadata.supdialogId === 'string' && metadata.supdialogId.trim() !== ''
+          ? metadata.supdialogId
+          : undefined;
+
+    respondJson(res, 200, {
+      success: true,
+      subdialogNode: {
+        selfId: metadata.id,
+        rootId: dialog.rootId,
+        supdialogId: derivedSupdialogId,
+        agentId: metadata.agentId,
+        taskDocPath: metadata.taskDocPath,
+        status,
+        currentCourse: latest?.currentCourse ?? 1,
+        createdAt: metadata.createdAt,
+        lastModified: latest?.lastModified ?? metadata.createdAt,
+        displayState: latest?.displayState,
+        sessionSlug: metadata.sessionSlug,
+        assignmentFromSup: metadata.assignmentFromSup,
+        waitingForFreshBootsReasoning,
+      },
+    });
+    return true;
+  } catch (error) {
+    log.error('Error getting dialog-list subdialog node:', error);
+    respondJson(res, 500, {
+      success: false,
+      error: 'Failed to get dialog-list subdialog node',
+    });
+    return true;
+  }
+}
+
+/**
  * Create new dialog
  */
 async function handleCreateDialog(
@@ -3040,62 +3146,6 @@ async function handleDeleteDialog(
   } catch (error) {
     log.error('Error deleting dialog:', error);
     respondJson(res, 500, { error: 'Failed to delete dialog' });
-    return true;
-  }
-}
-
-/**
- * Get specific dialog
- */
-async function handleGetDialog(
-  res: ServerResponse,
-  dialog: DialogIdent,
-  status: PersistableDialogStatus,
-): Promise<boolean> {
-  try {
-    const metadata: DialogMetadataFile | null = await loadDialogMetadataForLookup(
-      new DialogID(dialog.selfId, dialog.rootId),
-      status,
-      'handleGetDialog',
-    );
-    if (!metadata) {
-      respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
-      return true;
-    }
-
-    // Enforce structured identification for subdialogs
-    if (metadata.supdialogId && dialog.selfId === dialog.rootId) {
-      respondJson(res, 400, {
-        success: false,
-        error: 'Subdialog requires /api/dialogs/:root/:self',
-      });
-      return true;
-    }
-
-    const currentCourse = await DialogPersistence.getCurrentCourseNumber(
-      new DialogID(dialog.selfId, dialog.rootId),
-      status,
-    );
-
-    const dialogData: {
-      id: string;
-      agentId: string;
-      status: PersistableDialogStatus;
-      createdAt: string;
-      currentCourse: number;
-    } = {
-      id: metadata.id,
-      agentId: metadata.agentId,
-      status,
-      createdAt: metadata.createdAt,
-      currentCourse,
-    };
-
-    respondJson(res, 200, { success: true, dialog: dialogData });
-    return true;
-  } catch (error) {
-    log.error('Error getting dialog:', error);
-    respondJson(res, 500, { success: false, error: 'Failed to get dialog' });
     return true;
   }
 }

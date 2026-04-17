@@ -48,8 +48,8 @@ Available API endpoints:
 • GET /api/team/config - Team configuration
 • GET /api/dialogs - List all dialogs
 • POST /api/dialogs - Create new dialog
-• GET /api/dialogs/:id - Get specific dialog
-• GET /api/dialogs/:root/:self/hierarchy - Get dialog hierarchy
+• GET /api/dialogs/:root/subdialogs/:self/list-node - Get one dialog-list subdialog node
+• GET /api/dialogs/:root/hierarchy - Get dialog hierarchy
 • GET /api/task-documents - Taskdoc listing
 
 WebSocket endpoint: /ws

@@ -5,12 +5,13 @@
 
 import {
   ApiDialogHierarchyResponse,
+  ApiDialogListSubdialogNode,
+  ApiDialogListSubdialogNodeResponse,
   ApiForkDialogRequest,
   ApiForkDialogResponse,
   ApiMoveDialogsRequest,
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
-  ApiSubdialogResponse,
   DomindsRuntimeStatus,
   DomindsSelfUpdateStatus as KernelDomindsSelfUpdateStatus,
   ListPrimingScriptsResponse,
@@ -131,6 +132,16 @@ function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
   if (error !== undefined && typeof error !== 'string') return false;
   if (message !== undefined && typeof message !== 'string') return false;
   return true;
+}
+
+function isApiDialogListSubdialogNodeResponse(
+  value: unknown,
+): value is ApiDialogListSubdialogNodeResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (record['success'] !== true) return false;
+  const subdialogNode = record['subdialogNode'];
+  return typeof subdialogNode === 'object' && subdialogNode !== null;
 }
 
 function getApiErrorMessage(status: number, statusText: string, data: unknown): string {
@@ -438,19 +449,6 @@ export class ApiClient {
   }
 
   /**
-   * Get a specific dialog by ID
-   */
-  async getDialog(
-    rootDialogId: string,
-    selfDialogId?: string,
-    status: PersistableDialogStatus = 'running',
-  ): Promise<ApiResponse<ApiSubdialogResponse | ApiRootDialogResponse>> {
-    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
-    const query = new URLSearchParams({ status }).toString();
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}?${query}`);
-  }
-
-  /**
    * Get full hierarchy for a single root dialog
    */
   async getDialogHierarchy(
@@ -475,6 +473,29 @@ export class ApiClient {
       }
     }
     return response as ApiResponse<ApiDialogHierarchyResponse['hierarchy']>;
+  }
+
+  /**
+   * Get one subdialog node specifically for dialog-list backfill.
+   */
+  async getDialogListSubdialogNode(
+    rootDialogId: string,
+    selfDialogId: string,
+    status: PersistableDialogStatus = 'running',
+  ): Promise<ApiResponse<ApiDialogListSubdialogNode>> {
+    const query = new URLSearchParams({ status }).toString();
+    const response = await this.request(
+      `/api/dialogs/${encodeURIComponent(rootDialogId)}/subdialogs/${encodeURIComponent(selfDialogId)}/list-node?${query}`,
+    );
+    if (response.success && isApiDialogListSubdialogNodeResponse(response.data)) {
+      return {
+        success: true,
+        status: response.status,
+        data: response.data.subdialogNode,
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<ApiDialogListSubdialogNode>;
   }
 
   async resolveDialogStatus(

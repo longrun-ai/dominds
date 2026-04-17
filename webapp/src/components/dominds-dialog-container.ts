@@ -34,6 +34,7 @@ import type {
   DialogIdent,
   DialogStatusKind,
 } from '@longrun-ai/kernel/types/wire';
+import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import mannedToolIcon from '../assets/manned-tool.svg';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
@@ -2304,8 +2305,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private parseEventTimestampMs(rawTimestamp: string | undefined): number | null {
     if (typeof rawTimestamp !== 'string' || rawTimestamp.trim() === '') return null;
-    const ts = Date.parse(rawTimestamp);
-    return Number.isFinite(ts) ? ts : null;
+    return parseUnifiedTimestampMs(rawTimestamp);
   }
 
   private formatAbsoluteTime(ms: number): string {

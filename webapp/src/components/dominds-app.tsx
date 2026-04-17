@@ -5,6 +5,7 @@
 import type { ConnectionState } from '@/services/store';
 import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import type {
+  ApiDialogListSubdialogNode,
   ApiForkDialogResponse,
   ApiMoveDialogsRequest,
   ApiRootDialogResponse,
@@ -49,6 +50,7 @@ import type {
   WelcomeMessage,
 } from '@longrun-ai/kernel/types/wire';
 import { escapeHtml } from '@longrun-ai/kernel/utils/html';
+import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import faviconUrl from '../assets/favicon.svg';
 import {
   formatContextUsageTitle,
@@ -259,6 +261,7 @@ export class DomindsApp extends HTMLElement {
     archived: [],
   };
   private visibleSubdialogsByRoot = new Map<string, ApiRootDialogResponse[]>();
+  private dialogListSubdialogNodeBackfillInFlight = new Set<string>();
   private rootStatusById = new Map<string, PersistableDialogStatus>();
   private dialogListBootstrapState: DialogListBootstrapState = { kind: 'loading' };
   private dialogDisplayStatesByKey = new Map<string, DialogDisplayState>();
@@ -2635,13 +2638,207 @@ export class DomindsApp extends HTMLElement {
   }
 
   private setVisibleSubdialogsForRoot(rootId: string, subdialogs: ApiRootDialogResponse[]): void {
-    const normalized = subdialogs
-      .filter((d) => d.rootId === rootId && !!d.selfId)
-      .map((d) => {
-        const rootStatus = this.getRootStatus(rootId);
-        return rootStatus && d.status !== rootStatus ? { ...d, status: rootStatus } : d;
-      });
+    const rootStatus = this.getRootStatus(rootId);
+    const normalized: ApiRootDialogResponse[] = [];
+    const seenSelfIds = new Set<string>();
+    for (const subdialog of subdialogs) {
+      if (subdialog.rootId !== rootId) {
+        throw new Error(
+          `CRITICAL: visible subdialog rootId mismatch. expected=${rootId} actual=${subdialog.rootId}`,
+        );
+      }
+      if (!subdialog.selfId) {
+        throw new Error(`CRITICAL: visible subdialog missing selfId for rootId=${rootId}`);
+      }
+      if (subdialog.selfId === rootId) {
+        throw new Error(`CRITICAL: visible subdialog selfId equals rootId=${rootId}`);
+      }
+      if (seenSelfIds.has(subdialog.selfId)) {
+        throw new Error(
+          `CRITICAL: duplicate visible subdialog selfId=${subdialog.selfId} under rootId=${rootId}`,
+        );
+      }
+      seenSelfIds.add(subdialog.selfId);
+      normalized.push(
+        rootStatus && subdialog.status !== rootStatus
+          ? { ...subdialog, status: rootStatus }
+          : subdialog,
+      );
+    }
     this.visibleSubdialogsByRoot.set(rootId, normalized);
+  }
+
+  private mergeVisibleSubdialogsForRootFromHierarchy(
+    rootId: string,
+    hierarchySubdialogs: ApiRootDialogResponse[],
+  ): ApiRootDialogResponse[] {
+    const existing = this.getVisibleSubdialogsForRoot(rootId);
+    if (existing.length === 0) {
+      return hierarchySubdialogs;
+    }
+
+    const merged = new Map<string, ApiRootDialogResponse>();
+    for (const subdialog of existing) {
+      if (!subdialog.selfId) continue;
+      merged.set(subdialog.selfId, subdialog);
+    }
+    for (const subdialog of hierarchySubdialogs) {
+      if (!subdialog.selfId) continue;
+      merged.set(subdialog.selfId, subdialog);
+    }
+    return [...merged.values()];
+  }
+
+  private shouldBackfillDialogListSubdialogNode(
+    rootId: string,
+    status: PersistableDialogStatus,
+  ): boolean {
+    if (this.visibleSubdialogsByRoot.has(rootId)) {
+      return true;
+    }
+    return status === 'running' && this.isRootExpandedInRunningListDom(rootId);
+  }
+
+  private buildDialogListSubdialogNodeBackfillKey(
+    rootId: string,
+    selfId: string,
+    status: PersistableDialogStatus,
+  ): string {
+    return `${status}:${rootId}:${selfId}`;
+  }
+
+  private requestDialogListSubdialogNodeBackfill(
+    rootId: string,
+    selfId: string,
+    status: PersistableDialogStatus,
+  ): void {
+    void this.backfillDialogListSubdialogNode(rootId, selfId, status).catch((error: unknown) => {
+      console.warn(
+        `Failed to backfill dialog-list subdialog node for rootId=${rootId} selfId=${selfId} status=${status}:`,
+        error,
+      );
+    });
+  }
+
+  private async backfillDialogListSubdialogNode(
+    rootId: string,
+    selfId: string,
+    status: PersistableDialogStatus,
+  ): Promise<void> {
+    if (selfId === rootId) return;
+    if (this.findDisplayedDialogByIds(rootId, selfId)) return;
+    if (!this.shouldBackfillDialogListSubdialogNode(rootId, status)) return;
+
+    const requestKey = this.buildDialogListSubdialogNodeBackfillKey(rootId, selfId, status);
+    if (this.dialogListSubdialogNodeBackfillInFlight.has(requestKey)) return;
+    this.dialogListSubdialogNodeBackfillInFlight.add(requestKey);
+
+    try {
+      const response = await this.apiClient.getDialogListSubdialogNode(rootId, selfId, status);
+      if (!response.success) {
+        if (response.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        // A missing node after touched can be a transient race. Keep it loud in console only.
+        if (response.status !== 404) {
+          throw new Error(
+            response.error ||
+              `Failed to load dialog-list subdialog node for ${rootId}/${selfId} in ${status}`,
+          );
+        }
+        console.warn(
+          `Dialog-list subdialog node not found during backfill. rootId=${rootId} selfId=${selfId} status=${status}`,
+        );
+        return;
+      }
+
+      const node: ApiDialogListSubdialogNode | undefined = response.data;
+      if (!node) {
+        throw new Error(
+          `Dialog-list subdialog node response missing data for rootId=${rootId} selfId=${selfId}`,
+        );
+      }
+      if (node.rootId !== rootId) {
+        throw new Error(
+          `CRITICAL: dialog-list subdialog node rootId mismatch. expected=${rootId} actual=${node.rootId}`,
+        );
+      }
+      if (node.selfId !== selfId) {
+        throw new Error(
+          `CRITICAL: dialog-list subdialog node selfId mismatch. expected=${selfId} actual=${node.selfId}`,
+        );
+      }
+      if (node.selfId === node.rootId) {
+        throw new Error(
+          `CRITICAL: dialog-list subdialog node returned root dialog for rootId=${rootId} selfId=${selfId}`,
+        );
+      }
+      if (node.status !== status) {
+        throw new Error(
+          `CRITICAL: dialog-list subdialog node status mismatch. expected=${status} actual=${node.status} rootId=${rootId} selfId=${selfId}`,
+        );
+      }
+
+      const currentRootStatus = this.getRootStatus(rootId);
+      if (currentRootStatus !== status) return;
+      if (this.findDisplayedDialogByIds(rootId, selfId)) return;
+      if (!this.shouldBackfillDialogListSubdialogNode(rootId, status)) return;
+
+      const nodeKey = this.dialogKey(node.rootId, node.selfId);
+      const effectiveDisplayState =
+        status === 'running'
+          ? (node.displayState ?? this.dialogDisplayStatesByKey.get(nodeKey))
+          : undefined;
+      if (effectiveDisplayState) {
+        this.dialogDisplayStatesByKey.set(nodeKey, effectiveDisplayState);
+      }
+
+      const incomingSubdialog: ApiRootDialogResponse = {
+        rootId: node.rootId,
+        selfId: node.selfId,
+        agentId: node.agentId,
+        taskDocPath: node.taskDocPath,
+        status: node.status,
+        currentCourse: node.currentCourse,
+        createdAt: node.createdAt,
+        lastModified: node.lastModified,
+        displayState: effectiveDisplayState,
+        supdialogId: this.resolveSupdialogIdForSubdialog(node),
+        sessionSlug: node.sessionSlug,
+        assignmentFromSup: node.assignmentFromSup,
+        waitingForFreshBootsReasoning: node.waitingForFreshBootsReasoning === true,
+      };
+
+      const existing = this.getVisibleSubdialogsForRoot(rootId);
+      this.setVisibleSubdialogsForRoot(rootId, [...existing, incomingSubdialog]);
+
+      const rootDialog = this.getRootDialog(rootId);
+      if (rootDialog) {
+        const nodeUpdatedAtMs = parseUnifiedTimestampMs(node.lastModified);
+        const rootUpdatedAtMs = parseUnifiedTimestampMs(rootDialog.lastModified);
+        const nextSubdialogCount = Math.max(rootDialog.subdialogCount ?? 0, existing.length + 1);
+        const nextLastModified =
+          nodeUpdatedAtMs !== null &&
+          (rootUpdatedAtMs === null || nodeUpdatedAtMs > rootUpdatedAtMs)
+            ? node.lastModified
+            : rootDialog.lastModified;
+        if (
+          nextSubdialogCount !== (rootDialog.subdialogCount ?? 0) ||
+          nextLastModified !== rootDialog.lastModified
+        ) {
+          this.upsertRootDialogSnapshot({
+            ...rootDialog,
+            subdialogCount: nextSubdialogCount,
+            lastModified: nextLastModified,
+          });
+        }
+      }
+
+      this.syncDialogListByStatus(status);
+    } finally {
+      this.dialogListSubdialogNodeBackfillInFlight.delete(requestKey);
+    }
   }
 
   private updateVisibleSubdialogStatusesForRoot(
@@ -8586,8 +8783,24 @@ export class DomindsApp extends HTMLElement {
 
       const newSubdialogs: ApiRootDialogResponse[] = [];
       for (const subdialog of h.subdialogs) {
-        if (!subdialog || !subdialog.rootId) {
-          continue;
+        if (!subdialog) {
+          throw new Error(`Hierarchy response for ${rootId} contains empty subdialog entry`);
+        }
+        if (!subdialog.rootId) {
+          throw new Error(`Hierarchy response for ${rootId} contains subdialog without rootId`);
+        }
+        if (subdialog.rootId !== rootId) {
+          throw new Error(
+            `Hierarchy response for ${rootId} contains subdialog with mismatched rootId=${subdialog.rootId}`,
+          );
+        }
+        if (!subdialog.selfId) {
+          throw new Error(`Hierarchy response for ${rootId} contains subdialog without selfId`);
+        }
+        if (subdialog.selfId === rootId) {
+          throw new Error(
+            `Hierarchy response for ${rootId} contains root dialog inside subdialog list`,
+          );
         }
         const cachedDisplayState = this.dialogDisplayStatesByKey.get(
           this.dialogKey(subdialog.rootId, subdialog.selfId),
@@ -8616,6 +8829,10 @@ export class DomindsApp extends HTMLElement {
           waitingForFreshBootsReasoning: subdialog.waitingForFreshBootsReasoning === true,
         });
       }
+      const mergedSubdialogs = this.mergeVisibleSubdialogsForRootFromHierarchy(
+        rootId,
+        newSubdialogs,
+      );
 
       const nextRoot: ApiRootDialogResponse = {
         rootId,
@@ -8629,12 +8846,12 @@ export class DomindsApp extends HTMLElement {
         waitingForFreshBootsReasoning: h.root.waitingForFreshBootsReasoning === true,
         subdialogCount:
           typeof rootEntry?.subdialogCount === 'number'
-            ? rootEntry.subdialogCount
-            : newSubdialogs.length,
+            ? Math.max(rootEntry.subdialogCount, mergedSubdialogs.length)
+            : mergedSubdialogs.length,
       };
 
       this.upsertRootDialogSnapshot(nextRoot);
-      this.setVisibleSubdialogsForRoot(rootId, newSubdialogs);
+      this.setVisibleSubdialogsForRoot(rootId, mergedSubdialogs);
       this.syncDialogListByStatus(status);
     } catch (hierarchyError) {
       console.warn(`Failed to load hierarchy for root dialog ${rootId}:`, hierarchyError);
@@ -10982,6 +11199,17 @@ export class DomindsApp extends HTMLElement {
           message.timestamp,
           status === 'running' ? { suppressRender: true } : undefined,
         );
+        if (
+          status &&
+          message.dialog.selfId !== message.dialog.rootId &&
+          !this.findDisplayedDialogByIds(message.dialog.rootId, message.dialog.selfId)
+        ) {
+          this.requestDialogListSubdialogNodeBackfill(
+            message.dialog.rootId,
+            message.dialog.selfId,
+            status,
+          );
+        }
         return true;
       }
       default: {
@@ -11118,7 +11346,11 @@ export class DomindsApp extends HTMLElement {
           }
           const prevCount =
             typeof rootDialog.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
-          const nextCount = Math.max(prevCount + 1, 1);
+          const visibleCountFloor =
+            hadLoadedSubdialogs || rootExpandedInDom
+              ? this.getVisibleSubdialogsForRoot(node.rootId).length + 1
+              : 1;
+          const nextCount = Math.max(prevCount + 1, visibleCountFloor, 1);
           this.upsertRootDialogSnapshot({
             ...rootDialog,
             subdialogCount: nextCount,

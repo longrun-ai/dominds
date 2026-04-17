@@ -21,6 +21,7 @@ import type {
 import type { I18nText } from '@longrun-ai/kernel/types/i18n';
 import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
+import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import { createHash } from 'crypto';
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
@@ -256,23 +257,7 @@ function extractReminderDisplayTimestamp(reminder: Reminder): ReminderDisplayTim
 }
 
 function parseReminderSortTimestamp(value: string): number | null {
-  const trimmed = value.trim();
-  if (trimmed === '') return null;
-  const unifiedMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
-  if (unifiedMatch) {
-    const [, year, month, day, hour, minute, second] = unifiedMatch;
-    const parsed = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second),
-    ).getTime();
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-  const parsed = Date.parse(trimmed);
-  return Number.isNaN(parsed) ? null : parsed;
+  return parseUnifiedTimestampMs(value);
 }
 
 // Reminder presentation order is a framework-level concern distinct from owner semantics.
