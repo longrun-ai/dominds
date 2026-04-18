@@ -9,6 +9,7 @@ import type {
   GetProblemsRequest,
   ProblemsSnapshotMessage,
 } from './problems';
+import type { ToolAvailabilityUpdateReason } from './tools-registry';
 
 export type {
   ClearResolvedProblemsRequest,
@@ -65,6 +66,7 @@ export type WebSocketMessage =
   | SetUiLanguageRequest
   | UiLanguageSetMessage
   | TeamConfigUpdatedMessage
+  | ToolAvailabilityUpdatedMessage
   | GetProblemsRequest
   | ClearResolvedProblemsRequest
   | ProblemsSnapshotMessage
@@ -180,6 +182,13 @@ export interface TeamConfigUpdatedMessage {
   type: 'team_config_updated';
   path: string;
   exists: boolean;
+  timestamp: string;
+  trigger?: string;
+}
+
+export interface ToolAvailabilityUpdatedMessage {
+  type: 'tool_availability_updated';
+  reason: ToolAvailabilityUpdateReason;
   timestamp: string;
   trigger?: string;
 }

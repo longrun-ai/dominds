@@ -67,6 +67,10 @@ or have global process-scoped caches.
 
 Dominds therefore treats MCP client connections/processes as **leased resources** by default.
 
+Lease semantics are intentionally **orthogonal** to tool visibility. A lease decides runtime
+instance/process ownership only; it does not define the global MCP tool catalog or the final
+member-visible tool set. See [tool-availability-protocol.md](./tool-availability-protocol.md).
+
 ### Server config: `truely-stateless` (default: `false`)
 
 Each MCP server supports an explicit boolean flag:
@@ -81,23 +85,23 @@ implemented config surface.
 ### Default behavior (`truely-stateless: false`)
 
 - The first time any MCP tool from that server’s toolset is used in a given dialog, Dominds creates
-  a **dedicated MCP client instance** (and thus a dedicated MCP server process/connection for that
+  a **dedicated MCP runtime instance** (and thus a dedicated MCP server process/connection for that
   dialog).
-- That client instance remains **leased to that dialog** for future function tool calls from the same
+- That runtime instance remains **leased to that dialog** for future function tool calls from the same
   toolset.
-- If another dialog uses the same MCP toolset concurrently, Dominds creates **another** MCP client
+- If another dialog uses the same MCP toolset concurrently, Dominds creates **another** MCP runtime
   instance for that requesting dialog (no cross-dialog sharing).
 - On first lease, Dominds adds a **sticky owned reminder** to the dialog instructing the agent to
-  release the lease when it is confident the toolset won’t be needed again soon.
+  release the lease when it is confident the runtime instance won’t be needed again soon.
 
 Releasing:
 
 - Agents should call `mcp_release({"serverId":"<serverId>"})` (from `mcp_admin`) to release the
-  leased client instance for the current dialog.
+  leased runtime instance for the current dialog.
 
 ### Shared behavior (`truely-stateless: true`)
 
-- Dominds may share a single MCP client instance across dialogs for that server/toolset.
+- Dominds may share a single MCP runtime instance across dialogs for that server/toolset.
 - No per-dialog lease reminder is required.
 
 ## Goals

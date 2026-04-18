@@ -37,13 +37,13 @@ MCP (Model Context Protocol) is a protocol for connecting to external services.
 
 ### 2. MCP Lease
 
-MCP uses a lease mechanism to manage connection resources.
+MCP uses a lease mechanism to manage runtime resources such as HTTP connections and stdio processes. Lease ownership is about who holds a runtime instance; it does not define global MCP tool registration or visibility.
 
 **Lifecycle:**
 
-- **Acquire lease**: Establish MCP connection
-- **Hold lease**: Use MCP service
-- **Release lease**: Disconnect and release resources
+- **Acquire lease**: Establish or hold a runtime instance
+- **Hold lease**: Keep using that runtime instance
+- **Release lease**: Stop/disconnect and release resources
 
 ### 3. Environment Variables
 

@@ -129,6 +129,17 @@ rtws is the runtime workspace root (`process.cwd()`). The kernel reads/writes:
 - App context: the app-local team (app `.minds/team.yaml` plus its dependency/override composition).
 
 > Target direction: decouple “team visibility” from “tool availability”, but keep both encapsulated and overridable at app boundaries.
+>
+> Design principle: the app mechanism customizes Dominds by registering callbacks at explicit
+> kernel control points. Tool availability is one such control point; it should not be modeled as a
+> hidden side effect of lease/registry/cache behavior.
+>
+> Evolution policy: keep control points explicit and concrete first. Do not rush into a generalized
+> app callback framework before several control points have independently matured.
+>
+> Current-stage note: app-side protocol details are still relatively sparse. This is expected at the
+> current phase and should be read as “direction fixed, surface area still growing”, not as a sign
+> that the app model is undefined.
 
 ## App packages and manifests
 
@@ -485,7 +496,13 @@ Current prototype note (`dominds-apps/@longrun-ai/web-dev`, as of March 8, 2026)
 - `kind: "web"` sessions now create a real Playwright-backed browser/context/page runtime and report live page surfaces via session status/reminders.
 - `kind: "electron"` is **not** at the same completion level yet: it still falls back to the older prototype runtime path and should be treated as unfinished.
 - Reminder UX contract: tool output may summarize reminder-sync actions, but the reminder panel is the authoritative surface for attachment state.
-- Runtime refresh contract: after enabling the app, a full Dominds instance restart should not be required just to discover the toolset; the next minds reload / tools-registry fetch should refresh enabled app tool proxies. This does **not** mean in-flight prompts are rewritten retroactively.
+- Runtime refresh contract: after enabling the app, a full Dominds instance restart should not be required just to discover the toolset; the next minds reload / tool-availability fetch should refresh enabled app tool proxies. This does **not** mean in-flight prompts are rewritten retroactively.
+- Dynamic tool availability protocol note: app-controlled dynamic availability is a protocol layer of
+  its own and must remain semantically orthogonal to MCP registry/lease and member binding. See
+  [tool-availability-protocol.md](./tool-availability-protocol.md).
+- App mechanism note: this dynamic availability is expressed through an app callback registered at a
+  kernel control point, not through an app-owned registry or an implicit coupling to MCP/runtime
+  cache behavior.
 - Remaining gap list for the browser capability layer: screenshot / console / network evidence are not yet exposed as first-class tool outputs, and there is not yet a production-grade browser lifecycle manager.
 - Restart boundary: if the kernel/apps-host process restarts, persisted session records remain but the in-memory browser runtime degrades and must be recreated.
 

@@ -607,7 +607,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       fmtList([
         '每个 MCP `serverId` 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。成员通过 `members.<id>.toolsets` 选择能用哪些 MCP toolset。',
         '支持热重载：编辑 `.minds/mcp.yaml` 后通常无需重启 Dominds；必要时用 `mcp_restart`。',
-        '默认按“每个对话租用一个 MCP client”运行（更安全）：首次使用该 toolset 会产生 sticky reminder，完成后用 `mcp_release` 释放；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
+        '默认按“每个对话租用一个 MCP 运行时实例”运行（更安全）：某个对话首次使用该 server 时，可能为它启动/持有一个运行时实例（HTTP 连接或 stdio 进程），并添加 sticky reminder。确认当前对话不再需要该运行时实例后，用 `mcp_release` 释放。租约只表达运行时资源归属，不决定该 server 的全局工具注册/可见性；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
         'stdio 配置格式：`command` 必须是字符串（可执行命令），参数放在 `args`（string[]，可省略，默认空数组）。`cwd` 可选（字符串）：用于固定相对路径解析目录。',
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
         '常见坑：stdio transport 需要可执行命令路径正确，且受成员权限（目录 + 扩展名：`*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
@@ -689,7 +689,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
     fmtList([
       'Each MCP `serverId` registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix). Members choose MCP access via `members.<id>.toolsets`.',
       'Hot reload: edits usually apply without restarting Dominds; use `mcp_restart` when needed.',
-      "Default is per-dialog MCP client leasing (safer): first use adds a sticky reminder; call `mcp_release` when you're sure you won't need the toolset soon. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
+      "Default is per-dialog MCP runtime leasing (safer): a dialog's first use may start/hold one runtime instance for that server (an HTTP connection or stdio process), and first use adds a sticky reminder. Call `mcp_release` when you're sure the current dialog no longer needs that runtime instance. This lease is about runtime resource ownership only; tool registration/visibility still follows the latest global server instance. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
       'Stdio shape: `command` must be a string executable; parameters go in `args` (string[], optional, defaults to empty). Optional `cwd` (string) fixes the working directory used for relative paths.',
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
       'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member permissions (directory + extension: `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`); HTTP transport requires the server URL to be reachable.',

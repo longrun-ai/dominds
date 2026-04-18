@@ -38,7 +38,7 @@ import {
 } from '../priming';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
-import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
+import { createToolAvailabilitySnapshot } from '../tool-availability';
 import { generateDialogID } from '../utils/id';
 import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
@@ -1414,9 +1414,9 @@ export async function handleApiRoute(
       return await handleGetTaskDocuments(res);
     }
 
-    // Tools registry endpoint (snapshot)
-    if (pathname === '/api/tools-registry' && req.method === 'GET') {
-      return await handleGetToolsRegistry(req, res);
+    // Tool availability endpoint (formal composed snapshot)
+    if (pathname === '/api/tool-availability' && req.method === 'GET') {
+      return await handleGetToolAvailability(req, res);
     }
 
     // Read rtws diligence prompt (rtws file).
@@ -1627,6 +1627,7 @@ const DOCS_WHITELIST = new Set<string>([
   'encapsulated-taskdoc',
   'memory-system',
   'mcp-support',
+  'tool-availability-protocol',
   'context-health',
   'team_mgmt-toolset',
   'i18n',
@@ -1648,6 +1649,7 @@ const DOCS_WHITELIST = new Set<string>([
   'encapsulated-taskdoc.md',
   'memory-system.md',
   'mcp-support.md',
+  'tool-availability-protocol.md',
   'context-health.md',
   'team_mgmt-toolset.md',
   'i18n.md',
@@ -2165,16 +2167,21 @@ async function handleResolveMarkdownLinks(
   return true;
 }
 
-async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+async function handleGetToolAvailability(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
   try {
     await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
     const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
     const rootIdRaw = urlObj.searchParams.get('rootId');
     const selfIdRaw = urlObj.searchParams.get('selfId');
+    const sessionSlugRaw = urlObj.searchParams.get('sessionSlug');
     const agentIdRaw = urlObj.searchParams.get('agentId');
     const taskDocPathRaw = urlObj.searchParams.get('taskDocPath');
     const rootId = typeof rootIdRaw === 'string' ? rootIdRaw.trim() : '';
     const selfId = typeof selfIdRaw === 'string' ? selfIdRaw.trim() : '';
+    const requestedSessionSlug = typeof sessionSlugRaw === 'string' ? sessionSlugRaw.trim() : '';
     const requestedAgentId = typeof agentIdRaw === 'string' ? agentIdRaw.trim() : '';
     const requestedTaskDocPath = typeof taskDocPathRaw === 'string' ? taskDocPathRaw.trim() : '';
     const requestedStatusParam = readOptionalPersistableDialogStatusQuery(urlObj);
@@ -2218,8 +2225,8 @@ async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse)
     const dialogMetadata = await resolveDialogMetadata();
     const agentId = dialogMetadata?.agentId ?? requestedAgentId;
     const taskDocPath = dialogMetadata?.taskDocPath ?? requestedTaskDocPath;
+    const sessionSlug = dialogMetadata?.sessionSlug ?? requestedSessionSlug;
 
-    let snapshot = createToolsRegistrySnapshot();
     if (agentId !== '') {
       const team = await Team.load();
       const member = team.getMember(agentId);
@@ -2230,38 +2237,36 @@ async function handleGetToolsRegistry(req: IncomingMessage, res: ServerResponse)
         });
         return true;
       }
-
-      const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-        member,
-        taskDocPath,
-        rtwsRootAbs: process.cwd(),
-      });
-      const includeToolsetNames = member.listResolvedToolsetNames({
-        onMissing: 'silent',
-        dynamicToolsetNames,
-      });
-      snapshot = createToolsRegistrySnapshot({ includeToolsetNames });
     }
+
+    const snapshot = await createToolAvailabilitySnapshot({
+      agentId: agentId !== '' ? agentId : undefined,
+      taskDocPath: taskDocPath !== '' ? taskDocPath : undefined,
+      dialog:
+        rootId !== '' && selfId !== ''
+          ? {
+              rootId,
+              selfId,
+              ...(sessionSlug !== '' ? { sessionSlug } : {}),
+              status:
+                requestedStatusParam.kind === 'value' ? requestedStatusParam.status : 'unknown',
+            }
+          : undefined,
+    });
 
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     });
-    res.end(
-      JSON.stringify({
-        success: true,
-        toolsets: snapshot.toolsets,
-        timestamp: snapshot.timestamp,
-      }),
-    );
+    res.end(JSON.stringify(snapshot));
     return true;
   } catch (error) {
-    log.error('Error getting tools registry snapshot:', error);
+    log.error('Error getting tool-availability snapshot:', error);
     res.writeHead(500, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     });
-    res.end(JSON.stringify({ success: false, error: 'Failed to get tools registry' }));
+    res.end(JSON.stringify({ success: false, error: 'Failed to get tool availability' }));
     return true;
   }
 }

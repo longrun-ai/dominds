@@ -41,7 +41,7 @@ restarted_at: <重启时间戳>
 
 ### 2. mcp_release
 
-释放 MCP 租约。
+释放当前对话为某个 server 持有的 MCP 运行时实例。它会停止/释放底层 HTTP 连接或 stdio 进程，但不决定工具的全局注册或可见性。
 
 **参数：**
 

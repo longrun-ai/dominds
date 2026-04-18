@@ -13,6 +13,8 @@ import type {
   DialogStatusKind,
   PrimingScriptSummary,
   PrimingScriptWarningSummary,
+  ToolAvailabilitySnapshot,
+  ToolInfo,
   ToolsetInfo,
   WorkspaceProblemRecord,
 } from '@longrun-ai/kernel/types';
@@ -137,12 +139,14 @@ type ToolsWidgetRequestOptions = {
   taskDocPath?: string;
   rootId?: string;
   selfId?: string;
+  sessionSlug?: string;
   status?: PersistableDialogStatus;
 };
 
-type ToolsWidgetSnapshot = {
+type ToolsWidgetSnapshot = Pick<ToolAvailabilitySnapshot, 'timestamp'> & {
+  directTools: ToolInfo[];
   toolsets: ToolsetInfo[];
-  timestamp: string;
+  warnings: string[];
 };
 
 type ReminderSectionKind = 'virtual' | 'numbered';
@@ -651,11 +655,12 @@ export class DomindsApp extends HTMLElement {
   private toolsWidgetVisible: boolean = false;
   private toolsWidgetLoading: boolean = false;
   private toolsWidgetTimestamp: string = '';
+  private toolsWidgetDirectTools: ToolInfo[] = [];
   private toolsWidgetToolsets: ToolsetInfo[] = [];
+  private toolsWidgetWarnings: string[] = [];
   private toolsWidgetError: string | null = null;
   private toolsWidgetRequestSeq: number = 0;
   private toolsWidgetContextKey: string | null = null;
-  private toolsWidgetSnapshotByContext = new Map<string, ToolsWidgetSnapshot>();
   private toolsWidgetGeometryInitialized: boolean = false;
   private toolsWidgetX: number = 12;
   private toolsWidgetY: number = 120;
@@ -4128,6 +4133,11 @@ export class DomindsApp extends HTMLElement {
       .tools-widget-status-error {
         color: var(--dominds-error, #b3261e);
         background: color-mix(in srgb, var(--dominds-error, #b3261e) 10%, transparent);
+      }
+
+      .tools-widget-status-warning {
+        color: var(--dominds-warning, #856404);
+        background: color-mix(in srgb, var(--dominds-warning, #856404) 12%, transparent);
       }
 
       .tools-section {
@@ -10612,17 +10622,67 @@ export class DomindsApp extends HTMLElement {
 
   private renderToolsWidgetListHtml(): string {
     const t = getUiStrings(this.uiLanguage);
-    if (this.toolsWidgetError && this.toolsWidgetToolsets.length === 0) {
-      return `<div class="tools-empty">${this.escapeHtml(this.toolsWidgetError)}</div>`;
+    const loadingHtml = this.toolsWidgetLoading
+      ? `<div class="tools-widget-status">${this.escapeHtml(t.loading)}</div>`
+      : '';
+    const errorHtml = this.toolsWidgetError
+      ? `<div class="tools-widget-status tools-widget-status-error">${this.escapeHtml(this.toolsWidgetError)}</div>`
+      : '';
+    const warningHtml = this.toolsWidgetWarnings
+      .map(
+        (warning) =>
+          `<div class="tools-widget-status tools-widget-status-warning">${this.escapeHtml(t.toolsStatusWarningPrefix)} ${this.escapeHtml(warning)}</div>`,
+      )
+      .join('');
+    if (
+      this.toolsWidgetError &&
+      this.toolsWidgetToolsets.length === 0 &&
+      this.toolsWidgetDirectTools.length === 0
+    ) {
+      return `${errorHtml}${warningHtml}`;
     }
-    if (this.toolsWidgetLoading && this.toolsWidgetToolsets.length === 0) {
-      return `<div class="tools-empty">${this.escapeHtml(t.loading)}</div>`;
+    if (
+      this.toolsWidgetLoading &&
+      this.toolsWidgetToolsets.length === 0 &&
+      this.toolsWidgetDirectTools.length === 0
+    ) {
+      return `${loadingHtml}${warningHtml}`;
     }
-    if (this.toolsWidgetToolsets.length === 0) {
-      return `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
+    if (this.toolsWidgetToolsets.length === 0 && this.toolsWidgetDirectTools.length === 0) {
+      return `${warningHtml}<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
     }
 
+    const directTools = this.toolsWidgetDirectTools;
     const toolsets = this.toolsWidgetToolsets;
+
+    const renderDirectToolSectionHtml = (
+      sectionTitle: string,
+      tools: readonly ToolInfo[],
+      kindLabel: string,
+    ): string => {
+      const toolsHtml =
+        tools.length === 0
+          ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
+          : tools
+              .map((tool) => {
+                const toolDesc = tool.descriptionI18n
+                  ? tool.descriptionI18n[this.uiLanguage]
+                  : (tool.description ?? '');
+                const desc = toolDesc ? this.escapeHtml(toolDesc) : '';
+                return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
+                  <div class="tool-main">
+                    <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
+                    <span class="tool-name">${this.escapeHtml(tool.name)}</span>
+                  </div>
+                  ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
+                </div>`;
+              })
+              .join('');
+      return `<details class="tools-section" open>
+        <summary class="tools-section-title">${this.escapeHtml(sectionTitle)}</summary>
+        <div class="tools-section-toolsets">${toolsHtml}</div>
+      </details>`;
+    };
 
     const renderToolsetHtml = (
       ts: ToolsetInfo,
@@ -10680,19 +10740,16 @@ export class DomindsApp extends HTMLElement {
       </details>`;
     };
 
+    const domindsToolsets = toolsets.filter((ts) => ts.source === 'dominds');
+    const appToolsets = toolsets.filter((ts) => ts.source === 'app');
     const mcpToolsets = toolsets.filter((ts) => ts.source === 'mcp');
-    const domindsToolsets = toolsets.filter((ts) => ts.source !== 'mcp');
 
+    const directSection = renderDirectToolSectionHtml(t.toolsGroupDirect, directTools, 'ƒ');
     const domindsSection = renderSectionHtml(t.toolsGroupDominds, 'ƒ', domindsToolsets);
+    const appsSection = renderSectionHtml(t.toolsGroupApps, 'ƒ', appToolsets);
     const mcpSection = renderSectionHtml(t.toolsGroupMcp, 'ƒ', mcpToolsets);
 
-    const statusHtml = this.toolsWidgetLoading
-      ? `<div class="tools-widget-status">${this.escapeHtml(t.loading)}</div>`
-      : this.toolsWidgetError
-        ? `<div class="tools-widget-status tools-widget-status-error">${this.escapeHtml(this.toolsWidgetError)}</div>`
-        : '';
-
-    return `${statusHtml}${domindsSection}${mcpSection}`;
+    return `${loadingHtml}${errorHtml}${warningHtml}${directSection}${domindsSection}${appsSection}${mcpSection}`;
   }
 
   private initializeToolsWidgetGeometry(): void {
@@ -10866,6 +10923,10 @@ export class DomindsApp extends HTMLElement {
       taskDocPath,
       rootId: currentDialog.rootId,
       selfId: currentDialog.selfId,
+      sessionSlug:
+        typeof currentDialog.sessionSlug === 'string' && currentDialog.sessionSlug.trim() !== ''
+          ? currentDialog.sessionSlug.trim()
+          : undefined,
       status,
     };
   }
@@ -10888,20 +10949,17 @@ export class DomindsApp extends HTMLElement {
     return `${options.rootId.trim()}::${options.selfId.trim()}::${status}`;
   }
 
-  private toolsWidgetSnapshotHasTools(snapshot: ToolsWidgetSnapshot | null): boolean {
-    if (!snapshot) {
-      return false;
-    }
-    return snapshot.toolsets.some((toolset) => toolset.tools.length > 0);
-  }
-
   private applyToolsWidgetSnapshot(snapshot: ToolsWidgetSnapshot | null): void {
     if (!snapshot) {
+      this.toolsWidgetDirectTools = [];
       this.toolsWidgetToolsets = [];
+      this.toolsWidgetWarnings = [];
       this.toolsWidgetTimestamp = '';
       return;
     }
+    this.toolsWidgetDirectTools = snapshot.directTools;
     this.toolsWidgetToolsets = snapshot.toolsets;
+    this.toolsWidgetWarnings = snapshot.warnings;
     this.toolsWidgetTimestamp = snapshot.timestamp;
   }
 
@@ -10910,13 +10968,8 @@ export class DomindsApp extends HTMLElement {
     const requestOptions = this.getToolsWidgetRequestOptions();
     const previousContextKey = this.toolsWidgetContextKey;
     const contextKey = this.getToolsWidgetContextKey(requestOptions);
-    const cachedSnapshot =
-      contextKey !== null ? (this.toolsWidgetSnapshotByContext.get(contextKey) ?? null) : null;
-
     this.toolsWidgetContextKey = contextKey;
-    if (cachedSnapshot) {
-      this.applyToolsWidgetSnapshot(cachedSnapshot);
-    } else if (contextKey !== previousContextKey) {
+    if (contextKey !== previousContextKey) {
       this.applyToolsWidgetSnapshot(null);
     }
 
@@ -10924,7 +10977,7 @@ export class DomindsApp extends HTMLElement {
     this.toolsWidgetError = null;
     this.updateToolsWidgetUi();
 
-    const res = await this.apiClient.getToolsRegistry(requestOptions);
+    const res = await this.apiClient.getToolAvailability(requestOptions);
     if (requestSeq !== this.toolsWidgetRequestSeq) {
       return;
     }
@@ -10933,9 +10986,6 @@ export class DomindsApp extends HTMLElement {
     if (!res.success || !res.data) {
       const t = getUiStrings(this.uiLanguage);
       const message = res.error || t.unknownError;
-      if (!cachedSnapshot) {
-        this.applyToolsWidgetSnapshot(null);
-      }
       this.toolsWidgetError = message;
       this.updateToolsWidgetUi();
       this.showToast(message, 'warning');
@@ -10943,21 +10993,28 @@ export class DomindsApp extends HTMLElement {
     }
 
     const nextSnapshot: ToolsWidgetSnapshot = {
-      toolsets: res.data.toolsets,
+      directTools: [...res.data.composition.visibleDirectTools],
+      toolsets: [...res.data.composition.visibleToolsets],
+      warnings: [
+        ...(res.data.layers.memberBinding.status === 'error' &&
+        typeof res.data.layers.memberBinding.errorText === 'string' &&
+        res.data.layers.memberBinding.errorText.trim() !== ''
+          ? [res.data.layers.memberBinding.errorText.trim()]
+          : []),
+        ...(res.data.layers.appDynamicAvailability.status === 'error' &&
+        typeof res.data.layers.appDynamicAvailability.errorText === 'string' &&
+        res.data.layers.appDynamicAvailability.errorText.trim() !== ''
+          ? [res.data.layers.appDynamicAvailability.errorText.trim()]
+          : []),
+        ...(res.data.layers.runtimeLease.status === 'error' &&
+        typeof res.data.layers.runtimeLease.errorText === 'string' &&
+        res.data.layers.runtimeLease.errorText.trim() !== ''
+          ? [res.data.layers.runtimeLease.errorText.trim()]
+          : []),
+      ],
       timestamp: res.data.timestamp,
     };
-    const shouldPreserveCachedSnapshot =
-      !this.toolsWidgetSnapshotHasTools(nextSnapshot) &&
-      this.toolsWidgetSnapshotHasTools(cachedSnapshot);
-
-    if (shouldPreserveCachedSnapshot && cachedSnapshot) {
-      this.applyToolsWidgetSnapshot(cachedSnapshot);
-    } else {
-      if (contextKey !== null) {
-        this.toolsWidgetSnapshotByContext.set(contextKey, nextSnapshot);
-      }
-      this.applyToolsWidgetSnapshot(nextSnapshot);
-    }
+    this.applyToolsWidgetSnapshot(nextSnapshot);
     this.toolsWidgetError = null;
     this.updateToolsWidgetUi();
   }
@@ -11030,6 +11087,12 @@ export class DomindsApp extends HTMLElement {
           typeof dialogContainer.refreshTeamConfiguration === 'function'
         ) {
           void dialogContainer.refreshTeamConfiguration();
+        }
+        return true;
+      }
+      case 'tool_availability_updated': {
+        if (this.toolsWidgetVisible) {
+          this.refreshToolsWidget();
         }
         return true;
       }

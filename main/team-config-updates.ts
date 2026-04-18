@@ -15,6 +15,7 @@ import path from 'path';
 import type { TeamConfigUpdatedMessage, WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { createLogger } from './log';
+import { notifyToolAvailabilityBindingChanged } from './tool-availability-updates';
 
 const log = createLogger('team-config-updates');
 
@@ -97,6 +98,7 @@ async function checkAndMaybeBroadcast(trigger: string): Promise<void> {
   if (state.sig === lastSeenSig) return;
   lastSeenSig = state.sig;
   broadcast(makeUpdateMessage({ exists: state.exists, trigger }));
+  notifyToolAvailabilityBindingChanged(`team-config:${trigger}`);
 }
 
 function scheduleCheck(trigger: string): void {
@@ -207,6 +209,7 @@ export function notifyTeamConfigUpdated(trigger: string): void {
       const state = await readTeamYamlSig();
       lastSeenSig = state.sig;
       broadcast(makeUpdateMessage({ exists: state.exists, trigger }));
+      notifyToolAvailabilityBindingChanged(`team-config:${trigger}`);
     })
     .catch((err: unknown) => {
       log.warn('Failed to notify team config updated', err);

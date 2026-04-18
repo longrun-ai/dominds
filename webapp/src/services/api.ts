@@ -26,7 +26,7 @@ import {
   SetupWriteShellEnvResponse,
   SetupWriteTeamYamlRequest,
   SetupWriteTeamYamlResponse,
-  ToolsetInfo,
+  ToolAvailabilitySnapshot,
   type CreateDialogInput,
   type CreateDialogResult,
   type DialogStatusKind,
@@ -731,18 +731,14 @@ export class ApiClient {
     return this.request('/api/task-documents');
   }
 
-  async getToolsRegistry(options?: {
+  async getToolAvailability(options?: {
     agentId?: string;
     taskDocPath?: string;
     rootId?: string;
     selfId?: string;
+    sessionSlug?: string;
     status?: PersistableDialogStatus;
-  }): Promise<
-    ApiResponse<{
-      toolsets: ToolsetInfo[];
-      timestamp: string;
-    }>
-  > {
+  }): Promise<ApiResponse<ToolAvailabilitySnapshot>> {
     // Cache-bust to avoid stale registry results across rapid UI toggles.
     const params = new URLSearchParams({ ts: String(Date.now()) });
     if (typeof options?.agentId === 'string' && options.agentId.trim() !== '') {
@@ -757,6 +753,9 @@ export class ApiClient {
     if (typeof options?.selfId === 'string' && options.selfId.trim() !== '') {
       params.set('selfId', options.selfId.trim());
     }
+    if (typeof options?.sessionSlug === 'string' && options.sessionSlug.trim() !== '') {
+      params.set('sessionSlug', options.sessionSlug.trim());
+    }
     if (
       options?.status === 'running' ||
       options?.status === 'completed' ||
@@ -764,7 +763,7 @@ export class ApiClient {
     ) {
       params.set('status', options.status);
     }
-    return this.request(`/api/tools-registry?${params.toString()}`);
+    return this.request(`/api/tool-availability?${params.toString()}`);
   }
 
   async getRtwsDiligence(lang: LanguageCode): Promise<ApiResponse<DiligenceFileResponse>> {

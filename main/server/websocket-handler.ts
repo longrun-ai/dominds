@@ -112,6 +112,10 @@ import {
   startTeamConfigWatcher,
   stopTeamConfigWatcher,
 } from '../team-config-updates';
+import {
+  clearToolAvailabilityBroadcaster,
+  setToolAvailabilityBroadcaster,
+} from '../tool-availability-updates';
 import { syncPendingTellaskReminderState } from '../tools/pending-tellask-reminder';
 import { generateDialogID } from '../utils/id';
 import type { AuthConfig } from './auth';
@@ -2107,6 +2111,7 @@ export function setupWebSocketServer(
 
   // Broadcast `.minds/team.yaml` updates so multi-tab clients can refresh cached team config.
   setTeamConfigBroadcaster(broadcastToClients);
+  setToolAvailabilityBroadcaster(broadcastToClients);
   setDomindsSelfUpdateBroadcaster((status) => {
     void createDomindsRuntimeStatusMessage(mode)
       .then((msg) => {
@@ -2127,6 +2132,7 @@ export function setupWebSocketServer(
   httpServer.once('close', () => {
     stopTeamConfigWatcher();
     clearTeamConfigBroadcaster();
+    clearToolAvailabilityBroadcaster();
     setDomindsSelfUpdateBroadcaster(null);
     setFinalizeDialogQuarantineHook(null);
     setPrepareDialogQuarantineHook(null);

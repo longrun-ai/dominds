@@ -156,9 +156,14 @@ export type DomindsAppHostStartResult = Readonly<{
 }>;
 
 export type DomindsAppHostInstance = Readonly<{
+  // Apps extend Dominds by registering callbacks at explicit kernel control points.
+  // These callbacks are authoritative only for their own control point semantics; they do not
+  // mutate MCP registry/lease state or other kernel protocols by side effect.
   tools: Readonly<Record<string, DomindsAppHostToolHandler>>;
   runControls?: Readonly<Record<string, DomindsAppRunControlHandler>>;
   reminderOwners?: Readonly<Record<string, DomindsAppReminderOwnerHandler>>;
+  // Tool availability is an app control point. The callback returns app-specific dynamic toolset
+  // decisions for a concrete context; it is not an app-owned global registry.
   dynamicToolsets?: DomindsAppDynamicToolsetsHandler;
   start?: (
     params: Readonly<{ runtimePort: number | null; frontend?: DomindsAppFrontendJson }>,

@@ -24,6 +24,7 @@ import type {
   ToolCallOutput,
 } from '../tool';
 import { toolFailure, toolSuccess } from '../tool';
+import { notifyToolAvailabilityRuntimeLeaseChanged } from '../tool-availability-updates';
 
 const log = createLogger('tools/mcp');
 
@@ -81,7 +82,7 @@ const mcpReleaseSchema: JsonSchema = {
     serverId: {
       type: 'string',
       description:
-        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Releases the leased MCP client for this dialog.",
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Releases this dialog's current leased MCP runtime instance/process for that server.",
     },
   },
   required: ['serverId'],
@@ -128,10 +129,10 @@ export const mcpReleaseTool: FuncTool = {
   type: 'func',
   name: 'mcp_release',
   description:
-    'Release a leased MCP toolset client for this dialog (stops the underlying process/connection).',
+    "Release this dialog's current leased MCP runtime instance for a server (stops the underlying process/connection).",
   descriptionI18n: {
-    en: 'Release a leased MCP toolset client for this dialog (stops the underlying process/connection).',
-    zh: '释放当前对话租用的 MCP toolset client（停止底层进程/连接）。',
+    en: "Release this dialog's current leased MCP runtime instance for a server (stops the underlying process/connection).",
+    zh: '释放当前对话为某个 server 持有的 MCP 运行时实例（停止底层进程/连接）。',
   },
   parameters: mcpReleaseSchema,
   argsValidation: 'dominds',
@@ -163,6 +164,7 @@ export const mcpReleaseTool: FuncTool = {
         `ok: no active lease for ${parsed.serverId} (or server is truely-stateless)`,
       );
     }
+    notifyToolAvailabilityRuntimeLeaseChanged(`mcp_release:${parsed.serverId}:${dialogKey}`);
     return toolSuccess(`ok: released ${parsed.serverId} for dialog ${dialogKey}`);
   },
 };
@@ -204,22 +206,22 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
           ? [
               `${prefix} MCP 工具集租约 [${reminder.id}]: \`${serverId}\``,
               '',
-              `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；此对话已租用一个专用的 MCP client 实例。`,
+              `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；当前对话持有一个 MCP 运行时实例（HTTP 连接或 stdio 进程）。`,
               '',
-              `当你确认近期不再需要这个工具集时，请释放它，以停止/回收底层 MCP 进程或连接：`,
+              `当你确认近期不再需要这个运行时实例时，请释放它，以停止/回收底层 MCP 进程或连接：`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
               '',
-              `如果另一个对话同时使用同一个 MCP 工具集，Dominds 会为那个对话启动一个独立的 MCP client 实例。`,
+              `这只影响当前对话持有的运行时实例，不决定该 server 的全局工具注册/可见性。`,
             ].join('\n')
           : [
               `${prefix} MCP toolset lease [${reminder.id}]: \`${serverId}\``,
               '',
-              `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and a dedicated MCP client instance is leased to this dialog.`,
+              `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and the current dialog holds one MCP runtime instance for it (an HTTP connection or stdio process).`,
               '',
-              `When you are confident you will not need this toolset soon, release it to stop the underlying MCP process/connection:`,
+              `When you are confident you will not need this runtime instance soon, release it to stop the underlying MCP process/connection:`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
               '',
-              `If another dialog uses the same MCP toolset concurrently, Dominds will spawn a separate MCP client instance for that dialog.`,
+              `This only affects the runtime instance held by the current dialog; it does not determine global tool registration/visibility for that server.`,
             ].join('\n'),
     };
   },

@@ -41,7 +41,7 @@ restarted_at: <restart timestamp>
 
 ### 2. mcp_release
 
-Release MCP lease.
+Release the current dialog's leased MCP runtime instance for a server. This stops/releases the underlying HTTP connection or stdio process, but does not define global tool registration/visibility.
 
 **Parameters:**
 

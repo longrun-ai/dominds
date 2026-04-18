@@ -10,6 +10,10 @@ import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
 import { getWorkLanguage } from '../runtime/work-language';
 import { toolSuccess, type Tool, type ToolArguments, type ToolCallOutput } from '../tool';
+import {
+  notifyToolAvailabilityRegistryMaybeChanged,
+  notifyToolAvailabilityRuntimeLeaseChanged,
+} from '../tool-availability-updates';
 import { buildMcpManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
@@ -317,6 +321,7 @@ class McpServerDispatch {
       return;
     }
     this.leasesByDialogKey.set(dialogKey, runtime);
+    notifyToolAvailabilityRuntimeLeaseChanged(`mcp_lease_acquired:${this.serverId}:${dialogKey}`);
   }
 
   public attachLeaseReminder(dlg: Dialog): void {
@@ -344,6 +349,30 @@ export function releaseMcpToolsetLeaseForDialog(
   }
   const released = state.dispatch.releaseLeaseForDialog(dialogKey);
   return { ok: true, released };
+}
+
+export function getMcpRuntimeLeasesForDialog(dialogKey: string): ReadonlyArray<{
+  serverId: string;
+  transport: 'stdio' | 'streamable_http';
+}> {
+  const leases: Array<{
+    serverId: string;
+    transport: 'stdio' | 'streamable_http';
+  }> = [];
+  for (const [serverId, state] of serverStateById.entries()) {
+    if (state.cfg.truelyStateless) {
+      continue;
+    }
+    if (!state.dispatch.hasLeaseForDialog(dialogKey)) {
+      continue;
+    }
+    leases.push({
+      serverId,
+      transport: state.cfg.transport,
+    });
+  }
+  leases.sort((a, b) => a.serverId.localeCompare(b.serverId));
+  return leases;
 }
 
 export function getMcpDeclaredServerRuntimeStatuses(): readonly McpDeclaredServerRuntimeStatus[] {
@@ -690,6 +719,7 @@ async function restartServerNow(
   const desiredToolsetName = serverId;
   const fingerprint = fingerprintServerConfig(serverCfg);
   const existing = serverStateById.get(serverId);
+  const runtimeLeaseChanged = existing !== undefined;
   replaceDeclaredServerRuntimeCatalog(
     parsed.config,
     parsed.invalidServers,
@@ -717,6 +747,13 @@ async function restartServerNow(
   reconcileProblemsByPrefix(problemPrefixForServer(serverId), res.state.problems);
   reorderMcpToolsetsInRegistry(parsed.serverIdsInYamlOrder);
   await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+  notifyToolAvailabilityRegistryMaybeChanged({
+    reason: 'registry_changed',
+    trigger: `mcp:restart:${serverId}`,
+  });
+  if (runtimeLeaseChanged) {
+    notifyToolAvailabilityRuntimeLeaseChanged(`mcp:restart:${serverId}`);
+  }
   return { ok: true };
 }
 
@@ -856,6 +893,7 @@ async function applyWorkspaceConfig(
 ): Promise<void> {
   log.info(`Applying MCP rtws config (${reason})`);
   replaceDeclaredServerRuntimeCatalog(config, invalidServers, serverIdsInYamlOrder);
+  let runtimeLeaseChanged = false;
 
   const invalidIds = new Set(invalidServers.map((s) => s.serverId));
   const desiredIds = new Set([...Object.keys(config.servers), ...invalidIds]);
@@ -865,6 +903,7 @@ async function applyWorkspaceConfig(
     if (desiredIds.has(serverId)) continue;
     unregisterServer(state);
     state.dispatch.requestStop();
+    runtimeLeaseChanged = true;
     serverStateById.delete(serverId);
     reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
   }
@@ -898,6 +937,7 @@ async function applyWorkspaceConfig(
       if (existing) {
         unregisterServer(existing);
         existing.dispatch.requestStop();
+        runtimeLeaseChanged = true;
       }
       registerServer(res.state);
       serverStateById.set(serverId, res.state);
@@ -941,6 +981,13 @@ async function applyWorkspaceConfig(
   }
 
   reorderMcpToolsetsInRegistry(serverIdsInYamlOrder);
+  notifyToolAvailabilityRegistryMaybeChanged({
+    reason: 'registry_changed',
+    trigger: `mcp:apply-workspace-config:${reason}`,
+  });
+  if (runtimeLeaseChanged) {
+    notifyToolAvailabilityRuntimeLeaseChanged(`mcp:apply-workspace-config:${reason}`);
+  }
 }
 
 function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
