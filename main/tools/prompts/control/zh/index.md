@@ -27,7 +27,7 @@
 control 是 Dominds 的**对话控制工具集**，用于管理对话状态、提醒、差遣牒，以及跨对话回复收口语义：
 
 - **提醒管理**：提醒分 `dialog` / `personal` 两个 scope；默认保持对话内工作集，只有职责相关且在所有由你主理的后续对话里也应继续看到的提醒才用 `personal`
-- **差遣牒操作**：更新任务契约（goals/constraints/progress）
+- **差遣牒操作**：更新任务契约（goals/constraints/progress）；其中 `progress` 是全队共享、准实时、可扫读的任务公告牌
 - **上下文维护**：在不丢关键恢复线索的前提下降低认知负载
 - **回复路由**：在支线/回问语境下，区分 `tellaskBack`、`replyTellask*` 与普通文本的职责边界
 
@@ -69,4 +69,4 @@ scope 规则：
 
 - **goals**：任务目标
 - **constraints**：约束条件
-- **progress**：进度状态
+- **progress**：面向全队同步的准实时任务公告牌 / 当前有效状态快照

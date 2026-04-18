@@ -272,7 +272,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       taskdocContractLine:
         '- 差遣牒（`*.tsk/`）：全队共享的任务契约（goals/constraints/progress）；不是个人笔记，保持足够短，每轮都应可通读。',
       taskdocSemanticsLine:
-        '- 章节语义约定：`progress` 是全队共享的里程碑公告牌，用来记录关键决策、当前状态与下一步；不是流水账，也不是个人工作记录。`goals` / `constraints` 是较稳定的任务契约；每次更新都必须保留仍然有效的他人条目。',
+        '- 章节语义约定：`progress` 是全队共享、准实时、可扫读的任务公告牌，用来记录当前有效状态、关键决策、下一步与仍成立阻塞；不是流水账，也不是个人工作记录。`goals` / `constraints` 是较稳定的任务契约；每次更新都必须保留仍然有效的他人条目。',
       taskdocSectionReplaceLine: `- 更新差遣牒的任意分段时：每次调用会替换该分段全文；你必须先对照“上下文中注入的当前内容”做合并/压缩；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
       progressLine:
         '- 更新 `progress` 时：它必须始终是可供全队扫读的完整当前快照，而不是只追加自己这一轮的零散笔记。',
@@ -309,7 +309,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     taskdocContractLine:
       '- Taskdoc (`*.tsk/`): the team-shared task contract (goals/constraints/progress). It is not a personal notebook; keep it small enough to read every course.',
     taskdocSemanticsLine:
-      '- Section semantics: `progress` is the team’s shared milestone bulletin board for key decisions, current status, and next steps; it is not a raw log or personal work record. `goals` / `constraints` are the more stable task contract; every update must preserve still-valid entries from others.',
+      '- Section semantics: `progress` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers; it is not a raw log or personal work record. `goals` / `constraints` are the more stable task contract; every update must preserve still-valid entries from others.',
     taskdocSectionReplaceLine: `- When updating any Taskdoc section: each call replaces the entire section; always start from the current injected content and merge/compress; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
     progressLine:
       '- When updating `progress`, keep it as a complete, team-scannable current snapshot instead of appending only your own latest notes.',

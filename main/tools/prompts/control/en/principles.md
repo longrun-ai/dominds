@@ -63,19 +63,20 @@ Default to `dialog`. Use `personal` only when you should keep seeing that note i
 
 ### 2. Taskdoc
 
-Taskdoc is a **task contract** defining goals, constraints, and progress.
+Taskdoc is a **task contract** and the task's **team-shared source of current truth** during execution; within it, `progress` acts as a **quasi-real-time team task bulletin board / current effective-state snapshot**.
 
 **Structure:**
 
 - **goals.md**: Task objectives
 - **constraints.md**: Constraints
-- **progress.md**: Progress status
+- **progress.md**: The current effective state, key decisions, next steps, and still-active blockers for team-wide sync
 
 **Update Rules:**
 
 - Each `change_mind` call replaces entire chapter
 - Does not reset dialog rounds
 - Changes visible to all teammates
+- When writing `progress`, assume teammates will skim it to synchronize on the current task truth rather than read your private process log
 
 ## Tool Overview
 
@@ -118,14 +119,28 @@ Taskdoc is a **task contract** defining goals, constraints, and progress.
 
 - **Goal changes**: When task objectives change
 - **Constraint adjustments**: When constraints need adjustment
-- **Progress updates**: When task status has significant progress
+- **Progress updates**: When the team needs the current effective state, key decisions, next steps, or still-active blockers synchronized
 
 ### 3. Update Strategy
 
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
-- Separate carriers: shared decisions/status belong in Taskdoc; reminders keep local resume details
+- Separate carriers: information that must synchronize the team's current effective state, key decisions, next steps, or still-active blockers belongs in `progress`, the quasi-real-time task bulletin board; reminders keep local resume details
+- Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile
 - Collapse before clearing: default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
+
+### 4. What Belongs in `progress`
+
+- Good fits for `progress`:
+  - key decisions already in effect
+  - blockers that are confirmed and still active
+  - the next step the team should currently align on
+  - completed stage closures and remaining gaps
+- Poor fits for `progress`:
+  - “I just read file X”
+  - “I might try a small idea next”
+  - scratch notes only useful to the current speaker
+  - historical traces whose current validity is unclear
 
 ## Limitations and Notes
 

@@ -234,7 +234,7 @@ update_reminder({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n\n### In Progress\n- [ ] Create personal_memory manual [80%]\n\n### Not Started\n- [ ] Create control manual',
+    '## Progress\n\n### Current Effective State\n- The handbook boundary split is now agreed: role assets / personal long-lived experience / Taskdoc-progress / reminders\n\n### Decisions In Effect\n- `persona / knowhow / pitfalls` no longer absorb daily member experience\n- `personal_memory` is reserved for one member\\'s reusable long-lived experience\n\n### Next Step\n- Strengthen the bulletin-board semantics of Taskdoc `progress`\n\n### Still-Active Blockers\n- None',
 });
 ```
 
@@ -275,5 +275,5 @@ message: <error message>
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
 - For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
 - If the current course is already under caution/critical remediation, rough multi-reminder bridge notes are acceptable; in the current course only preserve info + `clear_mind`, and reconcile them as the first step only after the system actually starts the new course
-- Keep only details not already covered by Taskdoc; do not repeat team-shared status
+- Keep only details not already covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
 - Do not paste long logs, large tool outputs, or raw material into reminders

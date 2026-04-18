@@ -87,7 +87,7 @@
 
 ### Q: What's the difference between dialog reminders, personal reminders, and memory?
 
-A: `dialog` reminders are only for the current dialog. `personal` reminders stay visible in all later dialogs you lead, but still belong to the active working set rather than long-term knowledge. `personal_memory` is for durable facts and reusable knowledge saved to disk.
+A: `dialog` reminders are only for the current dialog's working set. `personal` reminders stay visible in all later dialogs you lead, but still belong to the working set rather than long-term knowledge. `personal_memory` is for durable facts and reusable knowledge saved to disk; if the information should synchronize the team's current effective state, key decisions, next step, or still-active blockers, write it to Taskdoc `progress` instead of a reminder.
 
 ### Q: How do I choose `personal` vs `dialog`?
 

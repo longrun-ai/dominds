@@ -232,7 +232,7 @@ update_reminder({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n\n### 进行中\n- [ ] 创建 personal_memory 手册 [80%]\n\n### 待开始\n- [ ] 创建 control 手册',
+    '## Progress\n\n### 当前有效状态\n- 手册边界方案已确定：角色级资产 / 个人长期经验 / Taskdoc-progress / reminders 分流\n\n### 已生效决策\n- `persona / knowhow / pitfalls` 不承接成员日常经验\n- `personal_memory` 只承接成员自己的长期可复用经验\n\n### 下一步\n- 补齐 Taskdoc `progress` 的公告牌属性说明\n\n### 仍成立阻塞\n- 无',
 });
 ```
 
@@ -273,5 +273,5 @@ message: <错误消息>
 - 默认提醒项应保持短、新、能直接指导下一步，常见 1–3 条
 - 若用于接续包，默认优先结构化内容：下一步行动、关键定位、运行/验证、容易丢的临时细节
 - 若已吃紧/告急，先保留多条粗略提醒项也可以；当前程只做保信息 + `clear_mind`，系统真正开启新一程后第一步再收敛整理
-- 接续包只保留差遣牒未覆盖的细节；不要重复团队共享状态
+- 接续包只保留差遣牒未覆盖的细节；不要重复团队共享状态。要向全队同步“现在到哪了 / 哪些决策已生效 / 下一步是什么 / 哪些阻塞仍成立”，请写回 Taskdoc `progress`
 - 不要把长日志、大段 tool output、原始材料直接塞进提醒项

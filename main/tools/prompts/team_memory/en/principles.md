@@ -68,7 +68,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 - Include update time: Record last update time for tracking
 - Store only stable team-level knowledge: shared conventions, architectural invariants, long-lived maintenance indexes, or judgment rules that multiple members should reuse
 - Do not turn `team_memory` into one member’s personal experience warehouse; that belongs in `personal_memory`
-- Do not put current task status, temporary blockers, or short-term bridge notes here; those belong in Taskdoc `progress`, reminders, or ordinary team docs
+- Do not put execution-time information here when the team needs it synchronized quasi-real-time, such as current effective state, key decisions, next steps, or still-active blockers; that belongs in Taskdoc `progress`, the quasi-real-time task bulletin board
 
 ### 3. Usage Scenarios
 
@@ -81,6 +81,8 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 - **personal_memory**: Personal memory, only current agent visible
 - **reminder**: Temporary reminder, session-level
 - **change_mind**: Update taskdoc (goals/constraints/progress)
+
+> Note: `team_memory` carries long-lived team consensus; Taskdoc `progress` carries quasi-real-time team-wide task announcements during execution. Do not mix them.
 
 ## Limitations and Notes
 

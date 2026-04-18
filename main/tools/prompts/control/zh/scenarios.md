@@ -11,18 +11,18 @@
 - 失败分支处理
 - 完成判据
 
-## 场景 1：任务进度跟踪
+## 场景 1：提醒项工作集跟踪
 
 ### 场景描述
 
-使用提醒跟踪当前任务进度。
+使用 reminders 承接当前对话的工作集：下一步、临时阻塞、易丢的 bridge 细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。
 
 ### 示例
 
 ```typescript
-// 添加任务提醒
+// 添加一条 dialog 级工作集提醒
 add_reminder({
-  content: '当前任务: 创建 i18n 手册 [进行中]',
+  content: '下一步：复核 control 手册是否已经完整表达 Taskdoc progress 的公告牌语义',
 });
 
 // 只有因为这是一条职责相关提示，且在所有由你主理的后续对话里也应继续看到，
@@ -32,10 +32,10 @@ add_reminder({
   scope: 'personal',
 });
 
-// 任务完成后更新
+// 当本地工作集细节变化后更新
 update_reminder({
   reminder_id: 'abc123de',
-  content: '已完成: 创建 i18n 手册 [完成]',
+  content: '阻塞已解除：control 手册文案已与 Taskdoc progress 语义对齐',
 });
 
 // 删除已完成的提醒
@@ -46,8 +46,9 @@ delete_reminder({
 
 ### 关键点
 
-- 当前任务进度、临时阻塞、一次性线索默认都用 `dialog`
+- 本地下一步、临时阻塞、一次性 bridge 细节默认都用 `dialog`
 - 只有职责相关、且在所有由你主理的后续对话里也应继续看到的提醒才用 `personal`
+- 如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`
 - 如果内容本质上是长期知识而不是当前工作集提示，应改存到 `personal_memory`
 
 ## 场景 2：支线已完成，按 assignment 头部要求调用 replyTellask
@@ -114,7 +115,7 @@ replyTellaskBack({
 
 ### 场景描述
 
-更新任务进度到差遣牒。
+把当前有效状态、关键决策、下一步与仍成立阻塞公告给全队，而不是写个人流水账。
 
 ### 示例
 
@@ -122,7 +123,7 @@ replyTellaskBack({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n- [x] 创建 personal_memory 手册\n\n### 进行中\n- [ ] 创建 control 手册 [50%]\n\n### 待改进\n- [ ] 编写工具描述',
+    '## Progress\n\n### 当前有效状态\n- 已完成三类记忆载体边界收口，准备补 Taskdoc 公告牌属性\n\n### 已生效决策\n- `personal_memory` 不再作为短期杂物柜\n- `team_memory` 只承接团队长期共识与不变量\n\n### 下一步\n- 在 control / team_mgmt 手册中补强 `progress` 的公告牌语义\n\n### 仍成立阻塞\n- 无',
 });
 ```
 
@@ -184,15 +185,15 @@ recall_taskdoc({
 
 ### 场景描述
 
-维护差遣牒的完整性和一致性。
+维护差遣牒的完整性和一致性，并确保 `progress` 始终是可供全队扫读的当前真相快照。
 
 ### 示例
 
 ```typescript
-// 更新进度（保持 goals 和 progress 一致）
+// 更新 progress（保持 goals / constraints / progress 一致）
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册 [100%]\n- [x] 创建 team_mgmt 手册 [100%]\n- [x] 创建 personal_memory 手册 [100%]\n\n### 进行中\n- [ ] 创建 control 手册 [60%]\n\n### 下一步\n- 完成 control 手册\n- 创建 os 手册',
+    '## Progress\n\n### 当前有效状态\n- 边界口径已统一到手册源头与测试\n\n### 已生效决策\n- 角色级资产 / personal_memory / team_memory / Taskdoc-progress / reminders 的职责已经切开\n\n### 下一步\n- 复验 control 手册、Taskdoc 展示文案与边界测试\n\n### 仍成立阻塞\n- 无',
 });
 ```

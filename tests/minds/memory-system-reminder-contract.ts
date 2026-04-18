@@ -16,8 +16,8 @@ async function main(): Promise<void> {
     contextHealthPromptMode: 'normal',
   });
   assert.ok(
-    zh.includes('`progress` 是全队共享的里程碑公告牌'),
-    'zh prompt should define progress as the team-shared milestone bulletin board',
+    zh.includes('`progress` 是全队共享、准实时、可扫读的任务公告牌'),
+    'zh prompt should define progress as the team-shared quasi-real-time task bulletin board',
   );
   assert.ok(
     zh.includes('`goals` / `constraints` 是较稳定的任务契约'),
@@ -58,8 +58,8 @@ async function main(): Promise<void> {
     contextHealthPromptMode: 'critical',
   });
   assert.ok(
-    en.includes('`progress` is the team’s shared milestone bulletin board'),
-    'en prompt should define progress as the team-shared milestone bulletin board',
+    en.includes('`progress` is the team-shared, quasi-real-time, scannable task bulletin board'),
+    'en prompt should define progress as the team-shared quasi-real-time task bulletin board',
   );
   assert.ok(
     en.includes('`goals` / `constraints` are the more stable task contract'),

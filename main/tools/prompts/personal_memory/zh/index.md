@@ -36,7 +36,7 @@ personal_memory 是 Dominds 的**个人记忆工具集**，用于管理智能体
 - 个人记忆会自动隔离到磁盘路径：`.minds/memory/individual/<member-id>/...`。
 - `path` 不应包含你的成员 id（不要写 `<member-id>/...`）。
 - 如果你还没有任何个人记忆条目，直接调用 `add_personal_memory` 即可：目录会由系统自动创建。
-- 如果你想写的是角色长期职责/方法/正反例，请改去 `persona / knowhow / pitfalls`；如果你想写的是当前任务进展或短期待办，请改去 Taskdoc `progress` / reminders。
+- 如果你想写的是角色长期职责/方法/正反例，请改去 `persona / knowhow / pitfalls`；如果你想向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，请改去 Taskdoc `progress` 这一准实时任务公告牌；如果只是个人/当前对话短期工作集与接续细节，请改去 reminders。
 
 ## 快速导航
 

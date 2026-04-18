@@ -11,18 +11,18 @@
 - Failure Branch
 - Completion Criteria
 
-## Scenario 1: Task Progress Tracking
+## Scenario 1: Reminder Working Set Tracking
 
 ### Scenario Description
 
-Use reminders to track current task progress.
+Use reminders for the current dialog's working set: next steps, blockers, and volatile details that are not meant to become the team's Taskdoc bulletin board.
 
 ### Example
 
 ```typescript
-// Add task reminder
+// Add a dialog-scoped working-set reminder
 add_reminder({
-  content: 'Current task: Creating i18n manual [In Progress]',
+  content: 'Next step: verify the control manual wording against Taskdoc progress semantics',
 });
 
 // Add a personal reminder only because this is a responsibility-linked cue
@@ -32,13 +32,13 @@ add_reminder({
   scope: 'personal',
 });
 
-// Update after task completion
+// Update after the local working-set detail changes
 update_reminder({
   reminder_id: 'abc123de',
-  content: 'Completed: Creating i18n manual [Done]',
+  content: 'Blocker cleared: control manual wording now aligned with Taskdoc progress semantics',
 });
 
-// Delete completed reminder
+// Delete the reminder once it is no longer needed
 delete_reminder({
   reminder_id: 'abc123de',
 });
@@ -46,8 +46,9 @@ delete_reminder({
 
 ### Key Points
 
-- Default to `dialog` for current-task progress and temporary blockers
+- Default to `dialog` for local next steps, temporary blockers, and volatile bridge details
 - Use `personal` only when you should still see the note in all later dialogs you lead
+- If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
 - If the note is durable knowledge rather than an active working-set cue, move it to `personal_memory` instead
 
 ## Scenario 2: Sideline is complete, and the assignment header requires replyTellask
@@ -115,7 +116,7 @@ replyTellaskBack({
 
 ### Scenario Description
 
-Update task progress to taskdoc.
+Announce the current effective state, key decisions, next step, and still-active blockers to the whole team rather than writing a private chronology.
 
 ### Example
 
@@ -123,7 +124,7 @@ Update task progress to taskdoc.
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n- [x] Create personal_memory manual\n\n### In Progress\n- [ ] Create control manual [50%]\n\n### Pending Improvements\n- [ ] Write tool descriptions',
+    '## Progress\n\n### Current Effective State\n- The memory-carrier boundary cleanup is complete; next we strengthen the Taskdoc bulletin-board semantics\n\n### Decisions In Effect\n- `personal_memory` is no longer treated as a short-term junk drawer\n- `team_memory` now carries only long-lived team conventions and invariants\n\n### Next Step\n- Add stronger `progress` bulletin-board guidance in control / team_mgmt manuals\n\n### Still-Active Blockers\n- None',
 });
 ```
 
@@ -185,15 +186,15 @@ recall_taskdoc({
 
 ### Scenario Description
 
-Maintain taskdoc integrity and consistency.
+Maintain taskdoc integrity and consistency, and keep `progress` as a team-scannable current-truth snapshot.
 
 ### Example
 
 ```typescript
-// Update progress (keep goals and progress consistent)
+// Update progress (keep goals / constraints / progress consistent)
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual [100%]\n- [x] Create team_mgmt manual [100%]\n- [x] Create personal_memory manual [100%]\n\n### In Progress\n- [ ] Create control manual [60%]\n\n### Next Steps\n- Complete control manual\n- Create os manual',
+    '## Progress\n\n### Current Effective State\n- The boundary wording has been propagated into handbook sources and tests\n\n### Decisions In Effect\n- role assets / personal_memory / team_memory / Taskdoc-progress / reminders now have separated responsibilities\n\n### Next Step\n- Re-verify control manual wording, Taskdoc display text, and boundary tests\n\n### Still-Active Blockers\n- None',
 });
 ```

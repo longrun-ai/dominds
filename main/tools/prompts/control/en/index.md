@@ -27,7 +27,7 @@
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
 - **Reminder management**: Two reminder scopes. Default to dialog-local working set; use `personal` only for responsibility-linked notes that you should keep seeing in all later dialogs you lead
-- **Taskdoc operations**: Update task contracts (goals/constraints/progress)
+- **Taskdoc operations**: Update task contracts (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
 - **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in sideline / ask-back flows
 
@@ -69,4 +69,4 @@ Taskdoc is a **task contract** containing:
 
 - **goals**: Task objectives
 - **constraints**: Constraints
-- **progress**: Progress status
+- **progress**: A quasi-real-time team task bulletin board / current effective-state snapshot for team-wide sync

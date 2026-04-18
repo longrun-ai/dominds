@@ -71,17 +71,18 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 - Fewer memory files is better: group facts that will be updated together into one file; avoid adding extra “directory-of-directory” layers.
 - `personal_memory` should primarily hold knowledge that has **not** been promoted to team-defined role assets yet, but is still worth carrying forward for your own future work: your entry maps, search keywords, debugging methods, and long-lived working preferences.
 - Do not store task progress or daily state here:
-  - Team-visible progress belongs in Taskdoc `progress`
-  - Short-term working set belongs in reminders
+  - Information that must synchronize the team's current effective state, key decisions, next step, or still-active blockers belongs in Taskdoc `progress`, the quasi-real-time task bulletin board
+  - Personal or current-dialog short-term working set details belong in reminders
 
 ### 3. Recommended Boundaries
 
 - **Role-level long-lived definition assets**: `persona / knowhow / pitfalls`
 - **A member’s own reusable long-lived experience and working index**: `personal_memory`
-- **Current task progress, temporary bridge notes, short-term TODOs**: Taskdoc `progress` / reminders
+- **Taskdoc `progress`**: the team-shared quasi-real-time task bulletin board for current effective state, key decisions, next steps, and still-active blockers
+- **reminders**: personal or current-dialog short-term working set, continuation package, and easy-to-lose volatile details
 - **Team-shared long-lived conventions / invariants / consensus rules**: `team_memory`
 
-> Note: If you find yourself using personal memory to store “current progress of this run”, it likely belongs in Taskdoc `progress` or reminders instead.
+> Note: If the main purpose of the information is to let the team quickly synchronize on where things stand now, which decisions are in effect, what is next, or which blockers still hold, it belongs in Taskdoc `progress`, not in `personal_memory`.
 >
 > Likewise, if what you want to write is a role’s long-lived responsibility boundary, working method, or durable positive/negative example, it should usually live in that role’s `persona / knowhow / pitfalls`, not in `personal_memory`.
 

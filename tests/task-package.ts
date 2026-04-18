@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     );
     assert.ok(
       msg1Content.includes(
-        '`progress` is the team-shared milestone bulletin board for key decisions, current status, and next steps',
+        '`progress` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers',
       ),
     );
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     const msg1ZhContent = requireMessageContent(msg1Zh);
     assert.ok(
       msg1ZhContent.includes(
-        '`progress` 是全队共享的里程碑公告牌，用于关键决策、当前状态与下一步，不是“我当前在做什么”的个人笔记',
+        '`progress` 是全队共享、准实时、可扫读的任务公告牌，用于当前有效状态、关键决策、下一步与仍成立阻塞，不是“我当前在做什么”的个人笔记',
       ),
     );
     setWorkLanguage('en');

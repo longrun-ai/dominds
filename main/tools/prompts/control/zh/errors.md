@@ -87,7 +87,7 @@
 
 ### Q: `dialog` 提醒、`personal` 提醒和 memory 有什么区别？
 
-A: `dialog` 提醒只用于当前对话。`personal` 提醒会在所有由你主理的后续对话里继续可见，但仍属于当前工作集提示，不是长期知识库。`personal_memory` 用于保存持久稳定事实和可复用知识。
+A: `dialog` 提醒只用于当前对话的工作集。`personal` 提醒会在所有由你主理的后续对话里继续可见，但仍属于工作集提示，不是长期知识库。`personal_memory` 用于保存持久稳定事实和可复用知识；如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`，而不是提醒项。
 
 ### Q: `personal` 和 `dialog` 怎么选？
 

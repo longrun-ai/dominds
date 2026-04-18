@@ -36,7 +36,7 @@ async function renderManual(
 
 async function renderToolsetTopic(
   lang: 'zh' | 'en',
-  toolsetId: 'personal_memory' | 'team_memory',
+  toolsetId: 'personal_memory' | 'team_memory' | 'control',
   topic: 'principles',
 ): Promise<string> {
   return await renderToolsetManualContent({
@@ -58,8 +58,8 @@ async function main(): Promise<void> {
     'zh team_mgmt minds manual should route personal reusable experience to personal_memory',
   );
   assert.ok(
-    zhMinds.includes('Taskdoc `progress` 或 reminders'),
-    'zh team_mgmt minds manual should route current task progress to Taskdoc/reminders',
+    zhMinds.includes('Taskdoc `progress`（准实时任务公告牌）'),
+    'zh team_mgmt minds manual should define Taskdoc progress as the quasi-real-time task bulletin board',
   );
 
   const zhPermissions = await renderManual('zh', 'team_mgmt', ['permissions']);
@@ -78,8 +78,8 @@ async function main(): Promise<void> {
     'zh personal_memory manual should distinguish role assets from personal memory',
   );
   assert.ok(
-    zhPersonal.includes('当前任务进展、临时 bridge 信息、短期待办'),
-    'zh personal_memory manual should push short-term task state out of personal memory',
+    zhPersonal.includes('准实时任务公告牌'),
+    'zh personal_memory manual should route team-synced current state to Taskdoc progress bulletin board',
   );
 
   const zhTeam = await renderToolsetTopic('zh', 'team_memory', 'principles');
@@ -88,8 +88,18 @@ async function main(): Promise<void> {
     'zh team_memory manual should include the three-way boundary split',
   );
   assert.ok(
-    zhTeam.includes('不要把当前任务进展、临时 blocker、短期 bridge 信息写进 `team_memory`'),
+    zhTeam.includes('准实时任务公告牌'),
     'zh team_memory manual should reject temporary task state in team memory',
+  );
+
+  const zhControl = await renderToolsetTopic('zh', 'control', 'principles');
+  assert.ok(
+    zhControl.includes('准实时全队任务公告牌'),
+    'zh control manual should define Taskdoc progress as a quasi-real-time team task bulletin board',
+  );
+  assert.ok(
+    zhControl.includes('当前有效状态快照'),
+    'zh control manual should describe progress as the current effective-state snapshot',
   );
 
   const enMinds = await renderManual('en', 'team_mgmt', ['minds']);
@@ -98,8 +108,18 @@ async function main(): Promise<void> {
     'en team_mgmt minds manual should define persona/knowhow/pitfalls as role-level long-lived assets',
   );
   assert.ok(
-    enMinds.includes('current task progress, temporary bridge notes, and short-term TODOs'),
-    'en team_mgmt minds manual should route short-term task state away from role assets',
+    enMinds.includes('quasi-real-time task bulletin board'),
+    'en team_mgmt minds manual should define Taskdoc progress as the quasi-real-time task bulletin board',
+  );
+
+  const enControl = await renderToolsetTopic('en', 'control', 'principles');
+  assert.ok(
+    enControl.includes('quasi-real-time team task bulletin board'),
+    'en control manual should define Taskdoc progress as a quasi-real-time team task bulletin board',
+  );
+  assert.ok(
+    enControl.includes('current effective-state snapshot'),
+    'en control manual should describe progress as the current effective-state snapshot',
   );
 
   console.log('memory boundary guidance tests: ok');

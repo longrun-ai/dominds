@@ -36,7 +36,7 @@ Key notes:
 - Personal memory is automatically isolated on disk under `.minds/memory/individual/<member-id>/...`.
 - Your `path` must NOT include your member id (do not write `<member-id>/...`).
 - If you have zero memory files yet, just call `add_personal_memory` — the directory will be created automatically.
-- If the content is a role's long-lived responsibilities/methods/examples, put it in `persona / knowhow / pitfalls` instead; if it is current task progress or short-term TODOs, use Taskdoc `progress` / reminders instead.
+- If the content is a role's long-lived responsibilities/methods/examples, put it in `persona / knowhow / pitfalls` instead; if it should synchronize the team's current effective state, key decisions, next steps, or still-active blockers, use Taskdoc `progress`, the quasi-real-time task bulletin board; if it is only a personal/current-dialog short-term working set or continuation detail, use reminders instead.
 
 Tool list:
 
