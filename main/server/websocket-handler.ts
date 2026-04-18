@@ -342,6 +342,17 @@ function syncDialogLanguagePreference(
   dialog.resetCourseLanguageNotice();
 }
 
+export function shouldQueueUserSupplementAtGenerationBoundary(args: {
+  latestGenerating: boolean;
+  inMemoryGenerating: boolean;
+  isLocked: boolean;
+}): boolean {
+  if (!args.isLocked) {
+    return false;
+  }
+  return args.latestGenerating || args.inMemoryGenerating;
+}
+
 async function queueUserSupplementAtGenerationBoundary(
   dialog: Dialog,
   prompt: {
@@ -352,10 +363,16 @@ async function queueUserSupplementAtGenerationBoundary(
   },
 ): Promise<boolean> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, 'running');
-  if (latest?.generating !== true) {
-    return false;
-  }
-  if (!dialog.isLocked()) {
+  const inMemoryGenerating = dialog.hasActiveGeneration;
+  // Live UX can observe generating_start before latest.yaml flips generating=true, so boundary
+  // queuing must honor either persisted or in-memory generation state.
+  if (
+    !shouldQueueUserSupplementAtGenerationBoundary({
+      latestGenerating: latest?.generating === true,
+      inMemoryGenerating,
+      isLocked: dialog.isLocked(),
+    })
+  ) {
     return false;
   }
   const queued = dialog.queueUserPromptAtGenerationBoundary({
@@ -379,6 +396,8 @@ async function queueUserSupplementAtGenerationBoundary(
     selfId: dialog.id.selfId,
     msgId: queued.msgId,
     incomingMsgId: prompt.msgId,
+    latestGenerating: latest?.generating === true,
+    inMemoryGenerating,
   });
   return true;
 }

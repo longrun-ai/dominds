@@ -1600,18 +1600,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     this.queuedUserBubbleByMsgId.set(msgId, bubble);
 
-    const anchor = this.resolveQueuedUserInsertionAnchor(container);
-    if (anchor && anchor.parentElement === container) {
-      if (bubble.parentElement !== container || bubble.previousElementSibling !== anchor) {
-        if (anchor.nextSibling) {
-          container.insertBefore(bubble, anchor.nextSibling);
-        } else {
-          container.appendChild(bubble);
-        }
-      }
-    } else if (bubble.parentElement !== container) {
-      container.appendChild(bubble);
-    }
+    this.insertRealtimeBubbleAfterActiveGeneration(container, bubble);
     this.scrollToBottom();
   }
 
@@ -1647,6 +1636,48 @@ export class DomindsDialogContainer extends HTMLElement {
     if (generationBubbles.length < 1) return undefined;
     const last = generationBubbles.item(generationBubbles.length - 1);
     return last instanceof HTMLElement ? last : undefined;
+  }
+
+  // Realtime standalone bubbles should appear immediately after the active generation bubble,
+  // while preserving arrival order among all already-live trailing bubbles.
+  private insertRealtimeBubbleAfterActiveGeneration(
+    container: HTMLElement,
+    bubble: HTMLElement,
+  ): void {
+    if (
+      bubble.parentElement === container &&
+      bubble.getAttribute('data-live-after-active-generation') === 'true'
+    ) {
+      return;
+    }
+
+    const anchor = this.resolveQueuedUserInsertionAnchor(container);
+    if (!anchor || anchor.parentElement !== container) {
+      bubble.removeAttribute('data-live-after-active-generation');
+      if (bubble.parentElement !== container) {
+        container.appendChild(bubble);
+      }
+      return;
+    }
+
+    bubble.setAttribute('data-live-after-active-generation', 'true');
+
+    let tail: HTMLElement = anchor;
+    let cursor = anchor.nextElementSibling;
+    while (cursor instanceof HTMLElement) {
+      if (cursor.getAttribute('data-live-after-active-generation') !== 'true') {
+        break;
+      }
+      tail = cursor;
+      cursor = cursor.nextElementSibling;
+    }
+
+    const desiredBefore = tail.nextSibling;
+    if (desiredBefore) {
+      container.insertBefore(bubble, desiredBefore);
+      return;
+    }
+    container.appendChild(bubble);
   }
 
   private takeQueuedUserBubble(msgId: string): HTMLElement | undefined {
@@ -1953,7 +1984,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const container = this.shadowRoot?.querySelector('.messages');
     if (!container) return;
     const bubble = this.createUiOnlyMarkdownBubble(event);
-    container.appendChild(bubble);
+    this.insertRealtimeBubbleAfterActiveGeneration(container as HTMLElement, bubble);
     this.setupUiOnlyMarkdownProgressiveExpand(bubble);
     this.scrollToBottom();
   }
@@ -2933,7 +2964,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const messageEl = this.createMessageElement(content, 'tool', event.timestamp);
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
-      container.appendChild(messageEl);
+      this.insertRealtimeBubbleAfterActiveGeneration(container as HTMLElement, messageEl);
       this.setupTellaskResponseProgressiveExpand(messageEl);
       this.scrollToBottom();
     }
@@ -3177,7 +3208,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
-      container.appendChild(messageEl);
+      this.insertRealtimeBubbleAfterActiveGeneration(container as HTMLElement, messageEl);
       this.setupTellaskResponseProgressiveExpand(messageEl);
       this.scrollToBottom();
     }
@@ -3212,7 +3243,7 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     const messageEl = this.createTellaskCarryoverBubble(event);
-    container.appendChild(messageEl);
+    this.insertRealtimeBubbleAfterActiveGeneration(container as HTMLElement, messageEl);
     this.setupTellaskResponseProgressiveExpand(messageEl);
     this.scrollToBottom();
   }
