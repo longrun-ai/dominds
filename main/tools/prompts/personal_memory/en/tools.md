@@ -95,8 +95,9 @@ Clear all personal memory.
 
 ```typescript
 add_personal_memory({
-  path: 'project/todo',
-  content: '- Complete i18n docs\n- Write test cases\n- Update README',
+  path: 'project/entry-map',
+  content:
+    '- Team config entry: dominds/main/tools/team_mgmt.ts\n- Manual render entry: dominds/main/tools/team_mgmt-manual.ts\n- Toolset registration: dominds/main/tools/builtins.ts',
 });
 ```
 
@@ -104,8 +105,9 @@ add_personal_memory({
 
 ```typescript
 replace_personal_memory({
-  path: 'project/todo',
-  content: '- Complete i18n docs [DONE]\n- Write test cases [IN PROGRESS]\n- Update README',
+  path: 'project/entry-map',
+  content:
+    '- Team config entry: dominds/main/tools/team_mgmt.ts\n- Manual render entry: dominds/main/tools/team_mgmt-manual.ts\n- Toolset registration: dominds/main/tools/builtins.ts\n- If you need `man()`, also trace buildToolsetManualTools',
 });
 ```
 
@@ -113,7 +115,7 @@ replace_personal_memory({
 
 ```typescript
 drop_personal_memory({
-  path: 'project/todo',
+  path: 'project/old-entry-map',
 });
 ```
 

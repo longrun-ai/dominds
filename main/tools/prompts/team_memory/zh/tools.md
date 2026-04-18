@@ -115,13 +115,13 @@ add_team_memory({
 });
 ```
 
-### 更新项目状态
+### 更新共享不变量
 
 ```typescript
 replace_team_memory({
-  path: 'team/project/status',
+  path: 'team/ops/release-invariants',
   content:
-    '## 项目状态\n\n- 当前迭代: Sprint 15\n- 发布目标: 2024-02-01\n- 阻塞问题: 无\n- 待审查: 3 个 PR',
+    '## 发布不变量\n\n- 合并影响 wire protocol 的改动前，必须同步检查前端消费者\n- 发布前必须确认关键回滚入口\n- 线上异常先固定时间线和证据，再讨论修复策略',
 });
 ```
 

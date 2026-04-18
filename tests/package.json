@@ -162,6 +162,7 @@
     "snippets-catalog-i18n": "tsx snippets/catalog-i18n.ts",
     "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts",
     "access-control-file-ext-names": "tsx access-control/file-ext-names.ts",
+    "memory-boundary-guidance": "tsx toolsets/memory-boundary-guidance.ts",
     "team_mgmt-manual-no-toolsets-glob": "tsx team_mgmt-manual/no-toolsets-glob.ts",
     "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts",
     "team_mgmt-manual-skills-manual": "tsx team_mgmt-manual/skills-manual.ts",

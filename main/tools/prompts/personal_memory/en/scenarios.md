@@ -11,159 +11,117 @@
 - Failure Branch
 - Completion Criteria
 
-## Scenario 1: Task Progress Tracking
+## Scenario 1: Maintain a Code Entry Map
 
 ### Scenario Description
 
-In long-running tasks, you need to persist task progress to continue after restart.
+Store the code entry points and file paths you repeatedly need, so future work starts faster.
 
 ### Example
 
-**Add Task List**
+**Save the entry map**
 
 ```typescript
 add_personal_memory({
-  path: 'project/i18n-tasks',
+  path: 'project/dominds-entry-map',
   content:
-    '## TODO\n\n- [ ] Create ws_mod manual\n- [ ] Create team_mgmt manual\n- [ ] Create personal_memory manual\n- [ ] Create control manual\n\n## In Progress\n- [ ] Create ws_mod manual [100%]',
+    '## Dominds Entry Map\n\n- Team management runtime manual source: dominds/main/tools/team_mgmt.ts\n- team_mgmt manual entry: dominds/main/tools/team_mgmt-manual.ts\n- Built-in toolset registration: dominds/main/tools/builtins.ts\n- Prompt manual fragments: dominds/main/tools/prompts/**',
 });
 ```
 
-**Update Task Progress**
+**Refine the map**
 
 ```typescript
 replace_personal_memory({
-  path: 'project/i18n-tasks',
+  path: 'project/dominds-entry-map',
   content:
-    '## TODO\n\n- [ ] Create team_mgmt manual\n- [ ] Create personal_memory manual\n- [ ] Create control manual\n\n## Completed\n- [x] Create ws_mod manual\n\n## In Progress\n- [ ] Create team_mgmt manual [50%]',
+    '## Dominds Entry Map\n\n- Team management runtime manual source: dominds/main/tools/team_mgmt.ts\n- team_mgmt manual entry: dominds/main/tools/team_mgmt-manual.ts\n- Built-in toolset registration: dominds/main/tools/builtins.ts\n- Prompt manual fragments: dominds/main/tools/prompts/**\n- For `man()` rendering, also trace buildToolsetManualTools / renderTeamMgmtGuideContent',
 });
 ```
 
-## Scenario 2: User Preferences Storage
+## Scenario 2: Save Debug Search Templates
 
 ### Scenario Description
 
-Save user preferences, such as programming language, theme, etc.
+Save search patterns that repeatedly work well for you during debugging.
 
 ### Example
 
-**Save User Preferences**
+**Save the search template**
 
 ```typescript
 add_personal_memory({
-  path: 'user/preferences',
+  path: 'debug/team-mgmt-search-queries',
   content:
-    '## User Preferences\n\n- Programming Language: TypeScript\n- Code Style: strict\n- Theme: dark\n- Auto Save: true',
+    '## team_mgmt Search Templates\n\n- Find manual renderers: renderTeamManual|renderMindsManual|renderPermissionsManual\n- Find prompt fragments: rg -n "principles|scenarios" dominds/main/tools/prompts\n- Find manual tests: rg -n "team_mgmt-manual|toolsets/manual" dominds/tests',
 });
 ```
 
-**Update Preferences**
+**Update the template**
 
 ```typescript
 replace_personal_memory({
-  path: 'user/preferences',
+  path: 'debug/team-mgmt-search-queries',
   content:
-    '## User Preferences\n\n- Programming Language: TypeScript\n- Code Style: strict\n- Theme: light\n- Auto Save: true',
+    '## team_mgmt Search Templates\n\n- Find manual renderers: renderTeamManual|renderMindsManual|renderPermissionsManual\n- Find prompt fragments: rg -n "principles|scenarios|index" dominds/main/tools/prompts\n- Find manual tests: rg -n "team_mgmt-manual|toolsets/manual|memory" dominds/tests',
 });
 ```
 
-## Scenario 3: Context Information Preservation
+## Scenario 3: Save External Research Strategy
 
 ### Scenario Description
 
-In complex tasks, save important context information to avoid repeated queries.
+Store durable research habits and search order that you want to reuse across future tasks.
 
 ### Example
 
-**Save API Information**
+**Save the strategy**
 
 ```typescript
 add_personal_memory({
-  path: 'context/api-endpoints',
+  path: 'research/search-strategies',
   content:
-    '## API Endpoints\n\n- User Login: POST /api/auth/login\n- Get User Info: GET /api/user/info\n- Update User Settings: PUT /api/user/settings\n\n## Authentication\n- Use Bearer Token\n- Validity: 24 hours',
+    '## Research Strategy\n\n- For product behavior, start with runtime source-of-truth before static docs\n- For UI copy, search i18n files and render sites together\n- For contracts/protocols, search shared/types first, then consumers',
 });
 ```
 
-**Save Tech Stack**
+**Refine the strategy**
 
 ```typescript
-add_personal_memory({
-  path: 'context/tech-stack',
+replace_personal_memory({
+  path: 'research/search-strategies',
   content:
-    '## Tech Stack\n\n- Frontend: React + TypeScript\n- Backend: Node.js + Express\n- Database: PostgreSQL\n- Cache: Redis',
+    '## Research Strategy\n\n- For product behavior, start with runtime source-of-truth before static docs\n- For UI copy, search i18n files and render sites together\n- For contracts/protocols, search shared/types first, then consumers\n- Only promote knowledge into memory after it proves durable and reusable',
 });
 ```
 
-## Scenario 4: Meeting Notes
+## Scenario 4: Keep Long-Lived Working Preferences
 
 ### Scenario Description
 
-Save meeting highlights and decisions.
-
-### Example
-
-```typescript
-add_personal_memory({
-  path: 'meeting/2024-01-15',
-  content:
-    '## Meeting Notes: 2024-01-15\n\n### Participants\n- @fullstack\n- @i18n\n- @ux\n\n### Agenda\n1. i18n manual creation plan\n2. man function UX improvements\n\n### Decisions\n- Prioritize creating ws_mod and team_mgmt manuals\n- man function supports fuzzy matching\n\n### TODO\n- @i18n: Create personal_memory manual\n- @fullstack: Optimize man function',
-});
-```
-
-## Scenario 5: Knowledge Base
-
-### Scenario Description
-
-Build a personal knowledge base and save learning notes.
+Store stable preferences about how you work, so future generations stay more consistent.
 
 ### Example
 
 ```typescript
 add_personal_memory({
-  path: 'knowledge/typescript-tips',
+  path: 'preferences/working-style',
   content:
-    '## TypeScript Tips\n\n### 1. Type Inference\nconst x = 1; // Type inferred as number\n\n### 2. Interface vs Type\n- Interface: Extensible, suitable for object types\n- Type: Supports union types, intersection types\n\n### 3. Strict Mode\nEnabling strict mode provides better type safety',
+    '## My Long-Lived Working Preferences\n\n- Find the source-of-truth before rewriting docs\n- When editing manuals, keep zh and en aligned, with zh semantics leading\n- Prefer `rg` to locate entry points before reading larger context',
 });
 ```
 
-## Scenario 6: Temporary Notes
+## Scenario 5: Clean Up Outdated Memory
 
 ### Scenario Description
 
-Temporarily save information to process later.
+Delete memories that are stale, superseded, or no longer worth paying context cost for.
 
 ### Example
-
-```typescript
-add_personal_memory({
-  path: 'scratchpad/temp-notes',
-  content:
-    '## Temporary Notes\n\n- TODO: Check team.yaml configuration\n- TODO: Verify man function types\n- TODO: Update taskdoc progress',
-});
-```
-
-**Delete after processing**
 
 ```typescript
 drop_personal_memory({
-  path: 'scratchpad/temp-notes',
-});
-```
-
-## Scenario 7: Cleaning Up Outdated Memory
-
-### Scenario Description
-
-Regularly clean up memories that are no longer needed.
-
-### Example
-
-```typescript
-// View all current memories (agent can read)
-// Delete unnecessary memories one by one
-drop_personal_memory({
-  path: 'project/old-feature',
+  path: 'project/old-entry-map',
 });
 ```
 

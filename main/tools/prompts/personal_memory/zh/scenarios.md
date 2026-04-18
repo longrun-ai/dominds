@@ -11,159 +11,117 @@
 - 失败分支处理
 - 完成判据
 
-## 场景 1：任务进度跟踪
+## 场景 1：维护代码入口地图
 
 ### 场景描述
 
-在长时间任务中，需要持久化任务进度，以便重启后继续。
+把自己反复会用到的代码入口、关键文件和调用线索沉淀下来，减少下次重新摸索的成本。
 
 ### 示例
 
-**添加任务列表**
+**保存入口地图**
 
 ```typescript
 add_personal_memory({
-  path: 'project/i18n-tasks',
+  path: 'project/dominds-entry-map',
   content:
-    '## 待办任务\n\n- [ ] 创建 ws_mod 手册\n- [ ] 创建 team_mgmt 手册\n- [ ] 创建 personal_memory 手册\n- [ ] 创建 control 手册\n\n## 进行中\n- [ ] 创建 ws_mod 手册 [100%]',
+    '## Dominds 入口地图\n\n- team 管理入口: dominds/main/tools/team_mgmt.ts\n- team_mgmt 手册总入口: dominds/main/tools/team_mgmt-manual.ts\n- 通用工具集注册: dominds/main/tools/builtins.ts\n- 手册 prompt 片段: dominds/main/tools/prompts/**',
 });
 ```
 
-**更新任务进度**
+**补充定位线索**
 
 ```typescript
 replace_personal_memory({
-  path: 'project/i18n-tasks',
+  path: 'project/dominds-entry-map',
   content:
-    '## 待办任务\n\n- [ ] 创建 team_mgmt 手册\n- [ ] 创建 personal_memory 手册\n- [ ] 创建 control 手册\n\n## 已完成\n- [x] 创建 ws_mod 手册\n\n## 进行中\n- [ ] 创建 team_mgmt 手册 [50%]',
+    '## Dominds 入口地图\n\n- team 管理入口: dominds/main/tools/team_mgmt.ts\n- team_mgmt 手册总入口: dominds/main/tools/team_mgmt-manual.ts\n- 通用工具集注册: dominds/main/tools/builtins.ts\n- 手册 prompt 片段: dominds/main/tools/prompts/**\n- 若要追 man 渲染入口，先看 buildToolsetManualTools / renderTeamMgmtGuideContent',
 });
 ```
 
-## 场景 2：用户偏好存储
+## 场景 2：沉淀排障关键词模板
 
 ### 场景描述
 
-保存用户偏好设置，例如编程语言、主题等。
+保存对自己长期有效的排障检索套路，避免每次都从零开始想搜索词。
 
 ### 示例
 
-**保存用户偏好**
+**保存排障模板**
 
 ```typescript
 add_personal_memory({
-  path: 'user/preferences',
+  path: 'debug/team-mgmt-search-queries',
   content:
-    '## 用户偏好\n\n- 编程语言: TypeScript\n- 代码风格: strict\n- 主题: dark\n- 自动保存: true',
+    '## team_mgmt 排障检索模板\n\n- 查手册章节来源: renderTeamManual|renderMindsManual|renderPermissionsManual\n- 查 prompt 片段来源: rg -n "principles|scenarios" dominds/main/tools/prompts\n- 查 manual 相关测试: rg -n "team_mgmt-manual|toolsets/manual" dominds/tests',
 });
 ```
 
-**更新偏好**
+**更新模板**
 
 ```typescript
 replace_personal_memory({
-  path: 'user/preferences',
+  path: 'debug/team-mgmt-search-queries',
   content:
-    '## 用户偏好\n\n- 编程语言: TypeScript\n- 代码风格: strict\n- 主题: light\n- 自动保存: true',
+    '## team_mgmt 排障检索模板\n\n- 查手册章节来源: renderTeamManual|renderMindsManual|renderPermissionsManual\n- 查 prompt 片段来源: rg -n "principles|scenarios|index" dominds/main/tools/prompts\n- 查 manual 相关测试: rg -n "team_mgmt-manual|toolsets/manual|memory" dominds/tests',
 });
 ```
 
-## 场景 3：上下文信息保存
+## 场景 3：沉淀外部检索策略
 
 ### 场景描述
 
-在复杂任务中，保存重要的上下文信息，避免重复查询。
+把自己长期常用的外部检索方法整理成索引，便于未来快速复用。
 
 ### 示例
 
-**保存 API 信息**
+**保存检索策略**
 
 ```typescript
 add_personal_memory({
-  path: 'context/api-endpoints',
+  path: 'research/search-strategies',
   content:
-    '## API 端点\n\n- 用户登录: POST /api/auth/login\n- 获取用户信息: GET /api/user/info\n- 更新用户设置: PUT /api/user/settings\n\n## 认证\n- 使用 Bearer Token\n- 有效期: 24 小时',
+    '## 常用检索策略\n\n- 查官方手册优先看 docs / 官方仓库 / runtime source-of-truth\n- 查 UI 文案来源优先搜 i18n 文件和组件 render 点\n- 查协议/类型定义优先搜 shared/types 和消费端入口',
 });
 ```
 
-**保存技术栈**
+**补充说明**
 
 ```typescript
-add_personal_memory({
-  path: 'context/tech-stack',
+replace_personal_memory({
+  path: 'research/search-strategies',
   content:
-    '## 技术栈\n\n- 前端: React + TypeScript\n- 后端: Node.js + Express\n- 数据库: PostgreSQL\n- 缓存: Redis',
+    '## 常用检索策略\n\n- 查官方手册优先看 docs / 官方仓库 / runtime source-of-truth\n- 查 UI 文案来源优先搜 i18n 文件和组件 render 点\n- 查协议/类型定义优先搜 shared/types 和消费端入口\n- 只有当知识已经稳定可复用时才写回记忆；任务内临时发现不要默认入库',
 });
 ```
 
-## 场景 4：会议记录
+## 场景 4：记录个人长期工作偏好
 
 ### 场景描述
 
-保存会议要点和决策。
-
-### 示例
-
-```typescript
-add_personal_memory({
-  path: 'meeting/2024-01-15',
-  content:
-    '## 会议纪要: 2024-01-15\n\n### 参与者\n- @fullstack\n- @i18n\n- @ux\n\n### 议题\n1. i18n 手册创建计划\n2. man 函数 UX 改进\n\n### 决策\n- 优先创建 ws_mod 和 team_mgmt 手册\n- man 函数支持模糊匹配\n\n### 待办\n- @i18n: 创建 personal_memory 手册\n- @fullstack: 优化 man 函数',
-});
-```
-
-## 场景 5：知识库
-
-### 场景描述
-
-建立个人知识库，保存学习笔记。
+保存只对你自己长期稳定有效的工作方式偏好，帮助后续生成更一致。
 
 ### 示例
 
 ```typescript
 add_personal_memory({
-  path: 'knowledge/typescript-tips',
+  path: 'preferences/working-style',
   content:
-    '## TypeScript 技巧\n\n### 1. 类型推断\nconst x = 1; // 类型推断为 number\n\n### 2. 接口 vs 类型\n- 接口: 可扩展，适合对象类型\n- 类型: 支持联合类型、交叉类型\n\n### 3. strict 模式\n启用 strict 模式可以获得更好的类型安全',
+    '## 我的长期工作偏好\n\n- 先定位 source-of-truth，再动文案\n- 修改手册类内容时，中英文一起维护，中文语义优先\n- 优先用 rg 搜入口，再读最小必要上下文',
 });
 ```
 
-## 场景 6：临时笔记
+## 场景 5：清理过时记忆
 
 ### 场景描述
 
-临时保存需要稍后处理的信息。
+定期删除已经失效、被新文档替代、或不再会复用的个人记忆，避免上下文噪音。
 
 ### 示例
-
-```typescript
-add_personal_memory({
-  path: 'scratchpad/temp-notes',
-  content:
-    '## 临时笔记\n\n- TODO: 检查 team.yaml 配置\n- TODO: 验证 man 函数类型\n- TODO: 更新差遣牒进度',
-});
-```
-
-**处理完后删除**
 
 ```typescript
 drop_personal_memory({
-  path: 'scratchpad/temp-notes',
-});
-```
-
-## 场景 7：清理过时记忆
-
-### 场景描述
-
-定期清理不再需要的记忆。
-
-### 示例
-
-```typescript
-// 查看当前所有记忆（智能体可读取）
-// 逐个删除不需要的记忆
-drop_personal_memory({
-  path: 'project/old-feature',
+  path: 'project/old-entry-map',
 });
 ```
 

@@ -95,8 +95,9 @@
 
 ```typescript
 add_personal_memory({
-  path: 'project/todo',
-  content: '- 完成 i18n 文档\n- 编写测试用例\n- 更新 README',
+  path: 'project/entry-map',
+  content:
+    '- 团队配置入口: dominds/main/tools/team_mgmt.ts\n- 手册渲染入口: dominds/main/tools/team_mgmt-manual.ts\n- toolset 注册: dominds/main/tools/builtins.ts',
 });
 ```
 
@@ -104,8 +105,9 @@ add_personal_memory({
 
 ```typescript
 replace_personal_memory({
-  path: 'project/todo',
-  content: '- 完成 i18n 文档 [DONE]\n- 编写测试用例 [IN PROGRESS]\n- 更新 README',
+  path: 'project/entry-map',
+  content:
+    '- 团队配置入口: dominds/main/tools/team_mgmt.ts\n- 手册渲染入口: dominds/main/tools/team_mgmt-manual.ts\n- toolset 注册: dominds/main/tools/builtins.ts\n- 如需查 `man()`，再追 buildToolsetManualTools',
 });
 ```
 
@@ -113,7 +115,7 @@ replace_personal_memory({
 
 ```typescript
 drop_personal_memory({
-  path: 'project/todo',
+  path: 'project/old-entry-map',
 });
 ```
 

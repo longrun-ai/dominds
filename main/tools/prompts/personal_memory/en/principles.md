@@ -69,17 +69,21 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 - Treat personal memory as a **carry-along stable-facts memo**: enable **0 ripgrep** startup within your scope.
 - Store stable facts only: **anchor points (file/symbol) + 1-line meaning + key contracts/priorities (≤3)**.
 - Fewer memory files is better: group facts that will be updated together into one file; avoid adding extra “directory-of-directory” layers.
+- `personal_memory` should primarily hold knowledge that has **not** been promoted to team-defined role assets yet, but is still worth carrying forward for your own future work: your entry maps, search keywords, debugging methods, and long-lived working preferences.
 - Do not store task progress or daily state here:
   - Team-visible progress belongs in Taskdoc `progress`
   - Short-term working set belongs in reminders
 
-### 3. Usage Scenarios
+### 3. Recommended Boundaries
 
-- **Task persistence**: Save long-term task progress
-- **Context memory**: Save important information from conversation context
-- **Preference settings**: Save user preferences and configuration information
+- **Role-level long-lived definition assets**: `persona / knowhow / pitfalls`
+- **A member’s own reusable long-lived experience and working index**: `personal_memory`
+- **Current task progress, temporary bridge notes, short-term TODOs**: Taskdoc `progress` / reminders
+- **Team-shared long-lived conventions / invariants / consensus rules**: `team_memory`
 
 > Note: If you find yourself using personal memory to store “current progress of this run”, it likely belongs in Taskdoc `progress` or reminders instead.
+>
+> Likewise, if what you want to write is a role’s long-lived responsibility boundary, working method, or durable positive/negative example, it should usually live in that role’s `persona / knowhow / pitfalls`, not in `personal_memory`.
 
 ## Relationship with Other Tools
 

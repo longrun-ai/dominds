@@ -29,6 +29,7 @@ team_memory is Dominds' **team shared memory toolset** for managing memories sha
 - **Sharing**: Memory is visible to all team members
 - **Persistence**: Memory is persisted to disk and retained after conversation restarts
 - **Collaboration**: Supports information sharing among team members
+- **Boundary**: Primarily for team-shared long-lived conventions, invariants, and consensus rules rather than one task's temporary status
 
 ## Quick Navigation
 
@@ -48,7 +49,7 @@ team_memory is Dominds' **team shared memory toolset** for managing memories sha
 
 ## Difference from memory
 
-| Feature    | memory                           | team_memory                         |
-| ---------- | -------------------------------- | ----------------------------------- |
-| Visibility | Current agent only               | All team members                    |
-| Use Cases  | Personal preferences, temp notes | Team conventions, knowledge sharing |
+| Feature    | memory                                           | team_memory                                       |
+| ---------- | ------------------------------------------------ | ------------------------------------------------- |
+| Visibility | Current agent only                               | All team members                                  |
+| Use Cases  | Personal long-lived experience and working index | Team long-lived conventions and shared invariants |

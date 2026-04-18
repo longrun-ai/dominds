@@ -59,19 +59,19 @@ add_team_memory({
 });
 ````
 
-## Scenario 4: Current Sprint Status
+## Scenario 4: Share Release / Ops Invariants
 
 ### Scenario Description
 
-Share current sprint status, including task progress and blocking issues.
+Record long-lived release or on-call rules shared across members, rather than one task’s temporary status.
 
 ### Example
 
 ```typescript
 add_team_memory({
-  path: 'team/sprint/current',
+  path: 'team/ops/release-invariants',
   content:
-    '## Sprint 15 Status\n\n### Progress\n- Completed: 8/15 tasks\n- In Progress: 4 tasks\n- Not Started: 3 tasks\n\n### Blocking Issues\n- API specification pending confirmation (owned by @alice)\n\n### Release Plan\n- Target Date: 2024-02-01\n- Regression Testing: 2024-01-30',
+    '## Release Invariants\n\n- Before merging wire-protocol changes, check frontend consumers in the same change\n- Before release, confirm key regression paths and rollback entrypoints\n- During incidents, lock the timeline and evidence first, then debate the fix',
 });
 ```
 
@@ -91,19 +91,19 @@ add_team_memory({
 });
 ```
 
-## Scenario 6: Team Member Information
+## Scenario 6: Team Glossary
 
 ### Scenario Description
 
-Record team member responsibilities and contact information.
+Maintain shared terminology and standard wording across the team.
 
 ### Example
 
 ```typescript
 add_team_memory({
-  path: 'team/members',
+  path: 'team/glossary/dialog-terms',
   content:
-    '## Team Members\n\n### @fullstack\n- Responsibility: Backend development, API design\n- Expertise: Node.js, PostgreSQL\n\n### @i18n\n- Responsibility: Internationalization, Documentation\n- Expertise: Multi-language, Content strategy\n\n### @ux\n- Responsibility: User Experience, Design\n- Expertise: UI/UX, Figma',
+    '## Dialog Terms\n\n- In user-facing copy, prefer: Mainline dialog / Sideline dialog\n- In implementation context, main dialog / subdialog / supdialog are acceptable\n- Do not surface implementation terms directly into user-facing copy',
 });
 ```
 

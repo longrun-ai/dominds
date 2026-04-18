@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import assert from 'node:assert/strict';
-import { renderTeamMgmtGuideContent } from '../../main/tools/team_mgmt';
+import { renderTeamMgmtGuideContent } from '../../main/tools/team_mgmt-manual';
 
 async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise<string> {
   return await renderTeamMgmtGuideContent(lang, [...topics]);

@@ -29,7 +29,13 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 
 - **Path**: Unique identifier for the memory, similar to a file system path
 - **Content**: Actual content of the memory, can be arbitrary text
-- **Visibility**: All team members can read and modify
+- **Visibility**: Content is shared with the team; whether it is writable depends on whether the current agent has team_memory write authority
+
+**Three-way boundary split:**
+
+- `team_memory`: team-shared long-lived conventions / invariants / consensus rules
+- `personal_memory`: one member’s own reusable long-lived experience and working index
+- `persona / knowhow / pitfalls`: team-defined role-level long-lived prompt assets
 
 ## Tool Overview
 
@@ -60,12 +66,15 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 - Keep content concise: Each memory should cover only one topic
 - Use structured format: Can use Markdown format to organize content
 - Include update time: Record last update time for tracking
+- Store only stable team-level knowledge: shared conventions, architectural invariants, long-lived maintenance indexes, or judgment rules that multiple members should reuse
+- Do not turn `team_memory` into one member’s personal experience warehouse; that belongs in `personal_memory`
+- Do not put current task status, temporary blockers, or short-term bridge notes here; those belong in Taskdoc `progress`, reminders, or ordinary team docs
 
 ### 3. Usage Scenarios
 
 - **Team conventions**: Coding standards, commit message format, review process
-- **Project knowledge**: Architecture decisions, technology choices, API documentation
-- **Shared context**: Current task status, blocking issues, dependencies
+- **Project knowledge**: Architecture decisions, technology choices, long-lived API or entry-point indexes
+- **Shared invariants**: Terminology, collaboration rules, and boundary conditions every member should follow
 
 ## Relationship with Other Tools
 

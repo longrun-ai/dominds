@@ -59,19 +59,19 @@ add_team_memory({
 });
 ````
 
-## 场景 4：当前迭代状态
+## 场景 4：共享发布/值班不变量
 
 ### 场景描述
 
-共享当前迭代的状态，包括任务进度和阻塞问题。
+记录跨成员长期共用的发布或值班规则，而不是某一次任务的临时状态。
 
 ### 示例
 
 ```typescript
 add_team_memory({
-  path: 'team/sprint/current',
+  path: 'team/ops/release-invariants',
   content:
-    '## Sprint 15 状态\n\n### 进度\n- 已完成: 8/15 个任务\n- 进行中: 4 个任务\n- 待开始: 3 个任务\n\n### 阻塞问题\n- API 规范文档待确认（@alice 负责）\n\n### 发布安排\n- 目标日期: 2024-02-01\n- 回归测试: 2024-01-30',
+    '## 发布不变量\n\n- 合并影响 wire protocol 的改动前，必须同步检查前端消费者\n- 发布前必须确认关键回归路径和回滚入口\n- 发生线上异常时，先固定时间线和证据，再讨论修复策略',
 });
 ```
 
@@ -91,19 +91,19 @@ add_team_memory({
 });
 ```
 
-## 场景 6：团队成员信息
+## 场景 6：团队术语表
 
 ### 场景描述
 
-记录团队成员的职责和联系方式。
+维护跨成员共享的术语和固定说法，减少沟通偏差。
 
 ### 示例
 
 ```typescript
 add_team_memory({
-  path: 'team/members',
+  path: 'team/glossary/dialog-terms',
   content:
-    '## 团队成员\n\n### @fullstack\n- 职责: 后端开发、API 设计\n- 专长: Node.js, PostgreSQL\n\n### @i18n\n- 职责: 国际化、文档\n- 专长: 多语言、内容策略\n\n### @ux\n- 职责: 用户体验、设计\n- 专长: UI/UX、Figma',
+    '## 对话术语\n\n- 用户面向文案优先使用：主线对话 / 支线对话\n- 实现上下文可使用：main dialog / subdialog / supdialog\n- 不要把实现术语直接裸露到用户可见 copy',
 });
 ```
 

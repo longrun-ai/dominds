@@ -115,13 +115,13 @@ add_team_memory({
 });
 ```
 
-### Update Project Status
+### Update Shared Invariants
 
 ```typescript
 replace_team_memory({
-  path: 'team/project/status',
+  path: 'team/ops/release-invariants',
   content:
-    '## Project Status\n\n- Current Sprint: Sprint 15\n- Release Target: 2024-02-01\n- Blocking Issues: None\n- Pending Review: 3 PRs',
+    '## Release Invariants\n\n- Before merging wire-protocol changes, check frontend consumers in the same change\n- Before release, confirm key rollback entrypoints\n- During incidents, lock the timeline and evidence first, then debate the fix',
 });
 ```
 
