@@ -97,8 +97,9 @@ type NewCourseHook = (args: {
 }) => Promise<NewCourseHookResult>;
 
 export type DialogSuspensionStatusOptions = Readonly<{
-  // Some foreground rounds legitimately continue after ordinary tool use even while tellask-
-  // created subdialogs are still pending. Callers must opt into that allowance explicitly.
+  // Some foreground rounds legitimately continue even while tellask-created subdialogs are still
+  // pending. Today that includes certain ordinary post-tool rounds and provider-quirk deadlock
+  // recovery injections. Callers must opt into that allowance explicitly.
   allowPendingSubdialogs?: boolean;
 }>;
 

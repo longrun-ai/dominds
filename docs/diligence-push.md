@@ -55,6 +55,14 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
   - no pending subdialogs (waiting for backfill).
 - The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
+### Exception: provider deadlock recovery
+
+Some provider/API quirk handlers may request a one-time Diligence Push recovery after Dominds stops
+same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
+idle" path. In that recovery-only case, pending subdialogs do not veto the single Diligence Push
+injection, because the deadlock may happen in a function-result-driven generation round right after
+the root dialog has already registered an in-flight tellask/subdialog. Q4H remains a hard blocker.
+
 ### Action
 
 The runtime auto-sends a diligence prompt (rendered as a normal user bubble) and runs another
@@ -63,8 +71,8 @@ generation iteration.
 ### Boundedness
 
 To avoid infinite loops, diligence-push has a per-dialog budget (per-member `diligence-push-max`) that controls
-how many auto-continued diligence prompts can be injected for a given dialog before the runtime forces a
-Q4H suspension.
+how many auto-continued diligence prompts can be injected for a given dialog before the runtime stops
+issuing further automatic Diligence Pushes for that budget.
 
 - Default: **3**
 - If `< 1`, diligence-push is effectively disabled for that member
@@ -76,11 +84,10 @@ When a dialog becomes suspended due to a pending Q4H (Questions for Human), the 
 counter is reset. This ensures that after the human answers the Q4H and the dialog is resumed, the
 dialog gets a fresh diligence-push budget again.
 
-### Budget exhausted → force Q4H
+### Budget exhausted → stop auto-pushing for that budget
 
-When the diligence-push budget is exhausted, the runtime creates a Q4H entry that asks the human whether
-to continue or stop. This converts "boundedness" into a legitimate suspension point and avoids
-infinite auto-continue loops.
+When the diligence-push budget is exhausted, the runtime emits an informational UI notice and stops
+issuing further automatic Diligence Pushes for that budget. It does not create a Q4H by itself.
 
 ### Disable switch
 
@@ -135,13 +142,17 @@ Rules:
 
 ### Where
 
-Implemented in the LLM driver loop (`dominds/main/llm/driver.ts`) as a small post-iteration check:
+Implemented in the kernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
+post-iteration check:
 
-1. If `suspendForHuman` is true, stop (Q4H / subdialog pending).
+1. If the dialog is suspended, stop (Q4H / subdialog pending), except for the deadlock-recovery
+   special case described above where one recovery-only Diligence Push may ignore pending
+   subdialogs.
 2. If there is any tool feedback, continue normally.
 3. Otherwise (root only), attempt diligence-push auto-continue:
    - If disabled → stop normally.
-   - If budget exhausted → create Q4H and stop.
+   - If budget exhausted → emit an informational UI notice and stop further automatic Diligence
+     Pushes for the current budget.
    - Else → auto-send diligence prompt and continue.
 
 ### Message type

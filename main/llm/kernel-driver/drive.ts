@@ -1347,14 +1347,17 @@ async function maybeContinueWithDiligencePrompt(args: {
   dlg: Dialog;
   team: Team;
   suppressDiligencePushForDrive: boolean;
+  allowPendingSubdialogs?: boolean;
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverHumanPrompt }> {
-  const { dlg, team, suppressDiligencePushForDrive } = args;
+  const { dlg, team, suppressDiligencePushForDrive, allowPendingSubdialogs } = args;
 
   if (!(dlg instanceof RootDialog)) {
     return { kind: 'break' };
   }
 
-  const suspension = await dlg.getSuspensionStatus();
+  const suspension = await dlg.getSuspensionStatus({
+    allowPendingSubdialogs: allowPendingSubdialogs === true,
+  });
   if (!suspension.canDrive) {
     if (suspension.q4h) {
       await resetDiligenceBudgetAfterQ4H(dlg, team);
@@ -1412,6 +1415,12 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
     dlg: args.dlg,
     team: args.team,
     suppressDiligencePushForDrive: args.suppressDiligencePushForDrive,
+    // `diligence_push_once` is a provider-quirk deadlock breaker rather than the ordinary
+    // "dialog is about to go idle" auto-continue path. In practice this can happen in a
+    // function-result-driven generation round right after the root dialog has already registered
+    // a pending tellask/subdialog. Keep Q4H as a hard blocker, but do not let pending subdialogs
+    // veto this one-time recovery injection or the same-context deadlock cannot be broken.
+    allowPendingSubdialogs: true,
   });
 }
 
@@ -1504,7 +1513,12 @@ export async function driveDialogStreamCore(
   humanPrompt?: KernelDriverDriveArgs[1],
   driveOptions?: KernelDriverDriveArgs[3],
 ): Promise<KernelDriverCoreResult> {
-  const suppressDiligencePushForDrive = driveOptions?.suppressDiligencePush === true;
+  // `suppressDiligencePush` is queued together with a drive request to reflect the dialog's
+  // disable state at scheduling time. If the operator re-enables Diligence Push while that run is
+  // already in flight, the live dialog toggle must win so late-stage stop decisions can still
+  // inject one prompt in the same run.
+  const suppressDiligencePushForDrive =
+    driveOptions?.suppressDiligencePush === true && dlg.disableDiligencePush;
   const abortSignal = getActiveRunSignal(dlg.id) ?? createActiveRun(dlg.id);
 
   let finalDisplayState: DialogDisplayState | undefined;
