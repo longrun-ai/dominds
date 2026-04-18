@@ -1106,6 +1106,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (status !== 'pending' && status !== 'completed' && status !== 'failed') {
         throw new Error(`${context}.status must be pending | completed | failed`);
       }
+      const originCourse = parseOptionalIntegerField(raw, 'originCourse', context);
       const callingGenseq = parseOptionalIntegerField(raw, 'calling_genseq', context);
       const callRaw = raw['call'];
       if (!isRecord(callRaw)) {
@@ -1167,7 +1168,6 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const base = {
         ts: '',
         type,
-        genseq: expectIntegerField(raw, 'genseq', context),
         callId: expectStringField(raw, 'callId', context),
         status,
         content: expectStringField(raw, 'content', context, true),
@@ -1242,6 +1242,9 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
             };
         }
       })();
+      if (originCourse !== undefined) {
+        record.originCourse = toCallingCourseNumber(originCourse);
+      }
       if (callingGenseq !== undefined) {
         record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
       }
@@ -2026,7 +2029,6 @@ function remapRecordGenseq(
     case 'tellask_result_record':
       return {
         ...record,
-        genseq: mapGenseq(record.genseq),
         calling_genseq:
           record.calling_genseq !== undefined
             ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
@@ -2195,11 +2197,11 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
       return {
         type: 'tellask_result_msg',
         role: 'tool',
-        genseq: record.genseq,
         callId: record.callId,
         callName: record.callName,
         status: record.status,
         content: record.content,
+        ...(record.originCourse !== undefined ? { originCourse: record.originCourse } : {}),
         ...(record.calling_genseq !== undefined ? { calling_genseq: record.calling_genseq } : {}),
         call: record.call,
         responder: record.responder,
@@ -2489,10 +2491,10 @@ function formatScriptMarkdown(args: {
         break;
       }
       case 'tellask_result_record': {
-        blockMeta['genseq'] = record.genseq;
         blockMeta['callId'] = record.callId;
         blockMeta['callName'] = record.callName;
         blockMeta['status'] = record.status;
+        if (record.originCourse !== undefined) blockMeta['originCourse'] = record.originCourse;
         blockMeta['call'] = record.call;
         blockMeta['responder'] = record.responder;
         if (record.calling_genseq !== undefined)

@@ -3,6 +3,7 @@ import { inspect } from 'util';
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
   toCallingCourseNumber,
+  toCallingGenerationSeqNumber,
   toRootGenerationAnchor,
   type HumanQuestion,
   type PendingSubdialogStateRecord,
@@ -332,6 +333,20 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     deliveryMode: args.deliveryMode,
     language: getWorkLanguage(),
   });
+  const targetCallOriginCourse = toCallingCourseNumber(askBackRequesterDialog.currentCourse);
+  const targetCallOriginGenseq = (() => {
+    for (let i = askBackRequesterDialog.msgs.length - 1; i >= 0; i -= 1) {
+      const msg = askBackRequesterDialog.msgs[i];
+      if (!msg || msg.type !== 'func_call_msg') {
+        continue;
+      }
+      if (msg.id !== args.directive.targetCallId) {
+        continue;
+      }
+      return toCallingGenerationSeqNumber(msg.genseq);
+    }
+    return undefined;
+  })();
   const replyMirror = await askBackRequesterDialog.receiveTellaskResponse(
     args.replyingDialog.agentId,
     'tellaskBack',
@@ -344,6 +359,8 @@ export async function deliverTellaskBackReplyFromDirective(args: {
       agentId: args.replyingDialog.agentId,
       callId: args.directive.targetCallId,
       originMemberId: askBackRequesterDialog.agentId,
+      originCourse: targetCallOriginCourse,
+      calling_genseq: targetCallOriginGenseq,
     },
   );
   await askBackRequesterDialog.addChatMessages(replyMirror);
@@ -883,11 +900,12 @@ async function persistTellaskFuncResult(dlg: Dialog, result: FuncResultMsg): Pro
 }
 
 function buildTellaskResultToolOutput(args: {
-  genseq: number;
   callId: string;
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   content: string;
   status: 'pending' | 'completed' | 'failed';
+  originCourse?: number;
+  calling_genseq?: number;
   responderId: string;
   tellaskContent: string;
   mentionList?: string[];
@@ -901,11 +919,12 @@ function buildTellaskResultToolOutput(args: {
   return {
     type: 'tellask_result_msg',
     role: 'tool',
-    genseq: args.genseq,
     callId: args.callId,
     callName: args.callName,
     status: args.status,
     content: args.content,
+    ...(typeof args.originCourse === 'number' ? { originCourse: args.originCourse } : {}),
+    ...(typeof args.calling_genseq === 'number' ? { calling_genseq: args.calling_genseq } : {}),
     call:
       args.callName === 'tellask'
         ? {
@@ -1171,6 +1190,7 @@ async function finishRegisteredTellaskReplacement(args: {
       callId: pendingRecord.callId,
       originMemberId: requesterId,
       originCourse: carryoverOriginCourse,
+      calling_genseq: pendingRecord.callingGenseq,
       carryoverContent,
       sessionSlug: pendingRecord.sessionSlug,
     },
@@ -1196,11 +1216,12 @@ async function finishRegisteredTellaskReplacement(args: {
           calleeDialogId: subdialog.id.selfId,
         })
       : buildTellaskResultToolOutput({
-          genseq: ownerDialog.activeGenSeqOrUndefined ?? 1,
           callId: pendingRecord.callId,
           callName: pendingRecord.callName,
           content: response,
           status: 'failed',
+          originCourse: carryoverOriginCourse,
+          calling_genseq: pendingRecord.callingGenseq,
           responderId: subdialog.agentId,
           tellaskContent: pendingRecord.tellaskContent,
           mentionList: pendingRecord.mentionList,
@@ -1316,6 +1337,15 @@ async function executeTellaskCall(
 ): Promise<ChatMessage[]> {
   const toolOutputs: ChatMessage[] = [];
   const callName = options.callName;
+  const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+  const callingCourse =
+    Number.isFinite(rawCallingCourse) && rawCallingCourse > 0
+      ? toCallingCourseNumber(rawCallingCourse)
+      : undefined;
+  const callingGenseq =
+    typeof dlg.activeGenSeqOrUndefined === 'number'
+      ? toCallingGenerationSeqNumber(dlg.activeGenSeqOrUndefined)
+      : undefined;
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
   const isFreshBootsCall = callName === 'freshBootsReasoning';
@@ -1341,6 +1371,7 @@ async function executeTellaskCall(
         callSiteRef: {
           course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
+          ...(callingGenseq !== undefined ? { callingGenseq } : {}),
         },
       };
 
@@ -1382,11 +1413,12 @@ async function executeTellaskCall(
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
       toolOutputs.push(
         buildTellaskResultToolOutput({
-          genseq: dlg.activeGenSeqOrUndefined ?? 1,
           callId,
           callName,
           content: msg,
           status: 'failed',
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1402,6 +1434,10 @@ async function executeTellaskCall(
         msg,
         'failed',
         callId,
+        {
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
+        },
       );
       dlg.clearCurrentCallId();
       return toolOutputs;
@@ -1416,11 +1452,6 @@ async function executeTellaskCall(
     }
     const subdialogCallName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' =
       callName === 'tellaskBack' ? 'freshBootsReasoning' : callName;
-    const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-    const callingCourse =
-      Number.isFinite(rawCallingCourse) && rawCallingCourse > 0
-        ? toCallingCourseNumber(rawCallingCourse)
-        : undefined;
     const firstMentionForError = options.targetForError ?? parseResult.agentId;
     if (parseResult.type !== 'A' && member === null) {
       const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), {
@@ -1429,11 +1460,12 @@ async function executeTellaskCall(
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
       toolOutputs.push(
         buildTellaskResultToolOutput({
-          genseq: dlg.activeGenSeqOrUndefined ?? 1,
           callId,
           callName,
           content: msg,
           status: 'failed',
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1449,6 +1481,10 @@ async function executeTellaskCall(
         msg,
         'failed',
         callId,
+        {
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
+        },
       );
       dlg.clearCurrentCallId();
       return toolOutputs;
@@ -1461,11 +1497,12 @@ async function executeTellaskCall(
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push(
           buildTellaskResultToolOutput({
-            genseq: dlg.activeGenSeqOrUndefined ?? 1,
             callId,
             callName,
             content: msg,
             status: 'failed',
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1481,6 +1518,10 @@ async function executeTellaskCall(
           msg,
           'failed',
           callId,
+          {
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
+          },
         );
         dlg.clearCurrentCallId();
         return toolOutputs;
@@ -1503,11 +1544,12 @@ async function executeTellaskCall(
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push(
           buildTellaskResultToolOutput({
-            genseq: dlg.activeGenSeqOrUndefined ?? 1,
             callId,
             callName,
             content: msg,
             status: 'failed',
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1523,6 +1565,10 @@ async function executeTellaskCall(
           msg,
           'failed',
           callId,
+          {
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
+          },
         );
         dlg.clearCurrentCallId();
         return toolOutputs;
@@ -1539,11 +1585,12 @@ async function executeTellaskCall(
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push(
           buildTellaskResultToolOutput({
-            genseq: dlg.activeGenSeqOrUndefined ?? 1,
             callId,
             callName,
             content: msg,
             status: 'failed',
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1559,6 +1606,10 @@ async function executeTellaskCall(
           msg,
           'failed',
           callId,
+          {
+            originCourse: callingCourse,
+            calling_genseq: callingGenseq,
+          },
         );
         dlg.clearCurrentCallId();
         return toolOutputs;
@@ -1582,6 +1633,7 @@ async function executeTellaskCall(
         targetAgentId: parseResult.agentId,
         callId,
         callingCourse,
+        callingGenseq,
         callType: 'C',
       };
       await withSubdialogTxnLock(dlg.id, async () => {
@@ -1641,11 +1693,12 @@ async function executeTellaskCall(
       toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
       toolOutputs.push(
         buildTellaskResultToolOutput({
-          genseq: dlg.activeGenSeqOrUndefined ?? 1,
           callId,
           callName,
           content: msg,
           status: 'failed',
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1661,6 +1714,10 @@ async function executeTellaskCall(
         msg,
         'failed',
         callId,
+        {
+          originCourse: callingCourse,
+          calling_genseq: callingGenseq,
+        },
       );
       dlg.clearCurrentCallId();
       return toolOutputs;
@@ -1745,11 +1802,12 @@ async function executeTellaskCall(
 
           toolOutputs.push(
             buildTellaskResultToolOutput({
-              genseq: askBackRequesterDialog.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               content: responseContent,
               status: 'completed',
+              originCourse: callingCourse,
+              calling_genseq: callingGenseq,
               responderId: parseResult.agentId,
               tellaskContent: body,
               mentionList,
@@ -1770,6 +1828,8 @@ async function executeTellaskCall(
               agentId: parseResult.agentId,
               callId,
               originMemberId: askBackRequesterDialog.agentId,
+              originCourse: callingCourse,
+              calling_genseq: callingGenseq,
             },
           );
         } catch (err) {
@@ -1788,11 +1848,12 @@ async function executeTellaskCall(
           });
           toolOutputs.push(
             buildTellaskResultToolOutput({
-              genseq: askBackRequesterDialog.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               content: errorContent,
               status: 'failed',
+              originCourse: callingCourse,
+              calling_genseq: callingGenseq,
               responderId: parseResult.agentId,
               tellaskContent: body,
               mentionList,
@@ -1813,6 +1874,8 @@ async function executeTellaskCall(
               agentId: parseResult.agentId,
               callId,
               originMemberId: askBackRequesterDialog.agentId,
+              originCourse: callingCourse,
+              calling_genseq: callingGenseq,
             },
           );
         }
@@ -1853,6 +1916,7 @@ async function executeTellaskCall(
             targetAgentId: parseResult.agentId,
             callId,
             callingCourse,
+            callingGenseq,
             callType: 'C',
             sessionSlug: parseResult.sessionSlug,
           };
@@ -1974,6 +2038,7 @@ async function executeTellaskCall(
                   targetAgentId: parseResult.agentId,
                   callId,
                   callingCourse,
+                  callingGenseq,
                   callType: 'B',
                   sessionSlug: parseResult.sessionSlug,
                 };
@@ -2071,6 +2136,7 @@ async function executeTellaskCall(
                 targetAgentId: parseResult.agentId,
                 callId,
                 callingCourse,
+                callingGenseq,
                 callType: 'B',
                 sessionSlug: parseResult.sessionSlug,
               };
@@ -2241,6 +2307,7 @@ async function executeTellaskCall(
           targetAgentId: parseResult.agentId,
           callId,
           callingCourse,
+          callingGenseq,
           callType: 'C',
         };
         await withSubdialogTxnLock(dlg.id, async () => {
@@ -2305,11 +2372,12 @@ async function executeTellaskCall(
     toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
     toolOutputs.push(
       buildTellaskResultToolOutput({
-        genseq: dlg.activeGenSeqOrUndefined ?? 1,
         callId,
         callName,
         content: msg,
         status: 'failed',
+        originCourse: callingCourse,
+        calling_genseq: callingGenseq,
         responderId: 'dominds',
         tellaskContent: body,
         mentionList: normalizedMentionList,
@@ -2325,6 +2393,10 @@ async function executeTellaskCall(
       msg,
       'failed',
       callId,
+      {
+        originCourse: callingCourse,
+        calling_genseq: callingGenseq,
+      },
     );
     dlg.clearCurrentCallId();
   }

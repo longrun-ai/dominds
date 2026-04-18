@@ -301,7 +301,7 @@ export type TellaskCallStartEvent =
 type TellaskResultEventBase = {
   type: 'tellask_result_evt';
   course: number;
-  genseq: number;
+  originCourse?: CallingCourseNumber;
   calling_genseq?: CallingGenerationSeqNumber;
   callId: string;
   status: 'pending' | 'completed' | 'failed';
@@ -526,6 +526,7 @@ export interface NewQ4HAskedEvent {
     callSiteRef: {
       course: number;
       messageIndex: number;
+      callingGenseq?: CallingGenerationSeqNumber;
     };
     rootId: string;
     agentId: string;

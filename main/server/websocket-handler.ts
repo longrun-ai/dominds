@@ -1945,6 +1945,7 @@ async function handleReceiveHumanReply(
         callId: askHumanCallId,
         originMemberId: dialog.agentId,
         originCourse: toCallingCourseNumber(askHumanOriginCourse),
+        calling_genseq: removedQuestion.callSiteRef.callingGenseq,
         carryoverContent: askHumanCarryoverContent,
       },
     );

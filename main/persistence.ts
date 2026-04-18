@@ -832,7 +832,7 @@ function buildTellaskCallRecord(args: {
   };
 }
 
-function buildTellaskResultRecord(result: TellaskResultMsg, genseq: number): TellaskResultRecord {
+function buildTellaskResultRecord(result: TellaskResultMsg): TellaskResultRecord {
   if (!isTellaskBusinessCallName(result.callName)) {
     throw new Error(
       `buildTellaskResultRecord invariant violation: ${result.callName} is not a tellask business result`,
@@ -848,10 +848,12 @@ function buildTellaskResultRecord(result: TellaskResultMsg, genseq: number): Tel
   const base = {
     ts: formatUnifiedTimestamp(new Date()),
     type: 'tellask_result_record' as const,
-    genseq,
     callId: result.callId,
     status: result.status,
     content: result.content,
+    ...(typeof result.originCourse === 'number'
+      ? { originCourse: toCallingCourseNumber(result.originCourse) }
+      : {}),
     ...(typeof result.calling_genseq === 'number'
       ? { calling_genseq: toCallingGenerationSeqNumber(result.calling_genseq) }
       : {}),
@@ -952,7 +954,9 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
     return {
       type: 'tellask_result_evt',
       course,
-      genseq: result.genseq,
+      ...(typeof result.originCourse === 'number'
+        ? { originCourse: toCallingCourseNumber(result.originCourse) }
+        : {}),
       calling_genseq:
         typeof result.calling_genseq === 'number'
           ? toCallingGenerationSeqNumber(result.calling_genseq)
@@ -983,7 +987,9 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
     return {
       type: 'tellask_result_evt',
       course,
-      genseq: result.genseq,
+      ...(typeof result.originCourse === 'number'
+        ? { originCourse: toCallingCourseNumber(result.originCourse) }
+        : {}),
       calling_genseq:
         typeof result.calling_genseq === 'number'
           ? toCallingGenerationSeqNumber(result.calling_genseq)
@@ -1012,7 +1018,9 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
   return {
     type: 'tellask_result_evt',
     course,
-    genseq: result.genseq,
+    ...(typeof result.originCourse === 'number'
+      ? { originCourse: toCallingCourseNumber(result.originCourse) }
+      : {}),
     calling_genseq:
       typeof result.calling_genseq === 'number'
         ? toCallingGenerationSeqNumber(result.calling_genseq)
@@ -1619,6 +1627,14 @@ function isHumanQuestion(value: unknown): value is HumanQuestion {
   if (!isRecord(value.callSiteRef)) return false;
   if (typeof value.callSiteRef.course !== 'number') return false;
   if (typeof value.callSiteRef.messageIndex !== 'number') return false;
+  if ('callingGenseq' in value.callSiteRef) {
+    const callingGenseq = value.callSiteRef.callingGenseq;
+    if (callingGenseq !== undefined) {
+      if (typeof callingGenseq !== 'number') return false;
+      if (!Number.isFinite(callingGenseq)) return false;
+      if (Math.floor(callingGenseq) <= 0) return false;
+    }
+  }
   return true;
 }
 
@@ -2025,38 +2041,22 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async receiveTellaskResult(dialog: Dialog, result: TellaskResultMsg): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const genseq = dialog.activeGenSeqOrUndefined ?? result.genseq;
-    if (!Number.isFinite(genseq) || genseq <= 0) {
-      throw new Error(
-        `receiveTellaskResult invariant violation: missing valid genseq for tellask result ${result.callId}`,
-      );
-    }
-    const normalizedResult =
-      genseq === result.genseq
-        ? result
-        : {
-            ...result,
-            genseq,
-          };
-    const existingTellaskResult = await this.findExistingTellaskResultRecord(
-      dialog,
-      normalizedResult.callId,
-    );
+    const existingTellaskResult = await this.findExistingTellaskResultRecord(dialog, result.callId);
     if (existingTellaskResult) {
       await this.raiseDuplicateCallResultInvariantViolation({
         dialog,
         kind: 'tellask_result',
-        callId: normalizedResult.callId,
-        callName: normalizedResult.callName,
+        callId: result.callId,
+        callName: result.callName,
         incomingCourse: course,
-        incomingGenseq: genseq,
+        incomingGenseq: undefined,
         existingCourse: existingTellaskResult.course,
-        existingGenseq: existingTellaskResult.record.genseq,
+        existingGenseq: undefined,
       });
     }
-    const record = buildTellaskResultRecord(normalizedResult, genseq);
+    const record = buildTellaskResultRecord(result);
     await this.appendEvent(dialog, course, record);
-    postDialogEvent(dialog, buildTellaskResultEvent(normalizedResult, course));
+    postDialogEvent(dialog, buildTellaskResultEvent(result, course));
   }
 
   public async receiveTellaskCarryover(dialog: Dialog, result: TellaskCarryoverMsg): Promise<void> {
@@ -2145,9 +2145,9 @@ export class DiskFileDialogStore extends DialogStore {
     callId: string;
     callName: string;
     incomingCourse: number;
-    incomingGenseq: number;
+    incomingGenseq?: number;
     existingCourse: number;
-    existingGenseq: number;
+    existingGenseq?: number;
   }): Promise<never> {
     // Duplicate final results are not harmless transcript noise. They mean two different program
     // paths both believed they owned the same business-level completion fact for one callId.
@@ -2157,7 +2157,8 @@ export class DiskFileDialogStore extends DialogStore {
     const err = new Error(
       `${args.kind} duplicate callId invariant violation: rootId=${args.dialog.id.rootId} selfId=${args.dialog.id.selfId} ` +
         `callId=${args.callId} callName=${args.callName} existingCourse=${args.existingCourse} ` +
-        `existingGenseq=${args.existingGenseq} incomingCourse=${args.incomingCourse} incomingGenseq=${args.incomingGenseq}`,
+        `existingGenseq=${String(args.existingGenseq)} incomingCourse=${args.incomingCourse} ` +
+        `incomingGenseq=${String(args.incomingGenseq)}`,
     );
     log.error('Duplicate call result detected; rejecting second write', err, {
       rootId: args.dialog.id.rootId,
@@ -3099,14 +3100,6 @@ export class DiskFileDialogStore extends DialogStore {
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const resultGenseq = dialog.activeGenSeqOrUndefined ?? args.result.genseq;
-    if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
-      throw new Error(
-        `persistTellaskCallResultPair invariant violation: missing valid genseq for tellask result ${
-          args.result.type === 'func_result_msg' ? args.result.id : args.result.callId
-        }`,
-      );
-    }
     const callRecord = buildTellaskCallRecord({
       id: args.id,
       name: args.name,
@@ -3115,6 +3108,12 @@ export class DiskFileDialogStore extends DialogStore {
       deliveryMode: args.deliveryMode,
     });
     if (args.result.type === 'func_result_msg') {
+      const resultGenseq = dialog.activeGenSeqOrUndefined ?? args.result.genseq;
+      if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
+        throw new Error(
+          `persistTellaskCallResultPair invariant violation: missing valid genseq for func result ${args.result.id}`,
+        );
+      }
       await this.appendEvents(dialog, course, [
         callRecord,
         buildFuncResultRecord(args.result, resultGenseq),
@@ -3140,10 +3139,7 @@ export class DiskFileDialogStore extends DialogStore {
       return;
     }
 
-    await this.appendEvents(dialog, course, [
-      callRecord,
-      buildTellaskResultRecord(args.result, resultGenseq),
-    ]);
+    await this.appendEvents(dialog, course, [callRecord, buildTellaskResultRecord(args.result)]);
     postDialogEvent(dialog, buildTellaskResultEvent(args.result, course));
   }
 
@@ -4140,10 +4136,10 @@ export class DiskFileDialogStore extends DialogStore {
         const base = {
           type: 'tellask_result_evt' as const,
           course,
-          genseq: event.genseq,
           callId: event.callId,
           status: event.status,
           content: event.content,
+          ...(event.originCourse !== undefined ? { originCourse: event.originCourse } : {}),
           ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
           responder: event.responder,
           ...(event.route ? { route: event.route } : {}),
@@ -6468,6 +6464,14 @@ export class DialogPersistence {
         if (Math.floor(callingCourse) <= 0) return false;
       }
     }
+    if ('callingGenseq' in value) {
+      const callingGenseq = value.callingGenseq;
+      if (callingGenseq !== undefined) {
+        if (typeof callingGenseq !== 'number') return false;
+        if (!Number.isFinite(callingGenseq)) return false;
+        if (Math.floor(callingGenseq) <= 0) return false;
+      }
+    }
     if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
     if ('sessionSlug' in value) {
       const sessionSlug = value.sessionSlug;
@@ -8093,11 +8097,11 @@ export class DialogPersistence {
           messages.push({
             type: 'tellask_result_msg',
             role: 'tool',
-            genseq: event.genseq,
             callId: event.callId,
             callName: event.callName,
             status: event.status,
             content: event.content,
+            ...(event.originCourse !== undefined ? { originCourse: event.originCourse } : {}),
             ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
             call: event.call,
             responder: event.responder,

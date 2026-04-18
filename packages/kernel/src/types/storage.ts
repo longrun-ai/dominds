@@ -310,6 +310,7 @@ export interface PendingSubdialogStateRecord {
   targetAgentId: string;
   callId: string;
   callingCourse?: CallingCourseNumber;
+  callingGenseq?: CallingGenerationSeqNumber;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -404,11 +405,11 @@ export interface TellaskCallRecord extends RootGenerationRef {
 type TellaskResultRecordBase = RootGenerationRef & {
   ts: string;
   type: 'tellask_result_record';
-  genseq: number;
   callId: string;
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   status: 'pending' | 'completed' | 'failed';
   content: string;
+  originCourse?: CallingCourseNumber;
   calling_genseq?: CallingGenerationSeqNumber;
   call: {
     tellaskContent: string;
@@ -836,6 +837,7 @@ export interface HumanQuestion {
   callSiteRef: {
     course: number;
     messageIndex: number;
+    callingGenseq?: CallingGenerationSeqNumber;
   };
 }
 

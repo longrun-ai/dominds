@@ -33,6 +33,7 @@ import type {
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallingCourseNumber,
+  CallingGenerationSeqNumber,
   DialogMetadataFile,
   HumanQuestion,
   ProviderData,
@@ -1370,17 +1371,24 @@ export abstract class Dialog {
     result: string,
     status: 'completed' | 'failed',
     callId: string,
+    options?: {
+      originCourse?: CallingCourseNumber;
+      calling_genseq?: CallingGenerationSeqNumber;
+    },
   ): Promise<void> {
     const tellaskResult: TellaskResultMsg =
       callName === 'tellask'
         ? {
             type: 'tellask_result_msg',
             role: 'tool',
-            genseq: this.activeGenSeqOrUndefined ?? 1,
             callId,
             callName,
             status,
             content: result,
+            ...(options?.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
+            ...(options?.calling_genseq !== undefined
+              ? { calling_genseq: options.calling_genseq }
+              : {}),
             call: {
               tellaskContent,
               mentionList: mentionList ?? [],
@@ -1393,11 +1401,16 @@ export abstract class Dialog {
           ? {
               type: 'tellask_result_msg',
               role: 'tool',
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               status,
               content: result,
+              ...(options?.originCourse !== undefined
+                ? { originCourse: options.originCourse }
+                : {}),
+              ...(options?.calling_genseq !== undefined
+                ? { calling_genseq: options.calling_genseq }
+                : {}),
               call: {
                 tellaskContent,
                 mentionList: mentionList ?? [],
@@ -1409,11 +1422,16 @@ export abstract class Dialog {
           : {
               type: 'tellask_result_msg',
               role: 'tool',
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               callId,
               callName,
               status,
               content: result,
+              ...(options?.originCourse !== undefined
+                ? { originCourse: options.originCourse }
+                : {}),
+              ...(options?.calling_genseq !== undefined
+                ? { calling_genseq: options.calling_genseq }
+                : {}),
               call: {
                 tellaskContent,
               },
@@ -1437,6 +1455,7 @@ export abstract class Dialog {
       callId: string;
       originMemberId: string;
       originCourse?: CallingCourseNumber;
+      calling_genseq?: CallingGenerationSeqNumber;
       carryoverContent?: string;
       sessionSlug?: string;
       calleeCourse?: CalleeCourseNumber;
@@ -1517,11 +1536,14 @@ export abstract class Dialog {
         ? {
             type: 'tellask_result_msg',
             role: 'tool',
-            genseq: this.activeGenSeqOrUndefined ?? 1,
             callId: options.callId,
             callName,
             status,
             content: options.response,
+            ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
+            ...(options.calling_genseq !== undefined
+              ? { calling_genseq: options.calling_genseq }
+              : {}),
             call: {
               tellaskContent,
               mentionList: mentionList ?? [],
@@ -1538,11 +1560,14 @@ export abstract class Dialog {
           ? {
               type: 'tellask_result_msg',
               role: 'tool',
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               callId: options.callId,
               callName,
               status,
               content: options.response,
+              ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
+              ...(options.calling_genseq !== undefined
+                ? { calling_genseq: options.calling_genseq }
+                : {}),
               call: {
                 tellaskContent,
                 mentionList: mentionList ?? [],
@@ -1557,11 +1582,14 @@ export abstract class Dialog {
           : {
               type: 'tellask_result_msg',
               role: 'tool',
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               callId: options.callId,
               callName,
               status,
               content: options.response,
+              ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
+              ...(options.calling_genseq !== undefined
+                ? { calling_genseq: options.calling_genseq }
+                : {}),
               call: {
                 tellaskContent,
               },
@@ -1915,7 +1943,6 @@ export abstract class Dialog {
               status: 'completed',
               course: this.currentCourse,
               callId,
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               content: rawResponse,
               responder: {
                 responderId,
@@ -1937,7 +1964,6 @@ export abstract class Dialog {
               status: 'completed',
               course: this.currentCourse,
               callId,
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               content: rawResponse,
               responder: {
                 responderId,
@@ -1958,7 +1984,6 @@ export abstract class Dialog {
               status: 'completed',
               course: this.currentCourse,
               callId,
-              genseq: this.activeGenSeqOrUndefined ?? 1,
               content: rawResponse,
               responder: {
                 responderId,

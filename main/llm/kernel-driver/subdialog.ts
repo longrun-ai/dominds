@@ -4,6 +4,7 @@ import {
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toCallerCourseNumber,
+  toCallingGenerationSeqNumber,
   toRootGenerationAnchor,
   type CallerCourseNumber,
   type PendingSubdialogStateRecord,
@@ -330,6 +331,7 @@ export async function supplyResponseToSupdialog(args: {
         sessionSlug,
         callId: pendingRecord?.callId,
         callingCourse: pendingRecord?.callingCourse,
+        callingGenseq: pendingRecord?.callingGenseq,
         callerCourse:
           pendingRecord?.callingCourse !== undefined
             ? toCallerCourseNumber(pendingRecord.callingCourse)
@@ -364,6 +366,12 @@ export async function supplyResponseToSupdialog(args: {
       language: getWorkLanguage(),
     });
     const carryoverOriginCourse = result.callingCourse;
+    let assignmentRef:
+      | {
+          course: number;
+          genseq: number;
+        }
+      | undefined;
     const carryoverContent =
       carryoverOriginCourse !== undefined && carryoverOriginCourse !== parentDialog.currentCourse
         ? formatTellaskCarryoverResultContent({
@@ -385,7 +393,7 @@ export async function supplyResponseToSupdialog(args: {
             `(parentId=${parentDialog.id.selfId}, subdialogId=${subdialogId.selfId}, callId=${resolvedCallId})`,
         );
       }
-      const assignmentRef = await resolveLatestAssignmentAnchorRef({
+      assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
         callId: resolvedCallId,
         status: parentDialog.status,
@@ -480,6 +488,12 @@ export async function supplyResponseToSupdialog(args: {
         callId: resolvedCallId,
         originMemberId: requesterId,
         originCourse: carryoverOriginCourse,
+        calling_genseq:
+          result.callingGenseq !== undefined
+            ? toCallingGenerationSeqNumber(result.callingGenseq)
+            : assignmentRef !== undefined
+              ? toCallingGenerationSeqNumber(assignmentRef.genseq)
+              : undefined,
         carryoverContent,
         sessionSlug: result.sessionSlug,
         calleeCourse:
@@ -533,11 +547,16 @@ export async function supplyResponseToSupdialog(args: {
         : {
             type: 'tellask_result_msg',
             role: 'tool',
-            genseq: parentDialog.activeGenSeqOrUndefined ?? 1,
             callId: resolvedCallId,
             callName: result.callName,
             status,
             content: upstreamResponseText,
+            ...(result.callingCourse !== undefined ? { originCourse: result.callingCourse } : {}),
+            ...(result.callingGenseq !== undefined
+              ? { calling_genseq: result.callingGenseq }
+              : assignmentRef !== undefined
+                ? { calling_genseq: assignmentRef.genseq }
+                : {}),
             call:
               result.callName === 'tellask'
                 ? {

@@ -61,11 +61,11 @@ export type FuncResultMsg = Readonly<{
 export type TellaskResultMsg = Readonly<{
   type: 'tellask_result_msg';
   role: 'tool';
-  genseq: number;
   callId: string;
   callName: string;
   status: 'pending' | 'completed' | 'failed';
   content: string;
+  originCourse?: number;
   responderId?: string;
   mentionList?: string[];
   tellaskContent?: string;
