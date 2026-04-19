@@ -241,7 +241,8 @@ flowchart TD
 **支线交付规则（规范）**：
 
 - 只有当所有目标完成时，支线对话才可直接正常回复诉请者对话。
-- 若任何目标未完成或关键信息缺失，必须先用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者对话再继续。
+- 若目标尚未完成，不要默认直接 `tellaskBack`；应先按团队规程 / SOP / 职责卡判断能否明确负责人，若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人。
+- 只有当必须由上游诉请者补充需求、澄清目标、做业务裁决、确认验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者对话再继续。
 - **FBR 例外**：FBR 支线对话禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`），只能列出缺口与阻塞原因并直接回复。
 
 **跨对话传递与标记（强制）**：
@@ -262,7 +263,7 @@ flowchart TD
 
 **协议澄清**：
 
-- 需要回问时必须真实调用 `tellaskBack({ tellaskContent: "..." })`；不得发送普通文本中间汇报。
+- 需要回问上游时必须真实调用 `tellaskBack({ tellaskContent: "..." })`；但在此之前应先判断是否已有团队规程可直接判责到其他负责人。不得发送普通文本中间汇报。
 
 **示例**：
 

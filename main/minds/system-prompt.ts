@@ -150,7 +150,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- 只有长线诉请（`tellask` + `sessionSlug`）才有“更新任务安排”的通道；一次性诉请（`tellaskSessionless`）没有这个通道。再次发起 `tellaskSessionless` 只会创建新的瞬态支线，不会更新、更不会要求旧支线主理人停止；若你后来发现可能需要改要求/提前收口，一开始就不该选择 `tellaskSessionless`。',
       '- 能由队友诉请完成的执行性工作，禁止转交 `askHuman` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 `tellask` 或 `tellaskSessionless`。',
       `- 当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 运行时自动注入。`,
-      '- 当你处于队友诉请触发的支线且需要澄清时，必须使用 `tellaskBack` 回问上游诉请者；`tellaskBack` 不携带 `sessionSlug`。',
+      '- 当你处于队友诉请触发的支线时，不要把“阻塞/不确定”默认等同于 `tellaskBack`：若按当前团队规程/SOP/职责卡已能明确判定执行负责人，直接用 `tellask` / `tellaskSessionless` 诉请对应负责人；只有确实需要上游诉请者补充需求、做裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack`。`tellaskBack` 不携带 `sessionSlug`。',
       `- 回贴文本标记由运行时在跨对话传递正文中按语义自动添加（例如 \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR 标记 \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）；该传递正文会进入目标智能体上下文，且 UI 与其一致。你不应手写这些标记。`,
     ],
     en: [
@@ -162,7 +162,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- Only a sessioned Tellask (`tellask` + `sessionSlug`) has an assignment-update channel. A one-shot Tellask (`tellaskSessionless`) has no such channel: another `tellaskSessionless` creates a new transient sideline and does not update, stop, or instruct the earlier one to stop. If you may need later correction or earlier wrap-up, do not choose `tellaskSessionless` in the first place.',
       '- Do not use `askHuman` as a relay for executable teammate work. If you write “ask @X to do Y”, emit `tellask` or `tellaskSessionless` in the same response.',
       `- When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the responder to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
-      '- When you are in a teammate-triggered sideline and need clarification, you MUST issue `tellaskBack` to ask back upstream; `tellaskBack` must not carry `sessionSlug`.',
+      '- In a teammate-triggered sideline, do not treat “blocked / uncertain” as an automatic `tellaskBack`: if current team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack` only when you truly need the upstream requester to clarify, decide, confirm acceptance criteria, provide missing input, or when existing SOP cannot determine ownership. `tellaskBack` must not carry `sessionSlug`.',
       `- Reply markers are auto-added by runtime in the inter-dialog transfer payload (for example \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR markers \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`); that same transfer payload is what the target agent receives in context and what UI shows. Do not hand-write markers.`,
     ],
   });
@@ -174,7 +174,7 @@ function buildSidelineUpstreamReplyMarkerRules(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
       '- 本规则仅用于当前支线向上游回复；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向上游汇报。',
-      '- 当前支线未完成/不确定/阻塞/需要澄清时：必须发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
+      '- 当前支线未完成时，不要默认直接 `tellaskBack`。先判断当前团队规程/SOP/职责卡能否明确负责人：若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人；只有当必须向上游诉请者补充需求、做业务裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
       '- 是否存在“待你收口的跨对话回复义务”、以及精确该调用哪个 reply 函数，均由运行时程序化判断；运行时会在 assignment 或最新 runtime/user 提示里直接点名。',
       '- 若运行时点名了精确 reply 函数名，你只需调用那个被点名的函数；不要自己判断 `reply*` 变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
       `- 只有在运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复作为完成结果投递给上游，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。`,
@@ -189,7 +189,7 @@ function buildSidelineUpstreamReplyMarkerRules(language: LanguageCode): string {
     ],
     en: [
       '- This rule applies only when replying upstream from the current sideline; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
-      '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must emit `tellaskBack({ tellaskContent: "..." })` and put concrete questions in `tellaskContent`.',
+      '- If the current sideline is unfinished, do not default to `tellaskBack`. First judge whether current team SOP / role ownership already identifies the responsible executor: if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack({ tellaskContent: "..." })` only when the upstream requester must provide clarification, business decision, acceptance-criteria confirmation, missing input, or when existing SOP cannot determine ownership. Put concrete questions in `tellaskContent`.',
       '- Runtime programmatically decides whether there is an active inter-dialog reply obligation for you, and which exact reply function name applies; runtime will state that directly in the assignment or the latest runtime/user prompt.',
       '- If runtime names an exact reply function, call that named function and do not choose a `reply*` variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
       `- Only replies sent through the exact reply function currently named by runtime are delivered upstream as completion results and marked with ${runtimeMarkers.finalCompleted}.`,
@@ -217,8 +217,8 @@ function buildTellaskReplyMarkerScopePolicy(
         zh: [
           `- 回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=${runtimeMarkers.finalCompleted}；FBR=${runtimeMarkers.fbrDirectReply} 或 ${runtimeMarkers.fbrReasoningOnly}）；该正文直接进入上游上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
           '- 若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，运行时会自动注入。',
-          '- `tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
-          '- 当前支线未完成/不确定/阻塞/需要澄清时：必须调用 `tellaskBack({ tellaskContent: "..." })`，不得发普通文本中间汇报。',
+          '- `tellaskBack` 只允许用于回问上游诉请者；仅当必须向上游补需求/澄清/裁决/缺失输入，或现有团队规程无法明确判责时才使用。禁止用 `tellaskBack` 发送最终结果。',
+          '- 当前支线未完成时，不得把“阻塞/不确定”机械等同于 `tellaskBack`；若团队规程/SOP/职责卡已明确负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，不得发普通文本中间汇报。',
           `- ${buildSidelineCompletionRule('zh')}`,
           `- 仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给上游并标注 ${runtimeMarkers.finalCompleted}。`,
           '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
@@ -226,8 +226,8 @@ function buildTellaskReplyMarkerScopePolicy(
         en: [
           `- Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to upstream context and shown identically in UI. Do not hand-write markers.`,
           '- If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because runtime injects markers automatically.',
-          '- `tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
-          '- If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call `tellaskBack({ tellaskContent: "..." })` instead of posting a plain-text progress update.',
+          '- `tellaskBack` is only for asking the upstream requester back; use it only when upstream clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
+          '- If the current sideline is unfinished, do not mechanically map “blocked / uncertain” to `tellaskBack`; when team SOP / role ownership already identifies the responsible owner, directly use `tellask` / `tellaskSessionless` for that owner instead of posting a plain-text progress update.',
           `- ${buildSidelineCompletionRule('en')}`,
           `- Runtime marks ${runtimeMarkers.finalCompleted} and delivers upstream only when runtime currently names an exact reply function and you reply through that named function.`,
           '- If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',

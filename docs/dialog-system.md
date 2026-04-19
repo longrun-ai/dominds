@@ -247,7 +247,8 @@ flowchart TD
 
 - If a sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
-- If any goal is incomplete, the dialog is blocked, or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
+- If the work is unfinished, do not default to `tellaskBack`; first use team SOP / role ownership to judge whether a responsible owner is already clear, and if yes for execution work, directly use `tellask` / `tellaskSessionless` for that owner.
+- Use `tellaskBack({ tellaskContent: "..." })` only when the upstream requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership.
 - **FBR exception**: FBR sideline dialogs forbid all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); they must list missing context and return.
 
 **Inter-dialog transfer and markers (normative)**:
@@ -268,7 +269,7 @@ flowchart TD
 
 **Protocol clarification**:
 
-- Ask-back must be emitted via `tellaskBack({ tellaskContent: "..." })`; do not post plain-text intermediate status updates while unfinished.
+- When you truly need to ask upstream back, emit it via `tellaskBack({ tellaskContent: "..." })`; first judge whether team SOP already identifies another responsible owner. Do not post plain-text intermediate status updates while unfinished.
 - A direct plain-text reply is correct when the sideline is already complete and is delivering the final result upstream.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.

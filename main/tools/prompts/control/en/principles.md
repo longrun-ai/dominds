@@ -92,7 +92,9 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 ### Decision Rules
 
-- If the current sideline is unfinished, blocked, uncertain, or needs an upstream clarification: call `tellaskBack({ tellaskContent })`
+- If the current sideline is unfinished, first judge whether team SOP / role ownership already identifies the responsible owner; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner
+- Call `tellaskBack({ tellaskContent })` only when upstream must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership
+- If a human must personally perform login / GUI / captcha / high-risk authorization: call `askHuman({ tellaskContent })`
 - If the current sideline is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`
 - If the current sideline is complete and the assignment header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
 - If you are answering an upstream `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
@@ -104,7 +106,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - Do not memorize reply variants by yourself; follow the current assignment header and the function currently exposed by runtime
 - `reply*` tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
 - If runtime exposes only one `reply*`, that is the only correct completion path for the current state
-- `tellaskBack` is for ask-back only, not final delivery
+- `tellaskBack` is the fallback when ownership cannot be determined from existing SOP, or when upstream must answer; it is not the default first move for every blocked state
 
 ## Best Practices
 

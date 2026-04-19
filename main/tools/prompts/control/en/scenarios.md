@@ -89,7 +89,8 @@ tellaskBack({
 
 ### Key Points
 
-- Use `tellaskBack` while the work is still unfinished
+- This example uses `tellaskBack` because upstream input is specifically required
+- If team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner instead of mapping every unfinished state to `tellaskBack`
 - Do not use `replyTellask*` for intermediate clarifications
 
 ## Scenario 4: Upstream answered the ask-back, so use replyTellaskBack to close

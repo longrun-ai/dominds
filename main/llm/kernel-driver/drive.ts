@@ -522,7 +522,8 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellaskBack',
-    description: 'Ask back to the requester dialog in sideline context.',
+    description:
+      'Ask back to the requester dialog in sideline context when upstream clarification/decision is required or ownership cannot be determined from SOP.',
     parameters: {
       type: 'object',
       properties: {

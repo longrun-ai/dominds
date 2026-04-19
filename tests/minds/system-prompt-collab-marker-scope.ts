@@ -126,12 +126,12 @@ function main(): void {
   );
   assert.ok(
     zhSideline.includes(
-      '当前支线未完成/不确定/阻塞/需要澄清时：必须调用 `tellaskBack({ tellaskContent: "..." })`，不得发普通文本中间汇报。',
+      '当前支线未完成时，不得把“阻塞/不确定”机械等同于 `tellaskBack`；若团队规程/SOP/职责卡已明确负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，不得发普通文本中间汇报。',
     ),
   );
   assert.ok(
     zhSideline.includes(
-      '`tellaskBack` 只允许用于回问/澄清/阻塞说明；禁止用 `tellaskBack` 发送最终结果。',
+      '`tellaskBack` 只允许用于回问上游诉请者；仅当必须向上游补需求/澄清/裁决/缺失输入，或现有团队规程无法明确判责时才使用。禁止用 `tellaskBack` 发送最终结果。',
     ),
   );
   assert.ok(zhSideline.includes(buildSidelineCompletionRule('zh')));
@@ -164,12 +164,12 @@ function main(): void {
   );
   assert.ok(
     enSideline.includes(
-      'If the current sideline is unfinished, uncertain, blocked, or needs clarification: you must call `tellaskBack({ tellaskContent: "..." })` instead of posting a plain-text progress update.',
+      'If the current sideline is unfinished, do not mechanically map “blocked / uncertain” to `tellaskBack`; when team SOP / role ownership already identifies the responsible owner, directly use `tellask` / `tellaskSessionless` for that owner instead of posting a plain-text progress update.',
     ),
   );
   assert.ok(
     enSideline.includes(
-      '`tellaskBack` is allowed only for ask-back / clarification / blocked-state reporting; do not use `tellaskBack` to send final results.',
+      '`tellaskBack` is only for asking the upstream requester back; use it only when upstream clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
     ),
   );
   assert.ok(enSideline.includes(buildSidelineCompletionRule('en')));

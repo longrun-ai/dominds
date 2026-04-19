@@ -28,7 +28,7 @@
 | `replyTellask`            | `{ replyContent: string }`   | 当前支线承接的是 sessioned `tellask`，且已进入可交付完成态           | 把最终结果回复给当前 `tellask` 会话 |
 | `replyTellaskSessionless` | `{ replyContent: string }`   | 当前支线承接的是 one-shot `tellaskSessionless`，且已进入可交付完成态 | 把最终结果回复给当前一次性诉请      |
 | `replyTellaskBack`        | `{ replyContent: string }`   | 当前对话持有一条未完成的 `tellaskBack` 回复指令                      | 把对上一条回问的最终答复送回上游    |
-| `tellaskBack`             | `{ tellaskContent: string }` | 当前支线尚未完成，但需要补问/澄清/报阻塞                             | 向上游发起续诉请，不算最终交付      |
+| `tellaskBack`             | `{ tellaskContent: string }` | 当前支线必须回问上游，且现有团队规程无法直接判责到其他负责人         | 向上游发起续诉请，不算最终交付      |
 
 ### 最小使用规则
 

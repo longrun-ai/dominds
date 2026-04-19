@@ -89,7 +89,8 @@ tellaskBack({
 
 ### 关键点
 
-- 未完成态用 `tellaskBack`，不要用 `replyTellask*`
+- 这里只是“必须向上游补输入”的例子，所以用 `tellaskBack`
+- 若团队规程 / SOP / 职责卡已经能明确执行负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，而不是机械因为“未完成态”就用 `tellaskBack`
 - `tellaskBack` 只负责把问题问回去，不负责最终交付
 
 ## 场景 4：收到 ask-back 续诉请后，用 replyTellaskBack 收口
