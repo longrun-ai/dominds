@@ -109,6 +109,7 @@ const AUTO_SCROLL_WHEEL_RESISTANCE_PX = 56;
 const AUTO_SCROLL_WHEEL_DECAY_MS = 520;
 const AUTO_SCROLL_WHEEL_MAX_RESISTANCE = 1.8;
 const AUTO_SCROLL_WHEEL_IDLE_EPSILON = 0.03;
+const STREAM_CHUNK_FLUSH_INTERVAL_MS = 200;
 
 type LlmRetryEvent = Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>;
 
@@ -157,6 +158,12 @@ export class DomindsDialogContainer extends HTMLElement {
   private thinkingSection?: HTMLElement;
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
+  private pendingThinkingChunkBuffer = '';
+  private pendingThinkingChunkFlushTimer: number | null = null;
+  private pendingThinkingChunkFlushRaf: number | null = null;
+  private pendingMarkdownChunkBuffer = '';
+  private pendingMarkdownChunkFlushTimer: number | null = null;
+  private pendingMarkdownChunkFlushRaf: number | null = null;
 
   // Smart auto-scroll state machine.
   // UX contract:
@@ -1049,6 +1056,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearViewportPanel();
+    this.resetPendingStreamChunkFlush();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -1080,6 +1088,7 @@ export class DomindsDialogContainer extends HTMLElement {
       cleanup();
     }
     this.progressiveExpandCleanupByTarget.clear();
+    this.resetPendingStreamChunkFlush();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearViewportPanel();
@@ -1108,6 +1117,151 @@ export class DomindsDialogContainer extends HTMLElement {
     if (messages) {
       messages.innerHTML = '';
     }
+  }
+
+  private clearPendingThinkingChunkFlushTimer(): void {
+    if (this.pendingThinkingChunkFlushTimer === null) return;
+    window.clearTimeout(this.pendingThinkingChunkFlushTimer);
+    this.pendingThinkingChunkFlushTimer = null;
+  }
+
+  private clearPendingThinkingChunkFlushRaf(): void {
+    if (this.pendingThinkingChunkFlushRaf === null) return;
+    cancelAnimationFrame(this.pendingThinkingChunkFlushRaf);
+    this.pendingThinkingChunkFlushRaf = null;
+  }
+
+  private clearPendingMarkdownChunkFlushTimer(): void {
+    if (this.pendingMarkdownChunkFlushTimer === null) return;
+    window.clearTimeout(this.pendingMarkdownChunkFlushTimer);
+    this.pendingMarkdownChunkFlushTimer = null;
+  }
+
+  private clearPendingMarkdownChunkFlushRaf(): void {
+    if (this.pendingMarkdownChunkFlushRaf === null) return;
+    cancelAnimationFrame(this.pendingMarkdownChunkFlushRaf);
+    this.pendingMarkdownChunkFlushRaf = null;
+  }
+
+  private resetPendingStreamChunkFlush(): void {
+    this.clearPendingThinkingChunkFlushTimer();
+    this.clearPendingThinkingChunkFlushRaf();
+    this.clearPendingMarkdownChunkFlushTimer();
+    this.clearPendingMarkdownChunkFlushRaf();
+    this.pendingThinkingChunkBuffer = '';
+    this.pendingMarkdownChunkBuffer = '';
+  }
+
+  private flushPendingThinkingChunks(): void {
+    this.clearPendingThinkingChunkFlushTimer();
+    this.clearPendingThinkingChunkFlushRaf();
+    if (this.pendingThinkingChunkBuffer.length < 1) return;
+    const section = this.thinkingSection;
+    if (!section) {
+      this.pendingThinkingChunkBuffer = '';
+      return;
+    }
+    const contentEl = section.querySelector('.thinking-content') as HTMLElement | null;
+    if (!contentEl) {
+      this.pendingThinkingChunkBuffer = '';
+      return;
+    }
+    contentEl.textContent += this.pendingThinkingChunkBuffer;
+    this.pendingThinkingChunkBuffer = '';
+    this.scrollToBottom();
+  }
+
+  private flushPendingMarkdownChunks(): void {
+    this.clearPendingMarkdownChunkFlushTimer();
+    this.clearPendingMarkdownChunkFlushRaf();
+    if (this.pendingMarkdownChunkBuffer.length < 1) return;
+    const section = this.markdownSection;
+    if (!section) {
+      this.pendingMarkdownChunkBuffer = '';
+      return;
+    }
+    section.appendChunk(this.pendingMarkdownChunkBuffer);
+    this.pendingMarkdownChunkBuffer = '';
+    this.scrollToBottom();
+  }
+
+  private enqueueThinkingChunkFlushRaf = (): void => {
+    this.pendingThinkingChunkFlushTimer = null;
+    if (this.pendingThinkingChunkBuffer.length < 1) return;
+    if (this.pendingThinkingChunkFlushRaf !== null) return;
+    this.pendingThinkingChunkFlushRaf = requestAnimationFrame(() => {
+      this.pendingThinkingChunkFlushRaf = null;
+      this.flushPendingThinkingChunks();
+    });
+  };
+
+  private enqueueMarkdownChunkFlushRaf = (): void => {
+    this.pendingMarkdownChunkFlushTimer = null;
+    if (this.pendingMarkdownChunkBuffer.length < 1) return;
+    if (this.pendingMarkdownChunkFlushRaf !== null) return;
+    this.pendingMarkdownChunkFlushRaf = requestAnimationFrame(() => {
+      this.pendingMarkdownChunkFlushRaf = null;
+      this.flushPendingMarkdownChunks();
+    });
+  };
+
+  private scheduleThinkingChunkFlush(): void {
+    if (this.pendingThinkingChunkFlushTimer !== null) return;
+    if (this.pendingThinkingChunkFlushRaf !== null) return;
+    this.pendingThinkingChunkFlushTimer = window.setTimeout(() => {
+      this.enqueueThinkingChunkFlushRaf();
+    }, STREAM_CHUNK_FLUSH_INTERVAL_MS);
+  }
+
+  private scheduleMarkdownChunkFlush(): void {
+    if (this.pendingMarkdownChunkFlushTimer !== null) return;
+    if (this.pendingMarkdownChunkFlushRaf !== null) return;
+    this.pendingMarkdownChunkFlushTimer = window.setTimeout(() => {
+      this.enqueueMarkdownChunkFlushRaf();
+    }, STREAM_CHUNK_FLUSH_INTERVAL_MS);
+  }
+
+  private completeThinkingSection(): void {
+    const thinkingSection = this.thinkingSection;
+    if (!thinkingSection) {
+      console.warn('thinking_finish_evt received without active thinking section, skipping');
+      return;
+    }
+    thinkingSection.classList.add('completed');
+    this.thinkingSection = undefined;
+  }
+
+  private completeMarkdownSection(): void {
+    if (!this.markdownSection) {
+      console.warn('markdown_finish_evt received without active markdown section, skipping');
+      return;
+    }
+    this.markdownSection.classList.add('completed');
+    this.markdownSection = undefined;
+  }
+
+  private requestImmediateThinkingChunkFlushForFinish(): boolean {
+    this.clearPendingThinkingChunkFlushTimer();
+    if (this.pendingThinkingChunkBuffer.length < 1) return false;
+    this.clearPendingThinkingChunkFlushRaf();
+    this.pendingThinkingChunkFlushRaf = requestAnimationFrame(() => {
+      this.pendingThinkingChunkFlushRaf = null;
+      this.flushPendingThinkingChunks();
+      this.completeThinkingSection();
+    });
+    return true;
+  }
+
+  private requestImmediateMarkdownChunkFlushForFinish(): boolean {
+    this.clearPendingMarkdownChunkFlushTimer();
+    if (this.pendingMarkdownChunkBuffer.length < 1) return false;
+    this.clearPendingMarkdownChunkFlushRaf();
+    this.pendingMarkdownChunkFlushRaf = requestAnimationFrame(() => {
+      this.pendingMarkdownChunkFlushRaf = null;
+      this.flushPendingMarkdownChunks();
+      this.completeMarkdownSection();
+    });
+    return true;
   }
 
   private stopAutoScrollObservation(): void {
@@ -1886,6 +2040,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(thinkingSection);
     this.thinkingSection = thinkingSection;
+    this.pendingThinkingChunkBuffer = '';
+    this.clearPendingThinkingChunkFlushTimer();
+    this.clearPendingThinkingChunkFlushRaf();
     this.scrollToBottom();
   }
   private handleThinkingChunk(genseq: number, chunk: string, timestamp: string): void {
@@ -1904,22 +2061,16 @@ export class DomindsDialogContainer extends HTMLElement {
       console.warn('thinking_chunk_evt received without thinking section, auto-creating');
       this.handleThinkingStart(genseq, timestamp);
     }
-    const section = this.thinkingSection!;
-    const contentEl = section.querySelector('.thinking-content') as HTMLElement;
-    if (contentEl) {
-      contentEl.textContent += chunk;
-      this.scrollToBottom();
-    }
-  }
-  private handleThinkingFinish(_genseq: number): void {
-    const thinkingSection = this.thinkingSection;
-    if (!thinkingSection) {
-      // Gracefully handle orphan finish - no active thinking section to complete
-      console.warn('thinking_finish_evt received without active thinking section, skipping');
+    if (!this.thinkingSection) {
+      console.warn('thinking_chunk_evt received without thinking section, skipping');
       return;
     }
-    thinkingSection.classList.add('completed');
-    this.thinkingSection = undefined;
+    this.pendingThinkingChunkBuffer += chunk;
+    this.scheduleThinkingChunkFlush();
+  }
+  private handleThinkingFinish(_genseq: number): void {
+    if (this.requestImmediateThinkingChunkFlushForFinish()) return;
+    this.completeThinkingSection();
   }
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
@@ -1941,6 +2092,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(markdownSection);
     this.markdownSection = markdownSection;
+    this.pendingMarkdownChunkBuffer = '';
+    this.clearPendingMarkdownChunkFlushTimer();
+    this.clearPendingMarkdownChunkFlushRaf();
     this.scrollToBottom();
   }
   private handleMarkdownChunk(genseq: number, chunk: string, timestamp: string): void {
@@ -1953,19 +2107,12 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    // Use the component's public API for incremental rendering
-    this.markdownSection.appendChunk(chunk);
-    this.scrollToBottom();
+    this.pendingMarkdownChunkBuffer += chunk;
+    this.scheduleMarkdownChunkFlush();
   }
   private handleMarkdownFinish(_genseq: number): void {
-    if (!this.markdownSection) {
-      // Gracefully handle orphan finish - no active markdown section to complete
-      console.warn('markdown_finish_evt received without active markdown section, skipping');
-      return;
-    }
-    // Complete the markdown section
-    this.markdownSection.classList.add('completed');
-    this.markdownSection = undefined;
+    if (this.requestImmediateMarkdownChunkFlushForFinish()) return;
+    this.completeMarkdownSection();
   }
 
   private handleUiOnlyMarkdown(
