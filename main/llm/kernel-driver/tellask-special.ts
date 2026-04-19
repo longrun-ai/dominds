@@ -1241,11 +1241,12 @@ async function finishRegisteredTellaskReplacement(args: {
 async function reviveDialogIfUnblocked(
   dialog: Dialog,
   callbacks: KernelDriverDriveCallbacks,
-  reason: string,
+  reason: 'reply_tellask_back_delivered' | 'type_b_registered_subdialog_replaced_pending_round',
 ): Promise<void> {
-  const hasQ4H = await dialog.hasPendingQ4H();
-  const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
-  if (hasQ4H || hasPendingSubdialogs) {
+  const suspension = await dialog.getSuspensionStatus({
+    allowPendingSubdialogs: reason === 'reply_tellask_back_delivered',
+  });
+  if (!suspension.canDrive) {
     return;
   }
   if (dialog instanceof RootDialog) {
@@ -1261,7 +1262,10 @@ async function reviveDialogIfUnblocked(
         dialog instanceof SubDialog
           ? {
               ownerDialogId: dialog.id.selfId,
-              reason: 'reply_tellask_back_delivered',
+              reason:
+                reason === 'reply_tellask_back_delivered'
+                  ? 'reply_tellask_back_delivered'
+                  : 'resolved_pending_subdialog_reply',
             }
           : undefined,
     },
@@ -2432,9 +2436,11 @@ async function executeReplyTellaskCall(args: {
     | Extract<ExecutableValidTellaskCall, { callName: 'replyTellaskSessionless' }>
     | Extract<ExecutableValidTellaskCall, { callName: 'replyTellaskBack' }>;
   callbacks: KernelDriverDriveCallbacks;
+  activePromptReplyDirective?: TellaskReplyDirective;
 }): Promise<ReplyTellaskExecutionResult> {
   const genseq = args.dlg.activeGenSeqOrUndefined ?? 1;
-  const activeDirective = await loadLatestActiveTellaskReplyDirective(args.dlg);
+  const activeDirective =
+    args.activePromptReplyDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
   const expectedCallName = activeDirective?.expectedReplyCallName;
   if (!expectedCallName) {
     return {
@@ -2671,6 +2677,7 @@ async function executeValidTellaskCalls(args: {
   dlg: Dialog;
   calls: readonly ExecutableValidTellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
+  activePromptReplyDirective?: TellaskReplyDirective;
 }): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   const results: ChatMessage[][] = [];
   const successfulReplyCallIds: string[] = [];
@@ -2718,6 +2725,7 @@ async function executeValidTellaskCalls(args: {
           dlg: args.dlg,
           call,
           callbacks: args.callbacks,
+          activePromptReplyDirective: args.activePromptReplyDirective,
         });
         if (replyResult.delivered) {
           successfulReplyCallIds.push(call.callId);
@@ -2794,6 +2802,7 @@ export async function executeTellaskCalls(args: {
   dlg: Dialog;
   calls: readonly TellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
+  activePromptReplyDirective?: TellaskReplyDirective;
 }): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   if (args.calls.length === 0) {
     return { toolOutputs: [], successfulReplyCallIds: [] };
@@ -2803,6 +2812,7 @@ export async function executeTellaskCalls(args: {
     dlg: args.dlg,
     calls: args.calls.map((call) => toExecutableValidTellaskCall(call)),
     callbacks: args.callbacks,
+    activePromptReplyDirective: args.activePromptReplyDirective,
   });
 }
 
@@ -2820,6 +2830,7 @@ export async function processTellaskFunctionRound(args: {
   funcCalls: readonly FuncCallMsg[];
   allowedSpecials: ReadonlySet<TellaskCallFunctionName>;
   callbacks: KernelDriverDriveCallbacks;
+  activePromptReplyDirective?: TellaskReplyDirective;
 }): Promise<TellaskFunctionRoundResult> {
   type OrderedTellaskDisposition =
     | Readonly<{ kind: 'valid'; handled: ResolvedTellaskFunctionCall }>
@@ -2946,6 +2957,7 @@ export async function processTellaskFunctionRound(args: {
       dlg: args.dlg,
       calls: orderedValidCalls.map((handled) => handled.call),
       callbacks: args.callbacks,
+      activePromptReplyDirective: args.activePromptReplyDirective,
     });
   } catch (err) {
     const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

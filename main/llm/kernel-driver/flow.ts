@@ -272,6 +272,24 @@ function hasNoPromptSubdialogResumeEntitlement(
   return entitlement.ownerDialogId === dialog.id.selfId;
 }
 
+function shouldAllowPendingSubdialogsForParentRevive(
+  dialog: Dialog,
+  driveOptions: KernelDriverDriveOptions | undefined,
+): boolean {
+  if (!(dialog instanceof SubDialog)) {
+    return false;
+  }
+  const entitlement = driveOptions?.noPromptSubdialogResumeEntitlement;
+  if (!entitlement) {
+    return false;
+  }
+  return (
+    driveOptions?.source === 'kernel_driver_supply_response_parent_revive' &&
+    entitlement.ownerDialogId === dialog.id.selfId &&
+    entitlement.reason === 'reply_tellask_back_delivered'
+  );
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -769,9 +787,15 @@ export async function executeDriveRound(args: {
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh blocker facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
+      const allowPendingSubdialogsForParentRevive = shouldAllowPendingSubdialogsForParentRevive(
+        dialog,
+        driveOptions,
+      );
       const suspension = resumeFromInterjectionPause
         ? await loadFreshSuspensionStatusFromPersistence(dialog)
-        : await dialog.getSuspensionStatus();
+        : await dialog.getSuspensionStatus({
+            allowPendingSubdialogs: allowPendingSubdialogsForParentRevive,
+          });
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
       const queuedSubdialogPromptCanResume =
         dialog instanceof SubDialog && queuedPrompt !== undefined;
@@ -1038,7 +1062,12 @@ export async function executeDriveRound(args: {
                   },
                 );
               } else {
-                if (!activePromptWasReplyToolReminder) {
+                const shouldDirectFallbackAfterAskBackParentRevive =
+                  shouldAllowPendingSubdialogsForParentRevive(dialog, driveOptions);
+                if (
+                  !activePromptWasReplyToolReminder &&
+                  !shouldDirectFallbackAfterAskBackParentRevive
+                ) {
                   const language = getWorkLanguage();
                   followUp =
                     subdialogReplyTarget === undefined
@@ -1076,6 +1105,8 @@ export async function executeDriveRound(args: {
                       dialogId: dialog.id.valueOf(),
                       targetCallId: activeTellaskReplyDirective.targetCallId,
                       targetOwnerDialogId: subdialogReplyTarget?.ownerDialogId,
+                      directFallbackAfterAskBackParentRevive:
+                        shouldDirectFallbackAfterAskBackParentRevive,
                     },
                   );
                 } else {

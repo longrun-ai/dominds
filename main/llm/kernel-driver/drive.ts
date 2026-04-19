@@ -1240,6 +1240,7 @@ async function executeFunctionRound(args: {
   callbacks: KernelDriverDriveCallbacks;
   abortSignal: AbortSignal | undefined;
   allowTellaskFunctions: boolean;
+  activePromptReplyDirective?: KernelDriverPrompt['tellaskReplyDirective'];
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
     return {
@@ -1270,6 +1271,7 @@ async function executeFunctionRound(args: {
     funcCalls: args.funcCalls,
     allowedSpecials,
     callbacks: args.callbacks,
+    activePromptReplyDirective: args.activePromptReplyDirective,
   });
   throwIfAborted(args.abortSignal, args.dlg);
 
@@ -2551,6 +2553,7 @@ export async function driveDialogStreamCore(
             callbacks,
             abortSignal,
             allowTellaskFunctions: policy.allowTellaskFunctions,
+            activePromptReplyDirective: currentPrompt?.tellaskReplyDirective,
           });
           if (routed.tellaskToolOutputs.length > 0) {
             newMsgs.push(...routed.tellaskToolOutputs);
