@@ -37,33 +37,54 @@ function isMathBlockElement(node: Node | null): node is MathBlockElement {
   );
 }
 
-function syncElementAttributes(live: Element, next: Element): void {
+function syncElementAttributes(live: Element, next: Element): boolean {
+  let changed = false;
   for (const attr of Array.from(live.attributes)) {
     if (!next.hasAttribute(attr.name)) {
       live.removeAttribute(attr.name);
+      changed = true;
     }
   }
   for (const attr of Array.from(next.attributes)) {
     if (live.getAttribute(attr.name) !== attr.value) {
       live.setAttribute(attr.name, attr.value);
+      changed = true;
     }
   }
+  return changed;
 }
 
-function syncOptionalAttribute(element: Element, name: string, nextValue: string | null): void {
+function syncOptionalAttribute(
+  element: Element,
+  name: string,
+  nextValue: string | null,
+): boolean {
   if (nextValue === null) {
     if (element.hasAttribute(name)) {
       element.removeAttribute(name);
+      return true;
     }
-    return;
+    return false;
   }
   if (element.getAttribute(name) !== nextValue) {
     element.setAttribute(name, nextValue);
+    return true;
   }
+  return false;
 }
 
 function cloneRenderedNode(node: Node): Node {
   return node.cloneNode(true);
+}
+
+function maybeAddPostprocessTarget(targets: Set<Element>, node: Node): void {
+  if (node instanceof HTMLAnchorElement) {
+    targets.add(node);
+    return;
+  }
+  if (node instanceof Element) {
+    targets.add(node);
+  }
 }
 
 export class DomindsMarkdownSection extends HTMLElement {
@@ -98,72 +119,145 @@ export class DomindsMarkdownSection extends HTMLElement {
     return false;
   }
 
-  private reconcileCustomElement(live: HTMLElement, next: HTMLElement): boolean {
+  private canSkipNode(live: Node, next: Node): boolean {
+    if (!this.canReuseNode(live, next)) return false;
+    if (live instanceof Text && next instanceof Text) {
+      return live.data === next.data;
+    }
+    if (!(live instanceof HTMLElement) || !(next instanceof HTMLElement)) {
+      return false;
+    }
     if (isCodeBlockElement(live) && isCodeBlockElement(next)) {
-      syncOptionalAttribute(live, 'language', next.getAttribute('language'));
+      return (
+        (live.getAttribute('language') ?? '') === (next.getAttribute('language') ?? '') &&
+        live.code === (next.textContent ?? '')
+      );
+    }
+    if (isMermaidBlockElement(live) && isMermaidBlockElement(next)) {
+      return live.definition === (next.textContent ?? '');
+    }
+    if (isMathBlockElement(live) && isMathBlockElement(next)) {
+      return (
+        (live.getAttribute('display') ?? '') === (next.getAttribute('display') ?? '') &&
+        live.tex === (next.textContent ?? '')
+      );
+    }
+    return live.isEqualNode(next);
+  }
+
+  private reconcileCustomElement(
+    live: HTMLElement,
+    next: HTMLElement,
+  ): 'not-custom' | 'changed' | 'unchanged' {
+    if (isCodeBlockElement(live) && isCodeBlockElement(next)) {
+      const attrChanged = syncOptionalAttribute(live, 'language', next.getAttribute('language'));
       const nextCode = next.textContent ?? '';
       if (live.code !== nextCode) {
         live.code = nextCode;
+        return 'changed';
       }
-      return true;
+      return attrChanged ? 'changed' : 'unchanged';
     }
     if (isMermaidBlockElement(live) && isMermaidBlockElement(next)) {
       const nextDefinition = next.textContent ?? '';
       if (live.definition !== nextDefinition) {
         live.definition = nextDefinition;
+        return 'changed';
       }
-      return true;
+      return 'unchanged';
     }
     if (isMathBlockElement(live) && isMathBlockElement(next)) {
-      syncOptionalAttribute(live, 'display', next.getAttribute('display'));
+      const attrChanged = syncOptionalAttribute(live, 'display', next.getAttribute('display'));
       const nextTex = next.textContent ?? '';
       if (live.tex !== nextTex) {
         live.tex = nextTex;
+        return 'changed';
+      }
+      return attrChanged ? 'changed' : 'unchanged';
+    }
+    return 'not-custom';
+  }
+
+  private reconcileNode(live: Node, next: Node, postprocessTargets: Set<Element>): boolean {
+    if (live instanceof Text && next instanceof Text) {
+      if (live.data !== next.data) {
+        live.data = next.data;
+        return true;
+      }
+      return false;
+    }
+
+    if (!(live instanceof HTMLElement) || !(next instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (this.canSkipNode(live, next)) {
+      return false;
+    }
+
+    const customResult = this.reconcileCustomElement(live, next);
+    if (customResult !== 'not-custom') {
+      return customResult === 'changed';
+    }
+
+    const attrChanged = syncElementAttributes(live, next);
+    const childrenChanged = this.reconcileChildren(live, next, postprocessTargets);
+    if (attrChanged || childrenChanged) {
+      if (live instanceof HTMLAnchorElement) {
+        postprocessTargets.add(live);
       }
       return true;
     }
     return false;
   }
 
-  private reconcileNode(live: Node, next: Node): void {
-    if (live instanceof Text && next instanceof Text) {
-      if (live.data !== next.data) {
-        live.data = next.data;
-      }
-      return;
-    }
-
-    if (!(live instanceof HTMLElement) || !(next instanceof HTMLElement)) {
-      return;
-    }
-
-    if (live.isEqualNode(next)) {
-      return;
-    }
-
-    if (this.reconcileCustomElement(live, next)) {
-      return;
-    }
-
-    syncElementAttributes(live, next);
-    this.reconcileChildren(live, next);
-  }
-
-  private reconcileChildren(liveParent: Element, nextParent: Element): void {
+  private reconcileChildren(
+    liveParent: Element,
+    nextParent: Element,
+    postprocessTargets: Set<Element>,
+  ): boolean {
     const liveChildren = Array.from(liveParent.childNodes);
     const nextChildren = Array.from(nextParent.childNodes);
-    const limit = Math.max(liveChildren.length, nextChildren.length);
+    let prefixLength = 0;
+    while (
+      prefixLength < liveChildren.length &&
+      prefixLength < nextChildren.length &&
+      this.canSkipNode(liveChildren[prefixLength]!, nextChildren[prefixLength]!)
+    ) {
+      prefixLength += 1;
+    }
+
+    let liveTailIndex = liveChildren.length - 1;
+    let nextTailIndex = nextChildren.length - 1;
+    while (
+      liveTailIndex >= prefixLength &&
+      nextTailIndex >= prefixLength &&
+      this.canSkipNode(liveChildren[liveTailIndex]!, nextChildren[nextTailIndex]!)
+    ) {
+      liveTailIndex -= 1;
+      nextTailIndex -= 1;
+    }
+
+    const tailReference =
+      liveTailIndex + 1 < liveChildren.length ? (liveChildren[liveTailIndex + 1] ?? null) : null;
+    let changed = false;
+    const limit = Math.max(liveTailIndex - prefixLength + 1, nextTailIndex - prefixLength + 1);
 
     for (let index = 0; index < limit; index += 1) {
-      const live = liveChildren[index] ?? null;
-      const next = nextChildren[index] ?? null;
+      const logicalIndex = prefixLength + index;
+      const live = logicalIndex <= liveTailIndex ? (liveChildren[logicalIndex] ?? null) : null;
+      const next = logicalIndex <= nextTailIndex ? (nextChildren[logicalIndex] ?? null) : null;
 
       if (live === null && next !== null) {
-        liveParent.appendChild(cloneRenderedNode(next));
+        const clone = cloneRenderedNode(next);
+        liveParent.insertBefore(clone, tailReference);
+        maybeAddPostprocessTarget(postprocessTargets, clone);
+        changed = true;
         continue;
       }
       if (live !== null && next === null) {
         live.remove();
+        changed = true;
         continue;
       }
       if (live === null || next === null) {
@@ -171,12 +265,32 @@ export class DomindsMarkdownSection extends HTMLElement {
       }
 
       if (!this.canReuseNode(live, next)) {
-        live.replaceWith(cloneRenderedNode(next));
+        const clone = cloneRenderedNode(next);
+        live.replaceWith(clone);
+        maybeAddPostprocessTarget(postprocessTargets, clone);
+        changed = true;
         continue;
       }
 
-      this.reconcileNode(live, next);
+      if (this.reconcileNode(live, next, postprocessTargets)) {
+        changed = true;
+      }
     }
+
+    return changed;
+  }
+
+  private normalizePostprocessTargets(targets: Set<Element>): readonly Element[] {
+    const allTargets = Array.from(targets);
+    return allTargets.filter((target) => {
+      for (const other of allTargets) {
+        if (other === target) continue;
+        if (other.contains(target)) {
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
   private render(): void {
@@ -190,8 +304,11 @@ export class DomindsMarkdownSection extends HTMLElement {
     const nextTree = document.createElement('div');
     nextTree.innerHTML = rendered;
 
-    this.reconcileChildren(contentEl, nextTree);
-    postprocessRenderedDomindsMarkdown(contentEl);
+    const postprocessTargets = new Set<Element>();
+    this.reconcileChildren(contentEl, nextTree, postprocessTargets);
+    for (const target of this.normalizePostprocessTargets(postprocessTargets)) {
+      postprocessRenderedDomindsMarkdown(target);
+    }
     contentEl.setAttribute('data-raw-md', this.accumulatedRawMarkdown);
   }
 }

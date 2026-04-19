@@ -646,7 +646,15 @@ export function postprocessRenderedDomindsMarkdown(root: ParentNode): void {
   if (typeof window === 'undefined') return;
   if (!('querySelectorAll' in root)) return;
 
-  const anchors = root.querySelectorAll('a');
+  const anchors: HTMLAnchorElement[] = [];
+  if (root instanceof HTMLAnchorElement) {
+    anchors.push(root);
+  }
+  for (const anchorNode of Array.from(root.querySelectorAll('a'))) {
+    if (anchorNode instanceof HTMLAnchorElement) {
+      anchors.push(anchorNode);
+    }
+  }
   const previewAnchorsByPath = new Map<
     string,
     Array<{ anchor: HTMLAnchorElement; previewHref: string }>
