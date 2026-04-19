@@ -23,9 +23,17 @@ import type {
   WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
-  DialogPrompt,
+  DialogQueuedDeferredQ4HAnswerState,
+  DialogQueuedPromptState,
+  DialogQueuedRegisteredAssignmentUpdateState,
+  DialogQueuedUserGenerationBoundaryState,
   DialogRunControlSpec,
+  DialogRuntimeGuidePrompt,
+  DialogRuntimePrompt,
+  DialogRuntimeReplyPrompt,
+  DialogRuntimeSubdialogPrompt,
   DialogSubdialogReplyTarget,
+  DialogUserPrompt,
   DriveIntent,
 } from '@longrun-ai/kernel/types/drive-intent';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
@@ -70,30 +78,12 @@ import {
 import { generateDialogID } from './utils/id';
 
 type NewCourseHookResult =
-  | { kind: 'continue'; prompt: DialogPrompt }
+  | { kind: 'continue'; prompt: DialogRuntimePrompt }
   | { kind: 'reject'; errorText: string };
-
-type UpNextPromptState = {
-  kind:
-    | 'user_generation_boundary'
-    | 'deferred_q4h_answer'
-    | 'registered_assignment_update'
-    | 'new_course_start';
-  prompt: string;
-  msgId: string;
-  grammar?: 'markdown';
-  userLanguageCode?: LanguageCode;
-  origin: 'user' | 'diligence_push' | 'runtime';
-  q4hAnswerCallId?: string;
-  tellaskReplyDirective?: TellaskReplyDirective;
-  skipTaskdoc?: boolean;
-  subdialogReplyTarget?: DialogSubdialogReplyTarget;
-  runControl?: DialogRunControlSpec;
-};
 
 type NewCourseHook = (args: {
   dialog: Dialog;
-  prompt: DialogPrompt;
+  prompt: DialogRuntimePrompt;
   runControl?: DialogRunControlSpec;
 }) => Promise<NewCourseHookResult>;
 
@@ -204,7 +194,7 @@ export interface DialogInitParams {
     createdAt?: string;
     updatedAt?: string;
     contextHealth?: ContextHealthSnapshot;
-    pendingCourseStartPrompt?: DialogPrompt;
+    pendingCourseStartPrompt?: DialogRuntimePrompt;
   };
 }
 
@@ -244,7 +234,7 @@ export interface AssignmentFromSup {
 
 function buildSubdialogAssignmentPromptMeta(
   subdialog: SubDialog,
-): Pick<DialogPrompt, 'tellaskReplyDirective' | 'subdialogReplyTarget'> {
+): Pick<DialogRuntimeSubdialogPrompt, 'tellaskReplyDirective' | 'subdialogReplyTarget'> {
   const assignment = subdialog.assignmentFromSup;
   switch (assignment.callName) {
     case 'tellask':
@@ -305,7 +295,7 @@ export abstract class Dialog {
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
   // Prompts queued for future drives (set by startNewCourse or deferred-resume flows).
-  protected _upNextQueue: UpNextPromptState[] = [];
+  protected _upNextQueue: DialogQueuedPromptState[] = [];
   protected _driveIntents: DriveIntent[] = [];
   protected _activeRunControlSpec?: DialogRunControlSpec;
   protected _newCourseHook?: NewCourseHook;
@@ -968,30 +958,10 @@ export abstract class Dialog {
     return this._updatedAt;
   }
 
-  private buildUpNextPromptState(
-    prompt: DialogPrompt,
-    kind: UpNextPromptState['kind'],
-    runControl?: DialogRunControlSpec,
-  ): UpNextPromptState {
-    return {
-      kind,
-      prompt: prompt.content,
-      msgId: prompt.msgId,
-      grammar: prompt.grammar,
-      userLanguageCode: prompt.userLanguageCode,
-      origin: prompt.origin,
-      q4hAnswerCallId: prompt.q4hAnswerCallId,
-      tellaskReplyDirective: prompt.tellaskReplyDirective,
-      skipTaskdoc: prompt.skipTaskdoc,
-      subdialogReplyTarget: prompt.subdialogReplyTarget,
-      runControl,
-    };
-  }
-
   private replaceQueuedPromptState(
     existingMsgId: string,
-    nextPrompt: UpNextPromptState,
-  ): UpNextPromptState {
+    nextPrompt: DialogQueuedPromptState,
+  ): DialogQueuedPromptState {
     const queueIndex = this._upNextQueue.findIndex((prompt) => prompt.msgId === existingMsgId);
     if (queueIndex < 0) {
       throw new Error(
@@ -1003,19 +973,69 @@ export abstract class Dialog {
     for (let index = this._driveIntents.length - 1; index >= 0; index -= 1) {
       const intent = this._driveIntents[index];
       if (intent.kind !== 'prompt' || intent.prompt.msgId !== existingMsgId) continue;
+      const promptCommon = {
+        content: nextPrompt.prompt,
+        msgId: nextPrompt.msgId,
+        grammar: nextPrompt.grammar ?? 'markdown',
+        userLanguageCode: nextPrompt.userLanguageCode ?? this._lastUserLanguageCode,
+      };
       this._driveIntents[index] = {
         ...intent,
-        prompt: {
-          ...intent.prompt,
-          content: nextPrompt.prompt,
-          msgId: nextPrompt.msgId,
-          grammar: nextPrompt.grammar ?? 'markdown',
-          userLanguageCode: nextPrompt.userLanguageCode,
-          q4hAnswerCallId: nextPrompt.q4hAnswerCallId,
-          tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
-          skipTaskdoc: nextPrompt.skipTaskdoc,
-          subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
-        },
+        prompt: (() => {
+          switch (nextPrompt.kind) {
+            case 'user_generation_boundary':
+            case 'deferred_q4h_answer': {
+              const prompt: DialogUserPrompt = {
+                ...promptCommon,
+                origin: 'user',
+                ...(nextPrompt.q4hAnswerCallId === undefined
+                  ? {}
+                  : { q4hAnswerCallId: nextPrompt.q4hAnswerCallId }),
+              };
+              return prompt;
+            }
+            case 'registered_assignment_update':
+            case 'new_course_runtime_subdialog': {
+              const prompt: DialogRuntimeSubdialogPrompt = {
+                ...promptCommon,
+                origin: 'runtime',
+                ...(nextPrompt.skipTaskdoc === undefined
+                  ? {}
+                  : { skipTaskdoc: nextPrompt.skipTaskdoc }),
+                tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
+                subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
+              };
+              return prompt;
+            }
+            case 'new_course_runtime_reply': {
+              const prompt: DialogRuntimeReplyPrompt = {
+                ...promptCommon,
+                origin: 'runtime',
+                ...(nextPrompt.skipTaskdoc === undefined
+                  ? {}
+                  : { skipTaskdoc: nextPrompt.skipTaskdoc }),
+                tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
+              };
+              return prompt;
+            }
+            case 'new_course_runtime_guide': {
+              const prompt: DialogRuntimeGuidePrompt = {
+                ...promptCommon,
+                origin: 'runtime',
+                ...(nextPrompt.skipTaskdoc === undefined
+                  ? {}
+                  : { skipTaskdoc: nextPrompt.skipTaskdoc }),
+              };
+              return prompt;
+            }
+            default: {
+              const _exhaustive: never = nextPrompt;
+              throw new Error(
+                `UpNext prompt replacement invariant violation: unsupported queued prompt`,
+              );
+            }
+          }
+        })(),
         runControl: nextPrompt.runControl,
       };
       return nextPrompt;
@@ -1026,8 +1046,8 @@ export abstract class Dialog {
     );
   }
 
-  private setNewCourseStartPrompt(prompt: string | DialogPrompt): DialogPrompt {
-    const prepared: DialogPrompt =
+  private setNewCourseStartPrompt(prompt: string | DialogRuntimePrompt): DialogRuntimePrompt {
+    const prepared: DialogRuntimePrompt =
       typeof prompt === 'string'
         ? {
             content: prompt,
@@ -1041,14 +1061,70 @@ export abstract class Dialog {
     if (!trimmed) {
       throw new Error('Prompt is required to start a new course');
     }
-    const normalized: DialogPrompt = {
-      ...prepared,
+    const runtimeCommon = {
       content: trimmed,
       msgId: prepared.msgId.trim() || generateShortId(),
-      grammar: 'markdown',
+      grammar: 'markdown' as const,
       userLanguageCode: prepared.userLanguageCode ?? this._lastUserLanguageCode,
+      origin: 'runtime' as const,
+      ...(prepared.skipTaskdoc === undefined ? {} : { skipTaskdoc: prepared.skipTaskdoc }),
     };
-    this._upNextQueue = [this.buildUpNextPromptState(normalized, 'new_course_start')];
+    const normalized: DialogRuntimePrompt =
+      prepared.subdialogReplyTarget !== undefined
+        ? (() => {
+            const prompt: DialogRuntimeSubdialogPrompt = {
+              ...runtimeCommon,
+              tellaskReplyDirective: prepared.tellaskReplyDirective,
+              subdialogReplyTarget: prepared.subdialogReplyTarget,
+            };
+            return prompt;
+          })()
+        : prepared.tellaskReplyDirective !== undefined
+          ? (() => {
+              const prompt: DialogRuntimeReplyPrompt = {
+                ...runtimeCommon,
+                tellaskReplyDirective: prepared.tellaskReplyDirective,
+              };
+              return prompt;
+            })()
+          : (() => {
+              const prompt: DialogRuntimeGuidePrompt = runtimeCommon;
+              return prompt;
+            })();
+    this._upNextQueue = [
+      normalized.subdialogReplyTarget !== undefined
+        ? {
+            kind: 'new_course_runtime_subdialog',
+            prompt: normalized.content,
+            msgId: normalized.msgId,
+            grammar: normalized.grammar,
+            userLanguageCode: normalized.userLanguageCode,
+            origin: 'runtime',
+            tellaskReplyDirective: normalized.tellaskReplyDirective,
+            skipTaskdoc: normalized.skipTaskdoc,
+            subdialogReplyTarget: normalized.subdialogReplyTarget,
+          }
+        : normalized.tellaskReplyDirective !== undefined
+          ? {
+              kind: 'new_course_runtime_reply',
+              prompt: normalized.content,
+              msgId: normalized.msgId,
+              grammar: normalized.grammar,
+              userLanguageCode: normalized.userLanguageCode,
+              origin: 'runtime',
+              tellaskReplyDirective: normalized.tellaskReplyDirective,
+              skipTaskdoc: normalized.skipTaskdoc,
+            }
+          : {
+              kind: 'new_course_runtime_guide',
+              prompt: normalized.content,
+              msgId: normalized.msgId,
+              grammar: normalized.grammar,
+              userLanguageCode: normalized.userLanguageCode,
+              origin: 'runtime',
+              skipTaskdoc: normalized.skipTaskdoc,
+            },
+    ];
     return normalized;
   }
 
@@ -1073,27 +1149,69 @@ export abstract class Dialog {
     return normalizedExisting;
   }
 
-  private enqueueQueuedPromptState(state: UpNextPromptState): void {
+  private enqueueQueuedPromptState(state: DialogQueuedPromptState): void {
     this._upNextQueue.push(state);
+    const promptCommon = {
+      content: state.prompt,
+      msgId: state.msgId,
+      grammar: state.grammar ?? 'markdown',
+      userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
+    };
     this._driveIntents.push({
       kind: 'prompt',
-      prompt: {
-        content: state.prompt,
-        msgId: state.msgId,
-        grammar: state.grammar ?? 'markdown',
-        userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
-        origin: state.origin,
-        q4hAnswerCallId: state.q4hAnswerCallId,
-        tellaskReplyDirective: state.tellaskReplyDirective,
-        skipTaskdoc: state.skipTaskdoc,
-        subdialogReplyTarget: state.subdialogReplyTarget,
-      },
+      prompt: (() => {
+        switch (state.kind) {
+          case 'user_generation_boundary':
+          case 'deferred_q4h_answer': {
+            const prompt: DialogUserPrompt = {
+              ...promptCommon,
+              origin: 'user',
+              ...(state.q4hAnswerCallId === undefined
+                ? {}
+                : { q4hAnswerCallId: state.q4hAnswerCallId }),
+            };
+            return prompt;
+          }
+          case 'registered_assignment_update':
+          case 'new_course_runtime_subdialog': {
+            const prompt: DialogRuntimeSubdialogPrompt = {
+              ...promptCommon,
+              origin: 'runtime',
+              ...(state.skipTaskdoc === undefined ? {} : { skipTaskdoc: state.skipTaskdoc }),
+              tellaskReplyDirective: state.tellaskReplyDirective,
+              subdialogReplyTarget: state.subdialogReplyTarget,
+            };
+            return prompt;
+          }
+          case 'new_course_runtime_reply': {
+            const prompt: DialogRuntimeReplyPrompt = {
+              ...promptCommon,
+              origin: 'runtime',
+              ...(state.skipTaskdoc === undefined ? {} : { skipTaskdoc: state.skipTaskdoc }),
+              tellaskReplyDirective: state.tellaskReplyDirective,
+            };
+            return prompt;
+          }
+          case 'new_course_runtime_guide': {
+            const prompt: DialogRuntimeGuidePrompt = {
+              ...promptCommon,
+              origin: 'runtime',
+              ...(state.skipTaskdoc === undefined ? {} : { skipTaskdoc: state.skipTaskdoc }),
+            };
+            return prompt;
+          }
+          default: {
+            const _exhaustive: never = state;
+            throw new Error(`UpNext enqueue invariant violation: unsupported queued prompt`);
+          }
+        }
+      })(),
       runControl: state.runControl,
     });
     this._updatedAt = formatUnifiedTimestamp(new Date());
   }
 
-  private peekLatestUpNext(): UpNextPromptState | undefined {
+  private peekLatestUpNext(): DialogQueuedPromptState | undefined {
     if (this._upNextQueue.length === 0) {
       return undefined;
     }
@@ -1106,15 +1224,15 @@ export abstract class Dialog {
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallId?: string;
-  }): UpNextPromptState {
+  }): DialogQueuedPromptState {
     const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
     if (!trimmed) {
       throw new Error('Prompt is required to queue generation-boundary user prompt');
     }
 
-    if (existing?.kind !== 'user_generation_boundary' || existing.origin !== 'user') {
-      const created: UpNextPromptState = {
+    if (existing?.kind !== 'user_generation_boundary') {
+      const created: DialogQueuedUserGenerationBoundaryState = {
         kind: 'user_generation_boundary',
         prompt: trimmed,
         msgId: options.msgId,
@@ -1127,7 +1245,7 @@ export abstract class Dialog {
       return created;
     }
 
-    const merged: UpNextPromptState = {
+    const merged: DialogQueuedUserGenerationBoundaryState = {
       ...existing,
       prompt: `${existing.prompt}\n\n---\n\n${trimmed}`,
       grammar: options.grammar,
@@ -1149,14 +1267,14 @@ export abstract class Dialog {
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallId?: string;
-  }): UpNextPromptState {
+  }): DialogQueuedPromptState {
     const trimmed = options.prompt.trim();
     if (!trimmed) {
       throw new Error('Continuation input is required to queue deferred Q4H answer');
     }
     // This queue item only carries the already-answered askHuman call correlation into the next
     // resumed drive. The answer itself has already been persisted as tellask result/carryover.
-    const created: UpNextPromptState = {
+    const created: DialogQueuedDeferredQ4HAnswerState = {
       kind: 'deferred_q4h_answer',
       prompt: trimmed,
       msgId: options.msgId,
@@ -1175,11 +1293,10 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
-    q4hAnswerCallId?: string;
-    tellaskReplyDirective?: TellaskReplyDirective;
+    tellaskReplyDirective: TellaskReplyDirective;
     skipTaskdoc?: boolean;
-    subdialogReplyTarget?: DialogSubdialogReplyTarget;
-  }): UpNextPromptState {
+    subdialogReplyTarget: DialogSubdialogReplyTarget;
+  }): DialogQueuedPromptState {
     const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
     if (!trimmed) {
@@ -1187,14 +1304,13 @@ export abstract class Dialog {
     }
 
     if (existing?.kind !== 'registered_assignment_update') {
-      const created: UpNextPromptState = {
+      const created: DialogQueuedRegisteredAssignmentUpdateState = {
         kind: 'registered_assignment_update',
         prompt: trimmed,
         msgId: options.msgId,
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
         origin: 'runtime',
-        q4hAnswerCallId: options.q4hAnswerCallId,
         tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
         subdialogReplyTarget: options.subdialogReplyTarget,
@@ -1204,20 +1320,16 @@ export abstract class Dialog {
       return created;
     }
 
-    const merged: UpNextPromptState = {
+    const merged: DialogQueuedRegisteredAssignmentUpdateState = {
       ...existing,
       prompt: trimmed,
       msgId: options.msgId,
       grammar: options.grammar,
       userLanguageCode:
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
-      q4hAnswerCallId: this.mergePromptQ4HAnswerCallId(
-        existing.q4hAnswerCallId,
-        options.q4hAnswerCallId,
-      ),
-      tellaskReplyDirective: options.tellaskReplyDirective ?? existing.tellaskReplyDirective,
+      tellaskReplyDirective: options.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
-      subdialogReplyTarget: options.subdialogReplyTarget ?? existing.subdialogReplyTarget,
+      subdialogReplyTarget: options.subdialogReplyTarget,
       runControl: undefined,
     };
     this.replaceQueuedPromptState(existing.msgId, merged);
@@ -1229,11 +1341,11 @@ export abstract class Dialog {
     return this._upNextQueue.length > 0;
   }
 
-  public peekUpNext(): UpNextPromptState | undefined {
+  public peekUpNext(): DialogQueuedPromptState | undefined {
     return this._upNextQueue[0];
   }
 
-  public takeUpNext(): UpNextPromptState | undefined {
+  public takeUpNext(): DialogQueuedPromptState | undefined {
     return this._upNextQueue.shift();
   }
 
@@ -1298,17 +1410,26 @@ export abstract class Dialog {
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
 
-    const basePrompt: DialogPrompt = {
-      content: combinedPrompt,
-      msgId: generateShortId(),
-      grammar: 'markdown',
-      userLanguageCode: this._lastUserLanguageCode,
-      origin: 'runtime',
-      ...(this instanceof SubDialog ? buildSubdialogAssignmentPromptMeta(this) : {}),
-    };
+    const basePrompt: DialogRuntimePrompt =
+      this instanceof SubDialog
+        ? {
+            content: combinedPrompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            userLanguageCode: this._lastUserLanguageCode,
+            origin: 'runtime',
+            ...buildSubdialogAssignmentPromptMeta(this),
+          }
+        : {
+            content: combinedPrompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            userLanguageCode: this._lastUserLanguageCode,
+            origin: 'runtime',
+          };
 
     const runControlSpec = options?.runControl ?? this._activeRunControlSpec;
-    let nextPrompt = basePrompt;
+    let nextPrompt: DialogRuntimePrompt = basePrompt;
     if (this._newCourseHook && options?.skipRunControlHook !== true) {
       const hookResult = await this._newCourseHook({
         dialog: this,
@@ -2558,7 +2679,10 @@ export abstract class DialogStore {
   /**
    * Start a new course in storage
    */
-  public async startNewCourse(_dialog: Dialog, _newCoursePrompt: DialogPrompt): Promise<void> {}
+  public async startNewCourse(
+    _dialog: Dialog,
+    _newCoursePrompt: DialogRuntimePrompt,
+  ): Promise<void> {}
 
   /**
    * Handle stream error

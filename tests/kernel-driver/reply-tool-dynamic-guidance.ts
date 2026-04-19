@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
+import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/subdialog';
 import { executeTellaskCalls } from '../../main/llm/kernel-driver/tellask-special';
+import { DialogPersistence } from '../../main/persistence';
 import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 import {
@@ -164,6 +168,119 @@ async function main(): Promise<void> {
     assert.match(
       staleReply.toolOutputs[0]?.content ?? '',
       /there is no active inter-dialog reply obligation right now/u,
+    );
+
+    const deferredTargetCallId = 'deferred-reply-call';
+    const deferredTellaskContent = 'Please finish this deferred reply once and only once.';
+    const deferredSubdialog = await root.createSubDialog(
+      'pangu',
+      ['@pangu'],
+      deferredTellaskContent,
+      {
+        callName: 'tellask',
+        originMemberId: 'tester',
+        callerDialogId: root.id.selfId,
+        callId: deferredTargetCallId,
+        sessionSlug: 'deferred-reply-guidance',
+        collectiveTargets: ['pangu'],
+      },
+    );
+    const deferredDirective: TellaskReplyDirective = {
+      expectedReplyCallName: 'replyTellask',
+      targetCallId: deferredTargetCallId,
+      tellaskContent: deferredTellaskContent,
+    };
+    await deferredSubdialog.persistUserMessage(
+      formatAssignmentFromSupdialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: deferredTellaskContent,
+        language: getWorkLanguage(),
+        sessionSlug: 'deferred-reply-guidance',
+        collectiveTargets: ['pangu'],
+      }),
+      'deferred-assignment-msg',
+      'markdown',
+      'runtime',
+      'en',
+      undefined,
+      deferredDirective,
+    );
+    await DialogPersistence.savePendingSubdialogs(
+      root.id,
+      [
+        {
+          subdialogId: deferredSubdialog.id.selfId,
+          createdAt: formatUnifiedTimestamp(new Date()),
+          callName: 'tellask',
+          mentionList: ['@pangu'],
+          tellaskContent: deferredTellaskContent,
+          targetAgentId: 'pangu',
+          callId: deferredTargetCallId,
+          callingCourse: 1,
+          callingGenseq: 1,
+          callType: 'C',
+          sessionSlug: 'deferred-reply-guidance',
+        },
+      ],
+      undefined,
+      root.status,
+    );
+    await DialogPersistence.setDeferredReplyReassertion(
+      deferredSubdialog.id,
+      {
+        reason: 'user_interjection_with_parked_original_task',
+        directive: deferredDirective,
+      },
+      deferredSubdialog.status,
+    );
+
+    const suppliedDeferredReply = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+      subdialog: deferredSubdialog,
+      responseText: 'Deferred reply delivered exactly once.',
+      responseGenseq: 1,
+      replyResolution: {
+        callId: 'deliver-deferred-reply-call',
+        replyCallName: 'replyTellask',
+      },
+      scheduleDrive: () => {},
+    });
+    assert.equal(
+      suppliedDeferredReply,
+      true,
+      'expected subdialog reply resolution path to accept the deferred reply delivery',
+    );
+    assert.equal(
+      await DialogPersistence.getDeferredReplyReassertion(
+        deferredSubdialog.id,
+        deferredSubdialog.status,
+      ),
+      undefined,
+      'replyTellask delivery must clear deferred reply reassertion for the subdialog',
+    );
+
+    const stalePromptGuidance = await resolvePromptReplyGuidance({
+      dlg: deferredSubdialog,
+      prompt: {
+        content: 'Please call the reply tool now.',
+        msgId: 'stale-runtime-reply-reminder',
+        grammar: 'markdown',
+        origin: 'runtime',
+        userLanguageCode: 'en',
+        tellaskReplyDirective: deferredDirective,
+      },
+      language: 'en',
+    });
+    assert.equal(
+      stalePromptGuidance.activeReplyDirective,
+      undefined,
+      'stale runtime prompt directives must not resurrect resolved reply obligations',
+    );
+    assert.match(
+      stalePromptGuidance.promptContent ?? '',
+      /There is no active inter-dialog reply obligation right now/u,
     );
 
     const liveDirective: TellaskReplyDirective = {

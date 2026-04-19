@@ -39,7 +39,7 @@ import type {
   DialogInterruptionReason,
   DialogLlmRetryRecoveryAction,
 } from '@longrun-ai/kernel/types/display-state';
-import type { DialogPrompt } from '@longrun-ai/kernel/types/drive-intent';
+import type { DialogRuntimePrompt } from '@longrun-ai/kernel/types/drive-intent';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
@@ -1348,19 +1348,45 @@ function parseDialogPendingCourseStartPrompt(
     tellaskReplyDirective === null ? undefined : tellaskReplyDirective;
   const normalizedSubdialogReplyTarget =
     subdialogReplyTarget === null ? undefined : subdialogReplyTarget;
+  if (
+    normalizedSubdialogReplyTarget !== undefined &&
+    normalizedTellaskReplyDirective === undefined
+  ) {
+    return null;
+  }
+  if (
+    normalizedTellaskReplyDirective !== undefined &&
+    normalizedSubdialogReplyTarget !== undefined
+  ) {
+    return {
+      content: value.content,
+      msgId: value.msgId,
+      grammar: 'markdown',
+      origin: 'runtime',
+      ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
+      ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
+      tellaskReplyDirective: normalizedTellaskReplyDirective,
+      subdialogReplyTarget: normalizedSubdialogReplyTarget,
+    };
+  }
+  if (normalizedTellaskReplyDirective !== undefined) {
+    return {
+      content: value.content,
+      msgId: value.msgId,
+      grammar: 'markdown',
+      origin: 'runtime',
+      ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
+      ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
+      tellaskReplyDirective: normalizedTellaskReplyDirective,
+    };
+  }
   return {
     content: value.content,
     msgId: value.msgId,
     grammar: 'markdown',
     origin: 'runtime',
     ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
-    ...(normalizedTellaskReplyDirective === undefined
-      ? {}
-      : { tellaskReplyDirective: normalizedTellaskReplyDirective }),
     ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
-    ...(normalizedSubdialogReplyTarget === undefined
-      ? {}
-      : { subdialogReplyTarget: normalizedSubdialogReplyTarget }),
   };
 }
 
@@ -2780,7 +2806,7 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Start new course (append-only JSONL + exceptional reminder persistence)
    */
-  public async startNewCourse(dialog: Dialog, newCoursePrompt: DialogPrompt): Promise<void> {
+  public async startNewCourse(dialog: Dialog, newCoursePrompt: DialogRuntimePrompt): Promise<void> {
     const previousCourse = dialog.currentCourse;
     const newCourse = previousCourse + 1;
     const isGenerationActive = dialog.hasActiveGeneration;
@@ -2813,24 +2839,7 @@ export class DiskFileDialogStore extends DialogStore {
                 reason: { kind: 'pending_course_start' },
               } as const,
             }),
-        pendingCourseStartPrompt: {
-          content: newCoursePrompt.content,
-          msgId: newCoursePrompt.msgId,
-          grammar: 'markdown',
-          origin: 'runtime',
-          ...(newCoursePrompt.userLanguageCode === undefined
-            ? {}
-            : { userLanguageCode: newCoursePrompt.userLanguageCode }),
-          ...(newCoursePrompt.tellaskReplyDirective === undefined
-            ? {}
-            : { tellaskReplyDirective: newCoursePrompt.tellaskReplyDirective }),
-          ...(newCoursePrompt.skipTaskdoc === undefined
-            ? {}
-            : { skipTaskdoc: newCoursePrompt.skipTaskdoc }),
-          ...(newCoursePrompt.subdialogReplyTarget === undefined
-            ? {}
-            : { subdialogReplyTarget: newCoursePrompt.subdialogReplyTarget }),
-        },
+        pendingCourseStartPrompt: newCoursePrompt,
       },
     }));
 

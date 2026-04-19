@@ -2,19 +2,19 @@ import type {
   DialogDisplayState,
   DialogInterruptionReason,
 } from '@longrun-ai/kernel/types/display-state';
-import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import type {
+  DialogDiligencePrompt,
+  DialogPrompt,
+  DialogRunControlSpec,
+  DialogRuntimeGuidePrompt,
+  DialogRuntimePrompt,
+  DialogRuntimeReplyPrompt,
+  DialogRuntimeSubdialogPrompt,
+  DialogUserPrompt,
+} from '@longrun-ai/kernel/types/drive-intent';
 import type { Dialog, DialogID } from '../../dialog';
 
-export type KernelDriverRunControl = Readonly<{
-  controlId: string;
-  input: Readonly<Record<string, unknown>>;
-  source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
-  q4h?: Readonly<{
-    questionId: string;
-    continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
-  }>;
-}>;
+export type KernelDriverRunControl = DialogRunControlSpec;
 
 export type KernelDriverDriveSource =
   | 'unspecified'
@@ -52,28 +52,24 @@ export type KernelDriverSubdialogReplyTarget = {
   callId: string;
 };
 
-export interface KernelDriverHumanPrompt {
-  content: string;
-  msgId: string;
-  grammar: 'markdown';
-  userLanguageCode?: LanguageCode;
-  // `q4hAnswerCallId` is not an ordinary user-chat turn marker. It means this prompt is the
-  // continuation input for an already-materialized `askHuman` tellask answer and therefore belongs
-  // to the askHuman reply channel, not to the "user interjection / local side-chat" channel.
-  //
-  // Any logic that classifies user-origin prompts MUST treat non-empty `q4hAnswerCallId` as
-  // semantically distinct from ad hoc user interjections.
-  q4hAnswerCallId?: string;
-  tellaskReplyDirective?: TellaskReplyDirective;
-  origin: 'user' | 'diligence_push' | 'runtime';
-  skipTaskdoc?: boolean;
-  subdialogReplyTarget?: KernelDriverSubdialogReplyTarget;
+type KernelDriverPromptWithRunControl<TPrompt extends DialogPrompt> = TPrompt & {
   runControl?: KernelDriverRunControl;
-}
+};
+
+export type KernelDriverUserPrompt = KernelDriverPromptWithRunControl<DialogUserPrompt>;
+export type KernelDriverDiligencePrompt = KernelDriverPromptWithRunControl<DialogDiligencePrompt>;
+export type KernelDriverRuntimeGuidePrompt =
+  KernelDriverPromptWithRunControl<DialogRuntimeGuidePrompt>;
+export type KernelDriverRuntimeReplyPrompt =
+  KernelDriverPromptWithRunControl<DialogRuntimeReplyPrompt>;
+export type KernelDriverRuntimeSubdialogPrompt =
+  KernelDriverPromptWithRunControl<DialogRuntimeSubdialogPrompt>;
+export type KernelDriverRuntimePrompt = KernelDriverPromptWithRunControl<DialogRuntimePrompt>;
+export type KernelDriverPrompt = KernelDriverPromptWithRunControl<DialogPrompt>;
 
 export type KernelDriverDriveCallOptions =
   | Readonly<{
-      humanPrompt: KernelDriverHumanPrompt;
+      humanPrompt: KernelDriverPrompt;
       waitInQue: boolean;
       driveOptions?: KernelDriverDriveOptions;
     }>
@@ -99,7 +95,7 @@ export type KernelDriverDriveCallbacks = Readonly<{
 export type KernelDriverDriveArgs =
   | readonly [
       dlg: Dialog,
-      humanPrompt: KernelDriverHumanPrompt,
+      humanPrompt: KernelDriverPrompt,
       waitInQue: boolean,
       driveOptions?: KernelDriverDriveOptions,
     ]

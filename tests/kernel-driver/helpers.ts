@@ -9,7 +9,7 @@ import { DialogID, RootDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import type {
   KernelDriverDriveOptions,
-  KernelDriverHumanPrompt,
+  KernelDriverUserPrompt,
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { buildActiveReplyToolNote } from '../../main/runtime/reply-prompt-copy';
@@ -227,8 +227,8 @@ export function wrapPromptWithExpectedReplyTool(args: {
 export function makeUserPrompt(
   content: string,
   msgId: string,
-  extras?: Readonly<Omit<KernelDriverHumanPrompt, 'content' | 'msgId' | 'grammar' | 'origin'>>,
-): KernelDriverHumanPrompt {
+  extras?: Readonly<Omit<KernelDriverUserPrompt, 'content' | 'msgId' | 'grammar' | 'origin'>>,
+): KernelDriverUserPrompt {
   return {
     content,
     msgId,

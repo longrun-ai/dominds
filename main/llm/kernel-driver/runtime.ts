@@ -36,7 +36,7 @@ import {
   type LlmRetryStrategy,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
-import type { KernelDriverHumanPrompt } from './types';
+import type { KernelDriverDiligencePrompt } from './types';
 
 export class LlmRetryStoppedError extends Error {
   public readonly reason: DialogLlmRetryExhaustedReason;
@@ -142,7 +142,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
   | {
       kind: 'prompt';
-      prompt: KernelDriverHumanPrompt;
+      prompt: KernelDriverDiligencePrompt;
       maxInjectCount: number;
       nextRemainingBudget: number;
     }
@@ -177,7 +177,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     if (normalizedRemaining < 1) {
       return { kind: 'disabled', nextRemainingBudget: 0 };
     }
-    const prompt: KernelDriverHumanPrompt = {
+    const prompt: KernelDriverDiligencePrompt = {
       content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
       msgId: generateShortId(),
       grammar: 'markdown',
@@ -196,7 +196,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
   }
 
-  const prompt: KernelDriverHumanPrompt = {
+  const prompt: KernelDriverDiligencePrompt = {
     content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
     msgId: generateShortId(),
     grammar: 'markdown',

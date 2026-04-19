@@ -47,7 +47,12 @@ import type {
 import { buildFbrPromptForState, createInitialFbrState } from './fbr';
 import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from './subdialog';
 import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
-import type { KernelDriverDriveCallbacks, KernelDriverHumanPrompt } from './types';
+import type {
+  KernelDriverDriveCallbacks,
+  KernelDriverRuntimeGuidePrompt,
+  KernelDriverRuntimeReplyPrompt,
+  KernelDriverRuntimeSubdialogPrompt,
+} from './types';
 
 export type TellaskRoutingParseResult =
   | {
@@ -1663,7 +1668,7 @@ async function executeTellaskCall(
         dlg,
         'kernel-driver:executeTellaskCall:FBR:appendPending',
       );
-      const initPrompt: KernelDriverHumanPrompt = {
+      const initPrompt: KernelDriverRuntimeGuidePrompt = {
         content: buildFbrPromptForState({
           state: initialFbrState,
           tellaskContent: body,
@@ -1736,7 +1741,7 @@ async function executeTellaskCall(
 
         try {
           const assignment = askBackRequesterDialog.assignmentFromSup;
-          const supPrompt: KernelDriverHumanPrompt = {
+          const supPrompt: KernelDriverRuntimeReplyPrompt = {
             content: formatSupdialogCallPrompt({
               fromAgentId: askBackRequesterDialog.agentId,
               toAgentId: askBackResponderDialog.agentId,
@@ -1939,7 +1944,7 @@ async function executeTellaskCall(
             'kernel-driver:executeTellaskCall:TypeB-fallback:appendPending',
           );
 
-          const initPrompt: KernelDriverHumanPrompt = {
+          const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
             content: formatAssignmentFromSupdialog({
               callName: subdialogCallName,
               fromAgentId: dlg.agentId,
@@ -2186,7 +2191,7 @@ async function executeTellaskCall(
         }
 
         if (result.kind === 'existing') {
-          const resumePrompt: KernelDriverHumanPrompt = {
+          const resumePrompt: KernelDriverRuntimeSubdialogPrompt = {
             content: formatUpdatedAssignmentFromSupdialog({
               callName: subdialogCallName,
               fromAgentId: dlg.agentId,
@@ -2219,7 +2224,6 @@ async function executeTellaskCall(
               msgId: resumePrompt.msgId,
               grammar: resumePrompt.grammar,
               userLanguageCode: resumePrompt.userLanguageCode,
-              q4hAnswerCallId: resumePrompt.q4hAnswerCallId,
               tellaskReplyDirective: resumePrompt.tellaskReplyDirective,
               skipTaskdoc: resumePrompt.skipTaskdoc,
               subdialogReplyTarget: resumePrompt.subdialogReplyTarget,
@@ -2252,7 +2256,7 @@ async function executeTellaskCall(
             });
           }
         } else {
-          const initPrompt: KernelDriverHumanPrompt = {
+          const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
             content: formatAssignmentFromSupdialog({
               callName: subdialogCallName,
               fromAgentId: rootDialog.agentId,
@@ -2329,7 +2333,7 @@ async function executeTellaskCall(
           'kernel-driver:executeTellaskCall:TypeC:appendPending',
         );
 
-        const initPrompt: KernelDriverHumanPrompt = {
+        const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
           content: formatAssignmentFromSupdialog({
             callName,
             fromAgentId: dlg.agentId,

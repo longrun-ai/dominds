@@ -14,7 +14,7 @@ import {
 } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { loadLatestActiveTellaskReplyDirective } from './tellask-special';
-import type { KernelDriverHumanPrompt } from './types';
+import type { KernelDriverPrompt } from './types';
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
 const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
@@ -48,8 +48,8 @@ export async function resolveReplyTargetAgentId(args: {
 
 function buildPromptContentWithExactReplyToolName(args: {
   dlg: Dialog;
-  prompt: KernelDriverHumanPrompt;
-  activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
+  prompt: KernelDriverPrompt;
+  activeReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
   language: 'zh' | 'en';
 }): string {
   const isFbrSubdialog =
@@ -104,9 +104,48 @@ function buildPromptContentWithExactReplyToolName(args: {
   return `${note}\n\n${args.prompt.content}`;
 }
 
+function hasSameReplyDirective(
+  left: TellaskReplyDirective | undefined,
+  right: TellaskReplyDirective | undefined,
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left.expectedReplyCallName !== right.expectedReplyCallName) {
+    return false;
+  }
+  if (left.targetCallId !== right.targetCallId || left.tellaskContent !== right.tellaskContent) {
+    return false;
+  }
+  if (left.expectedReplyCallName === 'replyTellaskBack') {
+    return (
+      right.expectedReplyCallName === 'replyTellaskBack' &&
+      left.targetDialogId === right.targetDialogId
+    );
+  }
+  return true;
+}
+
+function resolveFreshReplyDirective(args: {
+  promptDirective: KernelDriverPrompt['tellaskReplyDirective'];
+  persistedDirective: TellaskReplyDirective | undefined;
+}): KernelDriverPrompt['tellaskReplyDirective'] {
+  const promptDirective = args.promptDirective;
+  const persistedDirective = args.persistedDirective;
+  if (!promptDirective) {
+    return persistedDirective;
+  }
+  if (!persistedDirective) {
+    return undefined;
+  }
+  return hasSameReplyDirective(promptDirective, persistedDirective)
+    ? promptDirective
+    : persistedDirective;
+}
+
 async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   dlg: Dialog;
-  prompt: KernelDriverHumanPrompt | undefined;
+  prompt: KernelDriverPrompt | undefined;
 }): Promise<boolean> {
   // WARNING:
   // This suppression decision is not a cosmetic prompt tweak. It is one leg of the full
@@ -156,28 +195,39 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
 
 export async function resolvePromptReplyGuidance(args: {
   dlg: Dialog;
-  prompt: KernelDriverHumanPrompt | undefined;
+  prompt: KernelDriverPrompt | undefined;
   language?: 'zh' | 'en';
 }): Promise<{
-  activeReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
-  deferredReplyReassertionDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
+  activeReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
+  deferredReplyReassertionDirective: KernelDriverPrompt['tellaskReplyDirective'];
   isQ4HAnswerPrompt: boolean;
   promptContent: string | undefined;
-  persistedTellaskReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'];
+  persistedTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
   suppressInterDialogReplyGuidance: boolean;
   transientGuideContent: string | undefined;
 }> {
   const prompt = args.prompt;
   const isQ4HAnswerPrompt =
     typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
+  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  const persistedPendingCourseStartDirective =
+    prompt !== undefined &&
+    latest?.pendingCourseStartPrompt?.msgId === prompt.msgId &&
+    latest.pendingCourseStartPrompt.origin === 'runtime'
+      ? latest.pendingCourseStartPrompt.tellaskReplyDirective
+      : undefined;
+  const persistedActiveReplyDirective =
+    persistedPendingCourseStartDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
   const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
     ? false
     : await shouldSuppressInterDialogReplyGuidanceForUserInterjection({
         dlg: args.dlg,
         prompt,
       });
-  const availableReplyDirective =
-    prompt?.tellaskReplyDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
+  const availableReplyDirective = resolveFreshReplyDirective({
+    promptDirective: prompt?.tellaskReplyDirective,
+    persistedDirective: persistedActiveReplyDirective,
+  });
   const activeReplyDirective = suppressInterDialogReplyGuidance
     ? undefined
     : availableReplyDirective;
@@ -199,7 +249,8 @@ export async function resolvePromptReplyGuidance(args: {
       : undefined,
     isQ4HAnswerPrompt,
     promptContent,
-    persistedTellaskReplyDirective: prompt?.tellaskReplyDirective ?? activeReplyDirective,
+    persistedTellaskReplyDirective:
+      persistedPendingCourseStartDirective ?? prompt?.tellaskReplyDirective ?? activeReplyDirective,
     suppressInterDialogReplyGuidance,
     transientGuideContent:
       suppressInterDialogReplyGuidance && prompt !== undefined
@@ -216,7 +267,7 @@ export function buildReplyObligationSuppressionGuide(args: { language: 'zh' | 'e
 
 export async function buildReplyObligationReassertionPrompt(args: {
   dlg: Dialog;
-  directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
+  directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
 }): Promise<string> {
   return buildReplyObligationReassertionText({

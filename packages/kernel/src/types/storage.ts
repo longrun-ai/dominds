@@ -11,6 +11,7 @@ import type {
   DialogDisplayState,
   DialogInterruptionReason,
 } from './display-state';
+import type { DialogRuntimePrompt } from './drive-intent';
 import type { LanguageCode } from './language';
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -108,16 +109,7 @@ export type DialogSubdialogReplyTarget = Readonly<{
   callId: string;
 }>;
 
-export type DialogPendingCourseStartPrompt = Readonly<{
-  content: string;
-  msgId: string;
-  grammar: 'markdown';
-  origin: 'runtime';
-  userLanguageCode?: LanguageCode;
-  tellaskReplyDirective?: TellaskReplyDirective;
-  skipTaskdoc?: boolean;
-  subdialogReplyTarget?: DialogSubdialogReplyTarget;
-}>;
+export type DialogPendingCourseStartPrompt = DialogRuntimePrompt;
 
 export interface DialogLatestFile {
   currentCourse: number;

@@ -436,6 +436,17 @@ export async function supplyResponseToSupdialog(args: {
           replyResolutionRecord,
           parentDialog.status,
         );
+        const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
+          subdialogId,
+          parentDialog.status,
+        );
+        if (deferredReplyReassertion?.directive.targetCallId === resolvedCallId) {
+          await DialogPersistence.setDeferredReplyReassertion(
+            subdialogId,
+            undefined,
+            parentDialog.status,
+          );
+        }
       }
       const anchorRecord: TellaskCallAnchorRecord = {
         ts: formatUnifiedTimestamp(new Date()),

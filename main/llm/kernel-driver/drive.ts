@@ -119,7 +119,11 @@ import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
   KernelDriverDriveCallbacks,
-  KernelDriverHumanPrompt,
+  KernelDriverPrompt,
+  KernelDriverRuntimeGuidePrompt,
+  KernelDriverRuntimeReplyPrompt,
+  KernelDriverRuntimeSubdialogPrompt,
+  KernelDriverUserPrompt,
 } from './types';
 
 type KernelDriverRetryPolicy = Readonly<{
@@ -268,7 +272,7 @@ async function persistDialogFbrState(
 function buildKernelDriverFbrPrompt(
   dlg: SubDialog,
   state: DialogFbrState,
-): KernelDriverHumanPrompt {
+): KernelDriverRuntimeGuidePrompt {
   const collectiveTargets =
     dlg.assignmentFromSup.collectiveTargets && dlg.assignmentFromSup.collectiveTargets.length > 0
       ? [...dlg.assignmentFromSup.collectiveTargets]
@@ -294,7 +298,7 @@ function normalizeQ4HAnswerCallId(raw: string | undefined): string | undefined {
   return callId !== '' ? callId : undefined;
 }
 
-function isUserOriginPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
+function isUserOriginPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   if (!prompt) return false;
   return prompt.origin === 'user';
 }
@@ -751,7 +755,7 @@ function emitDiligenceBudgetEvent(
   });
 }
 
-function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
+function resolveUpNextPrompt(dlg: Dialog): KernelDriverPrompt | undefined {
   const upNext = dlg.takeUpNext();
   if (!upNext) return undefined;
   const normalizedRunControl = (() => {
@@ -770,18 +774,56 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
       q4h: runControl.q4h,
     };
   })();
-  return {
+  const common = {
     content: upNext.prompt,
     msgId: upNext.msgId,
     grammar: upNext.grammar ?? 'markdown',
-    origin: upNext.origin,
-    userLanguageCode: upNext.userLanguageCode,
-    q4hAnswerCallId: upNext.q4hAnswerCallId,
-    tellaskReplyDirective: upNext.tellaskReplyDirective,
-    skipTaskdoc: upNext.skipTaskdoc,
-    subdialogReplyTarget: upNext.subdialogReplyTarget,
-    runControl: normalizedRunControl,
+    ...(upNext.userLanguageCode === undefined ? {} : { userLanguageCode: upNext.userLanguageCode }),
+    ...(normalizedRunControl === undefined ? {} : { runControl: normalizedRunControl }),
   };
+  switch (upNext.kind) {
+    case 'user_generation_boundary':
+    case 'deferred_q4h_answer': {
+      const prompt: KernelDriverUserPrompt = {
+        ...common,
+        origin: 'user',
+        ...(upNext.q4hAnswerCallId === undefined
+          ? {}
+          : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
+      };
+      return prompt;
+    }
+    case 'registered_assignment_update':
+    case 'new_course_runtime_guide':
+    case 'new_course_runtime_reply':
+    case 'new_course_runtime_subdialog': {
+      const runtimeCommon = {
+        ...common,
+        origin: 'runtime' as const,
+        ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
+      };
+      if (
+        upNext.kind === 'registered_assignment_update' ||
+        upNext.kind === 'new_course_runtime_subdialog'
+      ) {
+        const prompt: KernelDriverRuntimeSubdialogPrompt = {
+          ...runtimeCommon,
+          tellaskReplyDirective: upNext.tellaskReplyDirective,
+          subdialogReplyTarget: upNext.subdialogReplyTarget,
+        };
+        return prompt;
+      }
+      if (upNext.kind === 'new_course_runtime_reply') {
+        const prompt: KernelDriverRuntimeReplyPrompt = {
+          ...runtimeCommon,
+          tellaskReplyDirective: upNext.tellaskReplyDirective,
+        };
+        return prompt;
+      }
+      const prompt: KernelDriverRuntimeGuidePrompt = runtimeCommon;
+      return prompt;
+    }
+  }
 }
 
 async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
@@ -810,8 +852,8 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
 }
 
 function hasSameReplyDirective(
-  left: KernelDriverHumanPrompt['tellaskReplyDirective'],
-  right: KernelDriverHumanPrompt['tellaskReplyDirective'],
+  left: KernelDriverPrompt['tellaskReplyDirective'],
+  right: KernelDriverPrompt['tellaskReplyDirective'],
 ): boolean {
   if (!left || !right) {
     return left === right;
@@ -1348,7 +1390,7 @@ async function maybeContinueWithDiligencePrompt(args: {
   team: Team;
   suppressDiligencePushForDrive: boolean;
   allowPendingSubdialogs?: boolean;
-}): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverHumanPrompt }> {
+}): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
   const { dlg, team, suppressDiligencePushForDrive, allowPendingSubdialogs } = args;
 
   if (!(dlg instanceof RootDialog)) {
@@ -1407,7 +1449,7 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
   team: Team;
   suppressDiligencePushForDrive: boolean;
   reason: DialogLlmRetryExhaustedReason;
-}): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverHumanPrompt }> {
+}): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
   if (args.reason.recoveryAction.kind !== 'diligence_push_once') {
     return { kind: 'break' };
   }
@@ -1431,7 +1473,7 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
 }): Promise<
   | { kind: 'no_health_prompt' }
   | { kind: 'health_suspend' }
-  | { kind: 'health_continue'; prompt: KernelDriverHumanPrompt; resetTaskdoc: boolean }
+  | { kind: 'health_continue'; prompt: KernelDriverPrompt; resetTaskdoc: boolean }
 > {
   const { dlg, providerCfg, model } = args;
 
@@ -1525,7 +1567,7 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
-  let lastAssistantReplyTarget: KernelDriverHumanPrompt['subdialogReplyTarget'] | undefined;
+  let lastAssistantReplyTarget: KernelDriverPrompt['subdialogReplyTarget'] | undefined;
   let fbrConclusion:
     | {
         responseText: string;
@@ -1534,8 +1576,8 @@ export async function driveDialogStreamCore(
     | undefined;
   let pubRemindersVer = dlg.remindersVer;
 
-  let pendingPrompt: KernelDriverHumanPrompt | undefined = humanPrompt;
-  let retryStoppedRecoveryPrompt: KernelDriverHumanPrompt | undefined;
+  let pendingPrompt: KernelDriverPrompt | undefined = humanPrompt;
+  let retryStoppedRecoveryPrompt: KernelDriverPrompt | undefined;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   let genIterNo = 0;
   // Quirk retry state intentionally spans multiple request invocations in the same driver run,

@@ -1,4 +1,5 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
+import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import {
   applyRegisteredAppDialogRunControls,
@@ -63,28 +64,48 @@ import type {
   KernelDriverDriveResult,
   KernelDriverDriveScheduler,
   KernelDriverDriveSource,
-  KernelDriverHumanPrompt,
-  KernelDriverRunControl,
+  KernelDriverPrompt,
+  KernelDriverRuntimePrompt,
+  KernelDriverRuntimeReplyPrompt,
   KernelDriverRuntimeState,
+  KernelDriverRuntimeSubdialogPrompt,
+  KernelDriverUserPrompt,
 } from './types';
 
-type UpNextPrompt = {
+type RuntimeReplyReminderPrompt = Readonly<{
+  kind: 'runtime_reply_reminder';
   prompt: string;
   msgId: string;
-  grammar?: KernelDriverHumanPrompt['grammar'];
+  grammar?: KernelDriverPrompt['grammar'];
   userLanguageCode?: string;
-  origin: KernelDriverHumanPrompt['origin'];
-  q4hAnswerCallId?: string;
-  tellaskReplyDirective?: KernelDriverHumanPrompt['tellaskReplyDirective'];
-  skipTaskdoc?: boolean;
-  subdialogReplyTarget?: KernelDriverHumanPrompt['subdialogReplyTarget'];
-  runControl?: KernelDriverRunControl;
-};
+  runControl?: undefined;
+  origin: 'runtime';
+  tellaskReplyDirective: KernelDriverRuntimeReplyPrompt['tellaskReplyDirective'];
+  skipTaskdoc?: undefined;
+}>;
+
+type RuntimeSubdialogReplyReminderPrompt = Readonly<{
+  kind: 'runtime_subdialog_reply_reminder';
+  prompt: string;
+  msgId: string;
+  grammar?: KernelDriverPrompt['grammar'];
+  userLanguageCode?: string;
+  runControl?: undefined;
+  origin: 'runtime';
+  tellaskReplyDirective: KernelDriverRuntimeSubdialogPrompt['tellaskReplyDirective'];
+  skipTaskdoc?: undefined;
+  subdialogReplyTarget: KernelDriverRuntimeSubdialogPrompt['subdialogReplyTarget'];
+}>;
+
+type UpNextPrompt =
+  | DialogQueuedPromptState
+  | RuntimeReplyReminderPrompt
+  | RuntimeSubdialogReplyReminderPrompt;
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
 const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
 
-function isReplyToolReminderPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
+function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return (
     typeof prompt?.content === 'string' &&
     (prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN) ||
@@ -98,7 +119,7 @@ function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
 
 async function buildReplyToolReminderPrompt(args: {
   dlg: Dialog;
-  directive: NonNullable<KernelDriverHumanPrompt['tellaskReplyDirective']>;
+  directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
 }): Promise<string> {
   return buildReplyToolReminderText({
@@ -252,7 +273,7 @@ function hasNoPromptSubdialogResumeEntitlement(
 }
 
 function resolveDriveRequestSource(
-  humanPrompt: KernelDriverHumanPrompt | undefined,
+  humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): KernelDriverDriveSource {
   if (driveOptions?.source) {
@@ -265,8 +286,8 @@ function resolveDriveRequestSource(
 }
 
 function resolveAppRunControlSource(args: {
-  humanPrompt: KernelDriverHumanPrompt | undefined;
-  effectivePrompt: KernelDriverHumanPrompt | undefined;
+  humanPrompt: KernelDriverPrompt | undefined;
+  effectivePrompt: KernelDriverPrompt | undefined;
   driveSource: KernelDriverDriveSource;
 }): 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer' | null {
   if (args.driveSource === 'ws_user_message') {
@@ -291,8 +312,8 @@ function resolveAppRunControlSource(args: {
 
 async function applyRegisteredDialogRunControlsBeforeDrive(args: {
   dialog: KernelDriverDriveArgs[0];
-  humanPrompt: KernelDriverHumanPrompt | undefined;
-  effectivePrompt: KernelDriverHumanPrompt | undefined;
+  humanPrompt: KernelDriverPrompt | undefined;
+  effectivePrompt: KernelDriverPrompt | undefined;
   driveSource: KernelDriverDriveSource;
   genIterNo: number;
 }): Promise<void> {
@@ -433,7 +454,7 @@ async function inspectNoPromptSubdialogDrive(args: {
 
 async function maybeResolveDeferredReplyReassertionPrompt(
   dialog: KernelDriverDriveArgs[0],
-): Promise<KernelDriverHumanPrompt | undefined> {
+): Promise<KernelDriverRuntimePrompt | undefined> {
   const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
     dialog.id,
     dialog.status,
@@ -533,17 +554,17 @@ async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
 
 async function resolveEffectivePrompt(
   dialog: KernelDriverDriveArgs[0],
-  humanPrompt?: KernelDriverHumanPrompt,
+  humanPrompt?: KernelDriverPrompt,
 ): Promise<
   Readonly<{
-    prompt: KernelDriverHumanPrompt | undefined;
+    prompt: KernelDriverPrompt | undefined;
     fromUpNext: boolean;
   }>
 > {
   if (humanPrompt) {
     return { prompt: humanPrompt, fromUpNext: false };
   }
-  const upNext = dialog.peekUpNext() as UpNextPrompt | undefined;
+  const upNext: UpNextPrompt | undefined = dialog.peekUpNext();
   if (!upNext) {
     return {
       prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
@@ -552,21 +573,62 @@ async function resolveEffectivePrompt(
   }
   return {
     fromUpNext: true,
-    prompt: {
-      content: upNext.prompt,
-      msgId: upNext.msgId,
-      grammar: upNext.grammar ?? 'markdown',
-      origin: upNext.origin,
-      userLanguageCode:
+    prompt: (() => {
+      const normalizedUserLanguageCode: KernelDriverPrompt['userLanguageCode'] =
         upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
           ? upNext.userLanguageCode
-          : undefined,
-      q4hAnswerCallId: upNext.q4hAnswerCallId,
-      tellaskReplyDirective: upNext.tellaskReplyDirective,
-      skipTaskdoc: upNext.skipTaskdoc,
-      subdialogReplyTarget: upNext.subdialogReplyTarget,
-      runControl: upNext.runControl,
-    },
+          : undefined;
+      const common = {
+        content: upNext.prompt,
+        msgId: upNext.msgId,
+        grammar: upNext.grammar ?? 'markdown',
+        userLanguageCode: normalizedUserLanguageCode,
+        runControl: upNext.runControl,
+      };
+      switch (upNext.kind) {
+        case 'user_generation_boundary':
+        case 'deferred_q4h_answer': {
+          const prompt: KernelDriverUserPrompt = {
+            ...common,
+            origin: 'user',
+            ...(upNext.q4hAnswerCallId === undefined
+              ? {}
+              : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
+          };
+          return prompt;
+        }
+        case 'registered_assignment_update':
+        case 'new_course_runtime_guide':
+        case 'new_course_runtime_reply':
+        case 'new_course_runtime_subdialog': {
+          const runtimeCommon = {
+            ...common,
+            origin: 'runtime' as const,
+            ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
+          };
+          if (
+            upNext.kind === 'registered_assignment_update' ||
+            upNext.kind === 'new_course_runtime_subdialog'
+          ) {
+            const prompt: KernelDriverRuntimeSubdialogPrompt = {
+              ...runtimeCommon,
+              tellaskReplyDirective: upNext.tellaskReplyDirective,
+              subdialogReplyTarget: upNext.subdialogReplyTarget,
+            };
+            return prompt;
+          }
+          if (upNext.kind === 'new_course_runtime_reply') {
+            const prompt: KernelDriverRuntimeReplyPrompt = {
+              ...runtimeCommon,
+              tellaskReplyDirective: upNext.tellaskReplyDirective,
+            };
+            return prompt;
+          }
+          const prompt: KernelDriverRuntimePrompt = runtimeCommon;
+          return prompt;
+        }
+      }
+    })(),
   };
 }
 
@@ -588,7 +650,7 @@ export async function executeDriveRound(args: {
   let followUp: UpNextPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
-  let activeTellaskReplyDirective: KernelDriverHumanPrompt['tellaskReplyDirective'] | undefined;
+  let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined;
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
   let resumeFromInterjectionPause = false;
@@ -710,7 +772,7 @@ export async function executeDriveRound(args: {
       const suspension = resumeFromInterjectionPause
         ? await loadFreshSuspensionStatusFromPersistence(dialog)
         : await dialog.getSuspensionStatus();
-      const queuedPrompt = dialog.peekUpNext() as UpNextPrompt | undefined;
+      const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
       const queuedSubdialogPromptCanResume =
         dialog instanceof SubDialog && queuedPrompt !== undefined;
       if (!suspension.canDrive && !queuedSubdialogPromptCanResume) {
@@ -815,7 +877,7 @@ export async function executeDriveRound(args: {
       return;
     }
 
-    let healthPrompt: KernelDriverHumanPrompt | undefined;
+    let healthPrompt: KernelDriverRuntimePrompt | undefined;
     if (healthDecision.kind === 'continue') {
       if (healthDecision.reason === 'critical_force_new_course') {
         const language = getWorkLanguage();
@@ -868,7 +930,7 @@ export async function executeDriveRound(args: {
       genIterNo: args.runtime.totalGenIterations,
     });
     if (resolvedPrompt.fromUpNext) {
-      const consumed = dialog.takeUpNext() as UpNextPrompt | undefined;
+      const consumed: UpNextPrompt | undefined = dialog.takeUpNext();
       if (!consumed || consumed.msgId !== effectivePrompt?.msgId) {
         throw new Error(
           `kernel-driver upNext invariant violation: expected queued prompt ${effectivePrompt?.msgId ?? 'unknown'} before drive`,
@@ -910,7 +972,7 @@ export async function executeDriveRound(args: {
     subdialogReplyTarget = driveResult.lastAssistantReplyTarget ?? subdialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
-      followUp = dialog.takeUpNext() as UpNextPrompt | undefined;
+      followUp = dialog.takeUpNext();
     }
 
     let tailError: unknown;
@@ -978,19 +1040,35 @@ export async function executeDriveRound(args: {
               } else {
                 if (!activePromptWasReplyToolReminder) {
                   const language = getWorkLanguage();
-                  followUp = {
-                    prompt: await buildReplyToolReminderPrompt({
-                      dlg: dialog,
-                      directive: activeTellaskReplyDirective,
-                      language,
-                    }),
-                    msgId: generateShortId(),
-                    grammar: 'markdown',
-                    origin: 'runtime',
-                    userLanguageCode: language,
-                    tellaskReplyDirective: activeTellaskReplyDirective,
-                    subdialogReplyTarget,
-                  };
+                  followUp =
+                    subdialogReplyTarget === undefined
+                      ? {
+                          kind: 'runtime_reply_reminder',
+                          prompt: await buildReplyToolReminderPrompt({
+                            dlg: dialog,
+                            directive: activeTellaskReplyDirective,
+                            language,
+                          }),
+                          msgId: generateShortId(),
+                          grammar: 'markdown',
+                          origin: 'runtime',
+                          userLanguageCode: language,
+                          tellaskReplyDirective: activeTellaskReplyDirective,
+                        }
+                      : {
+                          kind: 'runtime_subdialog_reply_reminder',
+                          prompt: await buildReplyToolReminderPrompt({
+                            dlg: dialog,
+                            directive: activeTellaskReplyDirective,
+                            language,
+                          }),
+                          msgId: generateShortId(),
+                          grammar: 'markdown',
+                          origin: 'runtime',
+                          userLanguageCode: language,
+                          tellaskReplyDirective: activeTellaskReplyDirective,
+                          subdialogReplyTarget,
+                        };
                   log.debug(
                     'kernel-driver queued subdialog replyTellask reminder after plain reply',
                     undefined,
@@ -1098,6 +1176,7 @@ export async function executeDriveRound(args: {
           if (!activePromptWasReplyToolReminder) {
             const language = getWorkLanguage();
             followUp = {
+              kind: 'runtime_reply_reminder',
               prompt: await buildReplyToolReminderPrompt({
                 dlg: dialog,
                 directive: activeTellaskReplyDirective,
@@ -1144,21 +1223,66 @@ export async function executeDriveRound(args: {
             source: 'kernel_driver_follow_up',
             reason: 'follow_up_prompt',
           },
-          humanPrompt: {
-            content: followUp.prompt,
-            msgId: followUp.msgId,
-            grammar: followUp.grammar ?? 'markdown',
-            origin: followUp.origin,
-            userLanguageCode:
+          humanPrompt: (() => {
+            const normalizedUserLanguageCode: KernelDriverPrompt['userLanguageCode'] =
               followUp.userLanguageCode === 'zh' || followUp.userLanguageCode === 'en'
                 ? followUp.userLanguageCode
-                : undefined,
-            q4hAnswerCallId: followUp.q4hAnswerCallId,
-            tellaskReplyDirective: followUp.tellaskReplyDirective,
-            skipTaskdoc: followUp.skipTaskdoc,
-            subdialogReplyTarget: followUp.subdialogReplyTarget,
-            runControl: followUp.runControl,
-          },
+                : undefined;
+            const common = {
+              content: followUp.prompt,
+              msgId: followUp.msgId,
+              grammar: followUp.grammar ?? 'markdown',
+              userLanguageCode: normalizedUserLanguageCode,
+              runControl: followUp.runControl,
+            };
+            switch (followUp.kind) {
+              case 'user_generation_boundary':
+              case 'deferred_q4h_answer': {
+                const prompt: KernelDriverUserPrompt = {
+                  ...common,
+                  origin: 'user',
+                  ...(followUp.q4hAnswerCallId === undefined
+                    ? {}
+                    : { q4hAnswerCallId: followUp.q4hAnswerCallId }),
+                };
+                return prompt;
+              }
+              case 'registered_assignment_update':
+              case 'new_course_runtime_guide':
+              case 'new_course_runtime_reply':
+              case 'new_course_runtime_subdialog':
+              case 'runtime_reply_reminder':
+              case 'runtime_subdialog_reply_reminder': {
+                const runtimeCommon = {
+                  ...common,
+                  origin: 'runtime' as const,
+                  ...(followUp.skipTaskdoc === undefined
+                    ? {}
+                    : { skipTaskdoc: followUp.skipTaskdoc }),
+                };
+                if (
+                  followUp.kind === 'registered_assignment_update' ||
+                  followUp.kind === 'new_course_runtime_subdialog'
+                ) {
+                  const prompt: KernelDriverRuntimeSubdialogPrompt = {
+                    ...runtimeCommon,
+                    tellaskReplyDirective: followUp.tellaskReplyDirective,
+                    subdialogReplyTarget: followUp.subdialogReplyTarget,
+                  };
+                  return prompt;
+                }
+                if (followUp.kind === 'new_course_runtime_reply') {
+                  const prompt: KernelDriverRuntimeReplyPrompt = {
+                    ...runtimeCommon,
+                    tellaskReplyDirective: followUp.tellaskReplyDirective,
+                  };
+                  return prompt;
+                }
+                const prompt: KernelDriverRuntimePrompt = runtimeCommon;
+                return prompt;
+              }
+            }
+          })(),
         });
       }
       if (

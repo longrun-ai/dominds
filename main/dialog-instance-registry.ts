@@ -1,5 +1,5 @@
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
-import type { DialogPrompt } from '@longrun-ai/kernel/types/drive-intent';
+import type { DialogRuntimePrompt } from '@longrun-ai/kernel/types/drive-intent';
 import { Dialog, DialogID, RootDialog, SubDialog } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { DialogPersistence, DiskFileDialogStore } from './persistence';
@@ -31,7 +31,7 @@ async function resolvePendingCourseStartPromptForRestore(args: {
   messages: Dialog['msgs'];
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
 }): Promise<{
-  pendingCourseStartPrompt: DialogPrompt | undefined;
+  pendingCourseStartPrompt: DialogRuntimePrompt | undefined;
 }> {
   const pending = args.latest?.pendingCourseStartPrompt;
   if (!pending) {
@@ -50,24 +50,7 @@ async function resolvePendingCourseStartPromptForRestore(args: {
     }
     return { pendingCourseStartPrompt: undefined };
   }
-  return {
-    pendingCourseStartPrompt: {
-      content: pending.content,
-      msgId: pending.msgId,
-      grammar: 'markdown',
-      origin: 'runtime',
-      ...(pending.userLanguageCode === undefined
-        ? {}
-        : { userLanguageCode: pending.userLanguageCode }),
-      ...(pending.tellaskReplyDirective === undefined
-        ? {}
-        : { tellaskReplyDirective: pending.tellaskReplyDirective }),
-      ...(pending.skipTaskdoc === undefined ? {} : { skipTaskdoc: pending.skipTaskdoc }),
-      ...(pending.subdialogReplyTarget === undefined
-        ? {}
-        : { subdialogReplyTarget: pending.subdialogReplyTarget }),
-    } as const,
-  };
+  return { pendingCourseStartPrompt: pending };
 }
 
 export async function getOrRestoreRootDialog(
