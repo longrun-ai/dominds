@@ -26,11 +26,12 @@ async function main(): Promise<void> {
     })
   ).content;
 
-  assert.match(output, /Command completed \(exit code: 0\)/);
+  assert.match(output, /exit code:\s*0/);
   assert.match(output, /row-000001/);
   assert.match(output, /row-000200/);
   assert.match(output, /tool_output_truncated_in_tool/);
   assert.doesNotMatch(output, /row-000100/);
+  assert.doesNotMatch(output, /Failed to execute command/);
   assert.ok(
     output.length <= 60_000,
     `Expected shell_cmd result to stay bounded, got ${output.length} chars`,

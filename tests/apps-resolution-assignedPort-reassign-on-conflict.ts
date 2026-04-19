@@ -24,6 +24,46 @@ async function writeManifest(packageRootAbs: string, appId: string): Promise<voi
   );
 }
 
+async function writeLocalInstallableApp(params: {
+  packageRootAbs: string;
+  appId: string;
+  defaultPort: number;
+}): Promise<void> {
+  await writeText(
+    path.join(params.packageRootAbs, 'package.json'),
+    JSON.stringify(
+      {
+        name: params.appId,
+        version: '0.0.0',
+        bin: 'bin.js',
+      },
+      null,
+      2,
+    ),
+  );
+  await writeText(
+    path.join(params.packageRootAbs, 'bin.js'),
+    [
+      "'use strict';",
+      "if (!process.argv.includes('--dominds-app')) {",
+      "  throw new Error('expected --dominds-app');",
+      '}',
+      'process.stdout.write(JSON.stringify({',
+      `  appId: ${JSON.stringify(params.appId)},`,
+      '  package: {',
+      `    name: ${JSON.stringify(params.appId)},`,
+      '    version: null,',
+      '    rootAbs: process.cwd(),',
+      '  },',
+      "  host: { kind: 'node_module', moduleRelPath: 'dist/app.js', exportName: 'domindsApp' },",
+      `  frontend: { kind: 'http', defaultPort: ${String(params.defaultPort)} },`,
+      '}));',
+      '',
+    ].join('\n'),
+  );
+  await writeManifest(params.packageRootAbs, params.appId);
+}
+
 function makeEntry(params: {
   id: string;
   packageRootAbs: string;
@@ -63,8 +103,40 @@ async function main(): Promise<void> {
   try {
     const appARootAbs = path.join(tmpRoot, 'pkgs', appA);
     const appBRootAbs = path.join(tmpRoot, 'pkgs', appB);
-    await writeManifest(appARootAbs, appA);
-    await writeManifest(appBRootAbs, appB);
+    await writeLocalInstallableApp({
+      packageRootAbs: appARootAbs,
+      appId: appA,
+      defaultPort: conflictPort,
+    });
+    await writeLocalInstallableApp({
+      packageRootAbs: appBRootAbs,
+      appId: appB,
+      defaultPort: conflictPort,
+    });
+    await writeText(
+      path.join(tmpRoot, '.minds', 'app.yaml'),
+      [
+        'apiVersion: dominds.io/v1alpha1',
+        'kind: DomindsApp',
+        'id: rtws_root',
+        'dependencies:',
+        `  - id: ${appA}`,
+        `  - id: ${appB}`,
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.apps', 'configuration.yaml'),
+      [
+        'schemaVersion: 1',
+        'resolutionStrategy:',
+        '  order:',
+        '    - local',
+        '  localRoots:',
+        '    - pkgs',
+        '',
+      ].join('\n'),
+    );
 
     const resolutionFile: AppsResolutionFile = {
       schemaVersion: 1,

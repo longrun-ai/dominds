@@ -140,14 +140,18 @@ async function main(): Promise<void> {
       makeDriveOptions({ suppressDiligencePush: true }),
     );
 
+    const isCanonicalRootMirror = (
+      msg: Extract<ChatMessage, { type: 'tellask_result_msg' }>,
+      expectedContent: string,
+    ): boolean =>
+      msg.role === 'tool' &&
+      (msg.responder?.responderId ?? msg.responderId) === 'pangu' &&
+      (msg.call?.tellaskContent ?? msg.tellaskContent) === rootTellaskBody &&
+      msg.content === expectedContent;
+
     await new Promise((resolve) => setTimeout(resolve, 900));
     const interimMirrorIndex = dlg.msgs.findIndex(
-      (msg) =>
-        msg.type === 'tellask_result_msg' &&
-        msg.role === 'tool' &&
-        msg.responderId === 'pangu' &&
-        msg.tellaskContent === rootTellaskBody &&
-        msg.content === panguFirstResponse,
+      (msg) => msg.type === 'tellask_result_msg' && isCanonicalRootMirror(msg, panguFirstResponse),
     );
     assert.equal(
       interimMirrorIndex,
@@ -159,11 +163,7 @@ async function main(): Promise<void> {
       async () => {
         const finalMirrorIndex = dlg.msgs.findIndex(
           (msg) =>
-            msg.type === 'tellask_result_msg' &&
-            msg.role === 'tool' &&
-            msg.responderId === 'pangu' &&
-            msg.tellaskContent === rootTellaskBody &&
-            msg.content === expectedPanguInjected,
+            msg.type === 'tellask_result_msg' && isCanonicalRootMirror(msg, expectedPanguInjected),
         );
         if (finalMirrorIndex < 0) return false;
         for (let i = finalMirrorIndex + 1; i < dlg.msgs.length; i += 1) {
@@ -182,11 +182,7 @@ async function main(): Promise<void> {
 
     const mirrorIndex = dlg.msgs.findIndex(
       (msg) =>
-        msg.type === 'tellask_result_msg' &&
-        msg.role === 'tool' &&
-        msg.responderId === 'pangu' &&
-        msg.tellaskContent === rootTellaskBody &&
-        msg.content === expectedPanguInjected,
+        msg.type === 'tellask_result_msg' && isCanonicalRootMirror(msg, expectedPanguInjected),
     );
     const sayingIndex = dlg.msgs.findIndex(
       (msg: ChatMessage, index: number) =>

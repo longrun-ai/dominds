@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import {
   clearInstalledGlobalDialogEventBroadcaster,
   installRecordingGlobalDialogEventBroadcaster,
@@ -11,7 +12,7 @@ import {
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -173,6 +174,27 @@ async function main(): Promise<void> {
     const rootDialogId = new DialogID(rootId);
     const store = new DiskFileDialogStore(rootDialogId);
     const dlg = new RootDialog(store, 'task.md', rootDialogId, 'tester');
+    const createdAt = formatUnifiedTimestamp(new Date());
+    await DialogPersistence.saveDialogMetadata(dlg.id, {
+      id: dlg.id.selfId,
+      agentId: dlg.agentId,
+      taskDocPath: dlg.taskDocPath,
+      createdAt,
+    });
+    await DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: createdAt,
+        status: 'active',
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        displayState: { kind: 'idle_waiting_user' },
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
 
     await driveDialogStream(
       dlg,

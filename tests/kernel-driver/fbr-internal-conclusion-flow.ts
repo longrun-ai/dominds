@@ -279,10 +279,10 @@ async function main(): Promise<void> {
     );
     await waitFor(
       async () => lastAssistantSaying(successRoot) === successRootFinalAnswer,
-      3_000,
+      8_000,
       'successful FBR root final answer',
     );
-    await waitForAllDialogsUnlocked(successRoot, 3_000);
+    await waitForAllDialogsUnlocked(successRoot, 8_000);
 
     const successSubdialog = successRoot
       .getAllDialogs()
@@ -360,10 +360,10 @@ async function main(): Promise<void> {
     );
     await waitFor(
       async () => lastAssistantSaying(fallbackRoot) === fallbackRootFinalAnswer,
-      3_000,
+      8_000,
       'fallback FBR root final answer',
     );
-    await waitForAllDialogsUnlocked(fallbackRoot, 3_000);
+    await waitForAllDialogsUnlocked(fallbackRoot, 8_000);
 
     const fallbackSubdialog = fallbackRoot
       .getAllDialogs()

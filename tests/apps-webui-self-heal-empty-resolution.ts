@@ -180,7 +180,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
-});
+void main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err: unknown) => {
+    console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
+    process.exit(1);
+  });

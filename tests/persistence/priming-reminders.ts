@@ -60,6 +60,7 @@ function parseTopLevelFrontmatter(markdown: string): Record<string, unknown> {
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
+    const primingSlug = `priming-reminders-${path.basename(process.cwd())}`;
     const sourceId = new DialogID('11/22/priming-source');
     const sourceMeta: RootDialogMetadataFile = {
       id: sourceId.selfId,
@@ -128,7 +129,7 @@ async function main(): Promise<void> {
       dialogId: sourceId,
       status: 'running',
       course: 1,
-      slug: 'priming-reminders',
+      slug: primingSlug,
     });
 
     const savedMarkdown = await fs.readFile(saved.path, 'utf-8');

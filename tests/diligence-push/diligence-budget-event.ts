@@ -8,6 +8,7 @@ import * as path from 'path';
 
 import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { DiligenceBudgetEvent, TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import {
   clearInstalledGlobalDialogEventBroadcaster,
   installRecordingGlobalDialogEventBroadcaster,
@@ -16,7 +17,7 @@ import { DialogID, RootDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
@@ -91,6 +92,27 @@ async function main(): Promise<void> {
     const store = new DiskFileDialogStore(dlgId);
     const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
     // Simulate normal root-dialog initialization done by server create/display handlers.
+    const createdAt = formatUnifiedTimestamp(new Date());
+    await DialogPersistence.saveDialogMetadata(dlg.id, {
+      id: dlg.id.selfId,
+      agentId: dlg.agentId,
+      taskDocPath: dlg.taskDocPath,
+      createdAt,
+    });
+    await DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: createdAt,
+        status: 'active',
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        displayState: { kind: 'idle_waiting_user' },
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
     dlg.diligencePushRemainingBudget = 2;
     globalDialogRegistry.register(dlg);
     installRecordingGlobalDialogEventBroadcaster({

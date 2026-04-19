@@ -126,6 +126,149 @@ function hasSameReplyDirective(
   return true;
 }
 
+function buildCurrentSubdialogAssignmentDirective(
+  dlg: SubDialog,
+): NonNullable<KernelDriverPrompt['tellaskReplyDirective']> {
+  switch (dlg.assignmentFromSup.callName) {
+    case 'tellask':
+      return {
+        expectedReplyCallName: 'replyTellask',
+        targetCallId: dlg.assignmentFromSup.callId,
+        tellaskContent: dlg.assignmentFromSup.tellaskContent,
+      };
+    case 'tellaskSessionless':
+    case 'freshBootsReasoning':
+      return {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetCallId: dlg.assignmentFromSup.callId,
+        tellaskContent: dlg.assignmentFromSup.tellaskContent,
+      };
+    default: {
+      const _exhaustive: never = dlg.assignmentFromSup.callName;
+      throw new Error(`Unsupported subdialog assignment callName: ${_exhaustive}`);
+    }
+  }
+}
+
+async function hasCurrentCourseHumanPromptRecord(args: {
+  dlg: Dialog;
+  msgId: string;
+}): Promise<boolean> {
+  const events = await DialogPersistence.loadCourseEvents(
+    args.dlg.id,
+    args.dlg.currentCourse,
+    args.dlg.status,
+  );
+  for (const event of events) {
+    if (event.type === 'human_text_record' && event.msgId === args.msgId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function resolveFreshCurrentSubdialogAssignmentDirective(args: {
+  dlg: Dialog;
+  prompt: KernelDriverPrompt | undefined;
+}): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
+  if (!(args.dlg instanceof SubDialog) || args.prompt?.origin !== 'runtime') {
+    return undefined;
+  }
+  const promptDirective = args.prompt.tellaskReplyDirective;
+  if (!promptDirective) {
+    return undefined;
+  }
+  const currentAssignmentDirective = buildCurrentSubdialogAssignmentDirective(args.dlg);
+  if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
+    return undefined;
+  }
+  if (
+    await hasCurrentCourseHumanPromptRecord({
+      dlg: args.dlg,
+      msgId: args.prompt.msgId,
+    })
+  ) {
+    return undefined;
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  if (!latest) {
+    return undefined;
+  }
+  const targetCallId = currentAssignmentDirective.targetCallId.trim();
+  for (let course = latest.currentCourse; course >= 1; course -= 1) {
+    const events = await DialogPersistence.loadCourseEvents(args.dlg.id, course, args.dlg.status);
+    for (const event of events) {
+      if (
+        event.type === 'tellask_reply_resolution_record' &&
+        event.targetCallId.trim() === targetCallId
+      ) {
+        return undefined;
+      }
+    }
+  }
+  return currentAssignmentDirective;
+}
+
+async function resolveFreshPendingAskBackReplyDirective(args: {
+  dlg: Dialog;
+  prompt: KernelDriverPrompt | undefined;
+}): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
+  const prompt = args.prompt;
+  if (
+    prompt?.origin !== 'runtime' ||
+    prompt.tellaskReplyDirective?.expectedReplyCallName !== 'replyTellaskBack'
+  ) {
+    return undefined;
+  }
+  if (
+    await hasCurrentCourseHumanPromptRecord({
+      dlg: args.dlg,
+      msgId: prompt.msgId,
+    })
+  ) {
+    return undefined;
+  }
+  const rootDialog =
+    args.dlg instanceof RootDialog
+      ? args.dlg
+      : args.dlg instanceof SubDialog
+        ? args.dlg.rootDialog
+        : undefined;
+  if (!rootDialog) {
+    return undefined;
+  }
+  const requesterDialogId = new DialogID(
+    prompt.tellaskReplyDirective.targetDialogId,
+    rootDialog.id.rootId,
+  );
+  const latest = await DialogPersistence.loadDialogLatest(requesterDialogId, rootDialog.status);
+  if (!latest) {
+    return undefined;
+  }
+  const targetCallId = prompt.tellaskReplyDirective.targetCallId.trim();
+  let sawAskBackCall = false;
+  for (let course = latest.currentCourse; course >= 1; course -= 1) {
+    const events = await DialogPersistence.loadCourseEvents(
+      requesterDialogId,
+      course,
+      rootDialog.status,
+    );
+    for (const event of events) {
+      if (event.type === 'tellask_result_record' && event.callId.trim() === targetCallId) {
+        return undefined;
+      }
+      if (
+        event.type === 'tellask_call_record' &&
+        event.id.trim() === targetCallId &&
+        event.name === 'tellaskBack'
+      ) {
+        sawAskBackCall = true;
+      }
+    }
+  }
+  return sawAskBackCall ? prompt.tellaskReplyDirective : undefined;
+}
+
 function resolveFreshReplyDirective(args: {
   promptDirective: KernelDriverPrompt['tellaskReplyDirective'];
   persistedDirective: TellaskReplyDirective | undefined;
@@ -141,6 +284,18 @@ function resolveFreshReplyDirective(args: {
   return hasSameReplyDirective(promptDirective, persistedDirective)
     ? promptDirective
     : persistedDirective;
+}
+
+function resolvePromptPersistedReplyDirective(args: {
+  promptDirective: KernelDriverPrompt['tellaskReplyDirective'];
+  persistedDirective: TellaskReplyDirective | undefined;
+}): KernelDriverPrompt['tellaskReplyDirective'] {
+  const promptDirective = args.promptDirective;
+  const persistedDirective = args.persistedDirective;
+  if (!promptDirective || !persistedDirective) {
+    return undefined;
+  }
+  return hasSameReplyDirective(promptDirective, persistedDirective) ? promptDirective : undefined;
 }
 
 async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
@@ -210,6 +365,15 @@ export async function resolvePromptReplyGuidance(args: {
   const isQ4HAnswerPrompt =
     typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  const persistedCurrentSubdialogAssignmentDirective =
+    await resolveFreshCurrentSubdialogAssignmentDirective({
+      dlg: args.dlg,
+      prompt,
+    });
+  const persistedPendingAskBackReplyDirective = await resolveFreshPendingAskBackReplyDirective({
+    dlg: args.dlg,
+    prompt,
+  });
   const persistedPendingCourseStartDirective =
     prompt !== undefined &&
     latest?.pendingCourseStartPrompt?.msgId === prompt.msgId &&
@@ -217,7 +381,10 @@ export async function resolvePromptReplyGuidance(args: {
       ? latest.pendingCourseStartPrompt.tellaskReplyDirective
       : undefined;
   const persistedActiveReplyDirective =
-    persistedPendingCourseStartDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
+    persistedCurrentSubdialogAssignmentDirective ??
+    persistedPendingAskBackReplyDirective ??
+    persistedPendingCourseStartDirective ??
+    (await loadLatestActiveTellaskReplyDirective(args.dlg));
   const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
     ? false
     : await shouldSuppressInterDialogReplyGuidanceForUserInterjection({
@@ -249,8 +416,10 @@ export async function resolvePromptReplyGuidance(args: {
       : undefined,
     isQ4HAnswerPrompt,
     promptContent,
-    persistedTellaskReplyDirective:
-      persistedPendingCourseStartDirective ?? prompt?.tellaskReplyDirective ?? activeReplyDirective,
+    persistedTellaskReplyDirective: resolvePromptPersistedReplyDirective({
+      promptDirective: prompt?.tellaskReplyDirective,
+      persistedDirective: persistedActiveReplyDirective,
+    }),
     suppressInterDialogReplyGuidance,
     transientGuideContent:
       suppressInterDialogReplyGuidance && prompt !== undefined

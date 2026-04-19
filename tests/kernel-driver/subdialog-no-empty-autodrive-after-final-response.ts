@@ -26,7 +26,11 @@ function findLastMeaningfulTailEvent(
 ): (typeof events)[number] | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.type === 'tellask_reply_resolution_record' || event.type === 'gen_finish_record') {
+    if (
+      event.type === 'tellask_reply_resolution_record' ||
+      event.type === 'gen_finish_record' ||
+      event.type === 'func_result_record'
+    ) {
       continue;
     }
     return event;

@@ -66,6 +66,21 @@ function sendIpc(msg: CmdRunnerInitialIpcMessage): void {
   process.send(msg);
 }
 
+async function flushIpc(msg: CmdRunnerInitialIpcMessage): Promise<void> {
+  if (typeof process.send !== 'function') {
+    throw new Error('cmd_runner must be launched with an IPC channel');
+  }
+  await new Promise<void>((resolve, reject) => {
+    process.send?.(msg, (error: Error | null) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 async function readProcessCommandLine(pid: number): Promise<string | undefined> {
   try {
     if (process.platform === 'win32') {
@@ -173,6 +188,86 @@ async function main(): Promise<void> {
     stderr: new ScrollingBuffer(init.scrollbackLines),
   };
 
+  let server: net.Server | undefined;
+  let closeRequested = false;
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const closeServerAndExit = (code: number): void => {
+    if (closeRequested) {
+      return;
+    }
+    closeRequested = true;
+    const exit = () => {
+      setImmediate(() => {
+        process.exit(code);
+      });
+    };
+    const cleanupEndpoint = () => {
+      if (process.platform !== 'win32') {
+        void fs.unlink(endpoint).catch(() => {
+          // Best effort only.
+        });
+      }
+    };
+    if (!server) {
+      cleanupEndpoint();
+      exit();
+      return;
+    }
+    try {
+      server.close(() => {
+        cleanupEndpoint();
+        exit();
+      });
+    } catch (error: unknown) {
+      const codeValue =
+        typeof error === 'object' && error !== null
+          ? (error as { code?: unknown }).code
+          : undefined;
+      if (codeValue !== 'ERR_SERVER_NOT_RUNNING') {
+        throw error;
+      }
+      cleanupEndpoint();
+      exit();
+    }
+  };
+
+  childProcess.once('close', (code, signal) => {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    state.isRunning = false;
+    state.exitCode = code;
+    state.exitSignal = signal;
+    void (async () => {
+      if (state.daemonCommandLine === null) {
+        await flushIpc({
+          type: 'completed',
+          exitCode: code,
+          exitSignal: signal,
+          stdout: state.stdout.snapshot(),
+          stderr: state.stderr.snapshot(),
+        });
+      }
+      closeServerAndExit(0);
+    })().catch(() => {
+      closeServerAndExit(0);
+    });
+  });
+
+  childProcess.once('error', (error) => {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    void flushIpc({
+      type: 'failed',
+      errorText: error.message,
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        closeServerAndExit(1);
+      });
+  });
+
   childProcess.stdout?.on('data', (data: Buffer) => {
     state.stdout.addText(data.toString());
   });
@@ -180,7 +275,7 @@ async function main(): Promise<void> {
     state.stderr.addText(data.toString());
   });
 
-  const server = net.createServer((socket) => {
+  server = net.createServer((socket) => {
     socket.setEncoding('utf8');
     let buffer = '';
     socket.on('data', (chunk) => {
@@ -246,19 +341,28 @@ async function main(): Promise<void> {
     });
   });
 
-  const timeoutHandle = setTimeout(() => {
+  timeoutHandle = setTimeout(() => {
     void (async () => {
       const daemonCommandLine = await readProcessCommandLine(daemonPid);
+      if (!state.isRunning) {
+        return;
+      }
       if (daemonCommandLine === undefined || daemonCommandLine.trim() === '') {
         try {
           process.kill(daemonPid, 'SIGTERM');
         } catch {
           // Best effort only.
         }
+        if (!state.isRunning) {
+          return;
+        }
         sendIpc({
           type: 'failed',
           errorText: `failed to capture daemon command line from OS for pid ${String(daemonPid)}`,
         });
+        return;
+      }
+      if (!state.isRunning) {
         return;
       }
       state.daemonCommandLine = daemonCommandLine;
@@ -279,45 +383,6 @@ async function main(): Promise<void> {
       });
     });
   }, init.timeoutSeconds * 1000);
-
-  childProcess.once('close', (code, signal) => {
-    clearTimeout(timeoutHandle);
-    state.isRunning = false;
-    state.exitCode = code;
-    state.exitSignal = signal;
-    if (state.daemonCommandLine === null) {
-      sendIpc({
-        type: 'completed',
-        exitCode: code,
-        exitSignal: signal,
-        stdout: state.stdout.snapshot(),
-        stderr: state.stderr.snapshot(),
-      });
-    }
-    server.close(() => {
-      if (process.platform !== 'win32') {
-        void fs.unlink(endpoint).catch(() => {
-          // Best effort only.
-        });
-      }
-      setImmediate(() => {
-        process.exit(0);
-      });
-    });
-  });
-
-  childProcess.once('error', (error) => {
-    clearTimeout(timeoutHandle);
-    sendIpc({
-      type: 'failed',
-      errorText: error.message,
-    });
-    server.close(() => {
-      setImmediate(() => {
-        process.exit(1);
-      });
-    });
-  });
 }
 
 async function handleStopRequest(
@@ -348,13 +413,12 @@ async function handleStopRequest(
 }
 
 void main().catch((error: unknown) => {
-  try {
-    sendIpc({
-      type: 'failed',
-      errorText: error instanceof Error ? error.message : String(error),
+  void flushIpc({
+    type: 'failed',
+    errorText: error instanceof Error ? error.message : String(error),
+  })
+    .catch(() => undefined)
+    .finally(() => {
+      process.exit(1);
     });
-  } catch {
-    // No IPC channel available.
-  }
-  process.exit(1);
 });

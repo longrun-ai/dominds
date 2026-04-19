@@ -100,25 +100,21 @@ async function main(): Promise<void> {
       (msg): msg is Extract<ChatMessage, { type: 'tellask_result_msg' }> =>
         msg.type === 'tellask_result_msg',
     );
+    const isCanonicalMirroredResult = (
+      msg: Extract<ChatMessage, { type: 'tellask_result_msg' }>,
+    ): boolean =>
+      msg.role === 'tool' &&
+      (msg.responder?.responderId ?? msg.responderId) === 'pangu' &&
+      (msg.call?.tellaskContent ?? msg.tellaskContent) === tellaskBody &&
+      msg.content === mirroredSubdialogResponse;
     assert.ok(tellaskResultMsgs.length > 0, 'expected mirrored tellask_result_msg after commit');
     assert.ok(
-      tellaskResultMsgs.some(
-        (msg) =>
-          msg.role === 'tool' &&
-          msg.responderId === 'pangu' &&
-          msg.tellaskContent === tellaskBody &&
-          msg.content === mirroredSubdialogResponse,
-      ),
+      tellaskResultMsgs.some(isCanonicalMirroredResult),
       'expected mirrored tellask_result_msg with canonical transfer payload and structured tellask fields',
     );
 
     const mirrorIndex = dlg.msgs.findIndex(
-      (msg) =>
-        msg.type === 'tellask_result_msg' &&
-        msg.role === 'tool' &&
-        msg.responderId === 'pangu' &&
-        msg.tellaskContent === tellaskBody &&
-        msg.content === mirroredSubdialogResponse,
+      (msg) => msg.type === 'tellask_result_msg' && isCanonicalMirroredResult(msg),
     );
     const sayingIndex = dlg.msgs.findIndex(
       (msg) =>

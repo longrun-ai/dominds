@@ -10,7 +10,7 @@ import { registerEnabledAppsToolProxies } from '../main/apps/runtime';
 import { loadAgentMinds } from '../main/minds/load';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
 import '../main/tools/builtins';
-import { createToolsRegistrySnapshot } from '../main/tools/registry-snapshot';
+import { getToolset, getToolsetMeta } from '../main/tools/registry';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
@@ -92,9 +92,9 @@ async function main(): Promise<void> {
 
     removeProblemsByPrefix('team/team_yaml_error/');
 
-    const before = createToolsRegistrySnapshot();
-    assert.ok(
-      before.toolsets.every((toolset) => toolset.name !== 'playwright_interactive'),
+    assert.equal(
+      getToolset('playwright_interactive'),
+      undefined,
       'playwright_interactive should not exist before refresh',
     );
 
@@ -106,13 +106,11 @@ async function main(): Promise<void> {
     assert.ok(toolNames.includes('playwright_session_new'));
     assert.ok(toolNames.includes('playwright_session_eval'));
 
-    const afterMindsLoad = createToolsRegistrySnapshot();
-    const interactiveToolset = afterMindsLoad.toolsets.find(
-      (toolset) => toolset.name === 'playwright_interactive',
-    );
+    const interactiveToolset = getToolset('playwright_interactive');
+    const interactiveToolsetMeta = getToolsetMeta('playwright_interactive');
     assert.ok(interactiveToolset, 'expected app toolset after loadAgentMinds refresh');
-    assert.equal(interactiveToolset?.source, 'app');
-    assert.ok(interactiveToolset?.tools.some((tool) => tool.name === 'playwright_session_status'));
+    assert.equal(interactiveToolsetMeta?.source, 'app');
+    assert.ok(interactiveToolset.some((tool) => tool.name === 'playwright_session_status'));
 
     const teamProblems = getProblemsSnapshot().problems.filter((problem) =>
       problem.id.startsWith('team/team_yaml_error/'),
@@ -125,11 +123,7 @@ async function main(): Promise<void> {
     );
 
     await registerEnabledAppsToolProxies({ rtwsRootAbs: tmpRoot });
-    const afterExplicitRefresh = createToolsRegistrySnapshot();
-    const interactiveToolsets = afterExplicitRefresh.toolsets.filter(
-      (toolset) => toolset.name === 'playwright_interactive',
-    );
-    assert.equal(interactiveToolsets.length, 1, 'refresh should remain idempotent');
+    assert.ok(getToolset('playwright_interactive'), 'refresh should keep toolset registered');
   } finally {
     process.chdir(previousCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

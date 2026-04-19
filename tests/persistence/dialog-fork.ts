@@ -301,7 +301,11 @@ async function main(): Promise<void> {
     );
 
     const forkedLatest = await DialogPersistence.loadDialogLatest(forkedRootId, 'running');
-    assert.equal(forkedLatest?.displayState?.kind, 'interrupted');
+    assert.deepEqual(forkedLatest?.displayState, {
+      kind: 'stopped',
+      reason: { kind: 'fork_continue_ready' },
+      continueEnabled: true,
+    });
 
     const forkedSubMeta = await DialogPersistence.loadDialogMetadata(
       new DialogID(subId.selfId, forkedRootId.selfId),

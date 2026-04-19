@@ -118,13 +118,15 @@ async function main(): Promise<void> {
       'kernel-driver should not rely on persisted subdialog response queue',
     );
 
+    const isCanonicalMirroredResult = (
+      msg: Extract<ChatMessage, { type: 'tellask_result_msg' }>,
+    ): boolean =>
+      msg.role === 'tool' &&
+      (msg.responder?.responderId ?? msg.responderId) === 'pangu' &&
+      (msg.call?.tellaskContent ?? msg.tellaskContent) === tellaskBody &&
+      msg.content === mirroredSubdialogResponse;
     const mirrorIndex = dlg.msgs.findIndex(
-      (msg) =>
-        msg.type === 'tellask_result_msg' &&
-        msg.role === 'tool' &&
-        msg.responderId === 'pangu' &&
-        msg.tellaskContent === tellaskBody &&
-        msg.content === mirroredSubdialogResponse,
+      (msg) => msg.type === 'tellask_result_msg' && isCanonicalMirroredResult(msg),
     );
     assert.ok(mirrorIndex >= 0, 'expected mirrored teammate-response bubble before generation');
 
