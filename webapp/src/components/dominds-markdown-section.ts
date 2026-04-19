@@ -54,11 +54,7 @@ function syncElementAttributes(live: Element, next: Element): boolean {
   return changed;
 }
 
-function syncOptionalAttribute(
-  element: Element,
-  name: string,
-  nextValue: string | null,
-): boolean {
+function syncOptionalAttribute(element: Element, name: string, nextValue: string | null): boolean {
   if (nextValue === null) {
     if (element.hasAttribute(name)) {
       element.removeAttribute(name);
