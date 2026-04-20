@@ -1244,11 +1244,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.clearPendingThinkingChunkFlushTimer();
     if (this.pendingThinkingChunkBuffer.length < 1) return false;
     this.clearPendingThinkingChunkFlushRaf();
-    this.pendingThinkingChunkFlushRaf = requestAnimationFrame(() => {
-      this.pendingThinkingChunkFlushRaf = null;
-      this.flushPendingThinkingChunks();
-      this.completeThinkingSection();
-    });
+    this.flushPendingThinkingChunks();
+    this.completeThinkingSection();
     return true;
   }
 
@@ -1256,11 +1253,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.clearPendingMarkdownChunkFlushTimer();
     if (this.pendingMarkdownChunkBuffer.length < 1) return false;
     this.clearPendingMarkdownChunkFlushRaf();
-    this.pendingMarkdownChunkFlushRaf = requestAnimationFrame(() => {
-      this.pendingMarkdownChunkFlushRaf = null;
-      this.flushPendingMarkdownChunks();
-      this.completeMarkdownSection();
-    });
+    this.flushPendingMarkdownChunks();
+    this.completeMarkdownSection();
     return true;
   }
 
@@ -1504,7 +1498,11 @@ export class DomindsDialogContainer extends HTMLElement {
       // === FUNCTION CALLS (non-streaming mode - direct tool execution) ===
       case 'func_call_requested_evt': {
         const ev: FuncCallStartEvent = event;
-        this.handleFuncCallRequested(ev.funcId, ev.funcName, ev.arguments);
+        const timestamp =
+          'timestamp' in ev && typeof ev.timestamp === 'string'
+            ? ev.timestamp
+            : new Date().toISOString().slice(0, 19).replace('T', ' ');
+        this.handleFuncCallRequested(ev.genseq, ev.funcId, ev.funcName, ev.arguments, timestamp);
         break;
       }
       case 'web_search_call_evt':
@@ -1519,7 +1517,11 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Function results
       case 'func_result_evt':
-        if (this.generationBubble && this.currentCourse !== event.course) {
+        if (
+          this.generationBubble &&
+          this.generationBubble.getAttribute('data-seq') === String(event.genseq) &&
+          this.currentCourse !== event.course
+        ) {
           this.handleProtocolError('func_result event.course mismatch with active generation');
           console.error('Function result mismatch', {
             activeSeq: this.activeGenSeq,
@@ -1555,31 +1557,47 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       case 'stream_error_evt':
-        if (!this.generationBubble) {
-          const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-          const t = getUiStrings(this.uiLanguage);
-          const detail = {
-            message: String(event.error || t.unknownStreamErrorToast),
-            kind: 'error' as const,
-          };
-          if (host) {
-            dispatchDomindsEvent(host, 'ui-toast', detail, { bubbles: true, composed: true });
+        {
+          const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+          const targetBubble =
+            event.genseq !== undefined
+              ? this.generationBubble &&
+                this.generationBubble.getAttribute('data-seq') === String(event.genseq)
+                ? this.generationBubble
+                : container
+                  ? (container.querySelector(
+                      `.generation-bubble[data-seq="${String(event.genseq)}"]`,
+                    ) as HTMLElement | null)
+                  : null
+              : this.generationBubble;
+          if (!targetBubble) {
+            const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
+            const t = getUiStrings(this.uiLanguage);
+            const detail = {
+              message: String(event.error || t.unknownStreamErrorToast),
+              kind: 'error' as const,
+            };
+            if (host) {
+              dispatchDomindsEvent(host, 'ui-toast', detail, { bubbles: true, composed: true });
+            }
+            break;
           }
-          break;
+          if (
+            event.genseq !== undefined &&
+            this.generationBubble &&
+            this.generationBubble.getAttribute('data-seq') === String(event.genseq) &&
+            (this.activeGenSeq === undefined || this.activeGenSeq !== event.genseq)
+          ) {
+            this.handleProtocolError('stream_error_evt event.genseq mismatch');
+            console.error('Stream error mismatch', {
+              activeSeq: this.activeGenSeq,
+              seq: event.genseq,
+              course: this.currentCourse,
+              evtCourse: event.course,
+            });
+          }
+          this.handleError(String(event.error), targetBubble);
         }
-        if (
-          event.genseq !== undefined &&
-          (this.activeGenSeq === undefined || this.activeGenSeq !== event.genseq)
-        ) {
-          this.handleProtocolError('stream_error_evt event.genseq mismatch');
-          console.error('Stream error mismatch', {
-            activeSeq: this.activeGenSeq,
-            seq: event.genseq,
-            course: this.currentCourse,
-            evtCourse: event.course,
-          });
-        }
-        this.handleError(String(event.error));
         break;
 
       // Historical stream events removed; only stream_error_evt may appear and is handled elsewhere
@@ -1905,7 +1923,16 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleGeneratingFinish(seq: number, llmGenModel?: string): void {
-    const bubble = this.generationBubble;
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    const activeBubble = this.generationBubble;
+    const bubble =
+      activeBubble && activeBubble.getAttribute('data-seq') === String(seq)
+        ? activeBubble
+        : container
+          ? (container.querySelector(
+              `.generation-bubble[data-seq="${String(seq)}"]`,
+            ) as HTMLElement | null)
+          : null;
     if (!bubble) {
       // Gracefully handle orphan finish - no active generation bubble
       // This can happen when navigation clears the bubble but events still arrive
@@ -1923,6 +1950,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       return;
     }
+    const finalizingActiveBubble = bubble === activeBubble;
 
     if (typeof llmGenModel === 'string') {
       const trimmed = llmGenModel.trim();
@@ -1936,7 +1964,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const attrSeq = bubble.getAttribute('data-seq');
     if (attrSeq !== String(seq)) {
-      // Log warning but still complete - sequence mismatch but bubble exists
+      // This should no longer happen because we resolve the target bubble by seq first.
       console.warn(
         `generating_finish_evt seq mismatch: expected ${attrSeq}, got ${seq}, proceeding anyway`,
       );
@@ -1945,15 +1973,31 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.classList.remove('generating');
     bubble.classList.add('completed');
     bubble.setAttribute('data-finalized', 'true');
+    if (finalizingActiveBubble) {
+      this.clearPendingThinkingChunkFlushTimer();
+      this.clearPendingThinkingChunkFlushRaf();
+      this.clearPendingMarkdownChunkFlushTimer();
+      this.clearPendingMarkdownChunkFlushRaf();
+      this.flushPendingThinkingChunks();
+      this.flushPendingMarkdownChunks();
+      if (this.thinkingSection) {
+        this.completeThinkingSection();
+      }
+      if (this.markdownSection) {
+        this.completeMarkdownSection();
+      }
+    }
     if (this.viewportPanelState.kind !== 'hidden' && this.viewportPanelState.genseq === seq) {
       this.clearViewportPanel();
     }
-    this.thinkingSection = undefined;
-    this.markdownSection = undefined;
-    this.callingSection = undefined;
-    this.generationBubble = undefined;
-    // Clear previousDialog since we've completed the generation for that dialog
-    this.previousDialog = undefined;
+    if (finalizingActiveBubble) {
+      this.thinkingSection = undefined;
+      this.markdownSection = undefined;
+      this.callingSection = undefined;
+      this.generationBubble = undefined;
+      // Clear previousDialog since we've completed the generation for that dialog
+      this.previousDialog = undefined;
+    }
   }
 
   private handleGenerationDiscard(seq: number): void {
@@ -1967,13 +2011,16 @@ export class DomindsDialogContainer extends HTMLElement {
               `.generation-bubble[data-seq="${String(seq)}"]`,
             ) as HTMLElement | null)
           : null;
+    const discardingActiveBubble = targetBubble !== null && targetBubble === activeBubble;
 
     if (targetBubble) {
       this.resetGenerationBubbleForRetry(targetBubble);
-      this.generationBubble = targetBubble;
-      this.thinkingSection = undefined;
-      this.markdownSection = undefined;
-      this.callingSection = undefined;
+      if (discardingActiveBubble) {
+        this.generationBubble = targetBubble;
+        this.thinkingSection = undefined;
+        this.markdownSection = undefined;
+        this.callingSection = undefined;
+      }
     }
 
     this.tellaskCallingSectionBySeq.delete(seq);
@@ -2046,6 +2093,17 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
   private handleThinkingChunk(genseq: number, chunk: string, timestamp: string): void {
+    if (
+      this.generationBubble &&
+      this.generationBubble.getAttribute('data-seq') !== String(genseq) &&
+      this.thinkingSection
+    ) {
+      console.warn('thinking_chunk_evt genseq mismatch with active thinking section, skipping', {
+        activeSeq: this.generationBubble.getAttribute('data-seq'),
+        genseq,
+      });
+      return;
+    }
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection) {
       // Gracefully handle orphan chunk - auto-create thinking section if needed
@@ -2068,7 +2126,18 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingThinkingChunkBuffer += chunk;
     this.scheduleThinkingChunkFlush();
   }
-  private handleThinkingFinish(_genseq: number): void {
+  private handleThinkingFinish(genseq: number): void {
+    if (
+      this.generationBubble &&
+      this.generationBubble.getAttribute('data-seq') !== String(genseq) &&
+      this.thinkingSection
+    ) {
+      console.warn('thinking_finish_evt genseq mismatch with active thinking section, skipping', {
+        activeSeq: this.generationBubble.getAttribute('data-seq'),
+        genseq,
+      });
+      return;
+    }
     if (this.requestImmediateThinkingChunkFlushForFinish()) return;
     this.completeThinkingSection();
   }
@@ -2098,6 +2167,17 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
   private handleMarkdownChunk(genseq: number, chunk: string, timestamp: string): void {
+    if (
+      this.generationBubble &&
+      this.generationBubble.getAttribute('data-seq') !== String(genseq) &&
+      this.markdownSection
+    ) {
+      console.warn('markdown_chunk_evt genseq mismatch with active markdown section, skipping', {
+        activeSeq: this.generationBubble.getAttribute('data-seq'),
+        genseq,
+      });
+      return;
+    }
     if (!this.markdownSection) {
       // Attempt to recover by creating a markdown section (and bubble if needed).
       this.handleMarkdownStart(genseq, timestamp);
@@ -2110,7 +2190,18 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingMarkdownChunkBuffer += chunk;
     this.scheduleMarkdownChunkFlush();
   }
-  private handleMarkdownFinish(_genseq: number): void {
+  private handleMarkdownFinish(genseq: number): void {
+    if (
+      this.generationBubble &&
+      this.generationBubble.getAttribute('data-seq') !== String(genseq) &&
+      this.markdownSection
+    ) {
+      console.warn('markdown_finish_evt genseq mismatch with active markdown section, skipping', {
+        activeSeq: this.generationBubble.getAttribute('data-seq'),
+        genseq,
+      });
+      return;
+    }
     if (this.requestImmediateMarkdownChunkFlushForFinish()) return;
     this.completeMarkdownSection();
   }
@@ -2137,19 +2228,23 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === FUNCTION CALL EVENTS (Non-streaming mode) ===
-  private handleFuncCallRequested(funcId: string, funcName: string, argumentsStr: string): void {
-    // Guard: ensure generation bubble exists before appending
-    if (!this.generationBubble) {
+  private handleFuncCallRequested(
+    genseq: number,
+    funcId: string,
+    funcName: string,
+    argumentsStr: string,
+    timestamp: string,
+  ): void {
+    const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
+    if (!bubble) {
       console.warn('func_call_requested_evt received without generation bubble, skipping');
       return;
     }
     // Create and append func-call section with all data at once (non-streaming mode)
     const funcCallSection = this.createFuncCallSection(funcId, funcName, argumentsStr);
-    if (typeof this.activeGenSeq === 'number') {
-      funcCallSection.setAttribute('data-genseq', String(this.activeGenSeq));
-    }
-    const body = this.generationBubble.querySelector('.bubble-body');
-    (body || this.generationBubble).appendChild(funcCallSection);
+    funcCallSection.setAttribute('data-genseq', String(genseq));
+    const body = bubble.querySelector('.bubble-body');
+    (body || bubble).appendChild(funcCallSection);
     this.setupFuncCallArgsProgressiveExpand(funcCallSection);
     this.scrollToBottom();
   }
@@ -2968,9 +3063,15 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleFuncResult(event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>): void {
     // Try to find the func-call section this result belongs to by funcId
     if (event.id) {
-      const funcCallSection = this.generationBubble?.querySelector(
-        `.func-call-section[data-func-id="${event.id}"]`,
-      ) as HTMLElement | null;
+      const activeBubble = this.generationBubble;
+      const funcCallSection =
+        activeBubble && activeBubble.getAttribute('data-seq') === String(event.genseq)
+          ? (activeBubble.querySelector(
+              `.func-call-section[data-func-id="${event.id}"][data-genseq="${String(event.genseq)}"]`,
+            ) as HTMLElement | null)
+          : ((this.shadowRoot?.querySelector(
+              `.func-call-section[data-func-id="${event.id}"][data-genseq="${String(event.genseq)}"]`,
+            ) as HTMLElement | null) ?? null);
 
       if (funcCallSection) {
         // Found the func-call section - show result inside it
@@ -4553,8 +4654,9 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
-  private handleError(err: string): void {
-    if (!this.generationBubble) return;
+  private handleError(err: string, bubble?: HTMLElement): void {
+    const targetBubble = bubble ?? this.generationBubble ?? undefined;
+    if (!targetBubble) return;
     const el = document.createElement('div');
     el.className = 'error-section';
     el.innerHTML = `
@@ -4564,8 +4666,8 @@ export class DomindsDialogContainer extends HTMLElement {
       </div>
       <div class="error-content">${err}</div>
     `;
-    const body = this.generationBubble.querySelector('.bubble-body');
-    (body || this.generationBubble).appendChild(el);
+    const body = targetBubble.querySelector('.bubble-body');
+    (body || targetBubble).appendChild(el);
     this.scrollToBottom();
   }
 

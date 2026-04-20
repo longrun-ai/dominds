@@ -1374,13 +1374,14 @@ export class OpenAiGen implements LlmGenerator {
     let sayingStarted = false;
     let thinkingStarted = false;
     let currentThinkingContent = '';
-    let finishedThinkingFromDelta = false;
     let sawOutputText = false;
     let currentAudioTranscript = '';
     type ActiveStream = 'idle' | 'thinking' | 'saying';
     let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
+    const streamedReasoningItemIds = new Set<string>();
+    let sawReasoningDeltaWithoutItemId = false;
 
     type ActiveFuncCall = {
       itemId: string;
@@ -1658,6 +1659,11 @@ export class OpenAiGen implements LlmGenerator {
                 await receiver.thinkingStart();
                 activeStream = 'thinking';
               }
+              if (typeof event.item_id === 'string' && event.item_id.length > 0) {
+                streamedReasoningItemIds.add(event.item_id);
+              } else {
+                sawReasoningDeltaWithoutItemId = true;
+              }
               currentThinkingContent += delta;
               await receiver.thinkingChunk(delta);
             }
@@ -1693,7 +1699,6 @@ export class OpenAiGen implements LlmGenerator {
               await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
               thinkingStarted = false;
               currentThinkingContent = '';
-              finishedThinkingFromDelta = true;
               if (activeStream === 'thinking') activeStream = 'idle';
             }
             break;
@@ -1814,8 +1819,17 @@ export class OpenAiGen implements LlmGenerator {
             }
 
             if (isRecord(item) && item.type === 'reasoning') {
-              if (finishedThinkingFromDelta) {
-                finishedThinkingFromDelta = false;
+              const itemId = typeof item.id === 'string' && item.id.length > 0 ? item.id : null;
+              const sawReasoningDelta =
+                itemId !== null
+                  ? streamedReasoningItemIds.has(itemId)
+                  : sawReasoningDeltaWithoutItemId;
+              if (sawReasoningDelta) {
+                if (itemId !== null) {
+                  streamedReasoningItemIds.delete(itemId);
+                } else {
+                  sawReasoningDeltaWithoutItemId = false;
+                }
                 break;
               }
               const payload = extractReasoningPayload(item as unknown as ResponseOutputItem);
