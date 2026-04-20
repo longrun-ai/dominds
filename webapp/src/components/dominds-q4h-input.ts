@@ -342,6 +342,19 @@ export class DomindsQ4HInput extends HTMLElement {
     return measurer.scrollHeight;
   }
 
+  private getAttachmentStripHeightPx(): number {
+    const strip = this.shadowRoot?.querySelector('.attachment-strip');
+    if (!(strip instanceof HTMLElement)) {
+      return 0;
+    }
+
+    const rect = strip.getBoundingClientRect();
+    if (rect.height > 0) {
+      return rect.height;
+    }
+    return strip.offsetHeight;
+  }
+
   private static escapeHtml(value: string): string {
     return value
       .replace(/&/g, '&amp;')
@@ -820,11 +833,16 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!this.textInput) return;
     const previousHostHeightPx = this.getCurrentHostHeightPx();
     const hostChromeHeightPx = this.getHostChromeHeightPx();
-    const minHeight = Math.max(0, this.manualResizeMinPx - hostChromeHeightPx);
+    const attachmentStripHeightPx = this.getAttachmentStripHeightPx();
+    const minHeight = Math.max(
+      0,
+      this.manualResizeMinPx - hostChromeHeightPx - attachmentStripHeightPx,
+    );
     const maxHeight = Math.max(
       minHeight,
       Math.floor(window.innerHeight * DomindsQ4HInput.AUTO_RESIZE_MAX_VIEWPORT_RATIO) -
-        hostChromeHeightPx,
+        hostChromeHeightPx -
+        attachmentStripHeightPx,
     );
 
     this.textInput.style.height = '';
@@ -835,7 +853,9 @@ export class DomindsQ4HInput extends HTMLElement {
         : scrollHeight + DomindsQ4HInput.AUTO_RESIZE_EXTRA_GAP_PX;
     const nextHeight = Math.max(minHeight, Math.min(desiredTextHeight, maxHeight));
 
-    const desiredHostHeightPx = Math.ceil(hostChromeHeightPx + nextHeight);
+    const desiredHostHeightPx = Math.ceil(
+      hostChromeHeightPx + attachmentStripHeightPx + nextHeight,
+    );
     const baselineHostHeightPx = this.getBaselineHostHeightPx();
 
     if (baselineHostHeightPx !== null) {
