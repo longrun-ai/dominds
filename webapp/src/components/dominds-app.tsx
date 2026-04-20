@@ -52,7 +52,7 @@ import type {
   WelcomeMessage,
 } from '@longrun-ai/kernel/types/wire';
 import { escapeHtml } from '@longrun-ai/kernel/utils/html';
-import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
+import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import faviconUrl from '../assets/favicon.svg';
 import {
   formatContextUsageTitle,
@@ -245,8 +245,10 @@ type DomindsVersionActionState =
 
 export class DomindsApp extends HTMLElement {
   private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
-  private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
+  private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v2';
   private static readonly TOAST_HISTORY_MAX = 200;
+  private static readonly UNIFIED_TIMESTAMP_PATTERN =
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
   private static readonly SIDEBAR_WIDTH_STORAGE_KEY = 'dominds-sidebar-width-px-v1';
   private static readonly BOTTOM_PANEL_HEIGHT_STORAGE_KEY = 'dominds-bottom-panel-height-px-v2';
   private static readonly REMINDERS_WIDGET_SIZE_STORAGE_KEY = 'dominds-reminders-widget-size-v1';
@@ -10234,10 +10236,10 @@ export class DomindsApp extends HTMLElement {
       if (typeof item !== 'object' || item === null) continue;
       const rec = item as Record<string, unknown>;
       const id = typeof rec['id'] === 'string' ? rec['id'] : '';
-      const timestamp = typeof rec['timestamp'] === 'string' ? rec['timestamp'] : '';
+      const timestamp = typeof rec['timestamp'] === 'string' ? rec['timestamp'].trim() : '';
       const kind = rec['kind'];
       const message = typeof rec['message'] === 'string' ? rec['message'] : '';
-      if (!id || !timestamp || !message) continue;
+      if (!id || !DomindsApp.UNIFIED_TIMESTAMP_PATTERN.test(timestamp) || !message) continue;
       if (kind !== 'error' && kind !== 'warning' && kind !== 'info') continue;
       next.push({ id, timestamp, kind, message });
     }
@@ -10267,7 +10269,7 @@ export class DomindsApp extends HTMLElement {
 
     const next: ToastHistoryEntry = {
       id,
-      timestamp: now.toISOString(),
+      timestamp: formatUnifiedTimestamp(now),
       kind: entry.kind,
       message: trimmed,
     };
