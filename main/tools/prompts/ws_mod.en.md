@@ -13,6 +13,7 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
 - Normalization: all writes follow “each line ends with `\n` (including the last line)”; missing EOF newline will be added and shown in `normalized.*`.
 - Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; otherwise prefer prepare/apply.
 - Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
+- Binary image tools: use `read_picture({ path })` to inspect PNG/JPEG/WebP/GIF images as real image context; use `write_picture({ path, data_base64, mime_type, overwrite })` to write a base64 image. These are binary image operations and do not use prepare/apply.
 
 ## Which `prepare_*` to use
 

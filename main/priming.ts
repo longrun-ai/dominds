@@ -25,6 +25,7 @@ import type {
   TellaskResultRecord,
   ToolResultImageIngestRecord,
   UiOnlyMarkdownRecord,
+  UserImageIngestRecord,
   WebSearchCallActionRecord,
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -355,6 +356,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'tellask_call_record' ||
     raw === 'web_search_call_record' ||
     raw === 'tool_result_image_ingest_record' ||
+    raw === 'user_image_ingest_record' ||
     raw === 'human_text_record' ||
     raw === 'func_result_record' ||
     raw === 'tellask_result_record' ||
@@ -387,6 +389,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'func_call_record':
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
@@ -688,7 +691,7 @@ function normalizeWebSearchAction(
   throw new Error(`${context}.action.type must be search | open_page | find_in_page`);
 }
 
-function normalizeFuncResultContentItems(
+function normalizeContentItems(
   value: unknown,
   context: string,
 ): FuncResultContentItem[] | undefined {
@@ -1053,6 +1056,62 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
+    case 'user_image_ingest_record': {
+      const disposition = raw['disposition'];
+      if (
+        disposition !== 'fed_native' &&
+        disposition !== 'fed_provider_transformed' &&
+        disposition !== 'filtered_provider_unsupported' &&
+        disposition !== 'filtered_model_unsupported' &&
+        disposition !== 'filtered_mime_unsupported' &&
+        disposition !== 'filtered_size_limit' &&
+        disposition !== 'filtered_read_failed' &&
+        disposition !== 'filtered_missing'
+      ) {
+        throw new Error(`${context}.disposition is invalid`);
+      }
+      const artifactRaw = raw['artifact'];
+      if (!isRecord(artifactRaw)) {
+        throw new Error(`${context}.artifact must be an object`);
+      }
+      const rootId = artifactRaw['rootId'];
+      const selfId = artifactRaw['selfId'];
+      const status = artifactRaw['status'];
+      const relPath = artifactRaw['relPath'];
+      if (
+        typeof rootId !== 'string' ||
+        typeof selfId !== 'string' ||
+        typeof relPath !== 'string' ||
+        (status !== 'running' && status !== 'completed' && status !== 'archived')
+      ) {
+        throw new Error(`${context}.artifact has invalid fields`);
+      }
+      const detail = raw['detail'];
+      if (detail !== undefined && typeof detail !== 'string') {
+        throw new Error(`${context}.detail must be a string when provided`);
+      }
+      const record: UserImageIngestRecord = {
+        ts: '',
+        type,
+        genseq: expectIntegerField(raw, 'genseq', context),
+        artifact: {
+          rootId,
+          selfId,
+          status,
+          relPath,
+        },
+        provider: expectStringField(raw, 'provider', context),
+        model: expectStringField(raw, 'model', context),
+        disposition,
+        message: expectStringField(raw, 'message', context, true),
+      };
+      const msgId = parseOptionalStringField(raw, 'msgId', context);
+      if (msgId !== undefined) record.msgId = msgId;
+      if (detail !== undefined) record.detail = detail;
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
     case 'human_text_record': {
       const grammar = raw['grammar'];
       if (grammar !== 'markdown') {
@@ -1061,6 +1120,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const userLanguageCode = parseOptionalLanguageCodeField(raw, 'userLanguageCode', context);
       const q4hAnswerCallId = parseOptionalStringField(raw, 'q4hAnswerCallId', context);
       const tellaskReplyDirective = parseTellaskReplyDirective(raw, context);
+      const contentItems = normalizeContentItems(raw['contentItems'], context);
       const record: HumanTextRecord = {
         ts: '',
         type,
@@ -1072,6 +1132,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (userLanguageCode !== undefined) record.userLanguageCode = userLanguageCode;
       if (q4hAnswerCallId !== undefined) record.q4hAnswerCallId = q4hAnswerCallId;
       if (tellaskReplyDirective !== undefined) record.tellaskReplyDirective = tellaskReplyDirective;
+      if (contentItems !== undefined) record.contentItems = contentItems;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1085,8 +1146,8 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         name: expectStringField(raw, 'name', context),
         content: expectStringField(raw, 'content', context, true),
       };
-      const contentItems = normalizeFuncResultContentItems(raw['contentItems'], context);
-      if (contentItems) record.contentItems = contentItems;
+      const contentItems = normalizeContentItems(raw['contentItems'], context);
+      if (contentItems !== undefined) record.contentItems = contentItems;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1173,6 +1234,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         content: expectStringField(raw, 'content', context, true),
         responder,
       } as const;
+      const contentItems = normalizeContentItems(raw['contentItems'], context);
       const record: TellaskResultRecord = (() => {
         switch (callName) {
           case 'tellask': {
@@ -1251,6 +1313,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (route !== undefined) {
         record.route = route;
       }
+      if (contentItems !== undefined) record.contentItems = contentItems;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -1390,6 +1453,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         callId: expectStringField(raw, 'callId', context),
         originMemberId: expectStringField(raw, 'originMemberId', context),
       } as const;
+      const contentItems = normalizeContentItems(raw['contentItems'], context);
       const record: TellaskCarryoverRecord = (() => {
         switch (callName) {
           case 'tellask': {
@@ -1454,6 +1518,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (calleeGenseq !== undefined) {
         record.calleeGenseq = toCalleeGenerationSeqNumber(calleeGenseq);
       }
+      if (contentItems !== undefined) record.contentItems = contentItems;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -2018,6 +2083,7 @@ function remapRecordGenseq(
     case 'tellask_call_record':
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -2084,6 +2150,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'tellask_call_record':
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
@@ -2112,6 +2179,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'tellask_call_record':
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
@@ -2164,6 +2232,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         msgId: record.msgId,
         content: record.content,
         grammar: 'markdown',
+        contentItems: record.contentItems,
       };
     case 'func_call_record':
       return {
@@ -2201,6 +2270,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         callName: record.callName,
         status: record.status,
         content: record.content,
+        contentItems: record.contentItems,
         ...(record.originCourse !== undefined ? { originCourse: record.originCourse } : {}),
         ...(record.calling_genseq !== undefined ? { calling_genseq: record.calling_genseq } : {}),
         call: record.call,
@@ -2240,6 +2310,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         agentId: record.agentId,
         callId: record.callId,
         originMemberId: record.originMemberId,
+        contentItems: record.contentItems,
         ...(record.callName === 'tellask'
           ? {
               mentionList: record.mentionList,
@@ -2256,6 +2327,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
       };
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'quest_for_sup_record':
     case 'tellask_call_anchor_record':
@@ -2426,6 +2498,18 @@ function formatScriptMarkdown(args: {
         blockBody = record.message;
         break;
       }
+      case 'user_image_ingest_record': {
+        blockMeta['genseq'] = record.genseq;
+        if (record.msgId !== undefined) blockMeta['msgId'] = record.msgId;
+        blockMeta['artifact'] = record.artifact;
+        blockMeta['provider'] = record.provider;
+        blockMeta['model'] = record.model;
+        blockMeta['disposition'] = record.disposition;
+        if (record.detail !== undefined) blockMeta['detail'] = record.detail;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        blockBody = record.message;
+        break;
+      }
       case 'human_text_record': {
         blockMeta['genseq'] = record.genseq;
         blockMeta['msgId'] = record.msgId;
@@ -2437,6 +2521,7 @@ function formatScriptMarkdown(args: {
           blockMeta['q4hAnswerCallId'] = record.q4hAnswerCallId;
         if (record.tellaskReplyDirective !== undefined)
           blockMeta['tellaskReplyDirective'] = record.tellaskReplyDirective;
+        if (record.contentItems !== undefined) blockMeta['contentItems'] = record.contentItems;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.content;
         break;
@@ -2500,6 +2585,7 @@ function formatScriptMarkdown(args: {
         if (record.calling_genseq !== undefined)
           blockMeta['calling_genseq'] = record.calling_genseq;
         if (record.route !== undefined) blockMeta['route'] = record.route;
+        if (record.contentItems !== undefined) blockMeta['contentItems'] = record.contentItems;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.content;
         break;
@@ -2532,6 +2618,7 @@ function formatScriptMarkdown(args: {
           blockMeta['calleeDialogId'] = record.calleeDialogId;
         if (record.calleeCourse !== undefined) blockMeta['calleeCourse'] = record.calleeCourse;
         if (record.calleeGenseq !== undefined) blockMeta['calleeGenseq'] = record.calleeGenseq;
+        if (record.contentItems !== undefined) blockMeta['contentItems'] = record.contentItems;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.response;
         break;
@@ -2592,6 +2679,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'tellask_call_record':
     case 'web_search_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':

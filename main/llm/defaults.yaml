@@ -199,24 +199,28 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2:
         name: MiniMax M2
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
@@ -252,24 +256,28 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2:
         name: MiniMax M2 Stable
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
@@ -305,24 +313,28 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2:
         name: MiniMax M2
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
@@ -358,24 +370,28 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.5:
         name: MiniMax M2.5
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
         context_window: '204K'
       MiniMax-M2:
         name: MiniMax M2 Stable
+        supports_image_input: false
         context_length: 204800
         input_length: 204800
         output_length: 8192
@@ -390,24 +406,28 @@ providers:
     models:
       glm-4.7:
         name: GLM-4.7
+        supports_image_input: false
         context_length: 200000
         input_length: 200000
         output_length: 8192
         context_window: '200K'
       glm-4.6:
         name: GLM-4.6
+        supports_image_input: false
         context_length: 200000
         input_length: 200000
         output_length: 8192
         context_window: '200K'
       glm-4.5:
         name: GLM-4.5
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 8192
         context_window: '128K'
       glm-4.5-air:
         name: GLM-4.5-Air
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 8192
@@ -422,24 +442,28 @@ providers:
     models:
       glm-4.7:
         name: GLM-4.7
+        supports_image_input: false
         context_length: 200000
         input_length: 200000
         output_length: 8192
         context_window: '200K'
       glm-4.6:
         name: GLM-4.6
+        supports_image_input: false
         context_length: 200000
         input_length: 200000
         output_length: 8192
         context_window: '200K'
       glm-4.5:
         name: GLM-4.5
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 8192
         context_window: '128K'
       glm-4.5-air:
         name: GLM-4.5-Air
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 8192
@@ -454,6 +478,7 @@ providers:
     models:
       doubao-seed-code:
         name: Doubao Seed Code Preview
+        supports_image_input: true
         context_length: 256000
         input_length: 256000
         output_length: 8192
@@ -461,12 +486,14 @@ providers:
         optimization: 专为Agentic Coding任务优化
       deepseek-v3.2:
         name: DeepSeek-V3.2
+        supports_image_input: false
         context_length: 128000
         input_length: 96000
         output_length: 32000
         context_window: '128K'
       glm-4.7:
         name: GLM 4.7
+        supports_image_input: false
         context_length: 256000
         input_length: 256000
         output_length: 8192
@@ -487,42 +514,49 @@ providers:
     models:
       deepseek-v3-2-251201:
         name: DeepSeek-V3.2
+        supports_image_input: false
         context_length: 128000
         input_length: 96000
         output_length: 32000
         context_window: '128K'
       doubao-seed-code-preview-251028:
         name: Doubao Seed Code Preview 251028
+        supports_image_input: true
         context_length: 256000
         input_length: 256000
         output_length: 8192
         context_window: '256K'
       doubao-seed-1-6-251015:
         name: Doubao Seed 1.6
+        supports_image_input: false
         context_length: 256000
         input_length: 256000
         output_length: 8192
         context_window: '256K'
       doubao-seed-1-6-thinking-250715:
         name: Doubao Seed 1.6 Thinking
+        supports_image_input: false
         context_length: 256000
         input_length: 256000
         output_length: 8192
         context_window: '256K'
       doubao-seed-1-6-lite-251015:
         name: Doubao Seed 1.6 Lite
+        supports_image_input: false
         context_length: 32000
         input_length: 32000
         output_length: 8192
         context_window: '32K'
       kimi-k2-250905:
         name: Kimi K2
+        supports_image_input: false
         context_length: 200000
         input_length: 200000
         output_length: 8192
         context_window: '200K (约20万汉字)'
       deepseek-v3-1-terminus:
         name: DeepSeek V3.1 Terminus
+        supports_image_input: false
         context_length: 131072
         input_length: 131072
         output_length: 8192
@@ -621,12 +655,14 @@ providers:
     models:
       deepseek-chat:
         name: DeepSeek-V3.2
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 8192
         context_window: '128K'
       deepseek-reasoner:
         name: DeepSeek-R1 (reasoner, V3.2 thinking mode)
+        supports_image_input: false
         context_length: 128000
         input_length: 128000
         output_length: 65536
@@ -665,42 +701,49 @@ providers:
     models:
       qwen3.5-plus:
         name: Qwen3.5 Plus
+        supports_image_input: true
         context_length: 1000000
         input_length: 983616
         output_length: 65536
         context_window: '1M'
       kimi-k2.5:
         name: Kimi K2.5
+        supports_image_input: true
         context_length: 262144
         input_length: 258048
         output_length: 32768
         context_window: '262K'
       glm-5:
         name: GLM-5
+        supports_image_input: false
         context_length: 202752
         input_length: 202752
         output_length: 16384
         context_window: '202K'
       MiniMax-M2.5:
         name: MiniMax M2.5
+        supports_image_input: false
         context_length: 204800
         input_length: 196608
         output_length: 131072
         context_window: '204K'
       qwen3-coder-next:
         name: Qwen3 Coder Next
+        supports_image_input: false
         context_length: 262144
         input_length: 204800
         output_length: 65536
         context_window: '262K'
       qwen3-coder-plus:
         name: Qwen3 Coder Plus
+        supports_image_input: false
         context_length: 1000000
         input_length: 997952
         output_length: 65536
         context_window: '1M'
       glm-4.7:
         name: GLM-4.7
+        supports_image_input: false
         context_length: 202752
         input_length: 169984
         output_length: 16384

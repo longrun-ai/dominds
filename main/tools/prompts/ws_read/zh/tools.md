@@ -42,7 +42,27 @@ content: |
   <文件内容>
 ```
 
-#### 3. ripgrep_files
+#### 3. read_picture
+
+读取工作区图片，并把它作为图片放入下一轮 LLM 上下文。
+
+**参数：**
+
+- `path`（必需）：图片路径。支持扩展名：`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`
+
+**返回：**
+
+```yaml
+status: ok
+action: read_picture
+path: <图片路径>
+mime_type: <图片 MIME>
+byte_length: <图片字节数>
+artifact_rel_path: <对话 artifact 路径>
+llm_context: image_attached
+```
+
+#### 4. ripgrep_files
 
 搜索包含匹配的文件。
 
@@ -63,7 +83,7 @@ matches:
   - path: <文件路径>
 ```
 
-#### 4. ripgrep_snippets
+#### 5. ripgrep_snippets
 
 搜索并显示匹配片段。
 
@@ -85,7 +105,7 @@ matches:
     content: <匹配内容>
 ```
 
-#### 5. ripgrep_count
+#### 6. ripgrep_count
 
 统计匹配数量。
 
@@ -104,7 +124,7 @@ counts:
     count: <匹配数>
 ```
 
-#### 6. ripgrep_fixed
+#### 7. ripgrep_fixed
 
 固定字符串搜索。
 
@@ -121,7 +141,7 @@ literal: <搜索字符串>
 matches: <匹配列表>
 ```
 
-#### 7. ripgrep_search
+#### 8. ripgrep_search
 
 使用 rg 高级搜索。
 

@@ -31,6 +31,7 @@ import type {
   LlmStreamReceiver,
   LlmStreamResult,
   ToolResultImageIngest,
+  UserImageIngest,
 } from '../gen';
 import { isVisionImageMimeType } from './artifacts';
 import { classifyAnthropicFailure } from './failure-classifier';
@@ -45,11 +46,13 @@ import {
 } from './tool-output-limit';
 import {
   ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
-  buildToolResultImageBudgetKeyForMsg,
-  buildToolResultImageBudgetLimitDetail,
+  buildImageBudgetKeyForContentItem,
+  buildImageBudgetLimitDetail,
   buildToolResultImageIngest,
+  buildUserImageIngest,
   readToolResultImageBytesSafe,
-  selectLatestToolResultImagesWithinBudget,
+  resolveModelImageInputSupport,
+  selectLatestImagesWithinBudget,
 } from './tool-result-image-ingest';
 
 const log = createLogger('llm/anthropic');
@@ -280,6 +283,7 @@ async function funcResultToAnthropicToolResultBlock(
   limitChars: number,
   requestContext: LlmRequestContext,
   allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<Extract<AnthropicContentBlock, { type: 'tool_result' }>> {
   const items = chatMsg.contentItems;
@@ -292,13 +296,32 @@ async function funcResultToAnthropicToolResultBlock(
   }
 
   const content: Array<TextBlockParam | ImageBlockParam> = [];
-  for (const item of items) {
+  for (const [itemIndex, item] of items.entries()) {
     if (item.type === 'input_text') {
       content.push({ type: 'text', text: item.text });
       continue;
     }
 
     if (item.type === 'input_image') {
+      if (!supportsImageInput) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: chatMsg.id,
+              toolName: chatMsg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_model_unsupported',
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
+        content.push({
+          type: 'text',
+          text: `[image not sent: current model does not support image input]`,
+        });
+        continue;
+      }
       if (!isVisionImageMimeType(item.mimeType)) {
         if (onToolResultImageIngest) {
           await onToolResultImageIngest(
@@ -319,7 +342,11 @@ async function funcResultToAnthropicToolResultBlock(
         });
         continue;
       }
-      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(chatMsg, item.artifact))) {
+      if (
+        !allowedImageKeys.has(
+          buildImageBudgetKeyForContentItem({ msg: chatMsg, itemIndex, artifact: item.artifact }),
+        )
+      ) {
         if (onToolResultImageIngest) {
           await onToolResultImageIngest(
             buildToolResultImageIngest({
@@ -328,7 +355,7 @@ async function funcResultToAnthropicToolResultBlock(
               toolName: chatMsg.name,
               artifact: item.artifact,
               disposition: 'filtered_size_limit',
-              detail: buildToolResultImageBudgetLimitDetail({
+              detail: buildImageBudgetLimitDetail({
                 byteLength: item.byteLength,
                 budgetBytes: ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
               }),
@@ -427,8 +454,150 @@ async function chatMessageToContentBlocksAsync(
   limitChars: number,
   requestContext: LlmRequestContext,
   allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<AnthropicContentBlock[]> {
+  if (
+    (chatMsg.type === 'prompting_msg' ||
+      chatMsg.type === 'tellask_result_msg' ||
+      chatMsg.type === 'tellask_carryover_msg') &&
+    Array.isArray(chatMsg.contentItems) &&
+    chatMsg.contentItems.length > 0
+  ) {
+    const content: Array<TextBlockParam | ImageBlockParam> = [
+      { type: 'text', text: chatMsg.content },
+    ];
+    for (const [itemIndex, item] of chatMsg.contentItems.entries()) {
+      if (item.type === 'input_text') {
+        content.push({ type: 'text', text: item.text });
+        continue;
+      }
+      if (item.type === 'input_image') {
+        if (!supportsImageInput) {
+          if (onUserImageIngest) {
+            await onUserImageIngest(
+              buildUserImageIngest({
+                requestContext,
+                ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+                artifact: item.artifact,
+                disposition: 'filtered_model_unsupported',
+                providerPathLabel: 'Anthropic Messages path',
+              }),
+            );
+          }
+          content.push({
+            type: 'text',
+            text: `[image not sent: current model does not support image input]`,
+          });
+          continue;
+        }
+        if (!isVisionImageMimeType(item.mimeType)) {
+          if (onUserImageIngest) {
+            await onUserImageIngest(
+              buildUserImageIngest({
+                requestContext,
+                ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+                artifact: item.artifact,
+                disposition: 'filtered_mime_unsupported',
+                mimeType: item.mimeType,
+                providerPathLabel: 'Anthropic Messages path',
+              }),
+            );
+          }
+          content.push({
+            type: 'text',
+            text: `[image not sent: unsupported mimeType=${item.mimeType}]`,
+          });
+          continue;
+        }
+        if (
+          !allowedImageKeys.has(
+            buildImageBudgetKeyForContentItem({ msg: chatMsg, itemIndex, artifact: item.artifact }),
+          )
+        ) {
+          if (onUserImageIngest) {
+            await onUserImageIngest(
+              buildUserImageIngest({
+                requestContext,
+                ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+                artifact: item.artifact,
+                disposition: 'filtered_size_limit',
+                detail: buildImageBudgetLimitDetail({
+                  byteLength: item.byteLength,
+                  budgetBytes: ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+                }),
+                providerPathLabel: 'Anthropic Messages path',
+              }),
+            );
+          }
+          content.push({
+            type: 'text',
+            text: `[image not sent: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+              ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+            )}]`,
+          });
+          continue;
+        }
+        const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+        if (bytesResult.kind === 'missing') {
+          if (onUserImageIngest) {
+            await onUserImageIngest(
+              buildUserImageIngest({
+                requestContext,
+                ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+                artifact: item.artifact,
+                disposition: 'filtered_missing',
+                providerPathLabel: 'Anthropic Messages path',
+              }),
+            );
+          }
+          content.push({ type: 'text', text: `[image missing: ${item.artifact.relPath}]` });
+          continue;
+        }
+        if (bytesResult.kind === 'read_failed') {
+          if (onUserImageIngest) {
+            await onUserImageIngest(
+              buildUserImageIngest({
+                requestContext,
+                ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+                artifact: item.artifact,
+                disposition: 'filtered_read_failed',
+                detail: bytesResult.detail,
+                providerPathLabel: 'Anthropic Messages path',
+              }),
+            );
+          }
+          content.push({ type: 'text', text: `[image unreadable: ${item.artifact.relPath}]` });
+          continue;
+        }
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(chatMsg.type === 'prompting_msg' ? { msgId: chatMsg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'fed_native',
+              providerPathLabel: 'Anthropic Messages path',
+            }),
+          );
+        }
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: item.mimeType,
+            data: bytesResult.bytes.toString('base64'),
+          },
+        });
+        continue;
+      }
+      const _exhaustive: never = item;
+      throw new Error(`Unsupported user content item: ${String(_exhaustive)}`);
+    }
+    return content;
+  }
+
   if (chatMsg.type !== 'func_result_msg') {
     return chatMessageToContentBlocks(chatMsg);
   }
@@ -438,6 +607,7 @@ async function chatMessageToContentBlocksAsync(
       limitChars,
       requestContext,
       allowedImageKeys,
+      supportsImageInput,
       onToolResultImageIngest,
     ),
   ];
@@ -448,14 +618,18 @@ async function chatMessageToAnthropicAsync(
   limitChars: number,
   requestContext: LlmRequestContext,
   allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<MessageParam> {
   const contentBlocks = await chatMessageToContentBlocksAsync(
     chatMsg,
     limitChars,
     requestContext,
     allowedImageKeys,
+    supportsImageInput,
     onToolResultImageIngest,
+    onUserImageIngest,
   );
   if (contentBlocks.length === 0) {
     throw new Error(`No content blocks generated for message: ${JSON.stringify(chatMsg)}`);
@@ -476,6 +650,7 @@ async function buildAnthropicRequestMessages(
   requestContext: LlmRequestContext,
   providerConfig?: ProviderConfig,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<MessageParam[]> {
   // We keep the async path for func_result_msg because it may contain image artifacts.
   const normalized = normalizeToolCallPairs(context);
@@ -492,9 +667,15 @@ async function buildAnthropicRequestMessages(
   }
   const messages: MessageParam[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
-  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+  const allowedImageKeys = selectLatestImagesWithinBudget(
     normalized,
     ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
+  const supportsImageInput = resolveModelImageInputSupport(
+    requestContext.modelKey === undefined
+      ? undefined
+      : providerConfig?.models[requestContext.modelKey],
+    true,
   );
 
   for (const msg of normalized) {
@@ -504,7 +685,9 @@ async function buildAnthropicRequestMessages(
         toolResultMaxChars,
         requestContext,
         allowedImageKeys,
+        supportsImageInput,
         onToolResultImageIngest,
+        onUserImageIngest,
       ),
     );
   }
@@ -1206,6 +1389,7 @@ export class AnthropicGen implements LlmGenerator {
       requestContext,
       providerConfig,
       receiver.toolResultImageIngest,
+      receiver.userImageIngest,
     );
 
     const anthropicParams = agent.model_params?.anthropic || {};
@@ -1289,6 +1473,9 @@ export class AnthropicGen implements LlmGenerator {
       providerConfig,
       async (ingest) => {
         outputs.push({ kind: 'tool_result_image_ingest', ingest });
+      },
+      async (ingest) => {
+        outputs.push({ kind: 'user_image_ingest', ingest });
       },
     );
 

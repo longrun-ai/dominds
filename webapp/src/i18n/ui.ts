@@ -155,6 +155,7 @@ export type UiStrings = {
   q4hSelectedQuestionStaleToastPrefix: string;
   q4hMessageEmptyToast: string;
   q4hNoRoutableTargetToast: string;
+  q4hConnectionUnavailableToast: string;
   q4hSendFailedToast: string;
   teammateAssignmentBubbleTitle: string;
   teammateRequesterCallSiteTitle: string;
@@ -547,6 +548,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hSelectedQuestionStaleToastPrefix: '已选问题已失效：',
       q4hMessageEmptyToast: '消息内容不能为空。',
       q4hNoRoutableTargetToast: '没有可路由的目标：请选择一个 Q4H 问题或活跃对话。',
+      q4hConnectionUnavailableToast: '当前未连接到后端，消息尚未发送。',
       q4hSendFailedToast: '发送消息失败。',
       teammateAssignmentBubbleTitle: '定位到任务安排气泡',
       teammateRequesterCallSiteTitle: '在新标签打开诉请发起点',
@@ -957,6 +959,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hSelectedQuestionStaleToastPrefix: 'Selected Q4H question is stale: ',
     q4hMessageEmptyToast: 'Message content is empty.',
     q4hNoRoutableTargetToast: 'No routable target: select a Q4H question or an active dialog.',
+    q4hConnectionUnavailableToast: 'Not connected to the backend; the message was not sent.',
     q4hSendFailedToast: 'Failed to send message.',
     teammateAssignmentBubbleTitle: 'Go to assignment bubble',
     teammateRequesterCallSiteTitle: 'Open requester call site in new tab',

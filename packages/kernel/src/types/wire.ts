@@ -259,10 +259,18 @@ export interface DiligencePushUpdatedMessage {
   timestamp: string;
 }
 
+export interface UserImageAttachment {
+  kind: 'image';
+  mimeType: string;
+  byteLength: number;
+  dataBase64: string;
+}
+
 export interface DriveDialogRequest {
   type: 'drive_dlg_by_user_msg';
   dialog: DialogIdent;
   content: string;
+  attachments?: UserImageAttachment[];
   msgId: string;
   userLanguageCode: LanguageCode;
 }
@@ -271,6 +279,7 @@ export interface DriveDialogByUserAnswer {
   type: 'drive_dialog_by_user_answer';
   dialog: DialogIdent;
   content: string;
+  attachments?: UserImageAttachment[];
   msgId: string;
   questionId: string;
   continuationType: 'answer' | 'followup' | 'retry' | 'new_message';

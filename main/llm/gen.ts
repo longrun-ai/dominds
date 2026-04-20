@@ -30,7 +30,8 @@ export type LlmBatchOutput =
   | { kind: 'message'; message: ChatMessage }
   | { kind: 'web_search_call'; call: LlmWebSearchCall }
   | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall }
-  | { kind: 'tool_result_image_ingest'; ingest: ToolResultImageIngest };
+  | { kind: 'tool_result_image_ingest'; ingest: ToolResultImageIngest }
+  | { kind: 'user_image_ingest'; ingest: UserImageIngest };
 
 export interface LlmBatchResult {
   messages: ChatMessage[];
@@ -65,6 +66,16 @@ export interface LlmRequestContext {
 export type ToolResultImageIngest = {
   toolCallId: string;
   toolName: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
+};
+
+export type UserImageIngest = {
+  msgId?: string;
   artifact: ToolResultImageArtifact;
   provider: string;
   model: string;
@@ -161,6 +172,7 @@ export interface LlmStreamReceiver {
   webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
   nativeToolCall?: (call: OpenAiResponsesNativeToolCall) => Promise<void>;
   toolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;
+  userImageIngest?: (ingest: UserImageIngest) => Promise<void>;
 
   // Optional hook for generators to surface protocol/streaming anomalies (e.g. overlap) via the runtime.
   // Used only for debugging; generators should still attempt best-effort recovery.

@@ -42,7 +42,27 @@ content: |
   <file content>
 ```
 
-### 3. ripgrep_files
+### 3. read_picture
+
+Read a workspace image and attach it to the next LLM context as an image.
+
+**Parameters:**
+
+- `path` (required): Image path. Supported extensions: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`
+
+**Returns:**
+
+```yaml
+status: ok
+action: read_picture
+path: <image path>
+mime_type: <image mime>
+byte_length: <image bytes>
+artifact_rel_path: <dialog artifact path>
+llm_context: image_attached
+```
+
+### 4. ripgrep_files
 
 Search files containing matches.
 
@@ -63,7 +83,7 @@ matches:
   - path: <file path>
 ```
 
-### 4. ripgrep_snippets
+### 5. ripgrep_snippets
 
 Search and display matching snippets.
 
@@ -85,7 +105,7 @@ matches:
     content: <matching content>
 ```
 
-### 5. ripgrep_count
+### 6. ripgrep_count
 
 Count matches.
 
@@ -104,7 +124,7 @@ counts:
     count: <match count>
 ```
 
-### 6. ripgrep_fixed
+### 7. ripgrep_fixed
 
 Fixed string search.
 
@@ -121,7 +141,7 @@ literal: <search string>
 matches: <match list>
 ```
 
-### 7. ripgrep_search
+### 8. ripgrep_search
 
 Advanced rg search.
 

@@ -36,6 +36,7 @@ import {
   stopDaemonTool,
 } from './os';
 import { pendingTellaskReminderOwner } from './pending-tellask-reminder';
+import { readPictureTool, writePictureTool } from './picture';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import {
   ripgrepCountTool,
@@ -89,6 +90,8 @@ registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readFileTool);
+registerTool(readPictureTool);
+registerTool(writePictureTool);
 registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
 registerTool(prepareFileRangeEditTool);
@@ -230,6 +233,7 @@ setToolsetMeta('mcp_admin', {
 registerToolset('ws_read', [
   listDirTool,
   readFileTool,
+  readPictureTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,
   ripgrepCountTool,
@@ -239,8 +243,8 @@ registerToolset('ws_read', [
 setToolsetMeta('ws_read', {
   source: 'dominds',
   descriptionI18n: {
-    en: 'rtws read-only access: list directories, read files, and search code/content to gather facts safely.',
-    zh: '运行时工作区只读访问：列目录、读文件、检索代码与文本，用于安全获取事实。',
+    en: 'rtws read-only access: list directories, read text/images, and search code/content to gather facts safely.',
+    zh: '运行时工作区只读访问：列目录、读文本/图片、检索代码与文本，用于安全获取事实。',
   },
   promptFilesI18n: promptFilesFor('ws_read'),
   manualSpec: manualSpecFor('ws_read'),
@@ -253,6 +257,8 @@ registerToolset('ws_mod', [
   moveFileTool,
   moveDirTool,
   readFileTool,
+  readPictureTool,
+  writePictureTool,
   createNewFileTool,
   overwriteEntireFileTool,
   prepareFileAppendTool,
@@ -270,8 +276,8 @@ registerToolset('ws_mod', [
 setToolsetMeta('ws_mod', {
   source: 'dominds',
   descriptionI18n: {
-    en: 'rtws read/write access: inspect, create, move, delete, and precisely edit workspace files.',
-    zh: '运行时工作区读写访问：检查、创建、移动、删除，并精确编辑工作区文件。',
+    en: 'rtws read/write access: inspect, create, move, delete, precisely edit text files, and read/write workspace images.',
+    zh: '运行时工作区读写访问：检查、创建、移动、删除、精确编辑文本文件，并读写工作区图片。',
   },
   promptFilesI18n: promptFilesFor('ws_mod'),
   manualSpec: manualSpecFor('ws_mod'),

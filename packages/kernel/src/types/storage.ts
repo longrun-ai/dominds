@@ -401,6 +401,7 @@ type TellaskResultRecordBase = RootGenerationRef & {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   status: 'pending' | 'completed' | 'failed';
   content: string;
+  contentItems?: FuncResultContentItem[];
   originCourse?: CallingCourseNumber;
   calling_genseq?: CallingGenerationSeqNumber;
   call: {
@@ -536,6 +537,7 @@ export interface HumanTextRecord extends RootGenerationRef {
   genseq: number;
   msgId: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
   grammar: 'markdown';
   origin?: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
@@ -585,6 +587,23 @@ export interface ToolResultImageIngestRecord extends RootGenerationRef {
   genseq: number;
   toolCallId: string;
   toolName: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
+  sourceTag?: 'priming_script';
+}
+
+export interface UserImageIngestRecord extends RootGenerationRef {
+  // Attempt-scoped UI diagnostic for how the current generation projected a user-provided image
+  // attachment into the provider request. Like tool-result image ingest records, these are rolled
+  // back with failed generation attempts.
+  ts: string;
+  type: 'user_image_ingest_record';
+  genseq: number;
+  msgId?: string;
   artifact: ToolResultImageArtifact;
   provider: string;
   model: string;
@@ -657,6 +676,7 @@ export type TellaskCarryoverRecord =
       // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
       // treating it as a tool-result pair for an older-course call.
       content: string;
+      contentItems?: FuncResultContentItem[];
       agentId: string;
       callId: string;
       originMemberId: string;
@@ -681,6 +701,7 @@ export type TellaskCarryoverRecord =
       // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
       // treating it as a tool-result pair for an older-course call.
       content: string;
+      contentItems?: FuncResultContentItem[];
       agentId: string;
       callId: string;
       originMemberId: string;
@@ -706,6 +727,7 @@ export type TellaskCarryoverRecord =
       // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
       // treating it as a tool-result pair for an older-course call.
       content: string;
+      contentItems?: FuncResultContentItem[];
       agentId: string;
       callId: string;
       originMemberId: string;
@@ -730,6 +752,7 @@ export type TellaskCarryoverRecord =
       // Canonical latest-course carryover payload. UI/LLM should read this directly instead of
       // treating it as a tool-result pair for an older-course call.
       content: string;
+      contentItems?: FuncResultContentItem[];
       agentId: string;
       callId: string;
       originMemberId: string;
@@ -892,6 +915,7 @@ export type PersistedDialogRecord =
   | HumanTextRecord
   | FuncResultRecord
   | ToolResultImageIngestRecord
+  | UserImageIngestRecord
   | QuestForSupRecord
   | TellaskReplyResolutionRecord
   | TellaskCallAnchorRecord

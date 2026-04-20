@@ -18,6 +18,7 @@ export type PromptingMsg = Readonly<{
   genseq: number;
   msgId: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
   grammar: 'markdown';
 }>;
 
@@ -65,6 +66,7 @@ export type TellaskResultMsg = Readonly<{
   callName: string;
   status: 'pending' | 'completed' | 'failed';
   content: string;
+  contentItems?: FuncResultContentItem[];
   originCourse?: number;
   responderId?: string;
   mentionList?: string[];
@@ -100,6 +102,7 @@ export type TellaskCarryoverMsg = Readonly<{
   // Canonical latest-course carryover context. UI and LLM should read this directly when the
   // original tellask call lived in an older course and is therefore absent from current context.
   content: string;
+  contentItems?: FuncResultContentItem[];
   // Provenance only: where the original tellask call was issued.
   originCourse: number;
   // Ownership: the current/latest course that now contains the usable carryover context.

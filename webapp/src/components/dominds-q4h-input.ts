@@ -33,6 +33,15 @@ interface Q4HInputProps {
   maxLength?: number;
 }
 
+interface PastedImageAttachment {
+  id: string;
+  mimeType: string;
+  byteLength: number;
+  dataBase64: string;
+  objectUrl: string;
+  name: string;
+}
+
 type DialogContext = DialogIdent & {
   assignmentFromSup?: AssignmentFromSup;
 };
@@ -40,6 +49,29 @@ type DialogContext = DialogIdent & {
 const RESIZE_HANDLE_ARIA_LABEL_I18N = {
   zh: '调整输入区高度',
   en: 'Resize input height',
+} as const;
+
+const IMAGE_ATTACHMENT_I18N = {
+  zh: {
+    remove: '移除图片',
+    preview: '查看图片',
+    close: '关闭图片预览',
+    tooMany: '最多只能粘贴 4 张图片',
+    tooLarge: '单张图片不能超过 10 MB',
+    unsupported: '只支持 PNG、JPEG、WebP、GIF 图片',
+    readFailed: '读取剪贴板图片失败',
+    imageOnlyPrompt: '请看附件图片。',
+  },
+  en: {
+    remove: 'Remove image',
+    preview: 'View image',
+    close: 'Close image preview',
+    tooMany: 'You can paste up to 4 images',
+    tooLarge: 'Each image must be 10 MB or smaller',
+    unsupported: 'Only PNG, JPEG, WebP, and GIF images are supported',
+    readFailed: 'Failed to read clipboard image',
+    imageOnlyPrompt: 'Please inspect the attached image.',
+  },
 } as const;
 
 export class DomindsQ4HInput extends HTMLElement {
@@ -54,6 +86,8 @@ export class DomindsQ4HInput extends HTMLElement {
   private static readonly INPUT_HISTORY_STORAGE_KEY = 'dominds-user-input-history-v1';
   private static readonly INPUT_HISTORY_MAX = 100;
   private static readonly MANUAL_HEIGHT_STORAGE_KEY = 'dominds-q4h-input-height-px-v1';
+  private static readonly IMAGE_ATTACHMENT_MAX_COUNT = 4;
+  private static readonly IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
   private questions: Q4HQuestion[] = [];
   private selectedQuestionId: string | null = null;
@@ -74,6 +108,8 @@ export class DomindsQ4HInput extends HTMLElement {
   private inputHistory: string[] = [];
   private inputHistoryCursor: number | null = null; // 0..len, where len means draft/current
   private inputHistoryDraft: string | null = null;
+  private imageAttachments: PastedImageAttachment[] = [];
+  private openImageAttachmentId: string | null = null;
 
   private textInput!: HTMLTextAreaElement;
   private measureTextarea!: HTMLTextAreaElement;
@@ -139,6 +175,7 @@ export class DomindsQ4HInput extends HTMLElement {
       window.cancelAnimationFrame(this.inputUiRafId);
       this.inputUiRafId = null;
     }
+    this.revokeImageAttachments();
     this.finishManualResize(false);
     if (this.boundOnWindowResize) {
       window.removeEventListener('resize', this.boundOnWindowResize);
@@ -305,6 +342,129 @@ export class DomindsQ4HInput extends HTMLElement {
     return measurer.scrollHeight;
   }
 
+  private static escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private revokeImageAttachments(): void {
+    for (const attachment of this.imageAttachments) {
+      URL.revokeObjectURL(attachment.objectUrl);
+    }
+    this.imageAttachments = [];
+    this.openImageAttachmentId = null;
+  }
+
+  private isSupportedImageMimeType(mimeType: string): boolean {
+    return (
+      mimeType === 'image/png' ||
+      mimeType === 'image/jpeg' ||
+      mimeType === 'image/webp' ||
+      mimeType === 'image/gif'
+    );
+  }
+
+  private makeAttachmentId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `img_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  private async fileToBase64(file: File): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          reject(new Error('FileReader returned non-string result'));
+          return;
+        }
+        const commaIndex = result.indexOf(',');
+        if (commaIndex < 0) {
+          reject(new Error('FileReader data URL missing payload'));
+          return;
+        }
+        resolve(result.slice(commaIndex + 1));
+      };
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private async addImageFiles(files: readonly File[]): Promise<void> {
+    const t = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+
+    if (
+      this.imageAttachments.length + imageFiles.length >
+      DomindsQ4HInput.IMAGE_ATTACHMENT_MAX_COUNT
+    ) {
+      throw new Error(t.tooMany);
+    }
+
+    const nextAttachments: PastedImageAttachment[] = [];
+    try {
+      for (const file of imageFiles) {
+        if (!this.isSupportedImageMimeType(file.type)) {
+          throw new Error(t.unsupported);
+        }
+        if (file.size <= 0 || file.size > DomindsQ4HInput.IMAGE_ATTACHMENT_MAX_BYTES) {
+          throw new Error(t.tooLarge);
+        }
+        nextAttachments.push({
+          id: this.makeAttachmentId(),
+          mimeType: file.type,
+          byteLength: file.size,
+          dataBase64: await this.fileToBase64(file),
+          objectUrl: URL.createObjectURL(file),
+          name: file.name.trim() || file.type,
+        });
+      }
+    } catch (error: unknown) {
+      for (const attachment of nextAttachments) {
+        URL.revokeObjectURL(attachment.objectUrl);
+      }
+      throw error;
+    }
+
+    this.imageAttachments = [...this.imageAttachments, ...nextAttachments];
+    this.safeRender();
+    this.scheduleInputUiUpdate();
+  }
+
+  private removeImageAttachment(id: string): void {
+    const existing = this.imageAttachments.find((attachment) => attachment.id === id);
+    if (existing) {
+      URL.revokeObjectURL(existing.objectUrl);
+    }
+    this.imageAttachments = this.imageAttachments.filter((attachment) => attachment.id !== id);
+    if (this.openImageAttachmentId === id) {
+      this.openImageAttachmentId = null;
+    }
+    this.safeRender();
+    this.scheduleInputUiUpdate();
+  }
+
+  private getOutgoingAttachments(): Array<{
+    kind: 'image';
+    mimeType: string;
+    byteLength: number;
+    dataBase64: string;
+  }> {
+    return this.imageAttachments.map((attachment) => ({
+      kind: 'image',
+      mimeType: attachment.mimeType,
+      byteLength: attachment.byteLength,
+      dataBase64: attachment.dataBase64,
+    }));
+  }
+
   public setUiLanguage(language: LanguageCode): void {
     this.uiLanguage = language;
     const t = getUiStrings(language);
@@ -410,7 +570,8 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.hasSelectedQ4HTarget()) return 'send';
     if (this.currentDialog === null) return 'send';
 
-    const hasContent = (this.textInput?.value ?? '').trim().length > 0;
+    const hasContent =
+      (this.textInput?.value ?? '').trim().length > 0 || this.imageAttachments.length > 0;
     const state = this.displayState;
     if (state === null) return 'send';
     if (state.kind === 'proceeding_stop_requested') return 'stopping';
@@ -575,8 +736,10 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.textInput) {
       this.textInput.value = '';
       this.resetInputHistoryNavigation();
+      this.revokeImageAttachments();
       this.updateSendButton();
       this.autoResizeTextarea();
+      this.safeRender();
     }
   }
 
@@ -764,6 +927,22 @@ export class DomindsQ4HInput extends HTMLElement {
         this.scheduleInputUiUpdate();
       });
 
+      this.textInput.addEventListener('paste', (event: ClipboardEvent) => {
+        const items = event.clipboardData?.items;
+        if (!items || items.length === 0) return;
+        const files = Array.from(items)
+          .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => file !== null);
+        if (files.length === 0) return;
+        event.preventDefault();
+        void this.addImageFiles(files).catch((error: unknown) => {
+          console.error('Failed to add pasted image:', error);
+          const t = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+          this.showError(error instanceof Error ? error.message : t.readFailed);
+        });
+      });
+
       this.textInput.addEventListener('keydown', (e) => {
         const isIme = this.isComposing || e.isComposing || e.keyCode === 229;
 
@@ -792,7 +971,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
         if (e.key === 'Escape') {
           if (isIme) return;
-          const hasContent = this.textInput.value.length > 0;
+          const hasContent = this.textInput.value.length > 0 || this.imageAttachments.length > 0;
           if (!hasContent) {
             this.escPrimedAtMs = null;
             return;
@@ -921,6 +1100,36 @@ export class DomindsQ4HInput extends HTMLElement {
         this.resizeHandle.addEventListener('lostpointercapture', this.boundManualLostCapture);
       });
     }
+
+    this.shadowRoot.querySelectorAll<HTMLButtonElement>('.attachment-thumb').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.attachmentId;
+        if (typeof id !== 'string') return;
+        this.openImageAttachmentId = id;
+        this.safeRender();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll<HTMLButtonElement>('.attachment-remove').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = button.dataset.attachmentId;
+        if (typeof id !== 'string') return;
+        this.removeImageAttachment(id);
+      });
+    });
+
+    const modalCloseTargets = this.shadowRoot.querySelectorAll<HTMLElement>(
+      '.image-modal-backdrop, .image-modal-close',
+    );
+    modalCloseTargets.forEach((target) => {
+      target.addEventListener('click', () => {
+        this.openImageAttachmentId = null;
+        this.safeRender();
+        this.focusInput();
+      });
+    });
   }
 
   private async requestDeclareDeath(): Promise<void> {
@@ -938,6 +1147,9 @@ export class DomindsQ4HInput extends HTMLElement {
     }
     if (this.props.disabled) {
       throw new Error(t.inputNotAvailableToast);
+    }
+    if (!this.wsManager.isConnected()) {
+      throw new Error(t.q4hConnectionUnavailableToast);
     }
     const ok = window.confirm(this.getDeclareDeathConfirmText());
     if (!ok) return;
@@ -1003,7 +1215,11 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private async sendMessage(): Promise<{ success: true; msgId: string }> {
     const t = getUiStrings(this.uiLanguage);
-    const content = this.textInput.value.trim();
+    const attachmentI18n = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+    const hasAttachments = this.imageAttachments.length > 0;
+    const typedContent = this.textInput.value.trim();
+    const content = typedContent || (hasAttachments ? attachmentI18n.imageOnlyPrompt : '');
+    const attachments = this.getOutgoingAttachments();
     const answeredQuestionId = this.selectedQuestionId;
     const answeredQuestion =
       answeredQuestionId !== null
@@ -1020,7 +1236,7 @@ export class DomindsQ4HInput extends HTMLElement {
           }
         : this.currentDialog;
 
-    if (!content) {
+    if (!content && attachments.length === 0) {
       throw new Error(t.q4hMessageEmptyToast);
     }
 
@@ -1030,6 +1246,10 @@ export class DomindsQ4HInput extends HTMLElement {
 
     if (this.props.disabled) {
       throw new Error(t.inputNotAvailableToast);
+    }
+
+    if (!this.wsManager.isConnected()) {
+      throw new Error(t.q4hConnectionUnavailableToast);
     }
 
     const msgId = generateShortId();
@@ -1043,6 +1263,7 @@ export class DomindsQ4HInput extends HTMLElement {
         this.sendHumanReply({
           targetDialog,
           content,
+          attachments,
           msgId,
           questionId: answeredQuestion.id,
         });
@@ -1052,12 +1273,13 @@ export class DomindsQ4HInput extends HTMLElement {
           type: 'drive_dlg_by_user_msg',
           dialog: targetDialog,
           content,
+          attachments,
           msgId,
           userLanguageCode: this.uiLanguage,
         });
       }
 
-      this.recordInputHistoryEntry(content);
+      this.recordInputHistoryEntry(typedContent);
       if (answeredQuestion !== null) {
         // Q4H answer flow: clear question selection/styling immediately after answer routing.
         this.selectQuestion(null);
@@ -1101,6 +1323,12 @@ export class DomindsQ4HInput extends HTMLElement {
   private sendHumanReply(args: {
     targetDialog: DialogIdent;
     content: string;
+    attachments: Array<{
+      kind: 'image';
+      mimeType: string;
+      byteLength: number;
+      dataBase64: string;
+    }>;
     msgId: string;
     questionId: string;
   }): void {
@@ -1108,6 +1336,7 @@ export class DomindsQ4HInput extends HTMLElement {
       type: 'drive_dialog_by_user_answer',
       dialog: args.targetDialog,
       content: args.content,
+      attachments: args.attachments,
       msgId: args.msgId,
       questionId: args.questionId,
       continuationType: 'answer',
@@ -1144,7 +1373,7 @@ export class DomindsQ4HInput extends HTMLElement {
       return;
     }
 
-    const hasContent = this.textInput.value.trim().length > 0;
+    const hasContent = this.textInput.value.trim().length > 0 || this.imageAttachments.length > 0;
     const hasSelectedQ4H = this.hasSelectedQ4HTarget();
     const hasCurrentDialog = this.currentDialog !== null;
     const hasRoutableTarget = hasSelectedQ4H || hasCurrentDialog;
@@ -1207,6 +1436,57 @@ export class DomindsQ4HInput extends HTMLElement {
     this.resizeHandle = this.shadowRoot.querySelector('.input-resize-handle')!;
   }
 
+  private renderAttachmentStrip(): string {
+    if (this.imageAttachments.length === 0) return '';
+    const t = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+    const items = this.imageAttachments
+      .map((attachment) => {
+        const id = DomindsQ4HInput.escapeHtml(attachment.id);
+        const name = DomindsQ4HInput.escapeHtml(attachment.name);
+        const src = DomindsQ4HInput.escapeHtml(attachment.objectUrl);
+        return `
+          <div class="attachment-item">
+            <button class="attachment-thumb" type="button" data-attachment-id="${id}" title="${DomindsQ4HInput.escapeHtml(
+              t.preview,
+            )}" aria-label="${DomindsQ4HInput.escapeHtml(t.preview)}">
+              <img src="${src}" alt="${name}">
+            </button>
+            <button class="attachment-remove" type="button" data-attachment-id="${id}" title="${DomindsQ4HInput.escapeHtml(
+              t.remove,
+            )}" aria-label="${DomindsQ4HInput.escapeHtml(t.remove)}">
+              <span class="icon-mask attachment-remove-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        `;
+      })
+      .join('');
+    return `<div class="attachment-strip">${items}</div>`;
+  }
+
+  private renderImageModal(): string {
+    const attachment =
+      this.openImageAttachmentId === null
+        ? null
+        : (this.imageAttachments.find((item) => item.id === this.openImageAttachmentId) ?? null);
+    if (attachment === null) return '';
+    const t = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+    return `
+      <div class="image-modal" role="dialog" aria-modal="true">
+        <div class="image-modal-backdrop"></div>
+        <div class="image-modal-content">
+          <button class="image-modal-close" type="button" title="${DomindsQ4HInput.escapeHtml(
+            t.close,
+          )}" aria-label="${DomindsQ4HInput.escapeHtml(t.close)}">
+            <span class="icon-mask image-modal-close-icon" aria-hidden="true"></span>
+          </button>
+          <img src="${DomindsQ4HInput.escapeHtml(attachment.objectUrl)}" alt="${DomindsQ4HInput.escapeHtml(
+            attachment.name,
+          )}">
+        </div>
+      </div>
+    `;
+  }
+
   private getComponentHTML(): string {
     const t = getUiStrings(this.uiLanguage);
     const mode = this.resolvePrimaryActionMode();
@@ -1237,13 +1517,16 @@ export class DomindsQ4HInput extends HTMLElement {
         <div class="input-section">
           <div class="input-resize-handle" role="separator" aria-orientation="horizontal" aria-label="${RESIZE_HANDLE_ARIA_LABEL_I18N[this.uiLanguage]}"></div>
           <div class="input-wrapper ${this.selectedQuestionId !== null ? 'q4h-active' : ''} ${this.props.disabled ? 'disabled' : ''}">
-            <textarea id="human-input"
-              class="message-input"
-              placeholder="${this.props.placeholder}"
-              maxlength="${this.props.maxLength}"
-              rows="2"
-              ${this.props.disabled ? 'disabled' : ''}
-            ></textarea>
+            <div class="input-body">
+              <textarea id="human-input"
+                class="message-input"
+                placeholder="${this.props.placeholder}"
+                maxlength="${this.props.maxLength}"
+                rows="2"
+                ${this.props.disabled ? 'disabled' : ''}
+              ></textarea>
+              ${this.renderAttachmentStrip()}
+            </div>
             <div class="input-actions">
               <button
                 class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
@@ -1271,6 +1554,7 @@ export class DomindsQ4HInput extends HTMLElement {
             </div>
           </div>
         </div>
+        ${this.renderImageModal()}
       </div>
     `;
   }
@@ -1389,6 +1673,14 @@ export class DomindsQ4HInput extends HTMLElement {
         padding-bottom: 6px;
       }
 
+      .input-body {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        flex-direction: column;
+      }
+
       .declare-death-button {
         display: inline-flex;
         align-items: center;
@@ -1478,6 +1770,117 @@ export class DomindsQ4HInput extends HTMLElement {
         font-family: inherit;
         white-space: pre-wrap;
         overflow-y: auto;
+      }
+
+      .attachment-strip {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 0 8px 8px 12px;
+        min-height: 44px;
+        align-items: center;
+      }
+
+      .attachment-item {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+      }
+
+      .attachment-thumb {
+        appearance: none;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--dominds-bg-secondary, #ffffff);
+        cursor: pointer;
+      }
+
+      .attachment-thumb img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .attachment-remove {
+        appearance: none;
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 18px;
+        height: 18px;
+        padding: 0;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 50%;
+        background: var(--dominds-bg-secondary, #ffffff);
+        color: var(--dominds-fg, #333333);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+      }
+
+      .attachment-remove-icon,
+      .image-modal-close-icon {
+        --icon-mask: ${ICON_MASK_URLS.close};
+        width: 12px;
+        height: 12px;
+      }
+
+      .image-modal {
+        position: fixed;
+        inset: 0;
+        z-index: var(--dominds-z-overlay-modal, 2000);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .image-modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.62);
+      }
+
+      .image-modal-content {
+        position: relative;
+        max-width: min(92vw, 1100px);
+        max-height: min(88vh, 900px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .image-modal-content img {
+        display: block;
+        max-width: 100%;
+        max-height: min(88vh, 900px);
+        object-fit: contain;
+        border-radius: 6px;
+        background: #111111;
+      }
+
+      .image-modal-close {
+        appearance: none;
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.74);
+        color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
       }
 
       .message-input::placeholder {

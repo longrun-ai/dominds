@@ -74,6 +74,8 @@ async function main(): Promise<void> {
   await runTest('Individual tool lookup', () => {
     const listDirTool = getTool('list_dir');
     const readFileTool = getTool('read_file');
+    const readPictureTool = getTool('read_picture');
+    const writePictureTool = getTool('write_picture');
     const addPersonalMemoryTool = getTool('add_personal_memory');
     const readonlyShellTool = getTool('readonly_shell');
     const applyPatchTool = getTool('apply_patch');
@@ -81,12 +83,34 @@ async function main(): Promise<void> {
 
     assertTrue(!!listDirTool, 'list_dir tool should exist');
     assertTrue(!!readFileTool, 'read_file tool should exist');
+    assertTrue(!!readPictureTool, 'read_picture tool should exist');
+    assertTrue(!!writePictureTool, 'write_picture tool should exist');
     assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
     assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
     assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
     assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
 
     console.log('Tool lookup verification passed');
+  });
+
+  await runTest('Picture tools are exposed in workspace toolsets', () => {
+    const wsReadToolset = getToolset('ws_read');
+    const wsModToolset = getToolset('ws_mod');
+    if (!wsReadToolset || !wsModToolset) {
+      throw new Error('Expected ws_read and ws_mod toolsets to be registered');
+    }
+    assertTrue(
+      wsReadToolset.some((tool) => tool.name === 'read_picture'),
+      'ws_read should expose read_picture',
+    );
+    assertTrue(
+      wsModToolset.some((tool) => tool.name === 'read_picture'),
+      'ws_mod should expose read_picture',
+    );
+    assertTrue(
+      wsModToolset.some((tool) => tool.name === 'write_picture'),
+      'ws_mod should expose write_picture',
+    );
   });
 
   await runTest('codex_inspect_and_patch_tools platform behavior', () => {

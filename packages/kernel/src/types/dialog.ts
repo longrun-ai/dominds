@@ -211,6 +211,17 @@ export interface ToolResultImageIngestEvent extends LlmGenDlgEvent {
   detail?: string;
 }
 
+export interface UserImageIngestEvent extends LlmGenDlgEvent {
+  type: 'user_image_ingest_evt';
+  msgId?: string;
+  artifact: ToolResultImageArtifact;
+  provider: string;
+  model: string;
+  disposition: ToolResultImageDisposition;
+  message: string;
+  detail?: string;
+}
+
 export type WebSearchCallSource = 'codex' | 'openai_responses';
 
 export type WebSearchCallAction =
@@ -485,6 +496,7 @@ export interface EndOfUserSayingEvent {
   genseq: number;
   msgId: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
   grammar: 'markdown';
   origin: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
@@ -498,6 +510,7 @@ export interface QueueUserMsgEvent {
   course: number;
   msgId: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
   grammar: 'markdown';
   origin?: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
@@ -576,6 +589,7 @@ export type DialogEvent =
   | FuncCallStartEvent
   | FunctionResultEvent
   | ToolResultImageIngestEvent
+  | UserImageIngestEvent
   | WebSearchCallEvent
   | NativeToolCallEvent
   | GenerationDiscardEvent

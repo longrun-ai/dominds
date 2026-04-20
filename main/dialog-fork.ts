@@ -229,6 +229,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'web_search_call_record':
     case 'native_tool_call_record':
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
     case 'quest_for_sup_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
@@ -277,7 +278,7 @@ function normalizeDraftUserText(
   return texts.join('\n\n');
 }
 
-function rewriteFuncResultContentItems(
+function rewriteContentItemsForFork(
   items: readonly FuncResultContentItem[] | undefined,
   newRootId: string,
 ): FuncResultContentItem[] | undefined {
@@ -317,21 +318,26 @@ function rewriteRecordForFork(
     // not part of baseline state reconciliation and must not make forking fail.
     case 'web_search_call_record':
     case 'native_tool_call_record':
-    case 'human_text_record':
     case 'quest_for_sup_record':
-    case 'tellask_result_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
-    case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return record;
+    case 'human_text_record':
+    case 'tellask_result_record':
+    case 'tellask_carryover_record':
+      return {
+        ...record,
+        contentItems: rewriteContentItemsForFork(record.contentItems, newRootId),
+      };
     case 'func_result_record':
       return {
         ...record,
-        contentItems: rewriteFuncResultContentItems(record.contentItems, newRootId),
+        contentItems: rewriteContentItemsForFork(record.contentItems, newRootId),
       };
     case 'tool_result_image_ingest_record':
+    case 'user_image_ingest_record':
       return {
         ...record,
         artifact: {

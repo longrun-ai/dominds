@@ -54,7 +54,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
-import type { ToolResultImageIngest } from './llm/gen';
+import type { ToolResultImageIngest, UserImageIngest } from './llm/gen';
 import { log } from './log';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
@@ -975,6 +975,7 @@ export abstract class Dialog {
       if (intent.kind !== 'prompt' || intent.prompt.msgId !== existingMsgId) continue;
       const promptCommon = {
         content: nextPrompt.prompt,
+        ...(nextPrompt.contentItems === undefined ? {} : { contentItems: nextPrompt.contentItems }),
         msgId: nextPrompt.msgId,
         grammar: nextPrompt.grammar ?? 'markdown',
         userLanguageCode: nextPrompt.userLanguageCode ?? this._lastUserLanguageCode,
@@ -1153,6 +1154,7 @@ export abstract class Dialog {
     this._upNextQueue.push(state);
     const promptCommon = {
       content: state.prompt,
+      ...(state.contentItems === undefined ? {} : { contentItems: state.contentItems }),
       msgId: state.msgId,
       grammar: state.grammar ?? 'markdown',
       userLanguageCode: state.userLanguageCode ?? this._lastUserLanguageCode,
@@ -1220,6 +1222,7 @@ export abstract class Dialog {
 
   public queueUserPromptAtGenerationBoundary(options: {
     prompt: string;
+    contentItems?: DialogQueuedUserGenerationBoundaryState['contentItems'];
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
@@ -1239,6 +1242,7 @@ export abstract class Dialog {
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
         origin: 'user',
+        contentItems: options.contentItems,
         q4hAnswerCallId: options.q4hAnswerCallId,
       };
       this.enqueueQueuedPromptState(created);
@@ -1248,6 +1252,10 @@ export abstract class Dialog {
     const merged: DialogQueuedUserGenerationBoundaryState = {
       ...existing,
       prompt: `${existing.prompt}\n\n---\n\n${trimmed}`,
+      contentItems:
+        existing.contentItems || options.contentItems
+          ? [...(existing.contentItems ?? []), ...(options.contentItems ?? [])]
+          : undefined,
       grammar: options.grammar,
       userLanguageCode:
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
@@ -1263,6 +1271,7 @@ export abstract class Dialog {
 
   public queueDeferredQ4HAnswerPrompt(options: {
     prompt: string;
+    contentItems?: DialogQueuedDeferredQ4HAnswerState['contentItems'];
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
@@ -1277,6 +1286,7 @@ export abstract class Dialog {
     const created: DialogQueuedDeferredQ4HAnswerState = {
       kind: 'deferred_q4h_answer',
       prompt: trimmed,
+      contentItems: options.contentItems,
       msgId: options.msgId,
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
@@ -1578,6 +1588,7 @@ export abstract class Dialog {
       originCourse?: CallingCourseNumber;
       calling_genseq?: CallingGenerationSeqNumber;
       carryoverContent?: string;
+      contentItems?: DialogUserPrompt['contentItems'];
       sessionSlug?: string;
       calleeCourse?: CalleeCourseNumber;
       calleeGenseq?: CalleeGenerationSeqNumber;
@@ -1626,6 +1637,7 @@ export abstract class Dialog {
         role: 'user',
         genseq: this.activeGenSeqOrUndefined ?? 1,
         content: options.carryoverContent,
+        ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
         originCourse: carryoverOriginCourse,
         carryoverCourse: currentCourse,
         responderId,
@@ -1661,6 +1673,7 @@ export abstract class Dialog {
             callName,
             status,
             content: options.response,
+            ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
             ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
             ...(options.calling_genseq !== undefined
               ? { calling_genseq: options.calling_genseq }
@@ -1685,6 +1698,7 @@ export abstract class Dialog {
               callName,
               status,
               content: options.response,
+              ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
               ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
               ...(options.calling_genseq !== undefined
                 ? { calling_genseq: options.calling_genseq }
@@ -1707,6 +1721,7 @@ export abstract class Dialog {
               callName,
               status,
               content: options.response,
+              ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
               ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
               ...(options.calling_genseq !== undefined
                 ? { calling_genseq: options.calling_genseq }
@@ -1837,6 +1852,10 @@ export abstract class Dialog {
     await this.dlgStore.toolResultImageIngest(this, payload);
   }
 
+  public async userImageIngest(payload: UserImageIngest): Promise<void> {
+    await this.dlgStore.userImageIngest(this, payload);
+  }
+
   // Tellask-special call lifecycle events
   public async callingStart(payload: {
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -1862,6 +1881,7 @@ export abstract class Dialog {
     userLanguageCode?: LanguageCode,
     q4hAnswerCallId?: string,
     tellaskReplyDirective?: TellaskReplyDirective,
+    contentItems?: DialogUserPrompt['contentItems'],
   ): Promise<void> {
     return await this.dlgStore.persistUserMessage(
       this,
@@ -1872,6 +1892,7 @@ export abstract class Dialog {
       userLanguageCode,
       q4hAnswerCallId,
       tellaskReplyDirective,
+      contentItems,
     );
   }
 
@@ -2565,6 +2586,8 @@ export abstract class DialogStore {
     _payload: ToolResultImageIngest,
   ): Promise<void> {}
 
+  public async userImageIngest(_dialog: Dialog, _payload: UserImageIngest): Promise<void> {}
+
   /**
    * Load current course number from persisted metadata
    * This method should be implemented by subclasses to read from storage
@@ -2600,6 +2623,7 @@ export abstract class DialogStore {
     _userLanguageCode?: LanguageCode,
     _q4hAnswerCallId?: string,
     _tellaskReplyDirective?: TellaskReplyDirective,
+    _contentItems?: DialogUserPrompt['contentItems'],
   ): Promise<void> {}
 
   public async appendTellaskReplyResolution(

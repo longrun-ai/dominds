@@ -1,5 +1,9 @@
 import type { LanguageCode } from './language';
-import type { DialogSubdialogReplyTarget, TellaskReplyDirective } from './storage';
+import type {
+  DialogSubdialogReplyTarget,
+  FuncResultContentItem,
+  TellaskReplyDirective,
+} from './storage';
 export type { DialogSubdialogReplyTarget } from './storage';
 
 export type DialogRunControlSource =
@@ -19,6 +23,7 @@ export type DialogRunControlSpec = Readonly<{
 
 type DialogPromptBase = Readonly<{
   content: string;
+  contentItems?: FuncResultContentItem[];
   msgId: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
@@ -83,6 +88,7 @@ export type DialogPrompt = DialogUserPrompt | DialogDiligencePrompt | DialogRunt
 
 type DialogQueuedPromptStateCommon = Readonly<{
   prompt: string;
+  contentItems?: FuncResultContentItem[];
   msgId: string;
   grammar?: 'markdown';
   userLanguageCode?: LanguageCode;

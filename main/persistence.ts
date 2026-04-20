@@ -31,6 +31,7 @@ import type {
   ThinkingStartEvent,
   ToolResultImageIngestEvent,
   UiOnlyMarkdownEvent,
+  UserImageIngestEvent,
   WebSearchCallAction,
   WebSearchCallEvent,
   WebSearchCallSource,
@@ -84,6 +85,7 @@ import type {
   TellaskResultRecord,
   ToolResultImageIngestRecord,
   UiOnlyMarkdownRecord,
+  UserImageIngestRecord,
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import {
@@ -106,7 +108,7 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
-import type { ToolResultImageIngest } from './llm/gen';
+import type { ToolResultImageIngest, UserImageIngest } from './llm/gen';
 import { log } from './log';
 import {
   DomindsPersistenceFileError,
@@ -814,6 +816,24 @@ function buildToolResultImageIngestRecord(
   };
 }
 
+function buildUserImageIngestRecord(
+  ingest: UserImageIngest,
+  genseq: number,
+): UserImageIngestRecord {
+  return {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'user_image_ingest_record',
+    genseq,
+    ...(ingest.msgId !== undefined ? { msgId: ingest.msgId } : {}),
+    artifact: ingest.artifact,
+    provider: ingest.provider,
+    model: ingest.model,
+    disposition: ingest.disposition,
+    message: ingest.message,
+    detail: ingest.detail,
+  };
+}
+
 function buildTellaskCallRecord(args: {
   id: string;
   name: TellaskCallRecordName;
@@ -851,6 +871,7 @@ function buildTellaskResultRecord(result: TellaskResultMsg): TellaskResultRecord
     callId: result.callId,
     status: result.status,
     content: result.content,
+    contentItems: result.contentItems,
     ...(typeof result.originCourse === 'number'
       ? { originCourse: toCallingCourseNumber(result.originCourse) }
       : {}),
@@ -917,6 +938,7 @@ function buildTellaskCarryoverRecord(
     status: result.status,
     response: result.response,
     content: result.content,
+    contentItems: result.contentItems,
     agentId: result.agentId,
     callId: result.callId,
     originMemberId: result.originMemberId,
@@ -2726,37 +2748,47 @@ export class DiskFileDialogStore extends DialogStore {
     const model = payload.model.trim();
     const provider = payload.provider.trim();
     const relPath = payload.artifact.relPath.trim();
+    const message = payload.message.trim();
     if (toolCallId === '') {
-      log.error(
-        'Protocol violation: toolResultImageIngest called with empty toolCallId; dropping event',
-        new Error('tool_result_image_ingest_empty_tool_call_id'),
-        { dialog, payload },
-      );
-      return;
+      const error = new Error('tool_result_image_ingest_empty_tool_call_id');
+      log.error('Protocol violation: toolResultImageIngest called with empty toolCallId', error, {
+        dialog,
+        payload,
+      });
+      throw error;
     }
     if (toolName === '') {
-      log.error(
-        'Protocol violation: toolResultImageIngest called with empty toolName; dropping event',
-        new Error('tool_result_image_ingest_empty_tool_name'),
-        { dialog, payload },
-      );
-      return;
+      const error = new Error('tool_result_image_ingest_empty_tool_name');
+      log.error('Protocol violation: toolResultImageIngest called with empty toolName', error, {
+        dialog,
+        payload,
+      });
+      throw error;
     }
     if (provider === '' || model === '') {
-      log.error(
-        'Protocol violation: toolResultImageIngest missing provider/model; dropping event',
-        new Error('tool_result_image_ingest_missing_provider_or_model'),
-        { dialog, payload },
-      );
-      return;
+      const error = new Error('tool_result_image_ingest_missing_provider_or_model');
+      log.error('Protocol violation: toolResultImageIngest missing provider/model', error, {
+        dialog,
+        payload,
+      });
+      throw error;
     }
     if (relPath === '') {
+      const error = new Error('tool_result_image_ingest_empty_rel_path');
       log.error(
-        'Protocol violation: toolResultImageIngest called with empty artifact relPath; dropping event',
-        new Error('tool_result_image_ingest_empty_rel_path'),
+        'Protocol violation: toolResultImageIngest called with empty artifact relPath',
+        error,
         { dialog, payload },
       );
-      return;
+      throw error;
+    }
+    if (message === '') {
+      const error = new Error('tool_result_image_ingest_empty_message');
+      log.error('Protocol violation: toolResultImageIngest called with empty message', error, {
+        dialog,
+        payload,
+      });
+      throw error;
     }
 
     const normalizedPayload: ToolResultImageIngest = {
@@ -2771,7 +2803,7 @@ export class DiskFileDialogStore extends DialogStore {
       provider,
       model,
       disposition: payload.disposition,
-      message: payload.message,
+      message,
       ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
     };
 
@@ -2784,6 +2816,74 @@ export class DiskFileDialogStore extends DialogStore {
       genseq: dialog.activeGenSeq,
       toolCallId,
       toolName,
+      artifact: normalizedPayload.artifact,
+      provider,
+      model,
+      disposition: normalizedPayload.disposition,
+      message: normalizedPayload.message,
+      ...(normalizedPayload.detail !== undefined ? { detail: normalizedPayload.detail } : {}),
+    };
+    postDialogEvent(dialog, evt);
+  }
+
+  public async userImageIngest(dialog: Dialog, payload: UserImageIngest): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const msgId =
+      typeof payload.msgId === 'string' && payload.msgId.trim() !== ''
+        ? payload.msgId.trim()
+        : undefined;
+    const model = payload.model.trim();
+    const provider = payload.provider.trim();
+    const relPath = payload.artifact.relPath.trim();
+    const message = payload.message.trim();
+    if (provider === '' || model === '') {
+      const error = new Error('user_image_ingest_missing_provider_or_model');
+      log.error('Protocol violation: userImageIngest missing provider/model', error, {
+        dialog,
+        payload,
+      });
+      throw error;
+    }
+    if (relPath === '') {
+      const error = new Error('user_image_ingest_empty_rel_path');
+      log.error('Protocol violation: userImageIngest called with empty artifact relPath', error, {
+        dialog,
+        payload,
+      });
+      throw error;
+    }
+    if (message === '') {
+      const error = new Error('user_image_ingest_empty_message');
+      log.error('Protocol violation: userImageIngest called with empty message', error, {
+        dialog,
+        payload,
+      });
+      throw error;
+    }
+
+    const normalizedPayload: UserImageIngest = {
+      ...(msgId !== undefined ? { msgId } : {}),
+      artifact: {
+        rootId: payload.artifact.rootId,
+        selfId: payload.artifact.selfId,
+        status: payload.artifact.status,
+        relPath,
+      },
+      provider,
+      model,
+      disposition: payload.disposition,
+      message,
+      ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
+    };
+
+    const record = buildUserImageIngestRecord(normalizedPayload, dialog.activeGenSeq);
+    await this.appendEvent(dialog, course, record);
+
+    const evt: UserImageIngestEvent = {
+      type: 'user_image_ingest_evt',
+      course,
+      genseq: dialog.activeGenSeq,
+      ...(msgId !== undefined ? { msgId } : {}),
       artifact: normalizedPayload.artifact,
       provider,
       model,
@@ -2891,6 +2991,7 @@ export class DiskFileDialogStore extends DialogStore {
     userLanguageCode?: LanguageCode,
     q4hAnswerCallId?: string,
     tellaskReplyDirective?: TellaskReplyDirective,
+    contentItems?: HumanTextRecord['contentItems'],
   ): Promise<void> {
     const course = dialog.currentCourse;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
@@ -2907,6 +3008,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'human_text_record',
       genseq: genseq,
       content: String(content || ''),
+      contentItems,
       msgId: msgId,
       grammar,
       origin,
@@ -3633,6 +3735,7 @@ export class DiskFileDialogStore extends DialogStore {
               genseq,
               msgId: event.msgId,
               content,
+              contentItems: event.contentItems,
               grammar,
               origin,
               userLanguageCode,
@@ -4141,6 +4244,34 @@ export class DiskFileDialogStore extends DialogStore {
           ws.send(
             JSON.stringify({
               ...toolResultImageIngestEvt,
+              dialog: {
+                selfId: dialog.id.selfId,
+                rootId: dialog.id.rootId,
+              },
+              timestamp: event.ts,
+            }),
+          );
+        }
+        break;
+      }
+
+      case 'user_image_ingest_record': {
+        const userImageIngestEvt: UserImageIngestEvent = {
+          type: 'user_image_ingest_evt',
+          course,
+          genseq: event.genseq,
+          ...(event.msgId !== undefined ? { msgId: event.msgId } : {}),
+          artifact: event.artifact,
+          provider: event.provider,
+          model: event.model,
+          disposition: event.disposition,
+          message: event.message,
+          ...(event.detail !== undefined ? { detail: event.detail } : {}),
+        };
+        if (ws.readyState === 1) {
+          ws.send(
+            JSON.stringify({
+              ...userImageIngestEvt,
               dialog: {
                 selfId: dialog.id.selfId,
                 rootId: dialog.id.rootId,
@@ -8083,6 +8214,7 @@ export class DialogPersistence {
             genseq: event.genseq,
             msgId: event.msgId,
             content: event.content,
+            contentItems: event.contentItems,
             grammar: event.grammar ?? 'markdown',
           });
           break;
@@ -8126,6 +8258,10 @@ export class DialogPersistence {
           // UI-only per-generation image projection diagnostics for tool results.
           // Must not be injected into LLM context reconstruction.
           break;
+        case 'user_image_ingest_record':
+          // UI-only per-generation image projection diagnostics for user attachments.
+          // Must not be injected into LLM context reconstruction.
+          break;
 
         case 'func_result_record': {
           // Convert function result to ChatMessage
@@ -8149,6 +8285,7 @@ export class DialogPersistence {
             callName: event.callName,
             status: event.status,
             content: event.content,
+            contentItems: event.contentItems,
             ...(event.originCourse !== undefined ? { originCourse: event.originCourse } : {}),
             ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
             call: event.call,
@@ -8181,6 +8318,7 @@ export class DialogPersistence {
             role: 'user',
             genseq: event.genseq,
             content: event.content,
+            contentItems: event.contentItems,
             originCourse: event.originCourse,
             carryoverCourse: event.carryoverCourse,
             responderId: event.responderId,

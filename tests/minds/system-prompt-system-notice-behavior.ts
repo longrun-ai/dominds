@@ -28,7 +28,7 @@ function main(): void {
     [
       '手册工具：`man`',
       '可用工具集：',
-      '- `ws_read`：运行时工作区只读访问：列目录、读文件、检索代码与文本，用于安全获取事实。查看详情：`man({ "toolsetId": "ws_read" })`',
+      '- `ws_read`：运行时工作区只读访问：列目录、读文本/图片、检索代码与文本，用于安全获取事实。查看详情：`man({ "toolsetId": "ws_read" })`',
       '何时查阅手册：当某个工具集的功能边界、参数写法、典型场景或报错处理不确定时，调用 `man` 查看详情。',
     ].join('\n'),
   );
@@ -44,7 +44,7 @@ function main(): void {
   );
   assert.ok(
     zh.includes(
-      '`ws_read`：运行时工作区只读访问：列目录、读文件、检索代码与文本，用于安全获取事实。查看详情：`man({ "toolsetId": "ws_read" })`',
+      '`ws_read`：运行时工作区只读访问：列目录、读文本/图片、检索代码与文本，用于安全获取事实。查看详情：`man({ "toolsetId": "ws_read" })`',
     ),
     'zh prompt should expose toolset descriptions and man call examples',
   );
@@ -60,7 +60,7 @@ function main(): void {
     [
       'Manual tool: `man`',
       'Available toolsets:',
-      '- `ws_read`: rtws read-only access: list directories, read files, and search code/content to gather facts safely. Details: `man({ "toolsetId": "ws_read" })`',
+      '- `ws_read`: rtws read-only access: list directories, read text/images, and search code/content to gather facts safely. Details: `man({ "toolsetId": "ws_read" })`',
       'When to read the manual: call `man` when a toolset’s boundaries, argument shape, typical scenarios, or error handling are unclear.',
     ].join('\n'),
   );
@@ -76,7 +76,7 @@ function main(): void {
   );
   assert.ok(
     en.includes(
-      '`ws_read`: rtws read-only access: list directories, read files, and search code/content to gather facts safely. Details: `man({ "toolsetId": "ws_read" })`',
+      '`ws_read`: rtws read-only access: list directories, read text/images, and search code/content to gather facts safely. Details: `man({ "toolsetId": "ws_read" })`',
     ),
     'en prompt should expose toolset descriptions and man call examples',
   );

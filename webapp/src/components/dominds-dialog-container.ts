@@ -7,6 +7,7 @@ import type {
   FullRemindersEvent,
   FuncCallStartEvent,
   NativeToolCallEvent,
+  QueueUserMsgEvent,
   SubdialogEvent,
   TypedDialogEvent,
   WebSearchCallEvent,
@@ -213,6 +214,12 @@ export class DomindsDialogContainer extends HTMLElement {
   >();
   private toolResultImageStatusElByKey = new Map<string, HTMLElement>();
   private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
+  private queuedUserContentItemsByMsgId = new Map<string, QueueUserMsgEvent['contentItems']>();
+  private userImageStatusByKey = new Map<
+    string,
+    { message: string; disposition: string; genseq: number }
+  >();
+  private userImageStatusElByKey = new Map<string, HTMLElement>();
   private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
   private progressiveExpandCleanupByTarget = new Map<HTMLElement, () => void>();
   private viewportPanelState: ViewportPanelState = { kind: 'hidden' };
@@ -1074,6 +1081,9 @@ export class DomindsDialogContainer extends HTMLElement {
     this.toolResultImageStatusByKey.clear();
     this.toolResultImageStatusElByKey.clear();
     this.queuedUserBubbleByMsgId.clear();
+    this.queuedUserContentItemsByMsgId.clear();
+    this.userImageStatusByKey.clear();
+    this.userImageStatusElByKey.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -1110,6 +1120,9 @@ export class DomindsDialogContainer extends HTMLElement {
     this.toolResultImageStatusByKey.clear();
     this.toolResultImageStatusElByKey.clear();
     this.queuedUserBubbleByMsgId.clear();
+    this.queuedUserContentItemsByMsgId.clear();
+    this.userImageStatusByKey.clear();
+    this.userImageStatusElByKey.clear();
     this.pendingTellaskCallAnchorByGenseq.clear();
 
     // Clear all DOM messages when switching dialogs
@@ -1514,6 +1527,9 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'tool_result_image_ingest_evt':
         this.handleToolResultImageIngest(event);
         break;
+      case 'user_image_ingest_evt':
+        this.handleUserImageIngest(event);
+        break;
 
       // Function results
       case 'func_result_evt':
@@ -1634,6 +1650,8 @@ export class DomindsDialogContainer extends HTMLElement {
     };
 
     const queuedMsgId = typeof msgId === 'string' ? msgId.trim() : '';
+    const queuedContentItems =
+      queuedMsgId === '' ? undefined : this.queuedUserContentItemsByMsgId.get(queuedMsgId);
     const queuedBubble = queuedMsgId === '' ? undefined : this.takeQueuedUserBubble(queuedMsgId);
 
     const existingBubble = this.generationBubble;
@@ -1647,6 +1665,7 @@ export class DomindsDialogContainer extends HTMLElement {
         seq,
         timestamp,
         queuedMsgId,
+        queuedContentItems,
       );
       if (typeof this.currentCourse === 'number') {
         bubble.setAttribute('data-course', String(this.currentCourse));
@@ -1748,6 +1767,7 @@ export class DomindsDialogContainer extends HTMLElement {
     let bubble = this.queuedUserBubbleByMsgId.get(msgId);
     if (bubble && !bubble.isConnected) {
       this.queuedUserBubbleByMsgId.delete(msgId);
+      this.queuedUserContentItemsByMsgId.delete(msgId);
       bubble = undefined;
     }
     if (!bubble) {
@@ -1770,7 +1790,12 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       this.setBubbleTimestamp(bubble, event.timestamp);
     }
+    const contentHost = bubble.querySelector('.content') as HTMLElement | null;
+    if (contentHost) {
+      this.upsertUserContentItems(contentHost, event.contentItems, event.msgId);
+    }
     this.queuedUserBubbleByMsgId.set(msgId, bubble);
+    this.queuedUserContentItemsByMsgId.set(msgId, event.contentItems);
 
     this.insertRealtimeBubbleAfterActiveGeneration(container, bubble);
     this.scrollToBottom();
@@ -1856,8 +1881,10 @@ export class DomindsDialogContainer extends HTMLElement {
     const tracked = this.queuedUserBubbleByMsgId.get(msgId);
     if (tracked) {
       this.queuedUserBubbleByMsgId.delete(msgId);
+      this.queuedUserContentItemsByMsgId.delete(msgId);
       if (tracked.isConnected) return tracked;
     }
+    this.queuedUserContentItemsByMsgId.delete(msgId);
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (!container) return undefined;
     for (const node of Array.from(
@@ -1874,6 +1901,7 @@ export class DomindsDialogContainer extends HTMLElement {
     seq: number,
     timestamp: string,
     msgId: string,
+    contentItems: QueueUserMsgEvent['contentItems'],
   ): HTMLElement {
     const queuedContentEl = queuedBubble.querySelector('.user-message') as HTMLElement | null;
     const queuedRawContent = queuedContentEl?.textContent ?? '';
@@ -1895,6 +1923,7 @@ export class DomindsDialogContainer extends HTMLElement {
         divider.className = 'user-response-divider';
         body.appendChild(divider);
         this.upsertUserPlainTextMessage(body, queuedRawContent);
+        this.upsertUserContentItems(body, contentItems, msgId, seq);
         bubble.setAttribute('data-raw-user-msg', queuedRawContent);
       }
     }
@@ -1909,8 +1938,10 @@ export class DomindsDialogContainer extends HTMLElement {
     const tracked = this.queuedUserBubbleByMsgId.get(msgId);
     if (tracked) {
       this.queuedUserBubbleByMsgId.delete(msgId);
+      this.queuedUserContentItemsByMsgId.delete(msgId);
       if (tracked.isConnected) tracked.remove();
     }
+    this.queuedUserContentItemsByMsgId.delete(msgId);
 
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (!container) return;
@@ -3028,6 +3059,10 @@ export class DomindsDialogContainer extends HTMLElement {
     return `${String(genseq)}::${toolCallId}::${relPath}`;
   }
 
+  private makeUserImageStatusKey(genseq: number, relPath: string): string {
+    return `${String(genseq)}::${relPath}`;
+  }
+
   private updateToolResultImageStatusDisplay(args: {
     genseq: number;
     toolCallId: string;
@@ -3053,6 +3088,35 @@ export class DomindsDialogContainer extends HTMLElement {
     this.updateToolResultImageStatusDisplay({
       genseq: event.genseq,
       toolCallId: event.toolCallId,
+      relPath: event.artifact.relPath,
+      message: event.message,
+      disposition: event.disposition,
+    });
+  }
+
+  private updateUserImageStatusDisplay(args: {
+    genseq: number;
+    relPath: string;
+    message: string;
+    disposition: string;
+  }): void {
+    const key = this.makeUserImageStatusKey(args.genseq, args.relPath);
+    this.userImageStatusByKey.set(key, {
+      message: args.message,
+      disposition: args.disposition,
+      genseq: args.genseq,
+    });
+    const existing = this.userImageStatusElByKey.get(key);
+    if (!existing) return;
+    existing.textContent = args.message;
+    existing.setAttribute('data-image-ingest-disposition', args.disposition);
+  }
+
+  private handleUserImageIngest(
+    event: Extract<TypedDialogEvent, { type: 'user_image_ingest_evt' }>,
+  ): void {
+    this.updateUserImageStatusDisplay({
+      genseq: event.genseq,
       relPath: event.artifact.relPath,
       message: event.message,
       disposition: event.disposition,
@@ -3139,49 +3203,11 @@ export class DomindsDialogContainer extends HTMLElement {
                 figure.appendChild(ingestStatus);
                 resultEl.appendChild(figure);
 
-                const api = getApiClient();
-                const params = new URLSearchParams();
-                params.set('path', item.artifact.relPath);
-                params.set(
-                  'status',
-                  item.artifact.status ?? this.currentDialog?.status ?? 'running',
-                );
-                const endpoint = `/api/dialogs/${encodeURIComponent(item.artifact.rootId)}/${encodeURIComponent(
-                  item.artifact.selfId,
-                )}/artifact?${params.toString()}`;
-
-                void (async () => {
-                  try {
-                    const response = await api.fetchBlob(endpoint);
-                    if (!response.success || !response.data) {
-                      placeholder.textContent = response.error
-                        ? `Failed to load image: ${response.error}`
-                        : 'Failed to load image';
-                      return;
-                    }
-                    const objectUrl = URL.createObjectURL(response.data);
-                    img.src = objectUrl;
-                    placeholder.remove();
-                    img.addEventListener(
-                      'load',
-                      () => {
-                        URL.revokeObjectURL(objectUrl);
-                      },
-                      { once: true },
-                    );
-                    img.addEventListener(
-                      'error',
-                      () => {
-                        URL.revokeObjectURL(objectUrl);
-                      },
-                      { once: true },
-                    );
-                  } catch (err) {
-                    placeholder.textContent = `Failed to load image: ${
-                      err instanceof Error ? err.message : String(err)
-                    }`;
-                  }
-                })();
+                this.loadArtifactImageIntoElement({
+                  img,
+                  placeholder,
+                  endpoint: this.buildDialogArtifactEndpoint(item),
+                });
                 continue;
               }
             }
@@ -4244,6 +4270,110 @@ export class DomindsDialogContainer extends HTMLElement {
     this.upsertUserMessageByOrigin(body, rawContent, 'user');
   }
 
+  private buildDialogArtifactEndpoint(item: {
+    artifact: { rootId: string; selfId: string; status?: string; relPath: string };
+  }): string {
+    const params = new URLSearchParams();
+    params.set('path', item.artifact.relPath);
+    params.set('status', item.artifact.status ?? this.currentDialog?.status ?? 'running');
+    return `/api/dialogs/${encodeURIComponent(item.artifact.rootId)}/${encodeURIComponent(
+      item.artifact.selfId,
+    )}/artifact?${params.toString()}`;
+  }
+
+  private loadArtifactImageIntoElement(args: {
+    img: HTMLImageElement;
+    placeholder: HTMLElement;
+    endpoint: string;
+  }): void {
+    const api = getApiClient();
+    void (async () => {
+      try {
+        const response = await api.fetchBlob(args.endpoint);
+        if (!response.success || !response.data) {
+          args.placeholder.textContent = response.error
+            ? `Failed to load image: ${response.error}`
+            : 'Failed to load image';
+          return;
+        }
+        const objectUrl = URL.createObjectURL(response.data);
+        args.img.src = objectUrl;
+        args.placeholder.remove();
+        args.img.addEventListener(
+          'load',
+          () => {
+            URL.revokeObjectURL(objectUrl);
+          },
+          { once: true },
+        );
+        args.img.addEventListener(
+          'error',
+          () => {
+            URL.revokeObjectURL(objectUrl);
+          },
+          { once: true },
+        );
+      } catch (err) {
+        args.placeholder.textContent = `Failed to load image: ${
+          err instanceof Error ? err.message : String(err)
+        }`;
+      }
+    })();
+  }
+
+  private upsertUserContentItems(
+    body: HTMLElement,
+    contentItems: EndOfUserSayingEvent['contentItems'],
+    msgId: string,
+    genseq?: number,
+  ): void {
+    const divider = body.querySelector('.user-response-divider');
+    body.querySelectorAll('.user-attachment-strip').forEach((node) => node.remove());
+    if (!Array.isArray(contentItems) || contentItems.length === 0) return;
+
+    const imageItems = contentItems.filter((item) => item.type === 'input_image');
+    if (imageItems.length === 0) return;
+
+    const strip = document.createElement('div');
+    strip.className = 'user-attachment-strip';
+    for (const item of imageItems) {
+      const figure = document.createElement('figure');
+      figure.className = 'tool-result-image user-attachment-image';
+      figure.setAttribute('data-user-msg-id', msgId);
+      figure.setAttribute('data-artifact-rel-path', item.artifact.relPath);
+      const img = document.createElement('img');
+      img.alt = 'attached image';
+      const placeholder = document.createElement('span');
+      placeholder.textContent = `Loading image (${item.mimeType}, ${String(item.byteLength)} bytes)…`;
+      const ingestStatus = document.createElement('figcaption');
+      ingestStatus.className = 'tool-result-image-ingest-status';
+      if (typeof genseq === 'number') {
+        const imageStatusKey = this.makeUserImageStatusKey(genseq, item.artifact.relPath);
+        this.userImageStatusElByKey.set(imageStatusKey, ingestStatus);
+        const existingStatus = this.userImageStatusByKey.get(imageStatusKey);
+        if (existingStatus) {
+          ingestStatus.textContent = existingStatus.message;
+          ingestStatus.setAttribute('data-image-ingest-disposition', existingStatus.disposition);
+        }
+      }
+      figure.appendChild(placeholder);
+      figure.appendChild(img);
+      figure.appendChild(ingestStatus);
+      strip.appendChild(figure);
+      this.loadArtifactImageIntoElement({
+        img,
+        placeholder,
+        endpoint: this.buildDialogArtifactEndpoint(item),
+      });
+    }
+
+    if (divider instanceof HTMLElement) {
+      body.insertBefore(strip, divider);
+      return;
+    }
+    body.appendChild(strip);
+  }
+
   private upsertUserMessageByOrigin(
     body: HTMLElement,
     rawContent: string,
@@ -4363,6 +4493,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // Idempotency: end_of_user_saying_evt can be replayed during course navigation.
     if (body.querySelector('.user-response-divider')) {
       this.upsertUserMessageByOrigin(body, event.content, event.origin);
+      this.upsertUserContentItems(body, event.contentItems, event.msgId, event.genseq);
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
       bubble.setAttribute('data-user-msg-origin', event.origin);
@@ -4400,6 +4531,7 @@ export class DomindsDialogContainer extends HTMLElement {
     divider.className = 'user-response-divider';
     body.appendChild(divider);
     this.upsertUserMessageByOrigin(body, event.content, event.origin);
+    this.upsertUserContentItems(body, event.contentItems, event.msgId, event.genseq);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     bubble.setAttribute('data-user-msg-origin', event.origin);
@@ -5319,6 +5451,15 @@ export class DomindsDialogContainer extends HTMLElement {
         margin: 6px 0;
       }
 
+      .user-attachment-strip {
+        display: block;
+        padding: 2px 3px 2px 6px;
+      }
+
+      .user-attachment-image {
+        max-width: min(100%, 520px);
+      }
+
       .user-answer-callsite-actions {
         display: inline-flex;
         align-items: center;
@@ -5898,14 +6039,15 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .tool-result-image-ingest-status {
-        margin-top: 6px;
-        font-size: var(--dominds-font-size-xs, 11px);
-        line-height: 1.45;
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.6;
         color: var(--dominds-fg-muted, var(--color-fg-tertiary, #64748b));
       }
 
       .tool-result-image-ingest-status[data-image-ingest-disposition^='filtered_'] {
         color: var(--color-warning-strong, #b45309);
+        font-weight: 500;
       }
 
       .func-call-section.failed {

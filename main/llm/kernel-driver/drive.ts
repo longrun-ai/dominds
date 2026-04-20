@@ -387,6 +387,9 @@ function hasMeaningfulBatchOutput(batch: Pick<LlmBatchResult, 'messages' | 'outp
       if (output.kind === 'tool_result_image_ingest') {
         continue;
       }
+      if (output.kind === 'user_image_ingest') {
+        continue;
+      }
       if (output.kind !== 'message') {
         return true;
       }
@@ -1958,6 +1961,9 @@ export async function driveDialogStreamCore(
                 msgId: currentPrompt.msgId,
                 grammar: 'markdown',
                 content: replyGuidance.promptContent,
+                ...(currentPrompt.contentItems === undefined
+                  ? {}
+                  : { contentItems: currentPrompt.contentItems }),
               });
               await dlg.persistUserMessage(
                 replyGuidance.promptContent,
@@ -1967,6 +1973,7 @@ export async function driveDialogStreamCore(
                 persistedUserLanguageCode,
                 q4hAnswerCallId,
                 replyGuidance.persistedTellaskReplyDirective,
+                currentPrompt.contentItems,
               );
               await DialogPersistence.clearPendingCourseStartPrompt(
                 dlg.id,
@@ -1991,6 +1998,9 @@ export async function driveDialogStreamCore(
                 genseq: dlg.activeGenSeq,
                 msgId: currentPrompt.msgId,
                 content: replyGuidance.promptContent,
+                ...(currentPrompt.contentItems === undefined
+                  ? {}
+                  : { contentItems: currentPrompt.contentItems }),
                 grammar: 'markdown',
                 origin,
                 userLanguageCode: persistedUserLanguageCode,
@@ -2324,6 +2334,10 @@ export async function driveDialogStreamCore(
                 throwIfAborted(abortSignal, dlg);
                 await dlg.toolResultImageIngest(ingest);
               },
+              userImageIngest: async (ingest) => {
+                throwIfAborted(abortSignal, dlg);
+                await dlg.userImageIngest(ingest);
+              },
             };
 
             const res = await runLlmRequestWithRetry({
@@ -2458,6 +2472,10 @@ export async function driveDialogStreamCore(
               }
               case 'tool_result_image_ingest': {
                 await dlg.toolResultImageIngest(output.ingest);
+                break;
+              }
+              case 'user_image_ingest': {
+                await dlg.userImageIngest(output.ingest);
                 break;
               }
               default: {

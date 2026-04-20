@@ -37,6 +37,7 @@ import type {
   LlmStreamReceiver,
   LlmStreamResult,
   ToolResultImageIngest,
+  UserImageIngest,
 } from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
@@ -50,12 +51,14 @@ import {
   truncateProviderToolOutputText,
 } from './tool-output-limit';
 import {
-  buildToolResultImageBudgetKeyForMsg,
-  buildToolResultImageBudgetLimitDetail,
+  buildImageBudgetKeyForContentItem,
+  buildImageBudgetLimitDetail,
   buildToolResultImageIngest,
+  buildUserImageIngest,
   CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   readToolResultImageBytesSafe,
-  selectLatestToolResultImagesWithinBudget,
+  resolveModelImageInputSupport,
+  selectLatestImagesWithinBudget,
 } from './tool-result-image-ingest';
 
 const log = createLogger('llm/codex');
@@ -371,11 +374,169 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
   }
 }
 
+async function userLikeMessageToCodexItemsWithImages(
+  msg: Extract<
+    ChatMessage,
+    { type: 'prompting_msg' | 'tellask_result_msg' | 'tellask_carryover_msg' }
+  >,
+  requestContext: LlmRequestContext,
+  providerConfig: ProviderConfig | undefined,
+  allowedImageKeys: ReadonlySet<string>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
+): Promise<ChatGptResponseItem[]> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return chatMessageToCodexItems(msg);
+  }
+
+  const content: Array<
+    { type: 'input_text'; text: string } | { type: 'input_image'; image_url: string }
+  > = [{ type: 'input_text', text: msg.content }];
+  const supportsImageInput = resolveModelImageInputSupport(
+    requestContext.modelKey === undefined
+      ? undefined
+      : providerConfig?.models[requestContext.modelKey],
+    true,
+  );
+  for (const [itemIndex, item] of items.entries()) {
+    if (item.type === 'input_text') {
+      content.push({ type: 'input_text', text: item.text });
+      continue;
+    }
+    if (item.type === 'input_image') {
+      if (!supportsImageInput) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_model_unsupported',
+              providerPathLabel: 'Codex Responses path',
+            }),
+          );
+        }
+        content.push({
+          type: 'input_text',
+          text: `[image not sent: current model does not support image input]`,
+        });
+        continue;
+      }
+      if (!isVisionImageMimeType(item.mimeType)) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'Codex Responses path',
+            }),
+          );
+        }
+        content.push({
+          type: 'input_text',
+          text: `[image not sent: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+      if (
+        !allowedImageKeys.has(
+          buildImageBudgetKeyForContentItem({ msg, itemIndex, artifact: item.artifact }),
+        )
+      ) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'Codex Responses path',
+            }),
+          );
+        }
+        content.push({
+          type: 'input_text',
+          text: `[image not sent: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'Codex Responses path',
+            }),
+          );
+        }
+        content.push({ type: 'input_text', text: `[image missing: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (bytesResult.kind === 'read_failed') {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'Codex Responses path',
+            }),
+          );
+        }
+        content.push({ type: 'input_text', text: `[image unreadable: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (onUserImageIngest) {
+        await onUserImageIngest(
+          buildUserImageIngest({
+            requestContext,
+            ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+            artifact: item.artifact,
+            disposition: 'fed_native',
+            providerPathLabel: 'Codex Responses path',
+          }),
+        );
+      }
+      content.push({
+        type: 'input_image',
+        image_url: bytesToDataUrl({ mimeType: item.mimeType, bytes: bytesResult.bytes }),
+      });
+      continue;
+    }
+    const _exhaustive: never = item;
+    throw new Error(`Unsupported user content item: ${String(_exhaustive)}`);
+  }
+
+  return [
+    {
+      type: 'message',
+      role: 'user',
+      content,
+    } as ChatGptResponseItem,
+  ];
+}
+
 async function buildCodexFunctionCallOutput(
   msg: FuncResultMsg,
   limitChars: number,
   requestContext: LlmRequestContext,
   allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
 ): Promise<string | ChatGptFunctionCallOutputContentItem[]> {
   const items = msg.contentItems;
@@ -384,13 +545,32 @@ async function buildCodexFunctionCallOutput(
   }
 
   const out: ChatGptFunctionCallOutputContentItem[] = [];
-  for (const item of items) {
+  for (const [itemIndex, item] of items.entries()) {
     if (item.type === 'input_text') {
       out.push({ type: 'input_text', text: item.text });
       continue;
     }
 
     if (item.type === 'input_image') {
+      if (!supportsImageInput) {
+        if (onToolResultImageIngest) {
+          await onToolResultImageIngest(
+            buildToolResultImageIngest({
+              requestContext,
+              toolCallId: msg.id,
+              toolName: msg.name,
+              artifact: item.artifact,
+              disposition: 'filtered_model_unsupported',
+              providerPathLabel: 'Codex path',
+            }),
+          );
+        }
+        out.push({
+          type: 'input_text',
+          text: `[image not sent: current model does not support image input]`,
+        });
+        continue;
+      }
       if (!isVisionImageMimeType(item.mimeType)) {
         if (onToolResultImageIngest) {
           await onToolResultImageIngest(
@@ -411,7 +591,11 @@ async function buildCodexFunctionCallOutput(
         });
         continue;
       }
-      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(msg, item.artifact))) {
+      if (
+        !allowedImageKeys.has(
+          buildImageBudgetKeyForContentItem({ msg, itemIndex, artifact: item.artifact }),
+        )
+      ) {
         if (onToolResultImageIngest) {
           await onToolResultImageIngest(
             buildToolResultImageIngest({
@@ -420,7 +604,7 @@ async function buildCodexFunctionCallOutput(
               toolName: msg.name,
               artifact: item.artifact,
               disposition: 'filtered_size_limit',
-              detail: buildToolResultImageBudgetLimitDetail({
+              detail: buildImageBudgetLimitDetail({
                 byteLength: item.byteLength,
                 budgetBytes: CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
               }),
@@ -504,6 +688,7 @@ async function buildCodexInput(
   requestContext: LlmRequestContext,
   providerConfig?: ProviderConfig,
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<ChatGptResponseItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
@@ -519,12 +704,37 @@ async function buildCodexInput(
   }
   const input: ChatGptResponseItem[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
-  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+  const allowedImageKeys = selectLatestImagesWithinBudget(
     normalized,
     CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   );
+  const supportsImageInput = resolveModelImageInputSupport(
+    requestContext.modelKey === undefined
+      ? undefined
+      : providerConfig?.models[requestContext.modelKey],
+    true,
+  );
 
   for (const msg of normalized) {
+    if (
+      (msg.type === 'prompting_msg' ||
+        msg.type === 'tellask_result_msg' ||
+        msg.type === 'tellask_carryover_msg') &&
+      Array.isArray(msg.contentItems) &&
+      msg.contentItems.length > 0
+    ) {
+      input.push(
+        ...(await userLikeMessageToCodexItemsWithImages(
+          msg,
+          requestContext,
+          providerConfig,
+          allowedImageKeys,
+          onUserImageIngest,
+        )),
+      );
+      continue;
+    }
+
     if (msg.type === 'func_call_msg') {
       input.push({
         type: 'function_call',
@@ -544,6 +754,7 @@ async function buildCodexInput(
           toolResultMaxChars,
           requestContext,
           allowedImageKeys,
+          supportsImageInput,
           onToolResultImageIngest,
         ),
       });
@@ -567,6 +778,7 @@ async function buildCodexRequest(
   requestContext: LlmRequestContext,
   context: ChatMessage[],
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<ChatGptResponsesRequest> {
   if (!agent.model) {
     throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
@@ -577,6 +789,7 @@ async function buildCodexRequest(
     requestContext,
     providerConfig,
     onToolResultImageIngest,
+    onUserImageIngest,
   );
 
   // Provider isolation rule: request construction must only read Codex-native params here.
@@ -656,6 +869,7 @@ export class CodexGen implements LlmGenerator {
       requestContext,
       context,
       receiver.toolResultImageIngest,
+      receiver.userImageIngest,
     );
 
     let sayingStarted = false;

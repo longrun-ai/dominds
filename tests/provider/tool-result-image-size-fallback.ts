@@ -9,8 +9,10 @@ import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
 import { buildOpenAiCompatibleRequestMessagesWrapper } from '../../main/llm/gen/openai-compatible';
 import {
   ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  buildImageBudgetKeyForContentItem,
   OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  selectLatestImagesWithinBudget,
 } from '../../main/llm/gen/tool-result-image-ingest';
 
 function assert(condition: boolean, message: string): void {
@@ -108,6 +110,61 @@ function buildImageItems(byteLengths: number[], prefix: string): ChatMessage['co
 }
 
 async function main() {
+  const twentyMiB = 20 * 1024 * 1024;
+  const unifiedBudgetContext: ChatMessage[] = [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 1,
+      msgId: 'user-old',
+      grammar: 'markdown',
+      content: 'old user image',
+      contentItems: buildImageItems([twentyMiB], 'unified-user-old'),
+    },
+    {
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: 1,
+      id: 'call-new',
+      name: 'demo_tool',
+      content: 'newer tool image',
+      contentItems: buildImageItems([twentyMiB], 'unified-tool-new'),
+    },
+  ];
+  const oldUserMsg = unifiedBudgetContext[0];
+  const newToolMsg = unifiedBudgetContext[1];
+  if (!oldUserMsg || !newToolMsg) {
+    throw new Error('Expected unified image budget test messages');
+  }
+  const oldUserItems = oldUserMsg.contentItems;
+  const newToolItems = newToolMsg.contentItems;
+  const oldUserImage = oldUserItems?.[0];
+  const newToolImage = newToolItems?.[0];
+  if (!oldUserImage || oldUserImage.type !== 'input_image') {
+    throw new Error('Expected old user image test fixture');
+  }
+  if (!newToolImage || newToolImage.type !== 'input_image') {
+    throw new Error('Expected new tool image test fixture');
+  }
+  const oldUserKey = buildImageBudgetKeyForContentItem({
+    msg: oldUserMsg,
+    itemIndex: 0,
+    artifact: oldUserImage.artifact,
+  });
+  const newToolKey = buildImageBudgetKeyForContentItem({
+    msg: newToolMsg,
+    itemIndex: 0,
+    artifact: newToolImage.artifact,
+  });
+  const unifiedAllowedKeys = selectLatestImagesWithinBudget(
+    unifiedBudgetContext,
+    ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+  );
+  assert(
+    !unifiedAllowedKeys.has(oldUserKey) && unifiedAllowedKeys.has(newToolKey),
+    'Expected the unified image budget to keep the newest image across user and tool sources',
+  );
+
   const baseContext: ChatMessage[] = [
     {
       type: 'prompting_msg',
@@ -127,7 +184,6 @@ async function main() {
     },
   ];
 
-  const twentyMiB = 20 * 1024 * 1024;
   const openAiContext: ChatMessage[] = [
     ...baseContext,
     {
@@ -246,7 +302,7 @@ async function main() {
     'OpenAI-compatible budget test constants must straddle the configured budget',
   );
 
-  console.log('✓ Provider tool-result image budget fallback test passed');
+  console.log('✓ Provider image budget fallback test passed');
 }
 
 main().catch((error) => {

@@ -37,6 +37,7 @@ import type {
   ResumeNotEligibleReason,
   RunControlRefreshMessage,
   SetDiligencePushRequest,
+  UserImageAttachment,
   WebSocketMessage,
 } from '@longrun-ai/kernel/types';
 import type {
@@ -49,9 +50,15 @@ import {
   supportedLanguageCodes,
   type LanguageCode,
 } from '@longrun-ai/kernel/types/language';
-import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
+import {
+  toCallingCourseNumber,
+  type FuncResultContentItem,
+} from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { randomUUID } from 'crypto';
+import fsPromises from 'fs/promises';
 import type { Server } from 'http';
+import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
 import { installGlobalDialogEventBroadcaster } from '../bootstrap/global-dialog-event-broadcaster';
@@ -142,6 +149,147 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
 function normalizeDiligencePushMax(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.floor(value);
+}
+
+const USER_IMAGE_ATTACHMENT_MAX_COUNT = 4;
+const USER_IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+function userImageMimeTypeToExt(mimeType: string): string | null {
+  switch (mimeType) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    default:
+      return null;
+  }
+}
+
+function sanitizeArtifactPathSegment(value: string): string {
+  const cleaned = value.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');
+  const trimmed = cleaned.replace(/^_+|_+$/g, '');
+  return trimmed.length > 0 ? trimmed.slice(0, 96) : 'item';
+}
+
+function parseUserImageAttachments(raw: unknown): UserImageAttachment[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error('attachments must be an array when provided');
+  }
+  if (raw.length > USER_IMAGE_ATTACHMENT_MAX_COUNT) {
+    throw new Error(
+      `at most ${String(USER_IMAGE_ATTACHMENT_MAX_COUNT)} image attachments are allowed`,
+    );
+  }
+  return raw.map((item, index): UserImageAttachment => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new Error(`attachments[${String(index)}] must be an object`);
+    }
+    const record = item as Record<string, unknown>;
+    const kind = record['kind'];
+    const mimeType = record['mimeType'];
+    const byteLength = record['byteLength'];
+    const dataBase64 = record['dataBase64'];
+    if (kind !== 'image') {
+      throw new Error(`attachments[${String(index)}].kind must be image`);
+    }
+    if (typeof mimeType !== 'string' || userImageMimeTypeToExt(mimeType) === null) {
+      throw new Error(`attachments[${String(index)}].mimeType is unsupported`);
+    }
+    if (
+      typeof byteLength !== 'number' ||
+      !Number.isFinite(byteLength) ||
+      byteLength <= 0 ||
+      byteLength > USER_IMAGE_ATTACHMENT_MAX_BYTES
+    ) {
+      throw new Error(
+        `attachments[${String(index)}].byteLength must be between 1 and ${String(
+          USER_IMAGE_ATTACHMENT_MAX_BYTES,
+        )}`,
+      );
+    }
+    if (typeof dataBase64 !== 'string' || dataBase64.trim() === '') {
+      throw new Error(`attachments[${String(index)}].dataBase64 is required`);
+    }
+    return { kind, mimeType, byteLength, dataBase64 };
+  });
+}
+
+function isStrictBase64Payload(value: string): boolean {
+  if (value.length === 0 || value.length % 4 !== 0) return false;
+  return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+}
+
+type PreparedUserImageAttachment = Readonly<{
+  mimeType: UserImageAttachment['mimeType'];
+  bytes: Buffer;
+}>;
+
+function prepareUserImageAttachments(
+  attachments: readonly UserImageAttachment[],
+): PreparedUserImageAttachment[] {
+  return attachments.map((attachment, index): PreparedUserImageAttachment => {
+    if (!isStrictBase64Payload(attachment.dataBase64)) {
+      throw new Error(`attachments[${String(index)}].dataBase64 must be strict base64`);
+    }
+    const bytes = Buffer.from(attachment.dataBase64, 'base64');
+    if (bytes.length !== attachment.byteLength) {
+      throw new Error(
+        `attachments[${String(index)}].byteLength mismatch: declared=${String(
+          attachment.byteLength,
+        )} decoded=${String(bytes.length)}`,
+      );
+    }
+    return {
+      mimeType: attachment.mimeType,
+      bytes,
+    };
+  });
+}
+
+async function persistPreparedUserImageAttachments(args: {
+  dialog: Dialog;
+  msgId: string;
+  attachments: readonly PreparedUserImageAttachment[];
+}): Promise<FuncResultContentItem[] | undefined> {
+  if (args.attachments.length === 0) return undefined;
+  const eventsBase = DialogPersistence.getDialogEventsPath(args.dialog.id, args.dialog.status);
+  const safeMsgId = sanitizeArtifactPathSegment(args.msgId);
+  const contentItems: FuncResultContentItem[] = [];
+
+  for (let index = 0; index < args.attachments.length; index += 1) {
+    const attachment = args.attachments[index];
+    const ext = userImageMimeTypeToExt(attachment.mimeType);
+    if (ext === null) {
+      throw new Error(`attachments[${String(index)}].mimeType is unsupported`);
+    }
+    const relPath = path.posix.join(
+      'artifacts',
+      'user-input',
+      safeMsgId,
+      `${String(index + 1).padStart(2, '0')}-${randomUUID()}.${ext}`,
+    );
+    const absPath = path.join(eventsBase, ...relPath.split('/'));
+    await fsPromises.mkdir(path.dirname(absPath), { recursive: true });
+    await fsPromises.writeFile(absPath, attachment.bytes);
+    contentItems.push({
+      type: 'input_image',
+      mimeType: attachment.mimeType,
+      byteLength: attachment.bytes.length,
+      artifact: {
+        rootId: args.dialog.id.rootId,
+        selfId: args.dialog.id.selfId,
+        status: args.dialog.status,
+        relPath,
+      },
+    });
+  }
+
+  return contentItems;
 }
 
 function parsePersistableDialogStatus(raw: unknown): DialogPersistenceStatus | null {
@@ -357,6 +505,7 @@ async function queueUserSupplementAtGenerationBoundary(
   dialog: Dialog,
   prompt: {
     content: string;
+    contentItems?: FuncResultContentItem[];
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
@@ -377,6 +526,7 @@ async function queueUserSupplementAtGenerationBoundary(
   }
   const queued = dialog.queueUserPromptAtGenerationBoundary({
     prompt: prompt.content,
+    contentItems: prompt.contentItems,
     msgId: prompt.msgId,
     grammar: prompt.grammar,
     userLanguageCode: prompt.userLanguageCode,
@@ -386,6 +536,7 @@ async function queueUserSupplementAtGenerationBoundary(
     course: dialog.currentCourse,
     msgId: queued.msgId,
     content: queued.prompt,
+    contentItems: queued.contentItems,
     grammar: queued.grammar ?? 'markdown',
     origin: 'user',
     userLanguageCode: queued.userLanguageCode,
@@ -1517,6 +1668,7 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
 async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Promise<void> {
   try {
     const { dialog: dialogIdent, content, msgId } = packet;
+    const attachments = parseUserImageAttachments(packet.attachments);
     const userLanguageCode = resolveUserLanguageCode(
       ws,
       (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
@@ -1567,6 +1719,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       grammar: 'markdown' as const,
       userLanguageCode,
     };
+    const preparedAttachments = prepareUserImageAttachments(attachments);
 
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
@@ -1587,10 +1740,15 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       existingSub &&
       existingSub.dialogKey === existingDialog.id.valueOf()
     ) {
-      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(
-        existingDialog,
-        effectivePrompt,
-      );
+      const contentItems = await persistPreparedUserImageAttachments({
+        dialog: existingDialog,
+        msgId: effectivePrompt.msgId,
+        attachments: preparedAttachments,
+      });
+      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(existingDialog, {
+        ...effectivePrompt,
+        contentItems,
+      });
       if (queuedAtBoundary) {
         return;
       }
@@ -1598,6 +1756,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         existingDialog,
         {
           content: effectivePrompt.content,
+          ...(contentItems === undefined ? {} : { contentItems }),
           msgId: effectivePrompt.msgId,
           grammar: effectivePrompt.grammar,
           userLanguageCode: effectivePrompt.userLanguageCode,
@@ -1632,10 +1791,15 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       }
 
       await setupWebSocketSubscription(ws, dialog);
-      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(
+      const contentItems = await persistPreparedUserImageAttachments({
         dialog,
-        effectivePrompt,
-      );
+        msgId: effectivePrompt.msgId,
+        attachments: preparedAttachments,
+      });
+      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(dialog, {
+        ...effectivePrompt,
+        contentItems,
+      });
       if (queuedAtBoundary) {
         return;
       }
@@ -1643,6 +1807,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         dialog,
         {
           content: effectivePrompt.content,
+          ...(contentItems === undefined ? {} : { contentItems }),
           msgId: effectivePrompt.msgId,
           grammar: effectivePrompt.grammar,
           userLanguageCode: effectivePrompt.userLanguageCode,
@@ -1849,6 +2014,7 @@ async function handleReceiveHumanReply(
 ): Promise<void> {
   try {
     const { dialog: dialogIdent, content, msgId, questionId, continuationType } = packet;
+    const attachments = parseUserImageAttachments(packet.attachments);
     const userLanguageCode = resolveUserLanguageCode(
       ws,
       (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
@@ -1899,17 +2065,7 @@ async function handleReceiveHumanReply(
       grammar: 'markdown' as const,
       userLanguageCode,
     };
-
-    const removed = await DialogPersistence.removeQuestion4HumanState(dialogIdObj, questionId);
-    if (!removed.found) {
-      ws.send(
-        JSON.stringify({
-          type: 'error',
-          message: `Question ${questionId} not found in dialog ${dialogId}`,
-        }),
-      );
-      return;
-    }
+    const preparedAttachments = prepareUserImageAttachments(attachments);
 
     // Restore the canonical dialog instances (root + subdialogs) to avoid duplicates.
     const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
@@ -1927,9 +2083,19 @@ async function handleReceiveHumanReply(
       ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
       return;
     }
-
     // Ensure the requesting WebSocket receives q4h_answered and subsequent resume stream events.
     await setupWebSocketSubscription(ws, dialog);
+
+    const removed = await DialogPersistence.removeQuestion4HumanState(dialogIdObj, questionId);
+    if (!removed.found) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: `Question ${questionId} not found in dialog ${dialogId}`,
+        }),
+      );
+      return;
+    }
 
     const removedQuestion = removed.removedQuestion;
     if (!removedQuestion) {
@@ -1945,6 +2111,11 @@ async function handleReceiveHumanReply(
           `(rootId=${dialog.id.rootId} selfId=${dialog.id.selfId} questionId=${questionId})`,
       );
     }
+    const contentItems = await persistPreparedUserImageAttachments({
+      dialog,
+      msgId: effectivePrompt.msgId,
+      attachments: preparedAttachments,
+    });
     const askHumanOriginCourse = removedQuestion.callSiteRef.course;
     const askHumanCarryoverContent = formatTellaskCarryoverResultContent({
       originCourse: askHumanOriginCourse,
@@ -1970,6 +2141,7 @@ async function handleReceiveHumanReply(
         originCourse: toCallingCourseNumber(askHumanOriginCourse),
         calling_genseq: removedQuestion.callSiteRef.callingGenseq,
         carryoverContent: askHumanCarryoverContent,
+        contentItems,
       },
     );
     await dialog.addChatMessages(askHumanResultMirror);
@@ -1991,6 +2163,7 @@ async function handleReceiveHumanReply(
         prompt: effectivePrompt.content,
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
+        contentItems,
         userLanguageCode: effectivePrompt.userLanguageCode,
         q4hAnswerCallId: askHumanCallId,
       });
@@ -2013,6 +2186,7 @@ async function handleReceiveHumanReply(
       dialog,
       {
         content: effectivePrompt.content,
+        ...(contentItems === undefined ? {} : { contentItems }),
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
         userLanguageCode: effectivePrompt.userLanguageCode,

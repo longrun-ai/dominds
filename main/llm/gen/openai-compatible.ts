@@ -41,9 +41,10 @@ import {
   type LlmStreamReceiver,
   type LlmStreamResult,
   type ToolResultImageIngest,
+  type UserImageIngest,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
-import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
+import { bytesToDataUrl, isVisionImageMimeType } from './artifacts';
 import { classifyOpenAiLikeFailure } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
@@ -55,12 +56,14 @@ import {
   truncateProviderToolOutputText,
 } from './tool-output-limit';
 import {
-  buildToolResultImageBudgetKeyForMsg,
-  buildToolResultImageBudgetLimitDetail,
+  buildImageBudgetKeyForContentItem,
+  buildImageBudgetLimitDetail,
   buildToolResultImageIngest,
+  buildUserImageIngest,
   OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   readToolResultImageBytesSafe,
-  selectLatestToolResultImagesWithinBudget,
+  resolveModelImageInputSupport,
+  selectLatestImagesWithinBudget,
 } from './tool-result-image-ingest';
 
 const log = createLogger('llm/openai-compatible');
@@ -250,6 +253,158 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
   }
 }
 
+async function userLikeMessageToChatCompletionMessageWithImages(
+  msg: Extract<
+    ChatMessage,
+    { type: 'prompting_msg' | 'tellask_result_msg' | 'tellask_carryover_msg' }
+  >,
+  requestContext: LlmRequestContext,
+  providerConfig: ProviderConfig | undefined,
+  allowedImageKeys: ReadonlySet<string>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
+): Promise<ChatCompletionMessageParam> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return chatMessageToChatCompletionMessage(msg);
+  }
+
+  const content: ChatCompletionContentPart[] = [{ type: 'text', text: msg.content }];
+  const supportsImageInput = resolveModelImageInputSupport(
+    requestContext.modelKey === undefined
+      ? undefined
+      : providerConfig?.models[requestContext.modelKey],
+    false,
+  );
+  for (const [itemIndex, item] of items.entries()) {
+    if (item.type === 'input_text') {
+      content.push({ type: 'text', text: item.text });
+      continue;
+    }
+    if (item.type === 'input_image') {
+      if (!supportsImageInput) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_model_unsupported',
+              providerPathLabel: 'OpenAI-compatible Chat Completions path',
+            }),
+          );
+        }
+        content.push({
+          type: 'text',
+          text: `[image not sent: current model does not support image input]`,
+        });
+        continue;
+      }
+      if (!isVisionImageMimeType(item.mimeType)) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_mime_unsupported',
+              mimeType: item.mimeType,
+              providerPathLabel: 'OpenAI-compatible Chat Completions path',
+            }),
+          );
+        }
+        content.push({
+          type: 'text',
+          text: `[image not sent: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+      if (
+        !allowedImageKeys.has(
+          buildImageBudgetKeyForContentItem({ msg, itemIndex, artifact: item.artifact }),
+        )
+      ) {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_size_limit',
+              detail: buildImageBudgetLimitDetail({
+                byteLength: item.byteLength,
+                budgetBytes: OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+              }),
+              providerPathLabel: 'OpenAI-compatible Chat Completions path',
+            }),
+          );
+        }
+        content.push({
+          type: 'text',
+          text: `[image not sent: request image budget exceeded bytes=${String(item.byteLength)} budget=${String(
+            OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
+          )}]`,
+        });
+        continue;
+      }
+      const bytesResult = await readToolResultImageBytesSafe(item.artifact);
+      if (bytesResult.kind === 'missing') {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_missing',
+              providerPathLabel: 'OpenAI-compatible Chat Completions path',
+            }),
+          );
+        }
+        content.push({ type: 'text', text: `[image missing: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (bytesResult.kind === 'read_failed') {
+        if (onUserImageIngest) {
+          await onUserImageIngest(
+            buildUserImageIngest({
+              requestContext,
+              ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+              artifact: item.artifact,
+              disposition: 'filtered_read_failed',
+              detail: bytesResult.detail,
+              providerPathLabel: 'OpenAI-compatible Chat Completions path',
+            }),
+          );
+        }
+        content.push({ type: 'text', text: `[image unreadable: ${item.artifact.relPath}]` });
+        continue;
+      }
+      if (onUserImageIngest) {
+        await onUserImageIngest(
+          buildUserImageIngest({
+            requestContext,
+            ...(msg.type === 'prompting_msg' ? { msgId: msg.msgId } : {}),
+            artifact: item.artifact,
+            disposition: 'fed_provider_transformed',
+            providerPathLabel: 'OpenAI-compatible Chat Completions path',
+          }),
+        );
+      }
+      content.push({
+        type: 'image_url',
+        image_url: {
+          url: bytesToDataUrl({ mimeType: item.mimeType, bytes: bytesResult.bytes }),
+          detail: 'auto',
+        },
+      });
+      continue;
+    }
+    const _exhaustive: never = item;
+    throw new Error(`Unsupported user content item: ${String(_exhaustive)}`);
+  }
+
+  return { role: 'user', content };
+}
+
 async function funcResultToChatCompletionMessages(
   msg: FuncResultMsg,
   limitChars: number,
@@ -285,15 +440,17 @@ async function funcResultToChatCompletionMessages(
     text: `Tool output images (${msg.name}, call_id=${msg.id}):`,
   });
 
-  const supportsImageInput = (() => {
-    if (!providerConfig) return false;
-    const modelKey =
-      typeof requestContext.modelKey === 'string' ? requestContext.modelKey.trim() : '';
-    const modelInfo = modelKey.length > 0 ? providerConfig.models[modelKey] : undefined;
-    return isRecord(modelInfo) && modelInfo['supports_image_input'] === true;
-  })();
+  const modelKey =
+    typeof requestContext.modelKey === 'string' ? requestContext.modelKey.trim() : '';
+  const modelInfo =
+    modelKey.length > 0 && providerConfig ? providerConfig.models[modelKey] : undefined;
+  const supportsImageInput = resolveModelImageInputSupport(modelInfo, false);
+  const imageUnsupportedDisposition =
+    modelInfo?.['supports_image_input'] === false
+      ? 'filtered_model_unsupported'
+      : 'filtered_provider_unsupported';
 
-  for (const item of items) {
+  for (const [itemIndex, item] of items.entries()) {
     if (item.type === 'input_text') continue;
 
     if (item.type === 'input_image') {
@@ -306,7 +463,7 @@ async function funcResultToChatCompletionMessages(
               toolCallId: msg.id,
               toolName: msg.name,
               artifact: item.artifact,
-              disposition: 'filtered_provider_unsupported',
+              disposition: imageUnsupportedDisposition,
               providerPathLabel: 'OpenAI-compatible path',
             }),
           );
@@ -337,7 +494,11 @@ async function funcResultToChatCompletionMessages(
         });
         continue;
       }
-      if (!allowedImageKeys.has(buildToolResultImageBudgetKeyForMsg(msg, item.artifact))) {
+      if (
+        !allowedImageKeys.has(
+          buildImageBudgetKeyForContentItem({ msg, itemIndex, artifact: item.artifact }),
+        )
+      ) {
         if (onToolResultImageIngest) {
           await onToolResultImageIngest(
             buildToolResultImageIngest({
@@ -346,7 +507,7 @@ async function funcResultToChatCompletionMessages(
               toolName: msg.name,
               artifact: item.artifact,
               disposition: 'filtered_size_limit',
-              detail: buildToolResultImageBudgetLimitDetail({
+              detail: buildImageBudgetLimitDetail({
                 byteLength: item.byteLength,
                 budgetBytes: OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
               }),
@@ -449,93 +610,6 @@ async function funcResultToChatCompletionMessages(
   return out;
 }
 
-async function orphanedFuncResultToChatCompletionMessages(
-  msg: FuncResultMsg,
-  limitChars: number,
-): Promise<ChatCompletionMessageParam[]> {
-  const items = msg.contentItems;
-  if (!Array.isArray(items) || items.length === 0) {
-    return [
-      {
-        role: 'user',
-        content: limitOpenAiCompatibleToolOutputText(
-          `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
-          msg,
-          limitChars,
-        ),
-      },
-    ];
-  }
-
-  const parts: ChatCompletionContentPart[] = [
-    {
-      type: 'text',
-      text: limitOpenAiCompatibleToolOutputText(
-        `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
-        msg,
-        limitChars,
-      ),
-    },
-  ];
-  let sawImageUrl = false;
-  let sawAnyImage = false;
-
-  for (const item of items) {
-    if (item.type === 'input_text') continue;
-
-    if (item.type === 'input_image') {
-      sawAnyImage = true;
-      if (!isVisionImageMimeType(item.mimeType)) {
-        parts.push({
-          type: 'text',
-          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
-        });
-        continue;
-      }
-
-      const bytes = await readDialogArtifactBytes({
-        rootId: item.artifact.rootId,
-        selfId: item.artifact.selfId,
-        status: item.artifact.status,
-        relPath: item.artifact.relPath,
-      });
-      if (!bytes) {
-        parts.push({
-          type: 'text',
-          text: `[image missing: ${item.artifact.relPath}]`,
-        });
-        continue;
-      }
-
-      parts.push({
-        type: 'image_url',
-        image_url: { url: bytesToDataUrl({ mimeType: item.mimeType, bytes }), detail: 'auto' },
-      });
-      sawImageUrl = true;
-      continue;
-    }
-
-    const _exhaustive: never = item;
-    parts.push({ type: 'text', text: `[unknown content item: ${String(_exhaustive)}]` });
-  }
-
-  if (sawImageUrl) {
-    return [{ role: 'user', content: parts }];
-  }
-  if (sawAnyImage) {
-    const text = parts
-      .filter((p): p is Extract<ChatCompletionContentPart, { type: 'text' }> => p.type === 'text')
-      .map((p) => p.text)
-      .join('\n')
-      .trim();
-    return [{ role: 'user', content: text }];
-  }
-
-  return [
-    { role: 'user', content: limitOpenAiCompatibleToolOutputText(msg.content, msg, limitChars) },
-  ];
-}
-
 function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatCompletionMessageParam[] {
   // Some proxies behave poorly with long runs of same-role messages (Dominds persists thinking/saying
   // as separate msgs). Merge adjacent user/assistant/system messages where safe.
@@ -589,6 +663,7 @@ async function buildChatCompletionMessages(
     reasoningContentMode?: boolean;
     providerConfig?: ProviderConfig;
     onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;
+    onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>;
   },
 ): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
@@ -609,7 +684,7 @@ async function buildChatCompletionMessages(
   const input: ChatCompletionMessageParam[] = [];
   const reasoningContentMode = options?.reasoningContentMode === true;
   const toolResultMaxChars = resolveProviderToolResultMaxChars(options?.providerConfig);
-  const allowedImageKeys = selectLatestToolResultImagesWithinBudget(
+  const allowedImageKeys = selectLatestImagesWithinBudget(
     normalized,
     OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   );
@@ -674,7 +749,20 @@ async function buildChatCompletionMessages(
       continue;
     }
 
-    const mapped = chatMessageToChatCompletionMessage(msg);
+    const mapped =
+      (msg.type === 'prompting_msg' ||
+        msg.type === 'tellask_result_msg' ||
+        msg.type === 'tellask_carryover_msg') &&
+      Array.isArray(msg.contentItems) &&
+      msg.contentItems.length > 0
+        ? await userLikeMessageToChatCompletionMessageWithImages(
+            msg,
+            requestContext,
+            options?.providerConfig,
+            allowedImageKeys,
+            options?.onUserImageIngest,
+          )
+        : chatMessageToChatCompletionMessage(msg);
     input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
   }
 
@@ -830,6 +918,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       reasoningContentMode,
       providerConfig,
       onToolResultImageIngest: receiver.toolResultImageIngest,
+      onUserImageIngest: receiver.userImageIngest,
     });
 
     const openAiParams = agent.model_params?.openai || {};
@@ -1070,6 +1159,9 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       providerConfig,
       onToolResultImageIngest: async (ingest) => {
         outputs.push({ kind: 'tool_result_image_ingest', ingest });
+      },
+      onUserImageIngest: async (ingest) => {
+        outputs.push({ kind: 'user_image_ingest', ingest });
       },
     });
 
