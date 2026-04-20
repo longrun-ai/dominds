@@ -247,8 +247,7 @@ export class DomindsCodeBlock extends HTMLElement {
       stepParent,
       label: getProgressiveExpandLabel(language),
       // Code blocks can keep growing while streaming output arrives. Observe only the code block
-      // itself until it first crosses the initial clamp threshold; never infer or observe parent
-      // containers here.
+      // itself while its expand footer is hidden; never infer or observe parent containers here.
       observeTargetUntilOverflow: true,
       state: this.progressiveExpandState,
       onStateChange: (state) => {

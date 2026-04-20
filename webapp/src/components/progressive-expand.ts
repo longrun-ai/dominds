@@ -3,6 +3,8 @@ import { dispatchDomindsEvent } from './dom-events';
 export const PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX = 120;
 export const PROGRESSIVE_EXPAND_STEP_PARENT_RATIO = 1 / 3;
 export const PROGRESSIVE_EXPAND_STEP_PARENT_ATTR = 'data-progressive-expand-step-parent';
+const PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS = 220;
+const PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX = 1;
 
 export type ProgressiveExpandState =
   | { kind: 'initial' }
@@ -18,7 +20,7 @@ type ProgressiveExpandableComponentOptions = Readonly<{
   state?: ProgressiveExpandState;
   observeTargetUntilOverflow?: boolean;
   onStateChange?: (state: ProgressiveExpandState) => void;
-  onAfterExpandStep?: () => void;
+  onAfterExpand?: () => void;
 }>;
 
 function sameProgressiveExpandState(
@@ -77,9 +79,10 @@ export class ProgressiveExpandableComponent {
   private readonly label: Readonly<{ text: string; title: string }>;
   private readonly observeTargetUntilOverflow: boolean;
   private readonly onStateChange?: (state: ProgressiveExpandState) => void;
-  private readonly onAfterExpandStep?: () => void;
+  private readonly onAfterExpand?: () => void;
   private currentState: ProgressiveExpandState;
   private overflowObserver: ResizeObserver | null = null;
+  private pendingClickCommitTimeout: number | null = null;
 
   private readonly boundOnNestedGrowth = (event: Event): void => {
     if (!(event instanceof CustomEvent)) return;
@@ -91,7 +94,26 @@ export class ProgressiveExpandableComponent {
     });
   };
 
-  private readonly boundOnClick = (): void => {
+  private readonly boundOnClick = (event: MouseEvent): void => {
+    this.cancelPendingClickCommit();
+    if (event.detail >= 3) {
+      this.autoExpandFromNowOn();
+      this.queueAfterExpansionEffects();
+      return;
+    }
+
+    const clickAction =
+      event.detail <= 1 ? () => this.expandOneStep() : () => this.expandToCurrentMaximum();
+    this.pendingClickCommitTimeout = window.setTimeout(() => {
+      this.pendingClickCommitTimeout = null;
+      clickAction();
+    }, PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS);
+  };
+
+  private expandOneStep(): void {
+    if (this.currentState.kind === 'full') {
+      return;
+    }
     const stepPx = computeProgressiveExpandStepPx(this.stepParent);
     const currentMaxHeightPx =
       this.currentState.kind === 'partial'
@@ -100,12 +122,8 @@ export class ProgressiveExpandableComponent {
     const nextMaxHeightPx = currentMaxHeightPx + stepPx;
     this.collapseToHeight(nextMaxHeightPx);
     this.updateState({ kind: 'partial', maxHeightPx: nextMaxHeightPx });
-    requestAnimationFrame(() => {
-      this.refreshExpandFooter();
-      this.emitContentGrown('expand-step');
-      this.onAfterExpandStep?.();
-    });
-  };
+    this.queueAfterExpansionEffects();
+  }
 
   constructor(options: ProgressiveExpandableComponentOptions) {
     this.target = options.target;
@@ -115,12 +133,12 @@ export class ProgressiveExpandableComponent {
     this.label = options.label;
     this.observeTargetUntilOverflow = options.observeTargetUntilOverflow === true;
     this.onStateChange = options.onStateChange;
-    this.onAfterExpandStep = options.onAfterExpandStep;
+    this.onAfterExpand = options.onAfterExpand;
     this.currentState = options.state ?? { kind: 'initial' };
 
     this.button.setAttribute('aria-label', this.label.text);
     this.button.title = this.label.title;
-    this.button.onclick = this.boundOnClick;
+    this.button.addEventListener('click', this.boundOnClick);
     this.target.addEventListener(
       'progressive-expand-content-grown',
       this.boundOnNestedGrowth as EventListener,
@@ -135,8 +153,9 @@ export class ProgressiveExpandableComponent {
   }
 
   public cleanup(): void {
+    this.cancelPendingClickCommit();
     this.disconnectOverflowObserver();
-    this.button.onclick = null;
+    this.button.removeEventListener('click', this.boundOnClick);
     this.target.removeEventListener(
       'progressive-expand-content-grown',
       this.boundOnNestedGrowth as EventListener,
@@ -163,6 +182,12 @@ export class ProgressiveExpandableComponent {
     this.target.style.overflowY = 'hidden';
   }
 
+  private cancelPendingClickCommit(): void {
+    if (this.pendingClickCommitTimeout === null) return;
+    window.clearTimeout(this.pendingClickCommitTimeout);
+    this.pendingClickCommitTimeout = null;
+  }
+
   private collapseToInitial(): void {
     this.collapseToHeight(PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX);
   }
@@ -177,11 +202,34 @@ export class ProgressiveExpandableComponent {
     this.overflowObserver = null;
   }
 
-  private expandFully(): void {
+  private autoExpandFromNowOn(): void {
     this.showCurrentContentFully();
     this.footer.classList.add('is-hidden');
     this.disconnectOverflowObserver();
     this.updateState({ kind: 'full' });
+  }
+
+  private expandToCurrentMaximum(): void {
+    if (this.currentState.kind === 'full') {
+      return;
+    }
+    const currentMaxHeightPx = Math.max(
+      this.target.scrollHeight + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX,
+      this.target.clientHeight,
+      PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX,
+    );
+    this.collapseToHeight(currentMaxHeightPx);
+    this.updateState({ kind: 'partial', maxHeightPx: currentMaxHeightPx });
+    this.queueAfterExpansionEffects();
+  }
+
+  private queueAfterExpansionEffects(): void {
+    requestAnimationFrame(() => {
+      if (!this.target.isConnected) return;
+      this.refreshExpandFooter();
+      this.emitContentGrown('expand-step');
+      this.onAfterExpand?.();
+    });
   }
 
   private applyCurrentState(): void {
@@ -193,20 +241,21 @@ export class ProgressiveExpandableComponent {
         this.collapseToHeight(this.currentState.maxHeightPx);
         return;
       case 'full':
-        this.expandFully();
+        this.autoExpandFromNowOn();
         return;
     }
   }
 
   private attachOverflowObserverIfNeeded(): void {
-    this.disconnectOverflowObserver();
     if (
       !this.observeTargetUntilOverflow ||
-      this.currentState.kind !== 'initial' ||
+      this.currentState.kind === 'full' ||
       typeof ResizeObserver === 'undefined'
     ) {
+      this.disconnectOverflowObserver();
       return;
     }
+    if (this.overflowObserver !== null) return;
     this.overflowObserver = new ResizeObserver(() => {
       this.refreshExpandFooter();
       this.emitContentGrown('content-growth');
@@ -227,6 +276,12 @@ export class ProgressiveExpandableComponent {
       }
       this.footer.classList.add('is-hidden');
       this.showCurrentContentFully();
+      this.attachOverflowObserverIfNeeded();
+      return;
+    }
+    if (this.currentState.kind === 'full') {
+      this.showCurrentContentFully();
+      this.footer.classList.add('is-hidden');
       return;
     }
     const overflow = this.target.scrollHeight > this.target.clientHeight + 1;
@@ -236,7 +291,19 @@ export class ProgressiveExpandableComponent {
       return;
     }
     this.footer.classList.add('is-hidden');
-    this.expandFully();
+    this.ensurePartialOverflowObserverSlack();
+    this.attachOverflowObserverIfNeeded();
+  }
+
+  private ensurePartialOverflowObserverSlack(): void {
+    if (this.currentState.kind !== 'partial') return;
+    const nextMaxHeightPx = Math.max(
+      this.currentState.maxHeightPx,
+      this.target.scrollHeight + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX,
+    );
+    if (nextMaxHeightPx === this.currentState.maxHeightPx) return;
+    this.collapseToHeight(nextMaxHeightPx);
+    this.updateState({ kind: 'partial', maxHeightPx: nextMaxHeightPx });
   }
 }
 

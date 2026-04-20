@@ -2902,9 +2902,9 @@ export class DomindsDialogContainer extends HTMLElement {
       stepParent,
       label,
       // Dialog blocks can still grow after first render while content streams in. Observe only
-      // the target itself and stop as soon as the first overflow threshold is crossed.
+      // the target itself while its expand footer is hidden.
       observeTargetUntilOverflow: true,
-      onAfterExpandStep: () => {
+      onAfterExpand: () => {
         this.scrollToBottom();
       },
     });

@@ -12193,8 +12193,8 @@ export class DomindsApp extends HTMLElement {
       stepParent: widgetContent,
       label: getProgressiveExpandLabel(this.uiLanguage),
       // Reminder bodies can become long after first paint when a nested code block is expanded.
-      // Track only target self-growth until the first outer overflow appears; never track widget
-      // parent resize for this.
+      // Track only target self-growth while the expand footer is hidden; never track widget parent
+      // resize for this.
       observeTargetUntilOverflow: true,
     });
     this.reminderProgressiveExpandCleanupByKey.set(key, cleanup);
