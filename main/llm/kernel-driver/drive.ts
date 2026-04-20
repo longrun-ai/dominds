@@ -1161,7 +1161,7 @@ async function executeFunctionCalls(args: {
         outcome = 'failure';
         const errorText =
           preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
-        log.warn('kernel-driver rejected function call arguments before execution', undefined, {
+        log.debug('kernel-driver rejected function call arguments before execution', undefined, {
           funcName: func.name,
           arguments: argsStr,
           error: errorText,

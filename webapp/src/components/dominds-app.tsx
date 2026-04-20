@@ -255,6 +255,8 @@ export class DomindsApp extends HTMLElement {
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
   private connectionState: ConnectionState = this.wsManager.getConnectionState();
+  private wsConnectionOutageEligibleForHistory = this.connectionState.status === 'connected';
+  private wsConnectionErrorHistoryRecorded = false;
   private authState: AuthState = { kind: 'uninitialized' };
   private urlAuthPresent: boolean = false;
   // Backend is the single source of truth.
@@ -10021,6 +10023,8 @@ export class DomindsApp extends HTMLElement {
 
     // Update UI based on connection state
     if (state.status === 'connected') {
+      this.wsConnectionOutageEligibleForHistory = false;
+      this.wsConnectionErrorHistoryRecorded = false;
       this.wsManager.setUiLanguage(this.uiLanguage);
 
       // Fetch Q4H state from ALL running dialogs for global display
@@ -10032,12 +10036,27 @@ export class DomindsApp extends HTMLElement {
       if (previousStatus !== 'connected') {
         this.restoreCurrentDialogAfterReconnectInBackground();
       }
-    } else if (state.status === 'error') {
+    } else {
+      if (previousStatus === 'connected') {
+        this.wsConnectionOutageEligibleForHistory = true;
+        this.wsConnectionErrorHistoryRecorded = false;
+      }
+
+      if (state.status !== 'error') {
+        return;
+      }
       if (state.error === 'Unauthorized') {
         this.onAuthRejected('ws');
         return;
       }
-      this.showError(state.error || 'Connection error');
+      const persistHistory =
+        this.wsConnectionOutageEligibleForHistory && !this.wsConnectionErrorHistoryRecorded;
+      if (persistHistory) {
+        this.wsConnectionErrorHistoryRecorded = true;
+      }
+      this.showError(state.error || 'Connection error', 'error', {
+        history: persistHistory ? 'persist' : 'skip',
+      });
     }
   }
 
@@ -10106,6 +10125,8 @@ export class DomindsApp extends HTMLElement {
       statusEl.setAttribute('status', this.connectionState.status);
       if (this.connectionState.error) {
         statusEl.setAttribute('error', this.connectionState.error);
+      } else {
+        statusEl.removeAttribute('error');
       }
     }
   }
@@ -10122,9 +10143,13 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private showError(message: string, type: 'error' | 'warning' | 'info' = 'error'): void {
+  private showError(
+    message: string,
+    type: 'error' | 'warning' | 'info' = 'error',
+    options?: ToastOptions,
+  ): void {
     console.error(`[${type.toUpperCase()}] ${message}`);
-    this.showToast(message, type);
+    this.showToast(message, type, options);
   }
 
   private showSuccess(message: string): void {

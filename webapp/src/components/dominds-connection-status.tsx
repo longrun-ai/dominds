@@ -17,6 +17,7 @@ export class DomindsConnectionStatus extends HTMLElement {
   private mountedAtMs = 0;
   private firstConnStateEventSeen = false;
   private initialStatusRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private connStateCancel: (() => void) | null = null;
 
   constructor() {
     super();
@@ -32,15 +33,20 @@ export class DomindsConnectionStatus extends HTMLElement {
     const parsed = normalizeLanguageCode(raw);
     this.uiLanguage = parsed ?? 'en';
     const initial = this.wsManager.getConnectionState();
-    if (!this.hasAttribute('status')) {
-      this.setAttribute('status', initial.status);
-    }
-    if (initial.error && !this.hasAttribute('error')) {
+    this.setAttribute('status', initial.status);
+    if (initial.error) {
       this.setAttribute('error', initial.error);
+    } else if (!initial.error && this.hasAttribute('error')) {
+      this.removeAttribute('error');
     }
     this.updateDisplay();
     this.scheduleInitialStatusRefresh();
+    if (this.connStateCancel) {
+      this.connStateCancel();
+      this.connStateCancel = null;
+    }
     const sub = this.wsManager.subscribeToConnectionState();
+    this.connStateCancel = sub.cancel;
     (async () => {
       for await (const state of sub.stream()) {
         this.firstConnStateEventSeen = true;
@@ -55,6 +61,10 @@ export class DomindsConnectionStatus extends HTMLElement {
     if (this.initialStatusRefreshTimer) {
       clearTimeout(this.initialStatusRefreshTimer);
       this.initialStatusRefreshTimer = null;
+    }
+    if (this.connStateCancel) {
+      this.connStateCancel();
+      this.connStateCancel = null;
     }
   }
 

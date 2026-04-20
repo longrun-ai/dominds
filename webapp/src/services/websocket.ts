@@ -60,22 +60,36 @@ export class WebSocketManager {
       return;
     }
 
-    this.updateConnectionState({ status: 'connecting' });
+    this.updateConnectionState({ status: 'connecting', error: undefined });
 
     try {
       const wsUrl = this.config.url.replace(/^http/, 'ws');
-      this.ws = new WebSocket(wsUrl, this.config.protocols);
+      const ws = new WebSocket(wsUrl, this.config.protocols);
+      this.ws = ws;
 
-      this.ws.onopen = this.handleOpen.bind(this);
-      this.ws.onmessage = this.handleMessage.bind(this);
-      this.ws.onclose = this.handleClose.bind(this);
-      this.ws.onerror = this.handleError.bind(this);
+      ws.onopen = () => {
+        if (this.ws !== ws) return;
+        this.handleOpen();
+      };
+      ws.onmessage = (event) => {
+        if (this.ws !== ws) return;
+        this.handleMessage(event);
+      };
+      ws.onclose = (event) => {
+        if (this.ws !== ws) return;
+        this.handleClose(event);
+      };
+      ws.onerror = (event) => {
+        if (this.ws !== ws) return;
+        this.handleError(event);
+      };
 
       // Set connection timeout (reduced to 5 seconds)
       setTimeout(() => {
-        if (this.ws?.readyState === WebSocket.CONNECTING) {
+        if (this.ws === ws && ws.readyState === WebSocket.CONNECTING) {
           console.warn('WebSocket connection timeout');
           this.handleError(new Error('Connection timeout'));
+          ws.close(4000, 'Connection timeout');
         }
       }, 5000);
     } catch (error) {
@@ -107,7 +121,7 @@ export class WebSocketManager {
       this.ws = null;
     }
 
-    this.updateConnectionState({ status: 'disconnected', reconnectAttempts: 0 });
+    this.updateConnectionState({ status: 'disconnected', reconnectAttempts: 0, error: undefined });
   }
 
   /**
@@ -169,6 +183,7 @@ export class WebSocketManager {
       status: 'connected',
       lastConnected: new Date(),
       reconnectAttempts: 0,
+      error: undefined,
     });
 
     if (this.uiLanguage) {
@@ -190,13 +205,14 @@ export class WebSocketManager {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.ws = null;
 
     if (event.code === 4401 || event.reason === 'unauthorized') {
       this.updateConnectionState({ status: 'error', error: 'Unauthorized' });
       return;
     }
 
-    this.updateConnectionState({ status: 'disconnected' });
+    this.updateConnectionState({ status: 'disconnected', error: undefined });
 
     // Attempt to reconnect unless it was a clean close (code 1000)
     if (event.code !== 1000) {
@@ -252,14 +268,19 @@ export class WebSocketManager {
   }
 
   private updateConnectionState(updates: Partial<ConnectionState>): void {
-    const oldState = { ...this.connectionState };
     this.connectionState = { ...this.connectionState, ...updates };
     this.connPubChan.write({ ...this.connectionState });
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnectTimer) {
+      return;
+    }
+
     if (this.connectionState.reconnectAttempts >= this.connectionState.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached');
+      const errorMessage = 'Max reconnection attempts reached';
+      console.error(errorMessage);
+      this.updateConnectionState({ status: 'error', error: errorMessage });
       return;
     }
 
@@ -268,9 +289,11 @@ export class WebSocketManager {
     this.updateConnectionState({
       status: 'reconnecting',
       reconnectAttempts: this.connectionState.reconnectAttempts + 1,
+      error: undefined,
     });
 
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect();
     }, delay);
   }
