@@ -247,8 +247,7 @@ export class DomindsApp extends HTMLElement {
   private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v2';
   private static readonly TOAST_HISTORY_MAX = 200;
-  private static readonly UNIFIED_TIMESTAMP_PATTERN =
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+  private static readonly UNIFIED_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
   private static readonly SIDEBAR_WIDTH_STORAGE_KEY = 'dominds-sidebar-width-px-v1';
   private static readonly BOTTOM_PANEL_HEIGHT_STORAGE_KEY = 'dominds-bottom-panel-height-px-v2';
   private static readonly REMINDERS_WIDGET_SIZE_STORAGE_KEY = 'dominds-reminders-widget-size-v1';
@@ -2783,6 +2782,11 @@ export class DomindsApp extends HTMLElement {
           `CRITICAL: dialog-list subdialog node returned root dialog for rootId=${rootId} selfId=${selfId}`,
         );
       }
+      if (!Number.isInteger(node.rootSubdialogCount) || node.rootSubdialogCount < 0) {
+        throw new Error(
+          `CRITICAL: dialog-list subdialog node returned invalid rootSubdialogCount=${String(node.rootSubdialogCount)} rootId=${rootId} selfId=${selfId}`,
+        );
+      }
       if (node.status !== status) {
         throw new Error(
           `CRITICAL: dialog-list subdialog node status mismatch. expected=${status} actual=${node.status} rootId=${rootId} selfId=${selfId}`,
@@ -2826,14 +2830,27 @@ export class DomindsApp extends HTMLElement {
       if (rootDialog) {
         const nodeUpdatedAtMs = parseUnifiedTimestampMs(node.lastModified);
         const rootUpdatedAtMs = parseUnifiedTimestampMs(rootDialog.lastModified);
-        const nextSubdialogCount = Math.max(rootDialog.subdialogCount ?? 0, existing.length + 1);
+        const visibleCountFloor = existing.length + 1;
+        if (node.rootSubdialogCount < visibleCountFloor) {
+          throw new Error(
+            `CRITICAL: dialog-list subdialog node rootSubdialogCount under visible count. rootId=${rootId} selfId=${selfId} backend=${node.rootSubdialogCount} visible=${visibleCountFloor}`,
+          );
+        }
+        const nextSubdialogCount = node.rootSubdialogCount;
+        if (
+          typeof rootDialog.subdialogCount !== 'number' ||
+          !Number.isInteger(rootDialog.subdialogCount) ||
+          rootDialog.subdialogCount < 0
+        ) {
+          throw new Error(`Root dialog ${rootId} has invalid backend subdialogCount`);
+        }
         const nextLastModified =
           nodeUpdatedAtMs !== null &&
           (rootUpdatedAtMs === null || nodeUpdatedAtMs > rootUpdatedAtMs)
             ? node.lastModified
             : rootDialog.lastModified;
         if (
-          nextSubdialogCount !== (rootDialog.subdialogCount ?? 0) ||
+          nextSubdialogCount !== rootDialog.subdialogCount ||
           nextLastModified !== rootDialog.lastModified
         ) {
           this.upsertRootDialogSnapshot({
@@ -8785,6 +8802,11 @@ export class DomindsApp extends HTMLElement {
       if (!Array.isArray(h.subdialogs)) {
         throw new Error(`Hierarchy response for ${rootId} has invalid subdialogs payload`);
       }
+      if (!Number.isInteger(h.root.subdialogCount) || h.root.subdialogCount < 0) {
+        throw new Error(
+          `Hierarchy response for ${rootId} has invalid root subdialogCount=${String(h.root.subdialogCount)}`,
+        );
+      }
 
       const cachedRootDisplayState = this.dialogDisplayStatesByKey.get(
         this.dialogKey(rootId, rootId),
@@ -8847,6 +8869,11 @@ export class DomindsApp extends HTMLElement {
         rootId,
         newSubdialogs,
       );
+      if (h.root.subdialogCount < mergedSubdialogs.length) {
+        throw new Error(
+          `Hierarchy response for ${rootId} has root subdialogCount below loaded subdialog count. backend=${h.root.subdialogCount} loaded=${mergedSubdialogs.length}`,
+        );
+      }
 
       const nextRoot: ApiRootDialogResponse = {
         rootId,
@@ -8858,10 +8885,7 @@ export class DomindsApp extends HTMLElement {
         lastModified: h.root.lastModified,
         displayState: rootDisplayState ?? rootEntry?.displayState,
         waitingForFreshBootsReasoning: h.root.waitingForFreshBootsReasoning === true,
-        subdialogCount:
-          typeof rootEntry?.subdialogCount === 'number'
-            ? Math.max(rootEntry.subdialogCount, mergedSubdialogs.length)
-            : mergedSubdialogs.length,
+        subdialogCount: h.root.subdialogCount,
       };
 
       this.upsertRootDialogSnapshot(nextRoot);
@@ -10007,12 +10031,19 @@ export class DomindsApp extends HTMLElement {
   public async ensureSubdialogsLoaded(rootId: string): Promise<boolean> {
     if (!rootId) return false;
     const rootDialog = this.getRootDialog(rootId);
-    const expectedCount =
-      typeof rootDialog?.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
+    if (!rootDialog) return false;
+    if (
+      typeof rootDialog.subdialogCount !== 'number' ||
+      !Number.isInteger(rootDialog.subdialogCount) ||
+      rootDialog.subdialogCount < 0
+    ) {
+      throw new Error(`Root dialog ${rootId} has invalid backend subdialogCount`);
+    }
+    const expectedCount = rootDialog.subdialogCount;
     if (expectedCount === 0) return true;
     const alreadyLoaded = this.getVisibleSubdialogsForRoot(rootId).length > 0;
     if (alreadyLoaded) return true;
-    const status = this.toPersistableStatus(rootDialog?.status);
+    const status = this.toPersistableStatus(rootDialog.status);
     if (status === null) return false;
     await this.loadRootHierarchyForKnownStatus(rootId, status);
     return this.getVisibleSubdialogsForRoot(rootId).length > 0;
@@ -11434,13 +11465,28 @@ export class DomindsApp extends HTMLElement {
               `CRITICAL: subdialog_created event for unknown rootId=${node.rootId} selfId=${node.selfId}`,
             );
           }
-          const prevCount =
-            typeof rootDialog.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
+          if (
+            !Number.isInteger(subdialogEvent.rootSubdialogCount) ||
+            subdialogEvent.rootSubdialogCount < 0
+          ) {
+            throw new Error(
+              `CRITICAL: subdialog_created event returned invalid rootSubdialogCount=${String(subdialogEvent.rootSubdialogCount)} rootId=${node.rootId} selfId=${node.selfId}`,
+            );
+          }
+          const existingSubdialogs = this.getVisibleSubdialogsForRoot(node.rootId);
+          const alreadyVisible = existingSubdialogs.some(
+            (subdialog) => subdialog.selfId === incomingSubdialog.selfId,
+          );
           const visibleCountFloor =
             hadLoadedSubdialogs || rootExpandedInDom
-              ? this.getVisibleSubdialogsForRoot(node.rootId).length + 1
+              ? existingSubdialogs.length + (alreadyVisible ? 0 : 1)
               : 1;
-          const nextCount = Math.max(prevCount + 1, visibleCountFloor, 1);
+          if (subdialogEvent.rootSubdialogCount < visibleCountFloor) {
+            throw new Error(
+              `CRITICAL: subdialog_created event rootSubdialogCount under visible count. rootId=${node.rootId} selfId=${node.selfId} backend=${subdialogEvent.rootSubdialogCount} visible=${visibleCountFloor}`,
+            );
+          }
+          const nextCount = subdialogEvent.rootSubdialogCount;
           this.upsertRootDialogSnapshot({
             ...rootDialog,
             subdialogCount: nextCount,
@@ -11448,14 +11494,16 @@ export class DomindsApp extends HTMLElement {
           });
 
           if (hadLoadedSubdialogs || rootExpandedInDom) {
-            const existing = this.getVisibleSubdialogsForRoot(node.rootId);
-            const idx = existing.findIndex((d) => d.selfId === incomingSubdialog.selfId);
+            const idx = existingSubdialogs.findIndex((d) => d.selfId === incomingSubdialog.selfId);
             if (idx >= 0) {
-              const updated = [...existing];
+              const updated = [...existingSubdialogs];
               updated[idx] = incomingSubdialog;
               this.setVisibleSubdialogsForRoot(node.rootId, updated);
             } else {
-              this.setVisibleSubdialogsForRoot(node.rootId, [...existing, incomingSubdialog]);
+              this.setVisibleSubdialogsForRoot(node.rootId, [
+                ...existingSubdialogs,
+                incomingSubdialog,
+              ]);
             }
           }
 

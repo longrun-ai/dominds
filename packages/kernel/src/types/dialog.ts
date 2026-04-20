@@ -66,6 +66,7 @@ export interface SubdialogEvent extends DialogEventBase {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
+  rootSubdialogCount: number;
   subDialogNode: {
     selfId: string;
     rootId: string;

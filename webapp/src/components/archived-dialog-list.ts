@@ -159,9 +159,14 @@ export class ArchivedDialogList extends HTMLElement {
     if (patch.subdialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
       if (countEl instanceof HTMLElement) {
-        countEl.textContent = String(
-          typeof next.subdialogCount === 'number' ? next.subdialogCount : 0,
-        );
+        if (
+          typeof next.subdialogCount !== 'number' ||
+          !Number.isInteger(next.subdialogCount) ||
+          next.subdialogCount < 0
+        ) {
+          throw new Error(`Root dialog ${rootId} received invalid backend subdialogCount`);
+        }
+        countEl.textContent = String(next.subdialogCount);
       }
     }
     return true;
@@ -311,6 +316,15 @@ export class ArchivedDialogList extends HTMLElement {
       if (ts > max) max = ts;
     }
     return max;
+  }
+
+  private getRootSubdialogCount(rootGroup: RootGroup): number {
+    if (!rootGroup.root) return rootGroup.subdialogs.length;
+    const backendCount = rootGroup.root.subdialogCount;
+    if (typeof backendCount !== 'number' || !Number.isInteger(backendCount) || backendCount < 0) {
+      throw new Error(`Root dialog ${rootGroup.rootId} is missing backend subdialogCount`);
+    }
+    return backendCount;
   }
 
   private render(): void {
@@ -583,7 +597,7 @@ export class ArchivedDialogList extends HTMLElement {
       ? this.renderRootRow(
           rootGroup.root,
           this.renderToggleIcon(rootCollapsed),
-          rootGroup.subdialogs.length,
+          this.getRootSubdialogCount(rootGroup),
         )
       : this.renderMissingRootRow(rootGroup, rootCollapsed);
 

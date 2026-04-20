@@ -71,6 +71,7 @@ export interface ApiSubdialogResponse {
 export interface ApiDialogListSubdialogNode {
   selfId: string;
   rootId: string;
+  rootSubdialogCount: number;
   supdialogId?: string;
   agentId: string;
   taskDocPath: string;
@@ -100,6 +101,7 @@ export interface ApiDialogHierarchyResponse {
       currentCourse: number;
       createdAt: string;
       lastModified: string;
+      subdialogCount: number;
       displayState?: DialogDisplayState;
       waitingForFreshBootsReasoning?: boolean;
     };

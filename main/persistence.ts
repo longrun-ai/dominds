@@ -1879,6 +1879,12 @@ export class DiskFileDialogStore extends DialogStore {
                 `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
               );
             })();
+    const rootStatus = rootDialog.status;
+    if (rootStatus !== 'running') {
+      throw new Error(
+        `createSubDialog invariant violation: root dialog must be running (rootId=${rootDialog.id.rootId}, status=${rootStatus})`,
+      );
+    }
     const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
 
     // Prepare subdialog store
@@ -1967,6 +1973,10 @@ export class DiskFileDialogStore extends DialogStore {
     }));
 
     // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
+    const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
+      rootDialog.id,
+      rootStatus,
+    );
 
     const subdialogCreatedEvt: SubdialogEvent = {
       type: 'subdialog_created_evt',
@@ -1988,13 +1998,14 @@ export class DiskFileDialogStore extends DialogStore {
       callName: options.callName,
       mentionList,
       tellaskContent,
+      rootSubdialogCount,
       subDialogNode: {
         selfId: subdialogId.selfId,
         rootId: subdialogId.rootId,
         supdialogId: callerDialog.id.selfId,
         agentId: targetAgentId,
         taskDocPath: callerDialog.taskDocPath,
-        status: 'running',
+        status: rootStatus,
         currentCourse: 1,
         createdAt: nowTs,
         lastModified: nowTs,
@@ -4191,6 +4202,10 @@ export class DiskFileDialogStore extends DialogStore {
 
       case 'quest_for_sup_record': {
         // Handle subdialog creation requests
+        const persistedStatus = assertPersistableDialogStatus(
+          status,
+          'sendEventDirectlyToWebSocket:quest_for_sup_record',
+        );
         const subdialogId = new DialogID(event.subDialogId, dialog.id.rootId);
         const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, status);
         if (!metadata || !isSubdialogMetadataFile(metadata)) {
@@ -4208,8 +4223,22 @@ export class DiskFileDialogStore extends DialogStore {
             : typeof subMeta.supdialogId === 'string' && subMeta.supdialogId.trim() !== ''
               ? subMeta.supdialogId
               : dialog.id.selfId;
+        const callName = subMeta.assignmentFromSup?.callName;
+        if (
+          callName !== 'tellask' &&
+          callName !== 'tellaskSessionless' &&
+          callName !== 'freshBootsReasoning'
+        ) {
+          throw new Error(
+            `subdialog_created_evt replay invariant violation: missing assignment callName for ${subdialogId.valueOf()} in ${status}`,
+          );
+        }
+        const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
+          new DialogID(subdialogId.rootId),
+          persistedStatus,
+        );
 
-        const subdialogCreatedEvent = {
+        const subdialogCreatedEvent: SubdialogEvent = {
           type: 'subdialog_created_evt',
           course,
           dialog: {
@@ -4226,15 +4255,17 @@ export class DiskFileDialogStore extends DialogStore {
             rootId: subdialogId.rootId,
           },
           targetAgentId: subMeta.agentId,
+          callName,
           mentionList: event.mentionList,
           tellaskContent: event.tellaskContent,
+          rootSubdialogCount,
           subDialogNode: {
             selfId: subMeta.id,
             rootId: subdialogId.rootId,
             supdialogId: derivedSupdialogId,
             agentId: subMeta.agentId,
             taskDocPath: subMeta.taskDocPath,
-            status,
+            status: persistedStatus,
             currentCourse: subLatest?.currentCourse || 1,
             createdAt: subMeta.createdAt,
             lastModified: subLatest?.lastModified || subMeta.createdAt,
@@ -7896,12 +7927,20 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<number> {
+    if (rootDialogId.rootId !== rootDialogId.selfId) {
+      throw new Error(
+        `countAllSubdialogsUnderRoot invariant violation: expected root dialog id, got ${rootDialogId.valueOf()}`,
+      );
+    }
     try {
-      const subdialogIds = await this.listSubdialogIdsUnderRoot(rootDialogId, status);
-      return subdialogIds.length;
+      const dialogIds = await this.listAllDialogIds(status);
+      return dialogIds.filter(
+        (dialogId) =>
+          dialogId.rootId === rootDialogId.rootId && dialogId.selfId !== dialogId.rootId,
+      ).length;
     } catch (error) {
       log.error(`Failed to count all subdialogs under root ${rootDialogId.selfId}:`, error);
-      return 0;
+      throw error;
     }
   }
 

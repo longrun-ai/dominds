@@ -2357,6 +2357,16 @@ async function handleGetDialogs(
       subdialogCount: number;
     }> = [];
 
+    const allDialogIds = await DialogPersistence.listAllDialogIds(status);
+    const subdialogCountByRootId = new Map<string, number>();
+    for (const dialogId of allDialogIds) {
+      if (dialogId.selfId === dialogId.rootId) continue;
+      subdialogCountByRootId.set(
+        dialogId.rootId,
+        (subdialogCountByRootId.get(dialogId.rootId) ?? 0) + 1,
+      );
+    }
+
     const ids = await DialogPersistence.listDialogs(status);
     for (const id of ids) {
       const dialogId = new DialogID(id);
@@ -2376,9 +2386,7 @@ async function handleGetDialogs(
         status,
       );
 
-      // Count subdialogs for this root dialog
-      const subPath = path.join(rootPath, 'subdialogs');
-      const subdialogCount = await countSubdialogs(subPath);
+      const subdialogCount = subdialogCountByRootId.get(meta.id) ?? 0;
       if (!(await pathStillExistsForLookup(rootPath))) {
         continue;
       }
@@ -2421,46 +2429,6 @@ async function handleGetRunControlCounts(res: ServerResponse): Promise<boolean> 
     log.error('Error getting run control counts:', error);
     respondJson(res, 500, { success: false, error: 'Failed to get run control counts' });
     return true;
-  }
-}
-
-/**
- * Count subdialog directories recursively
- */
-async function countSubdialogs(dirPath: string): Promise<number> {
-  try {
-    const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
-    let count = 0;
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const fullPath = path.join(dirPath, entry.name);
-        const dialogYamlPath = path.join(fullPath, 'dialog.yaml');
-        try {
-          await fsPromises.access(dialogYamlPath);
-          // This directory contains dialog.yaml - it's a subdialog.
-          count++;
-        } catch (error: unknown) {
-          if (getErrorCode(error) === 'ENOENT') {
-            // Only a missing dialog.yaml means "keep recursing". Permission/I/O failures must stay
-            // loud so operators can distinguish inaccessible paths from ordinary non-dialog dirs.
-            count += await countSubdialogs(fullPath);
-            continue;
-          }
-          throw error;
-        }
-      }
-    }
-    return count;
-  } catch (error) {
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'ENOENT'
-    ) {
-      return 0;
-    }
-    throw error;
   }
 }
 
@@ -2595,7 +2563,7 @@ async function handleGetDialogHierarchy(
     respondJson(res, 200, {
       success: true,
       hierarchy: {
-        root: rootInfo,
+        root: { ...rootInfo, subdialogCount: subdialogs.length },
         subdialogs,
       },
     });
@@ -2654,6 +2622,10 @@ async function handleGetDialogListSubdialogNode(
       dialogId,
       status,
     );
+    const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
+      new DialogID(dialog.rootId),
+      status,
+    );
     const subdialogPath = DialogPersistence.getSubdialogPath(dialogId, status);
     if (!(await pathStillExistsForLookup(subdialogPath))) {
       respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
@@ -2673,6 +2645,7 @@ async function handleGetDialogListSubdialogNode(
       subdialogNode: {
         selfId: metadata.id,
         rootId: dialog.rootId,
+        rootSubdialogCount,
         supdialogId: derivedSupdialogId,
         agentId: metadata.agentId,
         taskDocPath: metadata.taskDocPath,

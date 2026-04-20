@@ -79,6 +79,7 @@ async function main(): Promise<void> {
       callName: 'tellaskSessionless',
       mentionList: ['@coder'],
       tellaskContent: 'Please investigate.',
+      rootSubdialogCount: 1,
       subDialogNode: {
         selfId: 'sub-1',
         rootId: dlgId.rootId,
