@@ -33,7 +33,7 @@ interface Q4HInputProps {
   maxLength?: number;
 }
 
-interface PastedImageAttachment {
+interface ImageAttachment {
   id: string;
   mimeType: string;
   byteLength: number;
@@ -56,20 +56,20 @@ const IMAGE_ATTACHMENT_I18N = {
     remove: '移除图片',
     preview: '查看图片',
     close: '关闭图片预览',
-    tooMany: '最多只能粘贴 4 张图片',
+    tooMany: '最多只能添加 10 张图片',
     tooLarge: '单张图片不能超过 10 MB',
     unsupported: '只支持 PNG、JPEG、WebP、GIF 图片',
-    readFailed: '读取剪贴板图片失败',
+    readFailed: '读取图片失败',
     imageOnlyPrompt: '请看附件图片。',
   },
   en: {
     remove: 'Remove image',
     preview: 'View image',
     close: 'Close image preview',
-    tooMany: 'You can paste up to 4 images',
+    tooMany: 'You can attach up to 10 images',
     tooLarge: 'Each image must be 10 MB or smaller',
     unsupported: 'Only PNG, JPEG, WebP, and GIF images are supported',
-    readFailed: 'Failed to read clipboard image',
+    readFailed: 'Failed to read image',
     imageOnlyPrompt: 'Please inspect the attached image.',
   },
 } as const;
@@ -86,7 +86,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private static readonly INPUT_HISTORY_STORAGE_KEY = 'dominds-user-input-history-v1';
   private static readonly INPUT_HISTORY_MAX = 100;
   private static readonly MANUAL_HEIGHT_STORAGE_KEY = 'dominds-q4h-input-height-px-v1';
-  private static readonly IMAGE_ATTACHMENT_MAX_COUNT = 4;
+  private static readonly IMAGE_ATTACHMENT_MAX_COUNT = 10;
   private static readonly IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
   private questions: Q4HQuestion[] = [];
@@ -108,8 +108,9 @@ export class DomindsQ4HInput extends HTMLElement {
   private inputHistory: string[] = [];
   private inputHistoryCursor: number | null = null; // 0..len, where len means draft/current
   private inputHistoryDraft: string | null = null;
-  private imageAttachments: PastedImageAttachment[] = [];
+  private imageAttachments: ImageAttachment[] = [];
   private openImageAttachmentId: string | null = null;
+  private imageDragDepth = 0;
 
   private textInput!: HTMLTextAreaElement;
   private measureTextarea!: HTMLTextAreaElement;
@@ -421,7 +422,7 @@ export class DomindsQ4HInput extends HTMLElement {
       throw new Error(t.tooMany);
     }
 
-    const nextAttachments: PastedImageAttachment[] = [];
+    const nextAttachments: ImageAttachment[] = [];
     try {
       for (const file of imageFiles) {
         if (!this.isSupportedImageMimeType(file.type)) {
@@ -449,6 +450,37 @@ export class DomindsQ4HInput extends HTMLElement {
     this.imageAttachments = [...this.imageAttachments, ...nextAttachments];
     this.safeRender();
     this.scheduleInputUiUpdate();
+  }
+
+  private hasDraggedFiles(event: DragEvent): boolean {
+    const dataTransfer = event.dataTransfer;
+    if (dataTransfer === null) return false;
+    return Array.from(dataTransfer.types).includes('Files');
+  }
+
+  private setImageDropActive(active: boolean): void {
+    this.inputWrapper.classList.toggle('image-drop-active', active && !this.props.disabled);
+  }
+
+  private resetImageDragState(): void {
+    this.imageDragDepth = 0;
+    if (this.inputWrapper) {
+      this.inputWrapper.classList.remove('image-drop-active');
+    }
+  }
+
+  private handleDroppedImageFiles(files: readonly File[]): void {
+    if (this.props.disabled) {
+      const t = getUiStrings(this.uiLanguage);
+      this.showError(t.inputNotAvailableToast);
+      return;
+    }
+
+    void this.addImageFiles(files).catch((error: unknown) => {
+      console.error('Failed to add dropped image:', error);
+      const t = IMAGE_ATTACHMENT_I18N[this.uiLanguage];
+      this.showError(error instanceof Error ? error.message : t.readFailed);
+    });
   }
 
   private removeImageAttachment(id: string): void {
@@ -1045,6 +1077,48 @@ export class DomindsQ4HInput extends HTMLElement {
           e.preventDefault();
           void this.handlePrimaryAction();
         }
+      });
+    }
+
+    if (this.inputWrapper) {
+      this.inputWrapper.addEventListener('dragenter', (event: DragEvent) => {
+        if (!this.hasDraggedFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.imageDragDepth += 1;
+        this.setImageDropActive(true);
+      });
+
+      this.inputWrapper.addEventListener('dragover', (event: DragEvent) => {
+        if (!this.hasDraggedFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const dataTransfer = event.dataTransfer;
+        if (dataTransfer !== null) {
+          dataTransfer.dropEffect = this.props.disabled ? 'none' : 'copy';
+        }
+        this.setImageDropActive(true);
+      });
+
+      this.inputWrapper.addEventListener('dragleave', (event: DragEvent) => {
+        if (!this.hasDraggedFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.imageDragDepth = Math.max(0, this.imageDragDepth - 1);
+        if (this.imageDragDepth === 0) {
+          this.setImageDropActive(false);
+        }
+      });
+
+      this.inputWrapper.addEventListener('drop', (event: DragEvent) => {
+        if (!this.hasDraggedFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const dataTransfer = event.dataTransfer;
+        const files = dataTransfer === null ? [] : Array.from(dataTransfer.files);
+        this.resetImageDragState();
+        if (files.length === 0) return;
+        this.handleDroppedImageFiles(files);
       });
     }
 
@@ -1767,6 +1841,16 @@ export class DomindsQ4HInput extends HTMLElement {
       .input-wrapper:focus-within {
         border-color: var(--dominds-focus, #007acc);
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-focus, #007acc) 20%, transparent);
+      }
+
+      .input-wrapper.image-drop-active {
+        border-color: var(--dominds-focus, #007acc);
+        background: color-mix(in srgb, var(--dominds-focus, #007acc) 10%, var(--dominds-input-bg, #f8f9fa));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-focus, #007acc) 22%, transparent);
+      }
+
+      .input-wrapper.image-drop-active .message-input {
+        cursor: copy;
       }
 
       .input-wrapper.disabled {

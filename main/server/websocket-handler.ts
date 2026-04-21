@@ -151,7 +151,7 @@ function normalizeDiligencePushMax(value: number): number {
   return Math.floor(value);
 }
 
-const USER_IMAGE_ATTACHMENT_MAX_COUNT = 4;
+const USER_IMAGE_ATTACHMENT_MAX_COUNT = 10;
 const USER_IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 function userImageMimeTypeToExt(mimeType: string): string | null {
