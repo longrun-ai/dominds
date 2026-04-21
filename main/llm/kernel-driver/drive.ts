@@ -33,6 +33,7 @@ import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
+  formatReminderContextGuide,
   formatReminderItemGuide,
 } from '../../runtime/driver-messages';
 import { isStandaloneRuntimeGuidePromptContent } from '../../runtime/reply-prompt-copy';
@@ -834,16 +835,16 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
   const reminders = await dlg.listVisibleReminders();
   if (reminders.length === 0) return [];
   const language = getWorkLanguage();
-  const rendered: ChatMessage[] = [];
+  const renderedItems: ChatMessage[] = [];
   for (const reminder of reminders) {
     if (!reminder || !reminderEchoBackEnabled(reminder)) {
       continue;
     }
     if (reminder.owner) {
-      rendered.push(await reminder.owner.renderReminder(dlg, reminder));
+      renderedItems.push(await reminder.owner.renderReminder(dlg, reminder));
       continue;
     }
-    rendered.push({
+    renderedItems.push({
       type: 'transient_guide_msg',
       role: 'assistant',
       content: formatReminderItemGuide(language, reminder.id, reminder.content, {
@@ -852,7 +853,15 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
       }),
     });
   }
-  return rendered;
+  if (renderedItems.length === 0) return [];
+  return [
+    {
+      type: 'environment_msg',
+      role: 'user',
+      content: formatReminderContextGuide(language),
+    },
+    ...renderedItems,
+  ];
 }
 
 function hasSameReplyDirective(

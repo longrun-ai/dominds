@@ -166,6 +166,28 @@ export function formatDiligenceAutoContinuePrompt(
   ].join('\n');
 }
 
+export function formatReminderContextGuide(language: LanguageCode): string {
+  if (language === 'zh') {
+    return [
+      formatSystemNoticePrefix(language),
+      '以下是当前可见提醒项的运行时上下文投影。它们会按各自语义进入模型上下文（例如 self-reminder 保持 assistant-side 工作集语义），但不是我刚刚生成给用户的聊天正文。',
+      '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
+      '提醒项只作为工作集/状态参考；只有实际改变当前判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。',
+    ].join('\n');
+  }
+
+  return [
+    formatSystemNoticePrefix(language),
+    'The following visible reminders are runtime-added context projections. They enter model context according to their own semantics (for example, self-reminders keep assistant-side workset semantics), but they are not chat text I just generated for the user.',
+    'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
+    'Use reminders as workset/state references; only carry information into a later substantive outward reply when it materially changes current judgment, plan, or risk.',
+  ].join('\n');
+}
+
+function formatReminderItemProjectionNote(language: LanguageCode): string {
+  return language === 'zh' ? 'Reminder 上下文投影条目：' : 'Reminder context projection item:';
+}
+
 export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
@@ -221,6 +243,8 @@ export function formatReminderItemGuide(
         : isPendingTellaskReminder && pendingTellaskCount === 0
           ? `If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_id": "${reminderId}" })`
           : `If I need to delete this reminder, run: delete_reminder({ "reminder_id": "${reminderId}" })`;
+  const projectionNote = formatReminderItemProjectionNote(language);
+  const enProjectionPrefix = `${projectionNote} `;
 
   if (language === 'zh') {
     if (managementTool) {
@@ -228,7 +252,7 @@ export function formatReminderItemGuide(
       return [
         `提醒项 [${reminderId}]（工具状态）`,
         '',
-        '我把这条当作工具维护的状态参考。默认不在对外回复里专门确认、复述或总结它；只有它实际改变当前判断、计划或风险时，我才提炼真正相关的部分。',
+        `${projectionNote}我把这条当作工具维护的状态参考。默认不在对外回复里专门确认、复述或总结它；只有它实际改变当前判断、计划或风险时，我才提炼真正相关的部分。`,
         '',
         `这条提醒项由工具 ${managementTool} 管理；如果我要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
         '',
@@ -243,7 +267,7 @@ export function formatReminderItemGuide(
       return [
         `提醒项 [${reminderId}]`,
         '',
-        '这是带有 meta 控制更新规则的提醒项。我仍把它当作状态参考，但不要用 update_reminder 直接改写内容。',
+        `${projectionNote}这是带有 meta 控制更新规则的提醒项。我仍把它当作状态参考，但不要用 update_reminder 直接改写内容。`,
         '',
         `如果我要更新这条提醒项，不能用 update_reminder；请按此处理：${updateInstruction}`,
         deleteInstruction,
@@ -256,7 +280,7 @@ export function formatReminderItemGuide(
       return [
         `提醒项 [${reminderId}]（换程接续信息）`,
         '',
-        '我把这条当作换程后快速恢复工作的接续包，不把它自动当成当前必须立刻执行的指令。',
+        `${projectionNote}我把这条当作换程后快速恢复工作的接续包，不把它自动当成当前必须立刻执行的指令。`,
         '',
         '我应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后我必须尽快收敛。',
         '',
@@ -271,8 +295,8 @@ export function formatReminderItemGuide(
       `提醒项 [${reminderId}]${scope === 'personal' ? '（个人范围）' : ''}`,
       '',
       scope === 'personal'
-        ? '这是我给自己的个人范围显眼提示；在所有由我主理的后续对话里都会看到它。我不把它自动当成系统下发的下一步动作。'
-        : '这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。',
+        ? `${projectionNote}这是我给自己的个人范围显眼提示；在所有由我主理的后续对话里都会看到它。我不把它自动当成系统下发的下一步动作。`
+        : `${projectionNote}这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。`,
       '',
       scope === 'personal'
         ? '我应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒而不是长期堆在个人范围里。'
@@ -290,7 +314,7 @@ export function formatReminderItemGuide(
     const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
     return `REMINDER [${reminderId}] (TOOL STATE)
 
-I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
+${enProjectionPrefix}I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
 
 This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
 
@@ -302,7 +326,7 @@ ${content}`;
   if (updateInstruction) {
     return `REMINDER [${reminderId}]
 
-This reminder has a meta-controlled update path. I should still treat it as state/reference, and I must not rewrite it directly with update_reminder.
+${enProjectionPrefix}This reminder has a meta-controlled update path. I should still treat it as state/reference, and I must not rewrite it directly with update_reminder.
 
 If I need to update this reminder, I must not use update_reminder; follow instead: ${updateInstruction}
 ${deleteInstruction}
@@ -312,7 +336,7 @@ ${content}`;
   if (isContinuationPackageReminder) {
     return `REMINDER [${reminderId}] (CONTINUATION PACKAGE)
 
-I treat this as resume information for the next course, not as an automatic must-do command.
+${enProjectionPrefix}I treat this as resume information for the next course, not as an automatic must-do command.
 
 I should keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. I should not duplicate Taskdoc content. In the new course, my first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, I should reconcile it early in the new course.
 
@@ -325,8 +349,8 @@ ${content}`;
 
 ${
   scope === 'personal'
-    ? 'This is my conspicuous personal-scope reminder. I will keep seeing it in all later dialogs I lead, and I do not treat it as an automatically assigned next action.'
-    : 'This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.'
+    ? `${enProjectionPrefix}This is my conspicuous personal-scope reminder. I will keep seeing it in all later dialogs I lead, and I do not treat it as an automatically assigned next action.`
+    : `${enProjectionPrefix}This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.`
 }
 
 ${

@@ -1,10 +1,23 @@
-import { formatReminderItemGuide } from '../../main/runtime/driver-messages';
+import {
+  formatReminderContextGuide,
+  formatReminderItemGuide,
+} from '../../main/runtime/driver-messages';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
 async function main() {
+  const zhContextGuide = formatReminderContextGuide('zh');
+  assert(
+    zhContextGuide.includes('当前可见提醒项的运行时上下文投影'),
+    'Expected zh reminder context guide to explain runtime-added context projection',
+  );
+  assert(
+    zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
+    'Expected zh reminder context guide to explain separate Reminder widget presentation',
+  );
+
   const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
   assert(zh.includes('提醒项 [rem02abc]'), 'Expected zh reminder guide to include reminder id');
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
@@ -12,6 +25,10 @@ async function main() {
   assert(
     zh.includes('我给自己的显眼提示'),
     'Expected zh reminder guide to describe plain reminders as conspicuous self-reminders',
+  );
+  assert(
+    zh.includes('Reminder 上下文投影条目：'),
+    'Expected zh reminder guide to include a compact self-contained per-item projection note',
   );
   assert(
     !zh.includes('高优先级工作集'),
@@ -57,6 +74,10 @@ async function main() {
   assert(
     zhToolManaged.includes('默认不在对外回复里专门确认、复述或总结它'),
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
+  );
+  assert(
+    zhToolManaged.includes('Reminder 上下文投影条目：'),
+    'Expected zh tool-managed reminder to include compact self-contained per-item projection note',
   );
 
   const zhUpdateInstruction = formatReminderItemGuide('zh', 'rem04abc', 'Managed content\n', {
@@ -176,12 +197,28 @@ async function main() {
     'Expected continuation reminder to require new-course first-step cleanup (zh)',
   );
 
+  const enContextGuide = formatReminderContextGuide('en');
+  assert(
+    enContextGuide.includes('visible reminders are runtime-added context projections'),
+    'Expected en reminder context guide to explain runtime-added context projection',
+  );
+  assert(
+    enContextGuide.includes(
+      'the user sees these reminders through a separate Reminder widget/panel item',
+    ),
+    'Expected en reminder context guide to explain separate Reminder widget presentation',
+  );
+
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');
   assert(en.includes('REMINDER [rem02abc]'), 'Expected en reminder guide to include reminder id');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
   assert(
     en.includes('my conspicuous self-reminder'),
     'Expected en reminder guide to describe plain reminders as self-reminders',
+  );
+  assert(
+    en.includes('Reminder context projection item:'),
+    'Expected en reminder guide to include a compact self-contained per-item projection note',
   );
   assert(
     !en.includes('HIGH-PRIORITY WORKING SET'),
@@ -218,6 +255,10 @@ async function main() {
   assert(
     enToolManaged.includes('should not explicitly acknowledge, restate, or summarize it'),
     'Expected en tool-managed reminder to discourage standalone acknowledgment',
+  );
+  assert(
+    enToolManaged.includes('Reminder context projection item:'),
+    'Expected en tool-managed reminder to include compact self-contained per-item projection note',
   );
   assert(
     !enToolManaged.includes('- Update: update_reminder'),
