@@ -1171,8 +1171,8 @@ Dominds 内部持久化的消息粒度较细（thinking/saying/tool call/tool re
 - **理想目标**：Provider 协议能够原生支持 `role='environment'`（或等价机制）来承载运行时注入的环境/系统信息（例如 reminders、transient guide 等），从而避免把“环境信息”伪装成用户发言。
 - **当前现实**：大多数 Provider 不支持 `role='environment'`。因此 Dominds 在投影到 Provider 请求 payload 时，必须把内部消息类型压平到 Provider 可接受的角色集合中。
   - 运行时/系统提示（`environment_msg`）投影为 `role='user'` 的文本块。
-  - 智能体自写的短指导/自我提醒（`transient_guide_msg`）投影为 `role='assistant'` 的文本块。
-  - reminders 不再一刀切：系统托管的状态型提醒（如运行时状态信号）应落在 `user` 侧并带明确系统提示头标；智能体自维护的工作提醒项则保留在 `assistant` 侧，以第一人称工作便签的语义出现。
+  - 智能体自写的短指导（`transient_guide_msg`）投影为 `role='assistant'` 的文本块。
+  - 默认提醒项上下文包装属于运行时/系统提示：Dominds 内置和 fallback 包装落在 `role=user` 侧，带明确系统提示头标（例如 `【系统提示】`），并使用对 LLM 说话的第二人称口吻。自定义 reminder owner 仍按自身契约决定输出 role。无论 owner 具体选择什么 role，外围 reminder 块都应被理解为 environment 风格运行时上下文，而不是新的用户指令，也不是 assistant 自己刚发出的聊天轮次。提醒项投影应插入在真实对话消息之前，并使用成对的提醒块 header/footer；footer 必须把“并非用户指令”的说明限定在该 header/footer 之间的内容，避免误伤对话历史里的真实用户指令。
 
 另外，一些 Provider（尤其是 Anthropic-compatible endpoint）对 **role 交替** 与 **tool_use/tool_result 的边界** 有更严格的结构校验。Dominds 的投影层需要把内部细粒度条目组装为更“turn 化”的 Provider 消息序列（turn assembly），而不是把内部条目逐条 1:1 发送。
 

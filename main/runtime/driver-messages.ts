@@ -169,23 +169,29 @@ export function formatDiligenceAutoContinuePrompt(
 export function formatReminderContextGuide(language: LanguageCode): string {
   if (language === 'zh') {
     return [
-      formatSystemNoticePrefix(language),
-      '以下是当前可见提醒项的运行时上下文投影。它们会按各自语义进入模型上下文（例如 self-reminder 保持 assistant-side 工作集语义），但不是我刚刚生成给用户的聊天正文。',
+      `${formatSystemNoticePrefix(language)} 提醒项上下文块开始`,
+      '以下是当前可见提醒项的运行时上下文投影。由于当前 LLM Provider 通常不支持 role=environment，Dominds 默认把系统运行时提醒包装投影为 role=user；个别提醒项可由其 owner 按自身契约选择 role。无论最终 role 如何，它们都不是新的用户指令/诉求，也不是聊天正文。',
       '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
-      '提醒项只作为工作集/状态参考；只有实际改变当前判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。',
+      '请把提醒项作为工作集/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
     ].join('\n');
   }
 
   return [
-    formatSystemNoticePrefix(language),
-    'The following visible reminders are runtime-added context projections. They enter model context according to their own semantics (for example, self-reminders keep assistant-side workset semantics), but they are not chat text I just generated for the user.',
+    `${formatSystemNoticePrefix(language)} Reminder context block begins`,
+    'The following visible reminders are runtime-added context projections. Because current LLM providers usually do not support role=environment, Dominds projects default system-runtime reminder wrappers as role=user; individual reminder owners may choose the role required by their own contract. Regardless of their final role, these reminders are not new user instructions or requests, and not chat transcript text.',
     'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
-    'Use reminders as workset/state references; only carry information into a later substantive outward reply when it materially changes current judgment, plan, or risk.',
+    'Use reminders as workset/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
   ].join('\n');
 }
 
 function formatReminderItemProjectionNote(language: LanguageCode): string {
-  return language === 'zh' ? 'Reminder 上下文投影条目：' : 'Reminder context projection item:';
+  return language === 'zh' ? '运行时提醒项投影：' : 'Runtime reminder projection:';
+}
+
+export function formatReminderContextFooter(language: LanguageCode): string {
+  return language === 'zh'
+    ? `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户指令；该块之外的后续对话消息不受此说明影响。真正的用户指令（若有）在后续对话消息中的用户消息里。`
+    : `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between "Reminder context block begins" and "Reminder context block ends" are system reminders, not user instructions; this note does not apply to subsequent dialog messages outside this block. Any real user instruction, if present, is in the user messages that follow.`;
 }
 
 export function formatReminderItemGuide(
@@ -234,29 +240,32 @@ export function formatReminderItemGuide(
   const deleteInstruction =
     language === 'zh'
       ? deleteAltInstruction
-        ? `如果我要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
+        ? `如果你要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `如果我要删除这条提醒项，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
+          ? `如果你已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `如果你要删除这条提醒项，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
       : deleteAltInstruction
-        ? `If I need to delete this reminder, I must not use delete_reminder; run: ${deleteAltInstruction}`
+        ? `If you need to delete this reminder, do not use delete_reminder; run: ${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `If I need to delete this reminder, run: delete_reminder({ "reminder_id": "${reminderId}" })`;
+          ? `If you have confirmed this is only noise cleanup and not an action step, you may run: delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `If you need to delete this reminder, run: delete_reminder({ "reminder_id": "${reminderId}" })`;
   const projectionNote = formatReminderItemProjectionNote(language);
   const enProjectionPrefix = `${projectionNote} `;
+  const systemPrefix = formatSystemNoticePrefix(language);
 
   if (language === 'zh') {
     if (managementTool) {
       const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
       return [
-        `提醒项 [${reminderId}]（工具状态）`,
+        `${systemPrefix} 提醒项 [${reminderId}]（工具状态）`,
         '',
-        `${projectionNote}我把这条当作工具维护的状态参考。默认不在对外回复里专门确认、复述或总结它；只有它实际改变当前判断、计划或风险时，我才提炼真正相关的部分。`,
+        `${projectionNote}当前运行环境中有一条由工具 ${managementTool} 管理的状态提醒项。请把它当作环境/工具状态参考，不要当作你自己写的工作便签。`,
         '',
-        `这条提醒项由工具 ${managementTool} 管理；如果我要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
+        '默认不要在对外回复里专门确认、复述或总结它；只有它实际改变你的判断、计划或风险时，才提炼真正相关的部分。',
         '',
-        `如果我要更新这条提醒项，可执行：${updateInstructionSafe}`,
+        `这条提醒项由工具 ${managementTool} 管理；如果你要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
+        '',
+        `如果你要更新这条提醒项，可执行：${updateInstructionSafe}`,
         deleteInstruction,
         '',
         '---',
@@ -265,11 +274,11 @@ export function formatReminderItemGuide(
     }
     if (updateInstruction) {
       return [
-        `提醒项 [${reminderId}]`,
+        `${systemPrefix} 提醒项 [${reminderId}]`,
         '',
-        `${projectionNote}这是带有 meta 控制更新规则的提醒项。我仍把它当作状态参考，但不要用 update_reminder 直接改写内容。`,
+        `${projectionNote}当前运行环境中有一条带有 meta 控制更新规则的提醒项。请把它当作状态参考，不要用 update_reminder 直接改写内容。`,
         '',
-        `如果我要更新这条提醒项，不能用 update_reminder；请按此处理：${updateInstruction}`,
+        `如果你要更新这条提醒项，不能用 update_reminder；请按此处理：${updateInstruction}`,
         deleteInstruction,
         '',
         '---',
@@ -278,13 +287,13 @@ export function formatReminderItemGuide(
     }
     if (isContinuationPackageReminder) {
       return [
-        `提醒项 [${reminderId}]（换程接续信息）`,
+        `${systemPrefix} 提醒项 [${reminderId}]（换程接续信息）`,
         '',
-        `${projectionNote}我把这条当作换程后快速恢复工作的接续包，不把它自动当成当前必须立刻执行的指令。`,
+        `${projectionNote}你设置了换程接续提醒项，让运行时系统在新一程提醒你恢复工作。请把它当作快速恢复工作的接续包，不要自动当成当前必须立刻执行的新指令。`,
         '',
-        '我应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后我必须尽快收敛。',
+        '你应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，你的第一步是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后必须尽快收敛。',
         '',
-        `如果我要更新这份接续包，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
+        `如果你要更新这份接续包，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
         deleteInstruction,
         '',
         '---',
@@ -292,17 +301,17 @@ export function formatReminderItemGuide(
       ].join('\n');
     }
     return [
-      `提醒项 [${reminderId}]${scope === 'personal' ? '（个人范围）' : ''}`,
+      `${systemPrefix} 提醒项 [${reminderId}]${scope === 'personal' ? '（个人范围）' : ''}`,
       '',
       scope === 'personal'
-        ? `${projectionNote}这是我给自己的个人范围显眼提示；在所有由我主理的后续对话里都会看到它。我不把它自动当成系统下发的下一步动作。`
-        : `${projectionNote}这是我给自己的显眼提示，用于保留当前对话里容易丢的工作信息；我不把它自动当成系统下发的下一步动作。`,
+        ? `${projectionNote}你设置了个人范围提醒项，让运行时系统在所有由你主理的后续对话里提醒你。请把它当作你的工作集提示，不要自动当成系统下发的下一步动作。`
+        : `${projectionNote}你设置了提醒项，让运行时系统提醒你。请把它当作用来保留当前对话里容易丢的工作信息的工作集提示，不要自动当成系统下发的下一步动作。`,
       '',
       scope === 'personal'
-        ? '我应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒而不是长期堆在个人范围里。'
-        : '我应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
+        ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒而不是长期堆在个人范围里。'
+        : '你应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
       '',
-      `如果我要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
+      `如果你要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
       deleteInstruction,
       '',
       '---',
@@ -312,54 +321,56 @@ export function formatReminderItemGuide(
 
   if (managementTool) {
     const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
-    return `REMINDER [${reminderId}] (TOOL STATE)
+    return `${systemPrefix} REMINDER [${reminderId}] (TOOL STATE)
 
-${enProjectionPrefix}I treat this as a tool-maintained state reference. By default I should not explicitly acknowledge, restate, or summarize it in my outward reply; I should only extract the parts that materially change my current judgment, plan, or risk.
+${enProjectionPrefix}The current runtime environment has a tool-managed state reminder from ${managementTool}. Treat it as environment/tool state, not as your self-authored work note.
 
-This reminder is managed by tool ${managementTool}; if I need to change it, I should use ${managementTool} instead of update_reminder.
+By default, do not explicitly acknowledge, restate, or summarize it in your outward reply; only extract the parts that materially change your current judgment, plan, or risk.
 
-If I need to update this reminder, run: ${updateInstructionSafe}
+This reminder is managed by tool ${managementTool}; if you need to change it, use ${managementTool} instead of update_reminder.
+
+If you need to update this reminder, run: ${updateInstructionSafe}
 ${deleteInstruction}
 ---
 ${content}`;
   }
   if (updateInstruction) {
-    return `REMINDER [${reminderId}]
+    return `${systemPrefix} REMINDER [${reminderId}]
 
-${enProjectionPrefix}This reminder has a meta-controlled update path. I should still treat it as state/reference, and I must not rewrite it directly with update_reminder.
+${enProjectionPrefix}The current runtime environment has a reminder with a meta-controlled update path. Treat it as state/reference, and do not rewrite it directly with update_reminder.
 
-If I need to update this reminder, I must not use update_reminder; follow instead: ${updateInstruction}
+If you need to update this reminder, do not use update_reminder; follow instead: ${updateInstruction}
 ${deleteInstruction}
 ---
 ${content}`;
   }
   if (isContinuationPackageReminder) {
-    return `REMINDER [${reminderId}] (CONTINUATION PACKAGE)
+    return `${systemPrefix} REMINDER [${reminderId}] (CONTINUATION PACKAGE)
 
-${enProjectionPrefix}I treat this as resume information for the next course, not as an automatic must-do command.
+${enProjectionPrefix}You set a continuation reminder so the runtime system can remind you when work resumes in a new course. Treat it as resume information for the next course, not as an automatic must-do command.
 
-I should keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. I should not duplicate Taskdoc content. In the new course, my first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, I should reconcile it early in the new course.
+Keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
 
-If I need to update this package, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
+If you need to update this package, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;
   }
-  return `REMINDER [${reminderId}]${scope === 'personal' ? ' (PERSONAL SCOPE)' : ''}
+  return `${systemPrefix} REMINDER [${reminderId}]${scope === 'personal' ? ' (PERSONAL SCOPE)' : ''}
 
 ${
   scope === 'personal'
-    ? `${enProjectionPrefix}This is my conspicuous personal-scope reminder. I will keep seeing it in all later dialogs I lead, and I do not treat it as an automatically assigned next action.`
-    : `${enProjectionPrefix}This is my conspicuous self-reminder for easy-to-lose work details in the current dialog. I do not treat it as an automatically assigned next action.`
+    ? `${enProjectionPrefix}You set a personal-scope reminder so the runtime system can remind you in every later dialog you lead. Treat it as your workset reference, not as an automatically assigned next action.`
+    : `${enProjectionPrefix}You set a reminder so the runtime system can remind you. Treat it as your workset reference for easy-to-lose work details in the current dialog, not as an automatically assigned next action.`
 }
 
 ${
   scope === 'personal'
-    ? 'I should keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, I should rewrite it into dialog scope instead of letting personal scope accumulate noise.'
-    : 'I should keep it concise, refresh it when needed, and delete it when obsolete. If I am preparing a new course, I can also rewrite it into a continuation package.'
+    ? 'Keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, rewrite it into dialog scope instead of letting personal scope accumulate noise.'
+    : 'Keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.'
 }
 
-If I need to update this reminder, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
+If you need to update this reminder, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;

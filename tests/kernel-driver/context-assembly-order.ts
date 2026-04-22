@@ -59,11 +59,11 @@ async function main(): Promise<void> {
         'env:mem',
         'env:taskdoc',
         'env:course',
-        'prompting:latest-user',
         'env:reminder-1',
         'env:reminder-2',
+        'prompting:latest-user',
       ],
-      'tail insertions should happen after the last user prompt-like message',
+      'reminder context should be inserted before real dialog messages',
     );
   }
 

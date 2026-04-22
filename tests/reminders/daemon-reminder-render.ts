@@ -79,7 +79,8 @@ async function main(): Promise<void> {
       }
       assert.equal(rendered.type, 'environment_msg');
       assert.equal(rendered.role, 'user');
-      assert.match(rendered.content, /守护进程生命周期状态卡 \[/);
+      assert.match(rendered.content, /守护进程生命周期提醒 \[/);
+      assert.match(rendered.content, /当前运行环境中 daemon 仍在运行/);
       assert.match(
         rendered.content,
         /🟢 node -e "console\.log\('daemon-ready'\); setInterval\(\(\) => \{\}, 10000\)" 运行中/,

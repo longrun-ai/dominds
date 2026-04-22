@@ -58,12 +58,12 @@ async function main(): Promise<void> {
     assert.match(
       output,
       /🟢 .* 已转入后台持续运行（PID: \d+）/,
-      'Expected daemon start receipt to expose lifecycle-card style running summary',
+      'Expected daemon start receipt to expose lifecycle-reminder style running summary',
     );
     assert.match(
       output,
-      /生命周期状态卡持续刷新：系统维护 \/ 实时真源 \/ 不可删除/,
-      'Expected daemon start receipt to describe the lifecycle card semantics directly',
+      /生命周期提醒持续刷新：系统维护 \/ 实时真源 \/ 不可删除/,
+      'Expected daemon start receipt to describe the lifecycle reminder semantics directly',
     );
     assert.doesNotMatch(
       output,

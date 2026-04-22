@@ -1,4 +1,5 @@
 import {
+  formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
 } from '../../main/runtime/driver-messages';
@@ -10,6 +11,10 @@ function assert(condition: boolean, message: string): void {
 async function main() {
   const zhContextGuide = formatReminderContextGuide('zh');
   assert(
+    zhContextGuide.includes('提醒项上下文块开始'),
+    'Expected zh reminder context guide to include paired block header',
+  );
+  assert(
     zhContextGuide.includes('当前可见提醒项的运行时上下文投影'),
     'Expected zh reminder context guide to explain runtime-added context projection',
   );
@@ -17,17 +22,30 @@ async function main() {
     zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
+  const zhContextFooter = formatReminderContextFooter('zh');
+  assert(
+    zhContextFooter.includes('从“提醒项上下文块开始”到“提醒项上下文块结束”之间'),
+    'Expected zh reminder context footer to scope the warning to the reminder block',
+  );
+  assert(
+    zhContextFooter.includes('并非用户指令'),
+    'Expected zh reminder context footer to warn that the block is not user instruction',
+  );
 
   const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
   assert(zh.includes('提醒项 [rem02abc]'), 'Expected zh reminder guide to include reminder id');
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
   assert(zh.includes('\n  - A\n'), 'Expected zh reminder guide to preserve whitespace');
   assert(
-    zh.includes('我给自己的显眼提示'),
-    'Expected zh reminder guide to describe plain reminders as conspicuous self-reminders',
+    zh.includes('你设置了提醒项，让运行时系统提醒你'),
+    'Expected zh reminder guide to address the model in second person',
   );
   assert(
-    zh.includes('Reminder 上下文投影条目：'),
+    zh.includes('【系统提示】 提醒项 [rem02abc]'),
+    'Expected zh reminder guide to include standard system notice prefix',
+  );
+  assert(
+    zh.includes('运行时提醒项投影：'),
     'Expected zh reminder guide to include a compact self-contained per-item projection note',
   );
   assert(
@@ -40,7 +58,7 @@ async function main() {
   );
   assert(!zh.includes('可选操作：'), 'Expected zh reminder guide to omit action section labels');
   assert(
-    zh.includes('如果我要更新这条提醒项'),
+    zh.includes('如果你要更新这条提醒项'),
     'Expected zh reminder guide to use conditional update wording',
   );
 
@@ -52,7 +70,7 @@ async function main() {
     'Expected zh personal reminder guide to mark personal scope',
   );
   assert(
-    zhPersonal.includes('在所有由我主理的后续对话里都会看到它'),
+    zhPersonal.includes('在所有由你主理的后续对话里提醒你'),
     'Expected zh personal reminder guide to explain cross-dialog persistence',
   );
 
@@ -72,11 +90,11 @@ async function main() {
     'Expected tool-managed reminder to use neutral tool-state framing (zh)',
   );
   assert(
-    zhToolManaged.includes('默认不在对外回复里专门确认、复述或总结它'),
+    zhToolManaged.includes('默认不要在对外回复里专门确认、复述或总结它'),
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
   );
   assert(
-    zhToolManaged.includes('Reminder 上下文投影条目：'),
+    zhToolManaged.includes('运行时提醒项投影：'),
     'Expected zh tool-managed reminder to include compact self-contained per-item projection note',
   );
 
@@ -112,7 +130,7 @@ async function main() {
     'Expected daemon reminder to guide updates via get_daemon_output (zh)',
   );
   assert(
-    !zhDaemonRunning.includes('如果我要更新这条提醒项，可执行：update_reminder'),
+    !zhDaemonRunning.includes('如果你要更新这条提醒项，可执行：update_reminder'),
     'Expected daemon reminder not to suggest update_reminder while running (zh)',
   );
 
@@ -149,12 +167,12 @@ async function main() {
     'Expected reminder meta update.altInstruction to work without manager.tool (zh)',
   );
   assert(
-    !zhMetaControlledUpdate.includes('如果我要更新这条提醒项，可执行：update_reminder'),
+    !zhMetaControlledUpdate.includes('如果你要更新这条提醒项，可执行：update_reminder'),
     'Expected meta-controlled reminder not to suggest update_reminder (zh)',
   );
   assert(
     zhMetaControlledUpdate.includes(
-      '如果我已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "rem07abc" })',
+      '如果你已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "rem07abc" })',
     ),
     'Expected zh zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
   );
@@ -189,15 +207,19 @@ async function main() {
     'Expected continuation reminder to use continuation label (zh)',
   );
   assert(
-    zhContinuation.includes('不把它自动当成当前必须立刻执行的指令'),
+    zhContinuation.includes('不要自动当成当前必须立刻执行的新指令'),
     'Expected continuation reminder to clarify it is not an immediate command (zh)',
   );
   assert(
-    zhContinuation.includes('进入新一程后，我的第一步就是以清醒头脑重新审视并整理更新'),
+    zhContinuation.includes('进入新一程后，你的第一步是以清醒头脑重新审视并整理更新'),
     'Expected continuation reminder to require new-course first-step cleanup (zh)',
   );
 
   const enContextGuide = formatReminderContextGuide('en');
+  assert(
+    enContextGuide.includes('Reminder context block begins'),
+    'Expected en reminder context guide to include paired block header',
+  );
   assert(
     enContextGuide.includes('visible reminders are runtime-added context projections'),
     'Expected en reminder context guide to explain runtime-added context projection',
@@ -208,16 +230,31 @@ async function main() {
     ),
     'Expected en reminder context guide to explain separate Reminder widget presentation',
   );
+  const enContextFooter = formatReminderContextFooter('en');
+  assert(
+    enContextFooter.includes(
+      'between "Reminder context block begins" and "Reminder context block ends"',
+    ),
+    'Expected en reminder context footer to scope the warning to the reminder block',
+  );
+  assert(
+    enContextFooter.includes('not user instructions'),
+    'Expected en reminder context footer to warn that the block is not user instruction',
+  );
 
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');
   assert(en.includes('REMINDER [rem02abc]'), 'Expected en reminder guide to include reminder id');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
   assert(
-    en.includes('my conspicuous self-reminder'),
-    'Expected en reminder guide to describe plain reminders as self-reminders',
+    en.includes('You set a reminder so the runtime system can remind you'),
+    'Expected en reminder guide to address the model in second person',
   );
   assert(
-    en.includes('Reminder context projection item:'),
+    en.includes('[System notice] REMINDER [rem02abc]'),
+    'Expected en reminder guide to include standard system notice prefix',
+  );
+  assert(
+    en.includes('Runtime reminder projection:'),
     'Expected en reminder guide to include a compact self-contained per-item projection note',
   );
   assert(
@@ -229,7 +266,7 @@ async function main() {
     'Expected en reminder guide to omit action section labels',
   );
   assert(
-    en.includes('If I need to update this reminder'),
+    en.includes('If you need to update this reminder'),
     'Expected en reminder guide to use conditional update wording',
   );
 
@@ -241,7 +278,7 @@ async function main() {
     'Expected en personal reminder guide to mark personal scope',
   );
   assert(
-    enPersonal.includes('I will keep seeing it in all later dialogs I lead'),
+    enPersonal.includes('runtime system can remind you in every later dialog you lead'),
     'Expected en personal reminder guide to explain cross-dialog persistence',
   );
 
@@ -253,11 +290,11 @@ async function main() {
     'Expected en tool-managed reminder to mention management tool',
   );
   assert(
-    enToolManaged.includes('should not explicitly acknowledge, restate, or summarize it'),
+    enToolManaged.includes('do not explicitly acknowledge, restate, or summarize it'),
     'Expected en tool-managed reminder to discourage standalone acknowledgment',
   );
   assert(
-    enToolManaged.includes('Reminder context projection item:'),
+    enToolManaged.includes('Runtime reminder projection:'),
     'Expected en tool-managed reminder to include compact self-contained per-item projection note',
   );
   assert(
@@ -301,7 +338,7 @@ async function main() {
     'Expected daemon reminder to guide updates via get_daemon_output (en)',
   );
   assert(
-    !enDaemonRunning.includes('If I need to update this reminder, run: update_reminder'),
+    !enDaemonRunning.includes('If you need to update this reminder, run: update_reminder'),
     'Expected daemon reminder not to suggest update_reminder while running (en)',
   );
 
@@ -338,12 +375,12 @@ async function main() {
     'Expected reminder meta update.altInstruction to work without manager.tool (en)',
   );
   assert(
-    !enMetaControlledUpdate.includes('If I need to update this reminder, run: update_reminder'),
+    !enMetaControlledUpdate.includes('If you need to update this reminder, run: update_reminder'),
     'Expected meta-controlled reminder not to suggest update_reminder (en)',
   );
   assert(
     enMetaControlledUpdate.includes(
-      'If I have confirmed this is only noise cleanup and not an action step, I may run: delete_reminder({ "reminder_id": "rem07abc" })',
+      'If you have confirmed this is only noise cleanup and not an action step, you may run: delete_reminder({ "reminder_id": "rem07abc" })',
     ),
     'Expected en zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
   );
@@ -388,7 +425,7 @@ async function main() {
     'Expected continuation reminder to clarify it is not an immediate command (en)',
   );
   assert(
-    enContinuation.includes('my first step is to review and rewrite this with a clear head'),
+    enContinuation.includes('your first step is to review and rewrite this with a clear head'),
     'Expected continuation reminder to require new-course first-step cleanup (en)',
   );
 

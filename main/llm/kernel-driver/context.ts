@@ -44,37 +44,18 @@ export function appendDriveEphemeralContext(
   return next;
 }
 
-function hasUserPromptLikeAnchor(source: readonly ChatMessage[]): boolean {
-  for (const msg of source) {
-    if (!msg) continue;
-    if (
-      (msg.type === 'prompting_msg' ||
-        msg.type === 'environment_msg' ||
-        msg.type === 'tellask_carryover_msg') &&
-      msg.role === 'user'
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-export function appendDriveTailContext(
-  source: readonly ChatMessage[],
-  parts: DriveTailContextParts,
-): ChatMessage[] {
-  if (hasUserPromptLikeAnchor(source)) {
-    return [...source, ...parts.renderedReminders];
-  }
-  return [...source, ...parts.renderedReminders];
-}
-
 export function assembleDriveContextMessages(args: {
   base: DriveBaseContextParts;
   ephemeral: DriveEphemeralContextParts;
   tail: DriveTailContextParts;
 }): ChatMessage[] {
-  const baseMsgs = buildDriveBaseContextMessages(args.base);
-  const withEphemeral = appendDriveEphemeralContext(baseMsgs, args.ephemeral);
-  return appendDriveTailContext(withEphemeral, args.tail);
+  const baseMsgs = [
+    ...args.base.prependedContextMessages,
+    ...args.base.memories,
+    ...(args.base.taskDocMsg ? [args.base.taskDocMsg] : []),
+    ...args.base.coursePrefixMsgs,
+    ...args.tail.renderedReminders,
+    ...args.base.dialogMsgsForContext,
+  ];
+  return appendDriveEphemeralContext(baseMsgs, args.ephemeral);
 }

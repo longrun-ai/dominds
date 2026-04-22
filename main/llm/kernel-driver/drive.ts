@@ -33,6 +33,7 @@ import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
+  formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
 } from '../../runtime/driver-messages';
@@ -850,8 +851,8 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
       continue;
     }
     renderedItems.push({
-      type: 'transient_guide_msg',
-      role: 'assistant',
+      type: 'environment_msg',
+      role: 'user',
       content: formatReminderItemGuide(language, reminder.id, reminder.content, {
         meta: reminder.meta,
         scope: reminder.scope,
@@ -2083,18 +2084,30 @@ export async function driveDialogStreamCore(
               : undefined;
 
           const renderedReminders = await renderRemindersForContext(dlg);
+          const dialogMsgsForContext = await buildDialogMsgsForContext(dlg);
+          const reminderContextBlock =
+            renderedReminders.length > 0
+              ? [
+                  ...renderedReminders,
+                  {
+                    type: 'environment_msg',
+                    role: 'user',
+                    content: formatReminderContextFooter(getWorkLanguage()),
+                  } satisfies ChatMessage,
+                ]
+              : renderedReminders;
           const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
             base: {
               prependedContextMessages: policy.prependedContextMessages,
               memories: minds.memories,
               taskDocMsg,
               coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
-              dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
+              dialogMsgsForContext,
             },
             ephemeral: {
               runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : undefined,
             },
-            tail: { renderedReminders },
+            tail: { renderedReminders: reminderContextBlock },
           });
 
           const newMsgs: ChatMessage[] = [];

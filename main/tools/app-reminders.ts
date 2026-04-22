@@ -8,6 +8,7 @@ import type { AppsHostClient, EnabledAppForHost } from '../apps-host/client';
 import type { Dialog } from '../dialog';
 import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
+import { log } from '../log';
 import { formatReminderItemGuide } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadAgentSharedReminders } from '../shared-reminders';
@@ -216,8 +217,8 @@ function findOwnedReminderEntries(
 function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
   const language = getWorkLanguage();
   return {
-    type: 'transient_guide_msg',
-    role: 'assistant',
+    type: 'environment_msg',
+    role: 'user',
     content: formatReminderItemGuide(language, reminder.id, reminder.content, {
       meta: reminder.meta,
       scope: reminder.scope,
@@ -275,7 +276,13 @@ function createAppReminderOwner(params: {
               ? buildAppReminderMeta(descriptor, result.updatedMeta)
               : reminder.meta,
         };
-      } catch {
+      } catch (error: unknown) {
+        log.warn('App reminder update failed; keeping existing reminder state', error, {
+          appId: descriptor.appId,
+          ownerRef: descriptor.ownerRef,
+          dialogId: dlg.id.selfId,
+          reminderId: reminder.id,
+        });
         return { treatment: 'keep' };
       }
     },
@@ -291,7 +298,13 @@ function createAppReminderOwner(params: {
           reminderId: reminder.id,
           workLanguage: getWorkLanguage(),
         });
-      } catch {
+      } catch (error: unknown) {
+        log.warn('App reminder render failed; using generic reminder rendering', error, {
+          appId: descriptor.appId,
+          ownerRef: descriptor.ownerRef,
+          dialogId: dlg.id.selfId,
+          reminderId: reminder.id,
+        });
         return fallbackRenderedReminder(reminder);
       }
     },

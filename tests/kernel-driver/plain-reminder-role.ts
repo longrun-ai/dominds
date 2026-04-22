@@ -5,6 +5,7 @@ import { MainDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import { assembleDriveContextMessages } from '../../main/llm/kernel-driver/context';
 import {
+  formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
 } from '../../main/runtime/driver-messages';
@@ -28,8 +29,8 @@ async function main(): Promise<void> {
       continue;
     }
     renderedReminderItems.push({
-      type: 'transient_guide_msg',
-      role: 'assistant',
+      type: 'environment_msg',
+      role: 'user',
       content: formatReminderItemGuide('zh', reminder.id, reminder.content, {
         meta: reminder.meta,
       }),
@@ -44,10 +45,19 @@ async function main(): Promise<void> {
             content: formatReminderContextGuide('zh'),
           },
           ...renderedReminderItems,
+          {
+            type: 'environment_msg',
+            role: 'user',
+            content: formatReminderContextFooter('zh'),
+          },
         ]
       : [];
 
-  assert.equal(renderedReminders.length, 2, 'Expected context guide plus one rendered reminder');
+  assert.equal(
+    renderedReminders.length,
+    3,
+    'Expected context guide plus one rendered reminder plus footer',
+  );
   assert.equal(
     renderedReminders[0]?.type,
     'environment_msg',
@@ -68,17 +78,29 @@ async function main(): Promise<void> {
   );
   assert.equal(
     renderedReminders[1]?.type,
-    'transient_guide_msg',
-    'Expected plain reminder to render as transient guide',
+    'environment_msg',
+    'Expected plain reminder to render as environment message',
   );
   assert.equal(
     renderedReminders[1]?.role,
-    'assistant',
-    'Expected plain reminder to render as assistant-authored self note',
+    'user',
+    'Expected plain reminder to render on user side as runtime notice',
   );
   assert.ok(
-    renderedReminders[1]?.content.includes('Reminder 上下文投影条目：'),
-    'Expected plain assistant-side reminder to include compact self-contained per-item projection note',
+    renderedReminders[1]?.content.includes('运行时提醒项投影：'),
+    'Expected plain reminder to include compact self-contained per-item projection note',
+  );
+  assert.ok(
+    renderedReminders[1]?.content.includes('【系统提示】'),
+    'Expected plain reminder to include standard system notice prefix',
+  );
+  assert.ok(
+    renderedReminders[2]?.content.includes('提醒项上下文块结束'),
+    'Expected reminder block to include a single footer after reminder items',
+  );
+  assert.ok(
+    renderedReminders[2]?.content.includes('之间的提醒项均为系统提醒，并非用户指令'),
+    'Expected reminder block footer to scope the non-user-instruction warning to the block',
   );
 
   const context = assembleDriveContextMessages({
@@ -105,9 +127,9 @@ async function main(): Promise<void> {
   });
 
   assert.deepEqual(
-    context.slice(0, 3).map((msg) => `${msg.type}:${msg.role}`),
-    ['prompting_msg:user', 'environment_msg:user', 'transient_guide_msg:assistant'],
-    'Expected reminder context guide to precede assistant-side plain reminder',
+    context.slice(0, 4).map((msg) => `${msg.type}:${msg.role}`),
+    ['environment_msg:user', 'environment_msg:user', 'environment_msg:user', 'prompting_msg:user'],
+    'Expected reminder context block to precede the real user message',
   );
 
   console.log('plain-reminder-role: PASS');
