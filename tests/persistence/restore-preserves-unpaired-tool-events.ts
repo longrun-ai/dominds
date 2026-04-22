@@ -206,21 +206,21 @@ async function main(): Promise<void> {
     );
 
     const malformedTellaskDlg = await createMainDialog('tester');
-    await malformedTellaskDlg.persistTellaskCallResultPair({
+    await malformedTellaskDlg.persistTellaskCall(
+      'malformed-reply-call',
+      'replyTellaskBack',
+      '{"replyContent":',
+      1,
+      { deliveryMode: 'func_call_requested' },
+    );
+    await malformedTellaskDlg.receiveFuncResult({
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: 1,
       id: 'malformed-reply-call',
       name: 'replyTellaskBack',
-      genseq: 1,
-      rawArgumentsText: '{"replyContent":',
-      deliveryMode: 'func_call_requested',
-      result: {
-        type: 'func_result_msg',
-        role: 'tool',
-        genseq: 1,
-        id: 'malformed-reply-call',
-        name: 'replyTellaskBack',
-        content:
-          "Invalid arguments for tellask special function 'replyTellaskBack': arguments must be valid JSON: Unexpected end of JSON input",
-      },
+      content:
+        "Invalid arguments for tellask special function 'replyTellaskBack': arguments must be valid JSON: Unexpected end of JSON input",
     });
 
     const malformedEvents = await DialogPersistence.loadCourseEvents(

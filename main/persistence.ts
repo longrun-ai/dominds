@@ -2309,6 +2309,32 @@ export class DiskFileDialogStore extends DialogStore {
     return undefined;
   }
 
+  private async findExistingCallRecord(
+    dialog: Dialog,
+    callId: string,
+  ): Promise<
+    | {
+        course: number;
+        record: FuncCallRecord | TellaskCallRecord;
+      }
+    | undefined
+  > {
+    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
+    for (let course = 1; course <= maxCourse; course += 1) {
+      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+      for (const event of events) {
+        if (event.type === 'func_call_record' && event.id === callId) {
+          return { course, record: event };
+        }
+        if (event.type === 'tellask_call_record' && event.id === callId) {
+          return { course, record: event };
+        }
+      }
+    }
+    return undefined;
+  }
+
   private async findExistingTellaskResultRecord(
     dialog: Dialog,
     callId: string,
@@ -2334,6 +2360,49 @@ export class DiskFileDialogStore extends DialogStore {
       }
     }
     return undefined;
+  }
+
+  private async raiseDuplicateCallInvariantViolation(args: {
+    dialog: Dialog;
+    kind: 'func_call' | 'tellask_call';
+    callId: string;
+    callName: string;
+    incomingCourse: number;
+    incomingGenseq: number;
+    existingCourse: number;
+    existingGenseq: number;
+    existingName: string;
+  }): Promise<never> {
+    const err = new Error(
+      `${args.kind} duplicate callId invariant violation: rootId=${args.dialog.id.rootId} selfId=${args.dialog.id.selfId} ` +
+        `callId=${args.callId} callName=${args.callName} existingName=${args.existingName} ` +
+        `existingCourse=${args.existingCourse} existingGenseq=${args.existingGenseq} ` +
+        `incomingCourse=${args.incomingCourse} incomingGenseq=${args.incomingGenseq}`,
+    );
+    log.error('Duplicate call detected; rejecting second write', err, {
+      rootId: args.dialog.id.rootId,
+      selfId: args.dialog.id.selfId,
+      callId: args.callId,
+      callName: args.callName,
+      kind: args.kind,
+      existingName: args.existingName,
+      existingCourse: args.existingCourse,
+      existingGenseq: args.existingGenseq,
+      incomingCourse: args.incomingCourse,
+      incomingGenseq: args.incomingGenseq,
+    });
+    try {
+      await this.streamError(args.dialog, err.message);
+    } catch (streamErr) {
+      log.warn('Failed to emit stream_error_evt for duplicate call', streamErr, {
+        rootId: args.dialog.id.rootId,
+        selfId: args.dialog.id.selfId,
+        callId: args.callId,
+        callName: args.callName,
+        kind: args.kind,
+      });
+    }
+    throw err;
   }
 
   private async raiseDuplicateCallResultInvariantViolation(args: {
@@ -2684,25 +2753,6 @@ export class DiskFileDialogStore extends DialogStore {
       }
     })();
     postDialogEvent(dialog, evt);
-  }
-
-  // Function call events (non-streaming mode - single event captures entire call)
-  public async funcCallRequested(
-    dialog: Dialog,
-    funcId: string,
-    funcName: string,
-    argumentsStr: string,
-  ): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const funcCallEvt: FuncCallStartEvent = {
-      type: 'func_call_requested_evt',
-      funcId,
-      funcName,
-      arguments: argumentsStr,
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, funcCallEvt);
   }
 
   public async webSearchCall(
@@ -3264,12 +3314,38 @@ export class DiskFileDialogStore extends DialogStore {
     genseq: number,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    if (!Number.isFinite(genseq) || genseq <= 0) {
+      throw new Error(
+        `persistFunctionCall invariant violation: missing valid genseq for func call ${id}`,
+      );
+    }
+    const existingCall = await this.findExistingCallRecord(dialog, id);
+    if (existingCall) {
+      await this.raiseDuplicateCallInvariantViolation({
+        dialog,
+        kind: 'func_call',
+        callId: id,
+        callName: name,
+        incomingCourse: course,
+        incomingGenseq: genseq,
+        existingCourse: existingCall.course,
+        existingGenseq: existingCall.record.genseq,
+        existingName: existingCall.record.name,
+      });
+    }
     const funcCallEvent = buildFuncCallRecord({ id, name, rawArgumentsText, genseq });
 
     await this.appendEvent(dialog, course, funcCallEvent);
 
-    // NOTE: func_call_evt REMOVED - persistence uses FuncCallRecord directly
-    // UI display uses func_call_requested_evt instead
+    const funcCallEvt: FuncCallStartEvent = {
+      type: 'func_call_requested_evt',
+      funcId: id,
+      funcName: name,
+      arguments: rawArgumentsText,
+      course,
+      genseq,
+    };
+    postDialogEvent(dialog, funcCallEvt);
   }
 
   public async persistTellaskCall(
@@ -3291,6 +3367,25 @@ export class DiskFileDialogStore extends DialogStore {
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    if (!Number.isFinite(genseq) || genseq <= 0) {
+      throw new Error(
+        `persistTellaskCall invariant violation: missing valid genseq for tellask call ${id}`,
+      );
+    }
+    const existingCall = await this.findExistingCallRecord(dialog, id);
+    if (existingCall) {
+      await this.raiseDuplicateCallInvariantViolation({
+        dialog,
+        kind: 'tellask_call',
+        callId: id,
+        callName: name,
+        incomingCourse: course,
+        incomingGenseq: genseq,
+        existingCourse: existingCall.course,
+        existingGenseq: existingCall.record.genseq,
+        existingName: existingCall.record.name,
+      });
+    }
     const tellaskCallEvent = buildTellaskCallRecord({
       id,
       name,
@@ -3303,111 +3398,17 @@ export class DiskFileDialogStore extends DialogStore {
 
     await this.appendEvent(dialog, course, tellaskCallEvent);
 
-    if (isReplyTellaskCallRecordName(name)) {
+    if (tellaskCallEvent.deliveryMode === 'func_call_requested') {
       const funcCallEvt: FuncCallStartEvent = {
         type: 'func_call_requested_evt',
         funcId: id,
         funcName: name,
         arguments: formatTellaskCallArguments(tellaskCallEvent),
         course,
-        genseq: dialog.activeGenSeqOrUndefined ?? genseq,
+        genseq,
       };
       postDialogEvent(dialog, funcCallEvt);
     }
-  }
-
-  public async persistFunctionCallResultPair(
-    dialog: Dialog,
-    id: string,
-    name: string,
-    rawArgumentsText: string,
-    genseq: number,
-    result: FuncResultMsg,
-  ): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const resultGenseq = dialog.activeGenSeqOrUndefined ?? result.genseq;
-    if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
-      throw new Error(
-        `persistFunctionCallResultPair invariant violation: missing valid genseq for func result ${result.id}`,
-      );
-    }
-    await this.appendEvents(dialog, course, [
-      buildFuncCallRecord({ id, name, rawArgumentsText, genseq }),
-      buildFuncResultRecord(result, resultGenseq),
-    ]);
-
-    if (
-      !isSuppressedTellaskPlaceholderFuncResult({
-        name: result.name,
-        content: result.content,
-      })
-    ) {
-      const funcResultEvt: FunctionResultEvent = {
-        type: 'func_result_evt',
-        id: result.id,
-        name: result.name,
-        content: result.content,
-        contentItems: result.contentItems,
-        course,
-        genseq,
-      };
-      postDialogEvent(dialog, funcResultEvt);
-    }
-  }
-
-  public async persistTellaskCallResultPair(
-    dialog: Dialog,
-    args: {
-      id: string;
-      name: TellaskCallRecordName;
-      rawArgumentsText: string;
-      genseq: number;
-      result: TellaskResultMsg | FuncResultMsg;
-      deliveryMode: 'tellask_call_start' | 'func_call_requested';
-    },
-  ): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const callRecord = buildTellaskCallRecord({
-      id: args.id,
-      name: args.name,
-      rawArgumentsText: args.rawArgumentsText,
-      genseq: args.genseq,
-      deliveryMode: args.deliveryMode,
-    });
-    if (args.result.type === 'func_result_msg') {
-      const resultGenseq = dialog.activeGenSeqOrUndefined ?? args.result.genseq;
-      if (!Number.isFinite(resultGenseq) || resultGenseq <= 0) {
-        throw new Error(
-          `persistTellaskCallResultPair invariant violation: missing valid genseq for func result ${args.result.id}`,
-        );
-      }
-      await this.appendEvents(dialog, course, [
-        callRecord,
-        buildFuncResultRecord(args.result, resultGenseq),
-      ]);
-
-      if (
-        !isSuppressedTellaskPlaceholderFuncResult({
-          name: args.result.name,
-          content: args.result.content,
-        })
-      ) {
-        const funcResultEvt: FunctionResultEvent = {
-          type: 'func_result_evt',
-          id: args.result.id,
-          name: args.result.name,
-          content: args.result.content,
-          contentItems: args.result.contentItems,
-          course,
-          genseq: resultGenseq,
-        };
-        postDialogEvent(dialog, funcResultEvt);
-      }
-      return;
-    }
-
-    await this.appendEvents(dialog, course, [callRecord, buildTellaskResultRecord(args.result)]);
-    postDialogEvent(dialog, buildTellaskResultEvent(args.result, course));
   }
 
   /**

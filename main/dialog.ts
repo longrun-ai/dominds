@@ -1880,15 +1880,6 @@ export abstract class Dialog {
     await this.dlgStore.sayingFinish(this);
   }
 
-  // Function call events (non-streaming mode - single event captures entire call)
-  public async funcCallRequested(
-    funcId: string,
-    funcName: string,
-    argumentsStr: string,
-  ): Promise<void> {
-    await this.dlgStore.funcCallRequested(this, funcId, funcName, argumentsStr);
-  }
-
   public async webSearchCall(payload: {
     source?: WebSearchCallSource;
     phase: 'added' | 'done';
@@ -2029,34 +2020,6 @@ export abstract class Dialog {
       genseq,
       options,
     );
-  }
-
-  public async persistFunctionCallResultPair(
-    id: string,
-    name: string,
-    rawArgumentsText: string,
-    genseq: number,
-    result: FuncResultMsg,
-  ): Promise<void> {
-    return await this.dlgStore.persistFunctionCallResultPair(
-      this,
-      id,
-      name,
-      rawArgumentsText,
-      genseq,
-      result,
-    );
-  }
-
-  public async persistTellaskCallResultPair(args: {
-    id: string;
-    name: TellaskCallRecordName;
-    rawArgumentsText: string;
-    genseq: number;
-    result: TellaskResultMsg | FuncResultMsg;
-    deliveryMode: 'tellask_call_start' | 'func_call_requested';
-  }): Promise<void> {
-    return await this.dlgStore.persistTellaskCallResultPair(this, args);
   }
 
   /**
@@ -2648,14 +2611,6 @@ export abstract class DialogStore {
     },
   ): Promise<void> {}
 
-  // Function call event (non-streaming mode - single event)
-  public async funcCallRequested(
-    _dialog: Dialog,
-    _funcId: string,
-    _funcName: string,
-    _argumentsStr: string,
-  ): Promise<void> {}
-
   public async webSearchCall(
     _dialog: Dialog,
     _payload: {
@@ -2764,27 +2719,6 @@ export abstract class DialogStore {
     _genseq: number,
     _options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
-    },
-  ): Promise<void> {}
-
-  public async persistFunctionCallResultPair(
-    _dialog: Dialog,
-    _id: string,
-    _name: string,
-    _rawArgumentsText: string,
-    _genseq: number,
-    _result: FuncResultMsg,
-  ): Promise<void> {}
-
-  public async persistTellaskCallResultPair(
-    _dialog: Dialog,
-    _args: {
-      id: string;
-      name: TellaskCallRecordName;
-      rawArgumentsText: string;
-      genseq: number;
-      result: TellaskResultMsg | FuncResultMsg;
-      deliveryMode: 'tellask_call_start' | 'func_call_requested';
     },
   ): Promise<void> {}
 

@@ -137,7 +137,6 @@ export type InvalidTellaskFunctionCall = Readonly<{
   originalCall: FuncCallMsg;
   error: string;
   rawArgumentsText: string;
-  contextArguments: string;
 }>;
 
 type ReplyTellaskCallName = 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
@@ -791,7 +790,6 @@ export function resolveTellaskFunctionCalls(
         originalCall: call,
         error: parsed.error,
         rawArgumentsText,
-        contextArguments: rawArgumentsText,
       });
       continue;
     }
@@ -2841,7 +2839,6 @@ export async function processTellaskFunctionRound(args: {
           originalCall,
           error: MULTIPLE_ASKHUMAN_CALLS_ERROR,
           rawArgumentsText: getRawArgumentsText(originalCall),
-          contextArguments: getRawArgumentsText(originalCall),
         },
       });
       continue;
@@ -2898,23 +2895,18 @@ export async function processTellaskFunctionRound(args: {
     }
 
     const issue = disposition.issue;
-    await args.dlg.funcCallRequested(
+    await args.dlg.persistTellaskCall(
       issue.originalCall.id,
-      issue.originalCall.name,
-      issue.contextArguments,
+      disposition.callName,
+      issue.rawArgumentsText,
+      issue.originalCall.genseq,
+      { deliveryMode: 'func_call_requested' },
     );
     const result = formatTellaskInvalidCallResult({
       call: issue.originalCall,
       error: issue.error,
     });
-    await args.dlg.persistTellaskCallResultPair({
-      id: issue.originalCall.id,
-      name: disposition.callName,
-      rawArgumentsText: issue.rawArgumentsText,
-      genseq: issue.originalCall.genseq,
-      result,
-      deliveryMode: 'func_call_requested',
-    });
+    await persistTellaskFuncResult(args.dlg, result);
     tellaskCallMessages.push({
       type: 'func_call_msg',
       role: 'assistant',

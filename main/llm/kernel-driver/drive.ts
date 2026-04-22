@@ -49,6 +49,7 @@ import {
   toolFailure,
   type FuncTool,
   type FuncToolFollowupMode,
+  type FuncToolInvocationResolution,
   type Tool,
   type ToolCallOutput,
   type ToolOutcome,
@@ -1161,6 +1162,14 @@ type ExecutedFuncCallResult = Readonly<{
   result: FuncResultMsg;
 }>;
 
+type PreparedFuncCall = Readonly<{
+  func: FuncCallMsg;
+  callGenseq: number;
+  argsStr: string;
+  tool: FuncTool | undefined;
+  preparedInvocationArgs: FuncToolInvocationResolution | null;
+}>;
+
 async function executeFunctionCalls(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -1168,7 +1177,7 @@ async function executeFunctionCalls(args: {
   funcCalls: readonly FuncCallMsg[];
   abortSignal: AbortSignal | undefined;
 }): Promise<ExecutedFuncCallResult[]> {
-  const functionPromises = args.funcCalls.map(async (func): Promise<ExecutedFuncCallResult> => {
+  const preparedCalls: PreparedFuncCall[] = args.funcCalls.map((func) => {
     throwIfAborted(args.abortSignal, args.dlg);
 
     const callGenseq = func.genseq;
@@ -1179,94 +1188,121 @@ async function executeFunctionCalls(args: {
     );
     const preparedInvocationArgs =
       tool !== undefined ? resolveFuncToolInvocationArguments(tool, argsStr) : null;
-    await args.dlg.funcCallRequested(func.id, func.name, argsStr);
-    let result: FuncResultMsg;
-    let outcome: ToolOutcome = 'success';
-    let rethrowError: unknown;
-    if (!tool) {
-      outcome = 'failure';
-      const output = toolFailure(`Tool '${func.name}' not found`);
-      result = {
-        type: 'func_result_msg',
-        id: func.id,
-        name: func.name,
-        content: output.content,
-        role: 'tool',
-        genseq: callGenseq,
-      };
-    } else {
-      if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
+    return { func, callGenseq, argsStr, tool, preparedInvocationArgs };
+  });
+
+  for (const prepared of preparedCalls) {
+    throwIfAborted(args.abortSignal, args.dlg);
+    await args.dlg.persistFunctionCall(
+      prepared.func.id,
+      prepared.func.name,
+      prepared.argsStr,
+      prepared.callGenseq,
+    );
+  }
+
+  const functionPromises = preparedCalls.map(
+    async ({
+      func,
+      callGenseq,
+      argsStr,
+      tool,
+      preparedInvocationArgs,
+    }): Promise<ExecutedFuncCallResult> => {
+      throwIfAborted(args.abortSignal, args.dlg);
+
+      let result: FuncResultMsg;
+      let outcome: ToolOutcome = 'success';
+      let rethrowError: unknown;
+      if (!tool) {
         outcome = 'failure';
-        const errorText =
-          preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
-        log.debug('kernel-driver rejected function call arguments before execution', undefined, {
-          funcName: func.name,
-          arguments: argsStr,
-          error: errorText,
-        });
+        const output = toolFailure(`Tool '${func.name}' not found`);
         result = {
           type: 'func_result_msg',
           id: func.id,
           name: func.name,
-          content: toolFailure(`Invalid arguments: ${errorText}`).content,
+          content: output.content,
           role: 'tool',
           genseq: callGenseq,
         };
       } else {
-        try {
-          throwIfAborted(args.abortSignal, args.dlg);
-          const output: ToolCallOutput = await tool.call(
-            args.dlg,
-            args.agent,
-            preparedInvocationArgs.args,
-          );
-          throwIfAborted(args.abortSignal, args.dlg);
-          outcome = output.outcome;
-          result = {
-            type: 'func_result_msg',
-            id: func.id,
-            name: func.name,
-            content: output.content,
-            contentItems: Array.isArray(output.contentItems) ? [...output.contentItems] : undefined,
-            role: 'tool',
-            genseq: callGenseq,
-          };
-        } catch (err) {
+        if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
           outcome = 'failure';
-          const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-          const failureOutput = toolFailure(`Function '${func.name}' execution failed: ${errText}`);
+          const errorText =
+            preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
+          log.debug('kernel-driver rejected function call arguments before execution', undefined, {
+            funcName: func.name,
+            arguments: argsStr,
+            error: errorText,
+          });
           result = {
             type: 'func_result_msg',
             id: func.id,
             name: func.name,
-            content: failureOutput.content,
+            content: toolFailure(`Invalid arguments: ${errorText}`).content,
             role: 'tool',
             genseq: callGenseq,
           };
-          if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-            const interruptedOutput = toolFailure(
-              `Function '${func.name}' interrupted before completion: ${errText}`,
+        } else {
+          try {
+            throwIfAborted(args.abortSignal, args.dlg);
+            const output: ToolCallOutput = await tool.call(
+              args.dlg,
+              args.agent,
+              preparedInvocationArgs.args,
+            );
+            throwIfAborted(args.abortSignal, args.dlg);
+            outcome = output.outcome;
+            result = {
+              type: 'func_result_msg',
+              id: func.id,
+              name: func.name,
+              content: output.content,
+              contentItems: Array.isArray(output.contentItems)
+                ? [...output.contentItems]
+                : undefined,
+              role: 'tool',
+              genseq: callGenseq,
+            };
+          } catch (err) {
+            outcome = 'failure';
+            const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+            const failureOutput = toolFailure(
+              `Function '${func.name}' execution failed: ${errText}`,
             );
             result = {
               type: 'func_result_msg',
               id: func.id,
               name: func.name,
-              content: interruptedOutput.content,
+              content: failureOutput.content,
               role: 'tool',
               genseq: callGenseq,
             };
-            rethrowError = err;
+            if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+              const interruptedOutput = toolFailure(
+                `Function '${func.name}' interrupted before completion: ${errText}`,
+              );
+              result = {
+                type: 'func_result_msg',
+                id: func.id,
+                name: func.name,
+                content: interruptedOutput.content,
+                role: 'tool',
+                genseq: callGenseq,
+              };
+              rethrowError = err;
+            }
           }
         }
       }
-    }
 
-    await args.dlg.persistFunctionCallResultPair(func.id, func.name, argsStr, callGenseq, result);
-    if (rethrowError !== undefined) {
-      throw rethrowError;
-    }
-    return { outcome, result };
-  });
+      await args.dlg.receiveFuncResult(result);
+      if (rethrowError !== undefined) {
+        throw rethrowError;
+      }
+      return { outcome, result };
+    },
+  );
 
   return await Promise.all(functionPromises);
 }

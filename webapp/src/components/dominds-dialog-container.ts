@@ -2268,6 +2268,27 @@ export class DomindsDialogContainer extends HTMLElement {
     argumentsStr: string,
     timestamp: string,
   ): void {
+    const existingSection = this.findFuncCallSection(genseq, funcId);
+    if (existingSection) {
+      const existingName = existingSection.getAttribute('data-func-name') ?? '';
+      const existingArguments = existingSection.getAttribute('data-func-arguments') ?? '';
+      if (existingName !== funcName || existingArguments !== argumentsStr) {
+        this.handleProtocolError(
+          `func_call_requested_evt duplicate id with conflicting call details ${JSON.stringify({
+            genseq,
+            funcId,
+            existingName,
+            funcName,
+            existingArguments,
+            argumentsStr,
+          })}`,
+        );
+        return;
+      }
+      this.scrollToBottom();
+      return;
+    }
+
     const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
     if (!bubble) {
       console.warn('func_call_requested_evt received without generation bubble, skipping');
@@ -3131,116 +3152,132 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === FUNCTION RESULTS ===
-  private handleFuncResult(event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>): void {
-    // Try to find the func-call section this result belongs to by funcId
-    if (event.id) {
-      const activeBubble = this.generationBubble;
-      const funcCallSection =
-        activeBubble && activeBubble.getAttribute('data-seq') === String(event.genseq)
-          ? (activeBubble.querySelector(
-              `.func-call-section[data-func-id="${event.id}"][data-genseq="${String(event.genseq)}"]`,
-            ) as HTMLElement | null)
-          : ((this.shadowRoot?.querySelector(
-              `.func-call-section[data-func-id="${event.id}"][data-genseq="${String(event.genseq)}"]`,
-            ) as HTMLElement | null) ?? null);
-
-      if (funcCallSection) {
-        // Found the func-call section - show result inside it
-        const resultEl = funcCallSection.querySelector('.func-call-result') as HTMLElement | null;
-        if (resultEl) {
-          const items = event.contentItems;
-          if (Array.isArray(items) && items.length > 0) {
-            for (const key of Array.from(this.toolResultImageStatusElByKey.keys())) {
-              if (key.startsWith(`${String(event.genseq)}::${event.id}::`)) {
-                this.toolResultImageStatusElByKey.delete(key);
-              }
-            }
-            resultEl.innerHTML = '';
-            for (const item of items) {
-              if (item.type === 'input_text') {
-                const raw = String(item.text || '');
-                const block = document.createElement('div');
-                block.innerHTML = renderDomindsMarkdown(raw, {
-                  kind: 'chat',
-                  allowRelativeWorkspaceLinks: true,
-                });
-                postprocessRenderedDomindsMarkdown(block);
-                block.classList.add('markdown-content');
-                block.setAttribute('data-raw-md', raw);
-                resultEl.appendChild(block);
-                continue;
-              }
-
-              if (item.type === 'input_image') {
-                const figure = document.createElement('figure');
-                figure.className = 'tool-result-image';
-                figure.setAttribute('data-tool-call-id', event.id);
-                figure.setAttribute('data-artifact-rel-path', item.artifact.relPath);
-
-                const img = document.createElement('img');
-                img.alt = 'tool image';
-                img.style.maxWidth = '100%';
-                img.style.height = 'auto';
-                img.style.display = 'block';
-
-                const ingestStatus = document.createElement('figcaption');
-                ingestStatus.className = 'tool-result-image-ingest-status';
-                const imageStatusKey = this.makeToolResultImageStatusKey(
-                  event.genseq,
-                  event.id,
-                  item.artifact.relPath,
-                );
-                this.toolResultImageStatusElByKey.set(imageStatusKey, ingestStatus);
-                const existingStatus = this.toolResultImageStatusByKey.get(imageStatusKey);
-                if (existingStatus) {
-                  ingestStatus.textContent = existingStatus.message;
-                  ingestStatus.setAttribute(
-                    'data-image-ingest-disposition',
-                    existingStatus.disposition,
-                  );
-                }
-
-                const placeholder = document.createElement('div');
-                placeholder.textContent = `Loading image (${item.mimeType}, ${item.byteLength} bytes)…`;
-                placeholder.style.opacity = '0.8';
-                placeholder.style.fontSize = '12px';
-                placeholder.style.margin = '6px 0';
-                figure.appendChild(placeholder);
-                figure.appendChild(img);
-                figure.appendChild(ingestStatus);
-                resultEl.appendChild(figure);
-
-                this.loadArtifactImageIntoElement({
-                  img,
-                  placeholder,
-                  endpoint: this.buildDialogArtifactEndpoint(item),
-                });
-                continue;
-              }
-            }
-            resultEl.classList.add('completed');
-            resultEl.style.display = 'block';
-          } else {
-            const raw = String(event.content || '');
-            resultEl.innerHTML = renderDomindsMarkdown(raw, {
-              kind: 'chat',
-              allowRelativeWorkspaceLinks: true,
-            });
-            postprocessRenderedDomindsMarkdown(resultEl);
-            resultEl.setAttribute('data-raw-md', raw);
-            resultEl.classList.add('markdown-content');
-            resultEl.classList.add('completed');
-            resultEl.style.display = 'block';
-          }
-          this.setupFuncCallResultProgressiveExpand(funcCallSection);
-        }
-        this.scrollToBottom();
-        return;
+  private findFuncCallSection(genseq: number, funcId: string): HTMLElement | null {
+    const selector = `.func-call-section[data-func-id="${CSS.escape(funcId)}"][data-genseq="${String(
+      genseq,
+    )}"]`;
+    const activeBubble = this.generationBubble;
+    if (activeBubble && activeBubble.getAttribute('data-seq') === String(genseq)) {
+      const fromActive = activeBubble.querySelector(selector);
+      if (fromActive instanceof HTMLElement) {
+        return fromActive;
       }
     }
+    const fromDocument = this.shadowRoot?.querySelector(selector);
+    return fromDocument instanceof HTMLElement ? fromDocument : null;
+  }
 
-    // Fallback: If no matching func-call section found, create a separate message
-    // This handles historical results or sideDialog results
+  private renderFuncResultIntoSection(
+    event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>,
+    funcCallSection: HTMLElement,
+  ): void {
+    const resultEl = funcCallSection.querySelector('.func-call-result') as HTMLElement | null;
+    if (!resultEl) return;
+
+    const items = event.contentItems;
+    if (Array.isArray(items) && items.length > 0) {
+      for (const key of Array.from(this.toolResultImageStatusElByKey.keys())) {
+        if (key.startsWith(`${String(event.genseq)}::${event.id}::`)) {
+          this.toolResultImageStatusElByKey.delete(key);
+        }
+      }
+      resultEl.innerHTML = '';
+      for (const item of items) {
+        if (item.type === 'input_text') {
+          const raw = String(item.text || '');
+          const block = document.createElement('div');
+          block.innerHTML = renderDomindsMarkdown(raw, {
+            kind: 'chat',
+            allowRelativeWorkspaceLinks: true,
+          });
+          postprocessRenderedDomindsMarkdown(block);
+          block.classList.add('markdown-content');
+          block.setAttribute('data-raw-md', raw);
+          resultEl.appendChild(block);
+          continue;
+        }
+
+        if (item.type === 'input_image') {
+          const figure = document.createElement('figure');
+          figure.className = 'tool-result-image';
+          figure.setAttribute('data-tool-call-id', event.id);
+          figure.setAttribute('data-artifact-rel-path', item.artifact.relPath);
+
+          const img = document.createElement('img');
+          img.alt = 'tool image';
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+          img.style.display = 'block';
+
+          const ingestStatus = document.createElement('figcaption');
+          ingestStatus.className = 'tool-result-image-ingest-status';
+          const imageStatusKey = this.makeToolResultImageStatusKey(
+            event.genseq,
+            event.id,
+            item.artifact.relPath,
+          );
+          this.toolResultImageStatusElByKey.set(imageStatusKey, ingestStatus);
+          const existingStatus = this.toolResultImageStatusByKey.get(imageStatusKey);
+          if (existingStatus) {
+            ingestStatus.textContent = existingStatus.message;
+            ingestStatus.setAttribute('data-image-ingest-disposition', existingStatus.disposition);
+          }
+
+          const placeholder = document.createElement('div');
+          placeholder.textContent = `Loading image (${item.mimeType}, ${item.byteLength} bytes)...`;
+          placeholder.style.opacity = '0.8';
+          placeholder.style.fontSize = '12px';
+          placeholder.style.margin = '6px 0';
+          figure.appendChild(placeholder);
+          figure.appendChild(img);
+          figure.appendChild(ingestStatus);
+          resultEl.appendChild(figure);
+
+          this.loadArtifactImageIntoElement({
+            img,
+            placeholder,
+            endpoint: this.buildDialogArtifactEndpoint(item),
+          });
+          continue;
+        }
+      }
+      resultEl.classList.add('completed');
+      resultEl.style.display = 'block';
+    } else {
+      const raw = String(event.content || '');
+      resultEl.innerHTML = renderDomindsMarkdown(raw, {
+        kind: 'chat',
+        allowRelativeWorkspaceLinks: true,
+      });
+      postprocessRenderedDomindsMarkdown(resultEl);
+      resultEl.setAttribute('data-raw-md', raw);
+      resultEl.classList.add('markdown-content');
+      resultEl.classList.add('completed');
+      resultEl.style.display = 'block';
+    }
+    this.setupFuncCallResultProgressiveExpand(funcCallSection);
+  }
+
+  private handleFuncResult(event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>): void {
+    const funcId = String(event.id || '').trim();
+    if (funcId === '') {
+      this.handleProtocolError(
+        `func_result_evt missing id ${JSON.stringify({
+          name: event.name,
+          course: event.course,
+          genseq: event.genseq,
+        })}`,
+      );
+      return;
+    }
+
+    const funcCallSection = this.findFuncCallSection(event.genseq, funcId);
+    if (funcCallSection) {
+      this.renderFuncResultIntoSection(event, funcCallSection);
+      this.scrollToBottom();
+      return;
+    }
+
     const content = `**Function Result: ${event.name}**\n\n${event.content}`;
     const messageEl = this.createMessageElement(content, 'tool', event.timestamp);
     const container = this.shadowRoot?.querySelector('.messages');
@@ -4678,6 +4715,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.className = 'func-call-section';
     el.setAttribute('data-func-id', funcId);
     el.setAttribute('data-func-name', funcName);
+    el.setAttribute('data-func-arguments', argumentsStr);
     // Parse arguments for display
     let argsDisplay = argumentsStr;
     try {
