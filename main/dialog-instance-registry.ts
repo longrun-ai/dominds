@@ -69,9 +69,6 @@ export async function getOrRestoreMainDialog(
   const rootState = await DialogPersistence.restoreDialog(mainDialogId, status);
   if (!rootState) return undefined;
   const rootMetadata = rootState.metadata;
-  if (rootMetadata.askerDialogId !== undefined) {
-    return undefined;
-  }
 
   const latest = await DialogPersistence.loadDialogLatest(mainDialogId, status);
   const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
@@ -150,12 +147,6 @@ export async function ensureDialogLoaded(
 
   const metadata = await DialogPersistence.loadDialogMetadata(targetId, status);
   if (!metadata) return undefined;
-  if (!('askerDialogId' in metadata)) {
-    throw new Error(
-      `ensureDialogLoaded invariant violation: expected sideDialog metadata for ${targetId.valueOf()}`,
-    );
-  }
-
   const askerStack = await DialogPersistence.loadSideDialogAskerStackState(targetId, status);
   if (!askerStack) {
     throw new Error(

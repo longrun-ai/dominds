@@ -14,15 +14,16 @@ import type {
 } from './display-state';
 import type { LanguageCode } from './language';
 import type {
+  AskerCourseNumber,
   AssignmentCourseNumber,
   AssignmentGenerationSeqNumber,
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
-  AskerCourseNumber,
   CallSiteCourseNo,
   CallSiteGenseqNo,
   DialogCourseNumber,
   FuncResultContentItem,
+  SideDialogAssignmentFromAsker,
   ToolResultImageArtifact,
   ToolResultImageDisposition,
 } from './storage';
@@ -79,15 +80,7 @@ export interface SideDialogEvent extends DialogEventBase {
     lastModified: string;
     displayState?: DialogDisplayState;
     sessionSlug?: string;
-    assignmentFromAsker?: {
-      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-      mentionList?: string[];
-      tellaskContent: string;
-      originMemberId: string;
-      askerDialogId: string;
-      callId: string;
-      effectiveFbrEffort?: number;
-    };
+    assignmentFromAsker?: SideDialogAssignmentFromAsker;
   };
   genseq?: number;
 }

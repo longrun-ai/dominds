@@ -15,7 +15,9 @@ import type {
   ReminderSnapshotItem,
   RemindersReconciledRecord,
   RootGenerationAnchor,
+  SideDialogAssignmentFromAsker,
   SideDialogCreatedRecord,
+  SideDialogMetadataFile,
   SideDialogRegistryReconciledRecord,
   SideDialogRegistryStateRecord,
   SideDialogResponseStateRecord,
@@ -82,7 +84,8 @@ type ForkSnapshot = Readonly<{
 type IncludedSideDialog = Readonly<{
   sourceId: DialogID;
   targetId: DialogID;
-  metadata: Extract<DialogMetadataFile, { askerDialogId: string }>;
+  metadata: SideDialogMetadataFile;
+  assignmentFromAsker: SideDialogAssignmentFromAsker;
 }>;
 
 const FORK_BASELINE_ANCHOR: RootGenerationAnchor = toRootGenerationAnchor({
@@ -156,13 +159,10 @@ function rewriteForkTreeDialogSelfId(
 }
 
 function rewriteAssignmentFromAskerForFork(
-  assignmentFromAsker: Extract<
-    DialogMetadataFile,
-    { askerDialogId: string }
-  >['assignmentFromAsker'],
+  assignmentFromAsker: SideDialogAssignmentFromAsker,
   sourceRootId: string,
   targetRootId: string,
-): Extract<DialogMetadataFile, { askerDialogId: string }>['assignmentFromAsker'] {
+): SideDialogAssignmentFromAsker {
   return {
     ...assignmentFromAsker,
     askerDialogId: rewriteForkTreeDialogSelfId(
@@ -178,18 +178,10 @@ function rewriteAssignmentFromAskerForFork(
 }
 
 function rewriteSideDialogMetadataForFork(
-  metadata: Extract<DialogMetadataFile, { askerDialogId: string }>,
-  sourceRootId: string,
-  targetRootId: string,
-): Extract<DialogMetadataFile, { askerDialogId: string }> {
+  metadata: SideDialogMetadataFile,
+): SideDialogMetadataFile {
   return {
     ...metadata,
-    askerDialogId: rewriteForkTreeDialogSelfId(metadata.askerDialogId, sourceRootId, targetRootId),
-    assignmentFromAsker: rewriteAssignmentFromAskerForFork(
-      metadata.assignmentFromAsker,
-      sourceRootId,
-      targetRootId,
-    ),
   };
 }
 
@@ -588,13 +580,18 @@ async function collectIncludedSideDialogs(args: {
 
         const sourceId = new DialogID(event.sideDialogId, args.sourceRootId);
         const metadata = await DialogPersistence.loadDialogMetadata(sourceId, args.sourceStatus);
-        if (!metadata || metadata.askerDialogId === undefined) {
+        if (!metadata) {
           throw new Error(`Missing included sideDialog metadata for ${sourceId.valueOf()}`);
         }
+        const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+          sourceId,
+          args.sourceStatus,
+        );
         included.set(event.sideDialogId, {
           sourceId,
           targetId: new DialogID(event.sideDialogId, args.targetRootId),
           metadata,
+          assignmentFromAsker,
         });
         queue.push(sourceId);
       }
@@ -742,32 +739,17 @@ async function persistForkPlan(args: {
 }): Promise<void> {
   const { plan } = args;
   if (plan.targetId.selfId === plan.targetId.rootId) {
-    if (
-      plan.metadata.askerDialogId !== undefined ||
-      plan.metadata.sessionSlug !== undefined ||
-      plan.metadata.assignmentFromAsker !== undefined
-    ) {
-      throw new Error(`fork root plan received sideDialog metadata: ${plan.targetId.valueOf()}`);
-    }
+    const priming = 'priming' in plan.metadata ? plan.metadata.priming : undefined;
     const rewrittenMetadata: MainDialogMetadataFile = {
       id: plan.targetId.selfId,
       agentId: plan.metadata.agentId,
       taskDocPath: plan.metadata.taskDocPath,
       createdAt: args.now,
-      ...(plan.metadata.priming ? { priming: plan.metadata.priming } : {}),
+      ...(priming ? { priming } : {}),
     };
     await DialogPersistence.saveMainDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
   } else {
-    if (plan.metadata.askerDialogId === undefined) {
-      throw new Error(
-        `fork sideDialog plan missing askerDialog metadata: ${plan.targetId.valueOf()}`,
-      );
-    }
-    const rewrittenMetadata = rewriteSideDialogMetadataForFork(
-      plan.metadata,
-      plan.sourceId.rootId,
-      plan.targetId.rootId,
-    );
+    const rewrittenMetadata = rewriteSideDialogMetadataForFork(plan.metadata);
     const sourceAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
       plan.sourceId,
       args.sourceStatus,
@@ -781,12 +763,12 @@ async function persistForkPlan(args: {
       plan.targetId.rootId,
     );
     await DialogPersistence.ensureSideDialogDirectory(plan.targetId, 'running');
-    await DialogPersistence.saveSideDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
     await DialogPersistence.saveSideDialogAskerStackState(
       plan.targetId,
       rewrittenAskerStackState,
       'running',
     );
+    await DialogPersistence.saveSideDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
   }
 
   const sourceAskerStack = await DialogPersistence.loadDialogAskerStack(
@@ -906,10 +888,6 @@ export async function forkMainDialogTreeAtGeneration(args: {
   if (!sourceMetadata) {
     throw new Error(`Main dialog not found: ${sourceRootId} (${args.sourceStatus})`);
   }
-  if (sourceMetadata.askerDialogId !== undefined) {
-    throw new Error(`fork dialog only supports main dialogs: ${sourceRootId}`);
-  }
-
   const targetCourse = Math.floor(args.course);
   const targetGenseq = Math.floor(args.genseq);
   const rootEvents = await DialogPersistence.readCourseEvents(
@@ -951,9 +929,10 @@ export async function forkMainDialogTreeAtGeneration(args: {
 
   const childCountByParentSelfId = new Map<string, number>();
   for (const sideDialog of includedSideDialogs) {
+    const askerDialogId = sideDialog.assignmentFromAsker.askerDialogId;
     childCountByParentSelfId.set(
-      sideDialog.metadata.askerDialogId,
-      (childCountByParentSelfId.get(sideDialog.metadata.askerDialogId) ?? 0) + 1,
+      askerDialogId,
+      (childCountByParentSelfId.get(askerDialogId) ?? 0) + 1,
     );
   }
 
@@ -995,7 +974,7 @@ export async function forkMainDialogTreeAtGeneration(args: {
   const baselineRecordsByParentSelfId = new Map<string, SideDialogCreatedRecord[]>();
   for (const sideDialog of includedSideDialogs) {
     const rewrittenAskerDialogId = rewriteForkTreeDialogSelfId(
-      sideDialog.metadata.askerDialogId,
+      sideDialog.assignmentFromAsker.askerDialogId,
       sourceRootId,
       targetRootId,
     );
@@ -1010,7 +989,7 @@ export async function forkMainDialogTreeAtGeneration(args: {
       createdAt: sideDialog.metadata.createdAt,
       sessionSlug: sideDialog.metadata.sessionSlug,
       assignmentFromAsker: rewriteAssignmentFromAskerForFork(
-        sideDialog.metadata.assignmentFromAsker,
+        sideDialog.assignmentFromAsker,
         sourceRootId,
         targetRootId,
       ),

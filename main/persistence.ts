@@ -73,6 +73,7 @@ import type {
   ReminderStateFile,
   RootGenerationAnchor,
   RuntimeGuideRecord,
+  SideDialogAssignmentFromAsker,
   SideDialogCreatedRecord,
   SideDialogMetadataFile,
   SideDialogRegistryReconciledRecord,
@@ -1239,9 +1240,7 @@ function isMainDialogMetadataFile(value: unknown): value is MainDialogMetadataFi
   return true;
 }
 
-function isSideDialogAssignmentFromAsker(
-  value: unknown,
-): value is SideDialogMetadataFile['assignmentFromAsker'] {
+function isSideDialogAssignmentFromAsker(value: unknown): value is SideDialogAssignmentFromAsker {
   if (!isRecord(value)) return false;
   if (typeof value.tellaskContent !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
@@ -1289,14 +1288,11 @@ function isSideDialogMetadataFile(value: unknown): value is SideDialogMetadataFi
   if (typeof value.agentId !== 'string') return false;
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
-  if (typeof value.askerDialogId !== 'string') return false;
+  if (value.askerDialogId !== undefined) return false;
+  if (value.assignmentFromAsker !== undefined) return false;
   if (value.priming !== undefined) return false;
   if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
-  return isSideDialogAssignmentFromAsker(value.assignmentFromAsker);
-}
-
-function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
-  return isMainDialogMetadataFile(value) || isSideDialogMetadataFile(value);
+  return true;
 }
 
 function parseTellaskReplyDirective(value: unknown): TellaskReplyDirective | null {
@@ -1383,7 +1379,7 @@ function getDialogAskerStackTop(state: DialogAskerStackState): AskerDialogStackF
 
 function getDialogAskerStackCurrentAssignment(
   state: DialogAskerStackState,
-): SideDialogMetadataFile['assignmentFromAsker'] {
+): SideDialogAssignmentFromAsker {
   for (let index = state.askerStack.length - 1; index >= 0; index -= 1) {
     const frame = state.askerStack[index];
     if (frame?.assignmentFromAsker !== undefined) {
@@ -1395,7 +1391,7 @@ function getDialogAskerStackCurrentAssignment(
 
 function buildAssignmentTellaskReplyObligation(args: {
   targetDialogId: string;
-  assignment: SideDialogMetadataFile['assignmentFromAsker'];
+  assignment: SideDialogAssignmentFromAsker;
 }): TellaskReplyDirective {
   switch (args.assignment.callName) {
     case 'tellask':
@@ -1418,7 +1414,7 @@ function buildAssignmentTellaskReplyObligation(args: {
 
 function buildAssignmentAskerStackFrame(args: {
   askerDialogId: string;
-  assignment: SideDialogMetadataFile['assignmentFromAsker'];
+  assignment: SideDialogAssignmentFromAsker;
 }): AskerDialogStackFrame {
   return {
     kind: 'asker_dialog_stack_frame',
@@ -2091,19 +2087,9 @@ export class DiskFileDialogStore extends DialogStore {
       agentId: targetAgentId,
       taskDocPath: askerDialog.taskDocPath,
       createdAt: nowTs,
-      askerDialogId: askerDialog.id.selfId,
       sessionSlug: options.sessionSlug,
-      assignmentFromAsker: {
-        callName: options.callName,
-        mentionList,
-        tellaskContent,
-        originMemberId: options.originMemberId,
-        askerDialogId: options.askerDialogId,
-        callId: options.callId,
-        collectiveTargets: options.collectiveTargets,
-        effectiveFbrEffort: options.effectiveFbrEffort,
-      },
     };
+    await DialogPersistence.saveSideDialogAskerStackState(sideDialogId, sideDialog.askerStack);
     await DialogPersistence.saveSideDialogMetadata(sideDialogId, metadata);
 
     const rootAnchor = resolveRootGenerationAnchor(askerDialog);
@@ -3454,6 +3440,14 @@ export class DiskFileDialogStore extends DialogStore {
     return await DialogPersistence.loadDialogMetadata(dialogId, status);
   }
 
+  public async loadSideDialogAssignmentFromAsker(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<SideDialogAssignmentFromAsker | null> {
+    if (dialogId.rootId === dialogId.selfId) return null;
+    return await DialogPersistence.loadSideDialogAssignmentFromAsker(dialogId, status);
+  }
+
   public async loadPendingSideDialogs(
     mainDialogId: DialogID,
     status: DialogStatusKind,
@@ -3572,7 +3566,6 @@ export class DiskFileDialogStore extends DialogStore {
           if (parentIds.includes(candidate)) return;
           parentIds.push(candidate);
         };
-        maybePushParentId(metadata.askerDialogId);
         maybePushParentId(assignmentFromAsker.askerDialogId);
 
         for (const parentId of parentIds) {
@@ -4510,15 +4503,13 @@ export class DiskFileDialogStore extends DialogStore {
         }
         const sideMeta = metadata;
         const sideLatest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
+        const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+          sideDialogId,
+          status,
+        );
 
-        const derivedAskerDialogId =
-          sideMeta.assignmentFromAsker?.askerDialogId &&
-          sideMeta.assignmentFromAsker.askerDialogId.trim() !== ''
-            ? sideMeta.assignmentFromAsker.askerDialogId
-            : typeof sideMeta.askerDialogId === 'string' && sideMeta.askerDialogId.trim() !== ''
-              ? sideMeta.askerDialogId
-              : dialog.id.selfId;
-        const callName = sideMeta.assignmentFromAsker?.callName;
+        const derivedAskerDialogId = assignmentFromAsker.askerDialogId.trim();
+        const callName = assignmentFromAsker.callName;
         if (
           callName !== 'tellask' &&
           callName !== 'tellaskSessionless' &&
@@ -4566,7 +4557,7 @@ export class DiskFileDialogStore extends DialogStore {
             lastModified: sideLatest?.lastModified || sideMeta.createdAt,
             displayState: sideLatest?.displayState,
             sessionSlug: sideMeta.sessionSlug,
-            assignmentFromAsker: sideMeta.assignmentFromAsker,
+            assignmentFromAsker,
           },
           timestamp: event.ts,
         };
@@ -7541,6 +7532,17 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
+      if (dialogId.rootId !== dialogId.selfId) {
+        throw new Error(`saveMainDialogMetadata expects a main dialog id: ${dialogId.valueOf()}`);
+      }
+      if (!isMainDialogMetadataFile(metadata)) {
+        throw new Error(`Invalid main dialog metadata for ${dialogId.selfId}`);
+      }
+      if (metadata.id !== dialogId.selfId) {
+        throw new Error(
+          `Main dialog metadata id mismatch: dialogId=${dialogId.selfId} metadataId=${metadata.id}`,
+        );
+      }
       const dialogPath = this.getMainDialogPath(dialogId, status);
 
       // Ensure dialog directory exists first
@@ -7584,7 +7586,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Save sideDialog metadata under the askerDialog's .sideDialogs directory
+   * Save sideDialog metadata under the root dialog's sideDialogs directory.
    */
   static async saveSideDialogMetadata(
     dialogId: DialogID,
@@ -7592,6 +7594,17 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
+      if (dialogId.rootId === dialogId.selfId) {
+        throw new Error(`saveSideDialogMetadata expects a sideDialog id: ${dialogId.valueOf()}`);
+      }
+      if (!isSideDialogMetadataFile(metadata)) {
+        throw new Error(`Invalid sideDialog metadata for ${dialogId.selfId}`);
+      }
+      if (metadata.id !== dialogId.selfId) {
+        throw new Error(
+          `sideDialog metadata id mismatch: dialogId=${dialogId.selfId} metadataId=${metadata.id}`,
+        );
+      }
       const subPath = this.getSideDialogPath(dialogId, status);
       const metadataFilePath = path.join(subPath, 'dialog.yaml');
 
@@ -7604,20 +7617,6 @@ export class DialogPersistence {
       );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
       await this.renameWithRetry(tempFile, metadataFilePath);
-      if ((await this.loadSideDialogAskerStackState(dialogId, status)) === null) {
-        await this.saveSideDialogAskerStackState(
-          dialogId,
-          {
-            askerStack: [
-              buildAssignmentAskerStackFrame({
-                askerDialogId: metadata.askerDialogId,
-                assignment: metadata.assignmentFromAsker,
-              }),
-            ],
-          },
-          status,
-        );
-      }
     } catch (error) {
       log.error(
         `Failed to save sideDialog YAML for ${dialogId.selfId} under main dialog ${dialogId.rootId}:`,
@@ -7650,6 +7649,20 @@ export class DialogPersistence {
     }
     const stack = await this.loadDialogAskerStack(dialogId, status);
     return stack.askerStack.length === 0 ? null : stack;
+  }
+
+  static async loadSideDialogAssignmentFromAsker(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<SideDialogAssignmentFromAsker> {
+    if (dialogId.rootId === dialogId.selfId) {
+      throw new Error('loadSideDialogAssignmentFromAsker expects a sideDialog id');
+    }
+    const stack = await this.loadSideDialogAskerStackState(dialogId, status);
+    if (!stack) {
+      throw new Error(`Missing asker stack for sideDialog ${dialogId.selfId}`);
+    }
+    return getDialogAskerStackCurrentAssignment(stack);
   }
 
   private static parseDialogAskerStackJsonlRows(args: { content: string; filePath: string }): {
@@ -7912,7 +7925,7 @@ export class DialogPersistence {
    */
   static async updateSideDialogAssignment(
     dialogId: DialogID,
-    assignment: SideDialogMetadataFile['assignmentFromAsker'],
+    assignment: SideDialogAssignmentFromAsker,
     status: DialogStatusKind = 'running',
     options?: Readonly<{
       replacePendingCallId?: string;
@@ -7948,11 +7961,6 @@ export class DialogPersistence {
         appendFrame: nextAssignmentFrame,
       });
     }
-    const next: SideDialogMetadataFile = {
-      ...metadata,
-      assignmentFromAsker: assignment,
-    };
-    await this.saveSideDialogMetadata(dialogId, next, status);
   }
 
   /**
@@ -7961,7 +7969,7 @@ export class DialogPersistence {
   static async loadMainDialogMetadata(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<DialogMetadataFile | null> {
+  ): Promise<MainDialogMetadataFile | null> {
     try {
       const dialogPath = this.getMainDialogPath(dialogId, status);
       const metadataFilePath = path.join(dialogPath, 'dialog.yaml');
@@ -7978,7 +7986,7 @@ export class DialogPersistence {
           source: 'dialog_metadata',
         });
 
-        if (!isDialogMetadataFile(parsed)) {
+        if (!isMainDialogMetadataFile(parsed)) {
           throw buildInvalidPersistenceFileError({
             source: 'dialog_metadata',
             format: 'yaml',
@@ -8015,19 +8023,16 @@ export class DialogPersistence {
   }
 
   /**
-   * Load dialog metadata (universal - works with any DialogID)
+   * Load dialog metadata from the path implied by the DialogID.
    */
   static async loadDialogMetadata(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
-    // For main dialogs, use the selfId
-    // For sideDialogs, this is more complex - we need to find the root metadata
     if (dialogId.rootId === dialogId.selfId) {
       return this.loadMainDialogMetadata(dialogId, status);
     }
 
-    // For sideDialogs, we need to load from the sideDialog location
     const sideDialogPath = this.getSideDialogPath(dialogId, status);
     const metadataFilePath = path.join(sideDialogPath, 'dialog.yaml');
 
@@ -8049,6 +8054,13 @@ export class DialogPersistence {
           filePath: metadataFilePath,
         });
       }
+      if (parsed.id !== dialogId.selfId) {
+        throw buildInvalidPersistenceFileError({
+          source: 'dialog_metadata',
+          format: 'yaml',
+          filePath: metadataFilePath,
+        });
+      }
       const askerStack = await this.loadSideDialogAskerStackState(dialogId, status);
       if (!askerStack) {
         throw buildInvalidPersistenceFileError({
@@ -8057,12 +8069,8 @@ export class DialogPersistence {
           filePath: this.getDialogAskerStackPath(dialogId, status),
         });
       }
-      const assignmentFromAsker = getDialogAskerStackCurrentAssignment(askerStack);
-      return {
-        ...parsed,
-        askerDialogId: assignmentFromAsker.askerDialogId,
-        assignmentFromAsker,
-      };
+      getDialogAskerStackCurrentAssignment(askerStack);
+      return parsed;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;

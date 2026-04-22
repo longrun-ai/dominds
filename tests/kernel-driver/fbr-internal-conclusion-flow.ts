@@ -299,10 +299,20 @@ async function main(): Promise<void> {
       successSideDialog.id,
       'running',
     );
+    assert.ok(successPersistedMeta, 'successful FBR sideDialog metadata should be persisted');
     assert.equal(
-      successPersistedMeta?.assignmentFromAsker?.effectiveFbrEffort,
+      'assignmentFromAsker' in successPersistedMeta,
+      false,
+      'successful FBR sideDialog metadata should not store assignmentFromAsker',
+    );
+    const successPersistedAssignment = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+      successSideDialog.id,
+      'running',
+    );
+    assert.equal(
+      successPersistedAssignment.effectiveFbrEffort,
       2,
-      'successful FBR metadata persisted to disk should keep the effective effort',
+      'successful FBR asker stack persisted to disk should keep the effective effort',
     );
 
     const successPromptings = successSideDialog.msgs.filter(

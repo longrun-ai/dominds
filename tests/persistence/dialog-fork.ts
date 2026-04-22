@@ -67,17 +67,31 @@ async function main(): Promise<void> {
       agentId: 'scribe',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
+    };
+    const subAssignment = {
+      callName: 'tellaskSessionless' as const,
+      mentionList: ['@scribe'],
+      tellaskContent: 'Investigate',
+      originMemberId: 'rtws',
       askerDialogId: rootId.selfId,
-      assignmentFromAsker: {
-        callName: 'tellaskSessionless',
-        mentionList: ['@scribe'],
-        tellaskContent: 'Investigate',
-        originMemberId: 'rtws',
-        askerDialogId: rootId.selfId,
-        callId: 'call-sub-1',
-      },
+      callId: 'call-sub-1',
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
+    await DialogPersistence.saveSideDialogAskerStackState(subId, {
+      askerStack: [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: rootId.selfId,
+          assignmentFromAsker: subAssignment,
+          tellaskReplyObligation: {
+            expectedReplyCallName: 'replyTellaskSessionless',
+            targetDialogId: rootId.selfId,
+            targetCallId: subAssignment.callId,
+            tellaskContent: subAssignment.tellaskContent,
+          },
+        },
+      ],
+    });
     await DialogPersistence.saveDialogMetadata(subId, subMeta);
     await writeLatest(subId, 1);
 
@@ -86,17 +100,31 @@ async function main(): Promise<void> {
       agentId: 'critic',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
+    };
+    const nestedSubAssignment = {
+      callName: 'freshBootsReasoning' as const,
+      tellaskContent: 'Challenge the parent side dialog.',
+      originMemberId: 'scribe',
       askerDialogId: subId.selfId,
-      assignmentFromAsker: {
-        callName: 'freshBootsReasoning',
-        tellaskContent: 'Challenge the parent side dialog.',
-        originMemberId: 'scribe',
-        askerDialogId: subId.selfId,
-        callId: 'call-nested-1',
-        effectiveFbrEffort: 1,
-      },
+      callId: 'call-nested-1',
+      effectiveFbrEffort: 1,
     };
     await DialogPersistence.ensureSideDialogDirectory(nestedSubId, 'running');
+    await DialogPersistence.saveSideDialogAskerStackState(nestedSubId, {
+      askerStack: [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: subId.selfId,
+          assignmentFromAsker: nestedSubAssignment,
+          tellaskReplyObligation: {
+            expectedReplyCallName: 'replyTellaskSessionless',
+            targetDialogId: subId.selfId,
+            targetCallId: nestedSubAssignment.callId,
+            tellaskContent: nestedSubAssignment.tellaskContent,
+          },
+        },
+      ],
+    });
     await DialogPersistence.saveDialogMetadata(nestedSubId, nestedSubMeta);
     await writeLatest(nestedSubId, 1);
 
@@ -343,15 +371,23 @@ async function main(): Promise<void> {
       'running',
     );
     assert.ok(forkedSubMeta, 'forked sideDialog metadata must exist');
+    const forkedSubAskerStack = await DialogPersistence.loadSideDialogAskerStackState(
+      new DialogID(subId.selfId, forkedRootId.selfId),
+      'running',
+    );
+    assert.ok(forkedSubAskerStack, 'forked sideDialog asker stack must exist');
+    const forkedSubAskerStackTop =
+      forkedSubAskerStack.askerStack[forkedSubAskerStack.askerStack.length - 1];
+    assert.ok(forkedSubAskerStackTop, 'forked sideDialog asker stack must have a top frame');
     assert.equal(
-      forkedSubMeta.askerDialogId,
+      forkedSubAskerStackTop.askerDialogId,
       forkedRootId.selfId,
-      'forked sideDialog metadata must point to the new root as askerDialog',
+      'forked sideDialog asker stack must point to the new root as askerDialog',
     );
     assert.equal(
-      forkedSubMeta.assignmentFromAsker.askerDialogId,
+      forkedSubAskerStackTop.assignmentFromAsker?.askerDialogId,
       forkedRootId.selfId,
-      'forked sideDialog assignment must point to the new main dialog tellasker',
+      'forked sideDialog asker stack assignment must point to the new main dialog tellasker',
     );
     const forkedSubEvents = await DialogPersistence.readCourseEvents(
       new DialogID(subId.selfId, forkedRootId.selfId),
@@ -390,15 +426,26 @@ async function main(): Promise<void> {
       'running',
     );
     assert.ok(forkedNestedMeta, 'forked nested sideDialog metadata must exist');
-    assert.equal(
-      forkedNestedMeta.askerDialogId,
-      subId.selfId,
-      'forked nested sideDialog metadata must keep the parent side dialog as askerDialog',
+    const forkedNestedAskerStack = await DialogPersistence.loadSideDialogAskerStackState(
+      new DialogID(nestedSubId.selfId, forkedRootId.selfId),
+      'running',
+    );
+    assert.ok(forkedNestedAskerStack, 'forked nested sideDialog asker stack must exist');
+    const forkedNestedAskerStackTop =
+      forkedNestedAskerStack.askerStack[forkedNestedAskerStack.askerStack.length - 1];
+    assert.ok(
+      forkedNestedAskerStackTop,
+      'forked nested sideDialog asker stack must have a top frame',
     );
     assert.equal(
-      forkedNestedMeta.assignmentFromAsker.askerDialogId,
+      forkedNestedAskerStackTop.askerDialogId,
       subId.selfId,
-      'forked nested sideDialog assignment must keep the requesting side dialog',
+      'forked nested sideDialog asker stack must keep the parent side dialog as askerDialog',
+    );
+    assert.equal(
+      forkedNestedAskerStackTop.assignmentFromAsker?.askerDialogId,
+      subId.selfId,
+      'forked nested sideDialog asker stack assignment must keep the requesting side dialog',
     );
 
     const forkBeforeFirst = await forkMainDialogTreeAtGeneration({

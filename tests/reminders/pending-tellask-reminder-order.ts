@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
@@ -32,7 +33,34 @@ async function persistPendingSideDialog(args: {
   callId: string;
 }): Promise<void> {
   const sideDialogId = new DialogID(args.selfId, args.rootId);
+  const assignmentFromAsker: SideDialogAssignmentFromAsker = {
+    callName: 'tellask',
+    mentionList: ['@worker'],
+    tellaskContent: 'Follow the current assignment',
+    originMemberId: 'tester',
+    askerDialogId: args.rootId,
+    callId: args.callId,
+  };
   await DialogPersistence.ensureSideDialogDirectory(sideDialogId, 'running');
+  await DialogPersistence.saveSideDialogAskerStackState(
+    sideDialogId,
+    {
+      askerStack: [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: args.rootId,
+          assignmentFromAsker,
+          tellaskReplyObligation: {
+            expectedReplyCallName: 'replyTellask',
+            targetDialogId: args.rootId,
+            targetCallId: args.callId,
+            tellaskContent: assignmentFromAsker.tellaskContent,
+          },
+        },
+      ],
+    },
+    'running',
+  );
   await DialogPersistence.saveSideDialogMetadata(
     sideDialogId,
     {
@@ -40,15 +68,6 @@ async function persistPendingSideDialog(args: {
       agentId: 'worker',
       taskDocPath: 'task.md',
       createdAt: args.createdAt,
-      askerDialogId: args.rootId,
-      assignmentFromAsker: {
-        callName: 'tellask',
-        mentionList: ['@worker'],
-        tellaskContent: 'Follow the current assignment',
-        originMemberId: 'tester',
-        askerDialogId: args.rootId,
-        callId: args.callId,
-      },
     },
     'running',
   );

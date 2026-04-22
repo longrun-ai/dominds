@@ -2065,7 +2065,7 @@ async function executeTellaskCall(
               }
 
               const created = await createSideDialog(
-                mainDialog,
+                askerDialog,
                 parseResult.agentId,
                 mentionList,
                 body,

@@ -24,14 +24,6 @@ export async function restoreDialogHierarchy(
   summary: RestoreSummary;
 }> {
   try {
-    const mainDialogIdent = new DialogID(mainDialogId);
-    const rootMeta = await DialogPersistence.loadMainDialogMetadata(mainDialogIdent, status);
-    if (rootMeta?.askerDialogId) {
-      throw new Error(
-        `Expected main dialog ${mainDialogId} but found sideDialog metadata with askerDialogId: ${rootMeta.askerDialogId}`,
-      );
-    }
-
     const mainDialog = await getOrRestoreMainDialog(mainDialogId, status);
     if (!mainDialog) {
       throw new Error(
@@ -41,7 +33,7 @@ export async function restoreDialogHierarchy(
     globalDialogRegistry.register(mainDialog);
 
     const sideDialogs = new Map<string, Dialog>();
-    const rootPath = DialogPersistence.getMainDialogPath(mainDialogIdent, status);
+    const rootPath = DialogPersistence.getMainDialogPath(mainDialog.id, status);
     const sideDialogsPath = path.join(rootPath, 'sideDialogs');
 
     let allSideDialogIds: string[] = [];

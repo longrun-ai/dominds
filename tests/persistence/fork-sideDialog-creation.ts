@@ -56,17 +56,35 @@ async function main(): Promise<void> {
       agentId: 'scribe',
       taskDocPath: 'plans/fork.tsk',
       createdAt,
+    };
+    const subAssignment = {
+      callName: 'tellaskSessionless' as const,
+      mentionList: ['@scribe'],
+      tellaskContent: 'Investigate this branch.',
+      originMemberId: 'tester',
       askerDialogId: rootId.selfId,
-      assignmentFromAsker: {
-        callName: 'tellaskSessionless',
-        mentionList: ['@scribe'],
-        tellaskContent: 'Investigate this branch.',
-        originMemberId: 'tester',
-        askerDialogId: rootId.selfId,
-        callId: 'call-sub-1',
-      },
+      callId: 'call-sub-1',
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
+    await DialogPersistence.saveSideDialogAskerStackState(
+      subId,
+      {
+        askerStack: [
+          {
+            kind: 'asker_dialog_stack_frame',
+            askerDialogId: rootId.selfId,
+            assignmentFromAsker: subAssignment,
+            tellaskReplyObligation: {
+              expectedReplyCallName: 'replyTellaskSessionless',
+              targetDialogId: rootId.selfId,
+              targetCallId: subAssignment.callId,
+              tellaskContent: subAssignment.tellaskContent,
+            },
+          },
+        ],
+      },
+      'running',
+    );
     await DialogPersistence.saveSideDialogMetadata(subId, subMeta, 'running');
     await writeLatest(subId, 1);
 
@@ -84,7 +102,7 @@ async function main(): Promise<void> {
       agentId: 'scribe',
       taskDocPath: 'plans/fork.tsk',
       createdAt,
-      assignmentFromAsker: subMeta.assignmentFromAsker,
+      assignmentFromAsker: subAssignment,
     });
     await DialogPersistence.appendEvent(rootId, 1, {
       ts: createdAt,
@@ -109,7 +127,6 @@ async function main(): Promise<void> {
 
     assert.ok(forkedSubMeta, 'forked sideDialog metadata must exist');
     assert.equal(forkedSubMeta.id, subId.selfId);
-    assert.equal(forkedSubMeta.askerDialogId, forkedRootId.selfId);
     const forkedAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
       forkedSubId,
       'running',

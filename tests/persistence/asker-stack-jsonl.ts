@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import type {
   AskerDialogStackFrame,
   MainDialogMetadataFile,
+  SideDialogAssignmentFromAsker,
   SideDialogMetadataFile,
   SideDialogResponseStateRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -52,7 +53,7 @@ async function main(): Promise<void> {
       taskDocPath: 'task.md',
       createdAt,
     };
-    const initialAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
+    const initialAssignment: SideDialogAssignmentFromAsker = {
       callName: 'tellask',
       mentionList: ['@pangu'],
       tellaskContent: 'Initial assignment',
@@ -66,14 +67,52 @@ async function main(): Promise<void> {
       agentId: 'pangu',
       taskDocPath: 'task.md',
       createdAt,
-      askerDialogId: mainId.selfId,
       sessionSlug: 'sticky',
+    };
+    const initialFrame: AskerDialogStackFrame = {
+      kind: 'asker_dialog_stack_frame',
+      askerDialogId: mainId.selfId,
       assignmentFromAsker: initialAssignment,
+      tellaskReplyObligation: {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: mainId.selfId,
+        targetCallId: initialAssignment.callId,
+        tellaskContent: initialAssignment.tellaskContent,
+      },
     };
 
     await DialogPersistence.saveMainDialogMetadata(mainId, mainMeta, 'running');
     await DialogPersistence.ensureSideDialogDirectory(sideId, 'running');
+    await DialogPersistence.saveSideDialogAskerStackState(
+      sideId,
+      { askerStack: [initialFrame] },
+      'running',
+    );
     await DialogPersistence.saveSideDialogMetadata(sideId, sideMeta, 'running');
+    const sideMetadataYaml = await fs.readFile(
+      path.join(DialogPersistence.getSideDialogPath(sideId, 'running'), 'dialog.yaml'),
+      'utf-8',
+    );
+    assert.ok(
+      !sideMetadataYaml.includes('askerDialogId'),
+      'sideDialog dialog.yaml must not persist askerDialogId',
+    );
+    assert.ok(
+      !sideMetadataYaml.includes('assignmentFromAsker'),
+      'sideDialog dialog.yaml must not persist assignmentFromAsker',
+    );
+    await assert.rejects(
+      DialogPersistence.loadSideDialogAssignmentFromAsker(mainId, 'running'),
+      /expects a sideDialog id/,
+    );
+    await assert.rejects(
+      DialogPersistence.saveSideDialogMetadata(
+        new DialogID('different-side', mainId.rootId),
+        sideMeta,
+        'running',
+      ),
+      /metadata id mismatch/,
+    );
 
     const blankResponseIdRecord: SideDialogResponseStateRecord = {
       responseId: '   ',
@@ -161,7 +200,7 @@ async function main(): Promise<void> {
     assert.equal(assignmentOnlyFrame.tellaskReplyObligation, undefined);
     assert.equal(assignmentOnlyFrame.assignmentFromAsker.callId, 'call-sub-2');
 
-    const previousAskerAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
+    const previousAskerAssignment: SideDialogAssignmentFromAsker = {
       ...initialAssignment,
       tellaskContent: 'Previous asker assignment',
       askerDialogId: mainId.selfId,
@@ -209,7 +248,7 @@ async function main(): Promise<void> {
       'cross-asker replacement must remove the old asker frame',
     );
 
-    const duplicateAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
+    const duplicateAssignment: SideDialogAssignmentFromAsker = {
       ...initialAssignment,
       tellaskContent: 'Duplicate pending assignment',
       callId: 'dup-call',

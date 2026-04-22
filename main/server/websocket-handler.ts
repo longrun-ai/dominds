@@ -815,10 +815,11 @@ async function handleDeclareSideDialogDead(
     }
   }
 
-  if (!('assignmentFromAsker' in metadata)) return;
-  if (!metadata.assignmentFromAsker) return;
-
-  const askerDialogId = metadata.assignmentFromAsker.askerDialogId;
+  const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+    dialogIdObj,
+    requestedStatus,
+  );
+  const askerDialogId = assignmentFromAsker.askerDialogId;
   if (typeof askerDialogId !== 'string' || askerDialogId.trim() === '') return;
 
   const askerDialogIdObj = new DialogID(askerDialogId, dialogIdObj.rootId);
@@ -834,7 +835,7 @@ async function handleDeclareSideDialogDead(
   const responseText = formatDeclaredDeadSideDialogNotice(
     getWorkLanguage(),
     dialogIdObj.valueOf(),
-    metadata.assignmentFromAsker.callName,
+    assignmentFromAsker.callName,
   );
   const responseTextWithNote =
     note === ''
@@ -848,7 +849,7 @@ async function handleDeclareSideDialogDead(
     dialogIdObj,
     responseTextWithNote,
     pendingRecord.callType,
-    metadata.assignmentFromAsker.callId,
+    assignmentFromAsker.callId,
     'failed',
   );
 }
@@ -1428,8 +1429,14 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     const effectiveDisableDiligencePush = persistedDisableDiligencePush;
     mainDialog.disableDiligencePush = effectiveDisableDiligencePush;
     let derivedAskerDialogId: string | undefined;
+    let assignmentFromAsker:
+      | Awaited<ReturnType<typeof DialogPersistence.loadSideDialogAssignmentFromAsker>>
+      | undefined;
     if (dialogIdObj.selfId !== dialogIdObj.rootId) {
-      const assignmentFromAsker = metadata.assignmentFromAsker;
+      assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+        dialogIdObj,
+        requestedStatus,
+      );
       derivedAskerDialogId = assignmentFromAsker ? assignmentFromAsker.askerDialogId.trim() : '';
     }
     if (dialogIdObj.selfId !== dialogIdObj.rootId && !derivedAskerDialogId) {
@@ -1459,7 +1466,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       taskDocPath: metadata.taskDocPath,
       askerDialogId: derivedAskerDialogId,
       sessionSlug: metadata.sessionSlug,
-      assignmentFromAsker: metadata.assignmentFromAsker,
+      assignmentFromAsker,
       disableDiligencePush: effectiveDisableDiligencePush,
       diligencePushMax,
       diligencePushRemainingBudget: clampNonNegativeFiniteInt(

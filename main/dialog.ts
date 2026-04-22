@@ -2065,46 +2065,34 @@ export abstract class Dialog {
    */
   public async postSideDialogResponse(sideDialogId: DialogID, response: string): Promise<void> {
     try {
+      const metadata = await this.dlgStore.loadDialogMetadata(sideDialogId, 'running');
+      if (!metadata) {
+        throw new Error(`Missing sideDialog metadata for ${sideDialogId.valueOf()}`);
+      }
+      const assignmentFromAsker = await this.dlgStore.loadSideDialogAssignmentFromAsker(
+        sideDialogId,
+        'running',
+      );
+      if (!assignmentFromAsker) {
+        throw new Error(`Missing sideDialog assignment for ${sideDialogId.valueOf()}`);
+      }
+
       let responderId = sideDialogId.rootId;
       let responderAgentId: string | undefined;
-      let callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' = 'tellaskSessionless';
-      let mentionList: string[] | undefined;
-      let tellaskContent = response;
-      let originMemberId = responderId;
-      let callId = '';
-      let sessionSlug: string | undefined;
-      try {
-        const metadata = await this.dlgStore.loadDialogMetadata(sideDialogId, 'running');
-        if (metadata) {
-          if (metadata.agentId) {
-            responderId = metadata.agentId;
-            responderAgentId = metadata.agentId;
-            originMemberId = metadata.agentId;
-          }
-          if (metadata.assignmentFromAsker) {
-            callName = metadata.assignmentFromAsker.callName;
-            mentionList = metadata.assignmentFromAsker.mentionList;
-            tellaskContent = metadata.assignmentFromAsker.tellaskContent;
-            originMemberId = metadata.assignmentFromAsker.originMemberId;
-            callId = metadata.assignmentFromAsker.callId;
-          }
-          if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
-            sessionSlug = metadata.sessionSlug.trim();
-          }
-        }
-      } catch (err) {
-        log.warn('Failed to load sideDialog metadata for response labeling', undefined, {
-          dialogId: this.id.selfId,
-          sideDialogId: sideDialogId.selfId,
-          error: err,
-        });
+      if (metadata.agentId.trim() !== '') {
+        responderId = metadata.agentId;
+        responderAgentId = metadata.agentId;
       }
-      if (callId.trim() === '') {
-        log.warn('Missing callId for sideDialog response', undefined, {
-          dialogId: this.id.selfId,
-          sideDialogId: sideDialogId.selfId,
-        });
-      }
+      const callName = assignmentFromAsker.callName;
+      let mentionList = assignmentFromAsker.mentionList;
+      const tellaskContent = assignmentFromAsker.tellaskContent;
+      const originMemberId = assignmentFromAsker.originMemberId;
+      const callId = assignmentFromAsker.callId;
+      const sessionSlug =
+        typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== ''
+          ? metadata.sessionSlug.trim()
+          : undefined;
+
       if (
         (callName === 'tellask' || callName === 'tellaskSessionless') &&
         (!Array.isArray(mentionList) || mentionList.length < 1)
@@ -2198,10 +2186,11 @@ export abstract class Dialog {
       // Emit virtual generating_finish_evt
       await this.notifyGeneratingFinish();
     } catch (err) {
-      log.warn('Failed to post tellask_result_evt event', undefined, {
+      log.error('Failed to post tellask_result_evt event', err, {
         error: err,
         message: err instanceof Error ? err.message : String(err),
       });
+      throw err;
     }
   }
 }
@@ -2603,6 +2592,13 @@ export abstract class DialogStore {
     _dialogId: DialogID,
     _status: 'running' | 'completed' | 'archived',
   ): Promise<DialogMetadataFile | null> {
+    return null;
+  }
+
+  public async loadSideDialogAssignmentFromAsker(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<AssignmentFromAsker | null> {
     return null;
   }
 

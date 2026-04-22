@@ -13,7 +13,12 @@ import type {
   SaveCurrentCoursePrimingResponse,
   SearchPrimingScriptsResponse,
 } from '@longrun-ai/kernel/types/priming';
-import type { DialogLatestFile, DialogMetadataFile } from '@longrun-ai/kernel/types/storage';
+import type {
+  DialogLatestFile,
+  DialogMetadataFile,
+  MainDialogMetadataFile,
+  SideDialogAssignmentFromAsker,
+} from '@longrun-ai/kernel/types/storage';
 import type { DialogIdent, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import fsPromises from 'fs/promises';
@@ -162,7 +167,7 @@ async function loadMainDialogMetadataForLookup(
   dialogId: DialogID,
   status: PersistableDialogStatus,
   context: string,
-): Promise<DialogMetadataFile | null> {
+): Promise<MainDialogMetadataFile | null> {
   try {
     return await DialogPersistence.loadMainDialogMetadata(dialogId, status);
   } catch (error: unknown) {
@@ -2504,7 +2509,7 @@ async function handleGetDialogHierarchy(
       lastModified: string;
       displayState?: DialogLatestFile['displayState'];
       sessionSlug?: string;
-      assignmentFromAsker?: DialogMetadataFile['assignmentFromAsker'];
+      assignmentFromAsker?: SideDialogAssignmentFromAsker;
       waitingForFreshBootsReasoning?: boolean;
     }> = [];
 
@@ -2535,10 +2540,11 @@ async function handleGetDialogHierarchy(
       if (!(await pathStillExistsForLookup(sideDialogPath))) {
         continue;
       }
-      const assignmentFromAsker = meta.assignmentFromAsker;
-      const derivedAskerDialogId = assignmentFromAsker
-        ? assignmentFromAsker.askerDialogId.trim()
-        : '';
+      const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+        dialogId,
+        status,
+      );
+      const derivedAskerDialogId = assignmentFromAsker.askerDialogId.trim();
       if (!derivedAskerDialogId) {
         const error = new Error(
           `sideDialog hierarchy invariant violation: missing assignmentFromAsker.askerDialogId ` +
@@ -2564,7 +2570,7 @@ async function handleGetDialogHierarchy(
         lastModified: subLatest?.lastModified || meta.createdAt,
         displayState: subLatest?.displayState,
         sessionSlug: meta.sessionSlug,
-        assignmentFromAsker: meta.assignmentFromAsker,
+        assignmentFromAsker,
         waitingForFreshBootsReasoning,
       });
     }
@@ -2641,10 +2647,11 @@ async function handleGetDialogListSideDialogNode(
       return true;
     }
 
-    const assignmentFromAsker = metadata.assignmentFromAsker;
-    const derivedAskerDialogId = assignmentFromAsker
-      ? assignmentFromAsker.askerDialogId.trim()
-      : '';
+    const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+      dialogId,
+      status,
+    );
+    const derivedAskerDialogId = assignmentFromAsker.askerDialogId.trim();
     if (!derivedAskerDialogId) {
       const error = new Error(
         `dialog-list sideDialog node invariant violation: missing assignmentFromAsker.askerDialogId ` +
@@ -2673,7 +2680,7 @@ async function handleGetDialogListSideDialogNode(
         lastModified: latest?.lastModified ?? metadata.createdAt,
         displayState: latest?.displayState,
         sessionSlug: metadata.sessionSlug,
-        assignmentFromAsker: metadata.assignmentFromAsker,
+        assignmentFromAsker,
         waitingForFreshBootsReasoning,
       },
     });

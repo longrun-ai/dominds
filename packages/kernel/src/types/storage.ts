@@ -81,26 +81,26 @@ export interface SideDialogMetadataFile {
   agentId: string;
   taskDocPath: string;
   createdAt: string;
-  askerDialogId: string;
   sessionSlug?: string;
-  assignmentFromAsker: {
-    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-    mentionList?: string[];
-    tellaskContent: string;
-    originMemberId: string;
-    askerDialogId: string;
-    callId: string;
-    collectiveTargets?: string[];
-    effectiveFbrEffort?: number;
-  };
 }
 
 export type DialogMetadataFile = MainDialogMetadataFile | SideDialogMetadataFile;
 
+export interface SideDialogAssignmentFromAsker {
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
+  tellaskContent: string;
+  originMemberId: string;
+  askerDialogId: string;
+  callId: string;
+  collectiveTargets?: string[];
+  effectiveFbrEffort?: number;
+}
+
 export interface AskerDialogStackFrame {
   kind: 'asker_dialog_stack_frame';
   askerDialogId: string;
-  assignmentFromAsker?: SideDialogMetadataFile['assignmentFromAsker'];
+  assignmentFromAsker?: SideDialogAssignmentFromAsker;
   tellaskReplyObligation?: TellaskReplyDirective;
 }
 
@@ -800,16 +800,7 @@ export interface SideDialogCreatedRecord extends RootGenerationAnchor {
   taskDocPath: string;
   createdAt: string;
   sessionSlug?: string;
-  assignmentFromAsker: {
-    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-    mentionList?: string[];
-    tellaskContent: string;
-    originMemberId: string;
-    askerDialogId: string;
-    callId: string;
-    collectiveTargets?: string[];
-    effectiveFbrEffort?: number;
-  };
+  assignmentFromAsker: SideDialogAssignmentFromAsker;
 }
 
 export interface RemindersReconciledRecord extends RootGenerationAnchor {
@@ -905,14 +896,7 @@ export interface DialogListItem {
   preview?: string;
   askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromAsker?: {
-    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-    mentionList?: string[];
-    tellaskContent: string;
-    originMemberId: string;
-    askerDialogId: string;
-    callId: string;
-  };
+  assignmentFromAsker?: SideDialogAssignmentFromAsker;
 }
 
 export type PersistedDialogRecord =

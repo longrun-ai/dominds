@@ -263,16 +263,18 @@ export async function supplyResponseToAskerDialog(args: {
           sideDialogId,
           parentDialog.status,
         );
-        if (metadata && metadata.assignmentFromAsker) {
-          originMemberId = metadata.assignmentFromAsker.originMemberId;
+        if (metadata) {
+          const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
+            sideDialogId,
+            parentDialog.status,
+          );
+          originMemberId = assignmentFromAsker.originMemberId;
           if (!pendingRecord) {
-            callName = metadata.assignmentFromAsker.callName;
-            mentionList = metadata.assignmentFromAsker.mentionList;
-            tellaskContent = metadata.assignmentFromAsker.tellaskContent;
+            callName = assignmentFromAsker.callName;
+            mentionList = assignmentFromAsker.mentionList;
+            tellaskContent = assignmentFromAsker.tellaskContent;
           }
-        }
-        if (!pendingRecord && metadata && typeof metadata.agentId === 'string') {
-          if (metadata.agentId.trim() !== '') {
+          if (!pendingRecord && metadata.agentId.trim() !== '') {
             responderId = metadata.agentId;
             responderAgentId = metadata.agentId;
           }
