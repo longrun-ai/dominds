@@ -672,9 +672,10 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-tellask-body {
+        --markdown-body-font-size: calc(var(--dominds-font-size-md, 11px) + 2px);
         white-space: normal;
         word-break: break-word;
-        font-size: 13px;
+        font-size: var(--markdown-body-font-size);
         line-height: var(--dominds-line-height-dense, 1.4);
       }
 
@@ -711,12 +712,26 @@ export class DomindsQ4HPanel extends HTMLElement {
         color: var(--color-fg-primary, #0f172a);
       }
 
-      .q4h-tellask-body h1 { font-size: calc(var(--dominds-font-size-sm, 12px) + 2px); }
-      .q4h-tellask-body h2 { font-size: calc(var(--dominds-font-size-sm, 12px) + 1px); }
-      .q4h-tellask-body h3 { font-size: var(--dominds-font-size-sm, 12px); }
-      .q4h-tellask-body h4 { font-size: var(--dominds-font-size-sm, 12px); }
-      .q4h-tellask-body h5 { font-size: var(--dominds-font-size-xs, 11px); }
-      .q4h-tellask-body h6 { font-size: var(--dominds-font-size-xs, 11px); }
+      .q4h-tellask-body h1 {
+        font-size: 1.36em;
+      }
+
+      .q4h-tellask-body h2,
+      .q4h-tellask-body h3 {
+        font-size: 1.27em;
+      }
+
+      .q4h-tellask-body h4 {
+        font-size: 1.18em;
+      }
+
+      .q4h-tellask-body h5 {
+        font-size: 1.09em;
+      }
+
+      .q4h-tellask-body h6 {
+        font-size: 1em;
+      }
 
       .q4h-tellask-body h1:first-child,
       .q4h-tellask-body h2:first-child,
@@ -727,7 +742,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-tellask-body blockquote {
         margin: 0 0 0.45em 0;
         padding: 0 0.8em;
-        font-size: var(--dominds-font-size-xs, 11px);
+        font-size: 0.92em;
         color: var(--color-fg-tertiary, #64748b);
         border-left: 0.25em solid var(--color-border-primary, #e2e8f0);
       }

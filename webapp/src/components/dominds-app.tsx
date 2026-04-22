@@ -6061,6 +6061,8 @@ export class DomindsApp extends HTMLElement {
       }
 
       .rem-item-content.rem-item-content-markdown {
+        --markdown-body-font-size: var(--dominds-font-size-md, 13px);
+        font-size: var(--markdown-body-font-size);
         white-space: normal;
         padding-right: 2px;
       }
@@ -6167,9 +6169,31 @@ export class DomindsApp extends HTMLElement {
         line-height: 1.3;
       }
 
+      .rem-item-content.rem-item-content-markdown h1 {
+        font-size: 1.36em;
+      }
+
+      .rem-item-content.rem-item-content-markdown h2,
+      .rem-item-content.rem-item-content-markdown h3 {
+        font-size: 1.27em;
+      }
+
+      .rem-item-content.rem-item-content-markdown h4 {
+        font-size: 1.18em;
+      }
+
+      .rem-item-content.rem-item-content-markdown h5 {
+        font-size: 1.09em;
+      }
+
+      .rem-item-content.rem-item-content-markdown h6 {
+        font-size: 1em;
+      }
+
       .rem-item-content.rem-item-content-markdown blockquote {
         margin: 0.6em 0;
         padding-left: 0.75em;
+        font-size: 0.92em;
         border-left: 3px solid color-mix(in srgb, var(--dominds-primary, #007acc) 45%, transparent);
         color: color-mix(in srgb, var(--dominds-fg, #333333) 78%, var(--dominds-muted, #666666) 22%);
       }

@@ -187,7 +187,8 @@ export class DomindsTeamManualPanel extends HTMLElement {
       .body{flex:1;min-height:0;overflow:auto;padding:3px 10px;background:var(--dominds-bg,#fff);}
       .doc-body{
         max-width:980px;
-        font-size: var(--dominds-font-size-md, 13px);
+        --markdown-body-font-size: var(--dominds-font-size-md, 13px);
+        font-size: var(--markdown-body-font-size);
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--color-fg-secondary,#475569);
         word-break: break-word;
@@ -203,17 +204,16 @@ export class DomindsTeamManualPanel extends HTMLElement {
         line-height:var(--dominds-line-height-dense,1.4);
         color:var(--color-fg-primary,#1e293b);
       }
-      .doc-body h1{font-size:calc(var(--dominds-font-size-base, 14px) + 3px);}
-      .doc-body h2{font-size:calc(var(--dominds-font-size-base, 14px) + 1px);}
-      .doc-body h3{font-size:calc(var(--dominds-font-size-base, 14px) + 1px);}
-      .doc-body h4{font-size:var(--dominds-font-size-base, 14px);}
-      .doc-body h5{font-size:var(--dominds-font-size-md, 13px);}
-      .doc-body h6{font-size:var(--dominds-font-size-sm, 12px);}
+      .doc-body h1{font-size:1.36em;}
+      .doc-body h2,.doc-body h3{font-size:1.27em;}
+      .doc-body h4{font-size:1.18em;}
+      .doc-body h5{font-size:1.09em;}
+      .doc-body h6{font-size:1em;}
       .doc-body h1:first-child,.doc-body h2:first-child,.doc-body h3:first-child{margin-top:0;}
       .doc-body blockquote{
         margin:0 0 0.4em 0;
         padding:0 0.8em;
-        font-size:var(--dominds-font-size-md, 13px);
+        font-size:0.92em;
         color:var(--color-fg-tertiary,#64748b);
         border-left:0.25em solid var(--color-border-primary,#e2e8f0);
       }

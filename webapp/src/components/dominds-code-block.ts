@@ -21,6 +21,20 @@ export function decodeDomindsCodeBlockDataCode(encoded: string): string {
   }
 }
 
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toLanguageClassToken(language: string): string {
+  const token = language.replace(/[^A-Za-z0-9_-]/g, '-').replace(/^-+|-+$/g, '');
+  return token.length > 0 ? token : 'plaintext';
+}
+
 /**
  * Custom Web Component for Syntax Highlighted Code Blocks
  */
@@ -102,6 +116,8 @@ export class DomindsCodeBlock extends HTMLElement {
     if (!this.hasCodeSource) return;
 
     const language = this._language || 'plaintext';
+    const languageLabel = escapeHtmlText(language);
+    const languageClassToken = toLanguageClassToken(language);
 
     try {
       const highlighted = hljs.getLanguage(language)
@@ -256,10 +272,10 @@ export class DomindsCodeBlock extends HTMLElement {
         </style>
         <div class="code-block-wrapper">
           <div class="code-header">
-            <span class="language">${language}</span>
-            <button class="copy-btn" title="Copy code" aria-label="Copy code" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.querySelector('code').textContent)"><span class="icon-mask" aria-hidden="true"></span></button>
+            <span class="language">${languageLabel}</span>
+            <button class="copy-btn" title="Copy code" aria-label="Copy code"><span class="icon-mask" aria-hidden="true"></span></button>
           </div>
-          <pre><code class="hljs language-${language}">${highlighted}</code></pre>
+          <pre><code class="hljs language-${languageClassToken}">${highlighted}</code></pre>
           <div class="code-expand-footer is-hidden">
             <button type="button" class="code-expand-btn">
               <span class="code-expand-icon icon-mask" aria-hidden="true"></span>
@@ -267,11 +283,22 @@ export class DomindsCodeBlock extends HTMLElement {
           </div>
         </div>
       `;
+      this.setupCopyButton();
       this.setupProgressiveExpand();
     } catch (error) {
       console.error('Highlighting error:', error);
-      this.innerHTML = `<pre><code>${this._code}</code></pre>`;
+      this.innerHTML = `<pre><code>${escapeHtmlText(this._code)}</code></pre>`;
     }
+  }
+
+  private setupCopyButton(): void {
+    const button = this.querySelector('.copy-btn');
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.addEventListener('click', () => {
+      void navigator.clipboard.writeText(this._code).catch((error: unknown) => {
+        console.error('Copy code failed:', error);
+      });
+    });
   }
 
   private setupProgressiveExpand(): void {

@@ -5512,7 +5512,8 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .markdown-content {
-        font-size: var(--dominds-font-size-md, 11px);
+        --markdown-body-font-size: var(--dominds-font-size-md, 11px);
+        font-size: var(--markdown-body-font-size);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
         word-wrap: break-word;
         line-height: var(--dominds-line-height-dense, 1.4);
@@ -5546,12 +5547,11 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-fg-primary, var(--color-fg-primary, #1e293b));
       }
 
-      .markdown-content h1 { font-size: calc(var(--dominds-font-size-base, 14px) + 1px); }
-      .markdown-content h2 { font-size: var(--dominds-font-size-base, 14px); }
-      .markdown-content h3 { font-size: var(--dominds-font-size-base, 14px); }
-      .markdown-content h4 { font-size: var(--dominds-font-size-md, 13px); }
-      .markdown-content h5 { font-size: var(--dominds-font-size-sm, 12px); }
-      .markdown-content h6 { font-size: var(--dominds-font-size-xs, 11px); }
+      .markdown-content h1 { font-size: 1.36em; }
+      .markdown-content h2, .markdown-content h3 { font-size: 1.27em; }
+      .markdown-content h4 { font-size: 1.18em; }
+      .markdown-content h5 { font-size: 1.09em; }
+      .markdown-content h6 { font-size: 1em; }
 
       .markdown-content h1:first-child, .markdown-content h2:first-child, .markdown-content h3:first-child {
         margin-top: 0;
@@ -5560,7 +5560,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .markdown-content blockquote {
         margin: 0 0 0.5em 0;
         padding: 0 0.45em;
-        font-size: var(--dominds-font-size-sm, 12px);
+        font-size: 0.92em;
         color: var(--dominds-fg-muted, var(--color-fg-muted, #64748b));
         border-left: 0.25em solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
       }
@@ -6442,7 +6442,6 @@ export class DomindsDialogContainer extends HTMLElement {
       .message.teammate.fbr .markdown-content h5,
       .message.teammate.fbr .markdown-content h6 {
         color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
-        font-size: var(--dominds-font-size-md, 11px);
       }
 
       .message.teammate.fbr .teammate-headline {
