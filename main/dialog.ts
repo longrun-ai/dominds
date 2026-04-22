@@ -40,8 +40,8 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
-  CallingCourseNumber,
-  CallingGenerationSeqNumber,
+  CallSiteCourseNo,
+  CallSiteGenseqNo,
   DialogAskerStackState,
   DialogMetadataFile,
   HumanQuestion,
@@ -155,8 +155,8 @@ export interface PendingSideDialog {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse: CallingCourseNumber;
-  callingGenseq: CallingGenerationSeqNumber;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -228,7 +228,7 @@ export interface AssignmentFromAsker {
   mentionList?: string[];
   tellaskContent: string;
   originMemberId: string;
-  callerDialogId: string;
+  askerDialogId: string;
   callId: string;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;
@@ -248,7 +248,7 @@ export function buildSideDialogAskerStack(args: {
         assignmentFromAsker: args.assignment,
         tellaskReplyObligation: {
           expectedReplyCallName,
-          targetDialogId: args.assignment.callerDialogId,
+          targetDialogId: args.assignment.askerDialogId,
           targetCallId: args.assignment.callId,
           tellaskContent: args.assignment.tellaskContent,
         },
@@ -286,12 +286,12 @@ function buildSideDialogAssignmentPromptMeta(
       return {
         tellaskReplyDirective: {
           expectedReplyCallName: 'replyTellask',
-          targetDialogId: assignment.callerDialogId,
+          targetDialogId: assignment.askerDialogId,
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
         sideDialogReplyTarget: {
-          ownerDialogId: assignment.callerDialogId,
+          ownerDialogId: assignment.askerDialogId,
           callType: 'B',
           callId: assignment.callId,
         },
@@ -301,12 +301,12 @@ function buildSideDialogAssignmentPromptMeta(
       return {
         tellaskReplyDirective: {
           expectedReplyCallName: 'replyTellaskSessionless',
-          targetDialogId: assignment.callerDialogId,
+          targetDialogId: assignment.askerDialogId,
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
         sideDialogReplyTarget: {
-          ownerDialogId: assignment.callerDialogId,
+          ownerDialogId: assignment.askerDialogId,
           callType: 'C',
           callId: assignment.callId,
         },
@@ -665,7 +665,7 @@ export abstract class Dialog {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -1550,8 +1550,8 @@ export abstract class Dialog {
     status: 'completed' | 'failed',
     callId: string,
     options?: {
-      originCourse?: CallingCourseNumber;
-      calling_genseq?: CallingGenerationSeqNumber;
+      callSiteCourse?: CallSiteCourseNo;
+      callSiteGenseq?: CallSiteGenseqNo;
     },
   ): Promise<void> {
     const tellaskResult: TellaskResultMsg =
@@ -1563,9 +1563,11 @@ export abstract class Dialog {
             callName,
             status,
             content: result,
-            ...(options?.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
-            ...(options?.calling_genseq !== undefined
-              ? { calling_genseq: options.calling_genseq }
+            ...(options?.callSiteCourse !== undefined
+              ? { callSiteCourse: options.callSiteCourse }
+              : {}),
+            ...(options?.callSiteGenseq !== undefined
+              ? { callSiteGenseq: options.callSiteGenseq }
               : {}),
             call: {
               tellaskContent,
@@ -1583,11 +1585,11 @@ export abstract class Dialog {
               callName,
               status,
               content: result,
-              ...(options?.originCourse !== undefined
-                ? { originCourse: options.originCourse }
+              ...(options?.callSiteCourse !== undefined
+                ? { callSiteCourse: options.callSiteCourse }
                 : {}),
-              ...(options?.calling_genseq !== undefined
-                ? { calling_genseq: options.calling_genseq }
+              ...(options?.callSiteGenseq !== undefined
+                ? { callSiteGenseq: options.callSiteGenseq }
                 : {}),
               call: {
                 tellaskContent,
@@ -1604,11 +1606,11 @@ export abstract class Dialog {
               callName,
               status,
               content: result,
-              ...(options?.originCourse !== undefined
-                ? { originCourse: options.originCourse }
+              ...(options?.callSiteCourse !== undefined
+                ? { callSiteCourse: options.callSiteCourse }
                 : {}),
-              ...(options?.calling_genseq !== undefined
-                ? { calling_genseq: options.calling_genseq }
+              ...(options?.callSiteGenseq !== undefined
+                ? { callSiteGenseq: options.callSiteGenseq }
                 : {}),
               call: {
                 tellaskContent,
@@ -1632,8 +1634,8 @@ export abstract class Dialog {
       agentId: string;
       callId: string;
       originMemberId: string;
-      originCourse?: CallingCourseNumber;
-      calling_genseq?: CallingGenerationSeqNumber;
+      callSiteCourse?: CallSiteCourseNo;
+      callSiteGenseq?: CallSiteGenseqNo;
       carryoverContent?: string;
       contentItems?: DialogUserPrompt['contentItems'];
       sessionSlug?: string;
@@ -1648,9 +1650,9 @@ export abstract class Dialog {
       ...(typeof options.calleeGenseq === 'number' ? { calleeGenseq: options.calleeGenseq } : {}),
     };
 
-    const carryoverOriginCourse = options.originCourse;
+    const carryoverCallSiteCourse = options.callSiteCourse;
     const isCrossCourseResponse =
-      carryoverOriginCourse !== undefined && carryoverOriginCourse !== currentCourse;
+      carryoverCallSiteCourse !== undefined && carryoverCallSiteCourse !== currentCourse;
 
     if (isCrossCourseResponse) {
       // Cross-course completion is not represented as a tool-result pair in the latest course.
@@ -1659,7 +1661,7 @@ export abstract class Dialog {
       if (typeof options.carryoverContent !== 'string') {
         throw new Error(
           `receiveTellaskResponse invariant violation: missing carryover content for cross-course response ` +
-            `(callId=${options.callId}, callName=${callName}, originCourse=${options.originCourse}, currentCourse=${currentCourse})`,
+            `(callId=${options.callId}, callName=${callName}, callSiteCourse=${options.callSiteCourse}, currentCourse=${currentCourse})`,
         );
       }
       if (options.carryoverContent.trim() === '') {
@@ -1685,7 +1687,7 @@ export abstract class Dialog {
         genseq: this.activeGenSeqOrUndefined ?? 1,
         content: options.carryoverContent,
         ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
-        originCourse: carryoverOriginCourse,
+        callSiteCourse: carryoverCallSiteCourse,
         carryoverCourse: currentCourse,
         responderId,
         callName,
@@ -1721,9 +1723,11 @@ export abstract class Dialog {
             status,
             content: options.response,
             ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
-            ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
-            ...(options.calling_genseq !== undefined
-              ? { calling_genseq: options.calling_genseq }
+            ...(options.callSiteCourse !== undefined
+              ? { callSiteCourse: options.callSiteCourse }
+              : {}),
+            ...(options.callSiteGenseq !== undefined
+              ? { callSiteGenseq: options.callSiteGenseq }
               : {}),
             call: {
               tellaskContent,
@@ -1746,9 +1750,11 @@ export abstract class Dialog {
               status,
               content: options.response,
               ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
-              ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
-              ...(options.calling_genseq !== undefined
-                ? { calling_genseq: options.calling_genseq }
+              ...(options.callSiteCourse !== undefined
+                ? { callSiteCourse: options.callSiteCourse }
+                : {}),
+              ...(options.callSiteGenseq !== undefined
+                ? { callSiteGenseq: options.callSiteGenseq }
                 : {}),
               call: {
                 tellaskContent,
@@ -1769,9 +1775,11 @@ export abstract class Dialog {
               status,
               content: options.response,
               ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
-              ...(options.originCourse !== undefined ? { originCourse: options.originCourse } : {}),
-              ...(options.calling_genseq !== undefined
-                ? { calling_genseq: options.calling_genseq }
+              ...(options.callSiteCourse !== undefined
+                ? { callSiteCourse: options.callSiteCourse }
+                : {}),
+              ...(options.callSiteGenseq !== undefined
+                ? { callSiteGenseq: options.callSiteGenseq }
                 : {}),
               call: {
                 tellaskContent,
@@ -2226,11 +2234,11 @@ export class SideDialog extends Dialog {
     const assignmentFromAsker = getSideDialogAskerStackCurrentAssignment(askerStack);
     if (
       top.assignmentFromAsker !== undefined &&
-      top.askerDialogId !== assignmentFromAsker.callerDialogId
+      top.askerDialogId !== assignmentFromAsker.askerDialogId
     ) {
       throw new Error(
-        `SideDialog askerStack invariant violation: askerDialogId must match assignment callerDialogId ` +
-          `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId}, callerDialogId=${assignmentFromAsker.callerDialogId})`,
+        `SideDialog askerStack invariant violation: askerDialogId must match assignment askerDialogId ` +
+          `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, frameAskerDialogId=${top.askerDialogId}, assignmentAskerDialogId=${assignmentFromAsker.askerDialogId})`,
       );
     }
     const resolvedAskerDialog = mainDialog.lookupDialog(top.askerDialogId);
@@ -2254,7 +2262,7 @@ export class SideDialog extends Dialog {
 
   public set assignmentFromAsker(assignment: AssignmentFromAsker) {
     const nextFrame = buildSideDialogAskerStack({
-      askerDialogId: assignment.callerDialogId,
+      askerDialogId: assignment.askerDialogId,
       assignment,
     }).askerStack[0];
     if (!nextFrame) {
@@ -2291,7 +2299,7 @@ export class SideDialog extends Dialog {
 
   /**
    * Create a sideDialog under the same main dialog tree.
-   * The new sideDialog's effective askerDialog is resolved via AssignmentFromAsker.callerDialogId.
+   * The new sideDialog's effective askerDialog is resolved via AssignmentFromAsker.askerDialogId.
    */
   async createSideDialog(
     targetAgentId: string,
@@ -2300,7 +2308,7 @@ export class SideDialog extends Dialog {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -2433,7 +2441,7 @@ export class MainDialog extends Dialog {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -2493,7 +2501,7 @@ export abstract class DialogStore {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -2517,7 +2525,7 @@ export abstract class DialogStore {
       mentionList,
       tellaskContent,
       originMemberId: options.originMemberId,
-      callerDialogId: options.callerDialogId,
+      askerDialogId: options.askerDialogId,
       callId: options.callId,
       collectiveTargets: options.collectiveTargets,
       effectiveFbrEffort: options.effectiveFbrEffort,
@@ -2529,7 +2537,7 @@ export abstract class DialogStore {
       sideDialogId,
       targetAgentId,
       buildSideDialogAskerStack({
-        askerDialogId: options.callerDialogId,
+        askerDialogId: options.askerDialogId,
         assignment,
       }),
       options.sessionSlug,

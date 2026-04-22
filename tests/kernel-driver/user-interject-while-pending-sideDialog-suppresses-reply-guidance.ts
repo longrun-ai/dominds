@@ -68,7 +68,7 @@ async function runMainDialogScenario(): Promise<void> {
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
-      callerDialogId: root.id.selfId,
+      askerDialogId: root.id.selfId,
       callId: 'root-pending-sideDialog-call',
       collectiveTargets: ['pangu'],
     },
@@ -81,8 +81,8 @@ async function runMainDialogScenario(): Promise<void> {
     tellaskContent: 'Background side dialog work is still pending.',
     targetAgentId: 'pangu',
     callId: 'root-pending-sideDialog-call',
-    callingCourse: 1,
-    callingGenseq: 1,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
     callType: 'C',
   });
 
@@ -153,7 +153,7 @@ async function runSideDialogScenario(): Promise<void> {
   const sideDialog = await root.createSideDialog('pangu', ['@pangu'], 'Finish the assigned task.', {
     callName: 'tellask',
     originMemberId: 'tester',
-    callerDialogId: root.id.selfId,
+    askerDialogId: root.id.selfId,
     callId: 'root-to-pangu-call',
     sessionSlug: 'parent-session',
     collectiveTargets: ['pangu'],
@@ -167,7 +167,7 @@ async function runSideDialogScenario(): Promise<void> {
     {
       callName: 'tellaskSessionless',
       originMemberId: 'pangu',
-      callerDialogId: sideDialog.id.selfId,
+      askerDialogId: sideDialog.id.selfId,
       callId: 'pangu-to-nuwa-call',
       collectiveTargets: ['nuwa'],
     },
@@ -180,8 +180,8 @@ async function runSideDialogScenario(): Promise<void> {
     tellaskContent: 'Investigate a nested side dialog.',
     targetAgentId: 'nuwa',
     callId: 'pangu-to-nuwa-call',
-    callingCourse: 1,
-    callingGenseq: 1,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
     callType: 'C',
   });
 
@@ -272,7 +272,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
-      callerDialogId: root.id.selfId,
+      askerDialogId: root.id.selfId,
       callId: 'root-pending-sideDialog-call-repeated',
       collectiveTargets: ['pangu'],
     },
@@ -285,8 +285,8 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     tellaskContent: 'Background side dialog work is still pending.',
     targetAgentId: 'pangu',
     callId: 'root-pending-sideDialog-call-repeated',
-    callingCourse: 1,
-    callingGenseq: 1,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
     callType: 'C',
   });
 

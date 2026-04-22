@@ -204,13 +204,13 @@ export async function ensureDialogLoaded(
 
   // Ensure the tellasker exists so SideDialog can resolve its effective askerDialog.
   if (
-    assignmentFromAsker.callerDialogId &&
-    assignmentFromAsker.callerDialogId !== targetId.rootId &&
-    assignmentFromAsker.callerDialogId !== targetId.selfId
+    assignmentFromAsker.askerDialogId &&
+    assignmentFromAsker.askerDialogId !== targetId.rootId &&
+    assignmentFromAsker.askerDialogId !== targetId.selfId
   ) {
     await ensureDialogLoaded(
       mainDialog,
-      new DialogID(assignmentFromAsker.callerDialogId, targetId.rootId),
+      new DialogID(assignmentFromAsker.askerDialogId, targetId.rootId),
       status,
       visitedSelfIds,
     );

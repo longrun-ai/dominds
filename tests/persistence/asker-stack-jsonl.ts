@@ -57,7 +57,7 @@ async function main(): Promise<void> {
       mentionList: ['@pangu'],
       tellaskContent: 'Initial assignment',
       originMemberId: 'tester',
-      callerDialogId: mainId.selfId,
+      askerDialogId: mainId.selfId,
       callId: 'call-sub-1',
       collectiveTargets: ['pangu'],
     };
@@ -164,7 +164,7 @@ async function main(): Promise<void> {
     const previousAskerAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
       ...initialAssignment,
       tellaskContent: 'Previous asker assignment',
-      callerDialogId: mainId.selfId,
+      askerDialogId: mainId.selfId,
       callId: 'call-from-previous-asker',
     };
     const previousAskerFrame: AskerDialogStackFrame = {
@@ -188,21 +188,18 @@ async function main(): Promise<void> {
       {
         ...previousAskerAssignment,
         tellaskContent: 'New asker assignment',
-        callerDialogId: 'side-asker',
+        askerDialogId: 'side-asker',
         callId: 'call-from-new-asker',
       },
       'running',
       {
         replacePendingCallId: previousAskerAssignment.callId,
-        replacePendingAskerDialogId: previousAskerAssignment.callerDialogId,
+        replacePendingAskerDialogId: previousAskerAssignment.askerDialogId,
       },
     );
     const crossAskerRows = await loadStackRows(sideId);
     assert.equal(crossAskerRows.length, 1);
-    assert.equal(
-      asRecord(crossAskerRows[0]['assignmentFromAsker'])['callerDialogId'],
-      'side-asker',
-    );
+    assert.equal(asRecord(crossAskerRows[0]['assignmentFromAsker'])['askerDialogId'], 'side-asker');
     assert.equal(
       asRecord(crossAskerRows[0]['assignmentFromAsker'])['callId'],
       'call-from-new-asker',

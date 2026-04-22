@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     const sideDialog = await root.createSideDialog('tester', ['@tester'], 'old tellask body', {
       callName: 'tellask',
       originMemberId: 'tester',
-      callerDialogId: root.id.selfId,
+      askerDialogId: root.id.selfId,
       callId: 'call-old',
       sessionSlug: 'build.loop',
     });

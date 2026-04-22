@@ -88,7 +88,7 @@ export interface SideDialogMetadataFile {
     mentionList?: string[];
     tellaskContent: string;
     originMemberId: string;
-    callerDialogId: string;
+    askerDialogId: string;
     callId: string;
     collectiveTargets?: string[];
     effectiveFbrEffort?: number;
@@ -172,15 +172,15 @@ export interface CourseMetadataFile {
 export type RootCourseNumber = number & { readonly __rootCourseBrand: unique symbol };
 export type RootGenerationSeqNumber = number & { readonly __rootGenerationSeqBrand: unique symbol };
 export type DialogCourseNumber = number & { readonly __dialogCourseBrand: unique symbol };
-export type CallingCourseNumber = number & { readonly __callingCourseBrand: unique symbol };
-export type CallingGenerationSeqNumber = number & {
-  readonly __callingGenerationSeqBrand: unique symbol;
+export type CallSiteCourseNo = number & { readonly __callSiteCourseBrand: unique symbol };
+export type CallSiteGenseqNo = number & {
+  readonly __callSiteGenseqBrand: unique symbol;
 };
 export type AssignmentCourseNumber = number & { readonly __assignmentCourseBrand: unique symbol };
 export type AssignmentGenerationSeqNumber = number & {
   readonly __assignmentGenerationSeqBrand: unique symbol;
 };
-export type CallerCourseNumber = number & { readonly __callerCourseBrand: unique symbol };
+export type AskerCourseNumber = number & { readonly __askerCourseBrand: unique symbol };
 export type CalleeCourseNumber = number & { readonly __calleeCourseBrand: unique symbol };
 export type CalleeGenerationSeqNumber = number & {
   readonly __calleeGenerationSeqBrand: unique symbol;
@@ -228,18 +228,18 @@ export function toDialogCourseNumber(value: number): DialogCourseNumber {
   return Math.floor(value) as DialogCourseNumber;
 }
 
-export function toCallingCourseNumber(value: number): CallingCourseNumber {
+export function toCallSiteCourseNo(value: number): CallSiteCourseNo {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`Invalid calling course number: ${String(value)}`);
+    throw new Error(`Invalid call-site course number: ${String(value)}`);
   }
-  return Math.floor(value) as CallingCourseNumber;
+  return Math.floor(value) as CallSiteCourseNo;
 }
 
-export function toCallingGenerationSeqNumber(value: number): CallingGenerationSeqNumber {
+export function toCallSiteGenseqNo(value: number): CallSiteGenseqNo {
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid calling generation sequence number: ${String(value)}`);
+    throw new Error(`Invalid call-site generation sequence number: ${String(value)}`);
   }
-  return Math.floor(value) as CallingGenerationSeqNumber;
+  return Math.floor(value) as CallSiteGenseqNo;
 }
 
 export function toAssignmentCourseNumber(value: number): AssignmentCourseNumber {
@@ -256,11 +256,11 @@ export function toAssignmentGenerationSeqNumber(value: number): AssignmentGenera
   return Math.floor(value) as AssignmentGenerationSeqNumber;
 }
 
-export function toCallerCourseNumber(value: number): CallerCourseNumber {
+export function toAskerCourseNumber(value: number): AskerCourseNumber {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`Invalid caller course number: ${String(value)}`);
+    throw new Error(`Invalid asker course number: ${String(value)}`);
   }
-  return Math.floor(value) as CallerCourseNumber;
+  return Math.floor(value) as AskerCourseNumber;
 }
 
 export function toCalleeCourseNumber(value: number): CalleeCourseNumber {
@@ -312,8 +312,8 @@ export interface PendingSideDialogStateRecord {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse: CallingCourseNumber;
-  callingGenseq: CallingGenerationSeqNumber;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -413,8 +413,8 @@ type TellaskResultRecordBase = RootGenerationRef & {
   status: 'pending' | 'completed' | 'failed';
   content: string;
   contentItems?: FuncResultContentItem[];
-  originCourse?: CallingCourseNumber;
-  calling_genseq?: CallingGenerationSeqNumber;
+  callSiteCourse?: CallSiteCourseNo;
+  callSiteGenseq?: CallSiteGenseqNo;
   call: {
     tellaskContent: string;
     mentionList?: string[];
@@ -661,13 +661,13 @@ type TellaskCallAnchorRecordBase = {
 export type TellaskCallAnchorRecord =
   | (TellaskCallAnchorRecordBase & {
       anchorRole: 'assignment';
-      callerDialogId?: undefined;
-      callerCourse?: undefined;
+      askerDialogId?: undefined;
+      askerCourse?: undefined;
     })
   | (TellaskCallAnchorRecordBase & {
       anchorRole: 'response';
-      callerDialogId: string;
-      callerCourse: CallerCourseNumber;
+      askerDialogId: string;
+      askerCourse: AskerCourseNumber;
     });
 
 export type TellaskCarryoverRecord =
@@ -676,7 +676,7 @@ export type TellaskCarryoverRecord =
       type: 'tellask_carryover_record';
       genseq: number;
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now stores the canonical carryover context.
       carryoverCourse: DialogCourseNumber;
       responderId: string;
@@ -703,7 +703,7 @@ export type TellaskCarryoverRecord =
       type: 'tellask_carryover_record';
       genseq: number;
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now stores the canonical carryover context.
       carryoverCourse: DialogCourseNumber;
       responderId: string;
@@ -728,7 +728,7 @@ export type TellaskCarryoverRecord =
       type: 'tellask_carryover_record';
       genseq: number;
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now stores the canonical carryover context.
       carryoverCourse: DialogCourseNumber;
       responderId: string;
@@ -754,7 +754,7 @@ export type TellaskCarryoverRecord =
       type: 'tellask_carryover_record';
       genseq: number;
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now stores the canonical carryover context.
       carryoverCourse: DialogCourseNumber;
       responderId: string;
@@ -805,7 +805,7 @@ export interface SideDialogCreatedRecord extends RootGenerationAnchor {
     mentionList?: string[];
     tellaskContent: string;
     originMemberId: string;
-    callerDialogId: string;
+    askerDialogId: string;
     callId: string;
     collectiveTargets?: string[];
     effectiveFbrEffort?: number;
@@ -865,7 +865,7 @@ export interface HumanQuestion {
   callSiteRef: {
     course: number;
     messageIndex: number;
-    callingGenseq?: CallingGenerationSeqNumber;
+    callSiteGenseq?: CallSiteGenseqNo;
   };
 }
 
@@ -910,7 +910,7 @@ export interface DialogListItem {
     mentionList?: string[];
     tellaskContent: string;
     originMemberId: string;
-    callerDialogId: string;
+    askerDialogId: string;
     callId: string;
   };
 }

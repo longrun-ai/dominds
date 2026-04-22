@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
+import { toCallSiteCourseNo } from '@longrun-ai/kernel/types/storage';
 import { DialogPersistence } from '../../main/persistence';
 import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
           agentId: 'human',
           callId: 'ask-human-cross-course',
           originMemberId: dlg.agentId,
-          originCourse: toCallingCourseNumber(1),
+          callSiteCourse: toCallSiteCourseNo(1),
         },
       ),
       /missing carryover content for cross-course response/u,

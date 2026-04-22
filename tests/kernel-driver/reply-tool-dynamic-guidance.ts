@@ -82,7 +82,7 @@ async function main(): Promise<void> {
     const sideDialog = await root.createSideDialog('pangu', ['@pangu'], tellaskContent, {
       callName: 'tellask',
       originMemberId: 'tester',
-      callerDialogId: root.id.selfId,
+      askerDialogId: root.id.selfId,
       callId,
       sessionSlug,
       collectiveTargets: ['pangu'],
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellask',
         originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
+        askerDialogId: root.id.selfId,
         callId: deferredTargetCallId,
         sessionSlug: 'deferred-reply-guidance',
         collectiveTargets: ['pangu'],
@@ -221,8 +221,8 @@ async function main(): Promise<void> {
           tellaskContent: deferredTellaskContent,
           targetAgentId: 'pangu',
           callId: deferredTargetCallId,
-          callingCourse: 1,
-          callingGenseq: 1,
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
           callType: 'C',
           sessionSlug: 'deferred-reply-guidance',
         },
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellask',
         originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
+        askerDialogId: root.id.selfId,
         callId: liveDirective.targetCallId,
         sessionSlug: 'live-reply-guidance',
         collectiveTargets: ['pangu'],

@@ -2537,15 +2537,15 @@ async function handleGetDialogHierarchy(
       }
       const assignmentFromAsker = meta.assignmentFromAsker;
       const derivedAskerDialogId = assignmentFromAsker
-        ? assignmentFromAsker.callerDialogId.trim()
+        ? assignmentFromAsker.askerDialogId.trim()
         : '';
       if (!derivedAskerDialogId) {
         const error = new Error(
-          `sideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId ` +
+          `sideDialog hierarchy invariant violation: missing assignmentFromAsker.askerDialogId ` +
             `(rootId=${rootId}, selfId=${dialogId.selfId}, status=${status})`,
         );
         log.error(
-          'sideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId',
+          'sideDialog hierarchy invariant violation: missing assignmentFromAsker.askerDialogId',
           error,
           { rootId, selfId: dialogId.selfId, status },
         );
@@ -2643,15 +2643,15 @@ async function handleGetDialogListSideDialogNode(
 
     const assignmentFromAsker = metadata.assignmentFromAsker;
     const derivedAskerDialogId = assignmentFromAsker
-      ? assignmentFromAsker.callerDialogId.trim()
+      ? assignmentFromAsker.askerDialogId.trim()
       : '';
     if (!derivedAskerDialogId) {
       const error = new Error(
-        `dialog-list sideDialog node invariant violation: missing assignmentFromAsker.callerDialogId ` +
+        `dialog-list sideDialog node invariant violation: missing assignmentFromAsker.askerDialogId ` +
           `(rootId=${dialog.rootId}, selfId=${dialog.selfId}, status=${status})`,
       );
       log.error(
-        'dialog-list sideDialog node invariant violation: missing assignmentFromAsker.callerDialogId',
+        'dialog-list sideDialog node invariant violation: missing assignmentFromAsker.askerDialogId',
         error,
         { rootId: dialog.rootId, selfId: dialog.selfId, status },
       );

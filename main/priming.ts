@@ -30,13 +30,13 @@ import type {
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import {
+  toAskerCourseNumber,
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
-  toCallerCourseNumber,
-  toCallingCourseNumber,
-  toCallingGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
 } from '@longrun-ai/kernel/types/storage';
@@ -1168,8 +1168,8 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (status !== 'pending' && status !== 'completed' && status !== 'failed') {
         throw new Error(`${context}.status must be pending | completed | failed`);
       }
-      const originCourse = parseOptionalIntegerField(raw, 'originCourse', context);
-      const callingGenseq = parseOptionalIntegerField(raw, 'calling_genseq', context);
+      const callSiteCourse = parseOptionalIntegerField(raw, 'callSiteCourse', context);
+      const callSiteGenseq = parseOptionalIntegerField(raw, 'callSiteGenseq', context);
       const callRaw = raw['call'];
       if (!isRecord(callRaw)) {
         throw new Error(`${context}.call must be an object`);
@@ -1305,11 +1305,11 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
             };
         }
       })();
-      if (originCourse !== undefined) {
-        record.originCourse = toCallingCourseNumber(originCourse);
+      if (callSiteCourse !== undefined) {
+        record.callSiteCourse = toCallSiteCourseNo(callSiteCourse);
       }
-      if (callingGenseq !== undefined) {
-        record.calling_genseq = toCallingGenerationSeqNumber(callingGenseq);
+      if (callSiteGenseq !== undefined) {
+        record.callSiteGenseq = toCallSiteGenseqNo(callSiteGenseq);
       }
       if (route !== undefined) {
         record.route = route;
@@ -1361,10 +1361,10 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       }
       const assignmentCourse = parseOptionalIntegerField(raw, 'assignmentCourse', context);
       const assignmentGenseq = parseOptionalIntegerField(raw, 'assignmentGenseq', context);
-      const callerDialogId = raw['callerDialogId'];
-      const callerCourse = parseOptionalIntegerField(raw, 'callerCourse', context);
-      if (callerDialogId !== undefined && typeof callerDialogId !== 'string') {
-        throw new Error(`${context}.callerDialogId must be a string when provided`);
+      const askerDialogId = raw['askerDialogId'];
+      const askerCourse = parseOptionalIntegerField(raw, 'askerCourse', context);
+      if (askerDialogId !== undefined && typeof askerDialogId !== 'string') {
+        throw new Error(`${context}.askerDialogId must be a string when provided`);
       }
       const baseRecord = {
         ts: '',
@@ -1385,9 +1385,9 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       let record: TellaskCallAnchorRecord;
       switch (anchorRole) {
         case 'assignment':
-          if (callerDialogId !== undefined || callerCourse !== undefined) {
+          if (askerDialogId !== undefined || askerCourse !== undefined) {
             throw new Error(
-              `${context} assignment anchor must not provide callerDialogId/callerCourse`,
+              `${context} assignment anchor must not provide askerDialogId/askerCourse`,
             );
           }
           record = {
@@ -1396,17 +1396,17 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
           };
           break;
         case 'response':
-          if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') {
-            throw new Error(`${context}.callerDialogId must be a non-empty string for response`);
+          if (typeof askerDialogId !== 'string' || askerDialogId.trim() === '') {
+            throw new Error(`${context}.askerDialogId must be a non-empty string for response`);
           }
-          if (callerCourse === undefined) {
-            throw new Error(`${context}.callerCourse is required for response`);
+          if (askerCourse === undefined) {
+            throw new Error(`${context}.askerCourse is required for response`);
           }
           record = {
             ...baseRecord,
             anchorRole: 'response',
-            callerDialogId,
-            callerCourse: toCallerCourseNumber(callerCourse),
+            askerDialogId,
+            askerCourse: toAskerCourseNumber(askerCourse),
           };
           break;
       }
@@ -1429,7 +1429,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         throw new Error(`${context}.status must be completed | failed`);
       }
       const genseq = expectIntegerField(raw, 'genseq', context);
-      const originCourse = expectIntegerField(raw, 'originCourse', context);
+      const callSiteCourse = expectIntegerField(raw, 'callSiteCourse', context);
       const carryoverCourse = expectIntegerField(raw, 'carryoverCourse', context);
       const mentionList = parseOptionalStringArray(raw, 'mentionList', context);
       const sessionSlug = raw['sessionSlug'];
@@ -1443,7 +1443,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         ts: '',
         type,
         genseq,
-        originCourse: toCallingCourseNumber(originCourse),
+        callSiteCourse: toCallSiteCourseNo(callSiteCourse),
         carryoverCourse: toDialogCourseNumber(carryoverCourse),
         responderId: expectStringField(raw, 'responderId', context),
         tellaskContent: expectStringField(raw, 'tellaskContent', context, true),
@@ -2096,9 +2096,9 @@ function remapRecordGenseq(
     case 'tellask_result_record':
       return {
         ...record,
-        calling_genseq:
-          record.calling_genseq !== undefined
-            ? toCallingGenerationSeqNumber(remapOptionalGenseq(record.calling_genseq)!)
+        callSiteGenseq:
+          record.callSiteGenseq !== undefined
+            ? toCallSiteGenseqNo(remapOptionalGenseq(record.callSiteGenseq)!)
             : undefined,
       };
     case 'tellask_reply_resolution_record':
@@ -2272,8 +2272,8 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         status: record.status,
         content: record.content,
         contentItems: record.contentItems,
-        ...(record.originCourse !== undefined ? { originCourse: record.originCourse } : {}),
-        ...(record.calling_genseq !== undefined ? { calling_genseq: record.calling_genseq } : {}),
+        ...(record.callSiteCourse !== undefined ? { callSiteCourse: record.callSiteCourse } : {}),
+        ...(record.callSiteGenseq !== undefined ? { callSiteGenseq: record.callSiteGenseq } : {}),
         call: record.call,
         responder: record.responder,
         ...(record.route ? { route: record.route } : {}),
@@ -2301,7 +2301,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         role: 'user',
         genseq: record.genseq,
         content: record.content,
-        originCourse: record.originCourse,
+        callSiteCourse: record.callSiteCourse,
         carryoverCourse: record.carryoverCourse,
         responderId: record.responderId,
         callName: record.callName,
@@ -2570,9 +2570,8 @@ function formatScriptMarkdown(args: {
           blockMeta['assignmentCourse'] = record.assignmentCourse;
         if (record.assignmentGenseq !== undefined)
           blockMeta['assignmentGenseq'] = record.assignmentGenseq;
-        if (record.callerDialogId !== undefined)
-          blockMeta['callerDialogId'] = record.callerDialogId;
-        if (record.callerCourse !== undefined) blockMeta['callerCourse'] = record.callerCourse;
+        if (record.askerDialogId !== undefined) blockMeta['askerDialogId'] = record.askerDialogId;
+        if (record.askerCourse !== undefined) blockMeta['askerCourse'] = record.askerCourse;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
@@ -2580,11 +2579,12 @@ function formatScriptMarkdown(args: {
         blockMeta['callId'] = record.callId;
         blockMeta['callName'] = record.callName;
         blockMeta['status'] = record.status;
-        if (record.originCourse !== undefined) blockMeta['originCourse'] = record.originCourse;
+        if (record.callSiteCourse !== undefined)
+          blockMeta['callSiteCourse'] = record.callSiteCourse;
         blockMeta['call'] = record.call;
         blockMeta['responder'] = record.responder;
-        if (record.calling_genseq !== undefined)
-          blockMeta['calling_genseq'] = record.calling_genseq;
+        if (record.callSiteGenseq !== undefined)
+          blockMeta['callSiteGenseq'] = record.callSiteGenseq;
         if (record.route !== undefined) blockMeta['route'] = record.route;
         if (record.contentItems !== undefined) blockMeta['contentItems'] = record.contentItems;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
@@ -2593,7 +2593,7 @@ function formatScriptMarkdown(args: {
       }
       case 'tellask_carryover_record': {
         blockMeta['genseq'] = record.genseq;
-        blockMeta['originCourse'] = record.originCourse;
+        blockMeta['callSiteCourse'] = record.callSiteCourse;
         blockMeta['carryoverCourse'] = record.carryoverCourse;
         blockMeta['responderId'] = record.responderId;
         blockMeta['callName'] = record.callName;

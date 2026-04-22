@@ -97,7 +97,7 @@ async function main(): Promise<void> {
           mentionList: ['@coder'],
           tellaskContent: 'Please investigate.',
           originMemberId: 'tester',
-          callerDialogId: dlgId.selfId,
+          askerDialogId: dlgId.selfId,
           callId: 'call-1',
         },
       },

@@ -93,8 +93,8 @@ import type {
 import {
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
-  toCallingCourseNumber,
-  toCallingGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
 } from '@longrun-ai/kernel/types/storage';
@@ -887,11 +887,11 @@ function buildTellaskResultRecord(result: TellaskResultMsg): TellaskResultRecord
     status: result.status,
     content: result.content,
     contentItems: result.contentItems,
-    ...(typeof result.originCourse === 'number'
-      ? { originCourse: toCallingCourseNumber(result.originCourse) }
+    ...(typeof result.callSiteCourse === 'number'
+      ? { callSiteCourse: toCallSiteCourseNo(result.callSiteCourse) }
       : {}),
-    ...(typeof result.calling_genseq === 'number'
-      ? { calling_genseq: toCallingGenerationSeqNumber(result.calling_genseq) }
+    ...(typeof result.callSiteGenseq === 'number'
+      ? { callSiteGenseq: toCallSiteGenseqNo(result.callSiteGenseq) }
       : {}),
     responder: {
       responderId,
@@ -945,7 +945,7 @@ function buildTellaskCarryoverRecord(
     ts: formatUnifiedTimestamp(new Date()),
     type: 'tellask_carryover_record',
     genseq,
-    originCourse: toCallingCourseNumber(result.originCourse),
+    callSiteCourse: toCallSiteCourseNo(result.callSiteCourse),
     carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
     responderId: result.responderId,
     callName: result.callName,
@@ -991,12 +991,12 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
     return {
       type: 'tellask_result_evt',
       course,
-      ...(typeof result.originCourse === 'number'
-        ? { originCourse: toCallingCourseNumber(result.originCourse) }
+      ...(typeof result.callSiteCourse === 'number'
+        ? { callSiteCourse: toCallSiteCourseNo(result.callSiteCourse) }
         : {}),
-      calling_genseq:
-        typeof result.calling_genseq === 'number'
-          ? toCallingGenerationSeqNumber(result.calling_genseq)
+      callSiteGenseq:
+        typeof result.callSiteGenseq === 'number'
+          ? toCallSiteGenseqNo(result.callSiteGenseq)
           : undefined,
       callId: result.callId,
       callName: result.callName,
@@ -1024,12 +1024,12 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
     return {
       type: 'tellask_result_evt',
       course,
-      ...(typeof result.originCourse === 'number'
-        ? { originCourse: toCallingCourseNumber(result.originCourse) }
+      ...(typeof result.callSiteCourse === 'number'
+        ? { callSiteCourse: toCallSiteCourseNo(result.callSiteCourse) }
         : {}),
-      calling_genseq:
-        typeof result.calling_genseq === 'number'
-          ? toCallingGenerationSeqNumber(result.calling_genseq)
+      callSiteGenseq:
+        typeof result.callSiteGenseq === 'number'
+          ? toCallSiteGenseqNo(result.callSiteGenseq)
           : undefined,
       callId: result.callId,
       callName: result.callName,
@@ -1055,12 +1055,12 @@ function buildTellaskResultEvent(result: TellaskResultMsg, course: number): Tell
   return {
     type: 'tellask_result_evt',
     course,
-    ...(typeof result.originCourse === 'number'
-      ? { originCourse: toCallingCourseNumber(result.originCourse) }
+    ...(typeof result.callSiteCourse === 'number'
+      ? { callSiteCourse: toCallSiteCourseNo(result.callSiteCourse) }
       : {}),
-    calling_genseq:
-      typeof result.calling_genseq === 'number'
-        ? toCallingGenerationSeqNumber(result.calling_genseq)
+    callSiteGenseq:
+      typeof result.callSiteGenseq === 'number'
+        ? toCallSiteGenseqNo(result.callSiteGenseq)
         : undefined,
     callId: result.callId,
     callName: result.callName as 'tellaskBack' | 'askHuman' | 'freshBootsReasoning',
@@ -1097,7 +1097,7 @@ function buildTellaskCarryoverEvent(
       type: 'tellask_carryover_evt',
       course,
       genseq: result.genseq,
-      originCourse: toCallingCourseNumber(result.originCourse),
+      callSiteCourse: toCallSiteCourseNo(result.callSiteCourse),
       carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
       responderId: result.responderId,
       callName: result.callName,
@@ -1124,7 +1124,7 @@ function buildTellaskCarryoverEvent(
       type: 'tellask_carryover_evt',
       course,
       genseq: result.genseq,
-      originCourse: toCallingCourseNumber(result.originCourse),
+      callSiteCourse: toCallSiteCourseNo(result.callSiteCourse),
       carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
       responderId: result.responderId,
       callName: result.callName,
@@ -1149,7 +1149,7 @@ function buildTellaskCarryoverEvent(
     type: 'tellask_carryover_evt',
     course,
     genseq: result.genseq,
-    originCourse: toCallingCourseNumber(result.originCourse),
+    callSiteCourse: toCallSiteCourseNo(result.callSiteCourse),
     carryoverCourse: toDialogCourseNumber(result.carryoverCourse),
     responderId: result.responderId,
     callName: result.callName,
@@ -1245,7 +1245,7 @@ function isSideDialogAssignmentFromAsker(
   if (!isRecord(value)) return false;
   if (typeof value.tellaskContent !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
-  if (typeof value.callerDialogId !== 'string') return false;
+  if (typeof value.askerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
   if (value.collectiveTargets !== undefined) {
     if (!Array.isArray(value.collectiveTargets)) return false;
@@ -1344,7 +1344,7 @@ function isAskerDialogStackFrame(value: unknown): value is AskerDialogStackFrame
   }
   if (
     value.assignmentFromAsker !== undefined &&
-    value.assignmentFromAsker.callerDialogId !== value.askerDialogId
+    value.assignmentFromAsker.askerDialogId !== value.askerDialogId
   ) {
     return false;
   }
@@ -1425,7 +1425,7 @@ function buildAssignmentAskerStackFrame(args: {
     askerDialogId: args.askerDialogId,
     assignmentFromAsker: args.assignment,
     tellaskReplyObligation: buildAssignmentTellaskReplyObligation({
-      targetDialogId: args.assignment.callerDialogId,
+      targetDialogId: args.assignment.askerDialogId,
       assignment: args.assignment,
     }),
   };
@@ -1824,12 +1824,12 @@ function isHumanQuestion(value: unknown): value is HumanQuestion {
   if (!isRecord(value.callSiteRef)) return false;
   if (typeof value.callSiteRef.course !== 'number') return false;
   if (typeof value.callSiteRef.messageIndex !== 'number') return false;
-  if ('callingGenseq' in value.callSiteRef) {
-    const callingGenseq = value.callSiteRef.callingGenseq;
-    if (callingGenseq !== undefined) {
-      if (typeof callingGenseq !== 'number') return false;
-      if (!Number.isFinite(callingGenseq)) return false;
-      if (Math.floor(callingGenseq) <= 0) return false;
+  if ('callSiteGenseq' in value.callSiteRef) {
+    const callSiteGenseq = value.callSiteRef.callSiteGenseq;
+    if (callSiteGenseq !== undefined) {
+      if (typeof callSiteGenseq !== 'number') return false;
+      if (!Number.isFinite(callSiteGenseq)) return false;
+      if (Math.floor(callSiteGenseq) <= 0) return false;
     }
   }
   return true;
@@ -2031,7 +2031,7 @@ export class DiskFileDialogStore extends DialogStore {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -2067,13 +2067,13 @@ export class DiskFileDialogStore extends DialogStore {
       sideDialogId,
       targetAgentId,
       buildSideDialogAskerStack({
-        askerDialogId: options.callerDialogId,
+        askerDialogId: options.askerDialogId,
         assignment: {
           callName: options.callName,
           mentionList,
           tellaskContent,
           originMemberId: options.originMemberId,
-          callerDialogId: options.callerDialogId,
+          askerDialogId: options.askerDialogId,
           callId: options.callId,
           collectiveTargets: options.collectiveTargets,
           effectiveFbrEffort: options.effectiveFbrEffort,
@@ -2098,7 +2098,7 @@ export class DiskFileDialogStore extends DialogStore {
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,
-        callerDialogId: options.callerDialogId,
+        askerDialogId: options.askerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
         effectiveFbrEffort: options.effectiveFbrEffort,
@@ -2123,7 +2123,7 @@ export class DiskFileDialogStore extends DialogStore {
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,
-        callerDialogId: options.callerDialogId,
+        askerDialogId: options.askerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
         effectiveFbrEffort: options.effectiveFbrEffort,
@@ -2190,7 +2190,7 @@ export class DiskFileDialogStore extends DialogStore {
           mentionList,
           tellaskContent,
           originMemberId: options.originMemberId,
-          callerDialogId: options.callerDialogId,
+          askerDialogId: options.askerDialogId,
           callId: options.callId,
           effectiveFbrEffort: options.effectiveFbrEffort,
         },
@@ -3466,8 +3466,8 @@ export class DiskFileDialogStore extends DialogStore {
       tellaskContent: record.tellaskContent,
       targetAgentId: record.targetAgentId,
       callId: record.callId,
-      callingCourse: record.callingCourse,
-      callingGenseq: record.callingGenseq,
+      callSiteCourse: record.callSiteCourse,
+      callSiteGenseq: record.callSiteGenseq,
       callType: record.callType,
       sessionSlug: record.sessionSlug,
     }));
@@ -3573,7 +3573,7 @@ export class DiskFileDialogStore extends DialogStore {
           parentIds.push(candidate);
         };
         maybePushParentId(metadata.askerDialogId);
-        maybePushParentId(assignmentFromAsker.callerDialogId);
+        maybePushParentId(assignmentFromAsker.askerDialogId);
 
         for (const parentId of parentIds) {
           if (mainDialog.lookupDialog(parentId)) {
@@ -4454,8 +4454,8 @@ export class DiskFileDialogStore extends DialogStore {
           callId: event.callId,
           status: event.status,
           content: event.content,
-          ...(event.originCourse !== undefined ? { originCourse: event.originCourse } : {}),
-          ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
+          ...(event.callSiteCourse !== undefined ? { callSiteCourse: event.callSiteCourse } : {}),
+          ...(event.callSiteGenseq !== undefined ? { callSiteGenseq: event.callSiteGenseq } : {}),
           responder: event.responder,
           ...(event.route ? { route: event.route } : {}),
           dialog: {
@@ -4512,9 +4512,9 @@ export class DiskFileDialogStore extends DialogStore {
         const sideLatest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
 
         const derivedAskerDialogId =
-          sideMeta.assignmentFromAsker?.callerDialogId &&
-          sideMeta.assignmentFromAsker.callerDialogId.trim() !== ''
-            ? sideMeta.assignmentFromAsker.callerDialogId
+          sideMeta.assignmentFromAsker?.askerDialogId &&
+          sideMeta.assignmentFromAsker.askerDialogId.trim() !== ''
+            ? sideMeta.assignmentFromAsker.askerDialogId
             : typeof sideMeta.askerDialogId === 'string' && sideMeta.askerDialogId.trim() !== ''
               ? sideMeta.askerDialogId
               : dialog.id.selfId;
@@ -4608,8 +4608,8 @@ export class DiskFileDialogStore extends DialogStore {
                 callId: event.callId,
                 assignmentCourse: event.assignmentCourse,
                 assignmentGenseq: event.assignmentGenseq,
-                callerDialogId: event.callerDialogId,
-                callerCourse: event.callerCourse,
+                askerDialogId: event.askerDialogId,
+                askerCourse: event.askerCourse,
                 dialog: {
                   selfId: dialog.id.selfId,
                   rootId: dialog.id.rootId,
@@ -4635,7 +4635,7 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'tellask_carryover_evt' as const,
           course,
           genseq: event.genseq,
-          originCourse: event.originCourse,
+          callSiteCourse: event.callSiteCourse,
           carryoverCourse: event.carryoverCourse,
           responderId: event.responderId,
           tellaskContent: event.tellaskContent,
@@ -6800,12 +6800,12 @@ export class DialogPersistence {
     if (typeof value.tellaskContent !== 'string') return false;
     if (typeof value.targetAgentId !== 'string') return false;
     if (typeof value.callId !== 'string') return false;
-    if (typeof value.callingCourse !== 'number') return false;
-    if (!Number.isInteger(value.callingCourse)) return false;
-    if (value.callingCourse <= 0) return false;
-    if (typeof value.callingGenseq !== 'number') return false;
-    if (!Number.isInteger(value.callingGenseq)) return false;
-    if (value.callingGenseq <= 0) return false;
+    if (typeof value.callSiteCourse !== 'number') return false;
+    if (!Number.isInteger(value.callSiteCourse)) return false;
+    if (value.callSiteCourse <= 0) return false;
+    if (typeof value.callSiteGenseq !== 'number') return false;
+    if (!Number.isInteger(value.callSiteGenseq)) return false;
+    if (value.callSiteGenseq <= 0) return false;
     if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
     if ('sessionSlug' in value) {
       const sessionSlug = value.sessionSlug;
@@ -7927,7 +7927,7 @@ export class DialogPersistence {
       throw new Error(`Missing dialog metadata for sideDialog ${dialogId.selfId}`);
     }
     const nextAssignmentFrame = buildAssignmentAskerStackFrame({
-      askerDialogId: assignment.callerDialogId,
+      askerDialogId: assignment.askerDialogId,
       assignment,
     });
     if (options?.replacePendingCallId === undefined) {
@@ -7935,12 +7935,12 @@ export class DialogPersistence {
       await this.appendDialogAskerStackFrames(dialogId, [nextAssignmentFrame], status);
     } else {
       const replacePendingAskerDialogId =
-        options.replacePendingAskerDialogId ?? assignment.callerDialogId;
+        options.replacePendingAskerDialogId ?? assignment.askerDialogId;
       await this.replaceDialogAskerStackFrameAndAppend({
         dialogId,
         status,
         findFrame: (frame) =>
-          frame.assignmentFromAsker?.callerDialogId === replacePendingAskerDialogId &&
+          frame.assignmentFromAsker?.askerDialogId === replacePendingAskerDialogId &&
           frame.assignmentFromAsker.callId === options.replacePendingCallId,
         missingFrameMessage:
           `replace pending asker stack invariant violation: missing old frame ` +
@@ -8060,7 +8060,7 @@ export class DialogPersistence {
       const assignmentFromAsker = getDialogAskerStackCurrentAssignment(askerStack);
       return {
         ...parsed,
-        askerDialogId: assignmentFromAsker.callerDialogId,
+        askerDialogId: assignmentFromAsker.askerDialogId,
         assignmentFromAsker,
       };
     } catch (error: unknown) {
@@ -8829,8 +8829,8 @@ export class DialogPersistence {
             status: event.status,
             content: event.content,
             contentItems: event.contentItems,
-            ...(event.originCourse !== undefined ? { originCourse: event.originCourse } : {}),
-            ...(event.calling_genseq !== undefined ? { calling_genseq: event.calling_genseq } : {}),
+            ...(event.callSiteCourse !== undefined ? { callSiteCourse: event.callSiteCourse } : {}),
+            ...(event.callSiteGenseq !== undefined ? { callSiteGenseq: event.callSiteGenseq } : {}),
             call: event.call,
             responder: event.responder,
             ...(event.route ? { route: event.route } : {}),
@@ -8862,7 +8862,7 @@ export class DialogPersistence {
             genseq: event.genseq,
             content: event.content,
             contentItems: event.contentItems,
-            originCourse: event.originCourse,
+            callSiteCourse: event.callSiteCourse,
             carryoverCourse: event.carryoverCourse,
             responderId: event.responderId,
             callName: event.callName,

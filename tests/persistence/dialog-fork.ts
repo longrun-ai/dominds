@@ -73,7 +73,7 @@ async function main(): Promise<void> {
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate',
         originMemberId: 'rtws',
-        callerDialogId: rootId.selfId,
+        askerDialogId: rootId.selfId,
         callId: 'call-sub-1',
       },
     };
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
         callName: 'freshBootsReasoning',
         tellaskContent: 'Challenge the parent side dialog.',
         originMemberId: 'scribe',
-        callerDialogId: subId.selfId,
+        askerDialogId: subId.selfId,
         callId: 'call-nested-1',
         effectiveFbrEffort: 1,
       },
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate',
         originMemberId: 'rtws',
-        callerDialogId: rootId.selfId,
+        askerDialogId: rootId.selfId,
         callId: 'call-sub-1',
       },
     };
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
         callName: 'freshBootsReasoning',
         tellaskContent: 'Challenge the parent side dialog.',
         originMemberId: 'scribe',
-        callerDialogId: subId.selfId,
+        askerDialogId: subId.selfId,
         callId: 'call-nested-1',
         effectiveFbrEffort: 1,
       },
@@ -224,8 +224,8 @@ async function main(): Promise<void> {
           tellaskContent: 'Investigate',
           targetAgentId: 'scribe',
           callId: 'call-sub-1',
-          callingCourse: 1,
-          callingGenseq: 1,
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
           callType: 'B',
         },
       ],
@@ -319,7 +319,7 @@ async function main(): Promise<void> {
       'forked baseline record must point to the new main dialog as askerDialog',
     );
     assert.equal(
-      forkedCreatedRecord.assignmentFromAsker.callerDialogId,
+      forkedCreatedRecord.assignmentFromAsker.askerDialogId,
       forkedRootId.selfId,
       'forked baseline record must point to the new main dialog as tellasker',
     );
@@ -349,7 +349,7 @@ async function main(): Promise<void> {
       'forked sideDialog metadata must point to the new root as askerDialog',
     );
     assert.equal(
-      forkedSubMeta.assignmentFromAsker.callerDialogId,
+      forkedSubMeta.assignmentFromAsker.askerDialogId,
       forkedRootId.selfId,
       'forked sideDialog assignment must point to the new main dialog tellasker',
     );
@@ -372,7 +372,7 @@ async function main(): Promise<void> {
       'forked nested baseline record must keep the parent side dialog as askerDialog',
     );
     assert.equal(
-      forkedNestedCreatedRecord?.assignmentFromAsker.callerDialogId,
+      forkedNestedCreatedRecord?.assignmentFromAsker.askerDialogId,
       subId.selfId,
       'forked nested baseline record must keep the requesting side dialog',
     );
@@ -396,7 +396,7 @@ async function main(): Promise<void> {
       'forked nested sideDialog metadata must keep the parent side dialog as askerDialog',
     );
     assert.equal(
-      forkedNestedMeta.assignmentFromAsker.callerDialogId,
+      forkedNestedMeta.assignmentFromAsker.askerDialogId,
       subId.selfId,
       'forked nested sideDialog assignment must keep the requesting side dialog',
     );

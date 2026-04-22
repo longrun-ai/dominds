@@ -116,8 +116,8 @@ async function main(): Promise<void> {
       tellaskContent: 'Investigate the environment',
       targetAgentId: 'scribe',
       callId: 'call-pending-1',
-      callingCourse: 1,
-      callingGenseq: 1,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       callType: 'B',
     };
     await DialogPersistence.savePendingSideDialogs(

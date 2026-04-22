@@ -34,7 +34,7 @@ export interface AssignmentFromAsker {
   mentionList?: string[];
   tellaskContent: string;
   originMemberId: string;
-  callerDialogId: string;
+  askerDialogId: string;
   callId: string;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;

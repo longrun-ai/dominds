@@ -18,9 +18,9 @@ import type {
   AssignmentGenerationSeqNumber,
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
-  CallerCourseNumber,
-  CallingCourseNumber,
-  CallingGenerationSeqNumber,
+  AskerCourseNumber,
+  CallSiteCourseNo,
+  CallSiteGenseqNo,
   DialogCourseNumber,
   FuncResultContentItem,
   ToolResultImageArtifact,
@@ -84,7 +84,7 @@ export interface SideDialogEvent extends DialogEventBase {
       mentionList?: string[];
       tellaskContent: string;
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       effectiveFbrEffort?: number;
     };
@@ -313,8 +313,8 @@ export type TellaskCallStartEvent =
 type TellaskResultEventBase = {
   type: 'tellask_result_evt';
   course: number;
-  originCourse?: CallingCourseNumber;
-  calling_genseq?: CallingGenerationSeqNumber;
+  callSiteCourse?: CallSiteCourseNo;
+  callSiteGenseq?: CallSiteGenseqNo;
   callId: string;
   status: 'pending' | 'completed' | 'failed';
   content: string;
@@ -365,13 +365,13 @@ type TellaskCallAnchorEventBase = {
 export type TellaskCallAnchorEvent =
   | (TellaskCallAnchorEventBase & {
       anchorRole: 'assignment';
-      callerDialogId?: undefined;
-      callerCourse?: undefined;
+      askerDialogId?: undefined;
+      askerCourse?: undefined;
     })
   | (TellaskCallAnchorEventBase & {
       anchorRole: 'response';
-      callerDialogId: string;
-      callerCourse: CallerCourseNumber;
+      askerDialogId: string;
+      askerCourse: AskerCourseNumber;
     });
 
 export interface ReminderContent {
@@ -397,7 +397,7 @@ export type TellaskCarryoverEvent =
       responderId: string;
       status: 'completed' | 'failed';
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now carries the usable context.
       carryoverCourse: DialogCourseNumber;
       callName: 'tellask';
@@ -423,7 +423,7 @@ export type TellaskCarryoverEvent =
       responderId: string;
       status: 'completed' | 'failed';
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now carries the usable context.
       carryoverCourse: DialogCourseNumber;
       callName: 'askHuman';
@@ -447,7 +447,7 @@ export type TellaskCarryoverEvent =
       responderId: string;
       status: 'completed' | 'failed';
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now carries the usable context.
       carryoverCourse: DialogCourseNumber;
       callName: 'tellaskSessionless';
@@ -472,7 +472,7 @@ export type TellaskCarryoverEvent =
       responderId: string;
       status: 'completed' | 'failed';
       // Provenance only: where the original tellask call was issued.
-      originCourse: CallingCourseNumber;
+      callSiteCourse: CallSiteCourseNo;
       // Ownership: the latest/current course that now carries the usable context.
       carryoverCourse: DialogCourseNumber;
       callName: 'freshBootsReasoning';
@@ -540,7 +540,7 @@ export interface NewQ4HAskedEvent {
     callSiteRef: {
       course: number;
       messageIndex: number;
-      callingGenseq?: CallingGenerationSeqNumber;
+      callSiteGenseq?: CallSiteGenseqNo;
     };
     rootId: string;
     agentId: string;

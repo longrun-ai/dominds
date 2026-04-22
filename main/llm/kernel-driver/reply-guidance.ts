@@ -125,7 +125,7 @@ function buildCurrentSideDialogAssignmentDirective(
     case 'tellask':
       return {
         expectedReplyCallName: 'replyTellask',
-        targetDialogId: dlg.assignmentFromAsker.callerDialogId,
+        targetDialogId: dlg.assignmentFromAsker.askerDialogId,
         targetCallId: dlg.assignmentFromAsker.callId,
         tellaskContent: dlg.assignmentFromAsker.tellaskContent,
       };
@@ -133,7 +133,7 @@ function buildCurrentSideDialogAssignmentDirective(
     case 'freshBootsReasoning':
       return {
         expectedReplyCallName: 'replyTellaskSessionless',
-        targetDialogId: dlg.assignmentFromAsker.callerDialogId,
+        targetDialogId: dlg.assignmentFromAsker.askerDialogId,
         targetCallId: dlg.assignmentFromAsker.callId,
         tellaskContent: dlg.assignmentFromAsker.tellaskContent,
       };

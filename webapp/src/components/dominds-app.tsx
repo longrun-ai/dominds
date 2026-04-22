@@ -2924,15 +2924,15 @@ export class DomindsApp extends HTMLElement {
     rootId: string;
     selfId: string;
     askerDialogId?: string;
-    assignmentFromAsker?: { callerDialogId: string } | undefined;
+    assignmentFromAsker?: { askerDialogId: string } | undefined;
   }): string {
     const assignmentFromAsker = sideDialog.assignmentFromAsker;
-    const assignmentAskerId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
+    const assignmentAskerId = assignmentFromAsker ? assignmentFromAsker.askerDialogId.trim() : '';
     if (assignmentAskerId) {
       return assignmentAskerId;
     }
     throw new Error(
-      `SideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId (rootId=${sideDialog.rootId}, selfId=${sideDialog.selfId})`,
+      `SideDialog hierarchy invariant violation: missing assignmentFromAsker.askerDialogId (rootId=${sideDialog.rootId}, selfId=${sideDialog.selfId})`,
     );
   }
 

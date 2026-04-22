@@ -62,7 +62,7 @@ async function main(): Promise<void> {
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate this branch.',
         originMemberId: 'tester',
-        callerDialogId: rootId.selfId,
+        askerDialogId: rootId.selfId,
         callId: 'call-sub-1',
       },
     };
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
       'forked sideDialog askerDialog stack must have a top frame',
     );
     assert.equal(forkedAskerStackStateTop.askerDialogId, forkedRootId.selfId);
-    assert.equal(forkedAskerStackStateTop.assignmentFromAsker?.callerDialogId, forkedRootId.selfId);
+    assert.equal(forkedAskerStackStateTop.assignmentFromAsker?.askerDialogId, forkedRootId.selfId);
     assert.equal(
       forkedAskerStackStateTop.tellaskReplyObligation?.targetDialogId,
       forkedRootId.selfId,

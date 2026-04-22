@@ -2,8 +2,8 @@ import { inspect } from 'util';
 
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
-  toCallingCourseNumber,
-  toCallingGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
   toRootGenerationAnchor,
   type HumanQuestion,
   type PendingSideDialogStateRecord,
@@ -312,8 +312,8 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     deliveryMode: args.deliveryMode,
     language: getWorkLanguage(),
   });
-  const targetCallOriginCourse = toCallingCourseNumber(askBackAskerDialog.currentCourse);
-  const targetCallOriginGenseq = (() => {
+  const targetCallSiteCourse = toCallSiteCourseNo(askBackAskerDialog.currentCourse);
+  const targetCallSiteGenseq = (() => {
     for (let i = askBackAskerDialog.msgs.length - 1; i >= 0; i -= 1) {
       const msg = askBackAskerDialog.msgs[i];
       if (!msg || msg.type !== 'func_call_msg') {
@@ -322,7 +322,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
       if (msg.id !== args.directive.targetCallId) {
         continue;
       }
-      return toCallingGenerationSeqNumber(msg.genseq);
+      return toCallSiteGenseqNo(msg.genseq);
     }
     return undefined;
   })();
@@ -338,8 +338,8 @@ export async function deliverTellaskBackReplyFromDirective(args: {
       agentId: args.replyingDialog.agentId,
       callId: args.directive.targetCallId,
       originMemberId: askBackAskerDialog.agentId,
-      originCourse: targetCallOriginCourse,
-      calling_genseq: targetCallOriginGenseq,
+      callSiteCourse: targetCallSiteCourse,
+      callSiteGenseq: targetCallSiteGenseq,
     },
   );
   await askBackAskerDialog.addChatMessages(replyMirror);
@@ -972,8 +972,8 @@ function buildTellaskResultToolOutput(args: {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   content: string;
   status: 'pending' | 'completed' | 'failed';
-  originCourse?: number;
-  calling_genseq?: number;
+  callSiteCourse?: number;
+  callSiteGenseq?: number;
   responderId: string;
   tellaskContent: string;
   mentionList?: string[];
@@ -991,8 +991,8 @@ function buildTellaskResultToolOutput(args: {
     callName: args.callName,
     status: args.status,
     content: args.content,
-    ...(typeof args.originCourse === 'number' ? { originCourse: args.originCourse } : {}),
-    ...(typeof args.calling_genseq === 'number' ? { calling_genseq: args.calling_genseq } : {}),
+    ...(typeof args.callSiteCourse === 'number' ? { callSiteCourse: args.callSiteCourse } : {}),
+    ...(typeof args.callSiteGenseq === 'number' ? { callSiteGenseq: args.callSiteGenseq } : {}),
     call:
       args.callName === 'tellask'
         ? {
@@ -1030,7 +1030,7 @@ function buildTellaskResultToolOutput(args: {
 function buildTellaskCarryoverToolOutput(args: {
   genseq: number;
   content: string;
-  originCourse: number;
+  callSiteCourse: number;
   carryoverCourse: number;
   responderId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
@@ -1051,7 +1051,7 @@ function buildTellaskCarryoverToolOutput(args: {
     role: 'user',
     genseq: args.genseq,
     content: args.content,
-    originCourse: args.originCourse,
+    callSiteCourse: args.callSiteCourse,
     carryoverCourse: args.carryoverCourse,
     responderId: args.responderId,
     callName: args.callName,
@@ -1126,7 +1126,7 @@ function resolveFbrEffort(member: Team.Member | null | undefined): number {
 type SideDialogCreateOptions = {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   originMemberId: string;
-  callerDialogId: string;
+  askerDialogId: string;
   callId: string;
   sessionSlug?: string;
   collectiveTargets?: string[];
@@ -1205,23 +1205,23 @@ async function lookupLiveRegisteredSideDialog(
 
 async function resolveDialogWithinRoot(
   mainDialog: MainDialog,
-  callerDialogId: string,
+  askerDialogId: string,
 ): Promise<Dialog> {
-  if (callerDialogId === mainDialog.id.selfId) {
+  if (askerDialogId === mainDialog.id.selfId) {
     return mainDialog;
   }
-  const live = mainDialog.lookupDialog(callerDialogId);
+  const live = mainDialog.lookupDialog(askerDialogId);
   if (live) {
     return live;
   }
   const restored = await ensureDialogLoaded(
     mainDialog,
-    new DialogID(callerDialogId, mainDialog.id.rootId),
+    new DialogID(askerDialogId, mainDialog.id.rootId),
     mainDialog.status,
   );
   if (!restored) {
     throw new Error(
-      `Type B asker restore invariant violation: root=${mainDialog.id.valueOf()} asker=${callerDialogId}`,
+      `Type B asker restore invariant violation: root=${mainDialog.id.valueOf()} asker=${askerDialogId}`,
     );
   }
   return restored;
@@ -1332,14 +1332,14 @@ async function executeTellaskCall(
 ): Promise<ChatMessage[]> {
   const toolOutputs: ChatMessage[] = [];
   const callName = options.callName;
-  const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-  if (!Number.isFinite(rawCallingCourse) || rawCallingCourse <= 0) {
+  const rawCallSiteCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+  if (!Number.isFinite(rawCallSiteCourse) || rawCallSiteCourse <= 0) {
     throw new Error(
-      `tellask pending invariant violation: missing valid calling course ` +
+      `tellask pending invariant violation: missing valid call-site course ` +
         `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId}, callName=${callName})`,
     );
   }
-  const callingCourse = toCallingCourseNumber(rawCallingCourse);
+  const callSiteCourse = toCallSiteCourseNo(rawCallSiteCourse);
   if (
     typeof dlg.activeGenSeqOrUndefined !== 'number' ||
     !Number.isInteger(dlg.activeGenSeqOrUndefined) ||
@@ -1350,7 +1350,7 @@ async function executeTellaskCall(
         `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId}, callName=${callName})`,
     );
   }
-  const callingGenseq = toCallingGenerationSeqNumber(dlg.activeGenSeqOrUndefined);
+  const callSiteGenseq = toCallSiteGenseqNo(dlg.activeGenSeqOrUndefined);
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
   const isFreshBootsCall = callName === 'freshBootsReasoning';
@@ -1376,7 +1376,7 @@ async function executeTellaskCall(
         callSiteRef: {
           course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
-          ...(callingGenseq !== undefined ? { callingGenseq } : {}),
+          ...(callSiteGenseq !== undefined ? { callSiteGenseq } : {}),
         },
       };
 
@@ -1422,8 +1422,8 @@ async function executeTellaskCall(
           callName,
           content: msg,
           status: 'failed',
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1440,8 +1440,8 @@ async function executeTellaskCall(
         'failed',
         callId,
         {
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
         },
       );
       dlg.clearCurrentCallId();
@@ -1469,8 +1469,8 @@ async function executeTellaskCall(
           callName,
           content: msg,
           status: 'failed',
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1487,8 +1487,8 @@ async function executeTellaskCall(
         'failed',
         callId,
         {
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
         },
       );
       dlg.clearCurrentCallId();
@@ -1506,8 +1506,8 @@ async function executeTellaskCall(
             callName,
             content: msg,
             status: 'failed',
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1524,8 +1524,8 @@ async function executeTellaskCall(
           'failed',
           callId,
           {
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
           },
         );
         dlg.clearCurrentCallId();
@@ -1553,8 +1553,8 @@ async function executeTellaskCall(
             callName,
             content: msg,
             status: 'failed',
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1571,8 +1571,8 @@ async function executeTellaskCall(
           'failed',
           callId,
           {
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
           },
         );
         dlg.clearCurrentCallId();
@@ -1594,8 +1594,8 @@ async function executeTellaskCall(
             callName,
             content: msg,
             status: 'failed',
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
             responderId: 'dominds',
             tellaskContent: body,
             mentionList: normalizedMentionList,
@@ -1612,8 +1612,8 @@ async function executeTellaskCall(
           'failed',
           callId,
           {
-            originCourse: callingCourse,
-            calling_genseq: callingGenseq,
+            callSiteCourse,
+            callSiteGenseq,
           },
         );
         dlg.clearCurrentCallId();
@@ -1623,7 +1623,7 @@ async function executeTellaskCall(
       const sub = await createSideDialog(dlg, parseResult.agentId, mentionList, body, {
         callName: sideDialogCallName,
         originMemberId,
-        callerDialogId: askerDialog.id.selfId,
+        askerDialogId: askerDialog.id.selfId,
         callId,
         collectiveTargets,
         effectiveFbrEffort: fbrEffort,
@@ -1637,8 +1637,8 @@ async function executeTellaskCall(
         tellaskContent: body,
         targetAgentId: parseResult.agentId,
         callId,
-        callingCourse,
-        callingGenseq,
+        callSiteCourse,
+        callSiteGenseq,
         callType: 'C',
       };
       await withSideDialogTxnLock(dlg.id, async () => {
@@ -1703,8 +1703,8 @@ async function executeTellaskCall(
           callName,
           content: msg,
           status: 'failed',
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
           responderId: 'dominds',
           tellaskContent: body,
           mentionList: normalizedMentionList,
@@ -1721,8 +1721,8 @@ async function executeTellaskCall(
         'failed',
         callId,
         {
-          originCourse: callingCourse,
-          calling_genseq: callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
         },
       );
       dlg.clearCurrentCallId();
@@ -1831,8 +1831,8 @@ async function executeTellaskCall(
               callName,
               content: responseContent,
               status: 'completed',
-              originCourse: callingCourse,
-              calling_genseq: callingGenseq,
+              callSiteCourse,
+              callSiteGenseq,
               responderId: parseResult.agentId,
               tellaskContent: body,
               mentionList,
@@ -1853,8 +1853,8 @@ async function executeTellaskCall(
               agentId: parseResult.agentId,
               callId,
               originMemberId: askBackAskerDialog.agentId,
-              originCourse: callingCourse,
-              calling_genseq: callingGenseq,
+              callSiteCourse,
+              callSiteGenseq,
             },
           );
         } catch (err) {
@@ -1878,8 +1878,8 @@ async function executeTellaskCall(
               callName,
               content: errorContent,
               status: 'failed',
-              originCourse: callingCourse,
-              calling_genseq: callingGenseq,
+              callSiteCourse,
+              callSiteGenseq,
               responderId: parseResult.agentId,
               tellaskContent: body,
               mentionList,
@@ -1900,8 +1900,8 @@ async function executeTellaskCall(
               agentId: parseResult.agentId,
               callId,
               originMemberId: askBackAskerDialog.agentId,
-              originCourse: callingCourse,
-              calling_genseq: callingGenseq,
+              callSiteCourse,
+              callSiteGenseq,
             },
           );
         }
@@ -1913,8 +1913,8 @@ async function executeTellaskCall(
         log.error('Type A tellaskBack invariant violation: dialog is not a sideDialog', err, {
           rootId: dlg.id.rootId,
           selfId: dlg.id.selfId,
-          course: callingCourse,
-          genseq: callingGenseq,
+          course: callSiteCourse,
+          genseq: callSiteGenseq,
           callId,
         });
         throw err;
@@ -1936,8 +1936,8 @@ async function executeTellaskCall(
         log.error('Type B tellask invariant violation: missing mainDialog', err, {
           rootId: dlg.id.rootId,
           selfId: dlg.id.selfId,
-          course: callingCourse,
-          genseq: callingGenseq,
+          course: callSiteCourse,
+          genseq: callSiteGenseq,
           callId,
           sessionSlug: parseResult.sessionSlug,
         });
@@ -1949,7 +1949,7 @@ async function executeTellaskCall(
           mentionList,
           tellaskContent: body,
           originMemberId,
-          callerDialogId: askerDialog.id.selfId,
+          askerDialogId: askerDialog.id.selfId,
           callId,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
@@ -1975,7 +1975,7 @@ async function executeTellaskCall(
               parseResult.agentId,
               parseResult.sessionSlug,
             );
-            const seededPreviousAskerId = seededExisting?.assignmentFromAsker.callerDialogId;
+            const seededPreviousAskerId = seededExisting?.assignmentFromAsker.askerDialogId;
             const lockIds: DialogID[] = [mainDialog.id, pendingOwner.id];
             if (
               seededPreviousAskerId !== undefined &&
@@ -1992,7 +1992,7 @@ async function executeTellaskCall(
                 parseResult.sessionSlug,
               );
               if (existing) {
-                if (existing.assignmentFromAsker.callerDialogId !== seededPreviousAskerId) {
+                if (existing.assignmentFromAsker.askerDialogId !== seededPreviousAskerId) {
                   return { kind: 'retry' as const };
                 }
                 const previousAssignment = existing.assignmentFromAsker;
@@ -2004,15 +2004,15 @@ async function executeTellaskCall(
                   tellaskContent: body,
                   targetAgentId: parseResult.agentId,
                   callId,
-                  callingCourse,
-                  callingGenseq,
+                  callSiteCourse,
+                  callSiteGenseq,
                   callType: 'B',
                   sessionSlug: parseResult.sessionSlug,
                 };
                 try {
-                  if (previousAssignment.callerDialogId !== pendingOwner.id.selfId) {
+                  if (previousAssignment.askerDialogId !== pendingOwner.id.selfId) {
                     await DialogPersistence.mutatePendingSideDialogs(
-                      new DialogID(previousAssignment.callerDialogId, mainDialog.id.rootId),
+                      new DialogID(previousAssignment.askerDialogId, mainDialog.id.rootId),
                       (previousPending) => ({
                         kind: 'replace',
                         records: previousPending.filter(
@@ -2041,12 +2041,12 @@ async function executeTellaskCall(
 
                   await updateSideDialogAssignment(existing, assignment, {
                     replacePendingCallId: previousAssignment.callId,
-                    replacePendingAskerDialogId: previousAssignment.callerDialogId,
+                    replacePendingAskerDialogId: previousAssignment.askerDialogId,
                   });
                   return {
                     kind: 'existing' as const,
                     sideDialog: existing,
-                    previousPendingOwnerId: previousAssignment.callerDialogId,
+                    previousPendingOwnerId: previousAssignment.askerDialogId,
                   };
                 } catch (err) {
                   log.error('Failed to update registered sideDialog assignment', err, {
@@ -2072,7 +2072,7 @@ async function executeTellaskCall(
                 {
                   callName: sideDialogCallName,
                   originMemberId,
-                  callerDialogId: askerDialog.id.selfId,
+                  askerDialogId: askerDialog.id.selfId,
                   callId,
                   sessionSlug: parseResult.sessionSlug,
                   collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
@@ -2088,8 +2088,8 @@ async function executeTellaskCall(
                 tellaskContent: body,
                 targetAgentId: parseResult.agentId,
                 callId,
-                callingCourse,
-                callingGenseq,
+                callSiteCourse,
+                callSiteGenseq,
                 callType: 'B',
                 sessionSlug: parseResult.sessionSlug,
               };
@@ -2237,7 +2237,7 @@ async function executeTellaskCall(
         const sub = await createSideDialog(dlg, parseResult.agentId, mentionList, body, {
           callName: sideDialogCallName,
           originMemberId: dlg.agentId,
-          callerDialogId: dlg.id.selfId,
+          askerDialogId: dlg.id.selfId,
           callId,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         });
@@ -2249,8 +2249,8 @@ async function executeTellaskCall(
           tellaskContent: body,
           targetAgentId: parseResult.agentId,
           callId,
-          callingCourse,
-          callingGenseq,
+          callSiteCourse,
+          callSiteGenseq,
           callType: 'C',
         };
         await withSideDialogTxnLock(dlg.id, async () => {
@@ -2327,8 +2327,8 @@ async function executeTellaskCall(
         callName,
         content: msg,
         status: 'failed',
-        originCourse: callingCourse,
-        calling_genseq: callingGenseq,
+        callSiteCourse,
+        callSiteGenseq,
         responderId: 'dominds',
         tellaskContent: body,
         mentionList: normalizedMentionList,
@@ -2345,8 +2345,8 @@ async function executeTellaskCall(
       'failed',
       callId,
       {
-        originCourse: callingCourse,
-        calling_genseq: callingGenseq,
+        callSiteCourse,
+        callSiteGenseq,
       },
     );
     dlg.clearCurrentCallId();

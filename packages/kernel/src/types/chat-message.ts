@@ -67,7 +67,7 @@ export type TellaskResultMsg = Readonly<{
   status: 'pending' | 'completed' | 'failed';
   content: string;
   contentItems?: FuncResultContentItem[];
-  originCourse?: number;
+  callSiteCourse?: number;
   responderId?: string;
   mentionList?: string[];
   tellaskContent?: string;
@@ -77,7 +77,7 @@ export type TellaskResultMsg = Readonly<{
   calleeDialogId?: string;
   calleeCourse?: number;
   calleeGenseq?: number;
-  calling_genseq?: number;
+  callSiteGenseq?: number;
   call?: Readonly<{
     tellaskContent: string;
     mentionList?: string[];
@@ -104,7 +104,7 @@ export type TellaskCarryoverMsg = Readonly<{
   content: string;
   contentItems?: FuncResultContentItem[];
   // Provenance only: where the original tellask call was issued.
-  originCourse: number;
+  callSiteCourse: number;
   // Ownership: the current/latest course that now contains the usable carryover context.
   carryoverCourse: number;
   responderId: string;

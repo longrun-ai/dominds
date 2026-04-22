@@ -35,7 +35,7 @@ async function main(): Promise<void> {
         {
           callName: 'tellaskSessionless',
           originMemberId: 'tester',
-          callerDialogId: root.id.selfId,
+          askerDialogId: root.id.selfId,
           callId: 'call-sideDialog-course-regression',
         },
       );

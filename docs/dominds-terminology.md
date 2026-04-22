@@ -98,8 +98,8 @@
 - EN: The LLM reads only the latest/current course during normal restore/drive. Carryover exists specifically so the latest course can still see the old request context plus its resolved result without reloading the older course transcript.
 - ZH: 正常的 restore/drive 中，LLM 只读取最新/当前 course。carryover 的存在，就是为了让最新 course 在**不重新加载旧 course transcript** 的前提下，仍能看到旧提问的必要上下文及其完成结果。
 
-- EN: `originCourse` is provenance only: it tells you where the original Tellask was issued.
-- ZH: `originCourse` 只表示来源（provenance）：原始诉请是在哪个 course 发起的。
+- EN: `callSiteCourse` is provenance only: it tells you where the original Tellask was issued.
+- ZH: `callSiteCourse` 只表示来源（provenance）：原始诉请是在哪个 course 发起的。
 
 - EN: `carryoverCourse` and event `course` are owner-course fields: they tell you which current/latest course now contains the usable context.
 - ZH: `carryoverCourse` 和事件里的 `course` 表示归属 course：当前哪一个最新 course 持有这段可直接使用的上下文。

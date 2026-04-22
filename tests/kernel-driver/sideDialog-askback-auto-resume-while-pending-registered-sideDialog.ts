@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     const pangu = await root.createSideDialog('pangu', ['@pangu'], parentTellaskBody, {
       callName: 'tellask',
       originMemberId: 'tester',
-      callerDialogId: root.id.selfId,
+      askerDialogId: root.id.selfId,
       callId: 'root-call-pangu-main',
       sessionSlug: 'main-longline',
       collectiveTargets: ['pangu'],
@@ -52,8 +52,8 @@ async function main(): Promise<void> {
       tellaskContent: parentTellaskBody,
       targetAgentId: 'pangu',
       callId: 'root-call-pangu-main',
-      callingCourse: 1,
-      callingGenseq: 1,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       callType: 'B',
       sessionSlug: 'main-longline',
     });
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     const nested = await pangu.createSideDialog('nuwa', ['@nuwa'], nestedTellaskBody, {
       callName: 'tellask',
       originMemberId: 'pangu',
-      callerDialogId: pangu.id.selfId,
+      askerDialogId: pangu.id.selfId,
       callId: 'pangu-call-nuwa-registered',
       sessionSlug: 'nested-live-dom',
       collectiveTargets: ['nuwa'],
@@ -90,8 +90,8 @@ async function main(): Promise<void> {
       tellaskContent: nestedTellaskBody,
       targetAgentId: 'nuwa',
       callId: 'pangu-call-nuwa-registered',
-      callingCourse: 1,
-      callingGenseq: 1,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       callType: 'B',
       sessionSlug: 'nested-live-dom',
     });

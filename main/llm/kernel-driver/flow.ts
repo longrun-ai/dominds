@@ -134,7 +134,7 @@ async function buildReplyToolReminderPrompt(args: {
 }
 
 function entitlementAllowsPendingSideDialog(args: {
-  pending: { callingCourse: number; callingGenseq: number };
+  pending: { callSiteCourse: number; callSiteGenseq: number };
   driveOptions: KernelDriverDriveOptions | undefined;
   dialog: Dialog;
 }): boolean {
@@ -154,15 +154,15 @@ function entitlementAllowsPendingSideDialog(args: {
   if (entitlement.reason !== 'resolved_pending_sideDialog_reply') {
     return false;
   }
-  if (!isPositiveInteger(entitlement.callingCourse)) {
+  if (!isPositiveInteger(entitlement.callSiteCourse)) {
     return false;
   }
-  if (!isPositiveInteger(entitlement.callingGenseq)) {
+  if (!isPositiveInteger(entitlement.callSiteGenseq)) {
     return false;
   }
   return (
-    args.pending.callingCourse !== entitlement.callingCourse ||
-    args.pending.callingGenseq !== entitlement.callingGenseq
+    args.pending.callSiteCourse !== entitlement.callSiteCourse ||
+    args.pending.callSiteGenseq !== entitlement.callSiteGenseq
   );
 }
 
@@ -340,8 +340,8 @@ function hasParentReviveEntitlement(
   }
   return (
     entitlement.reason === 'resolved_pending_sideDialog_reply' &&
-    isPositiveInteger(entitlement.callingCourse) &&
-    isPositiveInteger(entitlement.callingGenseq)
+    isPositiveInteger(entitlement.callSiteCourse) &&
+    isPositiveInteger(entitlement.callSiteGenseq)
   );
 }
 

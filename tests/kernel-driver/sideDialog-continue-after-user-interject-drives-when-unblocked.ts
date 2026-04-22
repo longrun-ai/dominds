@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { toCallingCourseNumber } from '@longrun-ai/kernel/types/storage';
+import { toCallSiteCourseNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
+        askerDialogId: root.id.selfId,
         callId: assignmentDirective.targetCallId,
         collectiveTargets: ['pangu'],
       },
@@ -92,8 +92,8 @@ async function main(): Promise<void> {
       tellaskContent: assignmentDirective.tellaskContent,
       targetAgentId: 'pangu',
       callId: assignmentDirective.targetCallId,
-      callingCourse: toCallingCourseNumber(1),
-      callingGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: 1,
       callType: 'C',
     });
 
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellaskSessionless',
         originMemberId: 'pangu',
-        callerDialogId: sideDialog.id.selfId,
+        askerDialogId: sideDialog.id.selfId,
         callId: 'pangu-to-nuwa-call',
         collectiveTargets: ['nuwa'],
       },
@@ -117,8 +117,8 @@ async function main(): Promise<void> {
       tellaskContent: 'Wait for nested side dialog work to return.',
       targetAgentId: 'nuwa',
       callId: 'pangu-to-nuwa-call',
-      callingCourse: 1,
-      callingGenseq: 1,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       callType: 'C',
     });
 

@@ -1,12 +1,12 @@
 import {
+  toAskerCourseNumber,
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
-  toCallerCourseNumber,
-  toCallingGenerationSeqNumber,
+  toCallSiteGenseqNo,
   toRootGenerationAnchor,
-  type CallerCourseNumber,
+  type AskerCourseNumber,
   type PendingSideDialogStateRecord,
   type TellaskCallAnchorRecord,
   type TellaskReplyResolutionRecord,
@@ -211,7 +211,7 @@ export async function supplyResponseToAskerDialog(args: {
     replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
   };
   calleeResponseRef?: { course: number; genseq: number };
-  callerCourseOverride?: CallerCourseNumber;
+  askerCourseOverride?: AskerCourseNumber;
   scheduleDrive: ScheduleDriveFn;
   sideDialog?: SideDialog;
 }): Promise<void> {
@@ -224,7 +224,7 @@ export async function supplyResponseToAskerDialog(args: {
     status = 'completed',
     deliveryMode = 'reply_tool',
     calleeResponseRef,
-    callerCourseOverride,
+    askerCourseOverride,
     scheduleDrive,
     sideDialog: maybeSideDialog,
   } = args;
@@ -326,8 +326,8 @@ export async function supplyResponseToAskerDialog(args: {
           ? []
           : filteredPending.filter(
               (pending) =>
-                pending.callingCourse === pendingRecord.callingCourse &&
-                pending.callingGenseq === pendingRecord.callingGenseq,
+                pending.callSiteCourse === pendingRecord.callSiteCourse &&
+                pending.callSiteGenseq === pendingRecord.callSiteGenseq,
             );
       const hasQ4H = await parentDialog.hasPendingQ4H();
       const shouldRevive =
@@ -344,13 +344,13 @@ export async function supplyResponseToAskerDialog(args: {
         originMemberId,
         sessionSlug,
         callId: pendingRecord?.callId,
-        callingCourse: pendingRecord?.callingCourse,
-        callingGenseq: pendingRecord?.callingGenseq,
+        callSiteCourse: pendingRecord?.callSiteCourse,
+        callSiteGenseq: pendingRecord?.callSiteGenseq,
         resolvedCallIds: pendingRecord ? [pendingRecord.callId] : [],
-        callerCourse:
-          pendingRecord?.callingCourse !== undefined
-            ? toCallerCourseNumber(pendingRecord.callingCourse)
-            : callerCourseOverride,
+        askerCourse:
+          pendingRecord?.callSiteCourse !== undefined
+            ? toAskerCourseNumber(pendingRecord.callSiteCourse)
+            : askerCourseOverride,
         shouldRevive,
       };
     });
@@ -383,7 +383,7 @@ export async function supplyResponseToAskerDialog(args: {
       deliveryMode,
       language: getWorkLanguage(),
     });
-    const carryoverOriginCourse = result.callingCourse;
+    const carryoverCallSiteCourse = result.callSiteCourse;
     let assignmentRef:
       | {
           course: number;
@@ -391,9 +391,10 @@ export async function supplyResponseToAskerDialog(args: {
         }
       | undefined;
     const carryoverContent =
-      carryoverOriginCourse !== undefined && carryoverOriginCourse !== parentDialog.currentCourse
+      carryoverCallSiteCourse !== undefined &&
+      carryoverCallSiteCourse !== parentDialog.currentCourse
         ? formatTellaskCarryoverResultContent({
-            originCourse: carryoverOriginCourse,
+            callSiteCourse: carryoverCallSiteCourse,
             callName: result.callName,
             callId: resolvedCallId,
             responderId: result.responderId,
@@ -406,9 +407,9 @@ export async function supplyResponseToAskerDialog(args: {
           })
         : undefined;
     if (resolvedCallId !== '' && calleeResponseRef) {
-      if (result.callerCourse === undefined) {
+      if (result.askerCourse === undefined) {
         throw new Error(
-          `tellask response anchor invariant violation: missing callerCourse ` +
+          `tellask response anchor invariant violation: missing askerCourse ` +
             `(parentId=${parentDialog.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${resolvedCallId})`,
         );
       }
@@ -512,8 +513,8 @@ export async function supplyResponseToAskerDialog(args: {
           assignmentRef !== undefined
             ? toAssignmentGenerationSeqNumber(assignmentRef.genseq)
             : undefined,
-        callerDialogId: parentDialog.id.selfId,
-        callerCourse: result.callerCourse,
+        askerDialogId: parentDialog.id.selfId,
+        askerCourse: result.askerCourse,
       };
       await DialogPersistence.appendEvent(
         sideDialogId,
@@ -540,12 +541,12 @@ export async function supplyResponseToAskerDialog(args: {
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
         originMemberId: tellaskerId,
-        originCourse: carryoverOriginCourse,
-        calling_genseq:
-          result.callingGenseq !== undefined
-            ? toCallingGenerationSeqNumber(result.callingGenseq)
+        callSiteCourse: carryoverCallSiteCourse,
+        callSiteGenseq:
+          result.callSiteGenseq !== undefined
+            ? toCallSiteGenseqNo(result.callSiteGenseq)
             : assignmentRef !== undefined
-              ? toCallingGenerationSeqNumber(assignmentRef.genseq)
+              ? toCallSiteGenseqNo(assignmentRef.genseq)
               : undefined,
         carryoverContent,
         sessionSlug: result.sessionSlug,
@@ -567,7 +568,7 @@ export async function supplyResponseToAskerDialog(args: {
             role: 'user',
             genseq: parentDialog.activeGenSeqOrUndefined ?? 1,
             content: carryoverContent,
-            originCourse: carryoverOriginCourse!,
+            callSiteCourse: carryoverCallSiteCourse!,
             carryoverCourse: parentDialog.currentCourse,
             responderId: result.responderId,
             callName: result.callName,
@@ -604,11 +605,13 @@ export async function supplyResponseToAskerDialog(args: {
             callName: result.callName,
             status,
             content: tellaskerResponseText,
-            ...(result.callingCourse !== undefined ? { originCourse: result.callingCourse } : {}),
-            ...(result.callingGenseq !== undefined
-              ? { calling_genseq: result.callingGenseq }
+            ...(result.callSiteCourse !== undefined
+              ? { callSiteCourse: result.callSiteCourse }
+              : {}),
+            ...(result.callSiteGenseq !== undefined
+              ? { callSiteGenseq: result.callSiteGenseq }
               : assignmentRef !== undefined
-                ? { calling_genseq: assignmentRef.genseq }
+                ? { callSiteGenseq: assignmentRef.genseq }
                 : {}),
             call:
               result.callName === 'tellask'
@@ -654,8 +657,8 @@ export async function supplyResponseToAskerDialog(args: {
         {
           rootId: parentDialog.id.rootId,
           selfId: parentDialog.id.selfId,
-          callingCourse: result.callingCourse,
-          callingGenseq: result.callingGenseq,
+          callSiteCourse: result.callSiteCourse,
+          callSiteGenseq: result.callSiteGenseq,
           via: isRoot && hasRegistryEntry ? 'backend_loop_trigger' : 'direct_schedule_drive',
           isRoot,
           hasRegistryEntry,
@@ -669,7 +672,7 @@ export async function supplyResponseToAskerDialog(args: {
         });
       }
 
-      if (result.callingCourse === undefined || result.callingGenseq === undefined) {
+      if (result.callSiteCourse === undefined || result.callSiteGenseq === undefined) {
         throw new Error(
           `sideDialog revive entitlement invariant violation: missing wait-group coordinates ` +
             `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
@@ -685,13 +688,13 @@ export async function supplyResponseToAskerDialog(args: {
             sideDialogId: sideDialogId.selfId,
             callType,
             callId: resolvedCallId,
-            callingCourse: result.callingCourse,
-            callingGenseq: result.callingGenseq,
+            callSiteCourse: result.callSiteCourse,
+            callSiteGenseq: result.callSiteGenseq,
             resolvedCallIds: result.resolvedCallIds,
             triggerCallId: resolvedCallId,
           },
           source: 'kernel_driver_supply_response_parent_revive',
-          reason: `wait_group_resolved:type_${callType}:c${result.callingCourse}:g${result.callingGenseq}`,
+          reason: `wait_group_resolved:type_${callType}:c${result.callSiteCourse}:g${result.callSiteGenseq}`,
         },
       });
     }
@@ -835,12 +838,12 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     return false;
   }
 
-  const askerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.callerDialogId);
+  const askerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.askerDialogId);
   if (!askerDialog) {
     log.warn('Missing tellasker for sideDialog response supply', undefined, {
       rootId: sideDialog.mainDialog.id.rootId,
       sideDialogId: sideDialog.id.selfId,
-      callerDialogId: assignment.callerDialogId,
+      askerDialogId: assignment.askerDialogId,
     });
     return false;
   }
@@ -876,7 +879,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          callerDialogId: askerDialog.id.selfId,
+          askerDialogId: askerDialog.id.selfId,
           callId: pendingRecord.callId,
           responseGenseq,
         },
@@ -894,7 +897,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          callerDialogId: askerDialog.id.selfId,
+          askerDialogId: askerDialog.id.selfId,
           callId: pendingRecord.callId,
           responseCourse: sideDialog.currentCourse,
           responseGenseq,

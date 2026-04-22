@@ -54,7 +54,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
+        askerDialogId: root.id.selfId,
         callId: 'root-cross-trigger-pending-sideDialog',
         collectiveTargets: ['pangu'],
       },

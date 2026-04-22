@@ -80,7 +80,8 @@ async function main(): Promise<void> {
     ]);
     assert.ok(
       pending.every(
-        (record) => record.callingCourse === root.currentCourse && record.callingGenseq === genseq,
+        (record) =>
+          record.callSiteCourse === root.currentCourse && record.callSiteGenseq === genseq,
       ),
       'same assistant round pending records must share the same wait-group coordinates',
     );

@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
+        askerDialogId: root.id.selfId,
         callId: 'root-pending-sideDialog-call',
         collectiveTargets: ['pangu'],
       },
@@ -65,8 +65,8 @@ async function main(): Promise<void> {
       tellaskContent: 'Background side dialog work is still pending.',
       targetAgentId: 'pangu',
       callId: 'root-pending-sideDialog-call',
-      callingCourse: 1,
-      callingGenseq: 1,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       callType: 'C',
     });
 

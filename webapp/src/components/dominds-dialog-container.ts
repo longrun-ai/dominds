@@ -20,15 +20,17 @@ import type {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 import {
+  toAskerCourseNumber,
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
-  toCallerCourseNumber,
+  toCallSiteCourseNo,
+  type AskerCourseNumber,
   type AssignmentCourseNumber,
   type AssignmentGenerationSeqNumber,
   type CalleeCourseNumber,
-  type CallerCourseNumber,
-  type CallingGenerationSeqNumber,
+  type CallSiteCourseNo,
+  type CallSiteGenseqNo,
 } from '@longrun-ai/kernel/types/storage';
 import type {
   AssignmentFromAsker,
@@ -80,7 +82,7 @@ type TellaskCallAnchorMeta =
       assignmentCourse?: AssignmentCourseNumber;
       assignmentGenseq?: AssignmentGenerationSeqNumber;
       askerDialogId: string;
-      askerCourse: CallerCourseNumber;
+      askerCourse: AskerCourseNumber;
     };
 
 type TellaskAssignmentTarget = {
@@ -90,7 +92,7 @@ type TellaskAssignmentTarget = {
 
 type TellaskCallSiteTarget = {
   selfId?: string;
-  course?: CallerCourseNumber | CalleeCourseNumber;
+  course?: AskerCourseNumber | CalleeCourseNumber | CallSiteCourseNo;
 };
 
 type AutoScrollMode = 'following' | 'paused';
@@ -410,7 +412,7 @@ export class DomindsDialogContainer extends HTMLElement {
           if (!Number.isFinite(askerCourseRaw) || askerCourseRaw <= 0) return;
           this.openCallSiteDeepLinkInNewTab(callId, {
             selfId: askerDialogId,
-            course: toCallerCourseNumber(askerCourseRaw),
+            course: toAskerCourseNumber(askerCourseRaw),
           });
           return;
         }
@@ -2701,7 +2703,7 @@ export class DomindsDialogContainer extends HTMLElement {
         const assignment = this.currentDialog?.assignmentFromAsker;
         const tellaskerLabel =
           assignment && assignment.originMemberId.trim() !== ''
-            ? this.formatCallerLabel(assignment)
+            ? this.formatTellaskerLabel(assignment)
             : undefined;
         headlineEl.textContent =
           this.uiLanguage === 'zh'
@@ -3322,9 +3324,9 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const assignmentCourse = this.parseOptionalPositiveInt(event.assignmentCourse);
     const assignmentGenseq = this.parseOptionalPositiveInt(event.assignmentGenseq);
-    const askerCourse = this.parseOptionalPositiveInt(event.callerCourse);
+    const askerCourse = this.parseOptionalPositiveInt(event.askerCourse);
     const askerDialogId =
-      typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
+      typeof event.askerDialogId === 'string' ? event.askerDialogId.trim() : undefined;
 
     let anchorMeta: TellaskCallAnchorMeta;
     switch (rawAnchorRole) {
@@ -3343,7 +3345,7 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'response':
         if (askerDialogId === undefined || askerDialogId === '') {
           this.handleProtocolError(
-            `tellask_call_anchor_evt missing callerDialogId for response ${JSON.stringify({
+            `tellask_call_anchor_evt missing askerDialogId for response ${JSON.stringify({
               callId: rawCallId,
               genseq: event.genseq,
             })}`,
@@ -3352,7 +3354,7 @@ export class DomindsDialogContainer extends HTMLElement {
         }
         if (askerCourse === undefined) {
           this.handleProtocolError(
-            `tellask_call_anchor_evt missing callerCourse for response ${JSON.stringify({
+            `tellask_call_anchor_evt missing askerCourse for response ${JSON.stringify({
               callId: rawCallId,
               genseq: event.genseq,
               askerDialogId,
@@ -3370,7 +3372,7 @@ export class DomindsDialogContainer extends HTMLElement {
               ? toAssignmentGenerationSeqNumber(assignmentGenseq)
               : undefined,
           askerDialogId,
-          askerCourse: toCallerCourseNumber(askerCourse),
+          askerCourse: toAskerCourseNumber(askerCourse),
         };
         break;
     }
@@ -3416,7 +3418,7 @@ export class DomindsDialogContainer extends HTMLElement {
           responderId: event.responder.responderId,
           mentionList: 'mentionList' in event.call ? event.call.mentionList : undefined,
           tellaskContent: event.call.tellaskContent,
-          calling_genseq: event.calling_genseq,
+          callSiteGenseq: event.callSiteGenseq,
         })}`,
       );
       return;
@@ -3428,7 +3430,7 @@ export class DomindsDialogContainer extends HTMLElement {
         `tellask_result_evt received before tellask_call_start_evt ${JSON.stringify({
           callId,
           course: event.course,
-          calling_genseq: event.calling_genseq,
+          callSiteGenseq: event.callSiteGenseq,
           responderId: event.responder.responderId,
         })}`,
       );
@@ -3468,7 +3470,7 @@ export class DomindsDialogContainer extends HTMLElement {
       calleeDialogId,
       agentId,
       event.content,
-      event.calling_genseq,
+      event.callSiteGenseq,
       event.callId,
       tellaskerId,
       event.callName,
@@ -3562,7 +3564,7 @@ export class DomindsDialogContainer extends HTMLElement {
     calleeDialogId: string | undefined,
     agentId: string | undefined,
     responseNarr: string,
-    callSiteId?: CallingGenerationSeqNumber,
+    callSiteId?: CallSiteGenseqNo,
     callId?: string,
     originMemberId?: string,
     callName?:
@@ -3721,9 +3723,9 @@ export class DomindsDialogContainer extends HTMLElement {
     const el = document.createElement('div');
     el.className = 'message teammate tellask-carryover';
     el.setAttribute('data-call-id', event.callId);
-    el.setAttribute('data-origin-course', String(Math.floor(event.originCourse)));
+    el.setAttribute('data-call-site-course', String(Math.floor(event.callSiteCourse)));
     const safeTimestamp = this.escapeHtml(event.timestamp ?? '');
-    const originCourse = Math.floor(event.originCourse);
+    const callSiteCourse = Math.floor(event.callSiteCourse);
     const responderLabel =
       event.agentId && event.agentId.trim() !== ''
         ? this.formatAgentLabel(event.agentId)
@@ -3736,8 +3738,8 @@ export class DomindsDialogContainer extends HTMLElement {
           : 'Assistant';
     const carryoverLabel =
       this.uiLanguage === 'zh'
-        ? `旧程结果补入 · C${String(originCourse)}`
-        : `Carry-over result · C${String(originCourse)}`;
+        ? `旧程结果补入 · C${String(callSiteCourse)}`
+        : `Carry-over result · C${String(callSiteCourse)}`;
     const normalizedSessionSlug = (() => {
       switch (event.callName) {
         case 'tellask':
@@ -3806,7 +3808,7 @@ export class DomindsDialogContainer extends HTMLElement {
       internalBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.navigateToCallSiteInApp(event.callId, originCourse);
+        this.navigateToCallSiteInApp(event.callId, callSiteCourse);
       });
     }
 
@@ -3818,7 +3820,7 @@ export class DomindsDialogContainer extends HTMLElement {
         e.preventDefault();
         e.stopPropagation();
         this.openCallSiteDeepLinkInNewTab(event.callId, {
-          course: toCallerCourseNumber(originCourse),
+          course: toCallSiteCourseNo(callSiteCourse),
         });
       });
     }
@@ -3829,7 +3831,7 @@ export class DomindsDialogContainer extends HTMLElement {
         e.preventDefault();
         e.stopPropagation();
         void this.copyCallSiteDeepLinkToClipboard(event.callId, {
-          course: toCallerCourseNumber(originCourse),
+          course: toCallSiteCourseNo(callSiteCourse),
         });
       });
     }
@@ -4078,7 +4080,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return agentId.startsWith('@') ? agentId : `@${agentId}`;
   }
 
-  private formatCallerLabel(assignment: AssignmentFromAsker): string {
+  private formatTellaskerLabel(assignment: AssignmentFromAsker): string {
     const originMemberId = assignment.originMemberId;
     if (originMemberId && originMemberId.trim() !== '') {
       return this.formatAgentLabel(originMemberId);

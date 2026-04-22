@@ -63,7 +63,7 @@
 
 ### 3.1 wait-group 作用域
 
-同一个 owner dialog 内，`callingCourse + callingGenseq` 足以作为 wait-group key。
+同一个 owner dialog 内，`callSiteCourse + callSiteGenseq` 足以作为 wait-group key。
 
 原因：
 
@@ -75,8 +75,8 @@
 
 ```ts
 type TellaskWaitGroupKey = {
-  callingCourse: number;
-  callingGenseq: number;
+  callSiteCourse: number;
+  callSiteGenseq: number;
 };
 ```
 
@@ -90,7 +90,7 @@ type TellaskWaitGroupRef = TellaskWaitGroupKey & {
 
 ### 3.2 revive 规则
 
-同一 `callingCourse + callingGenseq` 发出的 tellask 诉请组成一个 wait-group。
+同一 `callSiteCourse + callSiteGenseq` 发出的 tellask 诉请组成一个 wait-group。
 
 规则：
 
@@ -267,7 +267,7 @@ sideDialog 回复到达 owner dialog 时，应追加一块“回贴事实”到 
 
 ### 5.1 PendingSideDialogStateRecord
 
-`callingCourse` 与 `callingGenseq` 应从 optional 提升为必填 invariant。
+`callSiteCourse` 与 `callSiteGenseq` 应从 optional 提升为必填 invariant。
 
 理由：
 
@@ -278,7 +278,7 @@ sideDialog 回复到达 owner dialog 时，应追加一块“回贴事实”到 
 
 实现要求：
 
-- 创建 pending record 时 `callingCourse` / `callingGenseq` 不允许为 `undefined`；
+- 创建 pending record 时 `callSiteCourse` / `callSiteGenseq` 不允许为 `undefined`；
 - 如果当前没有 active course / active genseq 却要创建 pending sideDialog，直接抛 invariant error；
 - validator 要求二者必填且为正整数；
 - 读到缺字段或 malformed persistence 时 loud fail / quarantine，不做 runtime fallback。
@@ -295,8 +295,8 @@ type TellaskReplyArrivalRecord = {
   callId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'tellaskBack' | 'freshBootsReasoning';
   status: 'completed' | 'failed';
-  callingCourse: number;
-  callingGenseq: number;
+  callSiteCourse: number;
+  callSiteGenseq: number;
   ownerArrivalCourse: number;
   ownerArrivalGenseq: number;
   tellaskeeId: string;
@@ -335,12 +335,12 @@ type TellaskReplyArrivalRecord = {
 1. 加 owner scoped sideDialog txn lock。
 2. 读取 pending sideDialogs。
 3. 找到并移除当前 `sideDialogId` 对应 pending record。
-4. 从该 record 读取 `callingCourse + callingGenseq`。
+4. 从该 record 读取 `callSiteCourse + callSiteGenseq`。
 5. 保存新的 pending 状态。
 6. 追加 arrival / carryover fact。
 7. fresh 检查：
    - 是否仍有 Q4H；
-   - 是否仍有同 `callingCourse + callingGenseq` 的 pending。
+   - 是否仍有同 `callSiteCourse + callSiteGenseq` 的 pending。
 8. 若 Q4H 为空且同组 pending 清空，则 schedule revive。
 
 ### 6.2 Drive entitlement
@@ -350,8 +350,8 @@ schedule revive 时必须携带 wait-group entitlement：
 ```ts
 type ResolvedTellaskWaitGroupEntitlement = {
   ownerDialogId: string;
-  callingCourse: number;
-  callingGenseq: number;
+  callSiteCourse: number;
+  callSiteGenseq: number;
   resolvedCallIds: string[];
   triggerCallId: string;
 };
@@ -390,7 +390,7 @@ auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owne
 2. 对所有确认会产生 pending sideDialog 的 tellask / FBR call，先一次性登记 pending records。
 3. pending records 全部落盘成功后，再启动 / 调度 sideDialog drive。
 4. 如果登记阶段失败，整轮 loud fail，不能进入半登记半启动状态。
-5. 回复到达时只看 `callingCourse + callingGenseq` 这一组是否清空。
+5. 回复到达时只看 `callSiteCourse + callSiteGenseq` 这一组是否清空。
 
 不引入 wait-group sealed marker。sealed marker 只是为了兼容“边登记边启动”的中间态；两阶段登记直接消灭这个中间态，概念更少。
 
@@ -455,7 +455,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 内容保持 mean & lean：
 
 ```jsonl
-{"kind":"asker_dialog_stack_frame","askerDialogId":"<asking-dialog-id>","assignmentFromAsker":{"callName":"tellask","mentionList":["@agent"],"tellaskContent":"...","originMemberId":"...","callerDialogId":"<same-as-askerDialogId>","callId":"...","collectiveTargets":["..."]},"tellaskReplyObligation":{"expectedReplyCallName":"replyTellask","targetDialogId":"<asking-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
+{"kind":"asker_dialog_stack_frame","askerDialogId":"<asking-dialog-id>","assignmentFromAsker":{"callName":"tellask","mentionList":["@agent"],"tellaskContent":"...","originMemberId":"...","askerDialogId":"<same-as-frame-askerDialogId>","callId":"...","collectiveTargets":["..."]},"tellaskReplyObligation":{"expectedReplyCallName":"replyTellask","targetDialogId":"<asking-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
 {"kind":"asker_dialog_stack_frame","askerDialogId":"<ask-back-asker-dialog-id>","tellaskReplyObligation":{"expectedReplyCallName":"replyTellaskBack","targetDialogId":"<ask-back-asker-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
 ```
 
@@ -513,19 +513,24 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
    - EN: `asker`
    - ZH: 实现层可解释为“诉请方关系”，但代码优先使用英文。
    - 标准项：`askerDialog`、`assignmentFromAsker`、`askerStack`、`AskerDialogStackFrame`。
-   - 替换原则：tellask / sideDialog 关系里的旧 `caller` 应升级为 `asker`，例如后续可评估 `callerDialogId` -> `askerDialogId`、`CallerCourseNumber` -> `AskerCourseNumber`；内部函数名可直接升级，例如 `supplySideDialogResponseToAssignedCallerIfPendingV2` -> `supplySideDialogResponseToAssignedAskerIfPendingV2`。旧 `callee*` / `responder*` contract 字段应升级为 `tellaskee*`，但必须作为 wire/storage 成组迁移。
+   - 替换原则：tellask / sideDialog 关系里的旧 `caller` 应升级为 `asker`；本轮已将 `callerDialogId` -> `askerDialogId`、`CallerCourseNumber` -> `AskerCourseNumber` 成组迁移。旧 `callee*` / `responder*` contract 字段应升级为 `tellaskee*`，但必须作为 wire/storage 成组迁移。
 
 4. **通用代码调用方 / 非 Tellask 语义**：
    - EN: `caller`
    - 含义：函数调用者、tool caller、log caller location、普通 API 调用方。
    - 边界：这类 `caller` 不参与 tellask 术语升级，不应机械改成 `asker`。
 
+5. **Call-site anchor / 调用点锚点**：
+   - EN: `callSiteCourse` / `callSiteGenseq`、`CallSiteCourseNo` / `CallSiteGenseqNo`
+   - ZH: 表示某次 tool / askHuman / tellask 调用实际发生的 course / genseq，是 call-site provenance，不是“旧 caller 角色”。
+   - 边界：不升级成 `AskingCourseNumber`，避免和 `askerDialog` / tellasker 角色混淆；本轮标准名是 `CallSiteCourseNo` / `CallSiteGenseqNo`。
+
 执行顺序：
 
 - 先更新 `dominds-terminology.md`，把 `tellasker/tellaskee` 与 `Dialog Responder` 的边界定为标准术语；
 - 再扫 docs / prompt / UI 文案：Tellask 关系用 `tellasker/tellaskee`，Dialog 主理角色保留 `Dialog Responder`；
-- 最后扫实现层：只把 Tellask relationship contract 里的 `caller` 改成 `asker`，保留普通编程调用方的 `caller`。
-- 若某个 `caller*` 是 wire/storage 字段或 URL/deeplink contract，必须作为 contract rename 成组处理并补测试，不做零散替换。
+- 实现层已把 Tellask relationship contract 里的 `caller` 成组改成 `asker`，保留普通编程调用方的 `caller`。
+- `callerDialogId` / `callerCourse` 已作为 wire/storage 字段成组迁移为 `askerDialogId` / `askerCourse`；后续若还有其它 `caller*` contract 字段，也必须按同样方式成组处理并补测试。
 
 ## 8. 初步实施切分
 
@@ -538,7 +543,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 
 ### Phase 2：存储与 contract
 
-- `PendingSideDialogStateRecord` 强化 `callingCourse/callingGenseq`。
+- `PendingSideDialogStateRecord` 强化 `callSiteCourse/callSiteGenseq`。
 - 新增统一 `asker-stack.jsonl`，root 与 side dialog 都用同一 stack 文件。
 - `asker-stack.jsonl` 只允许 append/truncate；replace pending 通过 truncate + replay retained frames + append new frame 表达。
 - 删除旧 `supdialog.yaml` / `reply-obligations.yaml` 分叉模型。
@@ -580,7 +585,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 2. Arrival / carryover fact 正文必须显式列 `callId`；它是 LLM 可追踪锚点，不只是结构化元数据。
 3. Dominds 不做同 course context window 裁剪；最新 course 全量进 LLM context，历史 course 永不进 context。因此不定义“同 course 上下文补入 / 可见性修复”文案。
 4. 多 tellask / FBR pending 登记与启动拆成两阶段：先登记全部 pending records，全部落盘成功后再启动 sideDialog drive。不引入 sealed marker。
-5. 旧 pending record 缺少 `callingCourse` / `callingGenseq` 不迁移、不隔离兼容、不 fallback。旧 `.dialogs/` 可丢弃；新 validator 直接要求必填，缺失即 loud fail / quarantine。
+5. 旧 pending record 缺少 `callSiteCourse` / `callSiteGenseq` 不迁移、不隔离兼容、不 fallback。旧 `.dialogs/` 可丢弃；新 validator 直接要求必填，缺失即 loud fail / quarantine。
 6. reply obligation 是栈，不是槽。root 与 side dialog 统一使用 `asker-stack.jsonl` 持久化 `AskerDialogStackFrame`，文件只允许 append/truncate。LLM context 从栈顶注入当前义务，而不是扫描历史 JSONL 对话。
 7. replace pending 是特殊栈操作：抽调旧 frame，再把新 obligation 压到栈顶；找不到旧 frame 必须 loud fail，不能静默 fallback 成普通 push。
 8. 实现术语升级为 `MainDialog` / `SideDialog` / `askerDialog` / `assignmentFromAsker` / `askerStack`。旧 `supdialog` 术语退出实现代码与文档；用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”。

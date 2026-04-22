@@ -48,7 +48,7 @@ export class DialogFactory {
     options: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
-      callerDialogId: string;
+      askerDialogId: string;
       callId: string;
       sessionSlug?: string;
       collectiveTargets?: string[];
@@ -76,13 +76,13 @@ export class DialogFactory {
       sideDialogId,
       targetAgentId,
       buildSideDialogAskerStack({
-        askerDialogId: options.callerDialogId,
+        askerDialogId: options.askerDialogId,
         assignment: {
           callName: options.callName,
           mentionList,
           tellaskContent,
           originMemberId: options.originMemberId,
-          callerDialogId: options.callerDialogId,
+          askerDialogId: options.askerDialogId,
           callId: options.callId,
           collectiveTargets: options.collectiveTargets,
           effectiveFbrEffort: options.effectiveFbrEffort,

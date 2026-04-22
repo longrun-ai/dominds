@@ -165,8 +165,8 @@ function rewriteAssignmentFromAskerForFork(
 ): Extract<DialogMetadataFile, { askerDialogId: string }>['assignmentFromAsker'] {
   return {
     ...assignmentFromAsker,
-    callerDialogId: rewriteForkTreeDialogSelfId(
-      assignmentFromAsker.callerDialogId,
+    askerDialogId: rewriteForkTreeDialogSelfId(
+      assignmentFromAsker.askerDialogId,
       sourceRootId,
       targetRootId,
     ),

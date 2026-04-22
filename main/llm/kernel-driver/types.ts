@@ -55,8 +55,8 @@ export type KernelDriverDriveOptions = Readonly<{
         sideDialogId?: string;
         callType?: 'A' | 'B' | 'C';
         callId?: string;
-        callingCourse: number;
-        callingGenseq: number;
+        callSiteCourse: number;
+        callSiteGenseq: number;
         resolvedCallIds?: readonly string[];
         triggerCallId?: string;
       }>;

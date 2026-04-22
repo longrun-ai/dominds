@@ -50,10 +50,7 @@ import {
   supportedLanguageCodes,
   type LanguageCode,
 } from '@longrun-ai/kernel/types/language';
-import {
-  toCallingCourseNumber,
-  type FuncResultContentItem,
-} from '@longrun-ai/kernel/types/storage';
+import { toCallSiteCourseNo, type FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { randomUUID } from 'crypto';
 import fsPromises from 'fs/promises';
@@ -821,7 +818,7 @@ async function handleDeclareSideDialogDead(
   if (!('assignmentFromAsker' in metadata)) return;
   if (!metadata.assignmentFromAsker) return;
 
-  const askerDialogId = metadata.assignmentFromAsker.callerDialogId;
+  const askerDialogId = metadata.assignmentFromAsker.askerDialogId;
   if (typeof askerDialogId !== 'string' || askerDialogId.trim() === '') return;
 
   const askerDialogIdObj = new DialogID(askerDialogId, dialogIdObj.rootId);
@@ -1433,15 +1430,15 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     let derivedAskerDialogId: string | undefined;
     if (dialogIdObj.selfId !== dialogIdObj.rootId) {
       const assignmentFromAsker = metadata.assignmentFromAsker;
-      derivedAskerDialogId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
+      derivedAskerDialogId = assignmentFromAsker ? assignmentFromAsker.askerDialogId.trim() : '';
     }
     if (dialogIdObj.selfId !== dialogIdObj.rootId && !derivedAskerDialogId) {
       const error = new Error(
-        `dialog_ready invariant violation: missing assignmentFromAsker.callerDialogId ` +
+        `dialog_ready invariant violation: missing assignmentFromAsker.askerDialogId ` +
           `(rootId=${dialogIdObj.rootId}, selfId=${dialogIdObj.selfId}, status=${requestedStatus})`,
       );
       log.error(
-        'dialog_ready invariant violation: missing assignmentFromAsker.callerDialogId',
+        'dialog_ready invariant violation: missing assignmentFromAsker.askerDialogId',
         error,
         {
           rootId: dialogIdObj.rootId,
@@ -2132,9 +2129,9 @@ async function handleReceiveHumanReply(
       msgId: effectivePrompt.msgId,
       attachments: preparedAttachments,
     });
-    const askHumanOriginCourse = removedQuestion.callSiteRef.course;
+    const askHumanCallSiteCourse = removedQuestion.callSiteRef.course;
     const askHumanCarryoverContent = formatTellaskCarryoverResultContent({
-      originCourse: askHumanOriginCourse,
+      callSiteCourse: askHumanCallSiteCourse,
       callName: 'askHuman',
       callId: removedQuestion.callId,
       responderId: 'human',
@@ -2155,8 +2152,8 @@ async function handleReceiveHumanReply(
         agentId: 'human',
         callId: askHumanCallId,
         originMemberId: dialog.agentId,
-        originCourse: toCallingCourseNumber(askHumanOriginCourse),
-        calling_genseq: removedQuestion.callSiteRef.callingGenseq,
+        callSiteCourse: toCallSiteCourseNo(askHumanCallSiteCourse),
+        callSiteGenseq: removedQuestion.callSiteRef.callSiteGenseq,
         carryoverContent: askHumanCarryoverContent,
         contentItems,
       },

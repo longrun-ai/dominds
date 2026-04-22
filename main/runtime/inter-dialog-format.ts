@@ -73,7 +73,7 @@ export type TellaskReplacementNoticeFormatInput = {
 };
 
 export type TellaskCarryoverResultFormatInput = {
-  originCourse: number;
+  callSiteCourse: number;
   callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   callId: string;
   responderId: string;
@@ -509,7 +509,7 @@ export function formatTellaskCarryoverResultContent(
     const lines = [
       '### 旧程诉请结果补入',
       '',
-      `- 来源程: C${String(Math.floor(input.originCourse))}`,
+      `- 调用点程: C${String(Math.floor(input.callSiteCourse))}`,
       `- 被诉请者: @${requireNonEmpty(input.responderId, 'responderId')}`,
       `- 状态: ${statusLabel}`,
       targetLine,
@@ -538,7 +538,7 @@ export function formatTellaskCarryoverResultContent(
   const lines = [
     '### Carry-over tellask result',
     '',
-    `- Origin course: C${String(Math.floor(input.originCourse))}`,
+    `- Call-site course: C${String(Math.floor(input.callSiteCourse))}`,
     `- Tellaskee: @${requireNonEmpty(input.responderId, 'responderId')}`,
     `- Status: ${statusLabel}`,
     targetLine,
