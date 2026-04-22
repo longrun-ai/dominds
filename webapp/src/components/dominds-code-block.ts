@@ -133,37 +133,48 @@ export class DomindsCodeBlock extends HTMLElement {
             overflow: auto;
           }
           .code-expand-footer {
+            --code-expand-border: var(
+              --dominds-border,
+              var(--color-border-primary, #e5e5e5)
+            );
+            --code-expand-tab-bg: var(
+              --dominds-bg-secondary,
+              var(--color-bg-secondary, #ffffff)
+            );
+            --code-expand-tab-height: 23px;
+            position: relative;
             display: flex;
             justify-content: center;
-            align-items: center;
-            padding: 0 0 4px;
-            margin-top: -1px;
-            background: linear-gradient(
-              to bottom,
-              color-mix(in srgb, var(--dominds-bg-secondary, #ffffff) 0%, transparent),
-              var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff)) 72%
-            );
+            align-items: flex-start;
+            padding: 0;
+            margin-top: 0;
+            height: 3px;
+            min-height: 3px;
+            overflow: visible;
+            border-top: 1px solid var(--code-expand-border);
+            background: transparent;
           }
           .code-expand-footer.is-hidden {
             display: none;
           }
           .code-expand-btn {
-            width: 28px;
-            height: 20px;
-            border-radius: 999px;
-            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
-            background: var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff));
+            position: relative;
+            transform: translateY(calc(-1 * var(--code-expand-tab-height)));
+            width: 30px;
+            height: var(--code-expand-tab-height);
+            border-radius: 12px 12px 0 0;
+            border: 1px solid var(--code-expand-border);
+            border-bottom: 0;
+            background: var(--code-expand-tab-bg);
             color: var(--dominds-muted, var(--color-fg-tertiary, #616161));
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
             transition:
               background 0.2s ease,
               border-color 0.2s ease,
-              color 0.2s ease,
-              box-shadow 0.2s ease;
+              color 0.2s ease;
           }
           .code-expand-btn:hover {
             border-color: var(--dominds-primary, var(--color-accent-primary, #005fb8));
@@ -179,8 +190,8 @@ export class DomindsCodeBlock extends HTMLElement {
             outline-offset: 1px;
           }
           .code-expand-icon {
-            width: 12px;
-            height: 12px;
+            width: 15px;
+            height: 15px;
             --icon-mask: ${ICON_MASK_URLS.chevronsDown};
             animation: progressive-expand-flash 2.2s ease-in-out infinite;
           }

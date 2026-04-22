@@ -5774,11 +5774,22 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .progressive-expand-footer {
-        margin-top: 2px;
-        padding-top: 2px;
-        border-top: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        --progressive-expand-border: var(
+          --dominds-border,
+          var(--color-border-primary, #e2e8f0)
+        );
+        --progressive-expand-tab-bg: var(--color-bg-secondary, #ffffff);
+        --progressive-expand-tab-height: 23px;
+        position: relative;
+        margin-top: 0;
+        padding: 0;
+        height: 3px;
+        min-height: 3px;
+        border-top: 1px solid var(--progressive-expand-border);
         display: flex;
+        align-items: flex-start;
         justify-content: center;
+        overflow: visible;
       }
 
       .progressive-expand-footer.is-hidden {
@@ -5786,12 +5797,15 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .progressive-expand-btn {
-        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        background: var(--color-bg-secondary, #ffffff);
+        position: relative;
+        transform: translateY(calc(-1 * var(--progressive-expand-tab-height)));
+        border: 1px solid var(--progressive-expand-border);
+        border-bottom: 0;
+        background: var(--progressive-expand-tab-bg);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        border-radius: 999px;
-        width: 26px;
-        height: 22px;
+        border-radius: 12px 12px 0 0;
+        width: 30px;
+        height: var(--progressive-expand-tab-height);
         padding: 0;
         cursor: pointer;
         display: inline-flex;
@@ -5813,8 +5827,8 @@ export class DomindsDialogContainer extends HTMLElement {
         align-items: center;
         justify-content: center;
         animation: progressive-expand-flash 2.2s ease-in-out infinite;
-        width: 14px;
-        height: 14px;
+        width: 15px;
+        height: 15px;
         --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 

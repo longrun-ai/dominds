@@ -6070,11 +6070,23 @@ export class DomindsApp extends HTMLElement {
       }
 
       .rem-item-expand-footer {
-        margin-top: 2px;
-        padding-top: 2px;
-        border-top: 1px solid var(--dominds-border, #e0e0e0);
+        --rem-item-expand-border: var(--dominds-border, #e0e0e0);
+        --rem-item-expand-tab-bg: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) 86%,
+          var(--dominds-hover, #f8f9fa) 14%
+        );
+        --rem-item-expand-tab-height: 23px;
+        position: relative;
+        margin-top: 0;
+        padding: 0;
+        height: 3px;
+        min-height: 3px;
+        border-top: 1px solid var(--rem-item-expand-border);
         display: flex;
+        align-items: flex-start;
         justify-content: center;
+        overflow: visible;
       }
 
       .rem-item-expand-footer.is-hidden {
@@ -6082,12 +6094,15 @@ export class DomindsApp extends HTMLElement {
       }
 
       .rem-item-expand-btn {
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 86%, var(--dominds-hover, #f8f9fa) 14%);
+        position: relative;
+        transform: translateY(calc(-1 * var(--rem-item-expand-tab-height)));
+        border: 1px solid var(--rem-item-expand-border);
+        border-bottom: 0;
+        background: var(--rem-item-expand-tab-bg);
         color: var(--dominds-fg, #475569);
-        border-radius: 999px;
-        width: 26px;
-        height: 22px;
+        border-radius: 12px 12px 0 0;
+        width: 30px;
+        height: var(--rem-item-expand-tab-height);
         padding: 0;
         cursor: pointer;
         display: inline-flex;
@@ -6109,8 +6124,8 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         justify-content: center;
         animation: progressive-expand-flash 2.2s ease-in-out infinite;
-        width: 14px;
-        height: 14px;
+        width: 15px;
+        height: 15px;
         --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 

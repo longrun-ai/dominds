@@ -197,6 +197,33 @@ export class ProgressiveExpandableComponent {
     this.target.style.overflowY = 'visible';
   }
 
+  private measureFooterLayoutHeightPx(): number {
+    const wasHidden = this.footer.classList.contains('is-hidden');
+    const previousVisibility = this.footer.style.visibility;
+    const previousPointerEvents = this.footer.style.pointerEvents;
+    if (wasHidden) {
+      this.footer.style.visibility = 'hidden';
+      this.footer.style.pointerEvents = 'none';
+      this.footer.classList.remove('is-hidden');
+    }
+    const heightPx = Math.max(0, Math.ceil(this.footer.offsetHeight));
+    if (wasHidden) {
+      this.footer.classList.add('is-hidden');
+      this.footer.style.visibility = previousVisibility;
+      this.footer.style.pointerEvents = previousPointerEvents;
+    }
+    return heightPx;
+  }
+
+  private shouldShowExpandFooter(visibleTargetHeightPx: number): boolean {
+    const hiddenContentHeightPx = this.target.scrollHeight - visibleTargetHeightPx;
+    if (hiddenContentHeightPx <= PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX) return false;
+    return (
+      hiddenContentHeightPx >
+      this.measureFooterLayoutHeightPx() + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX
+    );
+  }
+
   private disconnectOverflowObserver(): void {
     this.overflowObserver?.disconnect();
     this.overflowObserver = null;
@@ -266,9 +293,7 @@ export class ProgressiveExpandableComponent {
   private refreshExpandFooter(): void {
     if (!this.target.isConnected) return;
     if (this.currentState.kind === 'initial') {
-      const exceedsInitialClamp =
-        this.target.scrollHeight > PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX + 1;
-      if (exceedsInitialClamp) {
+      if (this.shouldShowExpandFooter(PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX)) {
         this.collapseToInitial();
         this.footer.classList.remove('is-hidden');
         this.disconnectOverflowObserver();
@@ -284,8 +309,7 @@ export class ProgressiveExpandableComponent {
       this.footer.classList.add('is-hidden');
       return;
     }
-    const overflow = this.target.scrollHeight > this.target.clientHeight + 1;
-    if (overflow) {
+    if (this.shouldShowExpandFooter(this.target.clientHeight)) {
       this.footer.classList.remove('is-hidden');
       this.disconnectOverflowObserver();
       return;
