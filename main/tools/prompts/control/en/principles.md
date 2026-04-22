@@ -46,7 +46,7 @@ Default to `dialog`. Use `personal` only when you should keep seeing that note i
 | Feature | dialog reminder | personal reminder | personal memory |
 |---------|-----------------|-------------------|-----------------|
 | Persistence | Current dialog only | Across all later dialogs you lead | Long-term / file-backed |
-| Visibility | Current dialog | Current responder agent | Current agent |
+| Visibility | Current dialog | Current Dialog Responder | Current agent |
 | Best for | Current next step, blocker, volatile clue | Responsibility-linked operating cue | Stable facts / reusable knowledge |
 
 ### 1.1 Scope Choice Rule
@@ -93,20 +93,20 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 ### Decision Rules
 
 - If the current Side Dialog is unfinished, first judge whether team SOP / role ownership already identifies the responsible owner; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner
-- Call `tellaskBack({ tellaskContent })` only when requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership
+- Call `tellaskBack({ tellaskContent })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership
 - If a human must personally perform login / GUI / captcha / high-risk authorization: call `askHuman({ tellaskContent })`
 - If the current Side Dialog is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`
 - If the current Side Dialog is complete and the assignment header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
-- If you are answering a requester `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
+- If you are answering a tellasker `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
 - Plain text is not the normal completion channel for inter-dialog delivery; if you emit plain text instead of the reply tool, runtime may temporarily inject a `role=user` reminder telling you to use the correct reply function
 
 ### Low-Burden Rule
 
-- Focus on doing the current task correctly first; use `reply*` only when final requester delivery is actually ready
+- Focus on doing the current task correctly first; use `reply*` only when final tellasker delivery is actually ready
 - Do not memorize reply variants by yourself; follow the current assignment header and the function currently exposed by runtime
 - `reply*` tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
 - If runtime exposes only one `reply*`, that is the only correct completion path for the current state
-- `tellaskBack` is valid only when ownership cannot be determined from existing SOP, or when requester must answer; it is not the default first move for every blocked state
+- `tellaskBack` is valid only when ownership cannot be determined from existing SOP, or when the tellasker must answer; it is not the default first move for every blocked state
 
 ## Best Practices
 

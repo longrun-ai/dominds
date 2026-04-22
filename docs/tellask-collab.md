@@ -9,8 +9,8 @@ Chinese version: [中文版](./tellask-collab.zh.md)
 
 Dominds already has a real Tellask runtime. The current pain is not syntax, but coordination behavior:
 
-- The requester receives a checkpoint-style reply and assumes the responder is still executing in the background.
-- The requester narrates “what should happen next” instead of sending the next Tellask.
+- The tellasker receives a checkpoint-style reply and assumes the tellaskee is still executing in the background.
+- The tellasker narrates “what should happen next” instead of sending the next Tellask.
 
 That mismatch stalls execution while sounding productive.
 
@@ -52,20 +52,20 @@ Short version: a Tellask Session is a resumable thread, not autonomous backgroun
 For teammate Tellasks, the runtime lifecycle is:
 
 1. Tellask is emitted.
-2. Requester waits while Side Dialog runs.
+2. Tellasker waits while Side Dialog runs.
 3. A response is supplied back.
-4. Requester resumes.
+4. Tellasker resumes.
 
 Critical operational fact:
 
 - The current teammate response status is effectively `completed` or `failed`.
 - There is no “still running that same request” status after a response is delivered.
 
-So if more work is needed, the requester must issue the next Tellask explicitly.
+So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 ### 2.4 Diligence Push boundary
 
-- Diligence Push helps the requester avoid going idle.
+- Diligence Push helps the tellasker avoid going idle.
 - It does not send teammate Tellasks on the agent’s behalf.
 - It is a pressure mechanism, not an execution orchestrator.
 
@@ -77,8 +77,8 @@ So if more work is needed, the requester must issue the next Tellask explicitly.
 
 Observed behavior:
 
-- Requester receives “phase 1 done”.
-- Requester then says “waiting for them to continue”.
+- Tellasker receives “phase 1 done”.
+- Tellasker then says “waiting for them to continue”.
 - No new Tellask is sent, so progress stops.
 
 Root cause:
@@ -112,18 +112,18 @@ That is a workflow break. The model should send the Tellask directly.
     - Ask-back reply: `【回问诉请】`
     - Regular completed Side Dialog reply: `【最终完成】`
     - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
-- If the requester defines a “reply/delivery format” in tellask body, keep it to the business delivery structure; do not require responder-side hand-written markers, because Dominds runtime injects those markers automatically.
+- If the tellasker defines a “reply/delivery format” in tellask body, keep it to the business delivery structure; do not require tellaskee-side hand-written markers, because Dominds runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
 
 **Side Dialog delivery rule**:
 
 - If a Side Dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
-- Runtime treats that direct reply as the completion delivery to the requester and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
+- Runtime treats that direct reply as the completion delivery to the tellasker and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If the work is unfinished, do not default to `tellaskBack`: first use team SOP / role ownership to judge whether a responsible owner is already clear; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner.
-- Use `tellaskBack({ tellaskContent: "..." })` only when the requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
+- Use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); list missing context + reasoning and return.
-- If a human user inserts a message or asks a follow-up in the Side Dialog: just reply normally; no need to report back to the requester.
+- If a human user inserts a message or asks a follow-up in the Side Dialog: just reply normally; no need to report back to the tellasker.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 
@@ -228,7 +228,7 @@ Operating rules:
 
 1. `Prelude Intro`: declare shell policy (`specialist_only` / `self_is_specialist` / `no_specialist`).
 2. `uname` baseline:
-   - `specialist_only`: requester sends one-shot Tellask to `@<shell_specialist>` and receives response.
+   - `specialist_only`: tellasker sends one-shot Tellask to `@<shell_specialist>` and receives response.
    - other policies: runtime collects and displays `uname -a`.
 3. `VCS Round-1` (same `tellaskSession`): topology inventory
    - whether rtws root is a git repo
@@ -273,7 +273,7 @@ Operating rules:
 
 ---
 
-## 6. Requester operator checklist
+## 6. Tellasker operator checklist
 
 Before and after each collaboration step:
 

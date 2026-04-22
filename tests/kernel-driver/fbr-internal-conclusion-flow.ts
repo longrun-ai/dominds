@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       callName: 'freshBootsReasoning',
       callId: 'fbr-success-call',
       responderId: 'tester',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       tellaskContent: successBody,
       responseBody: successFinalContent,
       status: 'completed',
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
       callName: 'freshBootsReasoning',
       callId: 'fbr-fallback-call',
       responderId: 'tester',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       tellaskContent: fallbackBody,
       responseBody: fallbackFinalContent,
       status: 'completed',
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
     assert.ok(
       !successTellaskResult.content.includes('FBR 全量回帖') &&
         !successTellaskResult.content.includes('收到全量回帖后请提炼'),
-      'root must no longer receive raw all-round FBR dumps or requester distill instructions',
+      'main dialog must no longer receive raw all-round FBR dumps or tellasker distill instructions',
     );
 
     const fallbackRoot = await createMainDialog('tester');

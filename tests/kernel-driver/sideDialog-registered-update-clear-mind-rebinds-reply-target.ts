@@ -130,7 +130,7 @@ async function main(): Promise<void> {
       callName: 'tellask',
       callId: newCallId,
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList: ['@pangu'],
       tellaskContent: newBody,
       responseBody: finalReply,
@@ -142,14 +142,14 @@ async function main(): Promise<void> {
     await waitFor(
       async () => listTellaskResultContents(root.msgs).includes(expectedDeliveredContent),
       3_000,
-      'updated registered clear-mind reply to land on the requester',
+      'updated registered clear-mind reply to land on the tellasker',
     );
 
     const pendingAfterReply = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(
       pendingAfterReply.length,
       0,
-      'caller pending-sideDialogs should clear after the rebound clear-mind reply lands',
+      'asker pending-sideDialogs should clear after the rebound clear-mind reply lands',
     );
 
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(

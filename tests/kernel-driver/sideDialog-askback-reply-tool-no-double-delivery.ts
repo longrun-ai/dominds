@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       callName: 'tellaskBack',
       callId: 'sideDialog-ask-back-once',
       responderId: 'tester',
-      requesterId: 'pangu',
+      tellaskerId: 'pangu',
       tellaskContent: askBackBody,
       responseBody: askBackReply,
       status: 'completed',
@@ -167,12 +167,12 @@ async function main(): Promise<void> {
     assert.equal(
       tellaskResults.length,
       1,
-      'expected replyTellaskBack to deliver exactly one tellask_result_record to ask-back requester',
+      'expected replyTellaskBack to deliver exactly one tellask_result_record to ask-back asker',
     );
     assert.equal(
       tellaskResults[0]?.content,
       canonicalAskBackReply,
-      'expected ask-back requester to keep the canonical reply-tool result content',
+      'expected ask-back asker to keep the canonical reply-tool result content',
     );
 
     const funcResults = events.filter(
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
     assert.equal(
       funcResults.length,
       1,
-      'expected ask-back requester to persist exactly one func_result_record for tellaskBack',
+      'expected ask-back asker to persist exactly one func_result_record for tellaskBack',
     );
     assert.equal(
       funcResults[0]?.content,

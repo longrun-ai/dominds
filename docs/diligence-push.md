@@ -25,7 +25,7 @@ is legitimately suspended (Q4H or pending Side Dialogs).
 ## Non-goals
 
 - Auto-completing / auto-marking a dialog as done.
-- Applying this behavior to Side Dialogs (Side Dialogs remain scoped and should report back to their requester).
+- Applying this behavior to Side Dialogs (Side Dialogs remain scoped and should report back to their tellasker).
 
 ## Definitions
 

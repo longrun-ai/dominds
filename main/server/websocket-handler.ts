@@ -821,21 +821,18 @@ async function handleDeclareSideDialogDead(
   if (!('assignmentFromAsker' in metadata)) return;
   if (!metadata.assignmentFromAsker) return;
 
-  const callerDialogId = metadata.assignmentFromAsker.callerDialogId;
-  if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') return;
+  const askerDialogId = metadata.assignmentFromAsker.callerDialogId;
+  if (typeof askerDialogId !== 'string' || askerDialogId.trim() === '') return;
 
-  const callerDialogIdObj = new DialogID(callerDialogId, dialogIdObj.rootId);
-  const pending = await DialogPersistence.loadPendingSideDialogs(
-    callerDialogIdObj,
-    requestedStatus,
-  );
+  const askerDialogIdObj = new DialogID(askerDialogId, dialogIdObj.rootId);
+  const pending = await DialogPersistence.loadPendingSideDialogs(askerDialogIdObj, requestedStatus);
   const pendingRecord = pending.find((p) => p.sideDialogId === dialogIdObj.selfId);
   if (!pendingRecord) {
-    // Requester is not waiting on this sideDialog anymore; do not auto-revive.
+    // Asker is not waiting on this sideDialog anymore; do not auto-revive.
     return;
   }
 
-  const parentDialog = await restoreDialogForDrive(callerDialogIdObj, 'running');
+  const parentDialog = await restoreDialogForDrive(askerDialogIdObj, 'running');
 
   const responseText = formatDeclaredDeadSideDialogNotice(
     getWorkLanguage(),
@@ -1876,7 +1873,7 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   // This helper is intentionally for business operations that will mutate or continue execution
   // immediately after restore (for example resume_dialog, resume_all, or dead-sideDialog recovery).
   // Because those operations are execution-oriented, we repair pending replyTellask* delivery
-  // before handing the dialog back to the requester.
+  // before handing the dialog back to the tellasker.
   if (dialogIdObj.selfId === dialogIdObj.rootId) {
     await recoverPendingReplyTellaskCallsForDialog(mainDialog);
     return mainDialog;

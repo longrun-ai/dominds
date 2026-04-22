@@ -72,11 +72,11 @@ replyTellask({
 - Put the final deliverable body directly in `replyContent`
 - If the header says `replyTellaskSessionless`, use the same shape with that exact function name
 
-## Scenario 3: Work is not finished yet, and requester clarification is required
+## Scenario 3: Work is not finished yet, and tellasker clarification is required
 
 ### Scenario Description
 
-The Side Dialog is still blocked or incomplete, so you need to ask the requester for missing information.
+The Side Dialog is still blocked or incomplete, so you need to ask the tellasker for missing information.
 
 ### Example
 
@@ -89,15 +89,15 @@ tellaskBack({
 
 ### Key Points
 
-- This example uses `tellaskBack` because requester input is specifically required
+- This example uses `tellaskBack` because tellasker input is specifically required
 - If team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner instead of mapping every unfinished state to `tellaskBack`
 - Do not use `replyTellask*` for intermediate clarifications
 
-## Scenario 4: Requester answered the ask-back, so use replyTellaskBack to close
+## Scenario 4: Tellasker answered the ask-back, so use replyTellaskBack to close
 
 ### Scenario Description
 
-You previously sent a `tellaskBack`, the requester has now replied, and runtime exposes `replyTellaskBack`.
+You previously sent a `tellaskBack`, the tellasker has now replied, and runtime exposes `replyTellaskBack`.
 
 ### Example
 

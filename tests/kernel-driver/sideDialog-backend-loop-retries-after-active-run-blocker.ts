@@ -53,7 +53,7 @@ async function main(): Promise<void> {
       callName: 'tellask',
       callId: 'root-call-pangu-backend-loop-retry',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
       responseBody: sideDialogFinalResponse,

@@ -321,7 +321,7 @@ async function main(): Promise<void> {
     assert.equal(
       forkedCreatedRecord.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
-      'forked baseline record must point to the new main dialog as requester',
+      'forked baseline record must point to the new main dialog as tellasker',
     );
 
     const forkedReminders = await DialogPersistence.loadReminderState(forkedRootId, 'running');
@@ -351,7 +351,7 @@ async function main(): Promise<void> {
     assert.equal(
       forkedSubMeta.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
-      'forked sideDialog assignment must point to the new main dialog requester',
+      'forked sideDialog assignment must point to the new main dialog tellasker',
     );
     const forkedSubEvents = await DialogPersistence.readCourseEvents(
       new DialogID(subId.selfId, forkedRootId.selfId),

@@ -13,7 +13,7 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { formatRegisteredTellaskCalleeUpdateNotice } from './driver-messages';
+import { formatRegisteredTellaskTellaskeeUpdateNotice } from './driver-messages';
 import { markdownQuote } from './markdown-format';
 import { buildSideDialogRoleHeaderCopy } from './reply-prompt-copy';
 import { getTellaskKindLabel } from './tellask-labels';
@@ -52,7 +52,7 @@ export type TellaskResponseFormatInput = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   callId: string;
   responderId: string;
-  requesterId: string;
+  tellaskerId: string;
   mentionList?: string[];
   sessionSlug?: string;
   tellaskContent: string;
@@ -64,7 +64,7 @@ export type TellaskResponseFormatInput = {
 
 export type TellaskReplacementNoticeFormatInput = {
   responderId: string;
-  requesterId: string;
+  tellaskerId: string;
   mentionList?: string[];
   sessionSlug?: string;
   tellaskContent: string;
@@ -157,11 +157,11 @@ function buildSideDialogRoleHeader(input: SideDialogRoleHeaderInput): string {
   if (input.callName === 'freshBootsReasoning') {
     return '';
   }
-  const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  const tellaskerId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const expectedReplyTool = getExpectedReplyToolName(input.callName);
   return buildSideDialogRoleHeaderCopy({
     language: input.language,
-    requesterId,
+    tellaskerId,
     expectedReplyTool,
   });
 }
@@ -310,7 +310,7 @@ export function formatUpdatedAssignmentFromAskerDialog(
 ): string {
   const language: LanguageCode = input.language ?? 'en';
   return [
-    formatRegisteredTellaskCalleeUpdateNotice(language),
+    formatRegisteredTellaskTellaskeeUpdateNotice(language),
     '',
     '---',
     '',
@@ -405,7 +405,7 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
       .map((item) => stripMentionPrefix(item))
       .filter((item) => item !== '');
     if (mentionIds.length === 0) {
-      return `@${requireNonEmpty(input.requesterId, 'requesterId')}`;
+      return `@${requireNonEmpty(input.tellaskerId, 'tellaskerId')}`;
     }
     return mentionIds.map((mentionId) => `@${mentionId}`).join(' ');
   })();
@@ -447,7 +447,7 @@ export function formatTellaskReplacementNoticeContent(
     .filter((item) => item !== '');
   const mentionLine =
     mentionIds.length === 0
-      ? `@${requireNonEmpty(input.requesterId, 'requesterId')}`
+      ? `@${requireNonEmpty(input.tellaskerId, 'tellaskerId')}`
       : mentionIds.map((mentionId) => `@${mentionId}`).join(' ');
   const sessionSlug = input.sessionSlug?.trim() ?? '';
   const tail =
@@ -510,7 +510,7 @@ export function formatTellaskCarryoverResultContent(
       '### 旧程诉请结果补入',
       '',
       `- 来源程: C${String(Math.floor(input.originCourse))}`,
-      `- 响应者: @${requireNonEmpty(input.responderId, 'responderId')}`,
+      `- 被诉请者: @${requireNonEmpty(input.responderId, 'responderId')}`,
       `- 状态: ${statusLabel}`,
       targetLine,
       sessionLine,
@@ -539,7 +539,7 @@ export function formatTellaskCarryoverResultContent(
     '### Carry-over tellask result',
     '',
     `- Origin course: C${String(Math.floor(input.originCourse))}`,
-    `- Responder: @${requireNonEmpty(input.responderId, 'responderId')}`,
+    `- Tellaskee: @${requireNonEmpty(input.responderId, 'responderId')}`,
     `- Status: ${statusLabel}`,
     targetLine,
     sessionLine,

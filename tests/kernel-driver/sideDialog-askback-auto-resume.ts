@@ -73,7 +73,7 @@ async function main(): Promise<void> {
       callName: 'tellaskBack',
       callId: 'sideDialog-ask-back',
       responderId: 'tester',
-      requesterId: 'pangu',
+      tellaskerId: 'pangu',
       tellaskContent: askBackBody,
       responseBody: askBackReply,
       status: 'completed',

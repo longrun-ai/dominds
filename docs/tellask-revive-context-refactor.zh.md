@@ -138,7 +138,7 @@ sideDialog 回复到达 owner dialog 时，应追加一块“回贴事实”到 
 
 这块事实正文应与现有 UI tellask 回复气泡尽量对齐，例如延续当前模式：
 
-- `@responder 已回复：`
+- `@<tellaskee> 已回复：`
 - 引用回复正文；
 - `针对原始诉请： @target ...`
 - 引用原诉请正文；
@@ -247,7 +247,7 @@ sideDialog 回复到达 owner dialog 时，应追加一块“回贴事实”到 
 ```text
 【最终完成】
 
-@<responder> 已回复：
+@<tellaskee> 已回复：
 
 > <responseBody>
 
@@ -299,11 +299,11 @@ type TellaskReplyArrivalRecord = {
   callingGenseq: number;
   ownerArrivalCourse: number;
   ownerArrivalGenseq: number;
-  responderId: string;
-  responderAgentId?: string;
-  calleeDialogId?: string;
-  calleeCourse?: number;
-  calleeGenseq?: number;
+  tellaskeeId: string;
+  tellaskeeAgentId?: string;
+  tellaskeeDialogId?: string;
+  tellaskeeCourse?: number;
+  tellaskeeGenseq?: number;
   mentionList?: string[];
   sessionSlug?: string;
   tellaskContent: string;
@@ -314,7 +314,7 @@ type TellaskReplyArrivalRecord = {
 说明：
 
 - `ownerArrivalGenseq` 描述 owner dialog 何时实际看见这条回贴；
-- `calleeGenseq` 描述 sideDialog 在哪里产出回复；
+- `tellaskeeGenseq` 描述 sideDialog 在哪里产出回复；
 - 两者不能混用。
 
 ### 5.3 Tool-result projection
@@ -400,7 +400,7 @@ auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owne
 
 长线诉请同一 `agentId!sessionSlug` 被新 asker / 新 call 更新时，不能再把“注册支线被更新”粗暴理解为“替换槽位”。reply obligation 是栈，Type B registered Side Dialog update 分两类：
 
-1. **普通新诉请 / 新 caller / 新 call**：把新 asker frame push 到栈顶。新诉请优先处理；回复后 pop，恢复更早的 asker frame。
+1. **普通新诉请 / 新 asker / 新 call**：把新 asker frame push 到栈顶。新诉请优先处理；回复后 pop，恢复更早的 asker frame。
 2. **replace pending 特殊操作**：明确定位被替换的旧 pending / old frame，把旧 asker obligation 从栈中抽调，再把新 obligation push 到栈顶。
 
 replace pending 不是 silent overwrite，也不是 failed-result fallback。它是显式栈操作：
@@ -456,7 +456,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 
 ```jsonl
 {"kind":"asker_dialog_stack_frame","askerDialogId":"<asking-dialog-id>","assignmentFromAsker":{"callName":"tellask","mentionList":["@agent"],"tellaskContent":"...","originMemberId":"...","callerDialogId":"<same-as-askerDialogId>","callId":"...","collectiveTargets":["..."]},"tellaskReplyObligation":{"expectedReplyCallName":"replyTellask","targetDialogId":"<asking-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
-{"kind":"asker_dialog_stack_frame","askerDialogId":"<ask-back-requester-dialog-id>","tellaskReplyObligation":{"expectedReplyCallName":"replyTellaskBack","targetDialogId":"<ask-back-requester-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
+{"kind":"asker_dialog_stack_frame","askerDialogId":"<ask-back-asker-dialog-id>","tellaskReplyObligation":{"expectedReplyCallName":"replyTellaskBack","targetDialogId":"<ask-back-asker-dialog-id>","targetCallId":"...","tellaskContent":"..."}}
 ```
 
 规则：
@@ -468,7 +468,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 - 当前 assignment 取“从栈顶向下最近的 assignment frame”，这样 `replyTellaskBack` 临时 frame 不会破坏原 assignment 恢复。
 - Type B registered Side Dialog 普通 update push 新 frame 到栈顶；新诉请先处理，回复后 pop，恢复更早的 asker frame。
 - replace pending 走 7.2 的抽调旧 frame + append 新 frame，不走普通 push。
-- `tellaskBack` 也是同一种 push：被回问的 responder dialog 把 `replyTellaskBack` obligation 压到自己的 asker stack 栈顶，回复后 pop。
+- `tellaskBack` 也是同一种 push：被回问的 tellasker dialog 把 `replyTellaskBack` obligation 压到自己的 asker stack 栈顶，回复后 pop。
 - 成功 `replyTellask*` 或 direct fallback 结清栈顶 `targetCallId` 后 pop 栈；不再靠“清空单槽字段”表示已结清。
 - LLM context 不再靠扫描历史 JSONL prompt 恢复 reply directive；最新 course 组装上下文时从回复栈顶读取 active obligation，并以 role=user 的运行时环境信息注入。
 
@@ -492,6 +492,40 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 - `DialogID.rootId` 仍是结构性 storage anchor，可后续单独评估是否改成 `mainId`。本轮优先改 dialog 类名、reply obligation 语义名、运行时字段名、测试名与文档术语。
 - wire/storage 事件名若仍带旧 `subdialog_*`，本轮应一并评估并尽量升级；如果某个外部协议字段暂不改，必须在最后汇报为明确遗留，而不是默默保留。
 - 用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”；不暴露 `askerDialog` 这类实现字段名。
+
+### 7.7 术语升级补充：tellasker/tellaskee、asker、responder、caller 分层
+
+上一轮扫尾中过度使用了通用 `requester / responder`，会稀释 Dominds Tellask 的专有语义，也会和 `Dialog Responder / 对话主理人` 发生碰撞。本重构后续统一采用以下分层：
+
+1. **Tellask 语义层 / 面向模型与用户的协作说明**：
+   - EN: `tellasker` / `tellaskee`
+   - ZH: `诉请者` / `被诉请者`
+   - 含义：一次 Tellask 中发起诉请的一侧与承接诉请的一侧。
+   - 替换原则：tellask 关系里的 `requester / responder` 应升级为 `tellasker / tellaskee`；中文继续用 `诉请者 / 被诉请者`，不写成“诉请者对话 / 被诉请者对话”作为标准术语。
+
+2. **Dialog execution role / 对话执行角色**：
+   - EN: `Dialog Responder`
+   - ZH: `对话主理人`
+   - 含义：负责推进某个 dialog 的 agent / role。
+   - 边界：这里的 `responder` 保留且是标准词；不得把它和 Tellask 的 `tellaskee` 合并。
+
+3. **实现层关系字段 / 持久化与路由语义**：
+   - EN: `asker`
+   - ZH: 实现层可解释为“诉请方关系”，但代码优先使用英文。
+   - 标准项：`askerDialog`、`assignmentFromAsker`、`askerStack`、`AskerDialogStackFrame`。
+   - 替换原则：tellask / sideDialog 关系里的旧 `caller` 应升级为 `asker`，例如后续可评估 `callerDialogId` -> `askerDialogId`、`CallerCourseNumber` -> `AskerCourseNumber`；内部函数名可直接升级，例如 `supplySideDialogResponseToAssignedCallerIfPendingV2` -> `supplySideDialogResponseToAssignedAskerIfPendingV2`。旧 `callee*` / `responder*` contract 字段应升级为 `tellaskee*`，但必须作为 wire/storage 成组迁移。
+
+4. **通用代码调用方 / 非 Tellask 语义**：
+   - EN: `caller`
+   - 含义：函数调用者、tool caller、log caller location、普通 API 调用方。
+   - 边界：这类 `caller` 不参与 tellask 术语升级，不应机械改成 `asker`。
+
+执行顺序：
+
+- 先更新 `dominds-terminology.md`，把 `tellasker/tellaskee` 与 `Dialog Responder` 的边界定为标准术语；
+- 再扫 docs / prompt / UI 文案：Tellask 关系用 `tellasker/tellaskee`，Dialog 主理角色保留 `Dialog Responder`；
+- 最后扫实现层：只把 Tellask relationship contract 里的 `caller` 改成 `asker`，保留普通编程调用方的 `caller`。
+- 若某个 `caller*` 是 wire/storage 字段或 URL/deeplink contract，必须作为 contract rename 成组处理并补测试，不做零散替换。
 
 ## 8. 初步实施切分
 

@@ -68,7 +68,7 @@ export function formatUserLanguagePreferenceChangedNotice(
   ].join('\n');
 }
 
-export function formatRegisteredTellaskRequesterUpdateNotice(language: LanguageCode): string {
+export function formatRegisteredTellaskTellaskerUpdateNotice(language: LanguageCode): string {
   const prefix = formatSystemNoticePrefix(language);
   if (language === 'zh') {
     return [
@@ -82,7 +82,7 @@ export function formatRegisteredTellaskRequesterUpdateNotice(language: LanguageC
   ].join('\n');
 }
 
-export function formatRegisteredTellaskCalleeUpdateNotice(language: LanguageCode): string {
+export function formatRegisteredTellaskTellaskeeUpdateNotice(language: LanguageCode): string {
   const prefix = formatSystemNoticePrefix(language);
   if (language === 'zh') {
     return [

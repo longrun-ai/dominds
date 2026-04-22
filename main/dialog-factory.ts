@@ -40,7 +40,7 @@ export class DialogFactory {
    * Create a new SideDialog instance.
    */
   static createSideDialog(
-    callerDialog: Dialog,
+    askerDialog: Dialog,
     taskDocPath: string,
     targetAgentId: string,
     mentionList: string[] | undefined,
@@ -58,19 +58,19 @@ export class DialogFactory {
   ): SideDialog {
     const generatedId = generateDialogID();
     const mainDialog =
-      callerDialog instanceof MainDialog
-        ? callerDialog
-        : callerDialog instanceof SideDialog
-          ? callerDialog.mainDialog
+      askerDialog instanceof MainDialog
+        ? askerDialog
+        : askerDialog instanceof SideDialog
+          ? askerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported asker type (${askerDialog.constructor.name})`,
               );
             })();
     const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
 
     return new SideDialog(
-      callerDialog.dlgStore,
+      askerDialog.dlgStore,
       mainDialog,
       taskDocPath,
       sideDialogId,

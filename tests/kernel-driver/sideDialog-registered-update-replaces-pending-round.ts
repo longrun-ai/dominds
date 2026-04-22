@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { supplySideDialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
+import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
 import {
   formatAssignmentFromAskerDialog,
@@ -167,7 +167,7 @@ async function main(): Promise<void> {
       'new registered assignment should push onto the reply stack instead of replacing the old round',
     );
 
-    const supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+    const supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
       sideDialog,
       responseText: 'Old reply that should not be delivered to the updated round.',
       responseGenseq: 1,

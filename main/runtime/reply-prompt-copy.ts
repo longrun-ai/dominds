@@ -62,7 +62,7 @@ export function buildActiveReplyToolNote(args: {
   return [
     ACTIVE_REPLY_TOOL_PREFIX_EN,
     'Stay focused on the task in front of you for this turn; do not get distracted by choosing among `reply*` variants.',
-    `If this turn truly reaches final delivery back to the requester, call \`${args.toolName}\` exactly; do not switch to another \`reply*\` variant or close early.`,
+    `If this turn truly reaches final delivery back to the tellasker, call \`${args.toolName}\` exactly; do not switch to another \`reply*\` variant or close early.`,
   ].join('\n');
 }
 
@@ -97,19 +97,19 @@ export function buildActiveReplyObligationContextText(args: {
 export function buildSideDialogCompletionRule(language: LanguageCode): string {
   return language === 'zh'
     ? '当前支线已完成并能给出最终交付时：先专注把当前任务做对；若运行时点名了精确 reply 函数，就只在最终交付收口时调用那个函数，不要改选其他 `reply*`，也不要再走 `tellaskBack`。'
-    : 'If the current Side Dialog is complete and can deliver the final result: stay focused on finishing the actual task first; if runtime names an exact reply function, call that function only at final requester delivery, do not switch among `reply*` variants, and do not use `tellaskBack` for final delivery.';
+    : 'If the current Side Dialog is complete and can deliver the final result: stay focused on finishing the actual task first; if runtime names an exact reply function, call that function only at final tellasker delivery, do not switch among `reply*` variants, and do not use `tellaskBack` for final delivery.';
 }
 
 export function buildSideDialogRoleHeaderCopy(args: {
   language: LanguageCode;
-  requesterId: string;
+  tellaskerId: string;
   expectedReplyTool?: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' | undefined;
 }): string {
-  const requester = `@${args.requesterId}`;
+  const tellaskerTag = `@${args.tellaskerId}`;
   if (args.expectedReplyTool === undefined) {
     return args.language === 'zh'
-      ? `${requester} 已通过诉请安排你处理下述诉请内容。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
-      : `${requester} has assigned you to handle the request content below. Call \`tellaskBack\` only when you truly need to ask the requester back and existing SOP cannot directly identify another owner.`;
+      ? `${tellaskerTag} 已通过诉请安排你处理下述诉请内容。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
+      : `${tellaskerTag} has assigned you to handle the request content below. Call \`tellaskBack\` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.`;
   }
   const kindLabel = getTellaskKindLabel({
     language: args.language,
@@ -117,8 +117,8 @@ export function buildSideDialogRoleHeaderCopy(args: {
     bracketed: true,
   });
   return args.language === 'zh'
-    ? `${requester} 已通过${kindLabel}安排你处理下述诉请内容。等你准备好回复内容后，调用 \`${args.expectedReplyTool}\` 完成回复。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
-    : `${requester} has assigned you, via this ${kindLabel}, to handle the request content below. Once your reply content is ready, call \`${args.expectedReplyTool}\` to deliver it. Call \`tellaskBack\` only when you truly need to ask the requester back and existing SOP cannot directly identify another owner.`;
+    ? `${tellaskerTag} 已通过${kindLabel}安排你处理下述诉请内容。等你准备好回复内容后，调用 \`${args.expectedReplyTool}\` 完成回复。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
+    : `${tellaskerTag} has assigned you, via this ${kindLabel}, to handle the request content below. Once your reply content is ready, call \`${args.expectedReplyTool}\` to deliver it. Call \`tellaskBack\` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.`;
 }
 
 export function buildReplyObligationSuppressionGuideText(language: LanguageCode): string {

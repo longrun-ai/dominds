@@ -138,7 +138,7 @@ async function main(): Promise<void> {
       callName: 'tellask',
       callId,
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList: ['@pangu'],
       tellaskContent,
       responseBody: replyContent,
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => listTellaskResultContents(restoredRoot.msgs).includes(expectedDeliveredContent),
       3_000,
-      'restored rebound prompt reply to land on the requester',
+      'restored rebound prompt reply to land on the tellasker',
     );
 
     const latestAfterDrive = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');

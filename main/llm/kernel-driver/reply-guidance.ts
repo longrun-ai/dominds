@@ -231,11 +231,11 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
   if (!mainDialog) {
     return undefined;
   }
-  const requesterDialogId = new DialogID(
+  const askBackAskerDialogId = new DialogID(
     prompt.tellaskReplyDirective.targetDialogId,
     mainDialog.id.rootId,
   );
-  const latest = await DialogPersistence.loadDialogLatest(requesterDialogId, mainDialog.status);
+  const latest = await DialogPersistence.loadDialogLatest(askBackAskerDialogId, mainDialog.status);
   if (!latest) {
     return undefined;
   }
@@ -243,7 +243,7 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
   let sawAskBackCall = false;
   for (let course = latest.currentCourse; course >= 1; course -= 1) {
     const events = await DialogPersistence.loadCourseEvents(
-      requesterDialogId,
+      askBackAskerDialogId,
       course,
       mainDialog.status,
     );

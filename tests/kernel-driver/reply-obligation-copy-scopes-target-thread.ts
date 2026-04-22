@@ -35,7 +35,7 @@ function main(): void {
   assert.equal(
     buildSideDialogRoleHeaderCopy({
       language: 'zh',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       expectedReplyTool: 'replyTellask',
     }),
     '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
@@ -43,10 +43,10 @@ function main(): void {
   assert.equal(
     buildSideDialogRoleHeaderCopy({
       language: 'en',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       expectedReplyTool: 'replyTellaskSessionless',
     }),
-    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask the requester back and existing SOP cannot directly identify another owner.',
+    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.',
   );
 
   const startAssignment = formatAssignmentFromAskerDialog({

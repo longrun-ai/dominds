@@ -2024,7 +2024,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Create sideDialog with automatic persistence
    */
   public async createSideDialog(
-    callerDialog: Dialog,
+    askerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -2041,13 +2041,13 @@ export class DiskFileDialogStore extends DialogStore {
     const generatedId = generateDialogID();
     const nowTs = formatUnifiedTimestamp(new Date());
     const mainDialog =
-      callerDialog instanceof MainDialog
-        ? callerDialog
-        : callerDialog instanceof SideDialog
-          ? callerDialog.mainDialog
+      askerDialog instanceof MainDialog
+        ? askerDialog
+        : askerDialog instanceof SideDialog
+          ? askerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported asker type (${askerDialog.constructor.name})`,
               );
             })();
     const rootStatus = mainDialog.status;
@@ -2063,7 +2063,7 @@ export class DiskFileDialogStore extends DialogStore {
     const sideDialog = new SideDialog(
       sideDialogStore,
       mainDialog,
-      callerDialog.taskDocPath,
+      askerDialog.taskDocPath,
       sideDialogId,
       targetAgentId,
       buildSideDialogAskerStack({
@@ -2089,9 +2089,9 @@ export class DiskFileDialogStore extends DialogStore {
     const metadata: SideDialogMetadataFile = {
       id: sideDialogId.selfId,
       agentId: targetAgentId,
-      taskDocPath: callerDialog.taskDocPath,
+      taskDocPath: askerDialog.taskDocPath,
       createdAt: nowTs,
-      askerDialogId: callerDialog.id.selfId,
+      askerDialogId: askerDialog.id.selfId,
       sessionSlug: options.sessionSlug,
       assignmentFromAsker: {
         callName: options.callName,
@@ -2106,16 +2106,16 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await DialogPersistence.saveSideDialogMetadata(sideDialogId, metadata);
 
-    const rootAnchor = resolveRootGenerationAnchor(callerDialog);
-    const parentCourse = callerDialog.activeGenCourseOrUndefined ?? callerDialog.currentCourse;
+    const rootAnchor = resolveRootGenerationAnchor(askerDialog);
+    const parentCourse = askerDialog.activeGenCourseOrUndefined ?? askerDialog.currentCourse;
     const sideDialogCreatedRecord: SideDialogCreatedRecord = {
       ts: nowTs,
       type: 'sideDialog_created_record',
       ...cloneRootGenerationAnchor(rootAnchor),
       sideDialogId: sideDialogId.selfId,
-      askerDialogId: callerDialog.id.selfId,
+      askerDialogId: askerDialog.id.selfId,
       agentId: targetAgentId,
-      taskDocPath: callerDialog.taskDocPath,
+      taskDocPath: askerDialog.taskDocPath,
       createdAt: nowTs,
       sessionSlug: options.sessionSlug,
       assignmentFromAsker: {
@@ -2129,7 +2129,7 @@ export class DiskFileDialogStore extends DialogStore {
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
-    await this.appendEvent(callerDialog, parentCourse, sideDialogCreatedRecord);
+    await this.appendEvent(askerDialog, parentCourse, sideDialogCreatedRecord);
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
@@ -2161,8 +2161,8 @@ export class DiskFileDialogStore extends DialogStore {
       timestamp: new Date().toISOString(),
       course: parentCourse,
       parentDialog: {
-        selfId: callerDialog.id.selfId,
-        rootId: callerDialog.id.rootId,
+        selfId: askerDialog.id.selfId,
+        rootId: askerDialog.id.rootId,
       },
       sideDialog: {
         selfId: sideDialogId.selfId,
@@ -2176,9 +2176,9 @@ export class DiskFileDialogStore extends DialogStore {
       sideDialogNode: {
         selfId: sideDialogId.selfId,
         rootId: sideDialogId.rootId,
-        askerDialogId: callerDialog.id.selfId,
+        askerDialogId: askerDialog.id.selfId,
         agentId: targetAgentId,
-        taskDocPath: callerDialog.taskDocPath,
+        taskDocPath: askerDialog.taskDocPath,
         status: rootStatus,
         currentCourse: 1,
         createdAt: nowTs,
@@ -2198,7 +2198,7 @@ export class DiskFileDialogStore extends DialogStore {
     };
     // Post sideDialog_created_evt to PARENT's PubChan so frontend can receive it
     // The frontend subscribes to the parent's events, not the sideDialog's
-    postDialogEvent(callerDialog, sideDialogCreatedEvt);
+    postDialogEvent(askerDialog, sideDialogCreatedEvt);
 
     return sideDialog;
   }
@@ -2362,7 +2362,7 @@ export class DiskFileDialogStore extends DialogStore {
   }): Promise<never> {
     // Duplicate final results are not harmless transcript noise. They mean two different program
     // paths both believed they owned the same business-level completion fact for one callId.
-    // In ask-back flows this usually points to identity confusion between requester/responder or
+    // In ask-back flows this usually points to identity confusion between asker/tellaskee or
     // canonical reply-tool delivery versus another mistaken write path. We fail fast here so the
     // second writer keeps its own stack trace instead of silently corrupting the dialog transcript.
     const err = new Error(
@@ -7130,12 +7130,12 @@ export class DialogPersistence {
   }
 
   /**
-   * Get the path for storing sideDialog responses (supports both main dialog and sideDialog requesters).
+   * Get the path for storing sideDialog responses (supports both main dialog and sideDialog tellaskers).
    * For Type C sideDialogs created inside another sideDialog, responses are stored at the parent's level.
    */
   static getDialogResponsesPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     // Main dialogs store responses in their own directory.
-    // SideDialogs store responses in the requester's location (main dialog or sideDialog).
+    // SideDialogs store responses in the tellasker's location (main dialog or sideDialog).
     if (dialogId.rootId === dialogId.selfId) {
       // Main dialog: use root's directory
       return this.getMainDialogPath(dialogId, status);
@@ -8862,7 +8862,7 @@ export class DialogPersistence {
           // Skip them for message reconstruction
           break;
         case 'tellask_call_anchor_record':
-          // This record is UI navigation metadata for deep links in callee dialogs.
+          // This record is UI navigation metadata for deep links in tellaskee dialogs.
           // It does not contribute to model context or chat transcript reconstruction.
           break;
         case 'ui_only_markdown_record':

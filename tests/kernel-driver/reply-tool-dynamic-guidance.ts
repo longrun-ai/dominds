@@ -7,7 +7,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
-import { supplySideDialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
+import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { executeTellaskCalls } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import { formatAssignmentFromAskerDialog } from '../../main/runtime/inter-dialog-format';
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
     await writeMockDb(tmpRoot, [
       {
-        message: 'Please finalize the requester reply now.',
+        message: 'Please finalize the tellasker reply now.',
         role: 'user',
         response: 'Closing the side dialog with the requested reply tool.',
         funcCalls: [
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
       deferredSideDialog.status,
     );
 
-    const suppliedDeferredReply = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+    const suppliedDeferredReply = await supplySideDialogResponseToAssignedAskerIfPendingV2({
       sideDialog: deferredSideDialog,
       responseText: 'Deferred reply delivered exactly once.',
       responseGenseq: 1,
@@ -334,7 +334,7 @@ async function main(): Promise<void> {
     const sideDialogEvents = dialogEventRegistry.createSubChan(liveSideDialog.id);
     await driveDialogStream(
       liveSideDialog,
-      makeUserPrompt('Please finalize the requester reply now.', 'live-reply-user-msg'),
+      makeUserPrompt('Please finalize the tellasker reply now.', 'live-reply-user-msg'),
       true,
     );
     await waitForAllDialogsUnlocked(root, 2000);

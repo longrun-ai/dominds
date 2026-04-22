@@ -532,7 +532,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskBack',
     description:
-      'Ask back to the requester in Side Dialog context when requester clarification/decision is required or ownership cannot be determined from SOP.',
+      'Ask back to the tellasker in Side Dialog context when tellasker clarification/decision is required or ownership cannot be determined from SOP.',
     parameters: {
       type: 'object',
       properties: {

@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       callName: 'tellask',
       callId: 'root-call-pangu-sticky',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
       responseBody: sideDialogFinalResponse,

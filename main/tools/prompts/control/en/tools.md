@@ -27,12 +27,12 @@ The **tool descriptions themselves** for these functions intentionally stay mini
 | ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `replyTellask`            | `{ replyContent: string }`   | Current Side Dialog comes from a sessioned `tellask` and is ready for final delivery                        | Delivers the final result for the current tellask session      |
 | `replyTellaskSessionless` | `{ replyContent: string }`   | Current Side Dialog comes from a one-shot `tellaskSessionless` and is ready for final delivery              | Delivers the final result for the current one-shot tellask     |
-| `replyTellaskBack`        | `{ replyContent: string }`   | Current dialog holds an unresolved `tellaskBack` reply directive                                            | Delivers the final answer to the requester ask-back            |
-| `tellaskBack`             | `{ tellaskContent: string }` | Current Side Dialog must ask the requester back, and existing team SOP cannot directly assign another owner | Sends a follow-up request to the requester; not final delivery |
+| `replyTellaskBack`        | `{ replyContent: string }`   | Current dialog holds an unresolved `tellaskBack` reply directive                                            | Delivers the final answer to the tellasker ask-back            |
+| `tellaskBack`             | `{ tellaskContent: string }` | Current Side Dialog must ask the tellasker back, and existing team SOP cannot directly assign another owner | Sends a follow-up request to the tellasker; not final delivery |
 
 ### Minimal Usage Rules
 
-- Focus on doing the current task correctly first; only move into `reply*` closure when final requester delivery is actually ready
+- Focus on doing the current task correctly first; only move into `reply*` closure when final tellasker delivery is actually ready
 - Call whichever `reply*` runtime currently exposes; do not switch to another reply variant by yourself
 - If the assignment header explicitly names a reply function, follow that exact name
 - Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"

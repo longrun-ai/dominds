@@ -398,9 +398,9 @@ Main Dialog
 
 ### Information Flow
 
-- **Requester-bound**: SideDialogs communicate results and escalations to requesters
-- **Side-bound**: Requesters provide context and objectives to sideDialogs
-- **Lateral**: Coordination through shared Taskdocs and requester mediation
+- **Tellasker-bound**: SideDialogs communicate results and escalations to tellaskers
+- **Side-bound**: Tellaskers provide context and objectives to sideDialogs
+- **Lateral**: Coordination through shared Taskdocs and tellasker mediation
 - **Temporal**: Reminders and Taskdocs provide continuity across time
 
 ---

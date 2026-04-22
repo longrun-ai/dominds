@@ -158,7 +158,7 @@ export type UiStrings = {
   q4hConnectionUnavailableToast: string;
   q4hSendFailedToast: string;
   teammateAssignmentBubbleTitle: string;
-  teammateRequesterCallSiteTitle: string;
+  teammateTellaskerCallSiteTitle: string;
 
   keepGoingTabTitle: string;
   keepGoingWorkspaceNote: string;
@@ -551,7 +551,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hConnectionUnavailableToast: '当前未连接到后端，消息尚未发送。',
       q4hSendFailedToast: '发送消息失败。',
       teammateAssignmentBubbleTitle: '定位到任务安排气泡',
-      teammateRequesterCallSiteTitle: '在新标签打开诉请发起点',
+      teammateTellaskerCallSiteTitle: '在新标签打开诉请发起点',
 
       keepGoingTabTitle: '鞭策',
       keepGoingWorkspaceNote: '注意：修改鞭策语会影响整个 rtws（运行时工作区）！',
@@ -929,11 +929,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'This Side Dialog has been declared dead (irreversible); input is disabled.',
     declareDeath: 'Declare Death',
     declareDeathConfirm:
-      'Declare this Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. You may still reuse the same slug to start a new Side Dialog, but prior context will be gone, so include the latest full context in the new tellask body.',
+      'Declare this Side Dialog as “dead”? This is irreversible; the tellasker will receive a system notice and stop waiting for it. You may still reuse the same slug to start a new Side Dialog, but prior context will be gone, so include the latest full context in the new tellask body.',
     declareDeathConfirmSessionless:
-      'Declare this one-shot Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. If the work is still needed later, start a new Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
+      'Declare this one-shot Side Dialog as “dead”? This is irreversible; the tellasker will receive a system notice and stop waiting for it. If the work is still needed later, start a new Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
     declareDeathConfirmFbr:
-      'Declare this FBR Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
+      'Declare this FBR Side Dialog as “dead”? This is irreversible; the tellasker will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',
@@ -962,7 +962,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hConnectionUnavailableToast: 'Not connected to the backend; the message was not sent.',
     q4hSendFailedToast: 'Failed to send message.',
     teammateAssignmentBubbleTitle: 'Go to assignment bubble',
-    teammateRequesterCallSiteTitle: 'Open requester call site in new tab',
+    teammateTellaskerCallSiteTitle: 'Open tellasker call site in new tab',
 
     keepGoingTabTitle: 'Diligence Push',
     keepGoingWorkspaceNote:

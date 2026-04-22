@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     const askBackReply = 'Yes. Continue the same live-DOM loop immediately.';
     const rootAskBackNarration = 'Resume the practitioner loop now.';
     const resumedResponse =
-      'I have the answer from the requester and can continue the registered practitioner loop now.';
+      'I have the answer from the tellasker and can continue the registered practitioner loop now.';
 
     const root = await createMainDialog('tester');
     const pangu = await root.createSideDialog('pangu', ['@pangu'], parentTellaskBody, {
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
       {
         message: 'Use ask-back before continuing the registered practitioner loop.',
         role: 'user',
-        response: 'I need one requester answer before I can continue the practitioner loop.',
+        response: 'I need one tellasker answer before I can continue the practitioner loop.',
         funcCalls: [
           {
             id: 'pangu-ask-back-for-loop-resume',
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
             msg.content === resumedResponse,
         ),
       3_000,
-      'ask-back requester sideDialog to auto-resume even while the registered nested side dialog remains pending',
+      'ask-back asker sideDialog to auto-resume even while the registered nested side dialog remains pending',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
@@ -202,7 +202,7 @@ async function main(): Promise<void> {
         kind: 'blocked',
         reason: { kind: 'waiting_for_sideDialogs' },
       },
-      'after the auto-resume round, the requester should return to waiting on the nested registered side dialog',
+      'after the auto-resume round, the tellasker should return to waiting on the nested registered side dialog',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
     assert.equal(
       events.filter((event) => event.type === 'gen_start_record').length,
       2,
-      'the requester sideDialog should run a second generation round after replyTellaskBack lands',
+      'the tellasker sideDialog should run a second generation round after replyTellaskBack lands',
     );
   });
 

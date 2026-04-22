@@ -107,7 +107,7 @@ The kernel is the Dominds host runtime: dialog driving, tool calling, persistenc
 An app is a distributable capability package, typically a **Node.js project (with `package.json`)**, that may provide:
 
 - Tools (tool/toolset) callable by the kernel (or other apps via the kernel).
-- Teammates (agents) that can be responders, can be told/asked, or act as “bridge” members.
+- Teammates (agents) that can become Dialog Responders, receive Tellasks, or act as “bridge” members.
 - `.minds/**` assets describing and composing team, tool integrations (e.g. MCP), environment requirements, etc.
 
 > Note: An app may _also_ be a Python (uv) project (with `pyproject.toml`) to expose CLIs/wrappers.

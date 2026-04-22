@@ -36,7 +36,7 @@ function buildAssignmentPrompt(language: LanguageCode): string {
   return formatAssignmentFromAskerDialog({
     callName: 'tellask',
     toAgentId: 'tester',
-    fromAgentId: 'caller',
+    fromAgentId: 'tellasker',
     tellaskContent: '请验收当前实现并给出结论。',
     mentionList: ['@tester'],
     sessionSlug: 'acceptance-check',
@@ -86,7 +86,7 @@ function main(): void {
   );
   assert.ok(
     enMainDialog.includes(
-      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the responder to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
+      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
     ),
   );
   assert.ok(
@@ -151,7 +151,7 @@ function main(): void {
   const enSideDialog = buildPrompt('sideDialog', 'en');
   assert.ok(
     enSideDialog.includes(
-      `Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to requester context and shown identically in UI. Do not hand-write markers.`,
+      `Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
     ),
   );
   assert.ok(
@@ -161,7 +161,7 @@ function main(): void {
   );
   assert.ok(
     enSideDialog.includes(
-      'This rule applies only when replying to the requester from the current Side Dialog; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the requester.',
+      'This rule applies only when replying to the tellasker from the current Side Dialog; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the tellasker.',
     ),
   );
   assert.ok(
@@ -171,13 +171,13 @@ function main(): void {
   );
   assert.ok(
     enSideDialog.includes(
-      '`tellaskBack` is only for asking the requester back; use it only when requester clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
+      '`tellaskBack` is only for asking the tellasker back; use it only when tellasker clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
     ),
   );
   assert.ok(enSideDialog.includes(buildSideDialogCompletionRule('en')));
   assert.ok(
     enSideDialog.includes(
-      `Runtime marks ${enMarkers.finalCompleted} and delivers to the requester only when runtime currently names an exact reply function and you reply through that named function.`,
+      `Runtime marks ${enMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function.`,
     ),
   );
   assert.ok(
@@ -191,7 +191,7 @@ function main(): void {
     zhAssignment.includes(
       buildSideDialogRoleHeaderCopy({
         language: 'zh',
-        requesterId: 'caller',
+        tellaskerId: 'tellasker',
         expectedReplyTool: 'replyTellask',
       }),
     ),
@@ -202,7 +202,7 @@ function main(): void {
     enAssignment.includes(
       buildSideDialogRoleHeaderCopy({
         language: 'en',
-        requesterId: 'caller',
+        tellaskerId: 'tellasker',
         expectedReplyTool: 'replyTellask',
       }),
     ),
@@ -217,7 +217,7 @@ function main(): void {
     callName: 'tellask',
     callId: 'collab-en-completed',
     responderId: 'tester',
-    requesterId: 'caller',
+    tellaskerId: 'tellasker',
     mentionList: ['@tester'],
     tellaskContent: 'Please review the current implementation.',
     responseBody: 'All checks passed.',
@@ -232,7 +232,7 @@ function main(): void {
     callName: 'tellaskBack',
     callId: 'collab-zh-askback',
     responderId: 'tester',
-    requesterId: 'caller',
+    tellaskerId: 'tellasker',
     tellaskContent: '还缺少线上配置信息，请补充。',
     responseBody: '请确认生产环境端口。',
     status: 'failed',
@@ -245,7 +245,7 @@ function main(): void {
     callName: 'tellaskSessionless',
     callId: 'collab-en-sessionless',
     responderId: 'tester',
-    requesterId: 'caller',
+    tellaskerId: 'tellasker',
     mentionList: ['@tester'],
     tellaskContent: 'Please summarize the blocker.',
     responseBody: 'The blocker is still pending.',

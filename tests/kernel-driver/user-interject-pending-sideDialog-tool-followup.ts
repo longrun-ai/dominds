@@ -50,7 +50,7 @@ async function main(): Promise<void> {
       callName: 'tellaskSessionless',
       callId: 'call-root-background-tellask',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList: ['@pangu'],
       tellaskContent: tellaskBody,
       responseBody: delayedSideDialogResponse,

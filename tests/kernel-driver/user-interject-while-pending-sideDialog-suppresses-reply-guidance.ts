@@ -136,7 +136,7 @@ async function runMainDialogScenario(): Promise<void> {
 
 async function runSideDialogScenario(): Promise<void> {
   const interjectPrompt = 'Pause the nested side dialog and handle this local note first.';
-  const interjectResponse = 'Handled the local note without replying to the requester.';
+  const interjectResponse = 'Handled the local note without replying to the tellasker.';
   const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
 
   await writeMockDb(process.cwd(), [
@@ -186,7 +186,7 @@ async function runSideDialogScenario(): Promise<void> {
   });
 
   await sideDialog.persistUserMessage(
-    'Initial side dialog assignment from the requester.',
+    'Initial side dialog assignment from the tellasker.',
     'sideDialog-runtime-assignment',
     'markdown',
     'runtime',
@@ -229,7 +229,7 @@ async function runSideDialogScenario(): Promise<void> {
   assert.equal(
     interjectRecord?.tellaskReplyDirective,
     undefined,
-    'sideDialog interjection should not inherit the requester reply directive',
+    'sideDialog interjection should not inherit the tellasker reply directive',
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
@@ -347,7 +347,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
 }
 
 async function runProceedingReplyObligationScenario(): Promise<void> {
-  const interjectPrompt = 'Answer this local question first before replying to the requester.';
+  const interjectPrompt = 'Answer this local question first before replying to the tellasker.';
   const interjectResponse = 'Handled the local question first.';
 
   await writeMockDb(process.cwd(), [
@@ -362,7 +362,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
-    'There is still a requester reply obligation to deliver.',
+    'There is still a tellasker reply obligation to deliver.',
     'root-runtime-reply-directive-proceeding',
     'markdown',
     'runtime',
@@ -372,7 +372,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-proceeding',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Please deliver the requester reply once ready.',
+      tellaskContent: 'Please deliver the tellasker reply once ready.',
     },
   );
   await DialogPersistence.setActiveTellaskReplyObligation(
@@ -381,7 +381,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-proceeding',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Please deliver the requester reply once ready.',
+      tellaskContent: 'Please deliver the tellasker reply once ready.',
     },
     root.status,
   );
@@ -419,7 +419,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
         expectedReplyCallName: 'replyTellaskBack',
         targetCallId: 'reply-back-target-proceeding',
         targetDialogId: root.id.selfId,
-        tellaskContent: 'Please deliver the requester reply once ready.',
+        tellaskContent: 'Please deliver the tellasker reply once ready.',
       },
     },
     'a proceeding interjection should arm deferred reply reassertion instead of queueing replyTellask reminder',
@@ -438,7 +438,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
-    'A requester reply is still pending after this askHuman round.',
+    'A tellasker reply is still pending after this askHuman round.',
     'root-runtime-reply-directive-q4h',
     'markdown',
     'runtime',
@@ -448,7 +448,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-q4h',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
+      tellaskContent: 'Deliver the tellasker reply once the askHuman answer is in.',
     },
   );
   await DialogPersistence.setActiveTellaskReplyObligation(
@@ -457,7 +457,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-q4h',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
+      tellaskContent: 'Deliver the tellasker reply once the askHuman answer is in.',
     },
     root.status,
   );
@@ -501,7 +501,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     expectedReplyCallName: 'replyTellaskBack',
     targetCallId: 'reply-back-target-q4h',
     targetDialogId: root.id.selfId,
-    tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
+    tellaskContent: 'Deliver the tellasker reply once the askHuman answer is in.',
   });
   assert.equal(
     guidance.promptContent?.startsWith(ACTIVE_REPLY_PREFIX),

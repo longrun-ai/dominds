@@ -157,7 +157,7 @@ export function buildFbrSystemPrompt(language: LanguageCode, phase: FbrConclusio
     '# Fresh Boots Reasoning (FBR) Side Dialog',
     '',
     '- You are handling an FBR Side Dialog triggered by `freshBootsReasoning`.',
-    '- The tellask body is the primary task context; do not assume access to requester-side dialog history.',
+    '- The tellask body is the primary task context; do not assume access to tellasker-side dialog history.',
     '- If this is a resumable session, you may use this Side Dialog’s own session history as explicit context.',
     '- In divergence, stay open to counterintuitive, wild, or minority hypotheses; treat them as candidates to test instead of suppressing them early.',
     '- In convergence, denoise autonomously: keep only stable cross-round consensus, mutually reinforcing points, and body-grounded evidence; unsupported wild ideas default to noise and must not enter the final conclusion.',

@@ -2236,12 +2236,12 @@ export class SideDialog extends Dialog {
     const resolvedAskerDialog = mainDialog.lookupDialog(top.askerDialogId);
     if (resolvedAskerDialog && resolvedAskerDialog.id.selfId === this.id.selfId) {
       throw new Error(
-        `SideDialog askerDialog invariant violation: caller resolved to self ` +
+        `SideDialog askerDialog invariant violation: asker resolved to self ` +
           `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId})`,
       );
     } else if (!resolvedAskerDialog) {
       throw new Error(
-        `SideDialog askerDialog invariant violation: caller missing from root registry ` +
+        `SideDialog askerDialog invariant violation: asker missing from root registry ` +
           `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId})`,
       );
     }
@@ -2270,7 +2270,7 @@ export class SideDialog extends Dialog {
     const resolved = this.mainDialog.lookupDialog(askerDialogId);
     if (!resolved || resolved.id.selfId === this.id.selfId) {
       throw new Error(
-        `SideDialog askerDialog invariant violation: caller missing or self ` +
+        `SideDialog askerDialog invariant violation: asker missing or self ` +
           `(rootId=${this.mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${askerDialogId})`,
       );
     }
@@ -2479,14 +2479,14 @@ export abstract class DialogStore {
    *
    * impl here serves for demo purpose only
    *
-   * @param callerDialog
+   * @param askerDialog
    * @param targetAgentId
    * @param mentionList
    * @param tellaskContent
    * @returns
    */
   public async createSideDialog(
-    callerDialog: Dialog,
+    askerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -2502,13 +2502,13 @@ export abstract class DialogStore {
   ): Promise<SideDialog> {
     const generatedId = generateDialogID();
     const mainDialog =
-      callerDialog instanceof MainDialog
-        ? callerDialog
-        : callerDialog instanceof SideDialog
-          ? callerDialog.mainDialog
+      askerDialog instanceof MainDialog
+        ? askerDialog
+        : askerDialog instanceof SideDialog
+          ? askerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported asker type (${askerDialog.constructor.name})`,
               );
             })();
     const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
@@ -2525,7 +2525,7 @@ export abstract class DialogStore {
     return new SideDialog(
       this,
       mainDialog,
-      callerDialog.taskDocPath,
+      askerDialog.taskDocPath,
       sideDialogId,
       targetAgentId,
       buildSideDialogAskerStack({

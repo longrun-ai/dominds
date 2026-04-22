@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       callName: 'tellaskSessionless',
       callId: 'root-call-pangu',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
       responseBody: sideDialogResponseText,

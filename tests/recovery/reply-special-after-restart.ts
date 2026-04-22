@@ -32,7 +32,7 @@ async function main(): Promise<void> {
         expectedReplyCallName: 'replyTellaskBack',
         targetDialogId: liveRoot.id.selfId,
         targetCallId: 'live-reply-target',
-        tellaskContent: 'Need an immediate requester answer.',
+        tellaskContent: 'Need an immediate tellasker answer.',
       },
       replyContent: 'Live reply delivered.',
       callbacks: {
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     );
 
     const root = await createMainDialog('tester');
-    const tellaskContent = 'Need a final requester answer.';
+    const tellaskContent = 'Need a final tellasker answer.';
     const targetCallId = 'tellask-back-target';
 
     const directive: TellaskReplyDirective = {
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     );
     assert(
       deliveredResponse,
-      'expected restart recovery to deliver tellask result to the requester',
+      'expected restart recovery to deliver tellask result to the tellasker',
     );
 
     const resolutionOnlyRoot = await createMainDialog('tester');
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetDialogId: resolutionOnlyRoot.id.selfId,
       targetCallId: 'tellask-back-target',
-      tellaskContent: 'Need a final requester answer.',
+      tellaskContent: 'Need a final tellasker answer.',
     };
     await DialogPersistence.pushTellaskReplyObligation(
       resolutionOnlyRoot.id,

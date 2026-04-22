@@ -2927,9 +2927,9 @@ export class DomindsApp extends HTMLElement {
     assignmentFromAsker?: { callerDialogId: string } | undefined;
   }): string {
     const assignmentFromAsker = sideDialog.assignmentFromAsker;
-    const assignmentCallerId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
-    if (assignmentCallerId) {
-      return assignmentCallerId;
+    const assignmentAskerId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
+    if (assignmentAskerId) {
+      return assignmentAskerId;
     }
     throw new Error(
       `SideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId (rootId=${sideDialog.rootId}, selfId=${sideDialog.selfId})`,

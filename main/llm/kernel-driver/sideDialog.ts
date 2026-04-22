@@ -368,17 +368,17 @@ export async function supplyResponseToAskerDialog(args: {
     const resolvedSideDialog =
       maybeSideDialog ??
       (lookedUpSideDialog instanceof SideDialog ? lookedUpSideDialog : undefined);
-    const requesterResponseBody = responseText;
-    const requesterId = result.originMemberId ?? parentDialog.agentId;
-    const requesterResponseText = formatTellaskResponseContent({
+    const tellaskerResponseBody = responseText;
+    const tellaskerId = result.originMemberId ?? parentDialog.agentId;
+    const tellaskerResponseText = formatTellaskResponseContent({
       callName: result.callName,
       callId: resolvedCallId,
       responderId: result.responderId,
-      requesterId,
+      tellaskerId,
       mentionList: result.mentionList,
       sessionSlug: result.sessionSlug,
       tellaskContent: result.tellaskContent,
-      responseBody: requesterResponseBody,
+      responseBody: tellaskerResponseBody,
       status,
       deliveryMode,
       language: getWorkLanguage(),
@@ -400,7 +400,7 @@ export async function supplyResponseToAskerDialog(args: {
             mentionList: result.mentionList,
             sessionSlug: result.sessionSlug,
             tellaskContent: result.tellaskContent,
-            responseBody: requesterResponseBody,
+            responseBody: tellaskerResponseBody,
             status,
             language: getWorkLanguage(),
           })
@@ -420,7 +420,7 @@ export async function supplyResponseToAskerDialog(args: {
       if (!assignmentRef) {
         // A Side Dialog can legitimately finish a pending tellask before the queued assignment
         // prompt for that call is rendered locally, for example after a direct user nudge inside
-        // the Side Dialog. Keep the caller deep-link anchor, but do not treat the missing
+        // the Side Dialog. Keep the asker deep-link anchor, but do not treat the missing
         // local assignment bubble as an invariant violation.
         log.debug('Tellask response anchor has no local assignment anchor', undefined, {
           parentId: parentDialog.id.selfId,
@@ -536,10 +536,10 @@ export async function supplyResponseToAskerDialog(args: {
       status,
       sideDialogId,
       {
-        response: requesterResponseText,
+        response: tellaskerResponseText,
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
-        originMemberId: requesterId,
+        originMemberId: tellaskerId,
         originCourse: carryoverOriginCourse,
         calling_genseq:
           result.callingGenseq !== undefined
@@ -573,10 +573,10 @@ export async function supplyResponseToAskerDialog(args: {
             callName: result.callName,
             tellaskContent: result.tellaskContent,
             status,
-            response: requesterResponseText,
+            response: tellaskerResponseText,
             agentId: result.responderAgentId ?? result.responderId,
             callId: resolvedCallId,
-            originMemberId: requesterId,
+            originMemberId: tellaskerId,
             ...(result.callName === 'tellask'
               ? {
                   mentionList: result.mentionList ?? [],
@@ -603,7 +603,7 @@ export async function supplyResponseToAskerDialog(args: {
             callId: resolvedCallId,
             callName: result.callName,
             status,
-            content: requesterResponseText,
+            content: tellaskerResponseText,
             ...(result.callingCourse !== undefined ? { originCourse: result.callingCourse } : {}),
             ...(result.callingGenseq !== undefined
               ? { calling_genseq: result.callingGenseq }
@@ -628,7 +628,7 @@ export async function supplyResponseToAskerDialog(args: {
             responder: {
               responderId: result.responderId,
               agentId: result.responderAgentId ?? result.responderId,
-              originMemberId: requesterId,
+              originMemberId: tellaskerId,
             },
             route: {
               calleeDialogId: sideDialogId.selfId,
@@ -704,7 +704,7 @@ export async function supplyResponseToAskerDialog(args: {
   }
 }
 
-export async function supplySideDialogResponseToSpecificCallerIfPendingV2(args: {
+export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
   sideDialog: SideDialog;
   responseText: string;
   responseGenseq: number;
@@ -729,7 +729,7 @@ export async function supplySideDialogResponseToSpecificCallerIfPendingV2(args: 
   if (
     !(await ensureDialogFreshOrDiscard(
       ownerDialog,
-      'supplySideDialogResponseToSpecificCallerIfPendingV2:owner',
+      'supplySideDialogResponseToSpecificAskerIfPendingV2:owner',
     ))
   ) {
     return false;
@@ -818,7 +818,7 @@ export async function supplySideDialogResponseToSpecificCallerIfPendingV2(args: 
   return true;
 }
 
-export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: {
+export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
   sideDialog: SideDialog;
   responseText: string;
   responseGenseq: number;
@@ -835,9 +835,9 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
     return false;
   }
 
-  const callerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.callerDialogId);
-  if (!callerDialog) {
-    log.warn('Missing requester for sideDialog response supply', undefined, {
+  const askerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.callerDialogId);
+  if (!askerDialog) {
+    log.warn('Missing tellasker for sideDialog response supply', undefined, {
       rootId: sideDialog.mainDialog.id.rootId,
       sideDialogId: sideDialog.id.selfId,
       callerDialogId: assignment.callerDialogId,
@@ -846,16 +846,16 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
   }
   if (
     !(await ensureDialogFreshOrDiscard(
-      callerDialog,
-      'supplySideDialogResponseToAssignedCallerIfPendingV2:caller',
+      askerDialog,
+      'supplySideDialogResponseToAssignedAskerIfPendingV2:asker',
     ))
   ) {
     return false;
   }
 
   const pending = await DialogPersistence.loadPendingSideDialogs(
-    callerDialog.id,
-    callerDialog.status,
+    askerDialog.id,
+    askerDialog.status,
   );
   const pendingRecord = pending.find(
     (p) => p.sideDialogId === sideDialog.id.selfId && p.callId === assignment.callId,
@@ -876,7 +876,7 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          callerDialogId: callerDialog.id.selfId,
+          callerDialogId: askerDialog.id.selfId,
           callId: pendingRecord.callId,
           responseGenseq,
         },
@@ -894,7 +894,7 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          callerDialogId: callerDialog.id.selfId,
+          callerDialogId: askerDialog.id.selfId,
           callId: pendingRecord.callId,
           responseCourse: sideDialog.currentCourse,
           responseGenseq,
@@ -907,7 +907,7 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
   }
 
   await supplyResponseToAskerDialog({
-    parentDialog: callerDialog,
+    parentDialog: askerDialog,
     sideDialogId: sideDialog.id,
     responseText,
     sideDialog,

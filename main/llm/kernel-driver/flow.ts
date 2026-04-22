@@ -49,8 +49,8 @@ import {
 } from './reply-guidance';
 import type { ScheduleDriveFn, SideDialogReplyTarget } from './sideDialog';
 import {
-  supplySideDialogResponseToAssignedCallerIfPendingV2,
-  supplySideDialogResponseToSpecificCallerIfPendingV2,
+  supplySideDialogResponseToAssignedAskerIfPendingV2,
+  supplySideDialogResponseToSpecificAskerIfPendingV2,
 } from './sideDialog';
 import {
   deliverTellaskBackReplyFromDirective,
@@ -1062,7 +1062,7 @@ export async function executeDriveRound(args: {
         (driveResult.fbrConclusion !== undefined || driveResult.lastAssistantSayingContent !== null)
       ) {
         if (driveResult.fbrConclusion) {
-          await supplySideDialogResponseToAssignedCallerIfPendingV2({
+          await supplySideDialogResponseToAssignedAskerIfPendingV2({
             sideDialog: dialog,
             responseText: driveResult.fbrConclusion.responseText,
             responseGenseq: driveResult.fbrConclusion.responseGenseq,
@@ -1077,7 +1077,7 @@ export async function executeDriveRound(args: {
               !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
               driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
           if (hasInProgressFunctionCall) {
-            // Any function call means execution is still in-progress. Only supply when the callee
+            // Any function call means execution is still in-progress. Only supply when the tellaskee
             // has produced a newer assistant saying after the latest function call.
             log.debug(
               'kernel-driver skip sideDialog response supply because latest saying is not after function calls',
@@ -1094,7 +1094,7 @@ export async function executeDriveRound(args: {
             const suspension = await dialog.getSuspensionStatus();
             if (!suspension.canDrive || hasFollowUp) {
               log.debug(
-                'kernel-driver skip sideDialog response supply while callee is not finalized',
+                'kernel-driver skip sideDialog response supply while tellaskee is not finalized',
                 undefined,
                 {
                   rootId: dialog.id.rootId,
@@ -1175,7 +1175,7 @@ export async function executeDriveRound(args: {
                   const directFallbackCallId = `direct-fallback-${generateShortId()}`;
                   let supplied = false;
                   if (sideDialogReplyTarget) {
-                    supplied = await supplySideDialogResponseToSpecificCallerIfPendingV2({
+                    supplied = await supplySideDialogResponseToSpecificAskerIfPendingV2({
                       sideDialog: dialog,
                       responseText: driveResult.lastAssistantSayingContent,
                       responseGenseq,
@@ -1188,7 +1188,7 @@ export async function executeDriveRound(args: {
                       scheduleDrive: args.scheduleDrive,
                     });
                     if (!supplied) {
-                      supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+                      supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
                         sideDialog: dialog,
                         responseText: driveResult.lastAssistantSayingContent,
                         responseGenseq,
@@ -1201,7 +1201,7 @@ export async function executeDriveRound(args: {
                       });
                     }
                   } else {
-                    supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+                    supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
                       sideDialog: dialog,
                       responseText: driveResult.lastAssistantSayingContent,
                       responseGenseq,
@@ -1222,7 +1222,7 @@ export async function executeDriveRound(args: {
                       status: dialog.status,
                     });
                     log.debug(
-                      'kernel-driver failed to supply sideDialog response to specific caller',
+                      'kernel-driver failed to supply sideDialog response to specific asker',
                       undefined,
                       {
                         calleeId: dialog.id.valueOf(),

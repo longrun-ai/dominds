@@ -79,8 +79,8 @@ type TellaskCallAnchorMeta =
       anchorRole: 'response';
       assignmentCourse?: AssignmentCourseNumber;
       assignmentGenseq?: AssignmentGenerationSeqNumber;
-      callerDialogId: string;
-      callerCourse: CallerCourseNumber;
+      askerDialogId: string;
+      askerCourse: CallerCourseNumber;
     };
 
 type TellaskAssignmentTarget = {
@@ -392,25 +392,25 @@ export class DomindsDialogContainer extends HTMLElement {
           });
           return;
         }
-        const requesterCallsiteBtn = target.closest(
-          '.bubble-anchor-caller-callsite-btn',
+        const askerCallsiteBtn = target.closest(
+          '.bubble-anchor-asker-callsite-btn',
         ) as HTMLButtonElement | null;
-        if (requesterCallsiteBtn) {
+        if (askerCallsiteBtn) {
           e.preventDefault();
           e.stopPropagation();
-          const bubble = requesterCallsiteBtn.closest('.generation-bubble') as HTMLElement | null;
+          const bubble = askerCallsiteBtn.closest('.generation-bubble') as HTMLElement | null;
           if (!bubble) return;
           const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
-          const callerDialogId = (bubble.getAttribute('data-caller-dialog-id') ?? '').trim();
-          const callerCourseRaw = Number.parseInt(
-            bubble.getAttribute('data-caller-course') ?? '',
+          const askerDialogId = (bubble.getAttribute('data-asker-dialog-id') ?? '').trim();
+          const askerCourseRaw = Number.parseInt(
+            bubble.getAttribute('data-asker-course') ?? '',
             10,
           );
-          if (callId === '' || callerDialogId === '') return;
-          if (!Number.isFinite(callerCourseRaw) || callerCourseRaw <= 0) return;
+          if (callId === '' || askerDialogId === '') return;
+          if (!Number.isFinite(askerCourseRaw) || askerCourseRaw <= 0) return;
           this.openCallSiteDeepLinkInNewTab(callId, {
-            selfId: callerDialogId,
-            course: toCallerCourseNumber(callerCourseRaw),
+            selfId: askerDialogId,
+            course: toCallerCourseNumber(askerCourseRaw),
           });
           return;
         }
@@ -2699,14 +2699,14 @@ export class DomindsDialogContainer extends HTMLElement {
     switch (callName) {
       case 'tellaskBack': {
         const assignment = this.currentDialog?.assignmentFromAsker;
-        const requesterLabel =
+        const tellaskerLabel =
           assignment && assignment.originMemberId.trim() !== ''
             ? this.formatCallerLabel(assignment)
             : undefined;
         headlineEl.textContent =
           this.uiLanguage === 'zh'
-            ? `回问对象: 诉请者${requesterLabel ? ` ${requesterLabel}` : ''}`
-            : `Ask-back target: requester${requesterLabel ? ` ${requesterLabel}` : ''}`;
+            ? `回问对象: 诉请者${tellaskerLabel ? ` ${tellaskerLabel}` : ''}`
+            : `Ask-back target: tellasker${tellaskerLabel ? ` ${tellaskerLabel}` : ''}`;
         return;
       }
       case 'askHuman':
@@ -3278,11 +3278,11 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     if (anchor.anchorRole === 'response') {
-      bubble.setAttribute('data-caller-dialog-id', anchor.callerDialogId);
-      bubble.setAttribute('data-caller-course', String(Math.floor(anchor.callerCourse)));
+      bubble.setAttribute('data-asker-dialog-id', anchor.askerDialogId);
+      bubble.setAttribute('data-asker-course', String(Math.floor(anchor.askerCourse)));
     } else {
-      bubble.removeAttribute('data-caller-dialog-id');
-      bubble.removeAttribute('data-caller-course');
+      bubble.removeAttribute('data-asker-dialog-id');
+      bubble.removeAttribute('data-asker-course');
     }
 
     this.upsertGenerationBubbleAnchorActions(bubble);
@@ -3322,8 +3322,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const assignmentCourse = this.parseOptionalPositiveInt(event.assignmentCourse);
     const assignmentGenseq = this.parseOptionalPositiveInt(event.assignmentGenseq);
-    const callerCourse = this.parseOptionalPositiveInt(event.callerCourse);
-    const callerDialogId =
+    const askerCourse = this.parseOptionalPositiveInt(event.callerCourse);
+    const askerDialogId =
       typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
 
     let anchorMeta: TellaskCallAnchorMeta;
@@ -3341,7 +3341,7 @@ export class DomindsDialogContainer extends HTMLElement {
         };
         break;
       case 'response':
-        if (callerDialogId === undefined || callerDialogId === '') {
+        if (askerDialogId === undefined || askerDialogId === '') {
           this.handleProtocolError(
             `tellask_call_anchor_evt missing callerDialogId for response ${JSON.stringify({
               callId: rawCallId,
@@ -3350,12 +3350,12 @@ export class DomindsDialogContainer extends HTMLElement {
           );
           return;
         }
-        if (callerCourse === undefined) {
+        if (askerCourse === undefined) {
           this.handleProtocolError(
             `tellask_call_anchor_evt missing callerCourse for response ${JSON.stringify({
               callId: rawCallId,
               genseq: event.genseq,
-              callerDialogId,
+              askerDialogId,
             })}`,
           );
           return;
@@ -3369,8 +3369,8 @@ export class DomindsDialogContainer extends HTMLElement {
             assignmentGenseq !== undefined
               ? toAssignmentGenerationSeqNumber(assignmentGenseq)
               : undefined,
-          callerDialogId,
-          callerCourse: toCallerCourseNumber(callerCourse),
+          askerDialogId,
+          askerCourse: toCallerCourseNumber(askerCourse),
         };
         break;
     }
@@ -3461,7 +3461,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
     const agentId = event.responder.agentId || event.responder.responderId;
-    const requesterId = event.responder.originMemberId;
+    const tellaskerId = event.responder.originMemberId;
     const sessionSlug = event.callName === 'tellask' ? event.call.sessionSlug : undefined;
     const calleeDialogId = event.route?.calleeDialogId;
     const messageEl = this.createTellaskResponseBubble(
@@ -3470,7 +3470,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.content,
       event.calling_genseq,
       event.callId,
-      requesterId,
+      tellaskerId,
       event.callName,
       event.timestamp,
       sessionSlug,
@@ -3541,7 +3541,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const calleeDialogId = sideDialog.selfId;
 
-    // Dispatch event for dialog list to update callee dialog count
+    // Dispatch event for dialog list to update tellaskee dialog count
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
     if (host) {
       dispatchDomindsEvent(
@@ -3557,7 +3557,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // Create teammate bubble for subagent responses
-  // calleeDialogId: ID of the callee dialog (sideDialog OR askerDialog)
+  // calleeDialogId: ID of the tellaskee dialog (sideDialog OR askerDialog)
   private createTellaskResponseBubble(
     calleeDialogId: string | undefined,
     agentId: string | undefined,
@@ -3600,7 +3600,7 @@ export class DomindsDialogContainer extends HTMLElement {
       if (agentId && agentId.trim() !== '') return this.formatAgentLabel(agentId);
       return 'Teammate';
     })();
-    const requesterLabel = (() => {
+    const tellaskerLabel = (() => {
       if (originMemberId && originMemberId.trim() !== '')
         return this.formatAgentLabel(originMemberId);
       if (this.currentDialog?.agentId && this.currentDialog.agentId.trim() !== '') {
@@ -3608,7 +3608,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       return 'Assistant';
     })();
-    const safeRequesterLabel = this.escapeHtml(requesterLabel);
+    const safeTellaskerLabel = this.escapeHtml(tellaskerLabel);
     const safeResponderLabel = this.escapeHtml(responderLabel);
     const safeTimestamp = this.escapeHtml(timestamp ?? '');
     const normalizedSessionSlug =
@@ -3623,12 +3623,12 @@ export class DomindsDialogContainer extends HTMLElement {
             this.uiLanguage === 'zh' ? '诉请已更新' : 'Tellask updated',
           )}</span>
            <span class="teammate-meta">
-             <span class="requester-name">${safeRequesterLabel}</span>
+             <span class="tellasker-name">${safeTellaskerLabel}</span>
              <span class="teammate-meta-sep" aria-hidden="true">·</span>
              <span class="author-name">${safeResponderLabel}</span>
            </span>
            ${sessionSlugHtml}`
-        : `<span class="requester-name">${safeRequesterLabel}</span>
+        : `<span class="tellasker-name">${safeTellaskerLabel}</span>
            <span class="response-arrow" aria-hidden="true">←</span>
            <span class="author-name">${safeResponderLabel}</span>
            ${sessionSlugHtml}`;
@@ -3728,7 +3728,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.agentId && event.agentId.trim() !== ''
         ? this.formatAgentLabel(event.agentId)
         : this.formatAgentLabel(event.responderId);
-    const requesterLabel =
+    const tellaskerLabel =
       event.originMemberId && event.originMemberId.trim() !== ''
         ? this.formatAgentLabel(event.originMemberId)
         : this.currentDialog?.agentId && this.currentDialog.agentId.trim() !== ''
@@ -3761,7 +3761,7 @@ export class DomindsDialogContainer extends HTMLElement {
               <div class="title-left">
                 <span class="teammate-kind-label">${this.escapeHtml(carryoverLabel)}</span>
                 <span class="teammate-meta">
-                  <span class="requester-name">${this.escapeHtml(requesterLabel)}</span>
+                  <span class="tellasker-name">${this.escapeHtml(tellaskerLabel)}</span>
                   <span class="response-arrow" aria-hidden="true">←</span>
                   <span class="author-name">${this.escapeHtml(responderLabel)}</span>
                 </span>
@@ -4115,26 +4115,26 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.getAttribute('data-assignment-genseq') ?? '',
       10,
     );
-    const callerDialogId = (bubble.getAttribute('data-caller-dialog-id') ?? '').trim();
-    const callerCourseRaw = Number.parseInt(bubble.getAttribute('data-caller-course') ?? '', 10);
+    const askerDialogId = (bubble.getAttribute('data-asker-dialog-id') ?? '').trim();
+    const askerCourseRaw = Number.parseInt(bubble.getAttribute('data-asker-course') ?? '', 10);
     const hasAssignmentRef =
       Number.isFinite(assignmentCourseRaw) &&
       assignmentCourseRaw > 0 &&
       Number.isFinite(assignmentGenseqRaw) &&
       assignmentGenseqRaw > 0;
-    const hasCallerRef =
+    const hasAskerRef =
       callId !== '' &&
-      callerDialogId !== '' &&
-      Number.isFinite(callerCourseRaw) &&
-      callerCourseRaw > 0;
-    if (!hasCallerRef) {
+      askerDialogId !== '' &&
+      Number.isFinite(askerCourseRaw) &&
+      askerCourseRaw > 0;
+    if (!hasAskerRef) {
       this.handleProtocolError(
-        `response anchor bubble missing caller link refs ${JSON.stringify({
+        `response anchor bubble missing asker link refs ${JSON.stringify({
           callId,
           assignmentCourse: bubble.getAttribute('data-assignment-course'),
           assignmentGenseq: bubble.getAttribute('data-assignment-genseq'),
-          callerDialogId,
-          callerCourse: bubble.getAttribute('data-caller-course'),
+          askerDialogId,
+          askerCourse: bubble.getAttribute('data-asker-course'),
         })}`,
       );
       existingActions?.remove();
@@ -4145,7 +4145,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const actions = existingActions ?? document.createElement('div');
     actions.className = 'bubble-anchor-actions';
     // A pending tellask can be satisfied before its queued assignment prompt is rendered inside
-    // the callee dialog. In that case we still have a valid caller deep-link, but no local
+    // the tellaskee dialog. In that case we still have a valid asker deep-link, but no local
     // assignment bubble to navigate to yet.
     actions.innerHTML = `
       ${
@@ -4155,7 +4155,7 @@ export class DomindsDialogContainer extends HTMLElement {
       </button>`
           : ''
       }
-      <button type="button" class="bubble-anchor-caller-callsite-btn" aria-label="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}" title="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}">
+      <button type="button" class="bubble-anchor-asker-callsite-btn" aria-label="${this.escapeHtml(t.teammateTellaskerCallSiteTitle)}" title="${this.escapeHtml(t.teammateTellaskerCallSiteTitle)}">
         <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
       </button>
     `;
@@ -4641,11 +4641,11 @@ export class DomindsDialogContainer extends HTMLElement {
         : (() => {
             switch (funcName) {
               case 'replyTellask':
-                return 'Deliver final requester reply';
+                return 'Deliver final tellasker reply';
               case 'replyTellaskSessionless':
                 return 'Deliver one-shot tellask reply';
               case 'replyTellaskBack':
-                return 'Answer requester ask-back';
+                return 'Answer tellasker ask-back';
             }
           })();
 
@@ -5248,7 +5248,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-anchor-assignment-btn,
-      .bubble-anchor-caller-callsite-btn {
+      .bubble-anchor-asker-callsite-btn {
         width: 22px;
         height: 22px;
         padding: 0;
@@ -5264,14 +5264,14 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-anchor-assignment-btn:hover,
-      .bubble-anchor-caller-callsite-btn:hover {
+      .bubble-anchor-asker-callsite-btn:hover {
         background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
         border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-primary, #333));
       }
 
       .bubble-anchor-assignment-btn:focus-visible,
-      .bubble-anchor-caller-callsite-btn:focus-visible {
+      .bubble-anchor-asker-callsite-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         outline-offset: 2px;
       }
@@ -5363,7 +5363,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .bubble-share-link-btn .icon-mask,
       .bubble-fork-btn .icon-mask,
       .bubble-anchor-assignment-btn .icon-mask,
-      .bubble-anchor-caller-callsite-btn .icon-mask,
+      .bubble-anchor-asker-callsite-btn .icon-mask,
       .callsite-icon-btn .icon-mask {
         width: 14px;
         height: 14px;
@@ -6378,7 +6378,7 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-primary, #007acc);
       }
 
-      .requester-name {
+      .tellasker-name {
         color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
       }
 

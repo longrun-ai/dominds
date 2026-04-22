@@ -202,7 +202,7 @@ export async function ensureDialogLoaded(
     );
   })();
 
-  // Ensure the requester exists so SideDialog can resolve its effective askerDialog.
+  // Ensure the tellasker exists so SideDialog can resolve its effective askerDialog.
   if (
     assignmentFromAsker.callerDialogId &&
     assignmentFromAsker.callerDialogId !== targetId.rootId &&

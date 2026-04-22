@@ -291,7 +291,7 @@ Core principles:
 
 - Startup scripts are mapped into real dialog history; they are not read-only logs.
 - Their runtime semantics are not “extra system prompt text”, but “restore reminders first, then replay records into dialog history where possible”.
-- Therefore tone must follow the chosen record type: write `human_text_record` as what a user/requester says to the agent; write `agent_words_record` as what the agent has already said; use `agent_thought_record` only sparingly for internal reasoning traces.
+- Therefore tone must follow the chosen record type: write `human_text_record` as what the user says to the agent; write `agent_words_record` as what the agent has already said; use `agent_thought_record` only sparingly for internal reasoning traces.
 - Some technical record types such as `ui_only_markdown_record` are persisted but do not become model-facing chat messages, so they should not be your main steering layer.
 - The outer file structure should be “top-level frontmatter + repeated `### record <type>` blocks”; do not wrap the file in decorative `# Startup Script` / `## History` headings.
 - Team managers should treat them as editable startup playbooks.
@@ -510,7 +510,7 @@ members:
 Note: in the normal-member example above, do **not** add `no_read_dirs` / `no_write_dirs` merely to
 restate that `.minds/**` is blocked. That boundary is already enforced by the runtime for general
 file tools; explicit deny entries should be reserved for extra constraints beyond the built-ins.
-  # Example visible teammate (recommended): define at least one non-hidden responder for daily work.
+  # Example visible teammate (recommended): define at least one non-hidden teammate for daily work.
   dev:
     name: Dev
     icon: '🧑‍💻'

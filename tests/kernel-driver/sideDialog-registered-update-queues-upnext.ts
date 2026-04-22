@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       callName: 'tellask',
       callId: 'call-updated-round',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList: ['@pangu'],
       tellaskContent: updatedBody,
       responseBody: 'Updated assignment adopted.',
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => listTellaskResultContents(root.msgs).includes(expectedUpdatedResult),
       4_000,
-      'updated assignment result to flow back to requester',
+      'updated assignment result to flow back to tellasker',
     );
     await waitForAllDialogsUnlocked(root, 6_000);
 

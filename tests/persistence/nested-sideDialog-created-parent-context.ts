@@ -67,12 +67,12 @@ async function main(): Promise<void> {
       assert.equal(
         nestedMeta?.askerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog metadata must point askerDialogId at the actual caller sideDialog',
+        'nested sideDialog metadata must point askerDialogId at the actual asker sideDialog',
       );
       assert.equal(
         nestedMeta?.assignmentFromAsker?.callerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog assignment must keep callerDialogId on the actual caller sideDialog',
+        'nested sideDialog assignment must keep callerDialogId on the actual asker sideDialog',
       );
 
       const parentCourseEvents = await DialogPersistence.readCourseEvents(
@@ -90,16 +90,16 @@ async function main(): Promise<void> {
           event.type === 'sideDialog_created_record' &&
           event.sideDialogId === nestedSideDialog.id.selfId,
       );
-      assert.ok(createdRecord, 'caller sideDialog course should record nested sideDialog creation');
+      assert.ok(createdRecord, 'asker sideDialog course should record nested sideDialog creation');
       assert.equal(
         createdRecord?.askerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog created record must target the actual caller sideDialog',
+        'nested sideDialog created record must target the actual asker sideDialog',
       );
       assert.equal(
         createdRecord?.assignmentFromAsker.callerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog created record must keep callerDialogId on the actual caller sideDialog',
+        'nested sideDialog created record must keep callerDialogId on the actual asker sideDialog',
       );
 
       const received: readonly TypedDialogEvent[] = recorder.snapshot();
@@ -115,17 +115,17 @@ async function main(): Promise<void> {
       assert.equal(
         nestedCreatedEvent?.parentDialog.selfId,
         parentSideDialog.id.selfId,
-        'nested sideDialog live event must point parentDialog at the actual caller sideDialog',
+        'nested sideDialog live event must point parentDialog at the actual asker sideDialog',
       );
       assert.equal(
         nestedCreatedEvent?.sideDialogNode.askerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog live node must point askerDialogId at the actual caller sideDialog',
+        'nested sideDialog live node must point askerDialogId at the actual asker sideDialog',
       );
       assert.equal(
         nestedCreatedEvent?.sideDialogNode.assignmentFromAsker?.callerDialogId,
         parentSideDialog.id.selfId,
-        'nested sideDialog live node must keep callerDialogId on the actual caller sideDialog',
+        'nested sideDialog live node must keep callerDialogId on the actual asker sideDialog',
       );
     } finally {
       clearInstalledGlobalDialogEventBroadcaster();

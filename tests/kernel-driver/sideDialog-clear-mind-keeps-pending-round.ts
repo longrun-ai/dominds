@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Ask @pangu and let the callee continue after clearing mind.';
+    const trigger = 'Ask @pangu and let the tellaskee continue after clearing mind.';
     const rootFirstResponse = 'Starting tellask.';
     const mentionList = ['@pangu'];
     const tellaskContent = 'Please inspect the problem and come back with the answer.';
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
       callName: 'tellaskSessionless',
       callId: 'root-call-clear-mind-keeps-pending-round',
       responderId: 'pangu',
-      requesterId: 'tester',
+      tellaskerId: 'tester',
       mentionList,
       tellaskContent,
       responseBody: finalSideDialogReply,
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => lastAssistantSaying(mainDialog) === rootAfterReply,
       3_000,
-      'main dialog to resume after the callee replies from the new course',
+      'main dialog to resume after the tellaskee replies from the new course',
     );
     await waitForAllDialogsUnlocked(mainDialog, 3_000);
 
@@ -130,23 +130,23 @@ async function main(): Promise<void> {
     assert.equal(
       pending.length,
       0,
-      'caller pending-sideDialogs should clear only after the continued reply arrives',
+      'asker pending-sideDialogs should clear only after the continued reply arrives',
     );
 
     const tellaskResults = listTellaskResultContents(mainDialog.msgs);
     assert.ok(
       tellaskResults.includes(completedResponseContent),
-      'caller should receive the final tellask_result_msg produced after the callee switches course',
+      'asker should receive the final tellask_result_msg produced after the tellaskee switches course',
     );
     assert.ok(
       !tellaskResults.some((content) => content.includes('this tellask round is no longer valid')),
-      'caller should not receive the old cleared-mind invalidation failure notice',
+      'asker should not receive the old cleared-mind invalidation failure notice',
     );
 
     const allDialogs = mainDialog.getAllDialogs();
     const sideDialog = allDialogs.find((dialog) => dialog.id.selfId !== mainDialog.id.selfId);
     assert.ok(sideDialog, 'expected a sideDialog to exist');
-    assert.equal(sideDialog.currentCourse, 2, 'callee sideDialog should advance to course #2');
+    assert.equal(sideDialog.currentCourse, 2, 'tellaskee sideDialog should advance to course #2');
   });
 
   console.log('kernel-driver sideDialog-clear-mind-keeps-pending-round: PASS');

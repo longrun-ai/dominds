@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     };
     const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
     const interjectResponse = 'Handled the local interruption only.';
-    const finalResponse = 'Nested work is back, and I am now replying to the requester.';
+    const finalResponse = 'Nested work is back, and I am now replying to the tellasker.';
 
     const sideDialog = await root.createSideDialog(
       'pangu',
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       {
         message: reassertionPrompt,
         role: 'user',
-        response: 'Replying to the requester now.',
+        response: 'Replying to the tellasker now.',
         funcCalls: [
           {
             id: 'call-sideDialog-reply-sessionless-after-continue',
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       {
         message: 'Reply delivered via `replyTellaskSessionless`.',
         role: 'tool',
-        response: 'The requester reply has now been delivered.',
+        response: 'The tellasker reply has now been delivered.',
       },
     ]);
 
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     assert.equal(
       pendingAtRoot.length,
       0,
-      'manual Continue should let the sideDialog finish the requester reply immediately once unblocked',
+      'manual Continue should let the sideDialog finish the tellasker reply immediately once unblocked',
     );
   });
 

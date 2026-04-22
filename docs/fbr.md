@@ -7,7 +7,7 @@ Chinese version: [中文版](./fbr.zh.md)
 ## 1. What it is
 
 **Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
-then reporting back to the requester.
+then reporting back to the tellasker.
 
 In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "...", effort?: N })`.
 The mechanism is the runtime-enforced contract applied to the spawned Side Dialog.
@@ -30,7 +30,7 @@ silent ignore is worse than an error.
 
 ### 2.3 Serial multi-pass reasoning, not “multi-agent collaboration”
 
-`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` divergence rounds, then `N` convergence rounds, inside a **single FBR Side Dialog conversation window**. The FBR Side Dialog itself must finish denoising and closure before reporting to requester.
+`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` divergence rounds, then `N` convergence rounds, inside a **single FBR Side Dialog conversation window**. The FBR Side Dialog itself must finish denoising and closure before reporting to tellasker.
 
 ## 3. User syntax
 
@@ -62,17 +62,17 @@ This section uses MUST / MUST NOT / SHOULD / MAY for requirements.
 
 When driving an FBR Side Dialog created by `freshBootsReasoning({ tellaskContent: "..." })`, runtime MUST enforce:
 
-- **No dependency on requester-side history**
-  - the responder MUST NOT assume access to the requester-side dialog history
-  - the responder MUST treat the tellask body as the primary, authoritative task context
+- **No dependency on tellasker-side history**
+  - the tellaskee MUST NOT assume access to the tellasker-side dialog history
+  - the tellaskee MUST treat the tellask body as the primary, authoritative task context
 - **Shared FBR iteration context**
   - all rounds launched by a single `freshBootsReasoning` call share the same FBR window assumptions and no-tools policy
-  - rounds run in the same Side Dialog context as one continuous thread and stay isolated from the requester-side dialog history
+  - rounds run in the same Side Dialog context as one continuous thread and stay isolated from the tellasker-side dialog history
 - **No tool-based context fetch**
   - no reading files / running commands / browsing
   - no accessing Memory or rtws (runtime workspace) state
 
-Intuition: “fresh boots” means “fresh relative to the requester-side thread”, not “ignores baseline system rules”. Runtime may
+Intuition: “fresh boots” means “fresh relative to the tellasker-side thread”, not “ignores baseline system rules”. Runtime may
 still inject baseline policy/safety/formatting context, but the tellask body remains the authority.
 
 ### 4.2 Tool-less (prompt + technical enforcement)
@@ -87,7 +87,7 @@ Tool-less FBR has two layers, both required:
 The FBR system prompt MUST communicate (wording may vary, meaning must hold):
 
 - this is an FBR Side Dialog; the tellask body is the primary context
-- do not assume access to requester-side dialog history
+- do not assume access to tellasker-side dialog history
 - if critical context is missing, list what is missing and why it blocks reasoning
 - do not emit any tellasks (including `tellaskBack` or `askHuman`)
 
@@ -131,12 +131,12 @@ If critical context is missing, the FBR Side Dialog should **list the missing it
 
 ### 4.4 Output contract (easy to distill)
 
-An FBR Side Dialog should denoise internally and post only one requester-visible final artifact.
+An FBR Side Dialog should denoise internally and post only one tellasker-visible final artifact.
 
 1. **Divergence**: stay open to wild or minority ideas without forcing early consensus.
 2. **Convergence**: discard unsupported wild ideas as noise and keep only stable cross-round consensus.
 3. **Final closure**: end by calling exactly one of the two conclusion functions above.
-4. **Requester delivery**: the requester receives only the final low-noise conclusion, or the final “unreasonable situation” conclusion.
+4. **Tellasker delivery**: the tellasker receives only the final low-noise conclusion, or the final “unreasonable situation” conclusion.
 
 ### 4.5 Violations and errors (loud + debuggable)
 
@@ -161,7 +161,7 @@ When `fbr-effort = N`:
 - convergence rounds must denoise autonomously and preserve only stable consensus
 - conclusion functions are exposed only after divergence and convergence are complete
 - if the model still does not end via one of the required conclusion functions after `N` finalization retries, runtime must programmatically produce the `presentUnreasonableSituation` result
-- requester receives only the final low-noise conclusion or the final unreasonable-situation conclusion
+- tellasker receives only the final low-noise conclusion or the final unreasonable-situation conclusion
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 
@@ -200,7 +200,7 @@ members:
     # Run 5 rounds per `freshBootsReasoning({ tellaskContent: "..." })` in the same Side Dialog.
     fbr-effort: 5
 
-    # Make FBR more exploratory without changing requester behavior.
+    # Make FBR more exploratory without changing tellasker behavior.
     fbr_model_params:
       codex:
         temperature: 0.9

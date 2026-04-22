@@ -38,7 +38,7 @@ The same information can be categorized by “who needs to see it / who maintain
 - **Collective-scope (shared by team/task)**:
   - rtws-level “env notes” (`.minds/env*.md`): the workspace’s baseline facts, runtime constraints, and gotchas
   - team memory (`team_memory`)
-  - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple Main Dialogs (different responders), so treat it as the collective single source of truth
+  - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple Main Dialogs (different Dialog Responders), so treat it as the collective single source of truth
 
 ### Permissions and division of labor
 
