@@ -2906,6 +2906,11 @@ export class DomindsDialogContainer extends HTMLElement {
       // Dialog blocks can still grow after first render while content streams in. Observe only
       // the target itself while its expand footer is hidden.
       observeTargetUntilOverflow: true,
+      isContentComplete: () => {
+        const bubble = target.closest('.generation-bubble');
+        if (!(bubble instanceof HTMLElement)) return true;
+        return bubble.dataset.finalized === 'true' || bubble.classList.contains('completed');
+      },
       onAfterExpand: () => {
         this.scrollToBottom();
       },

@@ -3,7 +3,7 @@ import { dispatchDomindsEvent } from './dom-events';
 export const PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX = 120;
 export const PROGRESSIVE_EXPAND_STEP_PARENT_RATIO = 1 / 3;
 export const PROGRESSIVE_EXPAND_STEP_PARENT_ATTR = 'data-progressive-expand-step-parent';
-const PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS = 220;
+const PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS = 420;
 const PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX = 1;
 
 export type ProgressiveExpandState =
@@ -19,6 +19,7 @@ type ProgressiveExpandableComponentOptions = Readonly<{
   label: Readonly<{ text: string; title: string }>;
   state?: ProgressiveExpandState;
   observeTargetUntilOverflow?: boolean;
+  isContentComplete?: () => boolean;
   onStateChange?: (state: ProgressiveExpandState) => void;
   onAfterExpand?: () => void;
 }>;
@@ -78,6 +79,7 @@ export class ProgressiveExpandableComponent {
   private readonly stepParent: HTMLElement | null;
   private readonly label: Readonly<{ text: string; title: string }>;
   private readonly observeTargetUntilOverflow: boolean;
+  private readonly isContentComplete: () => boolean;
   private readonly onStateChange?: (state: ProgressiveExpandState) => void;
   private readonly onAfterExpand?: () => void;
   private currentState: ProgressiveExpandState;
@@ -103,11 +105,17 @@ export class ProgressiveExpandableComponent {
     }
 
     const clickAction =
-      event.detail <= 1 ? () => this.expandOneStep() : () => this.expandToCurrentMaximum();
+      event.detail <= 1 ? () => this.expandOneStep() : () => this.expandForDoubleClick();
     this.pendingClickCommitTimeout = window.setTimeout(() => {
       this.pendingClickCommitTimeout = null;
       clickAction();
     }, PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS);
+  };
+
+  private readonly boundOnDoubleClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    this.cancelPendingClickCommit();
+    this.expandForDoubleClick();
   };
 
   private expandOneStep(): void {
@@ -125,6 +133,15 @@ export class ProgressiveExpandableComponent {
     this.queueAfterExpansionEffects();
   }
 
+  private expandForDoubleClick(): void {
+    if (this.isContentComplete()) {
+      this.autoExpandFromNowOn();
+      this.queueAfterExpansionEffects();
+      return;
+    }
+    this.expandToCurrentMaximum();
+  }
+
   constructor(options: ProgressiveExpandableComponentOptions) {
     this.target = options.target;
     this.footer = options.footer;
@@ -132,6 +149,7 @@ export class ProgressiveExpandableComponent {
     this.stepParent = options.stepParent ?? null;
     this.label = options.label;
     this.observeTargetUntilOverflow = options.observeTargetUntilOverflow === true;
+    this.isContentComplete = options.isContentComplete ?? (() => true);
     this.onStateChange = options.onStateChange;
     this.onAfterExpand = options.onAfterExpand;
     this.currentState = options.state ?? { kind: 'initial' };
@@ -139,6 +157,7 @@ export class ProgressiveExpandableComponent {
     this.button.setAttribute('aria-label', this.label.text);
     this.button.title = this.label.title;
     this.button.addEventListener('click', this.boundOnClick);
+    this.button.addEventListener('dblclick', this.boundOnDoubleClick);
     this.target.addEventListener(
       'progressive-expand-content-grown',
       this.boundOnNestedGrowth as EventListener,
@@ -156,6 +175,7 @@ export class ProgressiveExpandableComponent {
     this.cancelPendingClickCommit();
     this.disconnectOverflowObserver();
     this.button.removeEventListener('click', this.boundOnClick);
+    this.button.removeEventListener('dblclick', this.boundOnDoubleClick);
     this.target.removeEventListener(
       'progressive-expand-content-grown',
       this.boundOnNestedGrowth as EventListener,

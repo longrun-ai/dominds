@@ -321,6 +321,11 @@ export class DomindsCodeBlock extends HTMLElement {
       // Code blocks can keep growing while streaming output arrives. Observe only the code block
       // itself while its expand footer is hidden; never infer or observe parent containers here.
       observeTargetUntilOverflow: true,
+      isContentComplete: () => {
+        const bubble = this.closest('.generation-bubble');
+        if (!(bubble instanceof HTMLElement)) return true;
+        return bubble.dataset.finalized === 'true' || bubble.classList.contains('completed');
+      },
       state: this.progressiveExpandState,
       onStateChange: (state) => {
         this.progressiveExpandState = state;
