@@ -7,17 +7,32 @@ import {
   type ProgressiveExpandState,
 } from './progressive-expand';
 
+export const DOMINDS_CODE_BLOCK_CODE_ATTR = 'data-code';
+
+export function encodeDomindsCodeBlockDataCode(code: string): string {
+  return encodeURIComponent(code);
+}
+
+export function decodeDomindsCodeBlockDataCode(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    throw new Error(`Invalid ${DOMINDS_CODE_BLOCK_CODE_ATTR} on dominds-code-block.`);
+  }
+}
+
 /**
  * Custom Web Component for Syntax Highlighted Code Blocks
  */
 export class DomindsCodeBlock extends HTMLElement {
   private _language: string = '';
   private _code: string = '';
+  private hasCodeSource: boolean = false;
   private progressiveExpandCleanup: (() => void) | null = null;
   private progressiveExpandState: ProgressiveExpandState = { kind: 'initial' };
 
   static get observedAttributes() {
-    return ['language'];
+    return ['language', DOMINDS_CODE_BLOCK_CODE_ATTR];
   }
 
   constructor() {
@@ -35,14 +50,26 @@ export class DomindsCodeBlock extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
-    if (name === 'language' && oldValue !== newValue) {
-      this._language = newValue;
-      this.render();
+    if (oldValue === newValue) return;
+    switch (name) {
+      case 'language':
+        this._language = newValue;
+        this.render();
+        return;
+      case DOMINDS_CODE_BLOCK_CODE_ATTR:
+        this.setCodeSource(decodeDomindsCodeBlockDataCode(newValue ?? ''));
+        this.render();
+        return;
     }
   }
 
-  public set code(value: string) {
+  private setCodeSource(value: string): void {
     this._code = value;
+    this.hasCodeSource = true;
+  }
+
+  public set code(value: string) {
+    this.setCodeSource(value);
     this.render();
   }
 
@@ -54,18 +81,25 @@ export class DomindsCodeBlock extends HTMLElement {
    * Public API: Append a code chunk and re-render
    */
   public appendChunk(chunk: string): void {
-    this._code += chunk;
+    this.setCodeSource(this._code + chunk);
     this.render();
   }
 
+  private readCodeAttribute(): string | null {
+    const encoded = this.getAttribute(DOMINDS_CODE_BLOCK_CODE_ATTR);
+    if (encoded === null) return null;
+    return decodeDomindsCodeBlockDataCode(encoded);
+  }
+
   private render() {
-    // If we have no code yet, try to get it from textContent
-    if (!this._code && this.textContent) {
-      // Preserve exact leading whitespace; trimming shifts the first line left.
-      this._code = this.textContent;
+    if (!this.hasCodeSource) {
+      const codeFromAttribute = this.readCodeAttribute();
+      if (codeFromAttribute !== null) {
+        this.setCodeSource(codeFromAttribute);
+      }
     }
 
-    if (!this._code) return;
+    if (!this.hasCodeSource) return;
 
     const language = this._language || 'plaintext';
 

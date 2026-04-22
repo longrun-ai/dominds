@@ -4,6 +4,7 @@
  * streaming updates.
  */
 
+import { decodeDomindsCodeBlockDataCode, DOMINDS_CODE_BLOCK_CODE_ATTR } from './dominds-code-block';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -35,6 +36,14 @@ function isMathBlockElement(node: Node | null): node is MathBlockElement {
     node.tagName === 'DOMINDS-MATH-BLOCK' &&
     typeof (node as Partial<MathBlockElement>).tex === 'string'
   );
+}
+
+function getNextCodeBlockCode(element: Element): string {
+  const encoded = element.getAttribute(DOMINDS_CODE_BLOCK_CODE_ATTR);
+  if (encoded === null) {
+    throw new Error(`Rendered dominds-code-block is missing ${DOMINDS_CODE_BLOCK_CODE_ATTR}.`);
+  }
+  return decodeDomindsCodeBlockDataCode(encoded);
 }
 
 function syncElementAttributes(live: Element, next: Element): boolean {
@@ -126,7 +135,7 @@ export class DomindsMarkdownSection extends HTMLElement {
     if (isCodeBlockElement(live) && isCodeBlockElement(next)) {
       return (
         (live.getAttribute('language') ?? '') === (next.getAttribute('language') ?? '') &&
-        live.code === (next.textContent ?? '')
+        live.code === getNextCodeBlockCode(next)
       );
     }
     if (isMermaidBlockElement(live) && isMermaidBlockElement(next)) {
@@ -147,7 +156,7 @@ export class DomindsMarkdownSection extends HTMLElement {
   ): 'not-custom' | 'changed' | 'unchanged' {
     if (isCodeBlockElement(live) && isCodeBlockElement(next)) {
       const attrChanged = syncOptionalAttribute(live, 'language', next.getAttribute('language'));
-      const nextCode = next.textContent ?? '';
+      const nextCode = getNextCodeBlockCode(next);
       if (live.code !== nextCode) {
         live.code = nextCode;
         return 'changed';

@@ -1,6 +1,6 @@
 import DOMPurify, { type Config as DomPurifyConfig } from 'dompurify';
 import MarkdownIt from 'markdown-it';
-import './dominds-code-block';
+import { DOMINDS_CODE_BLOCK_CODE_ATTR, encodeDomindsCodeBlockDataCode } from './dominds-code-block';
 import './dominds-math-block';
 import './dominds-mermaid-block';
 
@@ -439,7 +439,11 @@ const allowedCustomElements = new Set<string>([
   'dominds-math-block',
 ]);
 
-const allowedCustomElementAttrs = new Set<string>(['language', 'display']);
+const allowedCustomElementAttrs = new Set<string>([
+  'language',
+  'display',
+  DOMINDS_CODE_BLOCK_CODE_ATTR,
+]);
 
 const domPurifyConfig: DomPurifyConfig = {
   RETURN_TRUSTED_TYPE: false,
@@ -557,7 +561,8 @@ md.renderer.rules.fence = (tokens, idx): string => {
   }
 
   const attrLanguage = language.length > 0 ? language : 'plaintext';
-  return `<dominds-code-block language="${escapeHtmlText(attrLanguage)}">${escapeHtmlText(code)}</dominds-code-block>`;
+  const encodedCode = encodeDomindsCodeBlockDataCode(code);
+  return `<dominds-code-block language="${escapeHtmlText(attrLanguage)}" ${DOMINDS_CODE_BLOCK_CODE_ATTR}="${escapeHtmlText(encodedCode)}"></dominds-code-block>`;
 };
 
 export function renderDomindsMarkdown(
