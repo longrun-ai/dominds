@@ -9,12 +9,12 @@ import {
   sanitizeToolContextForProvider,
 } from '../../main/llm/gen/tool-call-context';
 import { DialogPersistence } from '../../main/persistence';
-import { createRootDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot);
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
 
     const call: FuncCallRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       'expected direct tellask call persistence to avoid implicit func_result synthesis',
     );
 
-    const orphanedDlg = await createRootDialog('tester');
+    const orphanedDlg = await createMainDialog('tester');
     const orphanedResult: FuncResultRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'func_result_record',
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     );
     await buildOpenAiRequestInputWrapper(sanitizedOrphaned.messages);
 
-    const replySpecialDlg = await createRootDialog('tester');
+    const replySpecialDlg = await createMainDialog('tester');
     await replySpecialDlg.persistTellaskCall(
       'reply-special-call',
       'replyTellaskBack',
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
       'expected tellask special result restore to replay exactly one func_result_msg',
     );
 
-    const malformedTellaskDlg = await createRootDialog('tester');
+    const malformedTellaskDlg = await createMainDialog('tester');
     await malformedTellaskDlg.persistTellaskCallResultPair({
       id: 'malformed-reply-call',
       name: 'replyTellaskBack',

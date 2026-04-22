@@ -4,7 +4,7 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeUserPrompt,
   withTempRtws,
   writeMockDb,
@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

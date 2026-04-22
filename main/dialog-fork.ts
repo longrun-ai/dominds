@@ -3,22 +3,24 @@ import path from 'node:path';
 
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type {
+  DialogAskerStackState,
   DialogMetadataFile,
   FuncResultContentItem,
   HumanQuestion,
-  PendingSubdialogStateRecord,
-  PendingSubdialogsReconciledRecord,
+  MainDialogMetadataFile,
+  PendingSideDialogStateRecord,
+  PendingSideDialogsReconciledRecord,
   PersistedDialogRecord,
   Questions4HumanReconciledRecord,
   ReminderSnapshotItem,
   RemindersReconciledRecord,
-  RootDialogMetadataFile,
   RootGenerationAnchor,
-  SubdialogCreatedRecord,
-  SubdialogRegistryReconciledRecord,
-  SubdialogRegistryStateRecord,
-  SubdialogResponseStateRecord,
-  SubdialogResponsesReconciledRecord,
+  SideDialogCreatedRecord,
+  SideDialogRegistryReconciledRecord,
+  SideDialogRegistryStateRecord,
+  SideDialogResponseStateRecord,
+  SideDialogResponsesReconciledRecord,
+  TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import type { DialogStatusKind } from '@longrun-ai/kernel/types/wire';
@@ -36,7 +38,7 @@ type ForkDialogAction =
   | Readonly<{
       kind: 'restore_pending';
       pendingQ4H: boolean;
-      pendingSubdialogs: boolean;
+      pendingSideDialogs: boolean;
     }>
   | Readonly<{
       kind: 'auto_continue';
@@ -63,24 +65,24 @@ type ForkDialogPlan = Readonly<{
   currentCourse: number;
   reminders: ReadonlyArray<Reminder>;
   questions: ReadonlyArray<HumanQuestion>;
-  pendingSubdialogs: ReadonlyArray<PendingSubdialogStateRecord>;
-  registryEntries: ReadonlyArray<SubdialogRegistryStateRecord>;
-  subdialogResponses: ReadonlyArray<SubdialogResponseStateRecord>;
+  pendingSideDialogs: ReadonlyArray<PendingSideDialogStateRecord>;
+  registryEntries: ReadonlyArray<SideDialogRegistryStateRecord>;
+  sideDialogResponses: ReadonlyArray<SideDialogResponseStateRecord>;
   childCount: number;
 }>;
 
 type ForkSnapshot = Readonly<{
   reminders: ReadonlyArray<Reminder>;
   questions: ReadonlyArray<HumanQuestion>;
-  pendingSubdialogs: ReadonlyArray<PendingSubdialogStateRecord>;
-  registryEntries: ReadonlyArray<SubdialogRegistryStateRecord>;
-  subdialogResponses: ReadonlyArray<SubdialogResponseStateRecord>;
+  pendingSideDialogs: ReadonlyArray<PendingSideDialogStateRecord>;
+  registryEntries: ReadonlyArray<SideDialogRegistryStateRecord>;
+  sideDialogResponses: ReadonlyArray<SideDialogResponseStateRecord>;
 }>;
 
-type IncludedSubdialog = Readonly<{
+type IncludedSideDialog = Readonly<{
   sourceId: DialogID;
   targetId: DialogID;
-  metadata: Extract<DialogMetadataFile, { supdialogId: string }>;
+  metadata: Extract<DialogMetadataFile, { askerDialogId: string }>;
 }>;
 
 const FORK_BASELINE_ANCHOR: RootGenerationAnchor = toRootGenerationAnchor({
@@ -121,24 +123,24 @@ function cloneQuestions(questions: readonly HumanQuestion[]): HumanQuestion[] {
   }));
 }
 
-function clonePendingSubdialogs(
-  pendingSubdialogs: readonly PendingSubdialogStateRecord[],
-): PendingSubdialogStateRecord[] {
-  return pendingSubdialogs.map((entry) => ({
+function clonePendingSideDialogs(
+  pendingSideDialogs: readonly PendingSideDialogStateRecord[],
+): PendingSideDialogStateRecord[] {
+  return pendingSideDialogs.map((entry) => ({
     ...entry,
     mentionList: entry.mentionList ? [...entry.mentionList] : undefined,
   }));
 }
 
 function cloneRegistryEntries(
-  entries: readonly SubdialogRegistryStateRecord[],
-): SubdialogRegistryStateRecord[] {
+  entries: readonly SideDialogRegistryStateRecord[],
+): SideDialogRegistryStateRecord[] {
   return entries.map((entry) => ({ ...entry }));
 }
 
-function cloneSubdialogResponses(
-  responses: readonly SubdialogResponseStateRecord[],
-): SubdialogResponseStateRecord[] {
+function cloneSideDialogResponses(
+  responses: readonly SideDialogResponseStateRecord[],
+): SideDialogResponseStateRecord[] {
   return responses.map((response) => ({
     ...response,
     mentionList: response.mentionList ? [...response.mentionList] : undefined,
@@ -153,38 +155,87 @@ function rewriteForkTreeDialogSelfId(
   return sourceDialogSelfId === sourceRootId ? targetRootId : sourceDialogSelfId;
 }
 
-function rewriteAssignmentFromSupForFork(
-  assignmentFromSup: Extract<DialogMetadataFile, { supdialogId: string }>['assignmentFromSup'],
+function rewriteAssignmentFromAskerForFork(
+  assignmentFromAsker: Extract<
+    DialogMetadataFile,
+    { askerDialogId: string }
+  >['assignmentFromAsker'],
   sourceRootId: string,
   targetRootId: string,
-): Extract<DialogMetadataFile, { supdialogId: string }>['assignmentFromSup'] {
+): Extract<DialogMetadataFile, { askerDialogId: string }>['assignmentFromAsker'] {
   return {
-    ...assignmentFromSup,
+    ...assignmentFromAsker,
     callerDialogId: rewriteForkTreeDialogSelfId(
-      assignmentFromSup.callerDialogId,
+      assignmentFromAsker.callerDialogId,
       sourceRootId,
       targetRootId,
     ),
-    mentionList: assignmentFromSup.mentionList ? [...assignmentFromSup.mentionList] : undefined,
-    collectiveTargets: assignmentFromSup.collectiveTargets
-      ? [...assignmentFromSup.collectiveTargets]
+    mentionList: assignmentFromAsker.mentionList ? [...assignmentFromAsker.mentionList] : undefined,
+    collectiveTargets: assignmentFromAsker.collectiveTargets
+      ? [...assignmentFromAsker.collectiveTargets]
       : undefined,
   };
 }
 
-function rewriteSubdialogMetadataForFork(
-  metadata: Extract<DialogMetadataFile, { supdialogId: string }>,
+function rewriteSideDialogMetadataForFork(
+  metadata: Extract<DialogMetadataFile, { askerDialogId: string }>,
   sourceRootId: string,
   targetRootId: string,
-): Extract<DialogMetadataFile, { supdialogId: string }> {
+): Extract<DialogMetadataFile, { askerDialogId: string }> {
   return {
     ...metadata,
-    supdialogId: rewriteForkTreeDialogSelfId(metadata.supdialogId, sourceRootId, targetRootId),
-    assignmentFromSup: rewriteAssignmentFromSupForFork(
-      metadata.assignmentFromSup,
+    askerDialogId: rewriteForkTreeDialogSelfId(metadata.askerDialogId, sourceRootId, targetRootId),
+    assignmentFromAsker: rewriteAssignmentFromAskerForFork(
+      metadata.assignmentFromAsker,
       sourceRootId,
       targetRootId,
     ),
+  };
+}
+
+function rewriteTellaskReplyDirectiveForFork(
+  directive: TellaskReplyDirective,
+  sourceRootId: string,
+  targetRootId: string,
+): TellaskReplyDirective {
+  return {
+    ...directive,
+    targetDialogId: rewriteForkTreeDialogSelfId(
+      directive.targetDialogId,
+      sourceRootId,
+      targetRootId,
+    ),
+  };
+}
+
+function rewriteSideDialogAskerStackStateForFork(
+  state: DialogAskerStackState,
+  sourceRootId: string,
+  targetRootId: string,
+): DialogAskerStackState {
+  return {
+    askerStack: state.askerStack.map((frame) => ({
+      kind: 'asker_dialog_stack_frame',
+      askerDialogId: rewriteForkTreeDialogSelfId(frame.askerDialogId, sourceRootId, targetRootId),
+      ...(frame.assignmentFromAsker === undefined
+        ? {}
+        : {
+            assignmentFromAsker: rewriteAssignmentFromAskerForFork(
+              frame.assignmentFromAsker,
+              sourceRootId,
+              targetRootId,
+            ),
+          }),
+      ...(frame.tellaskReplyObligation === undefined
+        ? {}
+        : {
+            tellaskReplyObligation: rewriteTellaskReplyDirectiveForFork(
+              frame.tellaskReplyObligation,
+              sourceRootId,
+              targetRootId,
+            ),
+          }),
+    })),
   };
 }
 
@@ -193,18 +244,18 @@ function isForkStateRecord(
 ):
   | RemindersReconciledRecord
   | Questions4HumanReconciledRecord
-  | PendingSubdialogsReconciledRecord
-  | SubdialogRegistryReconciledRecord
-  | SubdialogResponsesReconciledRecord
-  | SubdialogCreatedRecord
+  | PendingSideDialogsReconciledRecord
+  | SideDialogRegistryReconciledRecord
+  | SideDialogResponsesReconciledRecord
+  | SideDialogCreatedRecord
   | null {
   switch (record.type) {
-    case 'subdialog_created_record':
+    case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_subdialogs_reconciled_record':
-    case 'subdialog_registry_reconciled_record':
-    case 'subdialog_responses_reconciled_record':
+    case 'pending_sideDialogs_reconciled_record':
+    case 'sideDialog_registry_reconciled_record':
+    case 'sideDialog_responses_reconciled_record':
       return record;
     default:
       return null;
@@ -230,17 +281,17 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'native_tool_call_record':
     case 'tool_result_image_ingest_record':
     case 'user_image_ingest_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
-    case 'subdialog_created_record':
+    case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_subdialogs_reconciled_record':
-    case 'subdialog_registry_reconciled_record':
-    case 'subdialog_responses_reconciled_record':
+    case 'pending_sideDialogs_reconciled_record':
+    case 'sideDialog_registry_reconciled_record':
+    case 'sideDialog_responses_reconciled_record':
       return false;
     default: {
       const _exhaustive: never = record;
@@ -318,7 +369,7 @@ function rewriteRecordForFork(
     // not part of baseline state reconciliation and must not make forking fail.
     case 'web_search_call_record':
     case 'native_tool_call_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
@@ -345,12 +396,12 @@ function rewriteRecordForFork(
           rootId: newRootId,
         },
       };
-    case 'subdialog_created_record':
+    case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_subdialogs_reconciled_record':
-    case 'subdialog_registry_reconciled_record':
-    case 'subdialog_responses_reconciled_record':
+    case 'pending_sideDialogs_reconciled_record':
+    case 'sideDialog_registry_reconciled_record':
+    case 'sideDialog_responses_reconciled_record':
       throw new Error(`Fork transcript copy must not include state record ${record.type}`);
     default: {
       const _exhaustive: never = record;
@@ -382,21 +433,21 @@ function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
 function computeRootForkDisplayState(args: {
   action: ForkDialogAction;
   questions: readonly HumanQuestion[];
-  pendingSubdialogs: readonly PendingSubdialogStateRecord[];
+  pendingSideDialogs: readonly PendingSideDialogStateRecord[];
 }): DialogDisplayState {
   if (args.action.kind === 'draft_user_text') {
     return { kind: 'idle_waiting_user' };
   }
   const hasQ4H = args.questions.length > 0;
-  const hasSubdialogs = args.pendingSubdialogs.length > 0;
-  if (hasQ4H && hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+  const hasSideDialogs = args.pendingSideDialogs.length > 0;
+  if (hasQ4H && hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
   }
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
-  if (hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+  if (hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'stopped', reason: { kind: 'fork_continue_ready' }, continueEnabled: true };
 }
@@ -461,9 +512,9 @@ async function collectForkSnapshot(
   const courseNumbers = await listDialogCourseNumbers(dialogId, status);
   let latestReminders: ReminderSnapshotItem[] | null = null;
   let latestQuestions: HumanQuestion[] | null = null;
-  let latestPending: PendingSubdialogStateRecord[] | null = null;
-  let latestRegistry: SubdialogRegistryStateRecord[] | null = null;
-  let latestResponses: SubdialogResponseStateRecord[] | null = null;
+  let latestPending: PendingSideDialogStateRecord[] | null = null;
+  let latestRegistry: SideDialogRegistryStateRecord[] | null = null;
+  let latestResponses: SideDialogResponseStateRecord[] | null = null;
 
   for (const course of courseNumbers) {
     const events = await DialogPersistence.readCourseEvents(dialogId, course, status);
@@ -478,16 +529,16 @@ async function collectForkSnapshot(
         case 'questions4human_reconciled_record':
           latestQuestions = cloneQuestions(stateRecord.questions);
           break;
-        case 'pending_subdialogs_reconciled_record':
-          latestPending = clonePendingSubdialogs(stateRecord.pendingSubdialogs);
+        case 'pending_sideDialogs_reconciled_record':
+          latestPending = clonePendingSideDialogs(stateRecord.pendingSideDialogs);
           break;
-        case 'subdialog_registry_reconciled_record':
+        case 'sideDialog_registry_reconciled_record':
           latestRegistry = cloneRegistryEntries(stateRecord.entries);
           break;
-        case 'subdialog_responses_reconciled_record':
-          latestResponses = cloneSubdialogResponses(stateRecord.responses);
+        case 'sideDialog_responses_reconciled_record':
+          latestResponses = cloneSideDialogResponses(stateRecord.responses);
           break;
-        case 'subdialog_created_record':
+        case 'sideDialog_created_record':
           break;
         default: {
           const _exhaustive: never = stateRecord;
@@ -501,21 +552,21 @@ async function collectForkSnapshot(
     reminders:
       latestReminders !== null ? latestReminders.map((item) => cloneReminderSnapshot(item)) : [],
     questions: latestQuestions ?? [],
-    pendingSubdialogs: latestPending ?? [],
+    pendingSideDialogs: latestPending ?? [],
     registryEntries: latestRegistry ?? [],
-    subdialogResponses: latestResponses ?? [],
+    sideDialogResponses: latestResponses ?? [],
   };
 }
 
-async function collectIncludedSubdialogs(args: {
+async function collectIncludedSideDialogs(args: {
   sourceRootId: string;
   sourceStatus: DialogStatusKind;
   cutoffAnchor: RootGenerationAnchor;
   targetRootId: string;
-}): Promise<IncludedSubdialog[]> {
+}): Promise<IncludedSideDialog[]> {
   const queue: DialogID[] = [new DialogID(args.sourceRootId)];
   const scannedDialogSelfIds = new Set<string>();
-  const included = new Map<string, IncludedSubdialog>();
+  const included = new Map<string, IncludedSideDialog>();
 
   while (queue.length > 0) {
     const ownerDialogId = queue.shift();
@@ -531,18 +582,18 @@ async function collectIncludedSubdialogs(args: {
         args.sourceStatus,
       );
       for (const event of events) {
-        if (event.type !== 'subdialog_created_record') continue;
+        if (event.type !== 'sideDialog_created_record') continue;
         if (!anchorAtOrBefore(event, args.cutoffAnchor)) continue;
-        if (included.has(event.subdialogId)) continue;
+        if (included.has(event.sideDialogId)) continue;
 
-        const sourceId = new DialogID(event.subdialogId, args.sourceRootId);
+        const sourceId = new DialogID(event.sideDialogId, args.sourceRootId);
         const metadata = await DialogPersistence.loadDialogMetadata(sourceId, args.sourceStatus);
-        if (!metadata || metadata.supdialogId === undefined) {
-          throw new Error(`Missing included subdialog metadata for ${sourceId.valueOf()}`);
+        if (!metadata || metadata.askerDialogId === undefined) {
+          throw new Error(`Missing included sideDialog metadata for ${sourceId.valueOf()}`);
         }
-        included.set(event.subdialogId, {
+        included.set(event.sideDialogId, {
           sourceId,
-          targetId: new DialogID(event.subdialogId, args.targetRootId),
+          targetId: new DialogID(event.sideDialogId, args.targetRootId),
           metadata,
         });
         queue.push(sourceId);
@@ -551,11 +602,11 @@ async function collectIncludedSubdialogs(args: {
   }
 
   const orderedSelfIds = Array.from(included.keys()).sort();
-  const orderedIncluded: IncludedSubdialog[] = [];
+  const orderedIncluded: IncludedSideDialog[] = [];
   for (const selfId of orderedSelfIds) {
     const item = included.get(selfId);
     if (!item) {
-      throw new Error(`Missing ordered included subdialog for ${selfId}`);
+      throw new Error(`Missing ordered included sideDialog for ${selfId}`);
     }
     orderedIncluded.push(item);
   }
@@ -583,19 +634,19 @@ async function buildDialogForkPlan(args: {
       course,
       args.sourceStatus,
     );
-    const isRootDialog = args.sourceId.selfId === args.sourceId.rootId;
+    const isMainDialog = args.sourceId.selfId === args.sourceId.rootId;
     const retained = events.filter((event, index) => {
       if (isForkStateRecord(event)) {
         return false;
       }
-      if (args.truncateRootCourse && course === args.truncateRootCourse.course && isRootDialog) {
+      if (args.truncateRootCourse && course === args.truncateRootCourse.course && isMainDialog) {
         return index < args.truncateRootCourse.keepCount;
       }
-      if (!isRootDialog) {
+      if (!isMainDialog) {
         const recordAnchor = getRecordRootAnchor(event);
         if (recordAnchor === null) {
           throw new Error(
-            `fork dialog requires root anchor on subdialog transcript record: dialog=${args.sourceId.valueOf()} course=${String(course)} type=${event.type}`,
+            `fork dialog requires root anchor on sideDialog transcript record: dialog=${args.sourceId.valueOf()} course=${String(course)} type=${event.type}`,
           );
         }
         return anchorAtOrBefore(recordAnchor, args.cutoffAnchor);
@@ -619,19 +670,19 @@ async function buildDialogForkPlan(args: {
     currentCourse: retainedCurrentCourse,
     reminders: snapshot.reminders,
     questions: snapshot.questions,
-    pendingSubdialogs: snapshot.pendingSubdialogs,
+    pendingSideDialogs: snapshot.pendingSideDialogs,
     registryEntries: snapshot.registryEntries,
-    subdialogResponses: snapshot.subdialogResponses,
+    sideDialogResponses: snapshot.sideDialogResponses,
     childCount: args.childCount,
   };
 }
 
 async function appendForkBaselineState(
   plan: ForkDialogPlan,
-  baselineSubdialogCreatedRecords: readonly SubdialogCreatedRecord[],
+  baselineSideDialogCreatedRecords: readonly SideDialogCreatedRecord[],
 ): Promise<void> {
   const baselineTs = formatUnifiedTimestamp(new Date());
-  for (const record of baselineSubdialogCreatedRecords) {
+  for (const record of baselineSideDialogCreatedRecords) {
     await DialogPersistence.appendEvent(plan.targetId, 1, record, 'running');
   }
   const remindersRecord: RemindersReconciledRecord = {
@@ -655,23 +706,23 @@ async function appendForkBaselineState(
     ...FORK_BASELINE_ANCHOR,
     questions: cloneQuestions(plan.questions),
   };
-  const pendingRecord: PendingSubdialogsReconciledRecord = {
+  const pendingRecord: PendingSideDialogsReconciledRecord = {
     ts: baselineTs,
-    type: 'pending_subdialogs_reconciled_record',
+    type: 'pending_sideDialogs_reconciled_record',
     ...FORK_BASELINE_ANCHOR,
-    pendingSubdialogs: clonePendingSubdialogs(plan.pendingSubdialogs),
+    pendingSideDialogs: clonePendingSideDialogs(plan.pendingSideDialogs),
   };
-  const registryRecord: SubdialogRegistryReconciledRecord = {
+  const registryRecord: SideDialogRegistryReconciledRecord = {
     ts: baselineTs,
-    type: 'subdialog_registry_reconciled_record',
+    type: 'sideDialog_registry_reconciled_record',
     ...FORK_BASELINE_ANCHOR,
     entries: cloneRegistryEntries(plan.registryEntries),
   };
-  const responsesRecord: SubdialogResponsesReconciledRecord = {
+  const responsesRecord: SideDialogResponsesReconciledRecord = {
     ts: baselineTs,
-    type: 'subdialog_responses_reconciled_record',
+    type: 'sideDialog_responses_reconciled_record',
     ...FORK_BASELINE_ANCHOR,
-    responses: cloneSubdialogResponses(plan.subdialogResponses),
+    responses: cloneSideDialogResponses(plan.sideDialogResponses),
   };
   await DialogPersistence.appendEvent(plan.targetId, 1, remindersRecord, 'running');
   await DialogPersistence.appendEvent(plan.targetId, 1, q4hRecord, 'running');
@@ -685,38 +736,73 @@ async function persistForkPlan(args: {
   sourceStatus: DialogStatusKind;
   now: string;
   action: ForkDialogAction;
-  baselineRecordsByParentSelfId: ReadonlyMap<string, readonly SubdialogCreatedRecord[]>;
+  baselineRecordsByParentSelfId: ReadonlyMap<string, readonly SideDialogCreatedRecord[]>;
   latestDisableDiligencePush: boolean | undefined;
   latestDiligencePushRemainingBudget: number | undefined;
 }): Promise<void> {
   const { plan } = args;
   if (plan.targetId.selfId === plan.targetId.rootId) {
     if (
-      plan.metadata.supdialogId !== undefined ||
+      plan.metadata.askerDialogId !== undefined ||
       plan.metadata.sessionSlug !== undefined ||
-      plan.metadata.assignmentFromSup !== undefined
+      plan.metadata.assignmentFromAsker !== undefined
     ) {
-      throw new Error(`fork root plan received subdialog metadata: ${plan.targetId.valueOf()}`);
+      throw new Error(`fork root plan received sideDialog metadata: ${plan.targetId.valueOf()}`);
     }
-    const rewrittenMetadata: RootDialogMetadataFile = {
+    const rewrittenMetadata: MainDialogMetadataFile = {
       id: plan.targetId.selfId,
       agentId: plan.metadata.agentId,
       taskDocPath: plan.metadata.taskDocPath,
       createdAt: args.now,
       ...(plan.metadata.priming ? { priming: plan.metadata.priming } : {}),
     };
-    await DialogPersistence.saveRootDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
+    await DialogPersistence.saveMainDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
   } else {
-    if (plan.metadata.supdialogId === undefined) {
-      throw new Error(`fork subdialog plan missing supdialog metadata: ${plan.targetId.valueOf()}`);
+    if (plan.metadata.askerDialogId === undefined) {
+      throw new Error(
+        `fork sideDialog plan missing askerDialog metadata: ${plan.targetId.valueOf()}`,
+      );
     }
-    const rewrittenMetadata = rewriteSubdialogMetadataForFork(
+    const rewrittenMetadata = rewriteSideDialogMetadataForFork(
       plan.metadata,
       plan.sourceId.rootId,
       plan.targetId.rootId,
     );
-    await DialogPersistence.ensureSubdialogDirectory(plan.targetId, 'running');
-    await DialogPersistence.saveSubdialogMetadata(plan.targetId, rewrittenMetadata, 'running');
+    const sourceAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
+      plan.sourceId,
+      args.sourceStatus,
+    );
+    if (!sourceAskerStackState) {
+      throw new Error(`fork sideDialog plan missing asker stack: ${plan.sourceId.valueOf()}`);
+    }
+    const rewrittenAskerStackState = rewriteSideDialogAskerStackStateForFork(
+      sourceAskerStackState,
+      plan.sourceId.rootId,
+      plan.targetId.rootId,
+    );
+    await DialogPersistence.ensureSideDialogDirectory(plan.targetId, 'running');
+    await DialogPersistence.saveSideDialogMetadata(plan.targetId, rewrittenMetadata, 'running');
+    await DialogPersistence.saveSideDialogAskerStackState(
+      plan.targetId,
+      rewrittenAskerStackState,
+      'running',
+    );
+  }
+
+  const sourceAskerStack = await DialogPersistence.loadDialogAskerStack(
+    plan.sourceId,
+    args.sourceStatus,
+  );
+  if (sourceAskerStack.askerStack.length > 0) {
+    await DialogPersistence.saveDialogAskerStack(
+      plan.targetId,
+      rewriteSideDialogAskerStackStateForFork(
+        sourceAskerStack,
+        plan.sourceId.rootId,
+        plan.targetId.rootId,
+      ),
+      'running',
+    );
   }
 
   for (const course of plan.retainedCourses) {
@@ -737,25 +823,25 @@ async function persistForkPlan(args: {
 
   await DialogPersistence._saveReminderState(plan.targetId, [...plan.reminders], 'running');
   await DialogPersistence._saveQuestions4HumanState(plan.targetId, [...plan.questions], 'running');
-  await DialogPersistence.savePendingSubdialogs(
+  await DialogPersistence.savePendingSideDialogs(
     plan.targetId,
-    [...plan.pendingSubdialogs],
+    [...plan.pendingSideDialogs],
     undefined,
     'running',
   );
-  await DialogPersistence.saveSubdialogRegistry(
+  await DialogPersistence.saveSideDialogRegistry(
     plan.targetId,
     plan.registryEntries.map((entry) => ({
       key: entry.key,
-      subdialogId: new DialogID(entry.subdialogId, plan.targetId.rootId),
+      sideDialogId: new DialogID(entry.sideDialogId, plan.targetId.rootId),
       agentId: entry.agentId,
       sessionSlug: entry.sessionSlug,
     })),
     'running',
   );
-  await DialogPersistence.saveSubdialogResponses(
+  await DialogPersistence.saveSideDialogResponses(
     plan.targetId,
-    [...plan.subdialogResponses],
+    [...plan.sideDialogResponses],
     undefined,
     'running',
   );
@@ -769,7 +855,7 @@ async function persistForkPlan(args: {
       ? computeRootForkDisplayState({
           action: args.action,
           questions: plan.questions,
-          pendingSubdialogs: plan.pendingSubdialogs,
+          pendingSideDialogs: plan.pendingSideDialogs,
         })
       : { kind: 'idle_waiting_user' as const };
 
@@ -781,7 +867,7 @@ async function persistForkPlan(args: {
       status: 'active',
       messageCount: countMessages(currentCourseEvents),
       functionCallCount: countFunctionCalls(currentCourseEvents),
-      subdialogCount: plan.childCount,
+      sideDialogCount: plan.childCount,
       generating: false,
       needsDrive: false,
       displayState,
@@ -795,7 +881,7 @@ async function persistForkPlan(args: {
   }));
 }
 
-export async function forkRootDialogTreeAtGeneration(args: {
+export async function forkMainDialogTreeAtGeneration(args: {
   sourceRootId: string;
   sourceStatus: DialogStatusKind;
   course: number;
@@ -812,22 +898,22 @@ export async function forkRootDialogTreeAtGeneration(args: {
     throw new Error('genseq must be a positive integer');
   }
 
-  const sourceRootDialogId = new DialogID(sourceRootId);
+  const sourceMainDialogId = new DialogID(sourceRootId);
   const sourceMetadata = await DialogPersistence.loadDialogMetadata(
-    sourceRootDialogId,
+    sourceMainDialogId,
     args.sourceStatus,
   );
   if (!sourceMetadata) {
     throw new Error(`Root dialog not found: ${sourceRootId} (${args.sourceStatus})`);
   }
-  if (sourceMetadata.supdialogId !== undefined) {
+  if (sourceMetadata.askerDialogId !== undefined) {
     throw new Error(`fork dialog only supports root dialogs: ${sourceRootId}`);
   }
 
   const targetCourse = Math.floor(args.course);
   const targetGenseq = Math.floor(args.genseq);
   const rootEvents = await DialogPersistence.readCourseEvents(
-    sourceRootDialogId,
+    sourceMainDialogId,
     targetCourse,
     args.sourceStatus,
   );
@@ -852,11 +938,11 @@ export async function forkRootDialogTreeAtGeneration(args: {
     rootGenseq: targetGenseq - 1,
   });
   const draftUserText = normalizeDraftUserText(rootEvents, targetGenseq);
-  const latest = await DialogPersistence.loadDialogLatest(sourceRootDialogId, args.sourceStatus);
+  const latest = await DialogPersistence.loadDialogLatest(sourceMainDialogId, args.sourceStatus);
   const targetRootId = generateDialogID();
   const now = formatUnifiedTimestamp(new Date());
 
-  const includedSubdialogs = await collectIncludedSubdialogs({
+  const includedSideDialogs = await collectIncludedSideDialogs({
     sourceRootId,
     sourceStatus: args.sourceStatus,
     cutoffAnchor,
@@ -864,15 +950,15 @@ export async function forkRootDialogTreeAtGeneration(args: {
   });
 
   const childCountByParentSelfId = new Map<string, number>();
-  for (const subdialog of includedSubdialogs) {
+  for (const sideDialog of includedSideDialogs) {
     childCountByParentSelfId.set(
-      subdialog.metadata.supdialogId,
-      (childCountByParentSelfId.get(subdialog.metadata.supdialogId) ?? 0) + 1,
+      sideDialog.metadata.askerDialogId,
+      (childCountByParentSelfId.get(sideDialog.metadata.askerDialogId) ?? 0) + 1,
     );
   }
 
   const rootPlan = await buildDialogForkPlan({
-    sourceId: sourceRootDialogId,
+    sourceId: sourceMainDialogId,
     targetId: new DialogID(targetRootId),
     sourceStatus: args.sourceStatus,
     sourceMetadata,
@@ -884,60 +970,60 @@ export async function forkRootDialogTreeAtGeneration(args: {
   const action: ForkDialogAction =
     draftUserText !== null
       ? { kind: 'draft_user_text', userText: draftUserText }
-      : rootPlan.questions.length > 0 || rootPlan.pendingSubdialogs.length > 0
+      : rootPlan.questions.length > 0 || rootPlan.pendingSideDialogs.length > 0
         ? {
             kind: 'restore_pending',
             pendingQ4H: rootPlan.questions.length > 0,
-            pendingSubdialogs: rootPlan.pendingSubdialogs.length > 0,
+            pendingSideDialogs: rootPlan.pendingSideDialogs.length > 0,
           }
         : { kind: 'auto_continue' };
 
-  const subdialogPlans: ForkDialogPlan[] = [];
-  for (const subdialog of includedSubdialogs) {
-    subdialogPlans.push(
+  const sideDialogPlans: ForkDialogPlan[] = [];
+  for (const sideDialog of includedSideDialogs) {
+    sideDialogPlans.push(
       await buildDialogForkPlan({
-        sourceId: subdialog.sourceId,
-        targetId: subdialog.targetId,
+        sourceId: sideDialog.sourceId,
+        targetId: sideDialog.targetId,
         sourceStatus: args.sourceStatus,
-        sourceMetadata: subdialog.metadata,
+        sourceMetadata: sideDialog.metadata,
         cutoffAnchor,
-        childCount: childCountByParentSelfId.get(subdialog.sourceId.selfId) ?? 0,
+        childCount: childCountByParentSelfId.get(sideDialog.sourceId.selfId) ?? 0,
       }),
     );
   }
 
-  const baselineRecordsByParentSelfId = new Map<string, SubdialogCreatedRecord[]>();
-  for (const subdialog of includedSubdialogs) {
-    const rewrittenSupdialogId = rewriteForkTreeDialogSelfId(
-      subdialog.metadata.supdialogId,
+  const baselineRecordsByParentSelfId = new Map<string, SideDialogCreatedRecord[]>();
+  for (const sideDialog of includedSideDialogs) {
+    const rewrittenAskerDialogId = rewriteForkTreeDialogSelfId(
+      sideDialog.metadata.askerDialogId,
       sourceRootId,
       targetRootId,
     );
-    const rewrittenRecord: SubdialogCreatedRecord = {
+    const rewrittenRecord: SideDialogCreatedRecord = {
       ts: now,
-      type: 'subdialog_created_record',
+      type: 'sideDialog_created_record',
       ...FORK_BASELINE_ANCHOR,
-      subdialogId: subdialog.targetId.selfId,
-      supdialogId: rewrittenSupdialogId,
-      agentId: subdialog.metadata.agentId,
-      taskDocPath: subdialog.metadata.taskDocPath,
-      createdAt: subdialog.metadata.createdAt,
-      sessionSlug: subdialog.metadata.sessionSlug,
-      assignmentFromSup: rewriteAssignmentFromSupForFork(
-        subdialog.metadata.assignmentFromSup,
+      sideDialogId: sideDialog.targetId.selfId,
+      askerDialogId: rewrittenAskerDialogId,
+      agentId: sideDialog.metadata.agentId,
+      taskDocPath: sideDialog.metadata.taskDocPath,
+      createdAt: sideDialog.metadata.createdAt,
+      sessionSlug: sideDialog.metadata.sessionSlug,
+      assignmentFromAsker: rewriteAssignmentFromAskerForFork(
+        sideDialog.metadata.assignmentFromAsker,
         sourceRootId,
         targetRootId,
       ),
     };
-    const existing = baselineRecordsByParentSelfId.get(rewrittenSupdialogId);
+    const existing = baselineRecordsByParentSelfId.get(rewrittenAskerDialogId);
     if (existing) {
       existing.push(rewrittenRecord);
     } else {
-      baselineRecordsByParentSelfId.set(rewrittenSupdialogId, [rewrittenRecord]);
+      baselineRecordsByParentSelfId.set(rewrittenAskerDialogId, [rewrittenRecord]);
     }
   }
 
-  const allPlans = [rootPlan, ...subdialogPlans];
+  const allPlans = [rootPlan, ...sideDialogPlans];
   for (const plan of allPlans) {
     await persistForkPlan({
       plan,

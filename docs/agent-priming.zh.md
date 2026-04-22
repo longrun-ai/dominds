@@ -19,9 +19,9 @@
   - transcript / tool / tellask 等历史 record
   - 当前 reminder 快照
 - 会明确丢弃：
-  - pending subdialogs
+  - pending sideDialogs
   - questions4human
-  - subdialog registry / subdialog responses
+  - sideDialog registry / sideDialog responses
   - 其它依赖运行中协程、阻塞关系、等待关系的 runtime state
 
 这意味着把某个对话“保存为启动脚本”时，语义上相对完整运行时状态是有降级的：新对话会继承历史和 reminder，但不会继承“仍在等待中的工作流状态”。
@@ -153,7 +153,7 @@ Darwin ...
 - 回放事件写入 `course-1`，并统一标记 `sourceTag: priming_script`。
 - 同步注入 `dialog.msgs`，确保后续 LLM 上下文可见。
 - `showInUi=false` 时仅隐藏展示，不影响持久化与上下文。
-- `pending/q4h/subdialog-*` 等 runtime state 不会被恢复。
+- `pending/q4h/sideDialog-*` 等 runtime state 不会被恢复。
 
 ## 保存启动脚本（WebUI）
 
@@ -168,7 +168,7 @@ Darwin ...
 - 同时导出“当前 reminder 快照”到顶层 frontmatter。
 - 空历史禁止导出。
 - frontmatter 记录来源对话（rootId/selfId/course/status）。
-- `pending/q4h/subdialog-*` 等 runtime state 不导出；这是当前设计下的显式语义降级。
+- `pending/q4h/sideDialog-*` 等 runtime state 不导出；这是当前设计下的显式语义降级。
 
 ## recent 使用记录
 

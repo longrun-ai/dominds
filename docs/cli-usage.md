@@ -208,7 +208,7 @@ Each dialog directory typically contains:
 - `dialog.yaml` - Dialog metadata
 - `latest.yaml` - Current turn + lastModified tracking
 - `course-001.jsonl` (and more) - Streamed message log
-- `subdialogs/` - Nested subdialogs
+- `sideDialogs/` - Nested sideDialogs
 
 ## Error Handling
 

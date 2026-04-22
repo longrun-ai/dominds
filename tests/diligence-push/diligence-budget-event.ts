@@ -13,7 +13,7 @@ import {
   clearInstalledGlobalDialogEventBroadcaster,
   installRecordingGlobalDialogEventBroadcaster,
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
 
     const dlgId = new DialogID('dlg-keep-going-test');
     const store = new DiskFileDialogStore(dlgId);
-    const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
+    const dlg = new MainDialog(store, 'task.md', dlgId, 'tester');
     // Simulate normal root-dialog initialization done by server create/display handlers.
     const createdAt = formatUnifiedTimestamp(new Date());
     await DialogPersistence.saveDialogMetadata(dlg.id, {
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: false,
         diligencePushRemainingBudget: 0,

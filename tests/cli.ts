@@ -23,8 +23,8 @@ Notes:
 
 	Examples:
 	  pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
-	  pnpm -C tests run rtws -- -C script-rtws kernel-driver/subdialog-queue-commit-mirror.ts
-	  pnpm -C tests run rtws -- --shared-rtws kernel-driver/subdialog-queue-commit-mirror.ts
+	  pnpm -C tests run rtws -- -C script-rtws kernel-driver/sideDialog-queue-commit-mirror.ts
+	  pnpm -C tests run rtws -- --shared-rtws kernel-driver/sideDialog-queue-commit-mirror.ts
 	`);
 }
 

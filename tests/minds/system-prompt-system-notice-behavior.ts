@@ -6,7 +6,7 @@ function buildPrompt(language: 'zh' | 'en', toolsetManualIntro: string): string 
   const agent = new Team.Member({ id: 'tester', name: 'Tester' });
   return buildSystemPrompt({
     language,
-    dialogScope: 'mainline',
+    dialogScope: 'mainDialog',
     contextHealthPromptMode: 'normal',
     agent,
     persona: 'persona',

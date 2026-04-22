@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { SubDialog } from '../../main/dialog';
+import { SideDialog } from '../../main/dialog';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import {
   buildFbrConvergencePrompt,
@@ -13,13 +13,13 @@ import {
 import { DialogPersistence } from '../../main/persistence';
 import { appendDistinctPerspectiveFbrBody } from '../../main/runtime/fbr-body';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
@@ -86,6 +86,7 @@ async function main(): Promise<void> {
     ].join('\n');
     const successMirroredResponse = formatTellaskResponseContent({
       callName: 'freshBootsReasoning',
+      callId: 'fbr-success-call',
       responderId: 'tester',
       requesterId: 'tester',
       tellaskContent: successBody,
@@ -110,6 +111,7 @@ async function main(): Promise<void> {
     });
     const fallbackMirroredResponse = formatTellaskResponseContent({
       callName: 'freshBootsReasoning',
+      callId: 'fbr-fallback-call',
       responderId: 'tester',
       requesterId: 'tester',
       tellaskContent: fallbackBody,
@@ -119,7 +121,7 @@ async function main(): Promise<void> {
     });
     const fallbackRootFinalAnswer = '主线已收到程序化不合理现状结论。';
 
-    const successDivergence1 = formatAssignmentFromSupdialog({
+    const successDivergence1 = formatAssignmentFromAskerDialog({
       callName: 'freshBootsReasoning',
       fromAgentId: 'tester',
       toAgentId: 'tester',
@@ -128,7 +130,7 @@ async function main(): Promise<void> {
       collectiveTargets: ['tester'],
       fbrRound: { iteration: 1, total: 2 },
     });
-    const successDivergence2 = formatAssignmentFromSupdialog({
+    const successDivergence2 = formatAssignmentFromAskerDialog({
       callName: 'freshBootsReasoning',
       fromAgentId: 'tester',
       toAgentId: 'tester',
@@ -138,7 +140,7 @@ async function main(): Promise<void> {
       fbrRound: { iteration: 2, total: 2 },
     });
 
-    const fallbackDivergence1 = formatAssignmentFromSupdialog({
+    const fallbackDivergence1 = formatAssignmentFromAskerDialog({
       callName: 'freshBootsReasoning',
       fromAgentId: 'tester',
       toAgentId: 'tester',
@@ -147,7 +149,7 @@ async function main(): Promise<void> {
       collectiveTargets: ['tester'],
       fbrRound: { iteration: 1, total: 2 },
     });
-    const fallbackDivergence2 = formatAssignmentFromSupdialog({
+    const fallbackDivergence2 = formatAssignmentFromAskerDialog({
       callName: 'freshBootsReasoning',
       fromAgentId: 'tester',
       toAgentId: 'tester',
@@ -268,7 +270,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const successRoot = await createRootDialog('tester');
+    const successRoot = await createMainDialog('tester');
     successRoot.disableDiligencePush = true;
 
     await driveDialogStream(
@@ -284,26 +286,26 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(successRoot, 8_000);
 
-    const successSubdialog = successRoot
+    const successSideDialog = successRoot
       .getAllDialogs()
-      .find((dialog): dialog is SubDialog => dialog instanceof SubDialog);
-    assert.ok(successSubdialog, 'expected FBR success subdialog to exist');
+      .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
+    assert.ok(successSideDialog, 'expected FBR success sideDialog to exist');
     assert.equal(
-      successSubdialog.assignmentFromSup.effectiveFbrEffort,
+      successSideDialog.assignmentFromAsker.effectiveFbrEffort,
       2,
-      'successful FBR subdialog should record the effective effort on assignment metadata',
+      'successful FBR sideDialog should record the effective effort on assignment metadata',
     );
     const successPersistedMeta = await DialogPersistence.loadDialogMetadata(
-      successSubdialog.id,
+      successSideDialog.id,
       'running',
     );
     assert.equal(
-      successPersistedMeta?.assignmentFromSup?.effectiveFbrEffort,
+      successPersistedMeta?.assignmentFromAsker?.effectiveFbrEffort,
       2,
       'successful FBR metadata persisted to disk should keep the effective effort',
     );
 
-    const successPromptings = successSubdialog.msgs.filter(
+    const successPromptings = successSideDialog.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
     );
     assert.equal(
@@ -319,7 +321,7 @@ async function main(): Promise<void> {
       ),
       'FBR prompts should stay isolated from ordinary inter-dialog reply-obligation guidance',
     );
-    const successFuncCalls = successSubdialog.msgs.filter((msg) => msg.type === 'func_call_msg');
+    const successFuncCalls = successSideDialog.msgs.filter((msg) => msg.type === 'func_call_msg');
     assert.equal(
       successFuncCalls.length,
       1,
@@ -349,7 +351,7 @@ async function main(): Promise<void> {
       'root must no longer receive raw all-round FBR dumps or upstream distill instructions',
     );
 
-    const fallbackRoot = await createRootDialog('tester');
+    const fallbackRoot = await createMainDialog('tester');
     fallbackRoot.disableDiligencePush = true;
 
     await driveDialogStream(
@@ -365,17 +367,17 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(fallbackRoot, 8_000);
 
-    const fallbackSubdialog = fallbackRoot
+    const fallbackSideDialog = fallbackRoot
       .getAllDialogs()
-      .find((dialog): dialog is SubDialog => dialog instanceof SubDialog);
-    assert.ok(fallbackSubdialog, 'expected fallback FBR subdialog to exist');
+      .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
+    assert.ok(fallbackSideDialog, 'expected fallback FBR sideDialog to exist');
     assert.equal(
-      fallbackSubdialog.assignmentFromSup.effectiveFbrEffort,
+      fallbackSideDialog.assignmentFromAsker.effectiveFbrEffort,
       2,
-      'fallback FBR subdialog should also record the effective effort on assignment metadata',
+      'fallback FBR sideDialog should also record the effective effort on assignment metadata',
     );
 
-    const fallbackPromptings = fallbackSubdialog.msgs.filter(
+    const fallbackPromptings = fallbackSideDialog.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
     );
     assert.equal(
@@ -391,7 +393,7 @@ async function main(): Promise<void> {
       ),
       'fallback FBR prompts should also avoid ordinary inter-dialog reply-obligation guidance',
     );
-    const fallbackFuncCalls = fallbackSubdialog.msgs.filter((msg) => msg.type === 'func_call_msg');
+    const fallbackFuncCalls = fallbackSideDialog.msgs.filter((msg) => msg.type === 'func_call_msg');
     assert.equal(
       fallbackFuncCalls.length,
       0,

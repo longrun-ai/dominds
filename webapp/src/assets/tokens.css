@@ -92,9 +92,9 @@
   --dominds-run-badge-waiting-human-fg: var(--dominds-warning);
   --dominds-run-badge-waiting-human-bg: var(--dominds-warning-bg);
   --dominds-run-badge-waiting-human-border: var(--dominds-warning-border);
-  --dominds-run-badge-waiting-subdialogs-fg: var(--dominds-info);
-  --dominds-run-badge-waiting-subdialogs-bg: var(--dominds-info-bg);
-  --dominds-run-badge-waiting-subdialogs-border: var(--dominds-info-border);
+  --dominds-run-badge-waiting-sideDialogs-fg: var(--dominds-info);
+  --dominds-run-badge-waiting-sideDialogs-bg: var(--dominds-info-bg);
+  --dominds-run-badge-waiting-sideDialogs-border: var(--dominds-info-border);
   --dominds-run-badge-fbr-accent: color-mix(
     in srgb,
     var(--dominds-warning) 58%,
@@ -256,17 +256,17 @@
       var(--dominds-warning) 54%,
       white 46%
     );
-    --dominds-run-badge-waiting-subdialogs-fg: color-mix(
+    --dominds-run-badge-waiting-sideDialogs-fg: color-mix(
       in srgb,
       var(--dominds-info) 68%,
       black 32%
     );
-    --dominds-run-badge-waiting-subdialogs-bg: color-mix(
+    --dominds-run-badge-waiting-sideDialogs-bg: color-mix(
       in srgb,
       var(--dominds-info) 18%,
       white 82%
     );
-    --dominds-run-badge-waiting-subdialogs-border: color-mix(
+    --dominds-run-badge-waiting-sideDialogs-border: color-mix(
       in srgb,
       var(--dominds-info) 44%,
       white 56%
@@ -457,9 +457,17 @@
     var(--dominds-warning) 54%,
     white 46%
   );
-  --dominds-run-badge-waiting-subdialogs-fg: color-mix(in srgb, var(--dominds-info) 68%, black 32%);
-  --dominds-run-badge-waiting-subdialogs-bg: color-mix(in srgb, var(--dominds-info) 18%, white 82%);
-  --dominds-run-badge-waiting-subdialogs-border: color-mix(
+  --dominds-run-badge-waiting-sideDialogs-fg: color-mix(
+    in srgb,
+    var(--dominds-info) 68%,
+    black 32%
+  );
+  --dominds-run-badge-waiting-sideDialogs-bg: color-mix(
+    in srgb,
+    var(--dominds-info) 18%,
+    white 82%
+  );
+  --dominds-run-badge-waiting-sideDialogs-border: color-mix(
     in srgb,
     var(--dominds-info) 44%,
     white 56%

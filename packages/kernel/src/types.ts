@@ -21,7 +21,7 @@ export * from './types/tools-registry';
 export * from './types/wire';
 
 import type { DialogDisplayState } from './types/display-state';
-import type { AssignmentFromSup, DialogStatusKind } from './types/wire';
+import type { AssignmentFromAsker, DialogStatusKind } from './types/wire';
 
 export interface DialogInfo {
   selfId: string;
@@ -30,12 +30,12 @@ export interface DialogInfo {
   agentName: string;
   taskDocPath: string;
   status?: Exclude<DialogStatusKind, 'quarantining'>;
-  supdialogId?: string;
+  askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
 }
 
-export interface ApiRootDialogResponse {
+export interface ApiMainDialogResponse {
   rootId: string;
   selfId?: string;
   agentId: string;
@@ -45,17 +45,17 @@ export interface ApiRootDialogResponse {
   createdAt: string;
   lastModified: string;
   displayState?: DialogDisplayState;
-  supdialogId?: string;
+  askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
   waitingForFreshBootsReasoning?: boolean;
-  subdialogCount?: number;
+  sideDialogCount?: number;
 }
 
-export interface ApiSubdialogResponse {
+export interface ApiSideDialogResponse {
   selfId: string;
   rootId: string;
-  supdialogId?: string;
+  askerDialogId?: string;
   agentId: string;
   taskDocPath: string;
   status: Exclude<DialogStatusKind, 'quarantining'>;
@@ -64,15 +64,15 @@ export interface ApiSubdialogResponse {
   lastModified: string;
   displayState?: DialogDisplayState;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
   waitingForFreshBootsReasoning?: boolean;
 }
 
-export interface ApiDialogListSubdialogNode {
+export interface ApiDialogListSideDialogNode {
   selfId: string;
   rootId: string;
-  rootSubdialogCount: number;
-  supdialogId?: string;
+  rootSideDialogCount: number;
+  askerDialogId?: string;
   agentId: string;
   taskDocPath: string;
   status: Exclude<DialogStatusKind, 'quarantining'>;
@@ -81,13 +81,13 @@ export interface ApiDialogListSubdialogNode {
   lastModified: string;
   displayState?: DialogDisplayState;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
   waitingForFreshBootsReasoning?: boolean;
 }
 
-export interface ApiDialogListSubdialogNodeResponse {
+export interface ApiDialogListSideDialogNodeResponse {
   success: boolean;
-  subdialogNode: ApiDialogListSubdialogNode;
+  sideDialogNode: ApiDialogListSideDialogNode;
 }
 
 export interface ApiDialogHierarchyResponse {
@@ -101,17 +101,17 @@ export interface ApiDialogHierarchyResponse {
       currentCourse: number;
       createdAt: string;
       lastModified: string;
-      subdialogCount: number;
+      sideDialogCount: number;
       displayState?: DialogDisplayState;
       waitingForFreshBootsReasoning?: boolean;
     };
-    subdialogs: ApiSubdialogResponse[];
+    sideDialogs: ApiSideDialogResponse[];
   };
 }
 
 export interface ApiDialogListResponse {
   success: boolean;
-  dialogs: ApiRootDialogResponse[];
+  dialogs: ApiMainDialogResponse[];
 }
 
 export type ApiMoveDialogsRequest =
@@ -148,7 +148,7 @@ export type ApiForkDialogAction =
   | {
       kind: 'restore_pending';
       pendingQ4H: boolean;
-      pendingSubdialogs: boolean;
+      pendingSideDialogs: boolean;
     }
   | {
       kind: 'auto_continue';

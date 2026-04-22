@@ -6,7 +6,7 @@ import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  createRootDialog,
+  createMainDialog,
   makeUserPrompt,
   withTempRtws,
   writeMockDb,
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
         },
       },
     ] as const) {
-      const dlg = await createRootDialog('tester');
+      const dlg = await createMainDialog('tester');
       dlg.disableDiligencePush = true;
       const ch = dialogEventRegistry.createSubChan(dlg.id);
 

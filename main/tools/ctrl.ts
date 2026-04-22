@@ -31,7 +31,7 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog, VisibleReminderTarget } from '../dialog';
-import { SubDialog } from '../dialog';
+import { SideDialog } from '../dialog';
 import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
@@ -744,9 +744,9 @@ export const clearMindTool: FuncTool = {
 export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
-  description: 'Replace one shared Taskdoc section in the mainline dialog.',
+  description: 'Replace one shared Taskdoc section in the Mainline dialog.',
   descriptionI18n: {
-    en: 'Replace one shared Taskdoc section in the mainline dialog.',
+    en: 'Replace one shared Taskdoc section in the Mainline dialog.',
     zh: '在主线对话中替换一段共享差遣牒章节。',
   },
   parameters: {
@@ -772,8 +772,8 @@ export const changeMindTool: FuncTool = {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
 
-    if (dlg.supdialog !== undefined) {
-      const maintainerId = dlg instanceof SubDialog ? dlg.rootDialog.agentId : dlg.agentId;
+    if (dlg.askerDialog !== undefined) {
+      const maintainerId = dlg instanceof SideDialog ? dlg.mainDialog.agentId : dlg.agentId;
       if (language === 'zh') {
         return toolFailure(
           `错误：\`change_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
@@ -781,7 +781,7 @@ export const changeMindTool: FuncTool = {
         );
       }
       return toolFailure(
-        `Error: \`change_mind\` is only available in the mainline dialog (not in sideline dialogs).\n` +
+        `Error: \`change_mind\` is only available in the Mainline dialog (not in Sideline dialogs).\n` +
           `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
       );
     }

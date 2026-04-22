@@ -11,10 +11,10 @@ This document provides detailed implementation specifications for the Dominds di
 3. [3-Type Teammate Tellask Taxonomy](#3-type-teammate-tellask-taxonomy)
 4. [Core Mechanisms](#core-mechanisms)
 5. [Q4H: Questions for Human](#q4h-questions-for-human)
-6. [Dialog Hierarchy & Subdialogs](#dialog-hierarchy--subdialogs)
+6. [Dialog Relationship & SideDialogs](#dialog-relationship--sidedialogs)
 7. [Mental Clarity Tools](#mental-clarity-tools)
 8. [Reminder Management](#reminder-management)
-9. [Subdialog Registry](#subdialog-registry)
+9. [SideDialog Registry](#sideDialog-registry)
 10. [Technical Architecture](#technical-architecture)
 11. [Dialog Management](#dialog-management)
 12. [Memory Management](#memory-management)
@@ -27,55 +27,55 @@ This document provides detailed implementation specifications for the Dominds di
 ## Terminology
 
 This chapter defines the implementation-facing terms used throughout this document.
-For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker dialog / tellaskee dialog), see [`dominds-terminology.md`](./dominds-terminology.md).
+For bilingual / user-facing naming conventions (Mainline dialog / Sideline dialog; tellasker dialog / tellaskee dialog), see [`dominds-terminology.md`](./dominds-terminology.md).
 For Taskdoc package structure and encapsulation rules, see [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
-### Supdialog
+### AskerDialog
 
-A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
+An **askerDialog** is the implementation-facing dialog that currently owns an assignment or reply obligation for a sideDialog. It may be the main dialog or another sideDialog; it is a requester/responder relationship, not inherently a hierarchy label.
 
-Note: **supdialog** is a structural parent in the dialog hierarchy. It is not the same as the **tellasker dialog** (the caller for the current Tellask). For TYPE A (`tellaskBack`), the tellasker dialog is the direct supdialog; for TYPE B/C, the tellasker dialog may be a different dialog.
+Note: **askerDialog** is a requester/responder relation, not a hierarchy or seniority label. For TYPE A (`tellaskBack`), the tellasker dialog is the direct askerDialog; for TYPE B/C, the tellasker dialog may be a different dialog.
 
-A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack`), which provides responses that feed back into the subdialog's context.
+An askerDialog may receive **TellaskBack** from sideDialogs that currently owe it a reply. When a sideDialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack`), which provides responses that feed back into the sideDialog's context.
 
-### Subdialog
+### SideDialog
 
-A **subdialog** is a specialized dialog spawned by a supdialog to handle specific subtasks. Subdialogs operate with fresh context, focusing on targeted objectives while maintaining a communication link back to their supdialog.
+A **sideDialog** is a specialized dialog spawned by an askerDialog to handle specific subtasks. SideDialogs operate with fresh context, focusing on targeted objectives while maintaining a communication link back to their askerDialog.
 
-**TellaskBack**: A subdialog can Tellask its **tellasker dialog** to request clarification during task execution. In TYPE A, the tellasker dialog is the direct supdialog. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
+**TellaskBack**: A sideDialog can Tellask its **tellasker dialog** to request clarification during task execution. In TYPE A, the tellasker dialog is the direct askerDialog. This allows the sideDialog to ask questions and receive guidance while maintaining its own context and progress.
 
 ### Tellasker dialog / Tellaskee dialog (caller roles)
 
 A **tellasker dialog** is the dialog that issued the current Tellask (the caller). A **tellaskee dialog** is the dialog handling that Tellask (this dialog). These are **call roles**, not hierarchy:
 
-- For TYPE A (`tellaskBack`), the tellasker dialog is the direct supdialog.
-- For TYPE B/C, the tellasker dialog may be a different dialog (root dialog or another sideline dialog).
-- Responses route to the **current tellasker dialog** recorded in `assignmentFromSup`.
+- For TYPE A (`tellaskBack`), the tellasker dialog is the direct askerDialog.
+- For TYPE B/C, the tellasker dialog may be a different dialog (main dialog or another Sideline dialog).
+- Responses route to the **current tellasker dialog** recorded in `assignmentFromAsker`.
 
-### Main Dialog (Root Dialog)
+### Mainline dialog
 
-The **main dialog** (also called **root dialog**) is the top-level dialog in a dialog hierarchy, with no supdialog relationship. It serves as the main entry point for task execution and can spawn multiple levels of subdialogs. These terms are used interchangeably throughout the system.
+The **main dialog** is the top-level Mainline dialog with no askerDialog relationship. It serves as the main entry point for task execution and can spawn multiple levels of sideDialogs.
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `askHuman({ tellaskContent: "..." })` Tellask was recorded.
+A **Q4H** is a pending question raised by a dialog (main or sideDialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `askHuman({ tellaskContent: "..." })` Tellask was recorded.
 
-### Subdialog Index (subdlg.yaml)
+### SideDialog Index (subdlg.yaml)
 
-A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
+A **subdlg.yaml** file indexes pending sideDialogs that a askerDialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
 
-- The index tracks which subdialog IDs the parent is waiting for
-- Actual subdialog state is verified from disk (done/ directory)
+- The index tracks which sideDialog IDs the tellasker dialog is waiting for
+- Actual sideDialog state is verified from disk (done/ directory)
 - Used by the backend coroutine for crash recovery and auto-revive
 
-### Subdialog Registry
+### SideDialog Registry
 
-The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!sessionSlug` as its key format. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
-If a sideline dialog is declared dead, its Type B registry entry is removed so the same `agentId!sessionSlug` can start a brand-new sideline dialog on the next Tellask.
+The **sideDialog registry** is a main-dialog-scoped Map that maintains persistent references to registered sideDialogs. The registry uses `agentId!sessionSlug` as its key format. It moves with the main dialog to `done/` when the main dialog completes, and is rebuilt on main dialog load by scanning done/ sideDialog YAMLs.
+If a Sideline dialog is declared dead, its Type B registry entry is removed so the same `agentId!sessionSlug` can start a brand-new Sideline dialog on the next Tellask.
 
 ### Teammate Tellask
 
-A **teammate Tellask** is a Dominds specific syntax that triggers communication with another agent as subdialog. Teammate Tellasks have three distinct patterns with different semantics (see Section 3).
+A **teammate Tellask** is a Dominds specific syntax that triggers communication with another agent as sideDialog. Teammate Tellasks have three distinct patterns with different semantics (see Section 3).
 
 **Tellask block structure** (see also [`dominds-terminology.md`](./dominds-terminology.md)):
 
@@ -91,18 +91,18 @@ A **teammate Tellask** is a Dominds specific syntax that triggers communication 
 
 Dialog driving is a **sole backend algorithm**. The frontend/client never drives dialogs. All dialog state transitions, resumption logic, and generation loops execute entirely in backend coroutines. Frontend only subscribes to publish channels (PubChan) for real-time UI updates.
 
-### Registry Hierarchy
+### Registry Structure
 
 The system maintains three levels of registries for dialog management:
 
 **Global Registry (Server-Scoped)**
-A server-wide mapping of `rootId → RootDialog` objects. This is the single source of truth for all active root dialogs. Backend coroutines scan this registry to find dialogs needing driving.
+A server-wide mapping of `rootId → MainDialog` objects. This is the single source of truth for all active main dialogs. Backend coroutines scan this registry to find dialogs needing driving.
 
-**Local Registry (Per RootDialog)**
-A per-root mapping of `selfId → Dialog` objects. This registry contains the root dialog itself plus all loaded subdialogs, enabling O(1) lookup of any dialog within a hierarchy.
+**Local Registry (Per MainDialog)**
+A per-root mapping of `selfId → Dialog` objects. This registry contains the main dialog itself plus all loaded sideDialogs, enabling O(1) lookup of any dialog within a main dialog tree.
 
-**Subdialog Registry (Per RootDialog)**
-A per-root mapping of `agentId!sessionSlug → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
+**SideDialog Registry (Per MainDialog)**
+A per-root mapping of `agentId!sessionSlug → SideDialog` objects. This registry tracks TYPE B registered sideDialogs for resumption across multiple interactions. TYPE C transient sideDialogs are never registered.
 
 ### Per-Dialog Mutex
 
@@ -112,14 +112,14 @@ Each Dialog object carries an exclusive mutex with an associated wait queue. Whe
 
 Backend coroutines drive dialogs using the following pattern:
 
-1. Scan the Global Registry to identify root dialogs needing driving
-2. For each candidate, check resumption conditions (Q4H answered, subdialog completions received)
+1. Scan the Global Registry to identify main dialogs needing driving
+2. For each candidate, check resumption conditions (Q4H answered, sideDialog completions received)
 3. Acquire the dialog's mutex before driving
 4. Execute the generation loop until suspension point or completion
 5. Release the mutex
 6. Persist all state changes to storage
 
-The driving loop continues until a dialog suspends (awaiting Q4H or subdialog) or completes. When conditions change (user answers Q4H, subdialog finishes), the backend detects these via storage checks and resumes driving automatically.
+The driving loop continues until a dialog suspends (awaiting Q4H or sideDialog) or completes. When conditions change (user answers Q4H, sideDialog finishes), the backend detects these via storage checks and resumes driving automatically.
 
 ### Frontend Integration
 
@@ -134,7 +134,7 @@ All driving logic, resumption decisions, and state management remain purely back
 
 ### Global Dialog Event Broadcaster
 
-Some dialog events are rtws-global rather than dialog-scoped, including `new_q4h_asked`, `q4h_answered`, `subdialog_created_evt`, and `dlg_touched_evt`.
+Some dialog events are rtws-global rather than dialog-scoped, including `new_q4h_asked`, `q4h_answered`, `sideDialog_created_evt`, and `dlg_touched_evt`.
 
 These events require a **global dialog event broadcaster** to be installed during runtime bootstrap before any dialog-driving logic runs. This broadcaster is mandatory infrastructure, not an optional optimization:
 
@@ -149,8 +149,8 @@ Missing broadcaster is therefore a runtime bootstrap invariant violation, not a 
 Dialog state is persisted to storage at key points:
 
 - After each message generation
-- On suspension (Q4H raised, subdialog created)
-- On resumption (Q4H answered, subdialog completed)
+- On suspension (Q4H raised, sideDialog created)
+- On resumption (Q4H answered, sideDialog completed)
 - On completion
 
 This ensures crash recovery and enables the backend to resume from any persisted state without depending on frontend state.
@@ -177,7 +177,7 @@ After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence
 - **Case 1: the dialog no longer has a reply obligation**
   If there is also no blocker, the dialog should simply continue driving. If it has already become ordinary idle-waiting-user, then `resume_dialog` is no longer actually resumable.
 - **Case 2: the dialog still has a reply obligation and is still suspended**
-  Typical examples are pending Q4H or pending subdialogs. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
+  Typical examples are pending Q4H or pending sideDialogs. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
 - **Case 3: the dialog still has a reply obligation but is no longer suspended and is eligible to proceed**
   For example, the blocker has disappeared, or a queued prompt provides a valid continuation path. In this case, `Continue` must not first fall back to an intermediate placeholder `blocked/idle` state; it should keep driving immediately.
 
@@ -212,11 +212,11 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 
 ```mermaid
 flowchart TD
-  M["LLM emits tellaskSessionless(...)"] --> Q{"Is this a subdialog Tellasking its direct supdialog (tellasker dialog for TYPE A)?"}
+  M["LLM emits tellaskSessionless(...)"] --> Q{"Is this a sideDialog Tellasking its direct askerDialog (tellasker dialog for TYPE A)?"}
   Q -- yes --> A["TYPE A: TellaskBack<br/>(TellaskBack)<br/>Primary: tellaskBack(...) (NO sessionSlug)"]
   Q -- no --> T{Is sessionSlug present?}
-  T -- yes --> B["TYPE B: Registered subdialog Tellask<br/>(Tellask Session / Registered Session Tellask)<br/>tellask(..., sessionSlug=...)"]
-  T -- no --> C["TYPE C: Transient subdialog Tellask<br/>(Fresh Tellask / One-shot Tellask)<br/>tellaskSessionless(...)"]
+  T -- yes --> B["TYPE B: Registered sideDialog Tellask<br/>(Tellask Session / Registered Session Tellask)<br/>tellask(..., sessionSlug=...)"]
+  T -- no --> C["TYPE C: Transient sideDialog Tellask<br/>(Fresh Tellask / One-shot Tellask)<br/>tellaskSessionless(...)"]
 ```
 
 ### TYPE A: TellaskBack (Type A / `TellaskBack`)
@@ -227,29 +227,29 @@ flowchart TD
 
 **Behavior**:
 
-1. Current subdialog **suspends**
-2. Driver switches to drive the **tellasker dialog** (direct supdialog for TYPE A; uses `subdialog.supdialog` reference)
-3. Tellasker dialog response flows back to the subdialog
-4. Subdialog **resumes** with tellasker dialog's response in context
+1. Current sideDialog **suspends**
+2. Driver switches to drive the **tellasker dialog** (direct askerDialog for TYPE A; uses `sideDialog.askerDialog` reference)
+3. Tellasker dialog response flows back to the sideDialog
+4. SideDialog **resumes** with tellasker dialog's response in context
 
 **Key Characteristics**:
 
-- Uses `subdialog.supdialog` reference (no registry lookup)
-- No registration - supdialog relationship is inherent
-- Supdialog is always the direct parent in the hierarchy (the tellasker dialog for TYPE A)
+- Uses `sideDialog.askerDialog` reference (no registry lookup)
+- No registration - askerDialog relationship is inherent
+- AskerDialog is always the direct askerDialog (the tellasker dialog for TYPE A)
 - `tellaskBack({ tellaskContent: "..." })` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
-- This matters especially when the supdialog’s `agentId` is identical to the subdialog’s `agentId` (common when a sideline
+- This matters especially when the askerDialog’s `agentId` is identical to the sideDialog’s `agentId` (common when a Sideline dialog
   is created via `freshBootsReasoning({ tellaskContent: "..." })`), where an explicit `tellaskBack({ tellaskContent: "..." })` is easier to get wrong by accident.
 - The explicit `tellaskBack({ tellaskContent: "..." })` form is accepted as a semantic fallback for backwards compatibility, but is more
-  error-prone in FBR/self-subdialog cases.
+  error-prone in FBR/self-sideDialog cases.
 
-**Sideline delivery rule (normative)**:
+**Sideline dialog delivery rule (normative)**:
 
-- If a sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- If a Sideline dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If the work is unfinished, do not default to `tellaskBack`; first use team SOP / role ownership to judge whether a responsible owner is already clear, and if yes for execution work, directly use `tellask` / `tellaskSessionless` for that owner.
 - Use `tellaskBack({ tellaskContent: "..." })` only when the upstream requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership.
-- **FBR exception**: FBR sideline dialogs forbid all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); they must list missing context and return.
+- **FBR exception**: FBR Sideline dialogs forbid all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); they must list missing context and return.
 
 **Inter-dialog transfer and markers (normative)**:
 
@@ -257,12 +257,12 @@ flowchart TD
 - First-line markers are runtime-injected into that transfer payload by semantics; agents must not hand-write them:
   - English work language:
     - Ask-back reply: `【TellaskBack】`
-    - Regular completed sideline reply: `【Completed】`
-    - FBR sideline reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
+    - Regular completed Sideline dialog reply: `【Completed】`
+    - FBR Sideline dialog reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
   - Chinese work language:
     - Ask-back reply: `【回问诉请】`
-    - Regular completed sideline reply: `【最终完成】`
-    - FBR sideline reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+    - Regular completed Sideline dialog reply: `【最终完成】`
+    - FBR Sideline dialog reply: `【FBR-直接回复】` or `【FBR-仅推理】`
 - If the requester defines a “reply/delivery format” inside the tellask body, keep it to the business delivery structure; do not require responder-side hand-written markers, because runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: a model output from one dialog may be embedded into a runtime template and sent as the body to another dialog.
@@ -270,7 +270,7 @@ flowchart TD
 **Protocol clarification**:
 
 - When you truly need to ask upstream back, emit it via `tellaskBack({ tellaskContent: "..." })`; first judge whether team SOP already identifies another responsible owner. Do not post plain-text intermediate status updates while unfinished.
-- A direct plain-text reply is correct when the sideline is already complete and is delivering the final result upstream.
+- A direct plain-text reply is correct when the Sideline dialog is already complete and is delivering the final result upstream.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 
@@ -278,7 +278,7 @@ Note: no extra "Status: ..." line is required; the first-line marker is the stag
 
 ```
 Current dialog: sub-001 (agentId: "backend-dev")
-Parent supdialog: "orchestrator" (agentId)
+Tellasker dialog: "orchestrator" (agentId)
 
 LLM emits: tellaskSessionless({ targetAgentId: "orchestrator", tellaskContent: "..." }) How should I handle the database migration?
 
@@ -289,7 +289,7 @@ Result:
 - sub-001 resumes with orchestrator's response
 ```
 
-### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / Registered Session Tellask)
+### TYPE B: Registered SideDialog Tellask (Type B / `Tellask Session` / Registered Session Tellask)
 
 **Syntax**: `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` (note the space before `sessionSlug`)
 
@@ -307,58 +307,58 @@ headline text is ignored for tellaskSession parsing.
 
 **Behavior**:
 
-1. Check registry for existing subdialog with key `agentId!sessionSlug`
-2. **If exists**: Resume the registered subdialog
-3. **If not exists**: Create NEW subdialog AND register it with key `agentId!sessionSlug`
-4. Parent dialog **suspends** while subdialog runs
-5. Subdialog response flows back to parent
-6. Parent **resumes** with subdialog's response
+1. Check registry for existing sideDialog with key `agentId!sessionSlug`
+2. **If exists**: Resume the registered sideDialog
+3. **If not exists**: Create NEW sideDialog AND register it with key `agentId!sessionSlug`
+4. Tellasker dialog **suspends** while sideDialog runs
+5. SideDialog response flows back to the tellasker
+6. Tellasker **resumes** with sideDialog's response
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is Tellasked again (same `agentId!sessionSlug`), the caller can be a **different dialog** (root dialog or another sideline dialog). On every Type B Tellask, the subdialog’s metadata is updated with:
+When a registered sideDialog is Tellasked again (same `agentId!sessionSlug`), the caller can be a **different dialog** (main dialog or another Sideline dialog). On every Type B Tellask, the sideDialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
 - The **Tellask info** (headline/body, origin role, origin member, callId)
 
-This makes Type B subdialogs reusable across multiple Tellask sites without losing correct response routing.
+This makes Type B sideDialogs reusable across multiple Tellask sites without losing correct response routing.
 
 **Tellask Context on Resume**:
 
-- On every TYPE B Tellask (new or resumed), the parent-provided `mentionList`/`tellaskContent`
-  is appended to the subdialog as a new user message before the subdialog is driven.
-  This ensures the subdialog receives the latest request context for each Tellask.
+- On every TYPE B Tellask (new or resumed), the tellasker-provided `mentionList`/`tellaskContent`
+  is appended to the sideDialog as a new user message before the sideDialog is driven.
+  This ensures the sideDialog receives the latest request context for each Tellask.
 - System-injected resume prompts are context only and are **not parsed** for teammate/tool Tellasks.
 
 **Updated Tellask While an Earlier Round Is Still Waiting (normative)**:
 
-- For a registered sideline (`same agentId!sessionSlug`), runtime maintains one current waiting caller round.
+- For a registered Sideline dialog (`same agentId!sessionSlug`), runtime maintains one current waiting caller round.
 - If a newer TYPE B Tellask arrives before the earlier round replies, runtime immediately closes the earlier waiting round with a system-generated failed Tellask result. The wording must describe the conversation fact in business terms, not protocol jargon.
 - The callee is not force-stopped. Instead, its next runtime prompt explains that the work request has been updated, explicitly says not to send a standalone acknowledgement, and includes the latest full assignment.
 - Delivery of that updated assignment prompt is queued in-order at the next safe turn boundary. Runtime must not reject the update merely because another normal queued prompt already exists; queued prompts are ordered work, not a single overwrite slot.
-- A sideline reply produced before that updated assignment prompt is rendered locally MUST NOT be delivered upstream as the newer round's result.
+- A Sideline dialog reply produced before that updated assignment prompt is rendered locally MUST NOT be delivered upstream as the newer round's result.
 
 **Key Characteristics**:
 
 - Registry lookup is performed on each Tellask
-- Enables **resumption** of previous subdialogs
-- Registered subdialogs persist in the registry until root completion
-- Registry is root-dialog scoped (not accessible to subdialogs)
+- Enables **resumption** of previous sideDialogs
+- Registered sideDialogs persist in the registry until main dialog completion
+- Registry is main-dialog scoped (not accessible to sideDialogs)
 
 **Example**:
 
 ```
-Root dialog: orchestrator
+Main dialog: orchestrator
 Registry: {} (empty)
 
 LLM emits: tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 Result (first call):
 - Registry lookup: no "researcher!market-analysis" exists
-- Create new subdialog "researcher!market-analysis"
-- Register it in root's registry
+- Create new sideDialog "researcher!market-analysis"
+- Register it in main dialog's registry
 - orchestrator suspends
-- Drive researcher subdialog
+- Drive researcher sideDialog
 - Response flows back to orchestrator
 - orchestrator resumes
 
@@ -366,41 +366,41 @@ LLM emits again: tellask({ targetAgentId: "researcher", sessionSlug: "market-ana
 
 Result (second call):
 - Registry lookup: "researcher!market-analysis" exists
-- Resume existing subdialog
+- Resume existing sideDialog
 - orchestrator suspends
-- Drive existing researcher subdialog from where it left off
+- Drive existing researcher sideDialog from where it left off
 - Response flows back to orchestrator
 - orchestrator resumes
 ```
 
-### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / One-shot Tellask)
+### TYPE C: Transient SideDialog Tellask (Type C / `Fresh Tellask` / One-shot Tellask)
 
-**Syntax**: `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` (NO `sessionSlug`)
+**Syntax**: `tellaskSessionless({ targetAgentId: "<nonAskerDialogAgentId>", tellaskContent: "..." })` (NO `sessionSlug`)
 
 **Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `freshBootsReasoning({ tellaskContent: "..." })`
 
-- `freshBootsReasoning({ tellaskContent: "..." })` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
-- The sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
+- `freshBootsReasoning({ tellaskContent: "..." })` targets the current dialog’s agentId and creates a **new ephemeral sideDialog** routed to the same agentId.
+- The Sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
 
 1. Current dialog **suspends**
-2. Create **NEW subdialog** with the specified agentId
-3. Drive the new subdialog:
-   - For general Type C, the subdialog is full-fledged (supcalls, teammate Tellasks, tools per config).
+2. Create **NEW sideDialog** with the specified agentId
+3. Drive the new sideDialog:
+   - For general Type C, the sideDialog is full-fledged (TellaskBack, teammate Tellasks, tools per config).
    - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; no Tellasks).
-4. Subdialog response flows back to parent
-5. Parent **resumes** with subdialog's response
+4. SideDialog response flows back to the tellasker
+5. Tellasker **resumes** with sideDialog's response
 
 **Key Characteristics**:
 
-- **No registry lookup** - always creates a new subdialog
+- **No registry lookup** - always creates a new sideDialog
 - **Not registered** - no persistence across Tellasks
 - **No assignment-update channel** - once emitted, it cannot be updated in place like Type B
-- Another `tellaskSessionless` creates **another new transient subdialog**; it does not update, stop, or tell the earlier Type C sideline to stop
+- Another `tellaskSessionless` creates **another new transient sideDialog**; it does not update, stop, or tell the earlier Type C Sideline dialog to stop
 - If later correction, scope change, or earlier wrap-up may be needed, choose Type B `tellask` with `sessionSlug` from the start
-- The subdialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
+- The sideDialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -413,8 +413,8 @@ LLM emits: @code-reviewer Please review this PR
 
 Result:
 - orchestrator suspends
-- Create NEW subdialog with agentId "code-reviewer"
-- Drive the code-reviewer subdialog (it can make its own Tellasks, tools, etc.)
+- Create NEW sideDialog with agentId "code-reviewer"
+- Drive the code-reviewer sideDialog (it can make its own Tellasks, tools, etc.)
 - code-reviewer completes with review findings
 - orchestrator resumes with review in context
 
@@ -422,23 +422,23 @@ LLM emits again: @code-reviewer Review this other PR
 
 Result:
 - orchestrator suspends
-- Create ANOTHER NEW subdialog (not the same as before!)
-- Drive the new code-reviewer subdialog
+- Create ANOTHER NEW sideDialog (not the same as before!)
+- Drive the new code-reviewer sideDialog
 - orchestrator resumes with new review in context
 ```
 
 ### Comparison Summary
 
-| Aspect                     | TYPE A: Supdialog Tellask (`TellaskBack`) | TYPE B: Registered Subdialog Tellask (`Tellask Session`)                                 | TYPE C: Transient Subdialog Tellask (`Fresh Tellask`)                                   |
-| -------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Syntax**                 | `tellaskBack({ tellaskContent: "..." })`  | `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<id>", tellaskContent: "..." })` | `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` |
-| **sessionSlug**            | Not allowed                               | Required                                                                                 | Not allowed                                                                             |
-| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!sessionSlug`)                                                              | No (never registered)                                                                   |
-| **Resumption**             | No (supdialog not a subdialog)            | Yes (lookup finds existing)                                                              | No (always new)                                                                         |
-| **Registration**           | Not applicable                            | Created AND registered                                                                   | Never registered                                                                        |
-| **Parent Behavior**        | Subdialog suspends                        | Parent suspends                                                                          | Parent suspends                                                                         |
-| **Subdialog Capabilities** | Full (supcalls, teammates, tools)         | Full (supcalls, teammates, tools)                                                        | Full (supcalls, teammates, tools)                                                       |
-| **Use Case**               | Clarification from parent (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)                                            | One-off independent task (`Fresh Tellask`)                                              |
+| Aspect                      | TYPE A: AskerDialog Tellask (`TellaskBack`)  | TYPE B: Registered SideDialog Tellask (`Tellask Session`)                                | TYPE C: Transient SideDialog Tellask (`Fresh Tellask`)                                    |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Syntax**                  | `tellaskBack({ tellaskContent: "..." })`     | `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<id>", tellaskContent: "..." })` | `tellaskSessionless({ targetAgentId: "<nonAskerDialogAgentId>", tellaskContent: "..." })` |
+| **sessionSlug**             | Not allowed                                  | Required                                                                                 | Not allowed                                                                               |
+| **Registry Lookup**         | No (uses `sideDialog.askerDialog`)           | Yes (`agentId!sessionSlug`)                                                              | No (never registered)                                                                     |
+| **Resumption**              | No (askerDialog not a sideDialog)            | Yes (lookup finds existing)                                                              | No (always new)                                                                           |
+| **Registration**            | Not applicable                               | Created AND registered                                                                   | Never registered                                                                          |
+| **Tellasker Behavior**      | SideDialog suspends                          | Tellasker suspends                                                                       | Tellasker suspends                                                                        |
+| **SideDialog Capabilities** | Full (TellaskBack, teammates, tools)         | Full (TellaskBack, teammates, tools)                                                     | Full (TellaskBack, teammates, tools)                                                      |
+| **Use Case**                | Clarification from tellasker (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)                                            | One-off independent task (`Fresh Tellask`)                                                |
 
 ---
 
@@ -448,7 +448,7 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 
 ```mermaid
 flowchart TD
-  H[Dialog hierarchy<br/>(root ↔ subdialogs)] <--> S[Subdialog supply<br/>(responses, pending list, registry)]
+  H[Dialog relationship<br/>(main ↔ sideDialogs)] <--> S[SideDialog supply<br/>(responses, pending list, registry)]
   H --> Q["Q4H (askHuman(...))<br/>(q4h.yaml index)"]
   S --> Q
 
@@ -458,27 +458,27 @@ flowchart TD
 
   Clarity[clear_mind] -->|clears| Q
   Clarity -->|preserves| R[Reminders]
-  Clarity -->|preserves| Reg[Registry (root only)]
+  Clarity -->|preserves| Reg[Registry (main only)]
 ```
 
 ### Key Design Principles
 
 1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `askHuman({ tellaskContent: "..." })` Tellask was recorded. They do not survive `clear_mind`.
 
-2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
+2. **Dialog-scoped Q4H**: Any dialog in a Mainline dialog / Sideline dialog relationship can raise Q4H on its own right. Questions are indexed in the dialog that asked them, not passed upward.
 
-3. **Subdialog Q4H Autonomy**: Subdialogs can ask Q4H questions directly, not as a proxy for parent. User navigates to the subdialog to answer inline.
+3. **SideDialog Q4H Autonomy**: SideDialogs can ask Q4H questions directly, not as a proxy for tellasker. User navigates to the sideDialog to answer inline.
 
 4. **UI Renders Q4H Like Teammate Tellasks**: The UI treats Q4H similarly to other teammate Tellasks - with navigation linking to the Tellask site in the dialog. The user answers inline using the same input textarea used for regular messages.
 
-5. **Subdialog Response Supply**: Subdialogs write their responses to the _current Tellasker’s_ context via persistence (not callbacks). For TYPE B, each Tellask updates the subdialog’s `assignmentFromSup` with the latest Tellasker + tellaskInfo, so the response is routed to the most recent Tellasker (root or subdialog). This enables detached operation, reuse, and crash recovery.
+5. **SideDialog Response Supply**: SideDialogs write their responses to the _current Tellasker’s_ context via persistence (not callbacks). For TYPE B, each Tellask updates the sideDialog’s `assignmentFromAsker` with the latest Tellasker + tellaskInfo, so the response is routed to the most recent Tellasker (root or sideDialog). This enables detached operation, reuse, and crash recovery.
 
-6. **Subdialog Registry**: Registered subdialogs (TYPE B Tellasks) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
+6. **SideDialog Registry**: Registered sideDialogs (TYPE B Tellasks) are tracked in a main-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on main dialog load.
 
 7. **State Preservation Contract**:
    - `clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
-   - Subdialog completion: Writes response to the current tellasker dialog, removes from pending list (registry unchanged)
-   - Subdialog declared dead: marks runState dead and removes its Type B registry entry; same slug can be reused as a fresh sideline dialog
+   - SideDialog completion: Writes response to the current tellasker dialog, removes from pending list (registry unchanged)
+   - SideDialog declared dead: marks runState dead and removes its Type B registry entry; same slug can be reused as a fresh Sideline dialog
    - Q4H answer: Clears the answered question from index, continues the dialog
 
 ---
@@ -487,7 +487,7 @@ flowchart TD
 
 ### Overview
 
-Q4H (Questions for Human) is the mechanism by which dialogs can suspend execution and request human input. It is a core, integral mechanism that works seamlessly with subdialogs, reminders, and mental clarity tools.
+Q4H (Questions for Human) is the mechanism by which dialogs can suspend execution and request human input. It is a core, integral mechanism that works seamlessly with sideDialogs, reminders, and mental clarity tools.
 
 ### Q4H Data Structure
 
@@ -514,7 +514,7 @@ interface HumanQuestion {
 
 ```mermaid
 sequenceDiagram
-  participant D as Dialog (root or subdialog)
+  participant D as Dialog (root or sideDialog)
   participant P as Persistence (q4h.yaml)
   participant UI as Frontend UI
   participant WS as WebSocket handler
@@ -532,7 +532,7 @@ sequenceDiagram
 
 ### When Does a Dialog Raise Q4H?
 
-Q4H is raised when the `askHuman({ tellaskContent: "..." })` tellask function is invoked by ANY dialog (root or subdialog) on its own right:
+Q4H is raised when the `askHuman({ tellaskContent: "..." })` tellask function is invoked by ANY dialog (root or sideDialog) on its own right:
 
 ```typescript
 // From main/llm/kernel-driver/tellask-special.ts
@@ -646,34 +646,34 @@ interface DriveDialogByUserAnswerRequest {
 | Backend Action    | Just drive dialog       | Clear q4h.yaml first → drive dialog |
 | Continuation Type | N/A                     | `'answer'`                          |
 
-### Subdialog Q4H Handling
+### SideDialog Q4H Handling
 
 **Key Principles**:
 
-1. Q4H is indexed in the dialog that asked it, not passed upward to the supdialog
-2. Subdialogs ask Q4H on their own right (not as proxy for parent)
-3. User navigates to the subdialog to answer inline
+1. Q4H is indexed in the dialog that asked it, not passed upward to the askerDialog
+2. SideDialogs ask Q4H on their own right (not as proxy for tellasker)
+3. User navigates to the sideDialog to answer inline
 4. The `q4h.yaml` file is an index, not source of truth
 
 ```mermaid
 sequenceDiagram
-  participant Sup as Supdialog
-  participant Sub as Subdialog
+  participant Asker as AskerDialog
+  participant Side as SideDialog
   participant UI as Frontend UI
   participant WS as WebSocket handler
   participant Driver as driveDialogStream
 
-  Sup->>Sub: creates subdialog (Type B or C)
-  Note over Sup: Supdialog is blocked on pending subdialogs
+  Asker->>Side: creates sideDialog (Type B or C)
+  Note over Asker: AskerDialog is blocked on pending sideDialogs
 
-  Sub->>WS: emits askHuman({ tellaskContent: "..." }) question
+  Side->>WS: emits askHuman({ tellaskContent: "..." }) question
   WS-->>UI: questions_count_update
-  Note over Sub: Subdialog cannot proceed until answered
+  Note over Side: SideDialog cannot proceed until answered
 
-  UI->>WS: drive_dialog_by_user_answer(dialog=subdialogId, questionId, content)
-  WS->>Driver: driveDialogStream(subdialog, human answer)
-  Driver-->>Sub: subdialog resumes
-  Sub-->>Sup: response supplied (clears pending-subdialogs)
+  UI->>WS: drive_dialog_by_user_answer(dialog=sideDialogId, questionId, content)
+  WS->>Driver: driveDialogStream(sideDialog, human answer)
+  Driver-->>Side: sideDialog resumes
+  Side-->>Asker: response supplied (clears pending-sideDialogs)
 ```
 
 ### Q4H and Mental Clarity Operations
@@ -688,20 +688,20 @@ flowchart LR
 
 ---
 
-## Dialog Hierarchy & Subdialogs
+## Dialog Relationship & SideDialogs
 
-### Hierarchy Overview
+### Relationship Overview
 
 ```mermaid
 flowchart TD
-  Root[Root dialog] --> S1[Subdialog sub-001]
-  Root --> S2[Subdialog sub-002]
-  Root --> S3[Subdialog sub-003]
+  Main[Main dialog] --> S1[SideDialog sub-001]
+  Main --> S2[SideDialog sub-002]
+  Main --> S3[SideDialog sub-003]
 
-  S1 --> N1[Nested subdialog sub-001-001]
+  S1 --> N1[Nested sideDialog sub-001-001]
 
-  Root -.-> Reg["registry.yaml<br/>(root-scoped, Type B only)"]
-  Root -.-> QRoot[q4h.yaml (root)]
+  Main -.-> Reg["registry.yaml<br/>(main-scoped, Type B only)"]
+  Main -.-> QRoot[q4h.yaml (root)]
   S1 -.-> QS1[q4h.yaml (sub-001)]
   N1 -.-> QN1[q4h.yaml (sub-001-001)]
 ```
@@ -713,55 +713,57 @@ flowchart TD
 - `.dialogs/run/<root-id>/reminders.json`
 - `.dialogs/run/<root-id>/q4h.yaml`
 - `.dialogs/run/<root-id>/course-001.jsonl` (and further courses)
-- `.dialogs/run/<root-id>/subdialogs/<sub-id>/dialog.yaml`
-- `.dialogs/run/<root-id>/subdialogs/<sub-id>/q4h.yaml`
-- `.dialogs/run/<root-id>/registry.yaml` (root only; Type B registry)
+- `.dialogs/run/<root-id>/sideDialogs/<sub-id>/dialog.yaml`
+- `.dialogs/run/<root-id>/sideDialogs/<sub-id>/q4h.yaml`
+- `.dialogs/run/<root-id>/registry.yaml` (main only; Type B registry)
 
-### Subdialog Response Supply Mechanism
+### SideDialog Response Supply Mechanism
 
-**Core Principle**: Subdialogs supply responses to the **current tellasker dialog's** context via persistence, not callbacks (the tellasker is the direct supdialog for TYPE A; for TYPE B/C it may be a different dialog).
+**Core Principle**: SideDialogs supply responses to the **current tellasker dialog's** context via persistence, not callbacks (the tellasker is the direct askerDialog for TYPE A; for TYPE B/C it may be a different dialog).
 
 ```mermaid
 sequenceDiagram
-  participant Sup as Tellasker dialog
+  participant Asker as Tellasker dialog
   participant Driver as Backend driver
-  participant Sub as Subdialog
+  participant Side as SideDialog
   participant Store as Persistence
 
-  Sup->>Driver: create subdialog (adds to pending list)
-  Driver->>Sub: drive subdialog (detached execution)
-  Sub-->>Store: persist final response
-  Driver-->>Sup: supply response + clear pending-subdialogs
-  opt Sup is root and now unblocked
-    Driver-->>Sup: set needsDrive=true (auto-revive)
+  Asker->>Driver: create sideDialog (adds to pending list)
+  Driver->>Side: drive sideDialog (detached execution)
+  Side-->>Store: persist final response
+  Driver-->>Asker: supply response + clear pending-sideDialogs
+  opt Asker is root and now unblocked
+    Driver-->>Asker: set needsDrive=true (auto-revive)
   end
 ```
 
-### Subdialog Q4H and Supdialog Revival
+### SideDialog Q4H and AskerDialog Revival
 
-When a subdialog has raised Q4H and is waiting for human input, the supdialog's auto-revival logic must handle this:
+When a sideDialog has raised Q4H and is waiting for human input, the askerDialog's auto-revival logic must handle this:
 
 ```typescript
-// Supdialog checks subdialog completion status
-async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
-  const pending = await loadPendingSubdialogs(supdialog.id);
+// AskerDialog checks sideDialog completion status
+async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
+  const pending = await loadPendingSideDialogs(askerDialog.id);
 
   for (const p of pending) {
-    // Check if subdialog has unresolved Q4H
-    const subdialogQ4H = await DialogPersistence.loadQuestions4HumanState(p.subdialogId);
+    // Check if sideDialog has unresolved Q4H
+    const sideDialogQ4H = await DialogPersistence.loadQuestions4HumanState(p.sideDialogId);
 
-    if (subdialogQ4H.length > 0) {
-      // Subdialog is waiting for human input
+    if (sideDialogQ4H.length > 0) {
+      // SideDialog is waiting for human input
       // Do NOT auto-revive - wait for human to answer Q4H
-      log.debug(`Subdialog ${p.subdialogId} has ${subdialogQ4H.length} Q4H, skipping auto-revive`);
+      log.debug(
+        `SideDialog ${p.sideDialogId} has ${sideDialogQ4H.length} Q4H, skipping auto-revive`,
+      );
       continue;
     }
 
-    // Subdialog has no Q4H, check if it's done
-    const isDone = await isSubdialogCompleted(p.subdialogId);
+    // SideDialog has no Q4H, check if it's done
+    const isDone = await isSideDialogCompleted(p.sideDialogId);
     if (isDone) {
       // Incorporate response and auto-revive
-      await incorporateSubdialogResponse(supdialog, p.subdialogId);
+      await incorporateSideDialogResponse(askerDialog, p.sideDialogId);
     }
   }
 }
@@ -798,22 +800,22 @@ Invoke the function tool `clear_mind` with:
 - Clears all dialog messages in the current dialog
 - Preserves all reminders
 - **Clears all Q4H questions** (critical!)
-- Preserves subdialog registry (root dialog only)
-- Has no effect on supdialog
+- Preserves sideDialog registry (main dialog only)
+- Has no effect on askerDialog
 - Redirects attention to Taskdoc
 - A system-generated new-course prompt is queued and used as the **first `role=user` message** in the new dialog course
 - Starts a new dialog course
 
 **Multi-course dialog note**:
 
-- The first course is created naturally when a main dialog or subdialog is created.
+- The first course is created naturally when a main dialog or sideDialog is created.
 - Later courses are started by the dialog responder via `clear_mind`.
 - Exception: the system may auto-start a new course as remediation (e.g., context health becomes critical).
 
 **Implementation Notes**:
 
 - Operation is scoped to the current dialog only
-- Subdialogs are not affected by parent's `clear_mind`
+- SideDialogs are not affected by tellasker's `clear_mind`
 - Taskdoc remains unchanged and accessible
 - Reminders provide continuity across the clarity operation
 
@@ -839,12 +841,12 @@ Invoke the function tool `change_mind` with:
 - The updated file immediately becomes available to all dialogs referencing it
 - **Does not start a new dialog course.** If starting a new dialog course is desired, use `clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
-- Affects all participant agents (main and subdialogs) referencing the same Taskdoc
+- Affects all participant agents (main and sideDialogs) referencing the same Taskdoc
 - Use `progress` for key decisions/status/next steps; use `constraints` for hard rules (don’t leave them only in chat/reminders).
 
 **Implementation Notes**:
 
-- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
+- `change_mind` is only available in main dialogs (not sideDialogs); sideDialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
 - For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ---
@@ -873,22 +875,22 @@ Invoke the function tool `change_mind` with:
 
 ---
 
-## Subdialog Registry
+## SideDialog Registry
 
 ### Overview
 
-The **subdialog registry** is a root-dialog-scoped data structure that maintains persistent references to registered subdialogs created via TYPE B (Registered Subdialog Tellask / `Tellask Session`) teammate Tellasks.
+The **sideDialog registry** is a main-dialog-scoped data structure that maintains persistent references to registered sideDialogs created via TYPE B (Registered SideDialog Tellask / `Tellask Session`) teammate Tellasks.
 
 ### Key Characteristics
 
-| Aspect          | Description                                                     |
-| --------------- | --------------------------------------------------------------- |
-| **Scope**       | Root dialog only (not accessible to subdialogs)                 |
-| **Key Format**  | `agentId!sessionSlug` (single-level Map)                        |
-| **Storage**     | `registry.yaml` in root dialog directory                        |
-| **Lifecycle**   | Retained during normal runs; dead subdialog entries are removed |
-| **Persistence** | Moves with root to `done/` when root completes                  |
-| **Restoration** | Rebuilt on root load by scanning done/ subdialog YAMLs          |
+| Aspect          | Description                                                      |
+| --------------- | ---------------------------------------------------------------- |
+| **Scope**       | Main dialog only (not accessible to sideDialogs)                 |
+| **Key Format**  | `agentId!sessionSlug` (single-level Map)                         |
+| **Storage**     | `registry.yaml` in main dialog directory                         |
+| **Lifecycle**   | Retained during normal runs; dead sideDialog entries are removed |
+| **Persistence** | Moves with root to `done/` when main dialog completes            |
+| **Restoration** | Rebuilt on main dialog load by scanning done/ sideDialog YAMLs   |
 
 ### Registry Operations
 
@@ -896,7 +898,7 @@ Example `registry.yaml` (conceptual):
 
 ```yaml
 researcher!market-analysis:
-  subdialogId: uuid-123
+  sideDialogId: uuid-123
   agentId: researcher
   tellaskSession: market-analysis
   createdAt: 2025-12-27T10:00:00Z
@@ -907,43 +909,43 @@ researcher!market-analysis:
 flowchart TD
   Tellask["TYPE B Tellask: tellask(..., sessionSlug=...)"] --> Key[Compute key: agentId!sessionSlug]
   Key --> Lookup{Registry hit?}
-  Lookup -- yes --> Resume[Restore + drive existing subdialog]
-  Lookup -- no --> Create[Create + register + drive new subdialog]
+  Lookup -- yes --> Resume[Restore + drive existing sideDialog]
+  Lookup -- no --> Create[Create + register + drive new sideDialog]
   Resume --> Supply[Supply response to caller]
   Create --> Supply
 ```
 
-### Class Design: RootDialog vs SubDialog
+### Class Design: MainDialog vs SideDialog
 
-**Critical Design Principle**: The subdialog registry is managed exclusively by `RootDialog` and is **not accessible** to `SubDialog` instances.
+**Critical Design Principle**: The sideDialog registry is managed exclusively by `MainDialog` and is **not accessible** to `SideDialog` instances.
 
 **Responsibilities:**
 
-- `RootDialog`
-  - Owns the TYPE B subdialog registry (`registry.yaml`)
-  - Creates/registers/looks up registered subdialogs (`agentId!sessionSlug`)
-- `SubDialog`
-  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`tellaskBack({ tellaskContent: "..." })`)
-  - Cannot access or mutate the root registry (by design)
+- `MainDialog`
+  - Owns the TYPE B sideDialog registry (`registry.yaml`)
+  - Creates/registers/looks up registered sideDialogs (`agentId!sessionSlug`)
+- `SideDialog`
+  - Has a `askerDialog` reference (direct askerDialog) and uses it for TYPE A (`tellaskBack({ tellaskContent: "..." })`)
+  - Cannot access or mutate the main dialog registry (by design)
 
 **Mutex Semantics**:
 
-- `locked: true` → Subdialog is currently being driven (mutex held)
-- `locked: false` → Entry exists but subdialog is not locked (can resume)
+- `locked: true` → SideDialog is currently being driven (mutex held)
+- `locked: false` → Entry exists but sideDialog is not locked (can resume)
 - Registry does NOT track: 'active' | 'completed' | 'suspended' lifecycle states
 
-**Design Principle**: The registry tracks "locked" (being driven) vs "unlocked" (can resume) state. It does NOT track dialog lifecycle states (active/completed/suspended). Those are Dialog concerns, not Registry concerns. A registered subdialog may be unlocked (not currently being driven) but still exist as a completed or suspended dialog.
+**Design Principle**: The registry tracks "locked" (being driven) vs "unlocked" (can resume) state. It does NOT track dialog lifecycle states (active/completed/suspended). Those are Dialog concerns, not Registry concerns. A registered sideDialog may be unlocked (not currently being driven) but still exist as a completed or suspended dialog.
 
 ### Registry Persistence
 
-**File Location**: `<root-dialog-path>/registry.yaml`
+**File Location**: `<main-dialog-path>/registry.yaml`
 
 **Format**:
 
 ```typescript
-interface SubdialogRegistry {
+interface SideDialogRegistry {
   [key: string]: {
-    subdialogId: string; // UUID of the subdialog
+    sideDialogId: string; // UUID of the sideDialog
     agentId: string; // Agent identifier
     tellaskSession: string; // Tellask session key
     createdAt: string; // ISO timestamp
@@ -958,8 +960,8 @@ interface SubdialogRegistry {
 1. **On Registration**: New entry added to registry, file saved
 2. **On Resume**: `lastAccessed` updated, file saved
 3. **On Clear Mind**: Registry preserved (not cleared)
-4. **On Root Completion**: Registry moves with root to `done/`
-5. **On Root Load**: Registry rebuilt from done/ subdialog YAMLs
+4. **On Main Completion**: Registry moves with root to `done/`
+5. **On Main Load**: Registry rebuilt from done/ sideDialog YAMLs
 
 ---
 
@@ -971,17 +973,17 @@ The complete Dialog class implementation with all methods, properties, and detai
 
 **Key Components**:
 
-- **Hierarchy Support**: Parent-child relationships for subdialog management
+- **Dialog Relationship Support**: Tellask/response relationships for sideDialog management
 - **Memory Management**: Persistent reminders and ephemeral dialog messages
 - **Mental Clarity Operations**: `startNewCourse(newCoursePrompt)` method (clears messages, clears Q4H, increments course, queues new course prompt for the next drive)
-- **Subdialog Management**: Creation and coordination of specialized subtasks
+- **SideDialog Management**: Creation and coordination of specialized subtasks
 - **Q4H Management**: `updateQuestions4Human()` method for question tracking
 - **Memory Access**: Integration with Taskdocs and team/agent memories
-- **Registry Management** (RootDialog only): Registration and lookup of subdialogs
+- **Registry Management** (MainDialog only): Registration and lookup of sideDialogs
 
-### Main Dialog Resolution
+### Mainline dialog Resolution
 
-For subdialogs needing to communicate with the main dialog (root dialog), see the implementation in `dominds/main/dialog.ts` which provides methods for traversing the dialog hierarchy.
+For sideDialogs needing to communicate with the Mainline dialog, see the implementation in `dominds/main/dialog.ts` which provides methods for resolving dialog relationships.
 
 ### Persistence Layer
 
@@ -991,7 +993,7 @@ The persistence layer handles:
 - **Q4H Storage**: `q4h.yaml` per dialog (cleared by clear_mind)
 - **Reminder Storage**: `reminders.json` per dialog
 - **Event Persistence**: Course-based JSONL files
-- **Registry Storage**: `registry.yaml` per root dialog
+- **Registry Storage**: `registry.yaml` per main dialog
 
 **Q4H Persistence Methods**:
 
@@ -1014,13 +1016,13 @@ static async clearQuestions4HumanState(
 **Registry Persistence Methods**:
 
 ```typescript
-// In RootDialog (dialog.ts)
+// In MainDialog (dialog.ts)
 interface RegistryMethods {
-  loadRegistry(): Promise<SubdialogRegistry>;
-  saveRegistry(registry: SubdialogRegistry): Promise<void>;
-  registerSubdialog(key: string, metadata: SubdialogMetadata): void;
-  lookupSubdialog(key: string): SubdialogMetadata | undefined;
-  getRegistry(): SubdialogRegistry;
+  loadRegistry(): Promise<SideDialogRegistry>;
+  saveRegistry(registry: SideDialogRegistry): Promise<void>;
+  registerSideDialog(key: string, metadata: SideDialogMetadata): void;
+  lookupSideDialog(key: string): SideDialogMetadata | undefined;
+  getRegistry(): SideDialogRegistry;
 }
 ```
 
@@ -1028,66 +1030,66 @@ interface RegistryMethods {
 
 ## Dialog Management
 
-### Hierarchy Management
+### Dialog Relationship Management
 
-**Creation**: Subdialogs are created when agents need to delegate specialized tasks or when complex problems require decomposition.
+**Creation**: SideDialogs are created when agents need to delegate specialized tasks or when complex problems require decomposition.
 
-**Context Inheritance**: New subdialogs automatically receive:
+**Context Inheritance**: New sideDialogs automatically receive:
 
 - Reference to the same rtws (runtime workspace) Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
 - Tellasker dialog Tellask context (mentionList + tellaskContent) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
 
-### Subdialog course header (required)
+### SideDialog course header (required)
 
-At the start of every subdialog course, the runtime must prepend a role header to the assignment prompt:
+At the start of every sideDialog course, the runtime must prepend a role header to the assignment prompt:
 
 - EN: `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @xxx (the current caller).`
 - Chinese variant: see [the Chinese doc](./dialog-system.zh.md) for the corresponding work-language header.
 
-**FBR special handling**: FBR is a self-subdialog and must keep a dedicated header to avoid confusion:
+**FBR special handling**: FBR is a self-sideDialog and must keep a dedicated header to avoid confusion:
 
-- EN (example): `This is an FBR sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
+- EN (example): `This is an FBR Sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
 - Chinese variant example: see [the Chinese doc](./dialog-system.zh.md) for the corresponding FBR header example.
 
-**Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`).
+**Insertion point**: prefer a single insertion point by updating `formatAssignmentFromAskerDialog()` (covers `dialog.ts`, `tellask-bridge`).
 There is no separate frontend twin anymore; [`main/runtime/inter-dialog-format.ts`](../main/runtime/inter-dialog-format.ts) is the authoritative formatter.
 
-**Storage**: All subdialogs are stored flat under the main dialog's (root dialog's) `subdialogs/` directory, regardless of nesting depth.
+**Storage**: All sideDialogs are stored flat under the main dialog's (main dialog's) `sideDialogs/` directory, regardless of nesting depth.
 
-**Navigation**: Each subdialog maintains a reference to its parent, enabling upward traversal to the main dialog.
+**Navigation**: Each sideDialog maintains a reference to its askerDialog, enabling upward traversal to the main dialog.
 
-**Registry**: Registered subdialogs (TYPE B Tellasks) are tracked in the root dialog's registry and persist across restarts.
+**Registry**: Registered sideDialogs (TYPE B Tellasks) are tracked in the main dialog's registry and persist across restarts.
 
-### Root dialog fork
+### Main dialog fork
 
-An entire root dialog tree can be forked at the start of a chosen root generation into a brand-new root dialog. This is used to preserve prior context while re-running the later mainline/sideline path from a historical branch point.
+An entire main dialog tree can be forked at the start of a chosen root generation into a brand-new main dialog. This is used to preserve prior context while re-running the later Mainline dialog/Sideline dialog path from a historical branch point.
 
 **Entry points**:
 
-- UI shows `Fork dialog` only on generation bubbles of a root dialog (`selfId === rootId`)
+- UI shows `Fork dialog` only on generation bubbles of a main dialog (`selfId === rootId`)
 - Backend API: `POST /api/dialogs/:rootId/fork`
 - Request body: `{ course, genseq, status? }`
 
 **Semantics (required)**:
 
 - The selected generation bubble is **not** copied into the forked root; the fork point means "branch immediately before this generation starts"
-- The copy scope is the **entire root dialog tree**, not just one dialog
-- A subdialog is included only if the root had already persisted it as created before the cutoff
-- Subdialog transcript retention is bounded by the root-generation anchor, not by the subdialog's local `genseq`
+- The copy scope is the **entire main dialog tree**, not just one dialog
+- A sideDialog is included only if the root had already persisted it as created before the cutoff
+- SideDialog transcript retention is bounded by the root-generation anchor, not by the sideDialog's local `genseq`
 
 **Post-fork actions** (returned by backend to UI):
 
 - `draft_user_text`: if the target generation is a user message, prefill that text into the new dialog input and wait for user confirmation
-- `restore_pending`: if there were pending Q4H or pending subdialogs before the cutoff, restore those blocking states in the new root
+- `restore_pending`: if there were pending Q4H or pending sideDialogs before the cutoff, restore those blocking states in the new root
 - `auto_continue`: if there is no pending blocker before the cutoff, initialize the new root as `interrupted(system_stop: fork_dialog_continue)` and have UI immediately send `resume_dialog`
 
 **Consistency requirements**:
 
 - Fork must preserve the same Taskdoc reference
-- The forked root and all forked subdialogs are persisted under `running/` with a new rootId
-- Frontend must not expose this entry for sideline dialogs; current implementation supports root dialogs only
+- The forked root and all forked sideDialogs are persisted under `running/` with a new rootId
+- Frontend must not expose this entry for Sideline dialogs; current implementation supports main dialogs only
 
 ### Lifecycle Management
 
@@ -1097,28 +1099,28 @@ An entire root dialog tree can be forked at the start of a chosen root generatio
 
 - Tasks are finished successfully
 - Agents explicitly mark them complete
-- Supdialogs determine subtasks are no longer needed
-- All pending subdialogs are complete AND all Q4H are answered
+- AskerDialogs determine subtasks are no longer needed
+- All pending sideDialogs are complete AND all Q4H are answered
 
-**Registry on Completion**: When a root dialog completes, its registry moves with it to the `done/` directory and is preserved for potential restoration.
+**Registry on Completion**: When a main dialog completes, its registry moves with it to the `done/` directory and is preserved for potential restoration.
 
 **Cleanup**: Completed dialogs may be archived or cleaned up based on retention policies.
 
 ### Communication Patterns
 
-**Upward Communication**: Subdialogs communicate results, questions, and escalations to their **tellasker dialog** (the caller).
+**Upward Communication**: SideDialogs communicate results, questions, and escalations to their **tellasker dialog** (the caller).
 
-- **Clarification Requests (TYPE A / `TellaskBack`)**: A subdialog may Tellask its tellasker dialog to request clarification while working on its subtask. For TYPE A, the tellasker dialog is the direct supdialog. The tellasker dialog provides guidance, and the subdialog continues with updated context.
-- **Subtask Response**: When a subdialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromSup` (root or another subdialog). This keeps responses aligned with the most recent Tellask site.
-- **Q4H Escalation**: If a subdialog has Q4H, it suspends. The user can answer via the UI, which triggers continuation of the subdialog only.
-- **Registered Subdialogs (TYPE B / `Tellask Session`)**: A parent can resume a previously created registered subdialog, enabling ongoing task continuation.
-- **Transient Subdialogs (TYPE C / `Fresh Tellask`)**: A parent can spawn a one-off subdialog for independent tasks that don't require persistence.
+- **Clarification Requests (TYPE A / `TellaskBack`)**: A sideDialog may Tellask its tellasker dialog to request clarification while working on its subtask. For TYPE A, the tellasker dialog is the direct askerDialog. The tellasker dialog provides guidance, and the sideDialog continues with updated context.
+- **Subtask Response**: When a sideDialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromAsker` (root or another sideDialog). This keeps responses aligned with the most recent Tellask site.
+- **Q4H Escalation**: If a sideDialog has Q4H, it suspends. The user can answer via the UI, which triggers continuation of the sideDialog only.
+- **Registered SideDialogs (TYPE B / `Tellask Session`)**: A tellasker can resume a previously created registered sideDialog, enabling ongoing task continuation.
+- **Transient SideDialogs (TYPE C / `Fresh Tellask`)**: A tellasker can spawn a one-off sideDialog for independent tasks that don't require persistence.
 
-**Downward Communication**: Supdialogs provide context, objectives, and guidance to subdialogs.
+**Downward Communication**: AskerDialogs provide context, objectives, and guidance to sideDialogs.
 
-**Lateral Communication**: Sibling subdialogs coordinate through their shared supdialog.
+**Lateral Communication**: Sibling sideDialogs coordinate through their shared askerDialog.
 
-**Broadcast Communication**: Main dialog (root dialog) can communicate changes (like rtws Taskdoc file updates) to all dialogs through the Taskdoc reference.
+**Broadcast Communication**: Main dialog (main dialog) can communicate changes (like rtws Taskdoc file updates) to all dialogs through the Taskdoc reference.
 
 ---
 
@@ -1132,9 +1134,9 @@ An entire root dialog tree can be forked at the start of a chosen root generatio
 
 **Q4H Questions**: Transient questions for human input that are **cleared by mental clarity operations**.
 
-**Parent Call Context**: Immutable context explaining why a subdialog was created.
+**Tellasker Call Context**: Immutable context explaining why a sideDialog was created.
 
-**Subdialog Registry**: Root-dialog-scoped persistent mapping of registered subdialogs (survives clarity operations).
+**SideDialog Registry**: Main-dialog-scoped persistent mapping of registered sideDialogs (survives clarity operations).
 
 ### rtws-Persistent Memory
 
@@ -1150,7 +1152,7 @@ An entire root dialog tree can be forked at the start of a chosen root generatio
 
 **Q4H Persistence**: Q4H questions are persisted when created and cleared atomically when answered or when clear_mind is called.
 
-**Registry Persistence**: Registry is persisted after each modification and restored on root dialog load.
+**Registry Persistence**: Registry is persisted after each modification and restored on main dialog load.
 
 ---
 
@@ -1164,16 +1166,16 @@ An entire root dialog tree can be forked at the start of a chosen root generatio
 - `<dialog-root>/latest.yaml` — current course tracking and status
 - `<dialog-root>/reminders.json` — persistent reminder storage
 - `<dialog-root>/q4h.yaml` — Q4H index (cleared by clarity tools)
-- `<dialog-root>/registry.yaml` — subdialog registry (root dialogs only)
+- `<dialog-root>/registry.yaml` — sideDialog registry (main dialogs only)
 - `<dialog-root>/course-001.jsonl` (and further courses) — streamed message files
-- `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
-- `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — per-subdialog Q4H index (cleared by clarity)
+- `<dialog-root>/sideDialogs/<sideDialog-id>/dialog.yaml`
+- `<dialog-root>/sideDialogs/<sideDialog-id>/q4h.yaml` — per-sideDialog Q4H index (cleared by clarity)
 
 **Taskdoc Storage**: Taskdocs are rtws artifacts referenced by dialogs through paths. Taskdocs MUST be encapsulated `*.tsk/` Taskdoc packages.
 
 **Memory Storage**: Team and agent memories are stored in dedicated files within the rtws.
 
-**Registry Storage**: The subdialog registry (`registry.yaml`) is stored in the root dialog directory and moves to `done/` on root completion.
+**Registry Storage**: The sideDialog registry (`registry.yaml`) is stored in the main dialog directory and moves to `done/` on main dialog completion.
 
 ### Streaming Substream Ordering Contract (Thinking / Saying)
 
@@ -1203,19 +1205,19 @@ Additionally, some providers (especially Anthropic-compatible endpoints) enforce
 
 **Tool Invocation**: Mental clarity tools are invoked through CLI commands or agent actions.
 
-**Status Monitoring**: Dialog status, pending subdialogs, Q4H count, and registered subdialogs can be inspected through CLI tools.
+**Status Monitoring**: Dialog status, pending sideDialogs, Q4H count, and registered sideDialogs can be inspected through CLI tools.
 
 ### Agent Integration
 
-**Autonomous Operation**: Agents can independently create subdialogs (TYPE B and C), manage reminders, raise Q4H, and trigger clarity operations.
+**Autonomous Operation**: Agents can independently create sideDialogs (TYPE B and C), manage reminders, raise Q4H, and trigger clarity operations.
 
-**Context Awareness**: Agents have full access to their dialog context, memories, hierarchy position, pending Q4H from subdialogs, and (for root dialogs) the subdialog registry.
+**Context Awareness**: Agents have full access to their dialog context, memories, dialog relationship position, pending Q4H from sideDialogs, and (for main dialogs) the sideDialog registry.
 
 **Teammate Tellask Capability**: Agents can invoke all three types of teammate Tellasks:
 
-- TYPE A / `TellaskBack`: Tellask the tellasker dialog for clarification (direct supdialog for TYPE A)
-- TYPE B / `Tellask Session`: Tellask/resume registered subdialogs
-- TYPE C / `Fresh Tellask`: Spawn transient subdialogs
+- TYPE A / `TellaskBack`: Tellask the tellasker dialog for clarification (direct askerDialog for TYPE A)
+- TYPE B / `Tellask Session`: Tellask/resume registered sideDialogs
+- TYPE C / `Fresh Tellask`: Spawn transient sideDialogs
 
 **Tool Access**: All mental clarity tools, Q4H capability, and teammate Tellask capability are available to agents for autonomous cognitive management.
 
@@ -1226,7 +1228,7 @@ driven is derived from persisted facts:
 
 - Persisted status (API/index): `running | completed | archived`
 - Persisted `latest.yaml`: `status`, `needsDrive`, `generating`
-- Derived gates: `hasPendingQ4H()` and `hasPendingSubdialogs()`
+- Derived gates: `hasPendingQ4H()` and `hasPendingSideDialogs()`
 
 **Persisted status lifecycle:**
 
@@ -1238,13 +1240,13 @@ stateDiagram-v2
   completed --> archived: archive
 ```
 
-**Root driver gating (conceptual):**
+**Main driver gating (conceptual):**
 
 ```mermaid
 flowchart TD
-  A[status=running] --> B{canDrive?\\n(no pending Q4H\\n& no pending subdialogs)}
-  B -- no --> S[Suspended\\n(waiting on Q4H and/or subdialogs)]
-  S -->|Q4H answered\\nor subdialog responses supplied| C{needsDrive?}
+  A[status=running] --> B{canDrive?\\n(no pending Q4H\\n& no pending sideDialogs)}
+  B -- no --> S[Suspended\\n(waiting on Q4H and/or sideDialogs)]
+  S -->|Q4H answered\\nor sideDialog responses supplied| C{needsDrive?}
   B -- yes --> C{needsDrive?}
   C -- no --> I[Idle\\n(waiting for trigger)]
   C -- yes --> D[Drive loop\\n(generating=true while streaming)]
@@ -1262,57 +1264,57 @@ rendered in different markdown viewers.
 
 ```mermaid
 sequenceDiagram
-  participant Sub as Subdialog
+  participant Side as SideDialog
   participant Driver as Backend driver
-  participant Sup as Tellasker dialog (direct supdialog)
+  participant Asker as Tellasker dialog (direct askerDialog)
 
-  Sub->>Driver: emits `tellaskBack({ tellaskContent: "..." })` + question
-  Driver->>Sup: drive tellasker dialog to answer
-  Sup-->>Driver: response text
-  Driver-->>Sub: resume subdialog with response in context
+  Side->>Driver: emits `tellaskBack({ tellaskContent: "..." })` + question
+  Driver->>Asker: drive tellasker dialog to answer
+  Asker-->>Driver: response text
+  Driver-->>Side: resume sideDialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`)
+#### TYPE B: Registered SideDialog Tellask (`Tellask Session`) (`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`)
 
 ```mermaid
 sequenceDiagram
   participant Caller as Caller dialog
   participant Driver as Backend driver
-  participant Reg as Root subdialog registry
-  participant Sub as Registered subdialog
+  participant Reg as Main sideDialog registry
+  participant Side as Registered sideDialog
 
   Caller->>Driver: emits `tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`
   Driver->>Reg: lookup `agentId!sessionSlug`
   alt registry hit
-    Reg-->>Driver: existing subdialog selfId
+    Reg-->>Driver: existing sideDialog selfId
     opt earlier round still waiting
       Driver-->>Caller: close earlier waiting round with system-generated business notice
-      Driver->>Sub: queue update notice + latest full assignment
+      Driver->>Side: queue update notice + latest full assignment
     end
-    Driver->>Sub: restore + drive
+    Driver->>Side: restore + drive
   else registry miss
     Reg-->>Driver: none
-    Driver->>Sub: create + register + drive
+    Driver->>Side: create + register + drive
   end
-  Sub-->>Driver: final response
-  Driver-->>Caller: supply response + clear pending-subdialogs
+  Side-->>Driver: final response
+  Driver-->>Caller: supply response + clear pending-sideDialogs
   opt Caller is root and now unblocked
     Driver-->>Caller: set `needsDrive=true` (auto-revive scheduling)
   end
 ```
 
-#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `freshBootsReasoning({ tellaskContent: "..." })` is FBR tool-less)
+#### TYPE C: Transient SideDialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `freshBootsReasoning({ tellaskContent: "..." })` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram
   participant Caller as Caller dialog
   participant Driver as Backend driver
-  participant Sub as Transient subdialog
+  participant Side as Transient sideDialog
 
   Caller->>Driver: emits `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`
-  Driver->>Sub: create (NOT registered)
-  Driver->>Sub: drive
-  Sub-->>Driver: final response
+  Driver->>Side: create (NOT registered)
+  Driver->>Side: drive
+  Side-->>Driver: final response
   Driver-->>Caller: supply response (no registry update)
 ```
 
@@ -1333,31 +1335,31 @@ flowchart TD
 `q4h.yaml` is treated as an index; the source-of-truth “asked question” content lives in the dialog’s
 message stream, referenced by `callSiteRef`.
 
-### Subdialog + Q4H Interaction
+### SideDialog + Q4H Interaction
 
 ```mermaid
 sequenceDiagram
-  participant Sup as Supdialog
-  participant Sub as Subdialog
+  participant Asker as AskerDialog
+  participant Side as SideDialog
   participant UI as Frontend UI
   participant WS as WebSocket handler
   participant Driver as driveDialogStream
 
-  Sup->>Sub: create subdialog (Type B or C)
-  Note over Sup,Sub: Supdialog becomes blocked on pending subdialogs
-  Sub->>WS: emits askHuman({ tellaskContent: "..." }) question (Q4H)
+  Asker->>Side: create sideDialog (Type B or C)
+  Note over Asker,Side: AskerDialog becomes blocked on pending sideDialogs
+  Side->>WS: emits askHuman({ tellaskContent: "..." }) question (Q4H)
   WS-->>UI: questions_count_update (global)
 
-  Note over Sub: Subdialog cannot proceed until answered
+  Note over Side: SideDialog cannot proceed until answered
 
-  UI->>WS: drive_dialog_by_user_answer (dialogId=subdialogId, questionId, content)
-  WS->>Sub: clear q4h.yaml entry
-  WS->>Driver: driveDialogStream(subdialog, user answer)
-  Driver-->>Sub: subdialog resumes and continues
-  Sub-->>Sup: subdialog response supplied to caller (clears pending-subdialogs)
+  UI->>WS: drive_dialog_by_user_answer (dialogId=sideDialogId, questionId, content)
+  WS->>Side: clear q4h.yaml entry
+  WS->>Driver: driveDialogStream(sideDialog, user answer)
+  Driver-->>Side: sideDialog resumes and continues
+  Side-->>Asker: sideDialog response supplied to caller (clears pending-sideDialogs)
 
-  opt Sup is root and now unblocked
-    Sup-->>Sup: set needsDrive=true (auto-revive)
+  opt Asker is root and now unblocked
+    Asker-->>Asker: set needsDrive=true (auto-revive)
   end
 ```
 
@@ -1365,12 +1367,12 @@ sequenceDiagram
 
 ## Complete Flow Reference
 
-### 1. Main Dialog Raises Q4H
+### 1. Mainline dialog Raises Q4H
 
 ```mermaid
 sequenceDiagram
   participant User as User/Agent
-  participant Main as Main Dialog
+  participant Main as Mainline dialog
   participant Store as Persistence (q4h.yaml)
   participant UI as Frontend
 
@@ -1386,50 +1388,50 @@ sequenceDiagram
   Main-->>Main: driveDialogStream(answer)
 ```
 
-### 2. Subdialog Raises Q4H, User Answers via Root
+### 2. SideDialog Raises Q4H, User Answers via Main
 
 ```mermaid
 sequenceDiagram
   participant User as User
-  participant Sup as Supdialog (root)
-  participant Sub as Subdialog
-  participant Store as Persistence (sub/q4h.yaml, sub/response.yaml)
+  participant Asker as AskerDialog (main)
+  participant Side as SideDialog
+  participant Store as Persistence (side/q4h.yaml, side/response.yaml)
   participant UI as Frontend
 
-  Sup->>Sub: createSubDialog()
-  Sub->>Store: recordQuestionForHuman()
-  Sub-->>UI: questions_count_update (subdialog)
-  Sup-->>Sup: suspended (waiting on Q4H/subdialog)
+  Asker->>Side: createSideDialog()
+  Side->>Store: recordQuestionForHuman()
+  Side-->>UI: questions_count_update (sideDialog)
+  Asker-->>Asker: suspended (waiting on Q4H/sideDialog)
 
-  User->>UI: select subdialog Q4H
-  User->>Sup: drive_dialog_by_user_answer(targetSubdialogId)
-  Sup->>Sub: handleDriveDialogByUserAnswer(...)
-  Sub->>Store: loadQuestions4HumanState()
-  Sub->>Store: clearQuestions4HumanState()
-  Sub-->>Sub: driveDialogStream(answer)
-  Sub->>Store: write response.yaml
-  Sub-->>Sup: supply response (resume root)
+  User->>UI: select sideDialog Q4H
+  User->>Asker: drive_dialog_by_user_answer(targetSideDialogId)
+  Asker->>Side: handleDriveDialogByUserAnswer(...)
+  Side->>Store: loadQuestions4HumanState()
+  Side->>Store: clearQuestions4HumanState()
+  Side-->>Side: driveDialogStream(answer)
+  Side->>Store: write response.yaml
+  Side-->>Asker: supply response (resume root)
 ```
 
-### 3. Registered Subdialog Tellask (TYPE B / `Tellask Session` / Registered Session Tellask)
+### 3. Registered SideDialog Tellask (TYPE B / `Tellask Session` / Registered Session Tellask)
 
 ```mermaid
 sequenceDiagram
-  participant Root as Root Dialog
+  participant Main as Mainline dialog
   participant Store as Persistence (registry.yaml + dialogs/)
-  participant Sub as Subdialog (@researcher sessionSlug market)
+  participant Side as SideDialog (@researcher sessionSlug market)
 
-  Root->>Store: lookup registry key "researcher!market"
+  Main->>Store: lookup registry key "researcher!market"
   alt not found
-    Root->>Store: create subdialog + save registry.yaml
-    Root->>Sub: drive (root suspended)
+    Main->>Store: create sideDialog + save registry.yaml
+    Main->>Side: drive (root suspended)
   else found
-    Root->>Store: load subdialog + update lastAccessed
-    Root->>Sub: drive (root suspended)
+    Main->>Store: load sideDialog + update lastAccessed
+    Main->>Side: drive (root suspended)
   end
 
-  Sub->>Store: write response.yaml
-  Sub-->>Root: supply response (root resumes)
+  Side->>Store: write response.yaml
+  Side-->>Main: supply response (root resumes)
 ```
 
 ### 4. Clarity Operations Preserve Registry
@@ -1449,9 +1451,9 @@ sequenceDiagram
 
 ### Scalability
 
-**Flat Storage**: Subdialog flat storage prevents deep directory nesting issues.
+**Flat Storage**: SideDialog flat storage prevents deep directory nesting issues.
 
-**Registry Efficiency**: Single-level Map lookup for registered subdialogs is O(1).
+**Registry Efficiency**: Single-level Map lookup for registered sideDialogs is O(1).
 
 **Memory Efficiency**: Shared memories reduce duplication across dialogs.
 
@@ -1469,7 +1471,7 @@ sequenceDiagram
 
 **Performance Metrics**: System tracks dialog creation, completion, registry size, resource usage, and Q4H count.
 
-**Health Checks**: Regular validation of dialog hierarchy integrity, Q4H persistence, registry consistency, and memory.
+**Health Checks**: Regular validation of dialog dialog relationship integrity, Q4H persistence, registry consistency, and memory.
 
 **Debugging Support**: Comprehensive logging and inspection tools for troubleshooting teammate Tellasks, registry operations, and Q4H flows.
 
@@ -1477,17 +1479,17 @@ sequenceDiagram
 
 ## Summary
 
-The Dominds dialog system provides a robust framework for hierarchical, human-in-the-loop AI collaboration:
+The Dominds dialog system provides a robust framework for human-in-the-loop AI collaboration:
 
 ### Four Core Mechanisms
 
-| Mechanism              | Purpose                       | Survives Clarity | Cleared By                                   |
-| ---------------------- | ----------------------------- | ---------------- | -------------------------------------------- |
-| **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A                                          |
-| **Q4H**                | Human input requests          | No               | clear_mind                                   |
-| **Mental Clarity**     | Context reset tools           | N/A              | N/A                                          |
-| **Reminders**          | Persistent working memory     | Yes              | N/A                                          |
-| **Subdialog Registry** | Registered subdialog tracking | Yes              | dead-entry prune on `declare_subdialog_dead` |
+| Mechanism               | Purpose                                   | Survives Clarity | Cleared By                                    |
+| ----------------------- | ----------------------------------------- | ---------------- | --------------------------------------------- |
+| **Dialog Relationship** | Tellasker/Sideline dialog task delegation | N/A              | N/A                                           |
+| **Q4H**                 | Human input requests                      | No               | clear_mind                                    |
+| **Mental Clarity**      | Context reset tools                       | N/A              | N/A                                           |
+| **Reminders**           | Persistent working memory                 | Yes              | N/A                                           |
+| **SideDialog Registry** | Registered sideDialog tracking            | Yes              | dead-entry prune on `declare_sideDialog_dead` |
 
 ### Three Types of Teammate Tellasks
 
@@ -1499,12 +1501,12 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 ### Class Responsibility
 
-- **RootDialog**: Manages registry, can make all three teammate Tellask types
-- **SubDialog**: Has supdialog reference, can make TYPE A and TYPE C directly; TYPE B routes through the root registry and updates caller context on each Tellask
+- **MainDialog**: Manages registry, can make all three teammate Tellask types
+- **SideDialog**: Has askerDialog reference, can make TYPE A and TYPE C directly; TYPE B routes through the main dialog registry and updates caller context on each Tellask
 
 ### Persistence Guarantees
 
 - **Q4H**: Persisted, cleared by clarity operations
 - **Reminders**: Persisted, survives clarity operations
 - **Registry**: Persisted, survives clarity operations, moves to done/ on completion
-- **Subdialogs**: Registered subdialogs persist in registry; transient subdialogs are not registered
+- **SideDialogs**: Registered sideDialogs persist in registry; transient sideDialogs are not registered

@@ -15,6 +15,7 @@ function run(): void {
   {
     const actual = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'language-en-call',
       responderId: 'bob',
       requesterId: 'alice',
       tellaskContent: '@bob hello',
@@ -22,13 +23,20 @@ function run(): void {
       status: 'completed',
       language: 'en',
     });
-    const expected = `Hi @alice, @bob provided response:
+    const expected = `【Completed】
+
+@bob provided response:
 
 > ok
 
-to your original call:
+regarding the original tellask: @alice
 
 > @bob hello
+
+[Dominds tellask status]
+- Function: \`tellaskSessionless\`
+- callId: language-en-call
+- Note: This is a reply fact for an earlier tellask, not a new user request or a newly initiated function call in the current course.
 `;
     assert.equal(actual, expected);
   }
@@ -36,6 +44,7 @@ to your original call:
   {
     const actual = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'language-zh-call',
       responderId: 'bob',
       requesterId: 'alice',
       tellaskContent: '@bob hello',
@@ -43,13 +52,20 @@ to your original call:
       status: 'completed',
       language: 'zh',
     });
-    const expected = `你好 @alice，@bob 已回复：
+    const expected = `【最终完成】
+
+@bob 已回复：
 
 > ok
 
-针对你最初的诉请：
+针对原始诉请： @alice
 
 > @bob hello
+
+[Dominds 诉请状态]
+- 函数: \`tellaskSessionless\`
+- callId: language-zh-call
+- 说明: 这是前序诉请的回贴事实，不是新的用户请求，也不是当前程新发起的函数调用。
 `;
     assert.equal(actual, expected);
   }

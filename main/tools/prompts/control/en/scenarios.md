@@ -51,11 +51,11 @@ delete_reminder({
 - If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
 - If the note is durable knowledge rather than an active working-set cue, move it to `personal_memory` instead
 
-## Scenario 2: Sideline is complete, and the assignment header requires replyTellask
+## Scenario 2: Sideline dialog is complete, and the assignment header requires replyTellask
 
 ### Scenario Description
 
-The current sideline is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
+The current Sideline dialog is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
 
 ### Example
 
@@ -76,7 +76,7 @@ replyTellask({
 
 ### Scenario Description
 
-The sideline is still blocked or incomplete, so you need to ask upstream for missing information.
+The Sideline dialog is still blocked or incomplete, so you need to ask upstream for missing information.
 
 ### Example
 

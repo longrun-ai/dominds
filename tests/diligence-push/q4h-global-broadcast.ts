@@ -12,7 +12,7 @@ import {
   installRecordingGlobalDialogEventBroadcaster,
   requireRecordingGlobalDialogEventRecorder,
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import { postDialogEvent, postDialogEventById } from '../../main/evt-registry';
 import { DiskFileDialogStore } from '../../main/persistence';
 
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   try {
     const dlgId = new DialogID('dlg-q4h-bcast-test');
     const store = new DiskFileDialogStore(dlgId);
-    const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
+    const dlg = new MainDialog(store, 'task.md', dlgId, 'tester');
     const createdAt = '2026-01-29 00:00:01';
 
     installRecordingGlobalDialogEventBroadcaster({
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     });
 
     postDialogEvent(dlg, {
-      type: 'subdialog_created_evt',
+      type: 'sideDialog_created_evt',
       dialog: {
         selfId: dlgId.selfId,
         rootId: dlgId.rootId,
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         selfId: dlgId.selfId,
         rootId: dlgId.rootId,
       },
-      subDialog: {
+      sideDialog: {
         selfId: 'sub-1',
         rootId: dlgId.rootId,
       },
@@ -79,11 +79,11 @@ async function main(): Promise<void> {
       callName: 'tellaskSessionless',
       mentionList: ['@coder'],
       tellaskContent: 'Please investigate.',
-      rootSubdialogCount: 1,
-      subDialogNode: {
+      rootSideDialogCount: 1,
+      sideDialogNode: {
         selfId: 'sub-1',
         rootId: dlgId.rootId,
-        supdialogId: dlgId.selfId,
+        askerDialogId: dlgId.selfId,
         agentId: 'coder',
         taskDocPath: 'task.md',
         status: 'running',
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
         lastModified: createdAt,
         displayState: { kind: 'idle_waiting_user' },
         sessionSlug: 'sess-1',
-        assignmentFromSup: {
+        assignmentFromAsker: {
           callName: 'tellaskSessionless',
           mentionList: ['@coder'],
           tellaskContent: 'Please investigate.',
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     const received: readonly TypedDialogEvent[] = recorder.snapshot();
     const q4hAskedEvents = received.filter((evt) => evt.type === 'new_q4h_asked');
     const q4hAnsweredEvents = received.filter((evt) => evt.type === 'q4h_answered');
-    const subdialogCreatedEvents = received.filter((evt) => evt.type === 'subdialog_created_evt');
+    const sideDialogCreatedEvents = received.filter((evt) => evt.type === 'sideDialog_created_evt');
     const touchedEvents = received.filter((evt) => evt.type === 'dlg_touched_evt');
 
     if (q4hAskedEvents.length !== 1) {
@@ -115,9 +115,9 @@ async function main(): Promise<void> {
     if (q4hAnsweredEvents.length !== 1) {
       throw new Error(`Expected 1 q4h_answered event, got ${q4hAnsweredEvents.length}`);
     }
-    if (subdialogCreatedEvents.length !== 1) {
+    if (sideDialogCreatedEvents.length !== 1) {
       throw new Error(
-        `Expected 1 subdialog_created_evt event, got ${subdialogCreatedEvents.length}`,
+        `Expected 1 sideDialog_created_evt event, got ${sideDialogCreatedEvents.length}`,
       );
     }
     if (touchedEvents.length !== 4) {
@@ -125,12 +125,12 @@ async function main(): Promise<void> {
     }
 
     const asked = q4hAskedEvents[0]!;
-    const subCreated = subdialogCreatedEvents[0]!;
+    const subCreated = sideDialogCreatedEvents[0]!;
     if (asked.dialog.selfId !== dlgId.selfId || asked.dialog.rootId !== dlgId.rootId) {
       throw new Error('Expected typed dialog context on new_q4h_asked broadcast');
     }
     if (subCreated.dialog.selfId !== dlgId.selfId || subCreated.dialog.rootId !== dlgId.rootId) {
-      throw new Error('Expected typed dialog context on subdialog_created_evt broadcast');
+      throw new Error('Expected typed dialog context on sideDialog_created_evt broadcast');
     }
 
     const touchedSourceTypes = new Set(
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
       'dlg_display_state_evt',
       'new_q4h_asked',
       'q4h_answered',
-      'subdialog_created_evt',
+      'sideDialog_created_evt',
     ]);
     if (touchedSourceTypes.size !== expectedTouchedSources.size) {
       throw new Error(

@@ -469,13 +469,13 @@ export async function createPhaseGatePrimaryActionsFixture(): Promise<PhaseGateP
     tools: getPrimaryActionTools(host),
     ownerCtx: {
       dialogId: 'dlg-owner',
-      rootDialogId: 'root-owner',
+      mainDialogId: 'root-owner',
       agentId: 'owner',
       callerId: '@owner',
     },
     flowMentorCtx: {
       dialogId: 'dlg-flow-mentor',
-      rootDialogId: 'root-flow-mentor',
+      mainDialogId: 'root-flow-mentor',
       agentId: 'flow-mentor',
       callerId: '@flow-mentor',
     },

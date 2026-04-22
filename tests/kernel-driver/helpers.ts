@@ -5,7 +5,7 @@ import yaml from 'yaml';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { assertGlobalDialogEventBroadcasterInstalled } from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import type {
   KernelDriverDriveOptions,
@@ -128,11 +128,11 @@ export async function writeMockDb(tmpRoot: string, entries: MockEntry[]): Promis
   );
 }
 
-export async function createRootDialog(agentId: string = 'tester'): Promise<RootDialog> {
+export async function createMainDialog(agentId: string = 'tester'): Promise<MainDialog> {
   const rootId = generateDialogID();
   const dialogId = new DialogID(rootId);
   const store = new DiskFileDialogStore(dialogId);
-  const dialog = new RootDialog(store, 'task.md', dialogId, agentId);
+  const dialog = new MainDialog(store, 'task.md', dialogId, agentId);
 
   // Tests construct dialogs directly (bypassing server routes), so we must persist the same
   // metadata/latest.yaml that the production create-dialog path writes.
@@ -151,7 +151,7 @@ export async function createRootDialog(agentId: string = 'tester'): Promise<Root
       status: 'active',
       messageCount: 0,
       functionCallCount: 0,
-      subdialogCount: 0,
+      sideDialogCount: 0,
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
@@ -161,11 +161,11 @@ export async function createRootDialog(agentId: string = 'tester'): Promise<Root
   return dialog;
 }
 
-export async function persistRootDialogMetadata(_rootDialog: RootDialog): Promise<void> {
-  // Deprecated: createRootDialog() now persists metadata/latest.yaml as part of dialog creation.
+export async function persistMainDialogMetadata(_mainDialog: MainDialog): Promise<void> {
+  // Deprecated: createMainDialog() now persists metadata/latest.yaml as part of dialog creation.
 }
 
-export function lastAssistantSaying(dlg: RootDialog): string | null {
+export function lastAssistantSaying(dlg: MainDialog): string | null {
   for (let i = dlg.msgs.length - 1; i >= 0; i--) {
     const msg = dlg.msgs[i];
     if (msg && msg.type === 'saying_msg' && msg.role === 'assistant') {
@@ -191,7 +191,7 @@ export async function waitFor(
 }
 
 export async function waitForAllDialogsUnlocked(
-  root: RootDialog,
+  root: MainDialog,
   timeoutMs: number,
 ): Promise<void> {
   await waitFor(

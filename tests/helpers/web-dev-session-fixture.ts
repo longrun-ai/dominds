@@ -16,7 +16,7 @@ import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 
 export type ToolCtx = Readonly<{
   dialogId: string;
-  rootDialogId: string;
+  mainDialogId: string;
   agentId: string;
   sessionSlug?: string;
   callerId: string;
@@ -513,14 +513,14 @@ export async function createWebDevFixture(): Promise<WebDevFixture> {
     reminderOwner,
     controllerCtx: {
       dialogId: 'dlg_controller',
-      rootDialogId: 'root_demo',
+      mainDialogId: 'root_demo',
       agentId: 'web_tester_from_app',
       sessionSlug: 'smoke',
       callerId: 'fullstack',
     },
     observerCtx: {
       dialogId: 'dlg_observer',
-      rootDialogId: 'root_demo',
+      mainDialogId: 'root_demo',
       agentId: 'web_developer_from_app',
       sessionSlug: 'fix-loop',
       callerId: 'fullstack',

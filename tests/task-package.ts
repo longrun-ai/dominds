@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { DialogStore } from '../main/dialog';
-import { RootDialog } from '../main/dialog';
+import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
 import { recallTaskdocTool } from '../main/tools/ctrl';
@@ -47,13 +47,13 @@ async function main(): Promise<void> {
     const store = {} as unknown as DialogStore;
 
     // 0) Legacy single-file Taskdocs are rejected.
-    const legacyDlg = new RootDialog(store, 'legacy.md', undefined, 'tester');
+    const legacyDlg = new MainDialog(store, 'legacy.md', undefined, 'tester');
     const legacy = await formatTaskDocContent(legacyDlg);
     const legacyContent = requireMessageContent(legacy);
     assert.ok(legacyContent.includes('Invalid Taskdoc path') && legacyContent.includes('*.tsk'));
 
     // 1) Formatting should describe an encapsulated Taskdoc package.
-    const dlg = new RootDialog(store, taskDocPath, undefined, 'tester');
+    const dlg = new MainDialog(store, taskDocPath, undefined, 'tester');
     const msg1 = await formatTaskDocContent(dlg);
     const msg1Content = requireMessageContent(msg1);
     assert.equal(msg1.type, 'environment_msg');

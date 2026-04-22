@@ -7,13 +7,13 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
-import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/subdialog';
+import { supplySideDialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { executeTellaskCalls } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
-import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
+import { formatAssignmentFromAskerDialog } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 import {
-  createRootDialog,
+  createMainDialog,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -75,11 +75,11 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     const tellaskContent = 'Please review the current implementation.';
     const callId = 'pending-tellask-call';
     const sessionSlug = 'reply-guidance';
-    const subdialog = await root.createSubDialog('pangu', ['@pangu'], tellaskContent, {
+    const sideDialog = await root.createSideDialog('pangu', ['@pangu'], tellaskContent, {
       callName: 'tellask',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
@@ -90,11 +90,12 @@ async function main(): Promise<void> {
 
     const directive: TellaskReplyDirective = {
       expectedReplyCallName: 'replyTellask',
+      targetDialogId: root.id.selfId,
       targetCallId: callId,
       tellaskContent,
     };
-    await subdialog.persistUserMessage(
-      formatAssignmentFromSupdialog({
+    await sideDialog.persistUserMessage(
+      formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -113,7 +114,7 @@ async function main(): Promise<void> {
     );
 
     const wrongReply = await executeTellaskCalls({
-      dlg: subdialog,
+      dlg: sideDialog,
       calls: [
         {
           callId: 'wrong-reply-call',
@@ -138,14 +139,14 @@ async function main(): Promise<void> {
       /exact reply tool for the current state is `replyTellask`, not `replyTellaskBack`/u,
     );
 
-    await subdialog.appendTellaskReplyResolution({
+    await sideDialog.appendTellaskReplyResolution({
       callId: 'resolved-reply-call',
       replyCallName: 'replyTellask',
       targetCallId: callId,
     });
 
     const staleReply = await executeTellaskCalls({
-      dlg: subdialog,
+      dlg: sideDialog,
       calls: [
         {
           callId: 'stale-reply-call',
@@ -172,7 +173,7 @@ async function main(): Promise<void> {
 
     const deferredTargetCallId = 'deferred-reply-call';
     const deferredTellaskContent = 'Please finish this deferred reply once and only once.';
-    const deferredSubdialog = await root.createSubDialog(
+    const deferredSideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
       deferredTellaskContent,
@@ -187,11 +188,12 @@ async function main(): Promise<void> {
     );
     const deferredDirective: TellaskReplyDirective = {
       expectedReplyCallName: 'replyTellask',
+      targetDialogId: root.id.selfId,
       targetCallId: deferredTargetCallId,
       tellaskContent: deferredTellaskContent,
     };
-    await deferredSubdialog.persistUserMessage(
-      formatAssignmentFromSupdialog({
+    await deferredSideDialog.persistUserMessage(
+      formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -208,11 +210,11 @@ async function main(): Promise<void> {
       undefined,
       deferredDirective,
     );
-    await DialogPersistence.savePendingSubdialogs(
+    await DialogPersistence.savePendingSideDialogs(
       root.id,
       [
         {
-          subdialogId: deferredSubdialog.id.selfId,
+          sideDialogId: deferredSideDialog.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
           callName: 'tellask',
           mentionList: ['@pangu'],
@@ -229,16 +231,16 @@ async function main(): Promise<void> {
       root.status,
     );
     await DialogPersistence.setDeferredReplyReassertion(
-      deferredSubdialog.id,
+      deferredSideDialog.id,
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: deferredDirective,
       },
-      deferredSubdialog.status,
+      deferredSideDialog.status,
     );
 
-    const suppliedDeferredReply = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-      subdialog: deferredSubdialog,
+    const suppliedDeferredReply = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+      sideDialog: deferredSideDialog,
       responseText: 'Deferred reply delivered exactly once.',
       responseGenseq: 1,
       replyResolution: {
@@ -250,19 +252,27 @@ async function main(): Promise<void> {
     assert.equal(
       suppliedDeferredReply,
       true,
-      'expected subdialog reply resolution path to accept the deferred reply delivery',
+      'expected sideDialog reply resolution path to accept the deferred reply delivery',
     );
     assert.equal(
       await DialogPersistence.getDeferredReplyReassertion(
-        deferredSubdialog.id,
-        deferredSubdialog.status,
+        deferredSideDialog.id,
+        deferredSideDialog.status,
       ),
       undefined,
-      'replyTellask delivery must clear deferred reply reassertion for the subdialog',
+      'replyTellask delivery must clear deferred reply reassertion for the sideDialog',
+    );
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(
+        deferredSideDialog.id,
+        deferredSideDialog.status,
+      ),
+      undefined,
+      'replyTellask delivery must clear the sideDialog-level active reply obligation',
     );
 
     const stalePromptGuidance = await resolvePromptReplyGuidance({
-      dlg: deferredSubdialog,
+      dlg: deferredSideDialog,
       prompt: {
         content: 'Please call the reply tool now.',
         msgId: 'stale-runtime-reply-reminder',
@@ -285,10 +295,11 @@ async function main(): Promise<void> {
 
     const liveDirective: TellaskReplyDirective = {
       expectedReplyCallName: 'replyTellask',
+      targetDialogId: root.id.selfId,
       targetCallId: 'live-reply-call',
       tellaskContent: 'Please acknowledge the correction and stop.',
     };
-    const liveSubdialog = await root.createSubDialog(
+    const liveSideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
       liveDirective.tellaskContent,
@@ -301,8 +312,8 @@ async function main(): Promise<void> {
         collectiveTargets: ['pangu'],
       },
     );
-    await liveSubdialog.persistUserMessage(
-      formatAssignmentFromSupdialog({
+    await liveSideDialog.persistUserMessage(
+      formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -320,14 +331,14 @@ async function main(): Promise<void> {
       liveDirective,
     );
 
-    const subdialogEvents = dialogEventRegistry.createSubChan(liveSubdialog.id);
+    const sideDialogEvents = dialogEventRegistry.createSubChan(liveSideDialog.id);
     await driveDialogStream(
-      liveSubdialog,
+      liveSideDialog,
       makeUserPrompt('Please finalize the upstream reply now.', 'live-reply-user-msg'),
       true,
     );
     await waitForAllDialogsUnlocked(root, 2000);
-    const liveEvents = await collectEvents(subdialogEvents, 800);
+    const liveEvents = await collectEvents(sideDialogEvents, 800);
 
     const funcCallEvt = liveEvents.find(
       (ev): ev is Extract<TypedDialogEvent, { type: 'func_call_requested_evt' }> =>
@@ -335,14 +346,14 @@ async function main(): Promise<void> {
     );
     assert.ok(
       funcCallEvt,
-      'expected live subdialog to emit func_call_requested_evt for replyTellask',
+      'expected live sideDialog to emit func_call_requested_evt for replyTellask',
     );
 
     const funcResultEvt = liveEvents.find(
       (ev): ev is Extract<TypedDialogEvent, { type: 'func_result_evt' }> =>
         ev.type === 'func_result_evt' && ev.name === 'replyTellask',
     );
-    assert.ok(funcResultEvt, 'expected live subdialog to emit func_result_evt for replyTellask');
+    assert.ok(funcResultEvt, 'expected live sideDialog to emit func_result_evt for replyTellask');
     assert.match(funcResultEvt?.content ?? '', /replyTellask/u);
   });
 

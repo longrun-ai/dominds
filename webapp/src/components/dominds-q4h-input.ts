@@ -9,7 +9,7 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
-import type { AssignmentFromSup, DialogIdent } from '@longrun-ai/kernel/types/wire';
+import type { AssignmentFromAsker, DialogIdent } from '@longrun-ai/kernel/types/wire';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { getUiStrings } from '../i18n/ui';
 import {
@@ -43,7 +43,7 @@ interface ImageAttachment {
 }
 
 type DialogContext = DialogIdent & {
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
 };
 
 const RESIZE_HANDLE_ARIA_LABEL_I18N = {
@@ -1233,7 +1233,7 @@ export class DomindsQ4HInput extends HTMLElement {
       throw new Error(t.noActiveDialogToast);
     }
     if (dialog.selfId === dialog.rootId) {
-      throw new Error(t.q4hDeclareDeadOnlySidelineToast);
+      throw new Error(t.q4hDeclareDeadOnlySideDialogToast);
     }
     const state = this.displayState;
     if (state === null || state.kind !== 'stopped' || !state.continueEnabled) {
@@ -1248,14 +1248,14 @@ export class DomindsQ4HInput extends HTMLElement {
     const ok = window.confirm(this.getDeclareDeathConfirmText());
     if (!ok) return;
     const note = this.textInput ? this.textInput.value : '';
-    this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog, note });
+    this.wsManager.sendRaw({ type: 'declare_sideDialog_dead', dialog, note });
     this.recordInputHistoryEntry(note);
     this.clear();
   }
 
   private getDeclareDeathConfirmText(): string {
     const t = getUiStrings(this.uiLanguage);
-    const callName = this.currentDialog?.assignmentFromSup?.callName;
+    const callName = this.currentDialog?.assignmentFromAsker?.callName;
     switch (callName) {
       case 'tellaskSessionless':
         return t.declareDeathConfirmSessionless;
@@ -1494,9 +1494,9 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.declareDeathButton) {
       const dialog = this.currentDialog;
       const isDead = state !== null && state.kind === 'dead';
-      const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
+      const isSideDialog = dialog !== null && dialog.selfId !== dialog.rootId;
       const shouldShow =
-        isSubdialog &&
+        isSideDialog &&
         !isDead &&
         state !== null &&
         state.kind === 'stopped' &&
@@ -1599,11 +1599,15 @@ export class DomindsQ4HInput extends HTMLElement {
           ? 'send-button'
           : 'send-button stop';
     const dialog = this.currentDialog;
-    const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
+    const isSideDialog = dialog !== null && dialog.selfId !== dialog.rootId;
     const state = this.displayState;
     const isDead = state !== null && state.kind === 'dead';
     const showDeclareDeath =
-      isSubdialog && !isDead && state !== null && state.kind === 'stopped' && state.continueEnabled;
+      isSideDialog &&
+      !isDead &&
+      state !== null &&
+      state.kind === 'stopped' &&
+      state.continueEnabled;
 
     return `
       <div class="q4h-input-container">

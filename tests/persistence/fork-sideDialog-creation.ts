@@ -5,17 +5,17 @@ import * as path from 'node:path';
 
 import type {
   DialogLatestFile,
-  RootDialogMetadataFile,
-  SubdialogMetadataFile,
+  MainDialogMetadataFile,
+  SideDialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from '../../main/dialog';
-import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
+import { forkMainDialogTreeAtGeneration } from '../../main/dialog-fork';
 import { DialogPersistence } from '../../main/persistence';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-fork-subdialog-creation-'));
+  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-fork-sideDialog-creation-'));
   const previousCwd = process.cwd();
   process.chdir(sandboxDir);
   try {
@@ -42,22 +42,22 @@ async function main(): Promise<void> {
     const subId = new DialogID('44/55/forksub', rootId.rootId);
     const createdAt = formatUnifiedTimestamp(new Date('2026-04-11T00:00:00.000Z'));
 
-    const rootMeta: RootDialogMetadataFile = {
+    const rootMeta: MainDialogMetadataFile = {
       id: rootId.selfId,
       agentId: 'tester',
       taskDocPath: 'plans/fork.tsk',
       createdAt,
     };
-    await DialogPersistence.saveRootDialogMetadata(rootId, rootMeta, 'running');
+    await DialogPersistence.saveMainDialogMetadata(rootId, rootMeta, 'running');
     await writeLatest(rootId, 1);
 
-    const subMeta: SubdialogMetadataFile = {
+    const subMeta: SideDialogMetadataFile = {
       id: subId.selfId,
       agentId: 'scribe',
       taskDocPath: 'plans/fork.tsk',
       createdAt,
-      supdialogId: rootId.selfId,
-      assignmentFromSup: {
+      askerDialogId: rootId.selfId,
+      assignmentFromAsker: {
         callName: 'tellaskSessionless',
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate this branch.',
@@ -66,8 +66,8 @@ async function main(): Promise<void> {
         callId: 'call-sub-1',
       },
     };
-    await DialogPersistence.ensureSubdialogDirectory(subId, 'running');
-    await DialogPersistence.saveSubdialogMetadata(subId, subMeta, 'running');
+    await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
+    await DialogPersistence.saveSideDialogMetadata(subId, subMeta, 'running');
     await writeLatest(subId, 1);
 
     await DialogPersistence.appendEvent(rootId, 1, {
@@ -77,14 +77,14 @@ async function main(): Promise<void> {
     });
     await DialogPersistence.appendEvent(rootId, 1, {
       ts: createdAt,
-      type: 'subdialog_created_record',
+      type: 'sideDialog_created_record',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
-      subdialogId: subId.selfId,
-      supdialogId: rootId.selfId,
+      sideDialogId: subId.selfId,
+      askerDialogId: rootId.selfId,
       agentId: 'scribe',
       taskDocPath: 'plans/fork.tsk',
       createdAt,
-      assignmentFromSup: subMeta.assignmentFromSup,
+      assignmentFromAsker: subMeta.assignmentFromAsker,
     });
     await DialogPersistence.appendEvent(rootId, 1, {
       ts: createdAt,
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
       genseq: 2,
     });
 
-    const forked = await forkRootDialogTreeAtGeneration({
+    const forked = await forkMainDialogTreeAtGeneration({
       sourceRootId: rootId.selfId,
       sourceStatus: 'running',
       course: 1,
@@ -107,9 +107,26 @@ async function main(): Promise<void> {
     const forkedSubId = new DialogID(subId.selfId, forkedRootId.selfId);
     const forkedSubMeta = await DialogPersistence.loadDialogMetadata(forkedSubId, 'running');
 
-    assert.ok(forkedSubMeta, 'forked subdialog metadata must exist');
+    assert.ok(forkedSubMeta, 'forked sideDialog metadata must exist');
     assert.equal(forkedSubMeta.id, subId.selfId);
-    assert.equal(forkedSubMeta.supdialogId, forkedRootId.selfId);
+    assert.equal(forkedSubMeta.askerDialogId, forkedRootId.selfId);
+    const forkedAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
+      forkedSubId,
+      'running',
+    );
+    assert.ok(forkedAskerStackState, 'forked sideDialog asker stack must exist');
+    const forkedAskerStackStateTop =
+      forkedAskerStackState.askerStack[forkedAskerStackState.askerStack.length - 1];
+    assert.ok(
+      forkedAskerStackStateTop,
+      'forked sideDialog askerDialog stack must have a top frame',
+    );
+    assert.equal(forkedAskerStackStateTop.askerDialogId, forkedRootId.selfId);
+    assert.equal(forkedAskerStackStateTop.assignmentFromAsker?.callerDialogId, forkedRootId.selfId);
+    assert.equal(
+      forkedAskerStackStateTop.tellaskReplyObligation?.targetDialogId,
+      forkedRootId.selfId,
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 700));
   });

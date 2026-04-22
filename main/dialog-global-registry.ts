@@ -5,11 +5,11 @@ import {
   type PubChan,
   type SubChan,
 } from '@longrun-ai/kernel/evt';
-import type { RootDialog } from './dialog';
+import type { MainDialog } from './dialog';
 import { DialogPersistence } from './persistence';
 
 type RegistryEntry = {
-  rootDialog: RootDialog;
+  mainDialog: MainDialog;
   needsDrive: boolean;
   activeRunClearedWakePending: boolean;
 };
@@ -46,30 +46,30 @@ class GlobalDialogRegistry {
     return GlobalDialogRegistry.instance;
   }
 
-  get(rootId: string): RootDialog | undefined {
-    return this.entries.get(rootId)?.rootDialog;
+  get(rootId: string): MainDialog | undefined {
+    return this.entries.get(rootId)?.mainDialog;
   }
 
-  register(rootDialog: RootDialog): void {
+  register(mainDialog: MainDialog): void {
     // This registry is keyed by the *tree root id*.
     // Only the canonical root dialog (selfId === rootId) should be stored here.
-    if (rootDialog.id.selfId !== rootDialog.id.rootId) {
+    if (mainDialog.id.selfId !== mainDialog.id.rootId) {
       return;
     }
-    const existing = this.entries.get(rootDialog.id.rootId);
+    const existing = this.entries.get(mainDialog.id.rootId);
     if (existing) {
       return;
     }
-    this.entries.set(rootDialog.id.rootId, {
-      rootDialog,
+    this.entries.set(mainDialog.id.rootId, {
+      mainDialog,
       needsDrive: false,
       activeRunClearedWakePending: false,
     });
     void (async () => {
       try {
-        const needsDrive = await DialogPersistence.getNeedsDrive(rootDialog.id);
+        const needsDrive = await DialogPersistence.getNeedsDrive(mainDialog.id);
         if (needsDrive) {
-          this.markNeedsDrive(rootDialog.id.rootId, {
+          this.markNeedsDrive(mainDialog.id.rootId, {
             source: 'dialog_registry_hydration',
             reason: 'persisted_needs_drive_true',
           });
@@ -202,18 +202,18 @@ class GlobalDialogRegistry {
     return this.entries.get(rootId)?.needsDrive === true;
   }
 
-  getDialogsNeedingDrive(): RootDialog[] {
+  getDialogsNeedingDrive(): MainDialog[] {
     return Array.from(this.entries.values())
       .filter((entry) => entry.needsDrive)
-      .map((entry) => entry.rootDialog);
+      .map((entry) => entry.mainDialog);
   }
 
   getLastDriveTrigger(rootId: string): DriveTriggerEvent | undefined {
     return this.lastDriveTriggerByRootId.get(rootId);
   }
 
-  getAll(): RootDialog[] {
-    return Array.from(this.entries.values()).map((entry) => entry.rootDialog);
+  getAll(): MainDialog[] {
+    return Array.from(this.entries.values()).map((entry) => entry.mainDialog);
   }
 
   get size(): number {

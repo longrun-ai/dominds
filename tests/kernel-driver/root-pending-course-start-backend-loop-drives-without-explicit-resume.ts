@@ -6,7 +6,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -33,7 +33,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
     void runBackendDriver();

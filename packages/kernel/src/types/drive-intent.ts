@@ -1,10 +1,10 @@
 import type { LanguageCode } from './language';
 import type {
-  DialogSubdialogReplyTarget,
+  DialogSideDialogReplyTarget,
   FuncResultContentItem,
   TellaskReplyDirective,
 } from './storage';
-export type { DialogSubdialogReplyTarget } from './storage';
+export type { DialogSideDialogReplyTarget } from './storage';
 
 export type DialogRunControlSource =
   | 'drive_dlg_by_user_msg'
@@ -46,7 +46,7 @@ export type DialogUserPrompt = DialogUserPromptCommon &
   Readonly<{
     tellaskReplyDirective?: undefined;
     skipTaskdoc?: undefined;
-    subdialogReplyTarget?: undefined;
+    sideDialogReplyTarget?: undefined;
   }>;
 
 export type DialogDiligencePrompt = DialogPromptBase &
@@ -55,34 +55,34 @@ export type DialogDiligencePrompt = DialogPromptBase &
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective?: undefined;
     skipTaskdoc?: undefined;
-    subdialogReplyTarget?: undefined;
+    sideDialogReplyTarget?: undefined;
   }>;
 
 export type DialogRuntimeGuidePrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective?: undefined;
-    subdialogReplyTarget?: undefined;
+    sideDialogReplyTarget?: undefined;
   }>;
 
 export type DialogRuntimeReplyPrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective: TellaskReplyDirective;
-    subdialogReplyTarget?: undefined;
+    sideDialogReplyTarget?: undefined;
   }>;
 
-export type DialogRuntimeSubdialogPrompt = DialogRuntimePromptCommon &
+export type DialogRuntimeSideDialogPrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective: TellaskReplyDirective;
-    subdialogReplyTarget: DialogSubdialogReplyTarget;
+    sideDialogReplyTarget: DialogSideDialogReplyTarget;
   }>;
 
 export type DialogRuntimePrompt =
   | DialogRuntimeGuidePrompt
   | DialogRuntimeReplyPrompt
-  | DialogRuntimeSubdialogPrompt;
+  | DialogRuntimeSideDialogPrompt;
 
 export type DialogPrompt = DialogUserPrompt | DialogDiligencePrompt | DialogRuntimePrompt;
 
@@ -113,9 +113,9 @@ export type DialogQueuedRegisteredAssignmentUpdateState = DialogQueuedPromptStat
   Readonly<{
     kind: 'registered_assignment_update';
     origin: 'runtime';
-    tellaskReplyDirective: DialogRuntimeSubdialogPrompt['tellaskReplyDirective'];
+    tellaskReplyDirective: DialogRuntimeSideDialogPrompt['tellaskReplyDirective'];
     skipTaskdoc?: boolean;
-    subdialogReplyTarget: DialogRuntimeSubdialogPrompt['subdialogReplyTarget'];
+    sideDialogReplyTarget: DialogRuntimeSideDialogPrompt['sideDialogReplyTarget'];
   }>;
 
 export type DialogQueuedNewCourseRuntimeGuideState = DialogQueuedPromptStateCommon &
@@ -133,13 +133,13 @@ export type DialogQueuedNewCourseRuntimeReplyState = DialogQueuedPromptStateComm
     skipTaskdoc?: boolean;
   }>;
 
-export type DialogQueuedNewCourseRuntimeSubdialogState = DialogQueuedPromptStateCommon &
+export type DialogQueuedNewCourseRuntimeSideDialogState = DialogQueuedPromptStateCommon &
   Readonly<{
-    kind: 'new_course_runtime_subdialog';
+    kind: 'new_course_runtime_sideDialog';
     origin: 'runtime';
-    tellaskReplyDirective: DialogRuntimeSubdialogPrompt['tellaskReplyDirective'];
+    tellaskReplyDirective: DialogRuntimeSideDialogPrompt['tellaskReplyDirective'];
     skipTaskdoc?: boolean;
-    subdialogReplyTarget: DialogRuntimeSubdialogPrompt['subdialogReplyTarget'];
+    sideDialogReplyTarget: DialogRuntimeSideDialogPrompt['sideDialogReplyTarget'];
   }>;
 
 export type DialogQueuedPromptState =
@@ -148,7 +148,7 @@ export type DialogQueuedPromptState =
   | DialogQueuedRegisteredAssignmentUpdateState
   | DialogQueuedNewCourseRuntimeGuideState
   | DialogQueuedNewCourseRuntimeReplyState
-  | DialogQueuedNewCourseRuntimeSubdialogState;
+  | DialogQueuedNewCourseRuntimeSideDialogState;
 
 export type DriveIntent =
   | Readonly<{

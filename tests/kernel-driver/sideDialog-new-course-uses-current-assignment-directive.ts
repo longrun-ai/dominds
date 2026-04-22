@@ -5,11 +5,11 @@ import * as path from 'node:path';
 
 import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
-import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
-import { createRootDialog } from './helpers';
+import { formatAssignmentFromAskerDialog } from '../../main/runtime/inter-dialog-format';
+import { createMainDialog } from './helpers';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-subdialog-new-course-'));
+  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-sideDialog-new-course-'));
   const previousCwd = process.cwd();
   process.chdir(sandboxDir);
   try {
@@ -22,8 +22,8 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
-    const root = await createRootDialog();
-    const subdialog = await root.createSubDialog('tester', ['@tester'], 'old tellask body', {
+    const root = await createMainDialog();
+    const sideDialog = await root.createSideDialog('tester', ['@tester'], 'old tellask body', {
       callName: 'tellask',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
@@ -31,8 +31,8 @@ async function main(): Promise<void> {
       sessionSlug: 'build.loop',
     });
 
-    await subdialog.persistUserMessage(
-      formatAssignmentFromSupdialog({
+    await sideDialog.persistUserMessage(
+      formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'tester',
@@ -48,22 +48,23 @@ async function main(): Promise<void> {
       undefined,
       {
         expectedReplyCallName: 'replyTellask',
+        targetDialogId: root.id.selfId,
         targetCallId: 'call-old',
         tellaskContent: 'old tellask body',
       },
     );
 
     const updatedAssignment = {
-      ...subdialog.assignmentFromSup,
+      ...sideDialog.assignmentFromAsker,
       tellaskContent: 'new tellask body',
       callId: 'call-new',
     };
-    subdialog.assignmentFromSup = updatedAssignment;
-    await DialogPersistence.updateSubdialogAssignment(subdialog.id, updatedAssignment);
+    sideDialog.assignmentFromAsker = updatedAssignment;
+    await DialogPersistence.updateSideDialogAssignment(sideDialog.id, updatedAssignment);
 
-    await subdialog.startNewCourse('continue in course two');
+    await sideDialog.startNewCourse('continue in course two');
 
-    const queuedPrompt = subdialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekUpNext();
     assert.ok(queuedPrompt, 'expected startNewCourse to queue a new-course prompt');
     assert.equal(
       queuedPrompt.tellaskReplyDirective?.targetCallId,
@@ -76,18 +77,18 @@ async function main(): Promise<void> {
       'new-course prompt must carry the latest assignment tellask content',
     );
     assert.equal(
-      queuedPrompt.subdialogReplyTarget?.callType,
+      queuedPrompt.sideDialogReplyTarget?.callType,
       'B',
       'sessioned tellask new-course prompt must target the Type-B parent pending record',
     );
     assert.equal(
-      queuedPrompt.subdialogReplyTarget?.callId,
+      queuedPrompt.sideDialogReplyTarget?.callId,
       'call-new',
       'new-course prompt must target the latest parent pending callId',
     );
 
     const replyGuidance = await resolvePromptReplyGuidance({
-      dlg: subdialog,
+      dlg: sideDialog,
       prompt: {
         content: queuedPrompt.prompt,
         msgId: queuedPrompt.msgId,
@@ -97,7 +98,7 @@ async function main(): Promise<void> {
         q4hAnswerCallId: queuedPrompt.q4hAnswerCallId,
         tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
         skipTaskdoc: queuedPrompt.skipTaskdoc,
-        subdialogReplyTarget: queuedPrompt.subdialogReplyTarget,
+        sideDialogReplyTarget: queuedPrompt.sideDialogReplyTarget,
         runControl: queuedPrompt.runControl,
       },
       language: 'en',
@@ -109,13 +110,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-new-course-uses-current-assignment-directive: PASS');
+  console.log('kernel-driver sideDialog-new-course-uses-current-assignment-directive: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver subdialog-new-course-uses-current-assignment-directive: FAIL\n${message}`,
+    `kernel-driver sideDialog-new-course-uses-current-assignment-directive: FAIL\n${message}`,
   );
   process.exit(1);
 });

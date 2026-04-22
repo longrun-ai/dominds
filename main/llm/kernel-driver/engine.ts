@@ -2,7 +2,7 @@ import type { Dialog, DialogID } from '../../dialog';
 import { driveDialogStreamCore as driveDialogStreamCoreInternal } from './drive';
 import { emitSayingEvents } from './events';
 import { executeDriveRound } from './flow';
-import { supplyResponseToSupdialog as supplyResponseToSupdialogInternal } from './subdialog';
+import { supplyResponseToAskerDialog as supplyResponseToAskerDialogInternal } from './sideDialog';
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
@@ -46,14 +46,14 @@ export async function emitSayingEventsBridge(
   return await emitSayingEvents(dlg, content);
 }
 
-export async function supplyResponseToSupdialog(
+export async function supplyResponseToAskerDialog(
   ...args: KernelDriverSupplyResponseArgs
 ): KernelDriverSupplyResponseResult {
-  const [parentDialog, subdialogId, responseText, callType, callId, status, calleeResponseRef] =
+  const [parentDialog, sideDialogId, responseText, callType, callId, status, calleeResponseRef] =
     args;
-  return await supplyResponseToSupdialogInternal({
+  return await supplyResponseToAskerDialogInternal({
     parentDialog,
-    subdialogId,
+    sideDialogId,
     responseText,
     callType,
     callId,
@@ -74,18 +74,18 @@ export async function driveDialogStreamCore(
   return await driveDialogStreamCoreInternal(dlg, callbacks, humanPrompt, driveOptions);
 }
 
-export async function supplyResponseToSubdialogBridge(
+export async function supplyResponseToSideDialogBridge(
   parentDialog: Dialog,
-  subdialogId: DialogID,
+  sideDialogId: DialogID,
   responseText: string,
   callType: 'A' | 'B' | 'C',
   callId?: string,
   status?: 'completed' | 'failed',
   calleeResponseRef?: { course: number; genseq: number },
 ): Promise<void> {
-  await supplyResponseToSupdialogInternal({
+  await supplyResponseToAskerDialogInternal({
     parentDialog,
-    subdialogId,
+    sideDialogId,
     responseText,
     callType,
     callId,

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import { reminderIsListed } from '../../main/tool';
 import { deleteReminderTool } from '../../main/tools/ctrl';
 
-function numberedContents(dlg: RootDialog): string[] {
+function numberedContents(dlg: MainDialog): string[] {
   return dlg.reminders
     .filter((reminder) => reminderIsListed(reminder))
     .map((reminder) => reminder.content);
@@ -15,7 +15,7 @@ function numberedContents(dlg: RootDialog): string[] {
 async function main(): Promise<void> {
   setWorkLanguage('en');
 
-  const dlg = new RootDialog(
+  const dlg = new MainDialog(
     {} as unknown as DialogStore,
     'reminders-round-snapshot.tsk',
     undefined,

@@ -8,7 +8,7 @@ import type {
   FuncCallStartEvent,
   NativeToolCallEvent,
   QueueUserMsgEvent,
-  SubdialogEvent,
+  SideDialogEvent,
   TypedDialogEvent,
   WebSearchCallEvent,
 } from '@longrun-ai/kernel/types/dialog';
@@ -31,7 +31,7 @@ import {
   type CallingGenerationSeqNumber,
 } from '@longrun-ai/kernel/types/storage';
 import type {
-  AssignmentFromSup,
+  AssignmentFromAsker,
   DialogIdent,
   DialogStatusKind,
 } from '@longrun-ai/kernel/types/wire';
@@ -57,9 +57,9 @@ import {
 type DialogContext = DialogIdent & {
   status?: DialogStatusKind;
   agentId?: string;
-  supdialogId?: string;
+  askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
 };
 
 type PendingScrollRequest =
@@ -1030,8 +1030,8 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     const merged: DialogContext = { ...current, ...dialog };
-    if (!dialog.assignmentFromSup && current.assignmentFromSup) {
-      merged.assignmentFromSup = current.assignmentFromSup;
+    if (!dialog.assignmentFromAsker && current.assignmentFromAsker) {
+      merged.assignmentFromAsker = current.assignmentFromAsker;
     }
     this.currentDialog = merged;
   }
@@ -1562,9 +1562,9 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleTellaskCarryover(event);
         break;
 
-      // Subdialog events
-      case 'subdialog_created_evt':
-        this.handleSubdialogCreated(event);
+      // SideDialog events
+      case 'sideDialog_created_evt':
+        this.handleSideDialogCreated(event);
         break;
 
       // Reminder events
@@ -2698,7 +2698,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     switch (callName) {
       case 'tellaskBack': {
-        const assignment = this.currentDialog?.assignmentFromSup;
+        const assignment = this.currentDialog?.assignmentFromAsker;
         const requesterLabel =
           assignment && assignment.originMemberId.trim() !== ''
             ? this.formatCallerLabel(assignment)
@@ -2720,12 +2720,12 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private formatFreshBootsHeadline(): string {
-    const effort = this.currentDialog?.assignmentFromSup?.effectiveFbrEffort;
+    const effort = this.currentDialog?.assignmentFromAsker?.effectiveFbrEffort;
     const effortPrefix =
       typeof effort === 'number' && Number.isInteger(effort) && effort > 0 ? `${effort}x ` : '';
     return this.uiLanguage === 'zh'
       ? `支线类型: ${effortPrefix}扪心自问（FBR）`
-      : `Sideline type: ${effortPrefix}FBR`;
+      : `Sideline dialog type: ${effortPrefix}FBR`;
   }
 
   private renderCallTiming(
@@ -3233,7 +3233,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     // Fallback: If no matching func-call section found, create a separate message
-    // This handles historical results or subdialog results
+    // This handles historical results or sideDialog results
     const content = `**Function Result: ${event.name}**\n\n${event.content}`;
     const messageEl = this.createMessageElement(content, 'tool', event.timestamp);
     const container = this.shadowRoot?.querySelector('.messages');
@@ -3523,32 +3523,32 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === SUBDIALOG EVENTS ===
-  private handleSubdialogCreated(event: TypedDialogEvent): void {
-    // Validate this is actually a subdialog_created_evt before casting
-    if (event.type !== 'subdialog_created_evt') {
-      console.warn('handleSubdialogCreated: Ignoring non-subdialog event', event.type);
+  private handleSideDialogCreated(event: TypedDialogEvent): void {
+    // Validate this is actually a sideDialog_created_evt before casting
+    if (event.type !== 'sideDialog_created_evt') {
+      console.warn('handleSideDialogCreated: Ignoring non-sideDialog event', event.type);
       return;
     }
 
-    const subdialogEvent = event as SubdialogEvent;
-    const { subDialog } = subdialogEvent;
+    const sideDialogEvent = event as SideDialogEvent;
+    const { sideDialog } = sideDialogEvent;
 
-    // Validate subDialog exists
-    if (!subDialog?.selfId) {
-      console.error('handleSubdialogCreated: Missing subDialog or selfId', subdialogEvent);
+    // Validate sideDialog exists
+    if (!sideDialog?.selfId) {
+      console.error('handleSideDialogCreated: Missing sideDialog or selfId', sideDialogEvent);
       return;
     }
 
-    const calleeDialogId = subDialog.selfId;
+    const calleeDialogId = sideDialog.selfId;
 
     // Dispatch event for dialog list to update callee dialog count
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
     if (host) {
       dispatchDomindsEvent(
         host,
-        'subdialog-created',
+        'sideDialog-created',
         {
-          rootId: subDialog.rootId,
+          rootId: sideDialog.rootId,
           calleeDialogId,
         },
         { bubbles: true, composed: true },
@@ -3557,7 +3557,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // Create teammate bubble for subagent responses
-  // calleeDialogId: ID of the callee dialog (subdialog OR supdialog)
+  // calleeDialogId: ID of the callee dialog (sideDialog OR askerDialog)
   private createTellaskResponseBubble(
     calleeDialogId: string | undefined,
     agentId: string | undefined,
@@ -4078,7 +4078,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return agentId.startsWith('@') ? agentId : `@${agentId}`;
   }
 
-  private formatCallerLabel(assignment: AssignmentFromSup): string {
+  private formatCallerLabel(assignment: AssignmentFromAsker): string {
     const originMemberId = assignment.originMemberId;
     if (originMemberId && originMemberId.trim() !== '') {
       return this.formatAgentLabel(originMemberId);
@@ -5168,7 +5168,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .message.tool { border-left: 4px solid var(--dominds-warning, var(--color-warning, #f59e0b)); }
       .message.calling { border-left: 4px solid var(--dominds-info, var(--color-info, #06b6d4)); }
       .message.system { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
-      .message.subdialog { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
+      .message.sideDialog { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
       .message.system.ui-only-markdown {
         border-left-color: var(--color-warning, #f59e0b);
         background: color-mix(
@@ -5749,7 +5749,7 @@ export class DomindsDialogContainer extends HTMLElement {
         white-space: pre-wrap;
       }
 
-      .subdialog-arrow {
+      .sideDialog-arrow {
         color: var(--color-info, #06b6d4);
         font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;

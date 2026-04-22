@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import { deleteReminderTool } from '../../main/tools/ctrl';
 
 async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promise<void> {
   setWorkLanguage(language);
-  const dlg = new RootDialog(
+  const dlg = new MainDialog(
     {} as unknown as DialogStore,
     'reminders-delete-meta-guard.tsk',
     undefined,

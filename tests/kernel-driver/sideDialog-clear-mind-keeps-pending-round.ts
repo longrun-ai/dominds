@@ -4,13 +4,13 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   listTellaskResultContents,
   makeUserPrompt,
@@ -32,10 +32,10 @@ async function main(): Promise<void> {
     const mentionList = ['@pangu'];
     const tellaskContent = 'Please inspect the problem and come back with the answer.';
     const language = getWorkLanguage();
-    const finalSubdialogReply = 'I cleared context, rebuilt the thread, and the answer is 42.';
+    const finalSideDialogReply = 'I cleared context, rebuilt the thread, and the answer is 42.';
 
-    const subdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const sideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellaskSessionless',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -47,17 +47,18 @@ async function main(): Promise<void> {
       expectedReplyToolName: 'replyTellaskSessionless',
       language,
     });
-    const subdialogCourse2Prompt = `${subdialogPrompt}\n---\n${formatNewCourseStartPrompt('en', {
+    const sideDialogCourse2Prompt = `${sideDialogPrompt}\n---\n${formatNewCourseStartPrompt('en', {
       nextCourse: 2,
       source: 'clear_mind',
     })}`;
     const completedResponseContent = formatTellaskResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'root-call-clear-mind-keeps-pending-round',
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList,
       tellaskContent,
-      responseBody: finalSubdialogReply,
+      responseBody: finalSideDialogReply,
       status: 'completed',
       deliveryMode: 'reply_tool',
       language,
@@ -81,12 +82,12 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: subdialogPrompt,
+        message: sideDialogPrompt,
         role: 'user',
         response: 'Clearing mind now.',
         funcCalls: [
           {
-            id: 'subdialog-clear-mind',
+            id: 'sideDialog-clear-mind',
             name: 'clear_mind',
             arguments: {
               reminder_content: 'Rebuild context from a fresh tellask only.',
@@ -95,9 +96,9 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: subdialogCourse2Prompt,
+        message: sideDialogCourse2Prompt,
         role: 'user',
-        response: finalSubdialogReply,
+        response: finalSideDialogReply,
       },
       {
         message: completedResponseContent,
@@ -106,30 +107,33 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const rootDialog = await createRootDialog('tester');
-    rootDialog.disableDiligencePush = true;
+    const mainDialog = await createMainDialog('tester');
+    mainDialog.disableDiligencePush = true;
 
     await driveDialogStream(
-      rootDialog,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-clear-mind-keeps-pending-round'),
+      mainDialog,
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-clear-mind-keeps-pending-round'),
       true,
     );
 
     await waitFor(
-      async () => lastAssistantSaying(rootDialog) === rootAfterReply,
+      async () => lastAssistantSaying(mainDialog) === rootAfterReply,
       3_000,
       'root dialog to resume after the callee replies from the new course',
     );
-    await waitForAllDialogsUnlocked(rootDialog, 3_000);
+    await waitForAllDialogsUnlocked(mainDialog, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id, rootDialog.status);
+    const pending = await DialogPersistence.loadPendingSideDialogs(
+      mainDialog.id,
+      mainDialog.status,
+    );
     assert.equal(
       pending.length,
       0,
-      'caller pending-subdialogs should clear only after the continued reply arrives',
+      'caller pending-sideDialogs should clear only after the continued reply arrives',
     );
 
-    const tellaskResults = listTellaskResultContents(rootDialog.msgs);
+    const tellaskResults = listTellaskResultContents(mainDialog.msgs);
     assert.ok(
       tellaskResults.includes(completedResponseContent),
       'caller should receive the final tellask_result_msg produced after the callee switches course',
@@ -139,17 +143,17 @@ async function main(): Promise<void> {
       'caller should not receive the old cleared-mind invalidation failure notice',
     );
 
-    const allDialogs = rootDialog.getAllDialogs();
-    const subdialog = allDialogs.find((dialog) => dialog.id.selfId !== rootDialog.id.selfId);
-    assert.ok(subdialog, 'expected a subdialog to exist');
-    assert.equal(subdialog.currentCourse, 2, 'callee subdialog should advance to course #2');
+    const allDialogs = mainDialog.getAllDialogs();
+    const sideDialog = allDialogs.find((dialog) => dialog.id.selfId !== mainDialog.id.selfId);
+    assert.ok(sideDialog, 'expected a sideDialog to exist');
+    assert.equal(sideDialog.currentCourse, 2, 'callee sideDialog should advance to course #2');
   });
 
-  console.log('kernel-driver subdialog-clear-mind-keeps-pending-round: PASS');
+  console.log('kernel-driver sideDialog-clear-mind-keeps-pending-round: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-clear-mind-keeps-pending-round: FAIL\n${message}`);
+  console.error(`kernel-driver sideDialog-clear-mind-keeps-pending-round: FAIL\n${message}`);
   process.exit(1);
 });

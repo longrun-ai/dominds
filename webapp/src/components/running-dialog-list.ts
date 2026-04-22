@@ -3,8 +3,8 @@
  */
 
 import type {
+  ApiMainDialogResponse,
   ApiMoveDialogsRequest,
-  ApiRootDialogResponse,
   DialogInfo,
 } from '@longrun-ai/kernel/types';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
@@ -27,8 +27,8 @@ export interface RunningDialogListProps {
 type RootGroup = {
   rootId: string;
   sortKey: number;
-  root: ApiRootDialogResponse | null;
-  subdialogs: ApiRootDialogResponse[];
+  root: ApiMainDialogResponse | null;
+  sideDialogs: ApiMainDialogResponse[];
 };
 
 type TaskGroup = {
@@ -61,18 +61,18 @@ export class RunningDialogList extends HTMLElement {
   private collapsedRoots: Set<string> = new Set();
   private knownRootIds: Set<string> = new Set();
   // Request markers only; this is not a data cache.
-  private requestedSubdialogRoots: Set<string> = new Set();
-  private snapshotDialogs: ApiRootDialogResponse[] = [];
+  private requestedSideDialogRoots: Set<string> = new Set();
+  private snapshotDialogs: ApiMainDialogResponse[] = [];
   private snapshotGroups: TaskGroup[] = [];
   private visibleRootCountByTask: Map<string, number> = new Map();
-  private visibleSubdialogCountByRoot: Map<string, number> = new Map();
+  private visibleSideDialogCountByRoot: Map<string, number> = new Map();
   private static readonly SHOW_MORE_STEP = 5;
   private static readonly RUN_STATE_CLASSES = [
     'state-proceeding',
     'state-proceeding-stop',
     'state-stopped',
     'state-blocked-q4h',
-    'state-blocked-subdialogs',
+    'state-blocked-sideDialogs',
     'state-blocked-both',
     'state-blocked-fbr',
   ];
@@ -98,7 +98,7 @@ export class RunningDialogList extends HTMLElement {
     }
   }
 
-  public setDialogs(dialogs: ApiRootDialogResponse[]): void {
+  public setDialogs(dialogs: ApiMainDialogResponse[]): void {
     this.applySnapshot(dialogs);
   }
 
@@ -124,11 +124,11 @@ export class RunningDialogList extends HTMLElement {
     return this.selectionState.rootId;
   }
 
-  public findDialogByRootId(rootId: string): ApiRootDialogResponse | undefined {
+  public findDialogByRootId(rootId: string): ApiMainDialogResponse | undefined {
     return this.findDialogInSnapshot(rootId, rootId);
   }
 
-  public findSubdialog(rootId: string, selfId: string): ApiRootDialogResponse | undefined {
+  public findSideDialog(rootId: string, selfId: string): ApiMainDialogResponse | undefined {
     return this.findDialogInSnapshot(rootId, selfId);
   }
 
@@ -143,7 +143,7 @@ export class RunningDialogList extends HTMLElement {
   public updateDialogEntry(
     rootId: string,
     selfId: string,
-    patch: Partial<ApiRootDialogResponse>,
+    patch: Partial<ApiMainDialogResponse>,
   ): boolean {
     if (!rootId) return false;
     const targetSelf = selfId || rootId;
@@ -153,7 +153,7 @@ export class RunningDialogList extends HTMLElement {
     );
     if (cacheIndex >= 0) {
       const cached = this.snapshotDialogs[cacheIndex];
-      const nextCached: ApiRootDialogResponse = { ...cached, ...patch };
+      const nextCached: ApiMainDialogResponse = { ...cached, ...patch };
       nextCached.rootId = cached.rootId;
       nextCached.selfId = cached.selfId;
       this.snapshotDialogs[cacheIndex] = nextCached;
@@ -167,7 +167,7 @@ export class RunningDialogList extends HTMLElement {
     if (!entry) return false;
     const existing = this.findDialogInSnapshot(rootId, targetSelf);
     if (!existing) return false;
-    const next: ApiRootDialogResponse = { ...existing, ...patch };
+    const next: ApiMainDialogResponse = { ...existing, ...patch };
     next.rootId = existing.rootId;
     next.selfId = existing.selfId;
 
@@ -183,31 +183,31 @@ export class RunningDialogList extends HTMLElement {
       if (targetSelf === rootId) {
         this.reorderVisibleRoots(next.taskDocPath);
       } else {
-        this.reorderVisibleSubdialogs(rootId);
-        const rootDialog = this.findDialogByRootId(rootId);
-        if (rootDialog) {
-          this.reorderVisibleRoots(rootDialog.taskDocPath);
+        this.reorderVisibleSideDialogs(rootId);
+        const mainDialog = this.findDialogByRootId(rootId);
+        if (mainDialog) {
+          this.reorderVisibleRoots(mainDialog.taskDocPath);
         }
       }
     }
-    if (patch.subdialogCount !== undefined && targetSelf === rootId) {
+    if (patch.sideDialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
       if (countEl instanceof HTMLElement) {
         if (
-          typeof next.subdialogCount !== 'number' ||
-          !Number.isInteger(next.subdialogCount) ||
-          next.subdialogCount < 0
+          typeof next.sideDialogCount !== 'number' ||
+          !Number.isInteger(next.sideDialogCount) ||
+          next.sideDialogCount < 0
         ) {
-          throw new Error(`Root dialog ${rootId} received invalid backend subdialogCount`);
+          throw new Error(`Root dialog ${rootId} received invalid backend sideDialogCount`);
         }
-        countEl.textContent = String(next.subdialogCount);
+        countEl.textContent = String(next.sideDialogCount);
       }
     }
     return true;
   }
 
-  private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
-    const assignment = dialog.assignmentFromSup;
+  private getDialogDisplayCallsign(dialog: ApiMainDialogResponse): string {
+    const assignment = dialog.assignmentFromAsker;
     if (assignment?.callName === 'freshBootsReasoning') {
       return 'FBR';
     }
@@ -218,19 +218,19 @@ export class RunningDialogList extends HTMLElement {
     return selfId === rootId ? rootId : `${rootId}#${selfId}`;
   }
 
-  private getDialogKey(dialog: ApiRootDialogResponse): string {
+  private getDialogKey(dialog: ApiMainDialogResponse): string {
     const rootId = dialog.rootId;
     const selfId = dialog.selfId ? dialog.selfId : dialog.rootId;
     return this.dialogKey(rootId, selfId);
   }
 
-  private isWaitingForFreshBootsReasoning(dialog: ApiRootDialogResponse): boolean {
+  private isWaitingForFreshBootsReasoning(dialog: ApiMainDialogResponse): boolean {
     if (dialog.waitingForFreshBootsReasoning !== true) return false;
     const displayState = dialog.displayState;
     if (!displayState || displayState.kind !== 'blocked') return false;
     return (
-      displayState.reason.kind === 'waiting_for_subdialogs' ||
-      displayState.reason.kind === 'needs_human_input_and_subdialogs'
+      displayState.reason.kind === 'waiting_for_sideDialogs' ||
+      displayState.reason.kind === 'needs_human_input_and_sideDialogs'
     );
   }
 
@@ -242,7 +242,7 @@ export class RunningDialogList extends HTMLElement {
     return `<span class="run-badge ${className}" title="${title}" aria-label="${title}"><span class="icon-mask ${iconClass}" aria-hidden="true"></span></span>`;
   }
 
-  private renderRunBadges(dialog: ApiRootDialogResponse): string {
+  private renderRunBadges(dialog: ApiMainDialogResponse): string {
     const t = getUiStrings(this.props.uiLanguage);
     const visualState = runControlVisualStateFromDisplayState(dialog.displayState);
     const waitingForFreshBootsReasoning = this.isWaitingForFreshBootsReasoning(dialog);
@@ -269,7 +269,7 @@ export class RunningDialogList extends HTMLElement {
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         break;
-      case 'blocked_subdialogs':
+      case 'blocked_sideDialogs':
         badges.push(
           waitingForFreshBootsReasoning
             ? this.renderRunBadge(
@@ -277,7 +277,7 @@ export class RunningDialogList extends HTMLElement {
                 t.runBadgeWaitingFbrTitle,
                 'run-badge-fbr-icon',
               )
-            : this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
+            : this.renderRunBadge('blocked blocked-sideDialogs', t.runBadgeWaitingSideDialogsTitle),
         );
         break;
       case 'blocked_both':
@@ -289,7 +289,7 @@ export class RunningDialogList extends HTMLElement {
                 t.runBadgeWaitingFbrTitle,
                 'run-badge-fbr-icon',
               )
-            : this.renderRunBadge('blocked blocked-subdialogs', t.runBadgeWaitingSubdialogsTitle),
+            : this.renderRunBadge('blocked blocked-sideDialogs', t.runBadgeWaitingSideDialogsTitle),
         );
         break;
       default: {
@@ -302,7 +302,7 @@ export class RunningDialogList extends HTMLElement {
     return `<span class="run-badges">${badges.join('')}</span>`;
   }
 
-  private getDisplayStateClass(dialog: ApiRootDialogResponse): string {
+  private getDisplayStateClass(dialog: ApiMainDialogResponse): string {
     const classes: string[] = [];
     const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
     if (suffix) {
@@ -314,7 +314,7 @@ export class RunningDialogList extends HTMLElement {
     return classes.length > 0 ? ` ${classes.join(' ')}` : '';
   }
 
-  private updateDisplayStateForEntry(el: HTMLElement, dialog: ApiRootDialogResponse): void {
+  private updateDisplayStateForEntry(el: HTMLElement, dialog: ApiMainDialogResponse): void {
     for (const cls of RunningDialogList.RUN_STATE_CLASSES) {
       el.classList.remove(cls);
     }
@@ -342,10 +342,10 @@ export class RunningDialogList extends HTMLElement {
     meta.insertAdjacentHTML('afterbegin', badgesHtml);
   }
 
-  private validateDialogs(dialogs: ApiRootDialogResponse[]): ApiRootDialogResponse[] {
+  private validateDialogs(dialogs: ApiMainDialogResponse[]): ApiMainDialogResponse[] {
     const seenRoots = new Set<string>();
     const seenSubs = new Map<string, Set<string>>();
-    const validated: ApiRootDialogResponse[] = [];
+    const validated: ApiMainDialogResponse[] = [];
     for (const dialog of dialogs) {
       if (!dialog.rootId) {
         throw new Error('Dialog missing rootId.');
@@ -366,7 +366,7 @@ export class RunningDialogList extends HTMLElement {
         }
         if (subs.has(dialog.selfId)) {
           throw new Error(
-            `Duplicate subdialog detected for root ${dialog.rootId} and self ${dialog.selfId}.`,
+            `Duplicate sideDialog detected for root ${dialog.rootId} and self ${dialog.selfId}.`,
           );
         }
         subs.add(dialog.selfId);
@@ -381,7 +381,7 @@ export class RunningDialogList extends HTMLElement {
     return validated;
   }
 
-  private buildGroups(dialogs: ApiRootDialogResponse[]): TaskGroup[] {
+  private buildGroups(dialogs: ApiMainDialogResponse[]): TaskGroup[] {
     const taskMap = new Map<string, { taskDocPath: string; roots: Map<string, RootGroup> }>();
 
     for (const dialog of dialogs) {
@@ -400,7 +400,7 @@ export class RunningDialogList extends HTMLElement {
       if (!rootId) continue;
       let rootGroup = taskGroup.roots.get(rootId);
       if (!rootGroup) {
-        rootGroup = { rootId, sortKey: 0, root: null, subdialogs: [] };
+        rootGroup = { rootId, sortKey: 0, root: null, sideDialogs: [] };
         taskGroup.roots.set(rootId, rootGroup);
       }
 
@@ -410,7 +410,7 @@ export class RunningDialogList extends HTMLElement {
       }
 
       if (dialog.selfId) {
-        rootGroup.subdialogs.push(dialog);
+        rootGroup.sideDialogs.push(dialog);
       } else {
         rootGroup.root = dialog;
       }
@@ -421,9 +421,9 @@ export class RunningDialogList extends HTMLElement {
       const roots: RootGroup[] = [];
       for (const rootGroup of taskGroup.roots.values()) {
         const rootUpdated = rootGroup.root ? this.parseTimestamp(rootGroup.root.lastModified) : 0;
-        const subUpdated = this.maxUpdatedAt(rootGroup.subdialogs);
+        const subUpdated = this.maxUpdatedAt(rootGroup.sideDialogs);
         const sortKey = Math.max(rootUpdated, subUpdated, rootGroup.sortKey);
-        const subdialogs = [...rootGroup.subdialogs].sort((a, b) => {
+        const sideDialogs = [...rootGroup.sideDialogs].sort((a, b) => {
           const delta = this.parseTimestamp(b.lastModified) - this.parseTimestamp(a.lastModified);
           if (delta !== 0) return delta;
           const aId = a.selfId ?? '';
@@ -434,7 +434,7 @@ export class RunningDialogList extends HTMLElement {
           rootId: rootGroup.rootId,
           sortKey,
           root: rootGroup.root,
-          subdialogs,
+          sideDialogs,
         });
       }
 
@@ -461,7 +461,7 @@ export class RunningDialogList extends HTMLElement {
     return parseUnifiedTimestampMs(value) ?? 0;
   }
 
-  private maxUpdatedAt(dialogs: ApiRootDialogResponse[]): number {
+  private maxUpdatedAt(dialogs: ApiMainDialogResponse[]): number {
     let max = 0;
     for (const dialog of dialogs) {
       const ts = this.parseTimestamp(dialog.lastModified);
@@ -470,11 +470,11 @@ export class RunningDialogList extends HTMLElement {
     return max;
   }
 
-  private getRootSubdialogCount(rootGroup: RootGroup): number {
-    if (!rootGroup.root) return rootGroup.subdialogs.length;
-    const backendCount = rootGroup.root.subdialogCount;
+  private getRootSideDialogCount(rootGroup: RootGroup): number {
+    if (!rootGroup.root) return rootGroup.sideDialogs.length;
+    const backendCount = rootGroup.root.sideDialogCount;
     if (typeof backendCount !== 'number' || !Number.isInteger(backendCount) || backendCount < 0) {
-      throw new Error(`Root dialog ${rootGroup.rootId} is missing backend subdialogCount`);
+      throw new Error(`Root dialog ${rootGroup.rootId} is missing backend sideDialogCount`);
     }
     return backendCount;
   }
@@ -504,7 +504,7 @@ export class RunningDialogList extends HTMLElement {
     this.refreshFromDom();
   }
 
-  public applySnapshot(dialogs: ApiRootDialogResponse[]): void {
+  public applySnapshot(dialogs: ApiMainDialogResponse[]): void {
     if (!this.listEl) return;
     if (this.props.loading) {
       this.renderLoading();
@@ -516,9 +516,9 @@ export class RunningDialogList extends HTMLElement {
     const groups = this.buildGroups(validated);
     this.snapshotGroups = groups;
     const rootIds = new Set<string>(validated.map((dialog) => dialog.rootId));
-    const loadedSubdialogRoots = new Set<string>();
+    const loadedSideDialogRoots = new Set<string>();
     for (const dialog of validated) {
-      if (dialog.selfId) loadedSubdialogRoots.add(dialog.rootId);
+      if (dialog.selfId) loadedSideDialogRoots.add(dialog.rootId);
     }
     for (const rootId of rootIds) {
       if (!this.knownRootIds.has(rootId)) {
@@ -530,13 +530,13 @@ export class RunningDialogList extends HTMLElement {
       if (!rootIds.has(existing)) {
         this.knownRootIds.delete(existing);
         this.collapsedRoots.delete(existing);
-        this.requestedSubdialogRoots.delete(existing);
-        this.visibleSubdialogCountByRoot.delete(existing);
+        this.requestedSideDialogRoots.delete(existing);
+        this.visibleSideDialogCountByRoot.delete(existing);
       }
     }
-    for (const existing of Array.from(this.requestedSubdialogRoots)) {
-      if (loadedSubdialogRoots.has(existing)) {
-        this.requestedSubdialogRoots.delete(existing);
+    for (const existing of Array.from(this.requestedSideDialogRoots)) {
+      if (loadedSideDialogRoots.has(existing)) {
+        this.requestedSideDialogRoots.delete(existing);
       }
     }
     const taskPaths = new Set<string>(groups.map((group) => group.taskDocPath));
@@ -556,13 +556,13 @@ export class RunningDialogList extends HTMLElement {
       }
     }
     for (const rootId of rootIds) {
-      if (!this.visibleSubdialogCountByRoot.has(rootId)) {
-        this.visibleSubdialogCountByRoot.set(rootId, RunningDialogList.SHOW_MORE_STEP);
+      if (!this.visibleSideDialogCountByRoot.has(rootId)) {
+        this.visibleSideDialogCountByRoot.set(rootId, RunningDialogList.SHOW_MORE_STEP);
       }
     }
-    for (const existing of Array.from(this.visibleSubdialogCountByRoot.keys())) {
+    for (const existing of Array.from(this.visibleSideDialogCountByRoot.keys())) {
       if (!rootIds.has(existing)) {
-        this.visibleSubdialogCountByRoot.delete(existing);
+        this.visibleSideDialogCountByRoot.delete(existing);
       }
     }
 
@@ -597,7 +597,7 @@ export class RunningDialogList extends HTMLElement {
     this.dialogIndex.clear();
   }
 
-  private applyDialogDataAttributes(el: HTMLElement, dialog: ApiRootDialogResponse): void {
+  private applyDialogDataAttributes(el: HTMLElement, dialog: ApiMainDialogResponse): void {
     const selfId = dialog.selfId ?? '';
     el.setAttribute('data-root-id', dialog.rootId);
     el.setAttribute('data-self-id', selfId);
@@ -669,7 +669,7 @@ export class RunningDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
           <span class="dialog-title">${t.missingRoot}</span>
           <span class="dialog-meta-right">
-            <span class="dialog-count">${rootGroup.subdialogs.length}</span>
+            <span class="dialog-count">${rootGroup.sideDialogs.length}</span>
             <span class="dialog-id">${rootGroup.rootId}</span>
           </span>
         </div>
@@ -692,7 +692,7 @@ export class RunningDialogList extends HTMLElement {
     container.appendChild(next);
   }
 
-  private reconcileSubdialogRows(rootChildren: HTMLElement, rootGroup: RootGroup): void {
+  private reconcileSideDialogRows(rootChildren: HTMLElement, rootGroup: RootGroup): void {
     const existingRows = new Map<string, HTMLElement>();
     rootChildren
       .querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog[data-dialog-key]')
@@ -703,17 +703,17 @@ export class RunningDialogList extends HTMLElement {
         }
       });
 
-    const visibleSubdialogCount =
-      this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ?? RunningDialogList.SHOW_MORE_STEP;
-    const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
-    const hiddenSubdialogCount = Math.max(
-      rootGroup.subdialogs.length - visibleSubdialogs.length,
+    const visibleSideDialogCount =
+      this.visibleSideDialogCountByRoot.get(rootGroup.rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+    const visibleSideDialogs = rootGroup.sideDialogs.slice(0, visibleSideDialogCount);
+    const hiddenSideDialogCount = Math.max(
+      rootGroup.sideDialogs.length - visibleSideDialogs.length,
       0,
     );
 
-    for (const subdialog of visibleSubdialogs) {
-      const key = this.getDialogKey(subdialog);
-      const next = this.createElementFromHtml(this.renderDialogRow(subdialog, 'sub'));
+    for (const sideDialog of visibleSideDialogs) {
+      const key = this.getDialogKey(sideDialog);
+      const next = this.createElementFromHtml(this.renderDialogRow(sideDialog, 'sub'));
       const existing = existingRows.get(key);
       if (existing) {
         this.syncElement(existing, next);
@@ -729,11 +729,11 @@ export class RunningDialogList extends HTMLElement {
     }
 
     const showMoreHtml =
-      hiddenSubdialogCount > 0
+      hiddenSideDialogCount > 0
         ? this.renderShowMoreButton({
-            action: 'show-more-subdialogs',
+            action: 'show-more-sideDialogs',
             rootId: rootGroup.rootId,
-            hiddenCount: hiddenSubdialogCount,
+            hiddenCount: hiddenSideDialogCount,
           })
         : null;
     this.reconcileShowMoreRow(rootChildren, showMoreHtml);
@@ -751,7 +751,7 @@ export class RunningDialogList extends HTMLElement {
       ? this.renderRootRow(
           rootGroup.root,
           this.renderToggleIcon(rootCollapsed),
-          this.getRootSubdialogCount(rootGroup),
+          this.getRootSideDialogCount(rootGroup),
         )
       : this.renderMissingRootRow(rootGroup, rootCollapsed);
 
@@ -773,7 +773,7 @@ export class RunningDialogList extends HTMLElement {
       rootNode.appendChild(rootChildren);
     }
     rootChildren.classList.toggle('collapsed', taskCollapsed || rootCollapsed);
-    this.reconcileSubdialogRows(rootChildren, rootGroup);
+    this.reconcileSideDialogRows(rootChildren, rootGroup);
   }
 
   private reconcileRootNodes(
@@ -875,7 +875,7 @@ export class RunningDialogList extends HTMLElement {
     }
   }
 
-  private findDialogInSnapshot(rootId: string, selfId: string): ApiRootDialogResponse | undefined {
+  private findDialogInSnapshot(rootId: string, selfId: string): ApiMainDialogResponse | undefined {
     const targetKey = this.dialogKey(rootId, selfId);
     return this.snapshotDialogs.find((dialog) => this.getDialogKey(dialog) === targetKey);
   }
@@ -922,7 +922,7 @@ export class RunningDialogList extends HTMLElement {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  private reorderVisibleSubdialogs(rootId: string): void {
+  private reorderVisibleSideDialogs(rootId: string): void {
     if (!this.listEl) return;
     const rootChildren = this.listEl.querySelector(
       `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(rootId)}"] > .sdlg-children`,
@@ -1062,7 +1062,7 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private renderShowMoreButton(args: {
-    action: 'show-more-roots' | 'show-more-subdialogs';
+    action: 'show-more-roots' | 'show-more-sideDialogs';
     hiddenCount: number;
     taskDocPath?: string;
     rootId?: string;
@@ -1088,9 +1088,9 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private renderRootRow(
-    dialog: ApiRootDialogResponse,
+    dialog: ApiMainDialogResponse,
     toggleIcon: string,
-    subdialogCount: number,
+    sideDialogCount: number,
   ): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
@@ -1129,7 +1129,7 @@ export class RunningDialogList extends HTMLElement {
             <button class="action icon-button" data-action="dialog-open-external" data-root-id="${dialog.rootId}" data-self-id="${dialog.rootId}" type="button" title="${t.q4hOpenInNewTabTitle}" aria-label="${t.q4hOpenInNewTabTitle}">
               ${this.renderOpenExternalIcon()}
             </button>
-            <span class="dialog-count">${subdialogCount}</span>
+            <span class="dialog-count">${sideDialogCount}</span>
           </span>
         </div>
         <div class="dialog-row dialog-submeta">
@@ -1142,7 +1142,7 @@ export class RunningDialogList extends HTMLElement {
     `;
   }
 
-  private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
+  private renderDialogRow(dialog: ApiMainDialogResponse, kind: 'root' | 'sub'): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
     const displayStateClass = this.getDisplayStateClass(dialog);
@@ -1227,10 +1227,10 @@ export class RunningDialogList extends HTMLElement {
         }
         return;
       }
-      if (action === 'show-more-subdialogs') {
+      if (action === 'show-more-sideDialogs') {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
-          this.showMoreSubdialogs(rootId);
+          this.showMoreSideDialogs(rootId);
         }
         return;
       }
@@ -1275,13 +1275,13 @@ export class RunningDialogList extends HTMLElement {
       if (action === 'root-create-dialog') {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
-          const rootDialog = this.findDialogByRootId(rootId);
-          if (rootDialog) {
+          const mainDialog = this.findDialogByRootId(rootId);
+          if (mainDialog) {
             this.emitCreateDialogAction({
               kind: 'root',
-              rootId: rootDialog.rootId,
-              taskDocPath: rootDialog.taskDocPath,
-              agentId: rootDialog.agentId,
+              rootId: mainDialog.rootId,
+              taskDocPath: mainDialog.taskDocPath,
+              agentId: mainDialog.agentId,
             });
           }
         }
@@ -1338,7 +1338,7 @@ export class RunningDialogList extends HTMLElement {
     this.notifySelection(dialog);
   };
 
-  private applySelection(dialog: ApiRootDialogResponse): void {
+  private applySelection(dialog: ApiMainDialogResponse): void {
     const isRoot = !dialog.selfId;
     const key = this.getDialogKey(dialog);
     this.selectionState = {
@@ -1389,15 +1389,15 @@ export class RunningDialogList extends HTMLElement {
     }
 
     // Ensure the selected dialog's hierarchy is available in the list.
-    // We only lazy-load subdialogs when the root is expanded via the toggle button,
+    // We only lazy-load sideDialogs when the root is expanded via the toggle button,
     // but selection can happen through other UX paths (clicking a row, deep-link,
     // programmatic selection, etc.). Without this, display-state styling only appears
     // for the currently selected node because siblings/children are not loaded.
     if (
-      !this.requestedSubdialogRoots.has(dialog.rootId) &&
-      !this.hasSubdialogsLoaded(dialog.rootId)
+      !this.requestedSideDialogRoots.has(dialog.rootId) &&
+      !this.hasSideDialogsLoaded(dialog.rootId)
     ) {
-      this.requestedSubdialogRoots.add(dialog.rootId);
+      this.requestedSideDialogRoots.add(dialog.rootId);
       dispatchDomindsEvent(
         this,
         'dialog-expand',
@@ -1414,11 +1414,11 @@ export class RunningDialogList extends HTMLElement {
     rootId: string,
     selfId: string,
     isRoot: boolean,
-  ): ApiRootDialogResponse | undefined {
+  ): ApiMainDialogResponse | undefined {
     return this.findDialogInSnapshot(rootId, isRoot ? rootId : selfId);
   }
 
-  private isSelectedDialog(dialog: ApiRootDialogResponse, selection: SelectionState): boolean {
+  private isSelectedDialog(dialog: ApiMainDialogResponse, selection: SelectionState): boolean {
     if (selection.kind !== 'selected') return false;
     if (selection.rootId !== dialog.rootId) return false;
     if (selection.isRoot) {
@@ -1441,12 +1441,12 @@ export class RunningDialogList extends HTMLElement {
       }
       if (!isRoot) {
         const rootGroup = group.roots[rootIndex];
-        const subIndex = rootGroup.subdialogs.findIndex((sub) => sub.selfId === selfId);
+        const subIndex = rootGroup.sideDialogs.findIndex((sub) => sub.selfId === selfId);
         if (subIndex >= 0) {
           const currentSubLimit =
-            this.visibleSubdialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+            this.visibleSideDialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
           if (currentSubLimit < subIndex + 1) {
-            this.visibleSubdialogCountByRoot.set(rootId, subIndex + 1);
+            this.visibleSideDialogCountByRoot.set(rootId, subIndex + 1);
             changed = true;
           }
         }
@@ -1463,10 +1463,10 @@ export class RunningDialogList extends HTMLElement {
     this.applySnapshot(this.snapshotDialogs);
   }
 
-  private showMoreSubdialogs(rootId: string): void {
+  private showMoreSideDialogs(rootId: string): void {
     const current =
-      this.visibleSubdialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
-    this.visibleSubdialogCountByRoot.set(rootId, current + RunningDialogList.SHOW_MORE_STEP);
+      this.visibleSideDialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+    this.visibleSideDialogCountByRoot.set(rootId, current + RunningDialogList.SHOW_MORE_STEP);
     this.applySnapshot(this.snapshotDialogs);
   }
 
@@ -1493,11 +1493,11 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private toggleRoot(rootId: string): void {
-    const hasLoadedSubdialogs = this.hasSubdialogsLoaded(rootId);
+    const hasLoadedSideDialogs = this.hasSideDialogsLoaded(rootId);
     if (this.collapsedRoots.has(rootId)) {
       this.collapsedRoots.delete(rootId);
-      if (!this.requestedSubdialogRoots.has(rootId) && !hasLoadedSubdialogs) {
-        this.requestedSubdialogRoots.add(rootId);
+      if (!this.requestedSideDialogRoots.has(rootId) && !hasLoadedSideDialogs) {
+        this.requestedSideDialogRoots.add(rootId);
         dispatchDomindsEvent(
           this,
           'dialog-expand',
@@ -1510,8 +1510,8 @@ export class RunningDialogList extends HTMLElement {
       }
     } else {
       this.collapsedRoots.add(rootId);
-      if (hasLoadedSubdialogs) {
-        this.requestedSubdialogRoots.delete(rootId);
+      if (hasLoadedSideDialogs) {
+        this.requestedSideDialogRoots.delete(rootId);
         dispatchDomindsEvent(
           this,
           'dialog-collapse',
@@ -1570,7 +1570,7 @@ export class RunningDialogList extends HTMLElement {
     return { rootId, selfId };
   }
 
-  private hasSubdialogsLoaded(rootId: string): boolean {
+  private hasSideDialogsLoaded(rootId: string): boolean {
     if (this.dialogIndex.size === 0) {
       this.refreshFromDom();
     }
@@ -1597,7 +1597,7 @@ export class RunningDialogList extends HTMLElement {
     return value.replace(/"/g, '\\"');
   }
 
-  private notifySelection(dialog: ApiRootDialogResponse): void {
+  private notifySelection(dialog: ApiMainDialogResponse): void {
     if (!this.props.onSelect) return;
 
     const dialogInfo: DialogInfo = {
@@ -1607,9 +1607,9 @@ export class RunningDialogList extends HTMLElement {
       agentName: '',
       taskDocPath: dialog.taskDocPath,
       status: 'running',
-      supdialogId: dialog.supdialogId,
+      askerDialogId: dialog.askerDialogId,
       sessionSlug: dialog.sessionSlug,
-      assignmentFromSup: dialog.assignmentFromSup,
+      assignmentFromAsker: dialog.assignmentFromAsker,
     };
 
     this.props.onSelect(dialogInfo);
@@ -1841,9 +1841,9 @@ export class RunningDialogList extends HTMLElement {
         );
       }
 
-      .run-badge.blocked-subdialogs {
+      .run-badge.blocked-sideDialogs {
         --run-badge-bg: var(
-          --dominds-run-badge-waiting-subdialogs-bg,
+          --dominds-run-badge-waiting-sideDialogs-bg,
           color-mix(
             in srgb,
             var(--dominds-fg, #0f172a) 92%,
@@ -1851,11 +1851,11 @@ export class RunningDialogList extends HTMLElement {
           )
         );
         --run-badge-color: var(
-          --dominds-run-badge-waiting-subdialogs-fg,
+          --dominds-run-badge-waiting-sideDialogs-fg,
           var(--dominds-info, #005fb8)
         );
         --run-badge-border: var(
-          --dominds-run-badge-waiting-subdialogs-border,
+          --dominds-run-badge-waiting-sideDialogs-border,
           var(--dominds-info-border, transparent)
         );
       }
@@ -1888,7 +1888,7 @@ export class RunningDialogList extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.helpCircle};
       }
 
-      .run-badge.blocked-subdialogs .run-badge-icon {
+      .run-badge.blocked-sideDialogs .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.call};
       }
 

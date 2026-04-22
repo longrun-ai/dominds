@@ -15,7 +15,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatRegisteredTellaskCalleeUpdateNotice } from './driver-messages';
 import { markdownQuote } from './markdown-format';
-import { buildSubdialogRoleHeaderCopy } from './reply-prompt-copy';
+import { buildSideDialogRoleHeaderCopy } from './reply-prompt-copy';
 import { getTellaskKindLabel } from './tellask-labels';
 
 export type InterDialogCallContent = {
@@ -29,7 +29,7 @@ export type InterDialogParticipants = {
   toAgentId: string;
 };
 
-export type SubdialogAssignmentFormatInput = InterDialogParticipants &
+export type SideDialogAssignmentFormatInput = InterDialogParticipants &
   InterDialogCallContent & {
     language?: LanguageCode;
     collectiveTargets?: string[];
@@ -40,16 +40,17 @@ export type SubdialogAssignmentFormatInput = InterDialogParticipants &
     };
   };
 
-export type SupdialogCallPromptInput = {
+export type AskerDialogCallPromptInput = {
   fromAgentId: string;
   toAgentId: string;
-  subdialogRequest: InterDialogCallContent;
-  supdialogAssignment: InterDialogCallContent;
+  sideDialogRequest: InterDialogCallContent;
+  askerDialogAssignment: InterDialogCallContent;
   language?: LanguageCode;
 };
 
 export type TellaskResponseFormatInput = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  callId: string;
   responderId: string;
   requesterId: string;
   mentionList?: string[];
@@ -74,6 +75,7 @@ export type TellaskReplacementNoticeFormatInput = {
 export type TellaskCarryoverResultFormatInput = {
   originCourse: number;
   callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  callId: string;
   responderId: string;
   mentionList?: string[];
   sessionSlug?: string;
@@ -129,14 +131,14 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
   return value;
 }
 
-type SubdialogRoleHeaderInput = {
+type SideDialogRoleHeaderInput = {
   callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   fromAgentId: string;
   language: LanguageCode;
 };
 
 function getExpectedReplyToolName(
-  callName: SubdialogRoleHeaderInput['callName'],
+  callName: SideDialogRoleHeaderInput['callName'],
 ): 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' | undefined {
   switch (callName) {
     case 'tellask':
@@ -151,13 +153,13 @@ function getExpectedReplyToolName(
   }
 }
 
-function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
+function buildSideDialogRoleHeader(input: SideDialogRoleHeaderInput): string {
   if (input.callName === 'freshBootsReasoning') {
     return '';
   }
   const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const expectedReplyTool = getExpectedReplyToolName(input.callName);
-  return buildSubdialogRoleHeaderCopy({
+  return buildSideDialogRoleHeaderCopy({
     language: input.language,
     requesterId,
     expectedReplyTool,
@@ -195,13 +197,44 @@ function formatQuotedRequestBlock(args: {
   return lines.join('\n');
 }
 
-export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
+function formatTellaskStatusFootnote(args: {
+  language: LanguageCode;
+  callName: string;
+  callId: string;
+  crossCourse?: boolean;
+}): string {
+  const callId = requireNonEmpty(args.callId, 'callId');
+  if (args.language === 'zh') {
+    const explanation =
+      args.crossCourse === true
+        ? '这是前序诉请的跨程回贴事实，不是新的用户请求，也不是当前程新发起的函数调用。'
+        : '这是前序诉请的回贴事实，不是新的用户请求，也不是当前程新发起的函数调用。';
+    return [
+      '[Dominds 诉请状态]',
+      `- 函数: \`${args.callName}\``,
+      `- callId: ${callId}`,
+      `- 说明: ${explanation}`,
+    ].join('\n');
+  }
+  const explanation =
+    args.crossCourse === true
+      ? 'This is a cross-course reply fact for an earlier tellask, not a new user request or a newly initiated function call in the current course.'
+      : 'This is a reply fact for an earlier tellask, not a new user request or a newly initiated function call in the current course.';
+  return [
+    '[Dominds tellask status]',
+    `- Function: \`${args.callName}\``,
+    `- callId: ${callId}`,
+    `- Note: ${explanation}`,
+  ].join('\n');
+}
+
+export function formatAssignmentFromAskerDialog(input: SideDialogAssignmentFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
   const runtimeMarkers = getRuntimeTransferMarkers(language);
   requireNonEmpty(input.toAgentId, 'toAgentId');
   requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
-  const roleHeader = buildSubdialogRoleHeader({
+  const roleHeader = buildSideDialogRoleHeader({
     callName: input.callName,
     fromAgentId: input.fromAgentId,
     language,
@@ -236,7 +269,7 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
         : [
             '# Fresh Boots Reasoning (FBR) request',
             '',
-            '- Constraint: this is a self-tellask FBR sideline dialog; reason independently and produce conclusions.',
+            '- Constraint: this is a self-tellask FBR Sideline dialog; reason independently and produce conclusions.',
             '- System rule: this FBR stage is still tool-less; do not emit any function call in this stage.',
             '- Only after the planned divergence and convergence rounds are complete will runtime expose the two conclusion functions for formal closure.',
             '- Protocol: reply markers are auto-injected by Dominds runtime; do not hand-write markers.',
@@ -272,8 +305,8 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   })}\n`;
 }
 
-export function formatUpdatedAssignmentFromSupdialog(
-  input: SubdialogAssignmentFormatInput,
+export function formatUpdatedAssignmentFromAskerDialog(
+  input: SideDialogAssignmentFormatInput,
 ): string {
   const language: LanguageCode = input.language ?? 'en';
   return [
@@ -281,19 +314,19 @@ export function formatUpdatedAssignmentFromSupdialog(
     '',
     '---',
     '',
-    formatAssignmentFromSupdialog(input).trimEnd(),
+    formatAssignmentFromAskerDialog(input).trimEnd(),
     '',
   ].join('\n');
 }
 
-export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {
+export function formatAskerDialogCallPrompt(input: AskerDialogCallPromptInput): string {
   const language: LanguageCode = input.language ?? 'en';
   const supMention = (() => {
     if (
-      input.supdialogAssignment.callName === 'tellask' ||
-      input.supdialogAssignment.callName === 'tellaskSessionless'
+      input.askerDialogAssignment.callName === 'tellask' ||
+      input.askerDialogAssignment.callName === 'tellaskSessionless'
     ) {
-      return requireMentionLine(input.supdialogAssignment.mentionList ?? []);
+      return requireMentionLine(input.askerDialogAssignment.mentionList ?? []);
     }
     return '';
   })();
@@ -303,10 +336,10 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
 
   const subMention = (() => {
     if (
-      input.subdialogRequest.callName === 'tellask' ||
-      input.subdialogRequest.callName === 'tellaskSessionless'
+      input.sideDialogRequest.callName === 'tellask' ||
+      input.sideDialogRequest.callName === 'tellaskSessionless'
     ) {
-      return requireMentionLine(input.subdialogRequest.mentionList ?? []);
+      return requireMentionLine(input.sideDialogRequest.mentionList ?? []);
     }
     return '';
   })();
@@ -323,13 +356,13 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
     formatQuotedRequestBlock({
       title: originalTitle,
       mentionLine: supMention,
-      body: requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'),
+      body: requireNonEmpty(input.askerDialogAssignment.tellaskContent, 'assignmentTellaskContent'),
     }),
     '',
     formatQuotedRequestBlock({
       title: askBackTitle,
       mentionLine: subMention,
-      body: requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'),
+      body: requireNonEmpty(input.sideDialogRequest.tellaskContent, 'requestTellaskContent'),
     }),
     '',
   ].join('\n');
@@ -344,13 +377,19 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
   const deliveryNotice =
     input.deliveryMode === 'direct_fallback'
       ? language === 'zh'
-        ? '> 系统提示：本次回贴未调用 replyTellask* 工具，当前按“直接回复 fallback”投递；请留意这只是过渡期兼容路径。\n\n'
-        : '> System note: this reply did not use a replyTellask* tool. It is being delivered via direct-reply fallback for now; treat this as a temporary compatibility path.\n\n'
+        ? '> 系统提示：本次回贴未调用 replyTellask* 工具，Dominds 已按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
+        : '> System note: this reply did not use a replyTellask* tool. Dominds delivered it via direct-reply fallback and kept this marker for traceability.\n\n'
       : '';
 
   if (isFbr) {
-    const title = language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR sideline response]';
-    return `${markerPrefix}${deliveryNotice}${title}\n\n${input.responseBody}\n`;
+    const title =
+      language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR Sideline dialog response]';
+    const statusFootnote = formatTellaskStatusFootnote({
+      language,
+      callName: input.callName,
+      callId: input.callId,
+    });
+    return `${markerPrefix}${deliveryNotice}${title}\n\n${input.responseBody}\n\n${statusFootnote}\n`;
   }
 
   if (
@@ -385,7 +424,12 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
         ? `regarding the original tellask: ${mentionLine}`
         : `regarding the original tellask: ${mentionLine} • ${sessionSlug}`;
 
-  return `${markerPrefix}${deliveryNotice}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
+  const statusFootnote = formatTellaskStatusFootnote({
+    language,
+    callName: input.callName,
+    callId: input.callId,
+  });
+  return `${markerPrefix}${deliveryNotice}${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n\n${statusFootnote}\n`;
 }
 
 export function formatTeammateResponseContent(input: TellaskResponseFormatInput): string {
@@ -456,6 +500,12 @@ export function formatTellaskCarryoverResultContent(
         : `- Target: ${mentionLine}`;
 
   if (language === 'zh') {
+    const statusFootnote = formatTellaskStatusFootnote({
+      language,
+      callName: input.callName,
+      callId: input.callId,
+      crossCourse: true,
+    });
     const lines = [
       '### 旧程诉请结果补入',
       '',
@@ -473,12 +523,18 @@ export function formatTellaskCarryoverResultContent(
       '',
       markdownQuote(responseBody),
       '',
-      '注意：这不是新的用户请求，也不是当前程新发起的函数调用，而是旧 pending tellask 的异步完成结果。',
+      statusFootnote,
       '',
     ];
     return lines.join('\n');
   }
 
+  const statusFootnote = formatTellaskStatusFootnote({
+    language,
+    callName: input.callName,
+    callId: input.callId,
+    crossCourse: true,
+  });
   const lines = [
     '### Carry-over tellask result',
     '',
@@ -496,7 +552,7 @@ export function formatTellaskCarryoverResultContent(
     '',
     markdownQuote(responseBody),
     '',
-    'Note: this is not a new user request or a newly initiated function call in the current course; it is the canonical current-course carryover of an older pending tellask completion.',
+    statusFootnote,
     '',
   ];
   return lines.join('\n');

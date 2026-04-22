@@ -47,7 +47,7 @@ The implementation follows this architecture.
 
 ### Design Principles
 
-- **Flat Subdialog Storage**: All subdialogs are stored flat under the main dialog's (root dialog's) `subdialogs/` directory, regardless of nesting depth
+- **Flat SideDialog Storage**: All sideDialogs are stored flat under the main dialog's (root dialog's) `sideDialogs/` directory, regardless of nesting depth
 - **Append-Only Streams**: Message streams are append-only for audit trails and replay capability
 - **Atomic Operations**: All persistence operations are atomic to prevent corruption
 - **Human-Readable Formats**: Storage uses YAML and JSONL for transparency and debugging
@@ -163,18 +163,18 @@ These paths are enforced by the memory tools (see `main/tools/mem.ts`) and loade
 - **rootDlgId**: The identifier for the root dialog in the hierarchy (defaults to selfDlgId for root dialogs)
 - **Serialization**: When `rootDlgId` differs from `selfDlgId`, the full ID is formatted as `rootDlgId#selfDlgId`; otherwise, it's just `selfDlgId`
 
-This schema enables efficient management of subdialog relationships while maintaining unique identification for each dialog instance.
+This schema enables efficient management of sideDialog relationships while maintaining unique identification for each dialog instance.
 
 ### Design Rationale
 
 The `self+root` ID schema was implemented to address several challenges in dialog management:
 
-1. **Hierarchical Relationship Tracking**: Provides clear lineage information for each dialog, making it easy to trace subdialogs back to their root dialog
-2. **Efficient Storage Organization**: Allows for flat storage of subdialogs while preserving relationship information
-3. **Unique Identification**: Ensures each dialog instance has a unique identifier, even when multiple subdialogs exist
+1. **Hierarchical Relationship Tracking**: Provides clear lineage information for each dialog, making it easy to trace sideDialogs back to their root dialog
+2. **Efficient Storage Organization**: Allows for flat storage of sideDialogs while preserving relationship information
+3. **Unique Identification**: Ensures each dialog instance has a unique identifier, even when multiple sideDialogs exist
 4. **Simplified Persistence**: Enables straightforward serialization and deserialization of dialog relationships
 5. **Improved Debugging**: Provides clear identification in logs and debugging information
-6. **Scalability**: Supports deep subdialog hierarchies without complex storage structures
+6. **Scalability**: Supports deep sideDialog hierarchies without complex storage structures
 
 This design balances the need for clear hierarchical relationships with efficient storage and retrieval operations.
 
@@ -188,14 +188,14 @@ This design balances the need for clear hierarchical relationships with efficien
 ├── <course>.jsonl            # Streamed messages for each course
 ├── <course>.yaml             # Course metadata
 ├── artifacts/                # Binary artifacts (e.g. MCP tool output images; referenced by func_result_msg.contentItems)
-└── subdialogs/               # Flat subdialog storage
-    ├── <subDialogId1>/       # First-level subdialog
-    │   ├── dialog.yaml       # Subdialog metadata
-    │   ├── latest.yaml       # Subdialog current state
-    │   ├── reminders.json    # Subdialog reminders
-    │   ├── <course>.jsonl    # Subdialog events
-    │   └── <course>.yaml     # Subdialog course metadata
-    └── <subDialogId2>/       # Another subdialog
+└── sideDialogs/               # Flat sideDialog storage
+    ├── <subDialogId1>/       # First-level sideDialog
+    │   ├── dialog.yaml       # SideDialog metadata
+    │   ├── latest.yaml       # SideDialog current state
+    │   ├── reminders.json    # SideDialog reminders
+    │   ├── <course>.jsonl    # SideDialog events
+    │   └── <course>.yaml     # SideDialog course metadata
+    └── <subDialogId2>/       # Another sideDialog
         ├── dialog.yaml
         ├── latest.yaml
         ├── reminders.json
@@ -213,8 +213,8 @@ This design balances the need for clear hierarchical relationships with efficien
 In this structure:
 
 - Root dialogs have `selfDlgId` equal to `rootDlgId`
-- Subdialogs have distinct `selfDlgId` values with the same `rootDlgId` as their parent
-- Subdialog directories use only the `selfDlgId` for file system organization
+- SideDialogs have distinct `selfDlgId` values with the same `rootDlgId` as their parent
+- SideDialog directories use only the `selfDlgId` for file system organization
 - Metadata stores only the `selfDlgId`; full `rootDlgId#selfDlgId` is reconstructed during loading
 - The full `rootDlgId#selfDlgId` format is used for in-memory identification and operations
 
@@ -232,15 +232,15 @@ createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 # No parent fields for root dialogs
 ```
 
-#### Subdialog Example
+#### SideDialog Example
 
 ```yaml
 id: 'dd/ee/ffffffff' # Unique dialog identifier (selfDlgId only)
 agentId: 'bob' # Agent responsible for this dialog
 taskDocPath: 'task.tsk' # Path to rtws Taskdoc package directory (inherited from parent)
 createdAt: '2024-01-15T10:35:00Z' # ISO timestamp when created
-supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
-assignmentFromSup: # Assignment context from parent
+askerDialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
+assignmentFromAsker: # Assignment context from parent
   mentionList: ['@bob']
   tellaskContent: 'Implement user authentication; create secure login system with JWT tokens'
   originMemberId: 'alice'
@@ -257,7 +257,7 @@ currentCourse: 3 # Current course number (1-based)
 lastModified: '2024-01-15T11:45:00Z' # ISO timestamp of last activity
 messageCount: 12 # Total messages in current course
 functionCallCount: 3 # Total function calls in current course
-subdialogCount: 1 # Total subdialogs created
+sideDialogCount: 1 # Total sideDialogs created
 status: 'active' # Current dialog status
 ```
 
@@ -266,7 +266,7 @@ status: 'active' # Current dialog status
 - New message events
 - Course transitions
 - Function call results
-- Subdialog creation
+- SideDialog creation
 - Any dialog modification
 
 **UI Integration**: Dialog list displays `lastModified` timestamp from this file for accurate sorting and display.
@@ -311,25 +311,25 @@ To support root dialog fork, persistence now records which root-generation viewp
 
 **Purpose**:
 
-- Any state snapshot that must stay aligned across the entire root dialog tree must be anchored to the root generation rather than each subdialog's local course/genseq
+- Any state snapshot that must stay aligned across the entire root dialog tree must be anchored to the root generation rather than each sideDialog's local course/genseq
 - When forking at `(course, genseq)`, the retained state is the latest consistent snapshot at or before `(rootCourse=course, rootGenseq=genseq-1)`
 
 **New / strengthened persisted records**:
 
-- `subdialog_created_record`
+- `sideDialog_created_record`
   - persisted in the root transcript
-  - marks when a subdialog already exists on the root timeline, so fork can decide whether to include it
+  - marks when a sideDialog already exists on the root timeline, so fork can decide whether to include it
 - `reminders_reconciled_record`
 - `questions4human_reconciled_record`
-- `pending_subdialogs_reconciled_record`
-- `subdialog_registry_reconciled_record`
-- `subdialog_responses_reconciled_record`
+- `pending_sideDialogs_reconciled_record`
+- `sideDialog_registry_reconciled_record`
+- `sideDialog_responses_reconciled_record`
 
 **Required behavior**:
 
 - These reconciliation records are state snapshots, not LLM transcript content; message reconstruction must skip them
-- Any subdialog transcript record that participates in root-fork cutoff trimming must carry `rootCourse/rootGenseq`
-- When writing a forked root, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending subdialogs / registry / responses are restored to the pre-cutoff state
+- Any sideDialog transcript record that participates in root-fork cutoff trimming must carry `rootCourse/rootGenseq`
+- When writing a forked root, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending sideDialogs / registry / responses are restored to the pre-cutoff state
 
 ---
 
@@ -394,14 +394,14 @@ started_at: '2024-01-15T11:30:00Z'
 completed_at: '2024-01-15T11:45:00Z'
 message_count: 12
 function_calls: 3
-subdialogs_created: 1
+sideDialogs_created: 1
 status: 'completed'
 ```
 
 ### Taskdoc Storage
 
 Taskdocs are rtws artifacts that exist independently and are referenced by dialogs through paths.
-In practice, the Taskdoc is also the task’s **live coordination bulletin board** across mainlines/agents.
+In practice, the Taskdoc is also the task’s **live coordination bulletin board** across Mainline dialogs/agents.
 Taskdocs MUST be encapsulated Taskdoc packages (`*.tsk/`).
 
 ```yaml
@@ -470,16 +470,16 @@ The following operations are implemented.
 3. Increment course counter if starting a new course
 4. Ensure atomic writes to prevent corruption
 
-### Subdialog Creation
+### SideDialog Creation
 
-1. Generate unique subdialog ID using `generateDialogID()`
+1. Generate unique sideDialog ID using `generateDialogID()`
 2. Create `DialogID` instance with:
-   - `selfDlgId`: the newly generated subdialog ID
-   - `rootDlgId`: inherited from the supdialog's `rootDlgId`
-3. Create subdialog directory under parent's `subdialogs/` (using only `selfDlgId` for directory name)
+   - `selfDlgId`: the newly generated sideDialog ID
+   - `rootDlgId`: inherited from the askerDialog's `rootDlgId`
+3. Create sideDialog directory under parent's `sideDialogs/` (using only `selfDlgId` for directory name)
 4. Set Taskdoc path reference from parent
 5. Set parent call context in metadata
-6. Initialize subdialog state, storing only `selfDlgId` in metadata
+6. Initialize sideDialog state, storing only `selfDlgId` in metadata
 7. The full `DialogID` with `rootDlgId` is reconstructed during loading based on directory structure
 
 ### Dialog Completion
@@ -488,10 +488,10 @@ The following operations are implemented.
 2. Finalize all course metadata
 3. For root dialogs:
    - Move dialog directory from `run/` to `done/`
-   - Include all subdialogs in the move
-4. For subdialogs:
+   - Include all sideDialogs in the move
+4. For sideDialogs:
    - Update status in metadata
-   - Notify supdialog of completion using the full serialized DialogID
+   - Notify askerDialog of completion using the full serialized DialogID
 5. Archive old dialogs based on retention policy
 
 ### Memory Updates
@@ -524,7 +524,7 @@ The following operations are implemented.
 
 ### Storage Optimization
 
-**Flat Subdialog Storage**: Prevents deep directory nesting that can impact filesystem performance.
+**Flat SideDialog Storage**: Prevents deep directory nesting that can impact filesystem performance.
 
 **Append-Only Streams**: Optimizes for write performance and enables efficient streaming.
 
@@ -592,14 +592,14 @@ The persistence layer has been **completely modernized** with no backward compat
 - **Real-time Tracking**: Current course and lastModified timestamps
 - **Atomic Updates**: Automatically updated on all dialog modifications
 - **UI Integration**: Dialog list displays accurate timestamps from persisted records
-- **Status Management**: Tracks dialog status, message counts, and subdialog counts
+- **Status Management**: Tracks dialog status, message counts, and sideDialog counts
 
 #### ✅ Modern Persistence Layer (`main/persistence.ts`)
 
 - **Type-Safe Operations**: All methods use strong TypeScript interfaces
 - **Atomic File Operations**: All writes use temporary files + rename pattern
 - **Automatic Timestamps**: latest.yaml updated automatically on events
-- **Unified APIs**: Consistent interface for root dialogs and subdialogs
+- **Unified APIs**: Consistent interface for root dialogs and sideDialogs
 
 #### ✅ Updated API Layer (`main/server/api-routes.ts`)
 
@@ -650,15 +650,15 @@ rtws/
 │   │   │   ├── metadata.yaml     # Dialog configuration and state
 │   │   │   ├── checkpoints/      # Periodic state snapshots
 │   │   │   ├── temp/             # Temporary files during streaming
-│   │   │   └── subdialogs/       # Subdialog storage
-│   │   │       └── {sub-dialog-id}/  # Subdialog directory (uses only selfDlgId)
+│   │   │   └── sideDialogs/       # SideDialog storage
+│   │   │       └── {sub-dialog-id}/  # SideDialog directory (uses only selfDlgId)
 │   │   │           ├── stream.jsonl
 │   │   │           ├── metadata.yaml
 │   │   │           └── checkpoints/
 │   │   └── index.json            # Fast lookup for active dialogs
 │   ├── archived/         # Completed/paused dialogs
 │   │   ├── {date}/              # Organized by completion date
-│   │   │   ├── {root-dialog-id}.tar.gz  # Compressed dialog archive with subdialogs
+│   │   │   ├── {root-dialog-id}.tar.gz  # Compressed dialog archive with sideDialogs
 │   │   │   └── metadata.json       # Archive metadata
 │   │   └── index.json            # Archive lookup index
 │   └── templates/        # Dialog templates and presets
@@ -669,7 +669,7 @@ rtws/
 In this proposed structure:
 
 - Root dialogs are organized by their `root-dialog-id`
-- Subdialogs are stored within their root dialog's `subdialogs/` directory, using only their `selfDlgId` for directory names
+- SideDialogs are stored within their root dialog's `sideDialogs/` directory, using only their `selfDlgId` for directory names
 - Metadata stores only the `selfDlgId` in the `id` field
 - The full `rootDlgId#selfDlgId` format is reconstructed during loading and used in indexes for efficient lookup
 

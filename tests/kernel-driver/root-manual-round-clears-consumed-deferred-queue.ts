@@ -5,7 +5,7 @@ import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   withTempRtws,
   writeMockDb,
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 

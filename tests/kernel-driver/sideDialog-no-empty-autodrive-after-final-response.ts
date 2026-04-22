@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
@@ -49,8 +49,8 @@ async function main(): Promise<void> {
     const sessionSlug = 'sticky-session';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -63,14 +63,15 @@ async function main(): Promise<void> {
       expectedReplyToolName: 'replyTellask',
       language,
     });
-    const subdialogFinalResponse = '2';
-    const mirroredSubdialogResponse = formatTellaskResponseContent({
+    const sideDialogFinalResponse = '2';
+    const mirroredSideDialogResponse = formatTellaskResponseContent({
       callName: 'tellask',
+      callId: 'root-call-pangu-sticky',
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
-      responseBody: subdialogFinalResponse,
+      responseBody: sideDialogFinalResponse,
       status: 'completed',
       deliveryMode: 'reply_tool',
       language,
@@ -96,23 +97,23 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSubdialogPrompt,
+        message: expectedSideDialogPrompt,
         role: 'user',
-        response: subdialogFinalResponse,
+        response: sideDialogFinalResponse,
       },
       {
-        message: mirroredSubdialogResponse,
+        message: mirroredSideDialogResponse,
         role: 'tool',
         response: rootFinalResponse,
       },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(
       dlg,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-no-empty-autodrive-after-final-response'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-no-empty-autodrive-after-final-response'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
@@ -123,13 +124,13 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(dlg, 3_000);
 
-    const subdialog = dlg.lookupSubdialog('pangu', sessionSlug);
-    assert.ok(subdialog, 'expected registered subdialog to exist after tellask completion');
+    const sideDialog = dlg.lookupSideDialog('pangu', sessionSlug);
+    assert.ok(sideDialog, 'expected registered sideDialog to exist after tellask completion');
 
     const eventsBefore = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const genStartCountBefore = eventsBefore.filter(
       (event) => event.type === 'gen_start_record',
@@ -138,11 +139,11 @@ async function main(): Promise<void> {
     assert.ok(
       lastEventBefore?.type === 'tellask_call_anchor_record' &&
         lastEventBefore.anchorRole === 'response',
-      'expected subdialog to end its finalized round at a response anchor',
+      'expected sideDialog to end its finalized round at a response anchor',
     );
 
     await driveDialogStream(
-      subdialog,
+      sideDialog,
       undefined,
       true,
       makeDriveOptions({
@@ -154,9 +155,9 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(dlg, 3_000);
 
     const eventsAfter = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const genStartCountAfter = eventsAfter.filter(
       (event) => event.type === 'gen_start_record',
@@ -171,17 +172,17 @@ async function main(): Promise<void> {
     assert.deepEqual(
       lastEventAfter,
       lastEventBefore,
-      'stale queued auto-drive must leave the finalized subdialog tail untouched',
+      'stale queued auto-drive must leave the finalized sideDialog tail untouched',
     );
   });
 
-  console.log('kernel-driver subdialog-no-empty-autodrive-after-final-response: PASS');
+  console.log('kernel-driver sideDialog-no-empty-autodrive-after-final-response: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver subdialog-no-empty-autodrive-after-final-response: FAIL\n${message}`,
+    `kernel-driver sideDialog-no-empty-autodrive-after-final-response: FAIL\n${message}`,
   );
   process.exit(1);
 });

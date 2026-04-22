@@ -1,5 +1,5 @@
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
-import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
+import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { DialogPersistence } from '../../persistence';
 import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pause-stop';
@@ -13,7 +13,7 @@ import {
   buildReplyObligationSuppressionGuideText,
 } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
-import { loadLatestActiveTellaskReplyDirective } from './tellask-special';
+import { loadActiveTellaskReplyDirective } from './tellask-special';
 import type { KernelDriverPrompt } from './types';
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
@@ -23,27 +23,20 @@ export async function resolveReplyTargetAgentId(args: {
   dlg: Dialog;
   directive: TellaskReplyDirective;
 }): Promise<string | undefined> {
-  switch (args.directive.expectedReplyCallName) {
-    case 'replyTellaskBack': {
-      const rootDialog =
-        args.dlg instanceof RootDialog
-          ? args.dlg
-          : args.dlg instanceof SubDialog
-            ? args.dlg.rootDialog
-            : undefined;
-      if (!rootDialog) {
-        return undefined;
-      }
-      const targetDialogId = new DialogID(args.directive.targetDialogId, rootDialog.id.rootId);
-      const targetDialog =
-        rootDialog.lookupDialog(targetDialogId.selfId) ??
-        (await ensureDialogLoaded(rootDialog, targetDialogId, rootDialog.status));
-      return targetDialog?.agentId;
-    }
-    case 'replyTellask':
-    case 'replyTellaskSessionless':
-      return args.dlg instanceof SubDialog ? args.dlg.assignmentFromSup.originMemberId : undefined;
+  const mainDialog =
+    args.dlg instanceof MainDialog
+      ? args.dlg
+      : args.dlg instanceof SideDialog
+        ? args.dlg.mainDialog
+        : undefined;
+  if (!mainDialog) {
+    return undefined;
   }
+  const targetDialogId = new DialogID(args.directive.targetDialogId, mainDialog.id.rootId);
+  const targetDialog =
+    mainDialog.lookupDialog(targetDialogId.selfId) ??
+    (await ensureDialogLoaded(mainDialog, targetDialogId, mainDialog.status));
+  return targetDialog?.agentId;
 }
 
 function buildPromptContentWithExactReplyToolName(args: {
@@ -52,8 +45,9 @@ function buildPromptContentWithExactReplyToolName(args: {
   activeReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
   language: 'zh' | 'en';
 }): string {
-  const isFbrSubdialog =
-    args.dlg instanceof SubDialog && args.dlg.assignmentFromSup.callName === 'freshBootsReasoning';
+  const isFbrSideDialog =
+    args.dlg instanceof SideDialog &&
+    args.dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
   const noActivePrefix =
     args.language === 'zh'
       ? '[Dominds 当前无跨对话回复义务]'
@@ -68,10 +62,10 @@ function buildPromptContentWithExactReplyToolName(args: {
   ];
   const directive = args.activeReplyDirective;
   if (!directive) {
-    if (isFbrSubdialog) {
+    if (isFbrSideDialog) {
       return args.prompt.content;
     }
-    if (!(args.dlg instanceof SubDialog)) {
+    if (!(args.dlg instanceof SideDialog)) {
       return args.prompt.content;
     }
     if (args.prompt.content.startsWith(noActivePrefix)) {
@@ -114,38 +108,38 @@ function hasSameReplyDirective(
   if (left.expectedReplyCallName !== right.expectedReplyCallName) {
     return false;
   }
-  if (left.targetCallId !== right.targetCallId || left.tellaskContent !== right.tellaskContent) {
+  if (
+    left.targetDialogId !== right.targetDialogId ||
+    left.targetCallId !== right.targetCallId ||
+    left.tellaskContent !== right.tellaskContent
+  ) {
     return false;
-  }
-  if (left.expectedReplyCallName === 'replyTellaskBack') {
-    return (
-      right.expectedReplyCallName === 'replyTellaskBack' &&
-      left.targetDialogId === right.targetDialogId
-    );
   }
   return true;
 }
 
-function buildCurrentSubdialogAssignmentDirective(
-  dlg: SubDialog,
+function buildCurrentSideDialogAssignmentDirective(
+  dlg: SideDialog,
 ): NonNullable<KernelDriverPrompt['tellaskReplyDirective']> {
-  switch (dlg.assignmentFromSup.callName) {
+  switch (dlg.assignmentFromAsker.callName) {
     case 'tellask':
       return {
         expectedReplyCallName: 'replyTellask',
-        targetCallId: dlg.assignmentFromSup.callId,
-        tellaskContent: dlg.assignmentFromSup.tellaskContent,
+        targetDialogId: dlg.assignmentFromAsker.callerDialogId,
+        targetCallId: dlg.assignmentFromAsker.callId,
+        tellaskContent: dlg.assignmentFromAsker.tellaskContent,
       };
     case 'tellaskSessionless':
     case 'freshBootsReasoning':
       return {
         expectedReplyCallName: 'replyTellaskSessionless',
-        targetCallId: dlg.assignmentFromSup.callId,
-        tellaskContent: dlg.assignmentFromSup.tellaskContent,
+        targetDialogId: dlg.assignmentFromAsker.callerDialogId,
+        targetCallId: dlg.assignmentFromAsker.callId,
+        tellaskContent: dlg.assignmentFromAsker.tellaskContent,
       };
     default: {
-      const _exhaustive: never = dlg.assignmentFromSup.callName;
-      throw new Error(`Unsupported subdialog assignment callName: ${_exhaustive}`);
+      const _exhaustive: never = dlg.assignmentFromAsker.callName;
+      throw new Error(`Unsupported sideDialog assignment callName: ${_exhaustive}`);
     }
   }
 }
@@ -167,18 +161,18 @@ async function hasCurrentCourseHumanPromptRecord(args: {
   return false;
 }
 
-async function resolveFreshCurrentSubdialogAssignmentDirective(args: {
+async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
 }): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
-  if (!(args.dlg instanceof SubDialog) || args.prompt?.origin !== 'runtime') {
+  if (!(args.dlg instanceof SideDialog) || args.prompt?.origin !== 'runtime') {
     return undefined;
   }
   const promptDirective = args.prompt.tellaskReplyDirective;
   if (!promptDirective) {
     return undefined;
   }
-  const currentAssignmentDirective = buildCurrentSubdialogAssignmentDirective(args.dlg);
+  const currentAssignmentDirective = buildCurrentSideDialogAssignmentDirective(args.dlg);
   if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
     return undefined;
   }
@@ -228,20 +222,20 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
   ) {
     return undefined;
   }
-  const rootDialog =
-    args.dlg instanceof RootDialog
+  const mainDialog =
+    args.dlg instanceof MainDialog
       ? args.dlg
-      : args.dlg instanceof SubDialog
-        ? args.dlg.rootDialog
+      : args.dlg instanceof SideDialog
+        ? args.dlg.mainDialog
         : undefined;
-  if (!rootDialog) {
+  if (!mainDialog) {
     return undefined;
   }
   const requesterDialogId = new DialogID(
     prompt.tellaskReplyDirective.targetDialogId,
-    rootDialog.id.rootId,
+    mainDialog.id.rootId,
   );
-  const latest = await DialogPersistence.loadDialogLatest(requesterDialogId, rootDialog.status);
+  const latest = await DialogPersistence.loadDialogLatest(requesterDialogId, mainDialog.status);
   if (!latest) {
     return undefined;
   }
@@ -251,7 +245,7 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
     const events = await DialogPersistence.loadCourseEvents(
       requesterDialogId,
       course,
-      rootDialog.status,
+      mainDialog.status,
     );
     for (const event of events) {
       if (event.type === 'tellask_result_record' && event.callId.trim() === targetCallId) {
@@ -310,7 +304,7 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   // 3. manual Continue later decides from fresh persistence facts whether the dialog should stay
   //    blocked or resume real driving.
   //
-  // Do not "simplify" this into a pure display-state check or a pure pending-subdialog check.
+  // Do not "simplify" this into a pure display-state check or a pure pending-sideDialog check.
   // Proceeding dialogs with a still-active reply obligation are part of the same rule: a fresh
   // user interjection should still suppress the live reply obligation and answer locally first.
   // The business anchor is the deferred reply reassertion, while the paused execution marker keeps
@@ -335,17 +329,17 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   ) {
     return true;
   }
-  const activeReplyDirective = await loadLatestActiveTellaskReplyDirective(args.dlg);
+  const activeReplyDirective = await loadActiveTellaskReplyDirective(args.dlg);
   if (activeReplyDirective) {
     return true;
   }
   // Use strict persistence reads here. This branch changes business behavior, so a read failure
-  // must loud-fail the round instead of being silently treated as "pending subdialogs exist".
-  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+  // must loud-fail the round instead of being silently treated as "pending sideDialogs exist".
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
     args.dlg.id,
     args.dlg.status,
   );
-  return pendingSubdialogs.length > 0;
+  return pendingSideDialogs.length > 0;
 }
 
 export async function resolvePromptReplyGuidance(args: {
@@ -365,8 +359,8 @@ export async function resolvePromptReplyGuidance(args: {
   const isQ4HAnswerPrompt =
     typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
-  const persistedCurrentSubdialogAssignmentDirective =
-    await resolveFreshCurrentSubdialogAssignmentDirective({
+  const persistedCurrentSideDialogAssignmentDirective =
+    await resolveFreshCurrentSideDialogAssignmentDirective({
       dlg: args.dlg,
       prompt,
     });
@@ -380,11 +374,12 @@ export async function resolvePromptReplyGuidance(args: {
     latest.pendingCourseStartPrompt.origin === 'runtime'
       ? latest.pendingCourseStartPrompt.tellaskReplyDirective
       : undefined;
+  const persistedActiveReplyObligation = await loadActiveTellaskReplyDirective(args.dlg);
   const persistedActiveReplyDirective =
-    persistedCurrentSubdialogAssignmentDirective ??
+    persistedCurrentSideDialogAssignmentDirective ??
     persistedPendingAskBackReplyDirective ??
     persistedPendingCourseStartDirective ??
-    (await loadLatestActiveTellaskReplyDirective(args.dlg));
+    persistedActiveReplyObligation;
   const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
     ? false
     : await shouldSuppressInterDialogReplyGuidanceForUserInterjection({

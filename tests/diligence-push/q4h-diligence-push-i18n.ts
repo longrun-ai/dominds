@@ -8,7 +8,7 @@ import * as path from 'path';
 
 import type { UiOnlyMarkdownRecord } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
@@ -66,7 +66,7 @@ async function driveToDiligencePushBudgetExhaustedNotice(options: {
 
   const dlgId = new DialogID(dialogId);
   const store = new DiskFileDialogStore(dlgId);
-  const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
+  const dlg = new MainDialog(store, 'task.md', dlgId, 'tester');
   const createdAt = formatUnifiedTimestamp(new Date());
   await DialogPersistence.saveDialogMetadata(dlg.id, {
     id: dlg.id.selfId,
@@ -82,7 +82,7 @@ async function driveToDiligencePushBudgetExhaustedNotice(options: {
       status: 'active',
       messageCount: 0,
       functionCallCount: 0,
-      subdialogCount: 0,
+      sideDialogCount: 0,
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,

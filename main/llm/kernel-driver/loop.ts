@@ -21,71 +21,71 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
 
 async function driveQueuedDialogsOnce(): Promise<void> {
   const dialogsToDrive = globalDialogRegistry.getDialogsNeedingDrive();
-  for (const rootDialog of dialogsToDrive) {
+  for (const mainDialog of dialogsToDrive) {
     try {
-      const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
+      const latest = await DialogPersistence.loadDialogLatest(mainDialog.id, 'running');
       const executionMarker = latest?.executionMarker;
-      const stopRequested = getStopRequestedReason(rootDialog.id);
+      const stopRequested = getStopRequestedReason(mainDialog.id);
       const interruptedRequiresExplicitResume =
         executionMarker?.kind === 'interrupted' &&
         doesInterruptionReasonRequireExplicitResume(executionMarker.reason);
       if (interruptedRequiresExplicitResume || stopRequested !== undefined) {
-        globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId, {
+        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: interruptedRequiresExplicitResume
             ? 'execution_marker_blocked:interrupted'
             : `stop_requested:${stopRequested}`,
         });
-        await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
+        await DialogPersistence.setNeedsDrive(mainDialog.id, false, mainDialog.status);
         continue;
       }
 
-      if (hasActiveRun(rootDialog.id)) {
+      if (hasActiveRun(mainDialog.id)) {
         log.debug(
           'Backend driver deferred queued root drive because dialog already has an active run',
           undefined,
           {
-            dialogId: rootDialog.id.valueOf(),
-            rootId: rootDialog.id.rootId,
+            dialogId: mainDialog.id.valueOf(),
+            rootId: mainDialog.id.rootId,
           },
         );
-        globalDialogRegistry.noteActiveRunBlockedQueuedDrive(rootDialog.id.rootId);
+        globalDialogRegistry.noteActiveRunBlockedQueuedDrive(mainDialog.id.rootId);
         continue;
       }
 
-      if (!(await rootDialog.canDrive())) {
+      if (!(await mainDialog.canDrive())) {
         continue;
       }
 
-      await driveDialogStream(rootDialog, undefined, true, {
+      await driveDialogStream(mainDialog, undefined, true, {
         source: 'kernel_driver_backend_loop',
         reason: 'global_dialog_registry_needs_drive',
       });
 
-      const status = await rootDialog.getSuspensionStatus();
-      const shouldStayQueued = rootDialog.hasUpNext() || !status.canDrive;
+      const status = await mainDialog.getSuspensionStatus();
+      const shouldStayQueued = mainDialog.hasUpNext() || !status.canDrive;
       if (shouldStayQueued) {
-        globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId, {
+        globalDialogRegistry.markNeedsDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
-          reason: rootDialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_suspended',
+          reason: mainDialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_suspended',
         });
-        await DialogPersistence.setNeedsDrive(rootDialog.id, true, rootDialog.status);
+        await DialogPersistence.setNeedsDrive(mainDialog.id, true, mainDialog.status);
       } else {
-        globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId, {
+        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: 'post_drive_idle',
         });
-        await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
+        await DialogPersistence.setNeedsDrive(mainDialog.id, false, mainDialog.status);
       }
-      const lastTrigger = globalDialogRegistry.getLastDriveTrigger(rootDialog.id.rootId);
+      const lastTrigger = globalDialogRegistry.getLastDriveTrigger(mainDialog.id.rootId);
       const lastTriggerAgeMs =
         lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
-      if (status.subdialogs) {
-        log.debug(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`, undefined, {
-          rootId: rootDialog.id.rootId,
+      if (status.sideDialogs) {
+        log.debug(`Dialog ${mainDialog.id.rootId} suspended, waiting for sideDialogs`, undefined, {
+          rootId: mainDialog.id.rootId,
           waitingQ4H: status.q4h,
-          waitingSubdialogs: status.subdialogs,
-          hasQueuedUpNext: rootDialog.hasUpNext(),
+          waitingSideDialogs: status.sideDialogs,
+          hasQueuedUpNext: mainDialog.hasUpNext(),
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,
@@ -101,11 +101,11 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         });
       }
       if (status.q4h) {
-        log.debug(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`, undefined, {
-          rootId: rootDialog.id.rootId,
+        log.debug(`Dialog ${mainDialog.id.rootId} awaiting Q4H answer`, undefined, {
+          rootId: mainDialog.id.rootId,
           waitingQ4H: status.q4h,
-          waitingSubdialogs: status.subdialogs,
-          hasQueuedUpNext: rootDialog.hasUpNext(),
+          waitingSideDialogs: status.sideDialogs,
+          hasQueuedUpNext: mainDialog.hasUpNext(),
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,
@@ -121,8 +121,8 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         });
       }
     } catch (err) {
-      log.error(`Error driving dialog ${rootDialog.id.rootId}:`, err, undefined, {
-        dialogId: rootDialog.id.rootId,
+      log.error(`Error driving dialog ${mainDialog.id.rootId}:`, err, undefined, {
+        dialogId: mainDialog.id.rootId,
       });
     }
   }

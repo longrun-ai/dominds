@@ -4,7 +4,7 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeUserPrompt,
   withTempRtws,
   writeMockDb,
@@ -40,7 +40,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

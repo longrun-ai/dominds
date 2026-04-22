@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       generating: false,
     });
 
-    // Dialog E: stale stopped projection should self-heal to blocked when pending subdialogs exist.
+    // Dialog E: stale stopped projection should self-heal to blocked when pending sideDialogs exist.
     const eRoot = 'dlg-e';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'dialog.yaml'), { id: eRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'latest.yaml'), {
@@ -102,11 +102,11 @@ async function main(): Promise<void> {
       },
     });
     await fs.writeFile(
-      path.join(tmpRoot, '.dialogs', 'run', eRoot, 'pending-subdialogs.json'),
+      path.join(tmpRoot, '.dialogs', 'run', eRoot, 'pending-sideDialogs.json'),
       JSON.stringify(
         [
           {
-            subdialogId: 'sub-e',
+            sideDialogId: 'sub-e',
             createdAt: new Date().toISOString(),
             callName: 'tellask',
             mentionList: ['@worker'],
@@ -114,6 +114,7 @@ async function main(): Promise<void> {
             targetAgentId: 'worker',
             callId: 'call-sub-e',
             callingCourse: 1,
+            callingGenseq: 1,
             callType: 'B',
             sessionSlug: 'session-e',
           },
@@ -133,7 +134,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
+      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
       executionMarker: {
         kind: 'interrupted',
         reason: { kind: 'system_stop', detail: 'upstream failed' },
@@ -188,7 +189,7 @@ async function main(): Promise<void> {
     assert.ok(healedE, 'latest.yaml for dlg-e should exist');
     assert.ok(healedE.displayState);
     assert.equal(healedE.displayState.kind, 'blocked');
-    assert.equal(healedE.displayState.reason.kind, 'waiting_for_subdialogs');
+    assert.equal(healedE.displayState.reason.kind, 'waiting_for_sideDialogs');
     assert.equal(healedE.executionMarker, undefined);
 
     const healedF = await refreshRunControlProjectionFromPersistenceFacts(

@@ -4,7 +4,7 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -16,7 +16,7 @@ const MULTI_ASKHUMAN_ERROR =
   '不允许一轮多次调用 askHuman，必须单次调用问所有问题。 Do not call askHuman multiple times in one round; ask all questions in a single askHuman call.';
 
 async function runScenario(args: {
-  root: Awaited<ReturnType<typeof createRootDialog>>;
+  root: Awaited<ReturnType<typeof createMainDialog>>;
   content: string;
   msgId: string;
 }): Promise<void> {
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     await runScenario({
       root,
       content: 'Please ask me two separate human questions right now.',
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const mixedRoot = await createRootDialog('tester');
+    const mixedRoot = await createMainDialog('tester');
     await runScenario({
       root: mixedRoot,
       content: 'Please ask one valid and one malformed human question right now.',
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const interleavedRoot = await createRootDialog('tester');
+    const interleavedRoot = await createMainDialog('tester');
     await runScenario({
       root: interleavedRoot,
       content: 'Please interleave askHuman and another special call.',

@@ -7,7 +7,7 @@
  * Design constraints:
  * - `displayState` is a UI/diagnostic projection, not a business source of truth.
  * - Primary control flow must rely on underlying facts (active runs, stop requests,
- *   pending Q4H, pending subdialogs, queued prompts, persisted status, explicit
+ *   pending Q4H, pending sideDialogs, queued prompts, persisted status, explicit
  *   interruption/death markers).
  * - The projection is persisted to latest.yaml (`DialogLatestFile.displayState`) so it survives
  *   restarts and multi-tab views can converge quickly.
@@ -44,7 +44,7 @@ type ActiveRun = {
 let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 
 const activeRunsByDialogKey: Map<string, ActiveRun> = new Map();
-const quarantiningRootDialogIds: Set<string> = new Set();
+const quarantiningMainDialogIds: Set<string> = new Set();
 
 export type RunControlCountsSnapshot = {
   proceeding: number;
@@ -132,7 +132,7 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
     try {
       const dialogKey = dialogId.key();
       seenDialogKeys.add(dialogKey);
-      if (quarantiningRootDialogIds.has(dialogId.rootId)) {
+      if (quarantiningMainDialogIds.has(dialogId.rootId)) {
         continue;
       }
       // listAllDialogIds() is intentionally a candidate scan. Per-dialog latest reads below may
@@ -158,11 +158,11 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
           resumable++;
         } else {
           const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-          const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+          const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
             dialogId,
             'running',
           );
-          if (q4h.length === 0 && pendingSubdialogs.length === 0) {
+          if (q4h.length === 0 && pendingSideDialogs.length === 0) {
             resumable++;
           }
         }
@@ -182,7 +182,7 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
       continue;
     }
     const [rootId] = dialogKey.includes('#') ? dialogKey.split('#') : [dialogKey];
-    if (!rootId || quarantiningRootDialogIds.has(rootId)) {
+    if (!rootId || quarantiningMainDialogIds.has(rootId)) {
       continue;
     }
     if (!seenDialogKeys.has(dialogKey)) {
@@ -232,10 +232,10 @@ export function clearActiveRun(
 ): void {
   const deleted = activeRunsByDialogKey.delete(dialogId.key());
   if (!deleted) {
-    clearQuarantiningRootDialogIfIdle(dialogId.rootId);
+    clearQuarantiningMainDialogIfIdle(dialogId.rootId);
     return;
   }
-  clearQuarantiningRootDialogIfIdle(dialogId.rootId);
+  clearQuarantiningMainDialogIfIdle(dialogId.rootId);
   if (dialogId.selfId === dialogId.rootId && options?.notifyBackendLoop !== false) {
     globalDialogRegistry.notifyActiveRunCleared(dialogId.rootId, {
       source: 'dialog_display_state_active_run_clear',
@@ -245,33 +245,33 @@ export function clearActiveRun(
   syncRunControlCountsAfterActiveRunChange('clear_active_run', dialogId);
 }
 
-function clearQuarantiningRootDialogIfIdle(rootId: string): void {
+function clearQuarantiningMainDialogIfIdle(rootId: string): void {
   for (const key of activeRunsByDialogKey.keys()) {
     const [candidateRootId] = key.includes('#') ? key.split('#') : [key];
     if (candidateRootId === rootId) {
       return;
     }
   }
-  quarantiningRootDialogIds.delete(rootId);
+  quarantiningMainDialogIds.delete(rootId);
 }
 
-export function clearRootDialogQuarantiningIfIdle(rootDialogId: DialogID): void {
-  clearQuarantiningRootDialogIfIdle(rootDialogId.selfId);
+export function clearMainDialogQuarantiningIfIdle(mainDialogId: DialogID): void {
+  clearQuarantiningMainDialogIfIdle(mainDialogId.selfId);
 }
 
-export function markRootDialogQuarantining(rootDialogId: DialogID): void {
-  quarantiningRootDialogIds.add(rootDialogId.selfId);
+export function markMainDialogQuarantining(mainDialogId: DialogID): void {
+  quarantiningMainDialogIds.add(mainDialogId.selfId);
 }
 
-export function clearRootDialogQuarantining(rootDialogId: DialogID): void {
-  quarantiningRootDialogIds.delete(rootDialogId.selfId);
+export function clearMainDialogQuarantining(mainDialogId: DialogID): void {
+  quarantiningMainDialogIds.delete(mainDialogId.selfId);
 }
 
-export async function forceStopActiveRunsForRootDialog(rootDialogId: DialogID): Promise<void> {
+export async function forceStopActiveRunsForMainDialog(mainDialogId: DialogID): Promise<void> {
   for (const key of Array.from(activeRunsByDialogKey.keys())) {
     const [rootId, selfId] = key.includes('#') ? key.split('#') : [key, key];
     if (!rootId || !selfId) continue;
-    if (rootId !== rootDialogId.selfId) continue;
+    if (rootId !== mainDialogId.selfId) continue;
     const dialogId = new DialogID(selfId, rootId);
     const run = activeRunsByDialogKey.get(key);
     if (!run) continue;
@@ -285,7 +285,7 @@ export async function forceStopActiveRunsForRootDialog(rootDialogId: DialogID): 
       } catch (error: unknown) {
         log.warn('Failed to persist stop-requested state while forcing root dialog stop', error, {
           dialogId: dialogId.valueOf(),
-          rootDialogId: rootDialogId.valueOf(),
+          mainDialogId: mainDialogId.valueOf(),
         });
       }
     }
@@ -294,7 +294,7 @@ export async function forceStopActiveRunsForRootDialog(rootDialogId: DialogID): 
     } catch (error: unknown) {
       log.warn('Failed to abort active run while forcing root dialog stop', error, {
         dialogId: dialogId.valueOf(),
-        rootDialogId: rootDialogId.valueOf(),
+        mainDialogId: mainDialogId.valueOf(),
       });
     }
   }
@@ -490,16 +490,16 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
   }
 
   const hasQ4H = await dlg.hasPendingQ4H();
-  const hasSubdialogs = await dlg.hasPendingSubdialogs();
+  const hasSideDialogs = await dlg.hasPendingSideDialogs();
 
-  if (hasQ4H && hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+  if (hasQ4H && hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
   }
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
-  if (hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+  if (hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -536,18 +536,18 @@ async function computeIdleDisplayStateFromPersistence(
   }
 
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialogId, 'running');
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
   const hasQ4H = q4h.length > 0;
-  const hasSubdialogs = pendingSubdialogs.length > 0;
+  const hasSideDialogs = pendingSideDialogs.length > 0;
 
-  if (hasQ4H && hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+  if (hasQ4H && hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
   }
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
-  if (hasSubdialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+  if (hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -558,7 +558,7 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     | 'resume_dialog'
     | 'resume_all'
     | 'run_control_snapshot'
-    | 'pending_subdialogs_changed'
+    | 'pending_sideDialogs_changed'
     | 'q4h_changed',
 ): Promise<DialogLatestFile | null> {
   const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
@@ -589,7 +589,7 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       // This is the one place where the projection intentionally preserves the paused-interjection
       // stopped state ahead of the current blocker facts. That is not a bug: after a user
       // interjection we want the UI to keep showing "original task paused; click Continue" even if
-      // the underlying dialog is still waiting on Q4H/subdialogs.
+      // the underlying dialog is still waiting on Q4H/sideDialogs.
       //
       // The true source-of-truth decision about what Continue should do next lives in
       // `flow.ts`'s resume path, which performs a fresh fact scan at resume time and then either:
@@ -613,18 +613,18 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     }
 
     const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialogId, 'running');
+    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
     const hasQ4H = q4h.length > 0;
-    const hasSubdialogs = pendingSubdialogs.length > 0;
+    const hasSideDialogs = pendingSideDialogs.length > 0;
 
-    if (hasQ4H && hasSubdialogs) {
-      return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+    if (hasQ4H && hasSideDialogs) {
+      return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
     }
     if (hasQ4H) {
       return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
     }
-    if (hasSubdialogs) {
-      return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+    if (hasSideDialogs) {
+      return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
     }
     if (latest.executionMarker?.kind === 'interrupted') {
       return {

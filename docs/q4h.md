@@ -32,7 +32,7 @@ This document specifies a WebUI enhancement:
 
 ## Definitions (user-facing terms)
 
-- **Mainline dialog / sideline dialog**: user-facing terms for the primary thread and temporary work threads.
+- **Mainline dialog / Sideline dialog**: user-facing terms for the primary thread and temporary work threads.
 - **Call site**: the location in the conversation where a Tellask was issued (for Q4H: where `askHuman({ tellaskContent: "..." })` appears).
 - **Answer mode**: the input is bound to a specific pending Q4H question so `Send` becomes “answer this question”.
 
@@ -83,7 +83,7 @@ Required:
 Recommended (optional but improves resilience / reduces dependency on global Q4H state arrival timing):
 
 - `rootId`: root dialog id
-- `selfId`: originating dialog id (root or sideline)
+- `selfId`: originating dialog id (root or Sideline dialog)
 - `course`: course number (1-based)
 - `msg`: message index (best-effort fallback locator)
 - `callId`: tellask callId when the Q4H was created from an `askHuman({ tellaskContent: "..." })` tellask block

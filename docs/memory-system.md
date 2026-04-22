@@ -8,7 +8,7 @@ TL;DR:
 
 - Make dialog history disposable (noise is cheap to drop).
 - Make key artifacts survivable (you can `clear_mind` and still keep moving).
-- Publicly declare and openly discuss progress in real time (and keep it auditable) to enforce timely coordination: that’s where the real leverage comes from when multiple agents and multiple mainline dialogs work in parallel (Taskdoc / team memory / env notes).
+- Publicly declare and openly discuss progress in real time (and keep it auditable) to enforce timely coordination: that’s where the real leverage comes from when multiple agents and multiple Mainline dialogs work in parallel (Taskdoc / team memory / env notes).
 
 Key rule: **the Taskdoc is the task’s live coordination bulletin board**. Put key decisions/status/next steps in `progress`, hard rules in `constraints`, and don’t leave them only in chat or reminders.
 
@@ -38,7 +38,7 @@ The same information can be categorized by “who needs to see it / who maintain
 - **Collective-scope (shared by team/task)**:
   - rtws-level “env notes” (`.minds/env*.md`): the workspace’s baseline facts, runtime constraints, and gotchas
   - team memory (`team_memory`)
-  - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple mainline dialogs (different responders), so treat it as the collective single source of truth
+  - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple Mainline dialogs (different responders), so treat it as the collective single source of truth
 
 ### Permissions and division of labor
 
@@ -215,7 +215,7 @@ The goal for agents’ day-to-day work is not “write more docs”. It’s a lo
 ### Where to write what (quick rules)
 
 - **Taskdoc `progress`**: key decisions, current status, next steps (the shared bulletin board)
-- **Taskdoc `constraints`**: hard rules/safety/compliance/style (must be visible to all mainlines)
+- **Taskdoc `constraints`**: hard rules/safety/compliance/style (must be visible to all Mainline dialogs)
 - **Team memory `team_memory`**: stable team conventions and invariants (worth reusing)
 - **Env notes `.minds/env*.md`**: rtws baseline facts, runtime constraints, gotchas (align humans + all agents to the same environment)
 - **Individual memory `personal_memory`**: personal preferences + responsibility-area rtws index (keep accurate)

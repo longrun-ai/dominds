@@ -2,7 +2,7 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { DialogFbrState } from '@longrun-ai/kernel/types/storage';
 import type { Dialog } from '../../dialog';
 import { appendDistinctPerspectiveFbrBody } from '../../runtime/fbr-body';
-import { formatAssignmentFromSupdialog } from '../../runtime/inter-dialog-format';
+import { formatAssignmentFromAskerDialog } from '../../runtime/inter-dialog-format';
 import type { Team } from '../../team';
 import { type FuncTool, type ToolArguments, type ToolCallOutput, toolSuccess } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg } from '../client';
@@ -154,11 +154,11 @@ export function buildFbrSystemPrompt(language: LanguageCode, phase: FbrConclusio
   }
 
   return [
-    '# Fresh Boots Reasoning (FBR) sideline dialog',
+    '# Fresh Boots Reasoning (FBR) Sideline dialog',
     '',
-    '- You are handling an FBR sideline dialog triggered by `freshBootsReasoning`.',
+    '- You are handling an FBR Sideline dialog triggered by `freshBootsReasoning`.',
     '- The tellask body is the primary task context; do not assume access to upstream dialog history.',
-    '- If this is a resumable session, you may use this sideline dialog’s own session history as explicit context.',
+    '- If this is a resumable session, you may use this Sideline dialog’s own session history as explicit context.',
     '- In divergence, stay open to counterintuitive, wild, or minority hypotheses; treat them as candidates to test instead of suppressing them early.',
     '- In convergence, denoise autonomously: keep only stable cross-round consensus, mutually reinforcing points, and body-grounded evidence; unsupported wild ideas default to noise and must not enter the final conclusion.',
     '- If critical context is missing, state what is missing and why it blocks a responsible conclusion.',
@@ -435,7 +435,7 @@ export function buildFbrPromptForState(args: {
   collectiveTargets?: string[];
 }): string {
   if (args.state.phase === 'divergence') {
-    return formatAssignmentFromSupdialog({
+    return formatAssignmentFromAskerDialog({
       callName: 'freshBootsReasoning',
       fromAgentId: args.fromAgentId,
       toAgentId: args.toAgentId,

@@ -9,14 +9,14 @@
  * This script is intentionally small and self-contained; it runs against a temp rtws.
  */
 
-import type { RootDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
+import type { MainDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 const sleep = async (ms: number): Promise<void> =>
@@ -52,13 +52,13 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
     const dialogId = new DialogID('61/5a/da8d0169');
-    const metadata: RootDialogMetadataFile = {
+    const metadata: MainDialogMetadataFile = {
       id: dialogId.selfId,
       agentId: 'tester',
       taskDocPath: 'plans/latest-writeback.tsk',
       createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:00:00.000Z')),
     };
-    await DialogPersistence.saveRootDialogMetadata(dialogId, metadata, 'running');
+    await DialogPersistence.saveMainDialogMetadata(dialogId, metadata, 'running');
 
     // Invariant 1: concurrent patch mutations must merge (no lost fields).
     await Promise.all([
@@ -185,13 +185,13 @@ async function main(): Promise<void> {
     // Invariant 7: startNewCourse during an active generation must only queue the pending prompt;
     // it must not regress the live round into pending_course_start before the generation finishes.
     const activeDialogId = new DialogID('71/6b/eb9d1270');
-    const activeMetadata: RootDialogMetadataFile = {
+    const activeMetadata: MainDialogMetadataFile = {
       id: activeDialogId.selfId,
       agentId: 'tester',
       taskDocPath: 'plans/latest-writeback-active-course.tsk',
       createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:04:00.000Z')),
     };
-    await DialogPersistence.saveRootDialogMetadata(activeDialogId, activeMetadata, 'running');
+    await DialogPersistence.saveMainDialogMetadata(activeDialogId, activeMetadata, 'running');
     await DialogPersistence.mutateDialogLatest(activeDialogId, () => ({
       kind: 'replace',
       next: {
@@ -202,13 +202,13 @@ async function main(): Promise<void> {
         displayState: { kind: 'proceeding' },
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         disableDiligencePush: false,
         diligencePushRemainingBudget: 0,
       },
     }));
     const activeStore = new DiskFileDialogStore(activeDialogId);
-    const activeDialog = new RootDialog(
+    const activeDialog = new MainDialog(
       activeStore,
       'plans/latest-writeback-active-course.tsk',
       activeDialogId,
@@ -239,13 +239,13 @@ async function main(): Promise<void> {
     // activeGenSeq is monotonic across generations and remains defined after finish, so the
     // runtime must key "currently generating" off live generation state instead.
     const settledDialogId = new DialogID('72/6c/fc0a2381');
-    const settledMetadata: RootDialogMetadataFile = {
+    const settledMetadata: MainDialogMetadataFile = {
       id: settledDialogId.selfId,
       agentId: 'tester',
       taskDocPath: 'plans/latest-writeback-settled-course.tsk',
       createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:00.000Z')),
     };
-    await DialogPersistence.saveRootDialogMetadata(settledDialogId, settledMetadata, 'running');
+    await DialogPersistence.saveMainDialogMetadata(settledDialogId, settledMetadata, 'running');
     await DialogPersistence.mutateDialogLatest(settledDialogId, () => ({
       kind: 'replace',
       next: {
@@ -256,13 +256,13 @@ async function main(): Promise<void> {
         displayState: { kind: 'proceeding' },
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         disableDiligencePush: false,
         diligencePushRemainingBudget: 0,
       },
     }));
     const settledStore = new DiskFileDialogStore(settledDialogId);
-    const settledDialog = new RootDialog(
+    const settledDialog = new MainDialog(
       settledStore,
       'plans/latest-writeback-settled-course.tsk',
       settledDialogId,

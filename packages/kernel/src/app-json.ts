@@ -410,7 +410,7 @@ export function parseDomindsAppInstallJson(
 
 export type DomindsAppHostToolContext = Readonly<{
   dialogId: string;
-  rootDialogId: string;
+  mainDialogId: string;
   agentId: string;
   taskDocPath: string;
   sessionSlug?: string;
@@ -420,7 +420,7 @@ export type DomindsAppHostToolContext = Readonly<{
 export type DomindsAppDialogTargetRef = Readonly<
   | { dialogId: string }
   | {
-      rootDialogId?: string;
+      mainDialogId?: string;
       agentId: string;
       sessionSlug?: string;
     }
@@ -428,7 +428,7 @@ export type DomindsAppDialogTargetRef = Readonly<
 
 export type DomindsAppDialogInfo = Readonly<{
   dialogId: string;
-  rootDialogId: string;
+  mainDialogId: string;
   agentId: string;
   sessionSlug?: string;
 }>;

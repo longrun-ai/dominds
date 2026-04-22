@@ -8,8 +8,8 @@ import { getTellaskKindLabel } from '../runtime/tellask-labels';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
-type PendingSubdialogView = Readonly<{
-  subdialogId: string;
+type PendingSideDialogView = Readonly<{
+  sideDialogId: string;
   latestActivityAt: string;
   mentionList?: string[];
   tellaskContent: string;
@@ -59,16 +59,16 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
 function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
   return language === 'zh'
     ? '不要手改这条系统提醒。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
-    : 'Do not hand-edit this system reminder. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient sideline and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
+    : 'Do not hand-edit this system reminder. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Sideline dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
 function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
   return language === 'zh'
     ? '这条系统提醒不可删除。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
-    : 'This system reminder is not deletable. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient sideline and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
+    : 'This system reminder is not deletable. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the responder can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Sideline dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
-function callKindLabel(language: LanguageCode, view: PendingSubdialogView): string {
+function callKindLabel(language: LanguageCode, view: PendingSideDialogView): string {
   if (view.callType === 'A') {
     return getTellaskKindLabel({ language, name: 'tellaskBack' });
   }
@@ -76,7 +76,7 @@ function callKindLabel(language: LanguageCode, view: PendingSubdialogView): stri
   return getTellaskKindLabel({ language, name: view.callName });
 }
 
-function pendingTargetLabel(language: LanguageCode, view: PendingSubdialogView): string {
+function pendingTargetLabel(language: LanguageCode, view: PendingSideDialogView): string {
   if (view.callType === 'A') {
     return language === 'zh'
       ? `上游诉请者 @${view.targetAgentId}`
@@ -92,7 +92,7 @@ function pendingTargetLabel(language: LanguageCode, view: PendingSubdialogView):
   }
 }
 
-function summarizeTellask(view: PendingSubdialogView): string {
+function summarizeTellask(view: PendingSideDialogView): string {
   const mentionPrefix = Array.isArray(view.mentionList) ? view.mentionList.join(' ') : '';
   const normalized = `${mentionPrefix} ${view.tellaskContent}`.replace(/\s+/g, ' ').trim();
   if (!normalized) return '(empty tellask)';
@@ -101,10 +101,10 @@ function summarizeTellask(view: PendingSubdialogView): string {
   return `${normalized.slice(0, max).trimEnd()}...`;
 }
 
-function makePendingSignature(pending: ReadonlyArray<PendingSubdialogView>): string {
+function makePendingSignature(pending: ReadonlyArray<PendingSideDialogView>): string {
   return pending
     .map((p) =>
-      [p.subdialogId, p.targetAgentId, p.callType, p.sessionSlug ?? '', summarizeTellask(p)].join(
+      [p.sideDialogId, p.targetAgentId, p.callType, p.sessionSlug ?? '', summarizeTellask(p)].join(
         '|',
       ),
     )
@@ -113,7 +113,7 @@ function makePendingSignature(pending: ReadonlyArray<PendingSubdialogView>): str
 }
 
 function buildReminderMeta(
-  pending: ReadonlyArray<PendingSubdialogView>,
+  pending: ReadonlyArray<PendingSideDialogView>,
   previousMeta?: PendingTellaskReminderMeta,
 ): PendingTellaskReminderMeta {
   const language = getWorkLanguage();
@@ -148,7 +148,7 @@ function buildReminderMeta(
 
 function buildReminderContent(
   language: LanguageCode,
-  pending: ReadonlyArray<PendingSubdialogView>,
+  pending: ReadonlyArray<PendingSideDialogView>,
 ): string {
   const heading =
     language === 'zh'
@@ -166,7 +166,7 @@ function buildReminderContent(
   const summary =
     language === 'zh'
       ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面：自动维护、不可手改，且在非 0 路进行中时不可删除。只有长线诉请（`tellask` + `sessionSlug`）才能更新“任务安排”；一次性诉请（`tellaskSessionless`）没有这个通道。新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不会影响旧支线继续执行，更不能要求旧主理人停止。若某一路长线诉请的要求变化，才可复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。误删会被拒绝，并返回同样的引导文案。'
-      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. Only a sessioned tellask (`tellask` + `sessionSlug`) has an assignment-update channel; a one-shot tellask (`tellaskSessionless`) does not. Opening another `tellaskSessionless` only creates another transient sideline; it does not affect the earlier one and cannot tell the earlier owner to stop. If a sessioned tellask needs to change, reuse the same `sessionSlug` in another `tellask` so the responder can finish naturally under the latest assignment. Mistaken deletion will be rejected with the same guidance.';
+      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. Only a sessioned tellask (`tellask` + `sessionSlug`) has an assignment-update channel; a one-shot tellask (`tellaskSessionless`) does not. Opening another `tellaskSessionless` only creates another transient Sideline dialog; it does not affect the earlier one and cannot tell the earlier owner to stop. If a sessioned tellask needs to change, reuse the same `sessionSlug` in another `tellask` so the responder can finish naturally under the latest assignment. Mistaken deletion will be rejected with the same guidance.';
 
   const lines = pending.map((p, idx) => {
     const base =
@@ -202,14 +202,14 @@ function assertSingleOwnedReminder(dlg: Dialog): number | null {
   );
 }
 
-async function loadPendingSubdialogView(dlg: Dialog): Promise<PendingSubdialogView[]> {
-  const pending = await DialogPersistence.loadPendingSubdialogs(dlg.id, dlg.status);
+async function loadPendingSideDialogView(dlg: Dialog): Promise<PendingSideDialogView[]> {
+  const pending = await DialogPersistence.loadPendingSideDialogs(dlg.id, dlg.status);
   return await Promise.all(
     pending.map(async (p) => {
-      const subdialogId = new DialogID(p.subdialogId, dlg.id.rootId);
-      const latest = await DialogPersistence.loadDialogLatest(subdialogId, dlg.status);
+      const sideDialogId = new DialogID(p.sideDialogId, dlg.id.rootId);
+      const latest = await DialogPersistence.loadDialogLatest(sideDialogId, dlg.status);
       return {
-        subdialogId: p.subdialogId,
+        sideDialogId: p.sideDialogId,
         latestActivityAt: latest?.lastModified ?? p.createdAt,
         mentionList: p.mentionList,
         tellaskContent: p.tellaskContent,
@@ -230,7 +230,7 @@ async function withDialogLockIfNeeded<T>(dlg: Dialog, fn: () => Promise<T>): Pro
 }
 
 export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<boolean> {
-  const pending = await loadPendingSubdialogView(dlg);
+  const pending = await loadPendingSideDialogView(dlg);
   return await withDialogLockIfNeeded(dlg, async () => {
     const reminderIndex = assertSingleOwnedReminder(dlg);
     const language = getWorkLanguage();
@@ -274,7 +274,7 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
       return { treatment: 'keep' };
     }
 
-    const pending = await loadPendingSubdialogView(dlg);
+    const pending = await loadPendingSideDialogView(dlg);
 
     const language = getWorkLanguage();
     const updatedContent = buildReminderContent(language, pending);

@@ -36,7 +36,7 @@ These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `dili
 Important addition:
 
 - Only `Tellask Session` has an assignment-update channel.
-- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient sideline and does not affect or tell the earlier owner to stop.
+- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient Sideline dialog and does not affect or tell the earlier owner to stop.
 - If later correction, earlier wrap-up, or scope change may be needed, do not choose `Fresh Tellask`; use `tellask` with `sessionSlug` from the start.
 
 ### 2.2 What `Tellask Session` really means
@@ -52,7 +52,7 @@ Short version: a Tellask Session is a resumable thread, not autonomous backgroun
 For teammate Tellasks, the runtime lifecycle is:
 
 1. Tellask is emitted.
-2. Caller waits while sideline runs.
+2. Caller waits while Sideline dialog runs.
 3. A response is supplied back.
 4. Caller resumes.
 
@@ -98,7 +98,7 @@ That is a workflow break. The model should send the Tellask directly.
 
 ## 4. Best-practice execution protocol
 
-### 4.0 Inter-dialog transfer and sideline rule (mandatory)
+### 4.0 Inter-dialog transfer and Sideline dialog rule (mandatory)
 
 **Transfer and markers (required)**:
 
@@ -106,24 +106,24 @@ That is a workflow break. The model should send the Tellask directly.
 - First-line markers are runtime-injected into that payload by semantics; agents must not hand-write them:
   - English work language:
     - Ask-back reply: `【TellaskBack】`
-    - Regular completed sideline reply: `【Completed】`
+    - Regular completed Sideline dialog reply: `【Completed】`
     - FBR reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
   - Chinese work language:
     - Ask-back reply: `【回问诉请】`
-    - Regular completed sideline reply: `【最终完成】`
+    - Regular completed Sideline dialog reply: `【最终完成】`
     - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
 - If the requester defines a “reply/delivery format” in tellask body, keep it to the business delivery structure; do not require responder-side hand-written markers, because Dominds runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
 
-**Sideline delivery rule**:
+**Sideline dialog delivery rule**:
 
-- If a sideline dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- If a Sideline dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If the work is unfinished, do not default to `tellaskBack`: first use team SOP / role ownership to judge whether a responsible owner is already clear; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner.
 - Use `tellaskBack({ tellaskContent: "..." })` only when the upstream requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); list missing context + reasoning and return.
-- If a human user inserts a message or asks a follow-up in the sideline: just reply normally; no need to report back to the upstream requester.
+- If a human user inserts a message or asks a follow-up in the Sideline dialog: just reply normally; no need to report back to the upstream requester.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 

@@ -7,9 +7,9 @@ import type {
   DomindsAppDialogTargetRef,
 } from '@longrun-ai/kernel/app-json';
 import type { I18nText } from '@longrun-ai/kernel/types/i18n';
-import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
+import { Dialog, DialogID, MainDialog, SideDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
 import { createLogger } from '../log';
 import type { Tool } from '../tool';
 import { notifyToolAvailabilityRegistryMaybeChanged } from '../tool-availability-updates';
@@ -86,40 +86,40 @@ function formatAppCapabilityUnavailableMessage(params: {
   ].join('\n');
 }
 
-function resolveRootDialogFor(dlg: Dialog): RootDialog {
-  if (dlg instanceof RootDialog) {
+function resolveMainDialogFor(dlg: Dialog): MainDialog {
+  if (dlg instanceof MainDialog) {
     return dlg;
   }
-  if (dlg instanceof SubDialog) {
-    return dlg.rootDialog;
+  if (dlg instanceof SideDialog) {
+    return dlg.mainDialog;
   }
   throw new Error(`Unsupported dialog type for app runtime: ${dlg.constructor.name}`);
 }
 
-async function ensureRootDialogLoaded(rootId: string): Promise<RootDialog | undefined> {
+async function ensureMainDialogLoaded(rootId: string): Promise<MainDialog | undefined> {
   const existing = globalDialogRegistry.get(rootId);
   if (existing) {
-    await existing.loadSubdialogRegistry();
-    await existing.loadPendingSubdialogsFromPersistence();
+    await existing.loadSideDialogRegistry();
+    await existing.loadPendingSideDialogsFromPersistence();
     return existing;
   }
-  return await getOrRestoreRootDialog(rootId, 'running');
+  return await getOrRestoreMainDialog(rootId, 'running');
 }
 
 async function ensureDialogLoadedBySelfId(
-  rootDialog: RootDialog,
+  mainDialog: MainDialog,
   dialogSelfId: string,
 ): Promise<Dialog | undefined> {
-  if (dialogSelfId === rootDialog.id.rootId) {
-    return rootDialog;
+  if (dialogSelfId === mainDialog.id.rootId) {
+    return mainDialog;
   }
-  const existing = rootDialog.lookupDialog(dialogSelfId);
+  const existing = mainDialog.lookupDialog(dialogSelfId);
   if (existing) {
     return existing;
   }
   return await ensureDialogLoaded(
-    rootDialog,
-    new DialogID(dialogSelfId, rootDialog.id.rootId),
+    mainDialog,
+    new DialogID(dialogSelfId, mainDialog.id.rootId),
     'running',
   );
 }
@@ -129,8 +129,8 @@ function describeTarget(target: DomindsAppDialogTargetRef): string {
     return `dialogId=${target.dialogId}`;
   }
   const parts = [`agentId=${target.agentId}`];
-  if (target.rootDialogId) {
-    parts.push(`rootDialogId=${target.rootDialogId}`);
+  if (target.mainDialogId) {
+    parts.push(`mainDialogId=${target.mainDialogId}`);
   }
   if (target.sessionSlug) {
     parts.push(`sessionSlug=${target.sessionSlug}`);
@@ -142,7 +142,7 @@ async function resolveTargetDialog(
   sourceDlg: Dialog,
   target: DomindsAppDialogTargetRef,
 ): Promise<Dialog> {
-  const sourceRoot = resolveRootDialogFor(sourceDlg);
+  const sourceRoot = resolveMainDialogFor(sourceDlg);
   if ('dialogId' in target) {
     const matches: Dialog[] = [];
     const seenDialogKeys = new Set<string>();
@@ -159,7 +159,7 @@ async function resolveTargetDialog(
       pushMatch(await ensureDialogLoadedBySelfId(loadedRoot, target.dialogId));
     }
     if (target.dialogId !== sourceRoot.id.rootId) {
-      pushMatch(await ensureRootDialogLoaded(target.dialogId));
+      pushMatch(await ensureMainDialogLoaded(target.dialogId));
     }
 
     if (matches.length === 1) {
@@ -171,22 +171,22 @@ async function resolveTargetDialog(
     throw new Error(`dialog reminder target is ambiguous (${describeTarget(target)})`);
   }
 
-  const targetRootId = target.rootDialogId ?? sourceRoot.id.rootId;
+  const targetRootId = target.mainDialogId ?? sourceRoot.id.rootId;
   const targetRoot =
-    targetRootId === sourceRoot.id.rootId ? sourceRoot : await ensureRootDialogLoaded(targetRootId);
+    targetRootId === sourceRoot.id.rootId ? sourceRoot : await ensureMainDialogLoaded(targetRootId);
   if (!targetRoot) {
     throw new Error(`dialog reminder target root not found (${describeTarget(target)})`);
   }
 
-  await targetRoot.loadSubdialogRegistry();
-  await targetRoot.loadPendingSubdialogsFromPersistence();
+  await targetRoot.loadSideDialogRegistry();
+  await targetRoot.loadPendingSideDialogsFromPersistence();
 
   if (target.sessionSlug) {
-    const subdialog = targetRoot.lookupSubdialog(target.agentId, target.sessionSlug);
-    if (!subdialog) {
+    const sideDialog = targetRoot.lookupSideDialog(target.agentId, target.sessionSlug);
+    if (!sideDialog) {
       throw new Error(`dialog reminder target not found (${describeTarget(target)})`);
     }
-    return subdialog;
+    return sideDialog;
   }
 
   const matches = targetRoot.getAllDialogs().filter((dialog) => dialog.agentId === target.agentId);
@@ -376,10 +376,10 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
           const host = await ensureAppsHostReadyForToolCalls();
           const result = await host.callTool(t.name, args, {
             dialogId: dlg.id.selfId,
-            rootDialogId: dlg.id.rootId,
+            mainDialogId: dlg.id.rootId,
             agentId: dlg.agentId,
             taskDocPath: dlg.taskDocPath,
-            sessionSlug: dlg instanceof SubDialog ? dlg.sessionSlug : undefined,
+            sessionSlug: dlg instanceof SideDialog ? dlg.sessionSlug : undefined,
             callerId: caller.id,
           });
           if (Array.isArray(result.reminderRequests) && result.reminderRequests.length > 0) {
@@ -563,7 +563,7 @@ export async function listDynamicAppToolsetsForMember(_params: {
   taskDocPath: string;
   memberId: string;
   dialogId?: string;
-  rootDialogId?: string;
+  mainDialogId?: string;
   agentId?: string;
   sessionSlug?: string;
 }): Promise<readonly string[]> {
@@ -576,7 +576,7 @@ export async function resolveDynamicAppToolAvailabilityForMember(_params: {
   taskDocPath: string;
   memberId: string;
   dialogId?: string;
-  rootDialogId?: string;
+  mainDialogId?: string;
   agentId?: string;
   sessionSlug?: string;
 }): Promise<DynamicAppToolAvailabilityResult> {
@@ -611,8 +611,8 @@ export async function resolveDynamicAppToolAvailabilityForMember(_params: {
       ...(typeof _params.dialogId === 'string' && _params.dialogId.trim() !== ''
         ? { dialogId: _params.dialogId.trim() }
         : {}),
-      ...(typeof _params.rootDialogId === 'string' && _params.rootDialogId.trim() !== ''
-        ? { rootDialogId: _params.rootDialogId.trim() }
+      ...(typeof _params.mainDialogId === 'string' && _params.mainDialogId.trim() !== ''
+        ? { mainDialogId: _params.mainDialogId.trim() }
         : {}),
       ...(typeof _params.agentId === 'string' && _params.agentId.trim() !== ''
         ? { agentId: _params.agentId.trim() }

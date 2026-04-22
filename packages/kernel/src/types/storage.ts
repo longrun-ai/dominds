@@ -62,28 +62,28 @@ export type ToolResultImageDisposition =
   | 'filtered_read_failed'
   | 'filtered_missing';
 
-export interface RootDialogMetadataFile {
+export interface MainDialogMetadataFile {
   id: string;
   agentId: string;
   taskDocPath: string;
   createdAt: string;
-  supdialogId?: undefined;
+  askerDialogId?: undefined;
   sessionSlug?: undefined;
-  assignmentFromSup?: undefined;
+  assignmentFromAsker?: undefined;
   priming?: {
     scriptRefs: string[];
     showInUi: boolean;
   };
 }
 
-export interface SubdialogMetadataFile {
+export interface SideDialogMetadataFile {
   id: string;
   agentId: string;
   taskDocPath: string;
   createdAt: string;
-  supdialogId: string;
+  askerDialogId: string;
   sessionSlug?: string;
-  assignmentFromSup: {
+  assignmentFromAsker: {
     callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
     mentionList?: string[];
     tellaskContent: string;
@@ -95,7 +95,18 @@ export interface SubdialogMetadataFile {
   };
 }
 
-export type DialogMetadataFile = RootDialogMetadataFile | SubdialogMetadataFile;
+export type DialogMetadataFile = MainDialogMetadataFile | SideDialogMetadataFile;
+
+export interface AskerDialogStackFrame {
+  kind: 'asker_dialog_stack_frame';
+  askerDialogId: string;
+  assignmentFromAsker?: SideDialogMetadataFile['assignmentFromAsker'];
+  tellaskReplyObligation?: TellaskReplyDirective;
+}
+
+export interface DialogAskerStackState {
+  askerStack: AskerDialogStackFrame[];
+}
 
 export type DialogDeferredReplyReassertion = Readonly<{
   reason: 'user_interjection_with_parked_original_task';
@@ -103,7 +114,7 @@ export type DialogDeferredReplyReassertion = Readonly<{
   resumeGuideSurfaced?: boolean;
 }>;
 
-export type DialogSubdialogReplyTarget = Readonly<{
+export type DialogSideDialogReplyTarget = Readonly<{
   ownerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
@@ -116,7 +127,7 @@ export interface DialogLatestFile {
   lastModified: string;
   messageCount?: number;
   functionCallCount?: number;
-  subdialogCount?: number;
+  sideDialogCount?: number;
   status: 'active' | 'completed' | 'archived';
   generating?: boolean;
   needsDrive?: boolean;
@@ -153,7 +164,7 @@ export interface CourseMetadataFile {
   completedAt?: string;
   messageCount: number;
   functionCallCount: number;
-  subdialogCount: number;
+  sideDialogCount: number;
   status: 'active' | 'completed';
   taskDoc?: string;
 }
@@ -293,30 +304,30 @@ export interface ReminderSnapshotItem {
   priority: 'high' | 'medium' | 'low';
 }
 
-export interface PendingSubdialogStateRecord {
-  subdialogId: string;
+export interface PendingSideDialogStateRecord {
+  sideDialogId: string;
   createdAt: string;
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse?: CallingCourseNumber;
-  callingGenseq?: CallingGenerationSeqNumber;
+  callingCourse: CallingCourseNumber;
+  callingGenseq: CallingGenerationSeqNumber;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
 
-export interface SubdialogRegistryStateRecord {
+export interface SideDialogRegistryStateRecord {
   key: string;
-  subdialogId: string;
+  sideDialogId: string;
   agentId: string;
   sessionSlug?: string;
 }
 
-export interface SubdialogResponseStateRecord {
+export interface SideDialogResponseStateRecord {
   responseId: string;
-  subdialogId: string;
+  sideDialogId: string;
   response: string;
   completedAt: string;
   status?: 'completed' | 'failed';
@@ -551,11 +562,13 @@ export interface HumanTextRecord extends RootGenerationRef {
 export type TellaskReplyDirective =
   | Readonly<{
       expectedReplyCallName: 'replyTellask';
+      targetDialogId: string;
       targetCallId: string;
       tellaskContent: string;
     }>
   | Readonly<{
       expectedReplyCallName: 'replyTellaskSessionless';
+      targetDialogId: string;
       targetCallId: string;
       tellaskContent: string;
     }>
@@ -613,13 +626,13 @@ export interface UserImageIngestRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-export interface QuestForSupRecord extends RootGenerationRef {
+export interface SideDialogRequestRecord extends RootGenerationRef {
   ts: string;
-  type: 'quest_for_sup_record';
+  type: 'sideDialog_request_record';
   genseq: number;
   mentionList: string[];
   tellaskContent: string;
-  subDialogId: string;
+  sideDialogId: string;
   sourceTag?: 'priming_script';
 }
 
@@ -778,16 +791,16 @@ export interface GenFinishRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-export interface SubdialogCreatedRecord extends RootGenerationAnchor {
+export interface SideDialogCreatedRecord extends RootGenerationAnchor {
   ts: string;
-  type: 'subdialog_created_record';
-  subdialogId: string;
-  supdialogId: string;
+  type: 'sideDialog_created_record';
+  sideDialogId: string;
+  askerDialogId: string;
   agentId: string;
   taskDocPath: string;
   createdAt: string;
   sessionSlug?: string;
-  assignmentFromSup: {
+  assignmentFromAsker: {
     callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
     mentionList?: string[];
     tellaskContent: string;
@@ -811,22 +824,22 @@ export interface Questions4HumanReconciledRecord extends RootGenerationAnchor {
   questions: HumanQuestion[];
 }
 
-export interface PendingSubdialogsReconciledRecord extends RootGenerationAnchor {
+export interface PendingSideDialogsReconciledRecord extends RootGenerationAnchor {
   ts: string;
-  type: 'pending_subdialogs_reconciled_record';
-  pendingSubdialogs: PendingSubdialogStateRecord[];
+  type: 'pending_sideDialogs_reconciled_record';
+  pendingSideDialogs: PendingSideDialogStateRecord[];
 }
 
-export interface SubdialogRegistryReconciledRecord extends RootGenerationAnchor {
+export interface SideDialogRegistryReconciledRecord extends RootGenerationAnchor {
   ts: string;
-  type: 'subdialog_registry_reconciled_record';
-  entries: SubdialogRegistryStateRecord[];
+  type: 'sideDialog_registry_reconciled_record';
+  entries: SideDialogRegistryStateRecord[];
 }
 
-export interface SubdialogResponsesReconciledRecord extends RootGenerationAnchor {
+export interface SideDialogResponsesReconciledRecord extends RootGenerationAnchor {
   ts: string;
-  type: 'subdialog_responses_reconciled_record';
-  responses: SubdialogResponseStateRecord[];
+  type: 'sideDialog_responses_reconciled_record';
+  responses: SideDialogResponseStateRecord[];
 }
 
 export interface ReminderStateFile {
@@ -866,7 +879,7 @@ export interface DialogDirectoryStructure {
   statusDir: 'run' | 'done' | 'archive';
   selfId: string;
   rootId: string;
-  isSubdialog: boolean;
+  isSideDialog: boolean;
   metadataPath: string;
   latestPath: string;
   courseCurrPath: string;
@@ -874,7 +887,7 @@ export interface DialogDirectoryStructure {
   questionsPath: string;
   courseJsonlPattern: string;
   courseYamlPattern: string;
-  subdialogsPath?: string;
+  sideDialogsPath?: string;
 }
 
 export interface DialogListItem {
@@ -888,11 +901,11 @@ export interface DialogListItem {
   lastModified: string;
   currentCourse: number;
   messageCount: number;
-  subdialogCount: number;
+  sideDialogCount: number;
   preview?: string;
-  supdialogId?: string;
+  askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromSup?: {
+  assignmentFromAsker?: {
     callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
     mentionList?: string[];
     tellaskContent: string;
@@ -916,15 +929,15 @@ export type PersistedDialogRecord =
   | FuncResultRecord
   | ToolResultImageIngestRecord
   | UserImageIngestRecord
-  | QuestForSupRecord
+  | SideDialogRequestRecord
   | TellaskReplyResolutionRecord
   | TellaskCallAnchorRecord
   | TellaskCarryoverRecord
   | GenStartRecord
   | GenFinishRecord
-  | SubdialogCreatedRecord
+  | SideDialogCreatedRecord
   | RemindersReconciledRecord
   | Questions4HumanReconciledRecord
-  | PendingSubdialogsReconciledRecord
-  | SubdialogRegistryReconciledRecord
-  | SubdialogResponsesReconciledRecord;
+  | PendingSideDialogsReconciledRecord
+  | SideDialogRegistryReconciledRecord
+  | SideDialogResponsesReconciledRecord;

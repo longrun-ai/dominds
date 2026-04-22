@@ -1,7 +1,7 @@
 import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import assert from 'node:assert/strict';
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import { addReminderTool, updateReminderTool } from '../../main/tools/ctrl';
@@ -45,8 +45,8 @@ const HEALTHY_SNAPSHOT: ContextHealthSnapshot = {
   level: 'healthy',
 };
 
-function createDialog(): RootDialog {
-  return new RootDialog(
+function createDialog(): MainDialog {
+  return new MainDialog(
     {} as unknown as DialogStore,
     'context-health-continuation.tsk',
     undefined,

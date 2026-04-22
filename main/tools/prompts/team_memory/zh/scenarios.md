@@ -103,7 +103,7 @@ add_team_memory({
 add_team_memory({
   path: 'team/glossary/dialog-terms',
   content:
-    '## 对话术语\n\n- 用户面向文案优先使用：主线对话 / 支线对话\n- 实现上下文可使用：main dialog / subdialog / supdialog\n- 不要把实现术语直接裸露到用户可见 copy',
+    '## 对话术语\n\n- 用户面向文案优先使用：主线对话 / 支线对话\n- 实现上下文可使用：main dialog / sideDialog / askerDialog\n- 不要把实现术语直接裸露到用户可见 copy',
 });
 ```
 

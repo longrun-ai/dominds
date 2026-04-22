@@ -5,7 +5,7 @@ import {
   applyRegisteredAppDialogRunControls,
   renderAppRunControlBlockForPreDrive,
 } from '../../apps/run-control';
-import { DialogID, SubDialog, type Dialog } from '../../dialog';
+import { DialogID, SideDialog, type Dialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
   clearActiveRun,
@@ -47,14 +47,14 @@ import {
   resolvePromptReplyGuidance,
   resolveReplyTargetAgentId,
 } from './reply-guidance';
-import type { ScheduleDriveFn, SubdialogReplyTarget } from './subdialog';
+import type { ScheduleDriveFn, SideDialogReplyTarget } from './sideDialog';
 import {
-  supplySubdialogResponseToAssignedCallerIfPendingV2,
-  supplySubdialogResponseToSpecificCallerIfPendingV2,
-} from './subdialog';
+  supplySideDialogResponseToAssignedCallerIfPendingV2,
+  supplySideDialogResponseToSpecificCallerIfPendingV2,
+} from './sideDialog';
 import {
   deliverTellaskBackReplyFromDirective,
-  loadLatestActiveTellaskReplyDirective,
+  loadActiveTellaskReplyDirective,
 } from './tellask-special';
 import type {
   KernelDriverCoreResult,
@@ -67,8 +67,8 @@ import type {
   KernelDriverPrompt,
   KernelDriverRuntimePrompt,
   KernelDriverRuntimeReplyPrompt,
+  KernelDriverRuntimeSideDialogPrompt,
   KernelDriverRuntimeState,
-  KernelDriverRuntimeSubdialogPrompt,
   KernelDriverUserPrompt,
 } from './types';
 
@@ -84,23 +84,23 @@ type RuntimeReplyReminderPrompt = Readonly<{
   skipTaskdoc?: undefined;
 }>;
 
-type RuntimeSubdialogReplyReminderPrompt = Readonly<{
-  kind: 'runtime_subdialog_reply_reminder';
+type RuntimeSideDialogReplyReminderPrompt = Readonly<{
+  kind: 'runtime_sideDialog_reply_reminder';
   prompt: string;
   msgId: string;
   grammar?: KernelDriverPrompt['grammar'];
   userLanguageCode?: string;
   runControl?: undefined;
   origin: 'runtime';
-  tellaskReplyDirective: KernelDriverRuntimeSubdialogPrompt['tellaskReplyDirective'];
+  tellaskReplyDirective: KernelDriverRuntimeSideDialogPrompt['tellaskReplyDirective'];
   skipTaskdoc?: undefined;
-  subdialogReplyTarget: KernelDriverRuntimeSubdialogPrompt['subdialogReplyTarget'];
+  sideDialogReplyTarget: KernelDriverRuntimeSideDialogPrompt['sideDialogReplyTarget'];
 }>;
 
 type UpNextPrompt =
   | DialogQueuedPromptState
   | RuntimeReplyReminderPrompt
-  | RuntimeSubdialogReplyReminderPrompt;
+  | RuntimeSideDialogReplyReminderPrompt;
 
 const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
 const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
@@ -133,36 +133,82 @@ async function buildReplyToolReminderPrompt(args: {
   });
 }
 
-async function loadFreshSuspensionStatusFromPersistence(dialog: Dialog): Promise<{
+function entitlementAllowsPendingSideDialog(args: {
+  pending: { callingCourse: number; callingGenseq: number };
+  driveOptions: KernelDriverDriveOptions | undefined;
+  dialog: Dialog;
+}): boolean {
+  const entitlement = args.driveOptions?.noPromptSideDialogResumeEntitlement;
+  if (
+    args.driveOptions?.source !== 'kernel_driver_supply_response_parent_revive' ||
+    entitlement?.ownerDialogId !== args.dialog.id.selfId
+  ) {
+    return false;
+  }
+  if (entitlement.reason === 'reply_tellask_back_delivered') {
+    return true;
+  }
+  if (entitlement.reason === 'replaced_pending_sideDialog_reply') {
+    return false;
+  }
+  if (entitlement.reason !== 'resolved_pending_sideDialog_reply') {
+    return false;
+  }
+  if (!isPositiveInteger(entitlement.callingCourse)) {
+    return false;
+  }
+  if (!isPositiveInteger(entitlement.callingGenseq)) {
+    return false;
+  }
+  return (
+    args.pending.callingCourse !== entitlement.callingCourse ||
+    args.pending.callingGenseq !== entitlement.callingGenseq
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+async function loadFreshSuspensionStatusFromPersistence(
+  dialog: Dialog,
+  driveOptions?: KernelDriverDriveOptions,
+): Promise<{
   q4h: boolean;
-  subdialogs: boolean;
-  blockingSubdialogs: boolean;
+  sideDialogs: boolean;
+  blockingSideDialogs: boolean;
   canDrive: boolean;
 }> {
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
-  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialog.id, dialog.status);
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
+    dialog.id,
+    dialog.status,
+  );
   const hasQ4H = q4h.length > 0;
-  const hasSubdialogs = pendingSubdialogs.length > 0;
+  const hasSideDialogs = pendingSideDialogs.length > 0;
+  const blockingSideDialogs = pendingSideDialogs.some(
+    (pending) => !entitlementAllowsPendingSideDialog({ pending, driveOptions, dialog }),
+  );
   return {
     q4h: hasQ4H,
-    subdialogs: hasSubdialogs,
-    blockingSubdialogs: hasSubdialogs,
-    canDrive: !hasQ4H && !hasSubdialogs,
+    sideDialogs: hasSideDialogs,
+    blockingSideDialogs,
+    canDrive: !hasQ4H && !blockingSideDialogs,
   };
 }
 
 function buildDisplayStateFromSuspensionStatus(args: {
   q4h: boolean;
-  subdialogs: boolean;
+  sideDialogs: boolean;
 }): DialogDisplayState {
-  if (args.q4h && args.subdialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } };
+  if (args.q4h && args.sideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
   }
   if (args.q4h) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
-  if (args.subdialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } };
+  if (args.sideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -173,9 +219,9 @@ type PendingDiagnosticsSnapshot =
       ownerDialogId: string;
       status: 'running' | 'completed' | 'archived';
       totalCount: number;
-      matchedSubdialogIds: string[];
+      matchedSideDialogIds: string[];
       records: Array<{
-        subdialogId: string;
+        sideDialogId: string;
         callType: 'A' | 'B' | 'C';
         targetAgentId: string;
         sessionSlug?: string;
@@ -193,23 +239,23 @@ type PendingDiagnosticsSnapshot =
 async function loadPendingDiagnosticsSnapshot(args: {
   rootId: string;
   ownerDialogId: string;
-  expectedSubdialogId: string;
+  expectedSideDialogId: string;
   status: 'running' | 'completed' | 'archived';
 }): Promise<PendingDiagnosticsSnapshot> {
   const ownerDialogIdObj = new DialogID(args.ownerDialogId, args.rootId);
   try {
-    const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialogIdObj, args.status);
-    const matchedSubdialogIds = pending
-      .filter((record) => record.subdialogId === args.expectedSubdialogId)
-      .map((record) => record.subdialogId);
+    const pending = await DialogPersistence.loadPendingSideDialogs(ownerDialogIdObj, args.status);
+    const matchedSideDialogIds = pending
+      .filter((record) => record.sideDialogId === args.expectedSideDialogId)
+      .map((record) => record.sideDialogId);
     return {
       kind: 'loaded',
       ownerDialogId: args.ownerDialogId,
       status: args.status,
       totalCount: pending.length,
-      matchedSubdialogIds,
+      matchedSideDialogIds,
       records: pending.map((record) => ({
-        subdialogId: record.subdialogId,
+        sideDialogId: record.sideDialogId,
         callType: record.callType,
         targetAgentId: record.targetAgentId,
         sessionSlug: record.sessionSlug,
@@ -261,32 +307,41 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
   });
 }
 
-function hasNoPromptSubdialogResumeEntitlement(
-  dialog: SubDialog,
+function hasNoPromptSideDialogResumeEntitlement(
+  dialog: SideDialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
-  const entitlement = driveOptions?.noPromptSubdialogResumeEntitlement;
+  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
   if (!entitlement) {
     return false;
   }
   return entitlement.ownerDialogId === dialog.id.selfId;
 }
 
-function shouldAllowPendingSubdialogsForParentRevive(
+function hasParentReviveEntitlement(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
-  if (!(dialog instanceof SubDialog)) {
-    return false;
-  }
-  const entitlement = driveOptions?.noPromptSubdialogResumeEntitlement;
+  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
   if (!entitlement) {
     return false;
   }
+  if (
+    driveOptions?.source !== 'kernel_driver_supply_response_parent_revive' ||
+    entitlement.ownerDialogId !== dialog.id.selfId
+  ) {
+    return false;
+  }
+  if (entitlement.reason === 'reply_tellask_back_delivered') {
+    return true;
+  }
+  if (entitlement.reason === 'replaced_pending_sideDialog_reply') {
+    return true;
+  }
   return (
-    driveOptions?.source === 'kernel_driver_supply_response_parent_revive' &&
-    entitlement.ownerDialogId === dialog.id.selfId &&
-    entitlement.reason === 'reply_tellask_back_delivered'
+    entitlement.reason === 'resolved_pending_sideDialog_reply' &&
+    isPositiveInteger(entitlement.callingCourse) &&
+    isPositiveInteger(entitlement.callingGenseq)
   );
 }
 
@@ -377,8 +432,8 @@ async function applyRegisteredDialogRunControlsBeforeDrive(args: {
   }
 }
 
-async function inspectNoPromptSubdialogDrive(args: {
-  dialog: SubDialog;
+async function inspectNoPromptSideDialogDrive(args: {
+  dialog: SideDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
 }): Promise<
   | {
@@ -440,7 +495,7 @@ async function inspectNoPromptSubdialogDrive(args: {
     latest?.executionMarker?.kind === 'interrupted';
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
-    hasNoPromptSubdialogResumeEntitlement(args.dialog, args.driveOptions);
+    hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
   if (lastEvent?.type === 'tellask_call_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
@@ -480,7 +535,7 @@ async function maybeResolveDeferredReplyReassertionPrompt(
   if (!deferredReplyReassertion) {
     return undefined;
   }
-  const activeDirective = await loadLatestActiveTellaskReplyDirective(dialog);
+  const activeDirective = await loadActiveTellaskReplyDirective(dialog);
   if (
     !activeDirective ||
     activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
@@ -523,7 +578,7 @@ async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
   if (!deferredReplyReassertion || deferredReplyReassertion.resumeGuideSurfaced === true) {
     return;
   }
-  const activeDirective = await loadLatestActiveTellaskReplyDirective(dialog);
+  const activeDirective = await loadActiveTellaskReplyDirective(dialog);
   if (
     !activeDirective ||
     activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
@@ -618,7 +673,7 @@ async function resolveEffectivePrompt(
         case 'registered_assignment_update':
         case 'new_course_runtime_guide':
         case 'new_course_runtime_reply':
-        case 'new_course_runtime_subdialog': {
+        case 'new_course_runtime_sideDialog': {
           const runtimeCommon = {
             ...common,
             origin: 'runtime' as const,
@@ -626,12 +681,12 @@ async function resolveEffectivePrompt(
           };
           if (
             upNext.kind === 'registered_assignment_update' ||
-            upNext.kind === 'new_course_runtime_subdialog'
+            upNext.kind === 'new_course_runtime_sideDialog'
           ) {
-            const prompt: KernelDriverRuntimeSubdialogPrompt = {
+            const prompt: KernelDriverRuntimeSideDialogPrompt = {
               ...runtimeCommon,
               tellaskReplyDirective: upNext.tellaskReplyDirective,
-              subdialogReplyTarget: upNext.subdialogReplyTarget,
+              sideDialogReplyTarget: upNext.sideDialogReplyTarget,
             };
             return prompt;
           }
@@ -667,7 +722,7 @@ export async function executeDriveRound(args: {
   let interruptedBySignal = false;
   let followUp: UpNextPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
-  let subdialogReplyTarget: SubdialogReplyTarget | undefined;
+  let sideDialogReplyTarget: SideDialogReplyTarget | undefined;
   let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined;
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
@@ -683,7 +738,7 @@ export async function executeDriveRound(args: {
     activeRunPrimed = true;
     ownsActiveRun = !hadActiveRunBefore;
 
-    // "dead" is irreversible for subdialogs. Skip drive if marked dead.
+    // "dead" is irreversible for sideDialogs. Skip drive if marked dead.
     try {
       const latest = await DialogPersistence.loadDialogLatest(dialog.id, 'running');
       if (
@@ -739,14 +794,14 @@ export async function executeDriveRound(args: {
     }
 
     // Queued/auto drive (without fresh human input) must not proceed while dialog is
-    // suspended by pending Q4H or subdialogs. This prevents duplicate generations when
-    // multiple wake-ups race around the same subdialog completion boundary.
+    // suspended by pending Q4H or sideDialogs. This prevents duplicate generations when
+    // multiple wake-ups race around the same sideDialog completion boundary.
     if (!humanPrompt) {
-      if (dialog instanceof SubDialog && !dialog.hasUpNext()) {
+      if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
         try {
-          const inspection = await inspectNoPromptSubdialogDrive({ dialog, driveOptions });
+          const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
           if (inspection.shouldReject) {
-            log.error('Rejected unexpected no-prompt subdialog drive request', undefined, {
+            log.error('Rejected unexpected no-prompt sideDialog drive request', undefined, {
               dialogId: dialog.id.valueOf(),
               rootId: dialog.id.rootId,
               selfId: dialog.id.selfId,
@@ -762,7 +817,7 @@ export async function executeDriveRound(args: {
             return;
           }
         } catch (err) {
-          log.error('Failed to inspect unexpected no-prompt subdialog drive request', err, {
+          log.error('Failed to inspect unexpected no-prompt sideDialog drive request', err, {
             dialogId: dialog.id.valueOf(),
             rootId: dialog.id.rootId,
             selfId: dialog.id.selfId,
@@ -787,23 +842,22 @@ export async function executeDriveRound(args: {
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh blocker facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
-      const allowPendingSubdialogsForParentRevive = shouldAllowPendingSubdialogsForParentRevive(
-        dialog,
-        driveOptions,
-      );
+      const hasEntitledParentRevive = hasParentReviveEntitlement(dialog, driveOptions);
       const suspension = resumeFromInterjectionPause
-        ? await loadFreshSuspensionStatusFromPersistence(dialog)
-        : await dialog.getSuspensionStatus({
-            allowPendingSubdialogs: allowPendingSubdialogsForParentRevive,
-          });
+        ? await loadFreshSuspensionStatusFromPersistence(dialog, driveOptions)
+        : hasEntitledParentRevive
+          ? await loadFreshSuspensionStatusFromPersistence(dialog, driveOptions)
+          : await dialog.getSuspensionStatus({
+              allowPendingSideDialogs: false,
+            });
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
-      const queuedSubdialogPromptCanResume =
-        dialog instanceof SubDialog && queuedPrompt !== undefined;
-      if (!suspension.canDrive && !queuedSubdialogPromptCanResume) {
+      const queuedSideDialogPromptCanResume =
+        dialog instanceof SideDialog && queuedPrompt !== undefined;
+      if (!suspension.canDrive && !queuedSideDialogPromptCanResume) {
         if (resumeFromInterjectionPause) {
           const restoredState = buildDisplayStateFromSuspensionStatus({
             q4h: suspension.q4h,
-            subdialogs: suspension.subdialogs,
+            sideDialogs: suspension.sideDialogs,
           });
           await setDialogDisplayState(dialog.id, restoredState);
           await maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(dialog);
@@ -814,7 +868,7 @@ export async function executeDriveRound(args: {
               dialogId: dialog.id.valueOf(),
               restoredState,
               waitingQ4H: suspension.q4h,
-              waitingSubdialogs: suspension.subdialogs,
+              waitingSideDialogs: suspension.sideDialogs,
             },
           );
           return;
@@ -829,7 +883,7 @@ export async function executeDriveRound(args: {
           waitInQue,
           hasQueuedUpNext: dialog.hasUpNext(),
           waitingQ4H: suspension.q4h,
-          waitingSubdialogs: suspension.subdialogs,
+          waitingSideDialogs: suspension.sideDialogs,
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,
@@ -854,9 +908,9 @@ export async function executeDriveRound(args: {
           {
             dialogId: dialog.id.valueOf(),
             waitingQ4H: suspension.q4h,
-            waitingSubdialogs: suspension.subdialogs,
+            waitingSideDialogs: suspension.sideDialogs,
             hasQueuedUpNext: dialog.hasUpNext(),
-            queuedSubdialogPromptCanResume,
+            queuedSideDialogPromptCanResume,
           },
         );
       }
@@ -961,7 +1015,7 @@ export async function executeDriveRound(args: {
         );
       }
     }
-    subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
+    sideDialogReplyTarget = effectivePrompt?.sideDialogReplyTarget;
     const replyGuidance = await resolvePromptReplyGuidance({
       dlg: dialog,
       prompt: effectivePrompt,
@@ -993,7 +1047,7 @@ export async function executeDriveRound(args: {
       effectivePrompt,
       driveOptions,
     );
-    subdialogReplyTarget = driveResult.lastAssistantReplyTarget ?? subdialogReplyTarget;
+    sideDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? sideDialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
       followUp = dialog.takeUpNext();
@@ -1002,14 +1056,14 @@ export async function executeDriveRound(args: {
     let tailError: unknown;
     try {
       if (
-        dialog instanceof SubDialog &&
+        dialog instanceof SideDialog &&
         driveResult &&
         !interruptedBySignal &&
         (driveResult.fbrConclusion !== undefined || driveResult.lastAssistantSayingContent !== null)
       ) {
         if (driveResult.fbrConclusion) {
-          await supplySubdialogResponseToAssignedCallerIfPendingV2({
-            subdialog: dialog,
+          await supplySideDialogResponseToAssignedCallerIfPendingV2({
+            sideDialog: dialog,
             responseText: driveResult.fbrConclusion.responseText,
             responseGenseq: driveResult.fbrConclusion.responseGenseq,
             scheduleDrive: args.scheduleDrive,
@@ -1026,7 +1080,7 @@ export async function executeDriveRound(args: {
             // Any function call means execution is still in-progress. Only supply when the callee
             // has produced a newer assistant saying after the latest function call.
             log.debug(
-              'kernel-driver skip subdialog response supply because latest saying is not after function calls',
+              'kernel-driver skip sideDialog response supply because latest saying is not after function calls',
               undefined,
               {
                 rootId: dialog.id.rootId,
@@ -1040,13 +1094,13 @@ export async function executeDriveRound(args: {
             const suspension = await dialog.getSuspensionStatus();
             if (!suspension.canDrive || hasFollowUp) {
               log.debug(
-                'kernel-driver skip subdialog response supply while callee is not finalized',
+                'kernel-driver skip sideDialog response supply while callee is not finalized',
                 undefined,
                 {
                   rootId: dialog.id.rootId,
                   selfId: dialog.id.selfId,
                   waitingQ4H: suspension.q4h,
-                  waitingSubdialogs: suspension.subdialogs,
+                  waitingSideDialogs: suspension.sideDialogs,
                   hasFollowUp,
                 },
               );
@@ -1054,7 +1108,7 @@ export async function executeDriveRound(args: {
             if (suspension.canDrive && !hasFollowUp) {
               if (!activeTellaskReplyDirective) {
                 log.debug(
-                  'kernel-driver skip implicit subdialog reply because no active tellask reply directive is bound to this drive',
+                  'kernel-driver skip implicit sideDialog reply because no active tellask reply directive is bound to this drive',
                   undefined,
                   {
                     rootId: dialog.id.rootId,
@@ -1062,15 +1116,14 @@ export async function executeDriveRound(args: {
                   },
                 );
               } else {
-                const shouldDirectFallbackAfterAskBackParentRevive =
-                  shouldAllowPendingSubdialogsForParentRevive(dialog, driveOptions);
-                if (
-                  !activePromptWasReplyToolReminder &&
-                  !shouldDirectFallbackAfterAskBackParentRevive
-                ) {
+                const shouldDirectFallbackAfterParentRevive = hasParentReviveEntitlement(
+                  dialog,
+                  driveOptions,
+                );
+                if (!activePromptWasReplyToolReminder && !shouldDirectFallbackAfterParentRevive) {
                   const language = getWorkLanguage();
                   followUp =
-                    subdialogReplyTarget === undefined
+                    sideDialogReplyTarget === undefined
                       ? {
                           kind: 'runtime_reply_reminder',
                           prompt: await buildReplyToolReminderPrompt({
@@ -1085,7 +1138,7 @@ export async function executeDriveRound(args: {
                           tellaskReplyDirective: activeTellaskReplyDirective,
                         }
                       : {
-                          kind: 'runtime_subdialog_reply_reminder',
+                          kind: 'runtime_sideDialog_reply_reminder',
                           prompt: await buildReplyToolReminderPrompt({
                             dlg: dialog,
                             directive: activeTellaskReplyDirective,
@@ -1096,17 +1149,16 @@ export async function executeDriveRound(args: {
                           origin: 'runtime',
                           userLanguageCode: language,
                           tellaskReplyDirective: activeTellaskReplyDirective,
-                          subdialogReplyTarget,
+                          sideDialogReplyTarget,
                         };
                   log.debug(
-                    'kernel-driver queued subdialog replyTellask reminder after plain reply',
+                    'kernel-driver queued sideDialog replyTellask reminder after plain reply',
                     undefined,
                     {
                       dialogId: dialog.id.valueOf(),
                       targetCallId: activeTellaskReplyDirective.targetCallId,
-                      targetOwnerDialogId: subdialogReplyTarget?.ownerDialogId,
-                      directFallbackAfterAskBackParentRevive:
-                        shouldDirectFallbackAfterAskBackParentRevive,
+                      targetOwnerDialogId: sideDialogReplyTarget?.ownerDialogId,
+                      directFallbackAfterParentRevive: shouldDirectFallbackAfterParentRevive,
                     },
                   );
                 } else {
@@ -1116,18 +1168,18 @@ export async function executeDriveRound(args: {
                     driveResult.lastAssistantSayingGenseq <= 0
                   ) {
                     throw new Error(
-                      `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+                      `SideDialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
                     );
                   }
                   const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
                   const directFallbackCallId = `direct-fallback-${generateShortId()}`;
                   let supplied = false;
-                  if (subdialogReplyTarget) {
-                    supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
-                      subdialog: dialog,
+                  if (sideDialogReplyTarget) {
+                    supplied = await supplySideDialogResponseToSpecificCallerIfPendingV2({
+                      sideDialog: dialog,
                       responseText: driveResult.lastAssistantSayingContent,
                       responseGenseq,
-                      target: subdialogReplyTarget,
+                      target: sideDialogReplyTarget,
                       deliveryMode: 'direct_fallback',
                       replyResolution: {
                         callId: directFallbackCallId,
@@ -1136,8 +1188,8 @@ export async function executeDriveRound(args: {
                       scheduleDrive: args.scheduleDrive,
                     });
                     if (!supplied) {
-                      supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-                        subdialog: dialog,
+                      supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+                        sideDialog: dialog,
                         responseText: driveResult.lastAssistantSayingContent,
                         responseGenseq,
                         deliveryMode: 'direct_fallback',
@@ -1149,8 +1201,8 @@ export async function executeDriveRound(args: {
                       });
                     }
                   } else {
-                    supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-                      subdialog: dialog,
+                    supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+                      sideDialog: dialog,
                       responseText: driveResult.lastAssistantSayingContent,
                       responseGenseq,
                       deliveryMode: 'direct_fallback',
@@ -1162,21 +1214,21 @@ export async function executeDriveRound(args: {
                     });
                   }
 
-                  if (!supplied && subdialogReplyTarget) {
+                  if (!supplied && sideDialogReplyTarget) {
                     const diagnostics = await loadPendingDiagnosticsSnapshot({
                       rootId: dialog.id.rootId,
-                      ownerDialogId: subdialogReplyTarget.ownerDialogId,
-                      expectedSubdialogId: dialog.id.selfId,
+                      ownerDialogId: sideDialogReplyTarget.ownerDialogId,
+                      expectedSideDialogId: dialog.id.selfId,
                       status: dialog.status,
                     });
                     log.debug(
-                      'kernel-driver failed to supply subdialog response to specific caller',
+                      'kernel-driver failed to supply sideDialog response to specific caller',
                       undefined,
                       {
                         calleeId: dialog.id.valueOf(),
-                        targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-                        targetCallType: subdialogReplyTarget.callType,
-                        targetCallId: subdialogReplyTarget.callId,
+                        targetOwnerDialogId: sideDialogReplyTarget.ownerDialogId,
+                        targetCallType: sideDialogReplyTarget.callType,
+                        targetCallId: sideDialogReplyTarget.callId,
                         diagnostics,
                       },
                     );
@@ -1189,7 +1241,7 @@ export async function executeDriveRound(args: {
       }
 
       if (
-        !(dialog instanceof SubDialog) &&
+        !(dialog instanceof SideDialog) &&
         driveResult &&
         !interruptedBySignal &&
         driveResult.lastAssistantSayingContent !== null &&
@@ -1281,9 +1333,9 @@ export async function executeDriveRound(args: {
               case 'registered_assignment_update':
               case 'new_course_runtime_guide':
               case 'new_course_runtime_reply':
-              case 'new_course_runtime_subdialog':
+              case 'new_course_runtime_sideDialog':
               case 'runtime_reply_reminder':
-              case 'runtime_subdialog_reply_reminder': {
+              case 'runtime_sideDialog_reply_reminder': {
                 const runtimeCommon = {
                   ...common,
                   origin: 'runtime' as const,
@@ -1293,12 +1345,12 @@ export async function executeDriveRound(args: {
                 };
                 if (
                   followUp.kind === 'registered_assignment_update' ||
-                  followUp.kind === 'new_course_runtime_subdialog'
+                  followUp.kind === 'new_course_runtime_sideDialog'
                 ) {
-                  const prompt: KernelDriverRuntimeSubdialogPrompt = {
+                  const prompt: KernelDriverRuntimeSideDialogPrompt = {
                     ...runtimeCommon,
                     tellaskReplyDirective: followUp.tellaskReplyDirective,
-                    subdialogReplyTarget: followUp.subdialogReplyTarget,
+                    sideDialogReplyTarget: followUp.sideDialogReplyTarget,
                   };
                   return prompt;
                 }

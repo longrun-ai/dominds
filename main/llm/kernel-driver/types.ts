@@ -9,7 +9,7 @@ import type {
   DialogRuntimeGuidePrompt,
   DialogRuntimePrompt,
   DialogRuntimeReplyPrompt,
-  DialogRuntimeSubdialogPrompt,
+  DialogRuntimeSideDialogPrompt,
   DialogUserPrompt,
 } from '@longrun-ai/kernel/types/drive-intent';
 import type { Dialog, DialogID } from '../../dialog';
@@ -25,28 +25,47 @@ export type KernelDriverDriveSource =
   | 'ws_resume_all'
   | 'kernel_driver_backend_loop'
   | 'kernel_driver_follow_up'
-  | 'kernel_driver_subdialog_init'
-  | 'kernel_driver_subdialog_resume'
-  | 'kernel_driver_fbr_subdialog_round'
-  | 'kernel_driver_type_a_supdialog_call'
+  | 'kernel_driver_sideDialog_init'
+  | 'kernel_driver_sideDialog_resume'
+  | 'kernel_driver_fbr_sideDialog_round'
+  | 'kernel_driver_type_a_askerDialog_call'
   | 'kernel_driver_supply_response_parent_revive';
 
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
-  noPromptSubdialogResumeEntitlement?: Readonly<{
-    ownerDialogId: string;
-    reason: 'resolved_pending_subdialog_reply' | 'reply_tellask_back_delivered';
-    subdialogId?: string;
-    callType?: 'A' | 'B' | 'C';
-    callId?: string;
-  }>;
+  noPromptSideDialogResumeEntitlement?:
+    | Readonly<{
+        ownerDialogId: string;
+        reason: 'reply_tellask_back_delivered';
+        sideDialogId?: string;
+        callType?: 'A' | 'B' | 'C';
+        callId?: string;
+      }>
+    | Readonly<{
+        ownerDialogId: string;
+        reason: 'replaced_pending_sideDialog_reply';
+        sideDialogId?: string;
+        callType?: 'A' | 'B' | 'C';
+        callId?: string;
+      }>
+    | Readonly<{
+        ownerDialogId: string;
+        reason: 'resolved_pending_sideDialog_reply';
+        sideDialogId?: string;
+        callType?: 'A' | 'B' | 'C';
+        callId?: string;
+        callingCourse: number;
+        callingGenseq: number;
+        resolvedCallIds?: readonly string[];
+        triggerCallId?: string;
+      }>;
   runControl?: KernelDriverRunControl;
   source: KernelDriverDriveSource;
   reason: string;
 }>;
 
-export type KernelDriverSubdialogReplyTarget = {
+export type KernelDriverSideDialogReplyTarget = {
   ownerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
@@ -62,8 +81,8 @@ export type KernelDriverRuntimeGuidePrompt =
   KernelDriverPromptWithRunControl<DialogRuntimeGuidePrompt>;
 export type KernelDriverRuntimeReplyPrompt =
   KernelDriverPromptWithRunControl<DialogRuntimeReplyPrompt>;
-export type KernelDriverRuntimeSubdialogPrompt =
-  KernelDriverPromptWithRunControl<DialogRuntimeSubdialogPrompt>;
+export type KernelDriverRuntimeSideDialogPrompt =
+  KernelDriverPromptWithRunControl<DialogRuntimeSideDialogPrompt>;
 export type KernelDriverRuntimePrompt = KernelDriverPromptWithRunControl<DialogRuntimePrompt>;
 export type KernelDriverPrompt = KernelDriverPromptWithRunControl<DialogPrompt>;
 
@@ -113,7 +132,7 @@ export type KernelDriverEmitSayingResult = Promise<void>;
 
 export type KernelDriverSupplyResponseArgs = [
   parentDialog: Dialog,
-  subdialogId: DialogID,
+  sideDialogId: DialogID,
   responseText: string,
   callType: 'A' | 'B' | 'C',
   callId?: string,
@@ -139,7 +158,7 @@ export type KernelDriverCoreResult = {
   lastAssistantSayingContent: string | null;
   lastAssistantSayingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
-  lastAssistantReplyTarget?: KernelDriverSubdialogReplyTarget;
+  lastAssistantReplyTarget?: KernelDriverSideDialogReplyTarget;
   fbrConclusion?: {
     responseText: string;
     responseGenseq: number;

@@ -139,15 +139,15 @@ function parseDialogTargetRef(value: unknown): DomindsAppDialogTargetRef {
   if (typeof agentId !== 'string' || agentId.trim() === '') {
     throw new Error('Invalid dialog reminder target: agentId required when dialogId is absent');
   }
-  const rootDialogIdRaw = value['rootDialogId'];
-  const rootDialogId =
-    rootDialogIdRaw === undefined
+  const mainDialogIdRaw = value['mainDialogId'];
+  const mainDialogId =
+    mainDialogIdRaw === undefined
       ? undefined
-      : typeof rootDialogIdRaw === 'string' && rootDialogIdRaw.trim() !== ''
-        ? rootDialogIdRaw
+      : typeof mainDialogIdRaw === 'string' && mainDialogIdRaw.trim() !== ''
+        ? mainDialogIdRaw
         : null;
-  if (rootDialogId === null) {
-    throw new Error('Invalid dialog reminder target: rootDialogId must be non-empty string');
+  if (mainDialogId === null) {
+    throw new Error('Invalid dialog reminder target: mainDialogId must be non-empty string');
   }
   const sessionSlugRaw = value['sessionSlug'];
   const sessionSlug =
@@ -159,7 +159,7 @@ function parseDialogTargetRef(value: unknown): DomindsAppDialogTargetRef {
   if (sessionSlug === null) {
     throw new Error('Invalid dialog reminder target: sessionSlug must be non-empty string');
   }
-  return { agentId, rootDialogId, sessionSlug };
+  return { agentId, mainDialogId, sessionSlug };
 }
 
 function parseDialogReminderRequestBatch(value: unknown): DomindsAppDialogReminderRequestBatch {

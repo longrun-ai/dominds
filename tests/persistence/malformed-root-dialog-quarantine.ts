@@ -26,7 +26,7 @@ async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, yaml.stringify(value), 'utf-8');
 }
 
-async function seedRootDialog(args: {
+async function seedMainDialog(args: {
   sandboxDir: string;
   dialogId: DialogID;
   statusDir: 'run' | 'done' | 'archive';
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     try {
       {
         const dialogId = new DialogID('1d/76/67a12c4c');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'archive',
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
 
         const idsAfterQuarantine = await DialogPersistence.listDialogs('archived');
         assert.deepEqual(idsAfterQuarantine, []);
-        const metadataAfterQuarantine = await DialogPersistence.loadRootDialogMetadata(
+        const metadataAfterQuarantine = await DialogPersistence.loadMainDialogMetadata(
           dialogId,
           'archived',
         );
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
 
       {
         const dialogId = new DialogID('3e/12/badq4h01');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'run',
@@ -133,24 +133,24 @@ async function main(): Promise<void> {
 
       {
         const dialogId = new DialogID('7a/55/badreg01');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'run',
         });
         await writeYaml(path.join(sourceRoot, 'registry.yaml'), {
-          entries: [{ key: 'slot-1', subdialogId: 42, agentId: 'builder' }],
+          entries: [{ key: 'slot-1', sideDialogId: 42, agentId: 'builder' }],
         });
 
         await assertPersistenceFailure(
-          DialogPersistence.loadSubdialogRegistry(dialogId, 'running'),
+          DialogPersistence.loadSideDialogRegistry(dialogId, 'running'),
         );
         await assertQuarantined({ sourceRoot, malformedRoot });
       }
 
       {
         const dialogId = new DialogID('5b/23/mismatch1');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'archive',
@@ -169,26 +169,26 @@ async function main(): Promise<void> {
 
       {
         const dialogId = new DialogID('6d/77/badresp1');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'run',
         });
         await fs.writeFile(
-          path.join(sourceRoot, 'subdialog-responses.processing.json'),
+          path.join(sourceRoot, 'sideDialog-responses.processing.json'),
           JSON.stringify([{ responseId: 1 }]),
           'utf-8',
         );
 
         await assertPersistenceFailure(
-          DialogPersistence.takeSubdialogResponses(dialogId, 'running'),
+          DialogPersistence.takeSideDialogResponses(dialogId, 'running'),
         );
         await assertQuarantined({ sourceRoot, malformedRoot });
       }
 
       {
         const dialogId = new DialogID('8e/11/cancel01');
-        const { sourceRoot, malformedRoot } = await seedRootDialog({
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
           sandboxDir,
           dialogId,
           statusDir: 'run',

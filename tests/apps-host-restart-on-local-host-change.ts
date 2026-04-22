@@ -177,7 +177,7 @@ async function main(): Promise<void> {
       {},
       {
         dialogId: 'dlg_1',
-        rootDialogId: 'root_1',
+        mainDialogId: 'root_1',
         agentId: 'tester',
         taskDocPath: 'task.md',
         callerId: 'tester',
@@ -200,7 +200,7 @@ async function main(): Promise<void> {
       {},
       {
         dialogId: 'dlg_1',
-        rootDialogId: 'root_1',
+        mainDialogId: 'root_1',
         agentId: 'tester',
         taskDocPath: 'task.md',
         callerId: 'tester',
@@ -215,7 +215,7 @@ async function main(): Promise<void> {
       {},
       {
         dialogId: 'dlg_1',
-        rootDialogId: 'root_1',
+        mainDialogId: 'root_1',
         agentId: 'tester',
         taskDocPath: 'task.md',
         callerId: 'tester',

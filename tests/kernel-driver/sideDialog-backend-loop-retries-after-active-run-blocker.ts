@@ -6,13 +6,13 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { runBackendDriver } from '../../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
@@ -34,8 +34,8 @@ async function main(): Promise<void> {
     const sessionSlug = 'backend-loop-active-run-retry';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -48,14 +48,15 @@ async function main(): Promise<void> {
       expectedReplyToolName: 'replyTellask',
       language,
     });
-    const subdialogFinalResponse = '2';
-    const mirroredSubdialogResponse = formatTellaskResponseContent({
+    const sideDialogFinalResponse = '2';
+    const mirroredSideDialogResponse = formatTellaskResponseContent({
       callName: 'tellask',
+      callId: 'root-call-pangu-backend-loop-retry',
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
-      responseBody: subdialogFinalResponse,
+      responseBody: sideDialogFinalResponse,
       status: 'completed',
       deliveryMode: 'reply_tool',
       language,
@@ -81,32 +82,32 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSubdialogPrompt,
+        message: expectedSideDialogPrompt,
         role: 'user',
-        response: subdialogFinalResponse,
+        response: sideDialogFinalResponse,
         delayMs: 300,
       },
       {
-        message: mirroredSubdialogResponse,
+        message: mirroredSideDialogResponse,
         role: 'tool',
         response: rootFinalResponse,
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
     void runBackendDriver();
 
     await driveDialogStream(
       root,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-backend-loop-active-run-blocker'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-backend-loop-active-run-blocker'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await waitFor(
-      async () => root.lookupSubdialog('pangu', sessionSlug) !== undefined,
+      async () => root.lookupSideDialog('pangu', sessionSlug) !== undefined,
       3_000,
       'registered sideline to exist before simulating the active-run blocker',
     );
@@ -149,13 +150,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-backend-loop-retries-after-active-run-blocker: PASS');
+  console.log('kernel-driver sideDialog-backend-loop-retries-after-active-run-blocker: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver subdialog-backend-loop-retries-after-active-run-blocker: FAIL\n${message}`,
+    `kernel-driver sideDialog-backend-loop-retries-after-active-run-blocker: FAIL\n${message}`,
   );
   process.exit(1);
 });

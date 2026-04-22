@@ -6,14 +6,14 @@ import {
   toCallingGenerationSeqNumber,
   toRootGenerationAnchor,
   type HumanQuestion,
-  type PendingSubdialogStateRecord,
+  type PendingSideDialogStateRecord,
   type TellaskCallRecord,
   type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import type { AssignmentFromSup } from '../../dialog';
-import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
+import type { AssignmentFromAsker } from '../../dialog';
+import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
@@ -24,15 +24,12 @@ import {
   formatDomindsNoteFbrToollessViolation,
   formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskForTeammatesOnly,
-  formatRegisteredTellaskCallerUpdateNotice,
 } from '../../runtime/driver-messages';
 import {
-  formatAssignmentFromSupdialog,
-  formatSupdialogCallPrompt,
-  formatTellaskCarryoverResultContent,
-  formatTellaskReplacementNoticeContent,
+  formatAskerDialogCallPrompt,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
-  formatUpdatedAssignmentFromSupdialog,
+  formatUpdatedAssignmentFromAskerDialog,
 } from '../../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { Team } from '../../team';
@@ -45,13 +42,14 @@ import type {
   TellaskResultMsg,
 } from '../client';
 import { buildFbrPromptForState, createInitialFbrState } from './fbr';
-import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from './subdialog';
-import { withSubdialogTxnLock, withSubdialogTxnLocks } from './subdialog-txn';
+import { supplySideDialogResponseToAssignedCallerIfPendingV2 } from './sideDialog';
+import { withSideDialogTxnLock, withSideDialogTxnLocks } from './sideDialog-txn';
 import type {
   KernelDriverDriveCallbacks,
+  KernelDriverDriveCallOptions,
   KernelDriverRuntimeGuidePrompt,
   KernelDriverRuntimeReplyPrompt,
-  KernelDriverRuntimeSubdialogPrompt,
+  KernelDriverRuntimeSideDialogPrompt,
 } from './types';
 
 export type TellaskRoutingParseResult =
@@ -161,39 +159,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export async function loadLatestActiveTellaskReplyDirective(
+export async function loadActiveTellaskReplyDirective(
   dialog: Dialog,
 ): Promise<TellaskReplyDirective | undefined> {
-  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-  if (!latest) {
-    return undefined;
-  }
-  const maxCourse = Math.floor(latest.currentCourse);
-  const resolvedTargetCallIds = new Set<string>();
-  for (let course = maxCourse; course >= 1; course -= 1) {
-    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const event = events[index];
-      if (event.type === 'tellask_reply_resolution_record') {
-        const targetCallId = event.targetCallId.trim();
-        if (targetCallId !== '') {
-          resolvedTargetCallIds.add(targetCallId);
-        }
-        continue;
-      }
-      if (event.type !== 'human_text_record') {
-        continue;
-      }
-      const directive = event.tellaskReplyDirective;
-      if (!directive) {
-        continue;
-      }
-      const targetCallId = directive.targetCallId.trim();
-      if (targetCallId === '' || resolvedTargetCallIds.has(targetCallId)) {
-        continue;
-      }
-      return directive;
-    }
+  const durableObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dialog.id,
+    dialog.status,
+  );
+  if (durableObligation) {
+    return durableObligation;
   }
   return undefined;
 }
@@ -271,11 +245,13 @@ type ReplyTellaskCallRecord = TellaskCallRecord & { name: ReplyTellaskCallName }
 
 function buildAssignmentReplyDirective(args: {
   callName: 'tellask' | 'tellaskSessionless';
+  targetDialogId: string;
   targetCallId: string;
   tellaskContent: string;
 }): TellaskReplyDirective {
   return {
     expectedReplyCallName: args.callName === 'tellask' ? 'replyTellask' : 'replyTellaskSessionless',
+    targetDialogId: args.targetDialogId,
     targetCallId: args.targetCallId,
     tellaskContent: args.tellaskContent,
   };
@@ -307,22 +283,22 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // tellaskBack result. Keep those roles explicit, otherwise it is very easy to accidentally
   // write the same business result twice by confusing the responder's local plaintext with the
   // canonical upstream delivery that must come only from an explicit reply tool call.
-  const rootDialog =
-    args.replyingDialog instanceof RootDialog
+  const mainDialog =
+    args.replyingDialog instanceof MainDialog
       ? args.replyingDialog
-      : args.replyingDialog instanceof SubDialog
-        ? args.replyingDialog.rootDialog
+      : args.replyingDialog instanceof SideDialog
+        ? args.replyingDialog.mainDialog
         : undefined;
-  if (!rootDialog) {
+  if (!mainDialog) {
     throw new Error('replyTellaskBack invariant violation: missing root dialog');
   }
   const askBackRequesterDialogId = new DialogID(
     args.directive.targetDialogId,
-    rootDialog.id.rootId,
+    mainDialog.id.rootId,
   );
   const askBackRequesterDialog =
-    rootDialog.lookupDialog(askBackRequesterDialogId.selfId) ??
-    (await ensureDialogLoaded(rootDialog, askBackRequesterDialogId, rootDialog.status));
+    mainDialog.lookupDialog(askBackRequesterDialogId.selfId) ??
+    (await ensureDialogLoaded(mainDialog, askBackRequesterDialogId, mainDialog.status));
   if (!askBackRequesterDialog) {
     throw new Error(
       `replyTellaskBack invariant violation: target dialog ${askBackRequesterDialogId.selfId} not found`,
@@ -330,6 +306,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   }
   const response = formatTellaskResponseContent({
     callName: 'tellaskBack',
+    callId: args.directive.targetCallId,
     responderId: args.replyingDialog.agentId,
     requesterId: askBackRequesterDialog.agentId,
     tellaskContent: args.directive.tellaskContent,
@@ -854,6 +831,7 @@ export function formatTellaskInvalidCallResult(args: {
 export function formatPendingTellaskFuncResultContent(
   name: TellaskCallFunctionName,
   startedAtMs: number | null,
+  callId?: string,
 ): string {
   const language = getWorkLanguage();
   const elapsed = (() => {
@@ -866,12 +844,104 @@ export function formatPendingTellaskFuncResultContent(
   })();
   if (name === 'askHuman') {
     return language === 'zh'
-      ? `Q4H 仍在等待人类回复，已持续 ${elapsed}。`
-      : `Q4H is still waiting for human reply (elapsed ${elapsed}).`;
+      ? [
+          '[Dominds 诉请状态]',
+          '',
+          '`askHuman` 诉请已发出，当前仍在等待人类回复。',
+          '',
+          ...(callId ? [`- callId: ${callId}`] : []),
+          `- 已等待: ${elapsed}`,
+          '',
+          '这不是回贴内容。若后续收到回复，运行时会在后续上下文中用同一 callId 补入对应回复事实。',
+        ].join('\n')
+      : [
+          '[Dominds tellask status]',
+          '',
+          '`askHuman` has been issued and is still waiting for human reply.',
+          '',
+          ...(callId ? [`- callId: ${callId}`] : []),
+          `- Elapsed: ${elapsed}`,
+          '',
+          'This is not reply content. If a reply arrives later, runtime will append the corresponding reply fact in later context with the same callId.',
+        ].join('\n');
   }
   return language === 'zh'
-    ? `支线对话仍在进行中，已持续 ${elapsed}。`
-    : `Sideline dialog is still running (elapsed ${elapsed}).`;
+    ? [
+        '[Dominds 诉请状态]',
+        '',
+        `\`${name}\` 诉请已发出，当前仍在等待回贴。`,
+        '',
+        ...(callId ? [`- callId: ${callId}`] : []),
+        `- 已等待: ${elapsed}`,
+        '',
+        '这不是回贴内容。若后续收到回贴，运行时会在后续上下文中用同一 callId 补入对应回贴事实。',
+      ].join('\n')
+    : [
+        '[Dominds tellask status]',
+        '',
+        `\`${name}\` has been issued and is still waiting for a reply.`,
+        '',
+        ...(callId ? [`- callId: ${callId}`] : []),
+        `- Elapsed: ${elapsed}`,
+        '',
+        'This is not reply content. If a reply arrives later, runtime will append the corresponding reply fact in later context with the same callId.',
+      ].join('\n');
+}
+
+export function formatResolvedTellaskFuncResultContent(args: {
+  name: TellaskCallFunctionName;
+  callId: string;
+  status: 'pending' | 'completed' | 'failed';
+}): string {
+  const language = getWorkLanguage();
+  const callId = args.callId.trim();
+  if (callId === '') {
+    throw new Error(`tellask status formatter invariant violation: empty callId for ${args.name}`);
+  }
+  if (language === 'zh') {
+    if (args.status === 'pending') {
+      return [
+        '[Dominds 诉请状态]',
+        '',
+        `\`${args.name}\` 诉请仍在等待回贴，当前没有回贴正文。`,
+        '',
+        `- callId: ${callId}`,
+        '',
+        '不要把本工具结果当作回贴正文；若后续收到回贴，运行时会用同一 callId 补入对应回贴事实。',
+      ].join('\n');
+    }
+    const statusLabel = args.status === 'completed' ? '已收到回贴' : '已失败收口';
+    return [
+      '[Dominds 诉请状态]',
+      '',
+      `\`${args.name}\` 诉请${statusLabel}，对应回贴事实已作为独立上下文事实补入。`,
+      '',
+      `- callId: ${callId}`,
+      '',
+      '请以同一 callId 的独立回贴事实为准；不要把本工具结果当作回贴正文。',
+    ].join('\n');
+  }
+  if (args.status === 'pending') {
+    return [
+      '[Dominds tellask status]',
+      '',
+      `\`${args.name}\` is still waiting for a reply; there is no reply body yet.`,
+      '',
+      `- callId: ${callId}`,
+      '',
+      'Do not treat this tool result as reply content. If a reply arrives later, runtime will append the corresponding reply fact with the same callId.',
+    ].join('\n');
+  }
+  const statusLabel = args.status === 'completed' ? 'has received a reply' : 'has failed/closed';
+  return [
+    '[Dominds tellask status]',
+    '',
+    `\`${args.name}\` ${statusLabel}; the corresponding reply fact is present separately in context.`,
+    '',
+    `- callId: ${callId}`,
+    '',
+    'Use the separate reply fact with the same callId as authoritative; do not treat this tool result as reply content.',
+  ].join('\n');
 }
 
 export function formatResolvedAskHumanResultContent(): string {
@@ -891,7 +961,7 @@ function buildPendingTellaskFuncResult(args: {
     genseq: args.genseq,
     id: args.callId,
     name: args.callName,
-    content: formatPendingTellaskFuncResultContent(args.callName, null),
+    content: formatPendingTellaskFuncResultContent(args.callName, null, args.callId),
   };
 }
 
@@ -1060,7 +1130,7 @@ function resolveFbrEffort(member: Team.Member | null | undefined): number {
   return raw;
 }
 
-type SubdialogCreateOptions = {
+type SideDialogCreateOptions = {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   originMemberId: string;
   callerDialogId: string;
@@ -1070,54 +1140,69 @@ type SubdialogCreateOptions = {
   effectiveFbrEffort?: number;
 };
 
-async function createSubDialog(
+async function createSideDialog(
   callerDialog: Dialog,
   targetAgentId: string,
   mentionList: string[] | undefined,
   tellaskContent: string,
-  options: SubdialogCreateOptions,
-): Promise<SubDialog> {
-  return await callerDialog.createSubDialog(targetAgentId, mentionList, tellaskContent, options);
+  options: SideDialogCreateOptions,
+): Promise<SideDialog> {
+  return await callerDialog.createSideDialog(targetAgentId, mentionList, tellaskContent, options);
 }
 
-async function updateSubdialogAssignment(
-  subdialog: SubDialog,
-  assignment: AssignmentFromSup,
+async function updateSideDialogAssignment(
+  sideDialog: SideDialog,
+  assignment: AssignmentFromAsker,
+  options?: Readonly<{
+    replacePendingCallId?: string;
+  }>,
 ): Promise<void> {
-  subdialog.assignmentFromSup = assignment;
-  await DialogPersistence.updateSubdialogAssignment(subdialog.id, assignment);
+  await DialogPersistence.updateSideDialogAssignment(
+    sideDialog.id,
+    assignment,
+    sideDialog.status,
+    options,
+  );
+  const nextAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
+    sideDialog.id,
+    sideDialog.status,
+  );
+  if (!nextAskerStackState) {
+    throw new Error(`Missing asker stack after assignment update: ${sideDialog.id.valueOf()}`);
+  }
+  sideDialog.askerStack = nextAskerStackState;
 }
 
-async function lookupLiveRegisteredSubdialog(
-  rootDialog: RootDialog,
+async function lookupLiveRegisteredSideDialog(
+  mainDialog: MainDialog,
   agentId: string,
   sessionSlug: string,
-): Promise<SubDialog | undefined> {
-  const existing = rootDialog.lookupSubdialog(agentId, sessionSlug);
+): Promise<SideDialog | undefined> {
+  const existing = mainDialog.lookupSideDialog(agentId, sessionSlug);
   if (!existing) {
     return undefined;
   }
   const existingSession = existing.sessionSlug;
   if (!existingSession) {
     throw new Error(
-      `Type B registry invariant violation: lookupSubdialog returned entry without sessionSlug (root=${rootDialog.id.valueOf()} sub=${existing.id.valueOf()})`,
+      `Type B registry invariant violation: lookupSideDialog returned entry without sessionSlug (root=${mainDialog.id.valueOf()} sub=${existing.id.valueOf()})`,
     );
   }
-  const latest = await DialogPersistence.loadDialogLatest(existing.id, rootDialog.status);
+  const latest = await DialogPersistence.loadDialogLatest(existing.id, mainDialog.status);
   const executionMarker = latest?.executionMarker;
   if (!executionMarker || executionMarker.kind !== 'dead') {
     return existing;
   }
-  const removed = rootDialog.unregisterSubdialog(existing.agentId, existingSession);
+  const removed = mainDialog.unregisterSideDialog(existing.agentId, existingSession);
   if (!removed) {
     throw new Error(
-      `Failed to unregister dead registered subdialog: root=${rootDialog.id.valueOf()} sub=${existing.id.valueOf()} session=${existingSession}`,
+      `Failed to unregister dead registered sideDialog: root=${mainDialog.id.valueOf()} sub=${existing.id.valueOf()} session=${existingSession}`,
     );
   }
-  await rootDialog.saveSubdialogRegistry();
-  log.debug('Pruned dead registered subdialog from Type B registry', undefined, {
-    rootId: rootDialog.id.rootId,
-    subdialogId: existing.id.selfId,
+  await mainDialog.saveSideDialogRegistry();
+  log.debug('Pruned dead registered sideDialog from Type B registry', undefined, {
+    rootId: mainDialog.id.rootId,
+    sideDialogId: existing.id.selfId,
     agentId: existing.agentId,
     sessionSlug: existingSession,
   });
@@ -1125,131 +1210,41 @@ async function lookupLiveRegisteredSubdialog(
 }
 
 async function resolveDialogWithinRoot(
-  rootDialog: RootDialog,
+  mainDialog: MainDialog,
   callerDialogId: string,
 ): Promise<Dialog> {
-  if (callerDialogId === rootDialog.id.selfId) {
-    return rootDialog;
+  if (callerDialogId === mainDialog.id.selfId) {
+    return mainDialog;
   }
-  const live = rootDialog.lookupDialog(callerDialogId);
+  const live = mainDialog.lookupDialog(callerDialogId);
   if (live) {
     return live;
   }
   const restored = await ensureDialogLoaded(
-    rootDialog,
-    new DialogID(callerDialogId, rootDialog.id.rootId),
-    rootDialog.status,
+    mainDialog,
+    new DialogID(callerDialogId, mainDialog.id.rootId),
+    mainDialog.status,
   );
   if (!restored) {
     throw new Error(
-      `Type B caller restore invariant violation: root=${rootDialog.id.valueOf()} caller=${callerDialogId}`,
+      `Type B caller restore invariant violation: root=${mainDialog.id.valueOf()} caller=${callerDialogId}`,
     );
   }
   return restored;
 }
 
-async function finishRegisteredTellaskReplacement(args: {
-  ownerDialog: Dialog;
-  subdialog: SubDialog;
-  pendingRecord: PendingSubdialogStateRecord;
-  responseBody: string;
-}): Promise<void> {
-  const { ownerDialog, subdialog, pendingRecord, responseBody } = args;
-  const language = getWorkLanguage();
-  const requesterId = ownerDialog.agentId;
-  const response = formatTellaskReplacementNoticeContent({
-    responderId: subdialog.agentId,
-    requesterId,
-    mentionList: pendingRecord.mentionList,
-    sessionSlug: pendingRecord.sessionSlug,
-    tellaskContent: pendingRecord.tellaskContent,
-    responseBody,
-    language,
-  });
-  const carryoverOriginCourse = pendingRecord.callingCourse;
-  const carryoverContent =
-    carryoverOriginCourse !== undefined && carryoverOriginCourse !== ownerDialog.currentCourse
-      ? formatTellaskCarryoverResultContent({
-          originCourse: carryoverOriginCourse,
-          callName: pendingRecord.callName,
-          responderId: subdialog.agentId,
-          mentionList: pendingRecord.mentionList,
-          sessionSlug: pendingRecord.sessionSlug,
-          tellaskContent: pendingRecord.tellaskContent,
-          responseBody,
-          status: 'failed',
-          language,
-        })
-      : undefined;
-
-  await ownerDialog.receiveTellaskResponse(
-    subdialog.agentId,
-    pendingRecord.callName,
-    pendingRecord.mentionList,
-    pendingRecord.tellaskContent,
-    'failed',
-    subdialog.id,
-    {
-      response,
-      agentId: subdialog.agentId,
-      callId: pendingRecord.callId,
-      originMemberId: requesterId,
-      originCourse: carryoverOriginCourse,
-      calling_genseq: pendingRecord.callingGenseq,
-      carryoverContent,
-      sessionSlug: pendingRecord.sessionSlug,
-    },
-  );
-
-  const immediateMirror: ChatMessage =
-    carryoverContent !== undefined
-      ? buildTellaskCarryoverToolOutput({
-          genseq: ownerDialog.activeGenSeqOrUndefined ?? 1,
-          content: carryoverContent,
-          originCourse: carryoverOriginCourse!,
-          carryoverCourse: ownerDialog.currentCourse,
-          responderId: subdialog.agentId,
-          callName: pendingRecord.callName,
-          tellaskContent: pendingRecord.tellaskContent,
-          status: 'failed',
-          response,
-          agentId: subdialog.agentId,
-          callId: pendingRecord.callId,
-          originMemberId: requesterId,
-          mentionList: pendingRecord.mentionList,
-          sessionSlug: pendingRecord.sessionSlug,
-          calleeDialogId: subdialog.id.selfId,
-        })
-      : buildTellaskResultToolOutput({
-          callId: pendingRecord.callId,
-          callName: pendingRecord.callName,
-          content: response,
-          status: 'failed',
-          originCourse: carryoverOriginCourse,
-          calling_genseq: pendingRecord.callingGenseq,
-          responderId: subdialog.agentId,
-          tellaskContent: pendingRecord.tellaskContent,
-          mentionList: pendingRecord.mentionList,
-          sessionSlug: pendingRecord.sessionSlug,
-          agentId: subdialog.agentId,
-          originMemberId: requesterId,
-          calleeDialogId: subdialog.id.selfId,
-        });
-  await ownerDialog.addChatMessages(immediateMirror);
-}
-
 async function reviveDialogIfUnblocked(
   dialog: Dialog,
   callbacks: KernelDriverDriveCallbacks,
-  reason: 'reply_tellask_back_delivered' | 'type_b_registered_subdialog_replaced_pending_round',
+  reason: 'reply_tellask_back_delivered',
 ): Promise<void> {
   const suspension = await dialog.getSuspensionStatus({
-    allowPendingSubdialogs: reason === 'reply_tellask_back_delivered',
+    allowPendingSideDialogs: true,
   });
   if (!suspension.canDrive) {
     return;
   }
-  if (dialog instanceof RootDialog) {
+  if (dialog instanceof MainDialog) {
     await DialogPersistence.setNeedsDrive(dialog.id, true, dialog.status);
   }
   callbacks.scheduleDrive(dialog, {
@@ -1258,14 +1253,11 @@ async function reviveDialogIfUnblocked(
       source: 'kernel_driver_supply_response_parent_revive',
       reason,
       suppressDiligencePush: dialog.disableDiligencePush,
-      noPromptSubdialogResumeEntitlement:
-        dialog instanceof SubDialog
+      noPromptSideDialogResumeEntitlement:
+        dialog instanceof SideDialog
           ? {
               ownerDialogId: dialog.id.selfId,
-              reason:
-                reason === 'reply_tellask_back_delivered'
-                  ? 'reply_tellask_back_delivered'
-                  : 'resolved_pending_subdialog_reply',
+              reason: 'reply_tellask_back_delivered',
             }
           : undefined,
     },
@@ -1322,11 +1314,11 @@ async function extractAskBackResponderPlaintextFallback(args: {
   try {
     return extractLastAssistantResponse(
       args.responderDialog.msgs,
-      'Supdialog completed without producing output.',
+      'AskerDialog completed without producing output.',
     );
   } catch (err) {
-    log.warn('Failed to extract supdialog response for Type A', err);
-    return 'Supdialog completed with errors.';
+    log.warn('Failed to extract askerDialog response for Type A', err);
+    return 'AskerDialog completed with errors.';
   }
 }
 
@@ -1347,14 +1339,24 @@ async function executeTellaskCall(
   const toolOutputs: ChatMessage[] = [];
   const callName = options.callName;
   const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-  const callingCourse =
-    Number.isFinite(rawCallingCourse) && rawCallingCourse > 0
-      ? toCallingCourseNumber(rawCallingCourse)
-      : undefined;
-  const callingGenseq =
-    typeof dlg.activeGenSeqOrUndefined === 'number'
-      ? toCallingGenerationSeqNumber(dlg.activeGenSeqOrUndefined)
-      : undefined;
+  if (!Number.isFinite(rawCallingCourse) || rawCallingCourse <= 0) {
+    throw new Error(
+      `tellask pending invariant violation: missing valid calling course ` +
+        `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId}, callName=${callName})`,
+    );
+  }
+  const callingCourse = toCallingCourseNumber(rawCallingCourse);
+  if (
+    typeof dlg.activeGenSeqOrUndefined !== 'number' ||
+    !Number.isInteger(dlg.activeGenSeqOrUndefined) ||
+    dlg.activeGenSeqOrUndefined <= 0
+  ) {
+    throw new Error(
+      `tellask pending invariant violation: missing active genseq ` +
+        `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId}, callName=${callName})`,
+    );
+  }
+  const callingGenseq = toCallingGenerationSeqNumber(dlg.activeGenSeqOrUndefined);
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
   const isFreshBootsCall = callName === 'freshBootsReasoning';
@@ -1459,7 +1461,7 @@ async function executeTellaskCall(
         `tellaskBack invariant violation: expected Type A parseResult (callId=${callId}, got=${parseResult.type})`,
       );
     }
-    const subdialogCallName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' =
+    const sideDialogCallName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' =
       callName === 'tellaskBack' ? 'freshBootsReasoning' : callName;
     const firstMentionForError = options.targetForError ?? parseResult.agentId;
     if (parseResult.type !== 'A' && member === null) {
@@ -1624,8 +1626,8 @@ async function executeTellaskCall(
         return toolOutputs;
       }
 
-      const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
-        callName: subdialogCallName,
+      const sub = await createSideDialog(dlg, parseResult.agentId, mentionList, body, {
+        callName: sideDialogCallName,
         originMemberId,
         callerDialogId: callerDialog.id.selfId,
         callId,
@@ -1633,10 +1635,10 @@ async function executeTellaskCall(
         effectiveFbrEffort: fbrEffort,
       });
       sub.setFbrConclusionToolsEnabled(false);
-      const pendingRecord: PendingSubdialogStateRecord = {
-        subdialogId: sub.id.selfId,
+      const pendingRecord: PendingSideDialogStateRecord = {
+        sideDialogId: sub.id.selfId,
         createdAt: formatUnifiedTimestamp(new Date()),
-        callName: subdialogCallName,
+        callName: sideDialogCallName,
         mentionList,
         tellaskContent: body,
         targetAgentId: parseResult.agentId,
@@ -1645,15 +1647,16 @@ async function executeTellaskCall(
         callingGenseq,
         callType: 'C',
       };
-      await withSubdialogTxnLock(dlg.id, async () => {
-        await DialogPersistence.appendPendingSubdialog(
+      await withSideDialogTxnLock(dlg.id, async () => {
+        await DialogPersistence.appendPendingSideDialog(
           dlg.id,
           pendingRecord,
           toRootGenerationAnchor({
-            rootCourse: dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+            rootCourse:
+              dlg instanceof SideDialog ? dlg.mainDialog.currentCourse : dlg.currentCourse,
             rootGenseq:
-              dlg instanceof SubDialog
-                ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+              dlg instanceof SideDialog
+                ? (dlg.mainDialog.activeGenSeqOrUndefined ?? 0)
                 : (dlg.activeGenSeqOrUndefined ?? 0),
           }),
         );
@@ -1689,8 +1692,8 @@ async function executeTellaskCall(
         humanPrompt: initPrompt,
         waitInQue: true,
         driveOptions: {
-          source: 'kernel_driver_subdialog_init',
-          reason: 'fresh_boots_reasoning_subdialog_init',
+          source: 'kernel_driver_sideDialog_init',
+          reason: 'fresh_boots_reasoning_sideDialog_init',
         },
       });
       return toolOutputs;
@@ -1733,28 +1736,50 @@ async function executeTellaskCall(
     }
 
     if (parseResult.type === 'A') {
-      if (dlg instanceof SubDialog) {
+      if (dlg instanceof SideDialog) {
         // Identity map for Type-A ask-back:
-        // - `askBackRequesterDialog` is the sideline dialog that asked upstream for clarification.
+        // - `askBackRequesterDialog` is the Sideline dialog that asked upstream for clarification.
         // - `askBackResponderDialog` is the upstream dialog that must answer that ask-back.
         // The original tellask relationship is the opposite of the current ask-back relationship,
-        // so variable names like "supdialog" or "target" are too lossy here and invite bugs.
+        // so variable names like "askerDialog" or "target" are too lossy here and invite bugs.
         const askBackRequesterDialog = dlg;
-        const askBackResponderDialog = dlg.supdialog;
+        const askBackResponderDialog = dlg.askerDialog;
         askBackRequesterDialog.setSuspensionState('suspended');
 
         try {
-          const assignment = askBackRequesterDialog.assignmentFromSup;
-          const supPrompt: KernelDriverRuntimeReplyPrompt = {
-            content: formatSupdialogCallPrompt({
+          const assignment = askBackRequesterDialog.assignmentFromAsker;
+          const tellaskBackReplyDirective = buildTellaskBackReplyDirective({
+            targetDialogId: askBackRequesterDialog.id.selfId,
+            targetCallId: callId,
+            tellaskContent: body,
+          });
+          await DialogPersistence.pushTellaskReplyObligation(
+            askBackResponderDialog.id,
+            tellaskBackReplyDirective,
+            askBackResponderDialog.status,
+          );
+          if (askBackResponderDialog instanceof SideDialog) {
+            const nextAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
+              askBackResponderDialog.id,
+              askBackResponderDialog.status,
+            );
+            if (!nextAskerStackState) {
+              throw new Error(
+                `Missing asker stack after tellaskBack push: ${askBackResponderDialog.id.valueOf()}`,
+              );
+            }
+            askBackResponderDialog.askerStack = nextAskerStackState;
+          }
+          const askerPrompt: KernelDriverRuntimeReplyPrompt = {
+            content: formatAskerDialogCallPrompt({
               fromAgentId: askBackRequesterDialog.agentId,
               toAgentId: askBackResponderDialog.agentId,
-              subdialogRequest: {
+              sideDialogRequest: {
                 callName,
                 mentionList,
                 tellaskContent: body,
               },
-              supdialogAssignment: {
+              askerDialogAssignment: {
                 callName: assignment.callName,
                 mentionList: assignment.mentionList,
                 tellaskContent: assignment.tellaskContent,
@@ -1764,18 +1789,14 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
-            tellaskReplyDirective: buildTellaskBackReplyDirective({
-              targetDialogId: askBackRequesterDialog.id.selfId,
-              targetCallId: callId,
-              tellaskContent: body,
-            }),
+            tellaskReplyDirective: tellaskBackReplyDirective,
           };
           await callbacks.driveDialog(askBackResponderDialog, {
-            humanPrompt: supPrompt,
+            humanPrompt: askerPrompt,
             waitInQue: true,
             driveOptions: {
-              source: 'kernel_driver_type_a_supdialog_call',
-              reason: 'type_a_supdialog_roundtrip',
+              source: 'kernel_driver_type_a_askerDialog_call',
+              reason: 'type_a_askerDialog_roundtrip',
             },
           });
 
@@ -1797,6 +1818,7 @@ async function executeTellaskCall(
           });
           const responseContent = formatTellaskResponseContent({
             callName,
+            callId,
             responderId: parseResult.agentId,
             requesterId: askBackRequesterDialog.agentId,
             mentionList,
@@ -1842,11 +1864,12 @@ async function executeTellaskCall(
             },
           );
         } catch (err) {
-          log.warn('Type A supdialog processing error:', err);
+          log.warn('Type A askerDialog processing error:', err);
           askBackRequesterDialog.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
           const errorContent = formatTellaskResponseContent({
             callName,
+            callId,
             responderId: parseResult.agentId,
             requesterId: askBackRequesterDialog.agentId,
             mentionList,
@@ -1889,104 +1912,46 @@ async function executeTellaskCall(
           );
         }
       } else {
-        log.warn('Type A call on dialog without supdialog, falling back to Type C', undefined, {
-          dialogId: dlg.id.selfId,
+        const err = new Error(
+          `Type A tellaskBack invariant violation: dialog is not a sideDialog ` +
+            `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId})`,
+        );
+        log.error('Type A tellaskBack invariant violation: dialog is not a sideDialog', err, {
+          rootId: dlg.id.rootId,
+          selfId: dlg.id.selfId,
+          course: callingCourse,
+          genseq: callingGenseq,
+          callId,
         });
+        throw err;
       }
     } else if (parseResult.type === 'B') {
       const callerDialog = dlg;
-      let rootDialog: RootDialog | undefined;
-      if (dlg instanceof RootDialog) {
-        rootDialog = dlg;
-      } else if (dlg instanceof SubDialog) {
-        rootDialog = dlg.rootDialog;
+      let mainDialog: MainDialog | undefined;
+      if (dlg instanceof MainDialog) {
+        mainDialog = dlg;
+      } else if (dlg instanceof SideDialog) {
+        mainDialog = dlg.mainDialog;
       }
 
-      if (!rootDialog) {
-        log.warn('Type B call without root dialog, falling back to Type C', undefined, {
-          dialogId: dlg.id.selfId,
+      if (!mainDialog) {
+        const err = new Error(
+          `Type B tellask invariant violation: missing mainDialog ` +
+            `(rootId=${dlg.id.rootId}, selfId=${dlg.id.selfId}, callId=${callId})`,
+        );
+        log.error('Type B tellask invariant violation: missing mainDialog', err, {
+          rootId: dlg.id.rootId,
+          selfId: dlg.id.selfId,
+          course: callingCourse,
+          genseq: callingGenseq,
+          callId,
+          sessionSlug: parseResult.sessionSlug,
         });
-        try {
-          const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
-            callName: subdialogCallName,
-            originMemberId: dlg.agentId,
-            callerDialogId: callerDialog.id.selfId,
-            callId,
-            sessionSlug: parseResult.sessionSlug,
-            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-          });
-
-          const pendingRecord: PendingSubdialogStateRecord = {
-            subdialogId: sub.id.selfId,
-            createdAt: formatUnifiedTimestamp(new Date()),
-            callName: subdialogCallName,
-            mentionList,
-            tellaskContent: body,
-            targetAgentId: parseResult.agentId,
-            callId,
-            callingCourse,
-            callingGenseq,
-            callType: 'C',
-            sessionSlug: parseResult.sessionSlug,
-          };
-          await withSubdialogTxnLock(dlg.id, async () => {
-            await DialogPersistence.appendPendingSubdialog(
-              dlg.id,
-              pendingRecord,
-              toRootGenerationAnchor({
-                rootCourse:
-                  dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
-                rootGenseq:
-                  dlg instanceof SubDialog
-                    ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
-                    : (dlg.activeGenSeqOrUndefined ?? 0),
-              }),
-            );
-          });
-          await syncPendingTellaskReminderBestEffort(
-            dlg,
-            'kernel-driver:executeTellaskCall:TypeB-fallback:appendPending',
-          );
-
-          const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
-            content: formatAssignmentFromSupdialog({
-              callName: subdialogCallName,
-              fromAgentId: dlg.agentId,
-              toAgentId: sub.agentId,
-              mentionList,
-              tellaskContent: body,
-              language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            origin: 'runtime',
-            tellaskReplyDirective: buildAssignmentReplyDirective({
-              callName: 'tellaskSessionless',
-              targetCallId: callId,
-              tellaskContent: body,
-            }),
-            subdialogReplyTarget: {
-              ownerDialogId: callerDialog.id.selfId,
-              callType: 'C',
-              callId,
-            },
-          };
-          callbacks.scheduleDrive(sub, {
-            humanPrompt: initPrompt,
-            waitInQue: true,
-            driveOptions: {
-              source: 'kernel_driver_subdialog_init',
-              reason: 'type_b_fallback_subdialog_init',
-            },
-          });
-        } catch (err) {
-          log.warn('Type B fallback subdialog creation error:', err);
-        }
+        throw err;
       } else {
         const originMemberId = dlg.agentId;
-        const assignment: AssignmentFromSup = {
-          callName: subdialogCallName,
+        const assignment: AssignmentFromAsker = {
+          callName: sideDialogCallName,
           mentionList,
           tellaskContent: body,
           originMemberId,
@@ -1995,53 +1960,45 @@ async function executeTellaskCall(
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
         const pendingOwner = callerDialog;
-        const replacementNotice = formatRegisteredTellaskCallerUpdateNotice(getWorkLanguage());
-
         const result = await (async (): Promise<
           | {
               kind: 'created';
-              subdialog: SubDialog;
+              sideDialog: SideDialog;
             }
           | {
               kind: 'existing';
-              subdialog: SubDialog;
-              previousCaller: Dialog;
-              replacedPending: PendingSubdialogStateRecord | undefined;
+              sideDialog: SideDialog;
             }
         > => {
           for (let attempt = 0; attempt < 4; attempt += 1) {
-            const seededExisting = rootDialog.lookupSubdialog(
+            const seededExisting = mainDialog.lookupSideDialog(
               parseResult.agentId,
               parseResult.sessionSlug,
             );
-            const seededPreviousCallerId = seededExisting?.assignmentFromSup.callerDialogId;
-            const lockIds: DialogID[] = [rootDialog.id, pendingOwner.id];
+            const seededPreviousCallerId = seededExisting?.assignmentFromAsker.callerDialogId;
+            const lockIds: DialogID[] = [mainDialog.id, pendingOwner.id];
             if (
               seededPreviousCallerId !== undefined &&
-              seededPreviousCallerId !== rootDialog.id.selfId &&
+              seededPreviousCallerId !== mainDialog.id.selfId &&
               seededPreviousCallerId !== pendingOwner.id.selfId
             ) {
-              lockIds.push(new DialogID(seededPreviousCallerId, rootDialog.id.rootId));
+              lockIds.push(new DialogID(seededPreviousCallerId, mainDialog.id.rootId));
             }
 
-            const attemptResult = await withSubdialogTxnLocks(lockIds, async () => {
-              const existing = await lookupLiveRegisteredSubdialog(
-                rootDialog,
+            const attemptResult = await withSideDialogTxnLocks(lockIds, async () => {
+              const existing = await lookupLiveRegisteredSideDialog(
+                mainDialog,
                 parseResult.agentId,
                 parseResult.sessionSlug,
               );
               if (existing) {
-                if (existing.assignmentFromSup.callerDialogId !== seededPreviousCallerId) {
+                if (existing.assignmentFromAsker.callerDialogId !== seededPreviousCallerId) {
                   return { kind: 'retry' as const };
                 }
-                const previousCaller = await resolveDialogWithinRoot(
-                  rootDialog,
-                  existing.assignmentFromSup.callerDialogId,
-                );
-                const pendingRecord: PendingSubdialogStateRecord = {
-                  subdialogId: existing.id.selfId,
+                const pendingRecord: PendingSideDialogStateRecord = {
+                  sideDialogId: existing.id.selfId,
                   createdAt: formatUnifiedTimestamp(new Date()),
-                  callName: subdialogCallName,
+                  callName: sideDialogCallName,
                   mentionList,
                   tellaskContent: body,
                   targetAgentId: parseResult.agentId,
@@ -2052,67 +2009,44 @@ async function executeTellaskCall(
                   sessionSlug: parseResult.sessionSlug,
                 };
                 try {
-                  const previousPending = await DialogPersistence.loadPendingSubdialogs(
-                    previousCaller.id,
-                    previousCaller.status,
+                  const previousPending = await DialogPersistence.loadPendingSideDialogs(
+                    pendingOwner.id,
+                    pendingOwner.status,
                   );
-                  const replacedPending = previousPending.filter(
-                    (record) => record.subdialogId === existing.id.selfId,
+                  const replacesExistingPending = previousPending.some(
+                    (record) =>
+                      record.sideDialogId === existing.id.selfId && record.callId === callId,
                   );
-                  if (replacedPending.length > 1) {
-                    throw new Error(
-                      `Type B pending invariant violation: caller=${previousCaller.id.valueOf()} sub=${existing.id.valueOf()} count=${replacedPending.length}`,
-                    );
-                  }
+                  const nextPending = previousPending.filter(
+                    (record) =>
+                      record.sideDialogId !== existing.id.selfId || record.callId !== callId,
+                  );
+                  nextPending.push(pendingRecord);
+                  await DialogPersistence.savePendingSideDialogs(
+                    pendingOwner.id,
+                    nextPending,
+                    undefined,
+                    pendingOwner.status,
+                  );
 
-                  if (previousCaller.id.selfId === pendingOwner.id.selfId) {
-                    const nextPending = previousPending.filter(
-                      (record) => record.subdialogId !== existing.id.selfId,
-                    );
-                    nextPending.push(pendingRecord);
-                    await DialogPersistence.savePendingSubdialogs(
-                      pendingOwner.id,
-                      nextPending,
-                      undefined,
-                      pendingOwner.status,
-                    );
-                  } else {
-                    await DialogPersistence.savePendingSubdialogs(
-                      previousCaller.id,
-                      previousPending.filter((record) => record.subdialogId !== existing.id.selfId),
-                      undefined,
-                      previousCaller.status,
-                    );
-                    const nextPending = (
-                      await DialogPersistence.loadPendingSubdialogs(
-                        pendingOwner.id,
-                        pendingOwner.status,
-                      )
-                    ).filter((record) => record.subdialogId !== existing.id.selfId);
-                    nextPending.push(pendingRecord);
-                    await DialogPersistence.savePendingSubdialogs(
-                      pendingOwner.id,
-                      nextPending,
-                      undefined,
-                      pendingOwner.status,
-                    );
-                  }
-
-                  await updateSubdialogAssignment(existing, assignment);
+                  await updateSideDialogAssignment(
+                    existing,
+                    assignment,
+                    replacesExistingPending ? { replacePendingCallId: callId } : undefined,
+                  );
                   return {
                     kind: 'existing' as const,
-                    subdialog: existing,
-                    previousCaller,
-                    replacedPending: replacedPending[0],
+                    sideDialog: existing,
                   };
                 } catch (err) {
-                  log.warn('Failed to update registered subdialog assignment', err);
-                  return {
-                    kind: 'existing' as const,
-                    subdialog: existing,
-                    previousCaller,
-                    replacedPending: undefined,
-                  };
+                  log.error('Failed to update registered sideDialog assignment', err, {
+                    rootId: mainDialog.id.rootId,
+                    sideDialogId: existing.id.selfId,
+                    ownerDialogId: pendingOwner.id.selfId,
+                    callId,
+                    sessionSlug: parseResult.sessionSlug,
+                  });
+                  throw err;
                 }
               }
 
@@ -2120,13 +2054,13 @@ async function executeTellaskCall(
                 return { kind: 'retry' as const };
               }
 
-              const created = await createSubDialog(
-                rootDialog,
+              const created = await createSideDialog(
+                mainDialog,
                 parseResult.agentId,
                 mentionList,
                 body,
                 {
-                  callName: subdialogCallName,
+                  callName: sideDialogCallName,
                   originMemberId,
                   callerDialogId: callerDialog.id.selfId,
                   callId,
@@ -2134,12 +2068,12 @@ async function executeTellaskCall(
                   collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
                 },
               );
-              rootDialog.registerSubdialog(created);
-              await rootDialog.saveSubdialogRegistry();
-              const pendingRecord: PendingSubdialogStateRecord = {
-                subdialogId: created.id.selfId,
+              mainDialog.registerSideDialog(created);
+              await mainDialog.saveSideDialogRegistry();
+              const pendingRecord: PendingSideDialogStateRecord = {
+                sideDialogId: created.id.selfId,
                 createdAt: formatUnifiedTimestamp(new Date()),
-                callName: subdialogCallName,
+                callName: sideDialogCallName,
                 mentionList,
                 tellaskContent: body,
                 targetAgentId: parseResult.agentId,
@@ -2150,71 +2084,53 @@ async function executeTellaskCall(
                 sessionSlug: parseResult.sessionSlug,
               };
               const nextPending = (
-                await DialogPersistence.loadPendingSubdialogs(pendingOwner.id, pendingOwner.status)
-              ).filter((record) => record.subdialogId !== created.id.selfId);
+                await DialogPersistence.loadPendingSideDialogs(pendingOwner.id, pendingOwner.status)
+              ).filter((record) => record.sideDialogId !== created.id.selfId);
               nextPending.push(pendingRecord);
-              await DialogPersistence.savePendingSubdialogs(
+              await DialogPersistence.savePendingSideDialogs(
                 pendingOwner.id,
                 nextPending,
                 undefined,
                 pendingOwner.status,
               );
-              return { kind: 'created' as const, subdialog: created };
+              return { kind: 'created' as const, sideDialog: created };
             });
             if (attemptResult.kind !== 'retry') {
               return attemptResult;
             }
           }
           throw new Error(
-            `Type B registered subdialog mutation failed to stabilize: root=${rootDialog.id.valueOf()} agent=${parseResult.agentId} session=${parseResult.sessionSlug}`,
+            `Type B registered sideDialog mutation failed to stabilize: root=${mainDialog.id.valueOf()} agent=${parseResult.agentId} session=${parseResult.sessionSlug}`,
           );
         })();
 
         await syncPendingTellaskReminderBestEffort(
           pendingOwner,
-          'kernel-driver:executeTellaskCall:TypeB:replacePending',
+          'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
         );
-        if (result.kind === 'existing' && result.replacedPending) {
-          await finishRegisteredTellaskReplacement({
-            ownerDialog: result.previousCaller,
-            subdialog: result.subdialog,
-            pendingRecord: result.replacedPending,
-            responseBody: replacementNotice,
-          });
-          if (result.previousCaller.id.selfId !== pendingOwner.id.selfId) {
-            await syncPendingTellaskReminderBestEffort(
-              result.previousCaller,
-              'kernel-driver:executeTellaskCall:TypeB:clearPreviousPending',
-            );
-            await reviveDialogIfUnblocked(
-              result.previousCaller,
-              callbacks,
-              'type_b_registered_subdialog_replaced_pending_round',
-            );
-          }
-        }
 
         if (result.kind === 'existing') {
-          const resumePrompt: KernelDriverRuntimeSubdialogPrompt = {
-            content: formatUpdatedAssignmentFromSupdialog({
-              callName: subdialogCallName,
+          const resumePrompt: KernelDriverRuntimeSideDialogPrompt = {
+            content: formatUpdatedAssignmentFromAskerDialog({
+              callName: sideDialogCallName,
               fromAgentId: dlg.agentId,
-              toAgentId: result.subdialog.agentId,
+              toAgentId: result.sideDialog.agentId,
               mentionList,
               sessionSlug: parseResult.sessionSlug,
               tellaskContent: body,
               language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
+              collectiveTargets: options?.collectiveTargets ?? [result.sideDialog.agentId],
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
             tellaskReplyDirective: buildAssignmentReplyDirective({
               callName: 'tellask',
+              targetDialogId: pendingOwner.id.selfId,
               targetCallId: callId,
               tellaskContent: body,
             }),
-            subdialogReplyTarget: {
+            sideDialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
@@ -2223,74 +2139,75 @@ async function executeTellaskCall(
           let queuedIntoActiveLoop = false;
           let queuedRuntimePrompt = false;
           try {
-            result.subdialog.queueRegisteredAssignmentUpdatePrompt({
+            result.sideDialog.queueRegisteredAssignmentUpdatePrompt({
               prompt: resumePrompt.content,
               msgId: resumePrompt.msgId,
               grammar: resumePrompt.grammar,
               userLanguageCode: resumePrompt.userLanguageCode,
               tellaskReplyDirective: resumePrompt.tellaskReplyDirective,
               skipTaskdoc: resumePrompt.skipTaskdoc,
-              subdialogReplyTarget: resumePrompt.subdialogReplyTarget,
+              sideDialogReplyTarget: resumePrompt.sideDialogReplyTarget,
             });
             queuedRuntimePrompt = true;
-            queuedIntoActiveLoop = result.subdialog.isLocked();
+            queuedIntoActiveLoop = result.sideDialog.isLocked();
           } catch (err) {
-            log.warn('Failed to queue registered subdialog update into active loop', err, {
-              subdialogId: result.subdialog.id.valueOf(),
+            log.warn('Failed to queue registered sideDialog update into active loop', err, {
+              sideDialogId: result.sideDialog.id.valueOf(),
               sessionSlug: parseResult.sessionSlug,
               callId,
             });
           }
           if (queuedRuntimePrompt && !queuedIntoActiveLoop) {
-            callbacks.scheduleDrive(result.subdialog, {
+            callbacks.scheduleDrive(result.sideDialog, {
               waitInQue: true,
               driveOptions: {
-                source: 'kernel_driver_subdialog_resume',
-                reason: 'type_b_registered_subdialog_resume',
+                source: 'kernel_driver_sideDialog_resume',
+                reason: 'type_b_registered_sideDialog_resume',
               },
             });
           } else if (!queuedRuntimePrompt) {
-            callbacks.scheduleDrive(result.subdialog, {
+            callbacks.scheduleDrive(result.sideDialog, {
               humanPrompt: resumePrompt,
               waitInQue: true,
               driveOptions: {
-                source: 'kernel_driver_subdialog_resume',
-                reason: 'type_b_registered_subdialog_resume',
+                source: 'kernel_driver_sideDialog_resume',
+                reason: 'type_b_registered_sideDialog_resume',
               },
             });
           }
         } else {
-          const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
-            content: formatAssignmentFromSupdialog({
-              callName: subdialogCallName,
-              fromAgentId: rootDialog.agentId,
-              toAgentId: result.subdialog.agentId,
+          const initPrompt: KernelDriverRuntimeSideDialogPrompt = {
+            content: formatAssignmentFromAskerDialog({
+              callName: sideDialogCallName,
+              fromAgentId: mainDialog.agentId,
+              toAgentId: result.sideDialog.agentId,
               mentionList,
               sessionSlug: parseResult.sessionSlug,
               tellaskContent: body,
               language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
+              collectiveTargets: options?.collectiveTargets ?? [result.sideDialog.agentId],
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
             origin: 'runtime',
             tellaskReplyDirective: buildAssignmentReplyDirective({
               callName: 'tellask',
+              targetDialogId: pendingOwner.id.selfId,
               targetCallId: callId,
               tellaskContent: body,
             }),
-            subdialogReplyTarget: {
+            sideDialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
             },
           };
-          callbacks.scheduleDrive(result.subdialog, {
+          callbacks.scheduleDrive(result.sideDialog, {
             humanPrompt: initPrompt,
             waitInQue: true,
             driveOptions: {
-              source: 'kernel_driver_subdialog_init',
-              reason: 'type_b_registered_subdialog_init',
+              source: 'kernel_driver_sideDialog_init',
+              reason: 'type_b_registered_sideDialog_init',
             },
           });
         }
@@ -2299,17 +2216,17 @@ async function executeTellaskCall(
 
     if (parseResult.type === 'C') {
       try {
-        const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
-          callName: subdialogCallName,
+        const sub = await createSideDialog(dlg, parseResult.agentId, mentionList, body, {
+          callName: sideDialogCallName,
           originMemberId: dlg.agentId,
           callerDialogId: dlg.id.selfId,
           callId,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         });
-        const pendingRecord: PendingSubdialogStateRecord = {
-          subdialogId: sub.id.selfId,
+        const pendingRecord: PendingSideDialogStateRecord = {
+          sideDialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
-          callName: subdialogCallName,
+          callName: sideDialogCallName,
           mentionList,
           tellaskContent: body,
           targetAgentId: parseResult.agentId,
@@ -2318,16 +2235,16 @@ async function executeTellaskCall(
           callingGenseq,
           callType: 'C',
         };
-        await withSubdialogTxnLock(dlg.id, async () => {
-          await DialogPersistence.appendPendingSubdialog(
+        await withSideDialogTxnLock(dlg.id, async () => {
+          await DialogPersistence.appendPendingSideDialog(
             dlg.id,
             pendingRecord,
             toRootGenerationAnchor({
               rootCourse:
-                dlg instanceof SubDialog ? dlg.rootDialog.currentCourse : dlg.currentCourse,
+                dlg instanceof SideDialog ? dlg.mainDialog.currentCourse : dlg.currentCourse,
               rootGenseq:
-                dlg instanceof SubDialog
-                  ? (dlg.rootDialog.activeGenSeqOrUndefined ?? 0)
+                dlg instanceof SideDialog
+                  ? (dlg.mainDialog.activeGenSeqOrUndefined ?? 0)
                   : (dlg.activeGenSeqOrUndefined ?? 0),
             }),
           );
@@ -2337,8 +2254,8 @@ async function executeTellaskCall(
           'kernel-driver:executeTellaskCall:TypeC:appendPending',
         );
 
-        const initPrompt: KernelDriverRuntimeSubdialogPrompt = {
-          content: formatAssignmentFromSupdialog({
+        const initPrompt: KernelDriverRuntimeSideDialogPrompt = {
+          content: formatAssignmentFromAskerDialog({
             callName,
             fromAgentId: dlg.agentId,
             toAgentId: sub.agentId,
@@ -2352,10 +2269,11 @@ async function executeTellaskCall(
           origin: 'runtime',
           tellaskReplyDirective: buildAssignmentReplyDirective({
             callName: 'tellaskSessionless',
+            targetDialogId: dlg.id.selfId,
             targetCallId: callId,
             tellaskContent: body,
           }),
-          subdialogReplyTarget: {
+          sideDialogReplyTarget: {
             ownerDialogId: dlg.id.selfId,
             callType: 'C',
             callId,
@@ -2365,12 +2283,19 @@ async function executeTellaskCall(
           humanPrompt: initPrompt,
           waitInQue: true,
           driveOptions: {
-            source: 'kernel_driver_subdialog_init',
-            reason: 'type_c_subdialog_init',
+            source: 'kernel_driver_sideDialog_init',
+            reason: 'type_c_sideDialog_init',
           },
         });
       } catch (err) {
-        log.warn('Subdialog creation error:', err);
+        log.error('SideDialog creation error', err, {
+          rootId: dlg.id.rootId,
+          selfId: dlg.id.selfId,
+          callId,
+          callName,
+          targetAgentId: parseResult.agentId,
+        });
+        throw err;
       }
     }
   } else {
@@ -2440,7 +2365,7 @@ async function executeReplyTellaskCall(args: {
 }): Promise<ReplyTellaskExecutionResult> {
   const genseq = args.dlg.activeGenSeqOrUndefined ?? 1;
   const activeDirective =
-    args.activePromptReplyDirective ?? (await loadLatestActiveTellaskReplyDirective(args.dlg));
+    args.activePromptReplyDirective ?? (await loadActiveTellaskReplyDirective(args.dlg));
   const expectedCallName = activeDirective?.expectedReplyCallName;
   if (!expectedCallName) {
     return {
@@ -2483,20 +2408,24 @@ async function executeReplyTellaskCall(args: {
   switch (args.call.callName) {
     case 'replyTellask':
     case 'replyTellaskSessionless': {
-      if (!(args.dlg instanceof SubDialog)) {
+      if (!(args.dlg instanceof SideDialog)) {
         throw new Error(
-          `${args.call.callName} invariant violation: only subdialogs may reply upstream`,
+          `${args.call.callName} invariant violation: only sideDialogs may reply upstream`,
         );
       }
-      const expectedCallName =
-        args.call.callName === 'replyTellask' ? 'tellask' : 'tellaskSessionless';
-      if (args.dlg.assignmentFromSup.callName !== expectedCallName) {
+      const assignmentCallName = args.dlg.assignmentFromAsker.callName;
+      const assignmentMatchesReplyCall =
+        args.call.callName === 'replyTellask'
+          ? assignmentCallName === 'tellask'
+          : assignmentCallName === 'tellaskSessionless' ||
+            assignmentCallName === 'freshBootsReasoning';
+      if (!assignmentMatchesReplyCall) {
         throw new Error(
-          `${args.call.callName} invariant violation: assignment callName=${args.dlg.assignmentFromSup.callName}`,
+          `${args.call.callName} invariant violation: assignment callName=${assignmentCallName}`,
         );
       }
-      const supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-        subdialog: args.dlg,
+      const supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+        sideDialog: args.dlg,
         responseText: args.call.replyContent,
         responseGenseq: genseq,
         replyResolution: {
@@ -2523,6 +2452,14 @@ async function executeReplyTellaskCall(args: {
           ],
         };
       }
+      const nextAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
+        args.dlg.id,
+        args.dlg.status,
+      );
+      if (!nextAskerStackState) {
+        throw new Error(`Missing asker stack after reply delivery: ${args.dlg.id.valueOf()}`);
+      }
+      args.dlg.askerStack = nextAskerStackState;
       return {
         delivered: true,
         messages: [
@@ -2681,6 +2618,15 @@ async function executeValidTellaskCalls(args: {
 }): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
   const results: ChatMessage[][] = [];
   const successfulReplyCallIds: string[] = [];
+  const deferredScheduleCalls: Array<
+    Readonly<{ dialog: Dialog; options: KernelDriverDriveCallOptions }>
+  > = [];
+  const registrationPhaseCallbacks: KernelDriverDriveCallbacks = {
+    driveDialog: args.callbacks.driveDialog,
+    scheduleDrive: (dialog, options) => {
+      deferredScheduleCalls.push({ dialog, options });
+    },
+  };
   for (const call of args.calls) {
     const runtimeMentionList = (() => {
       switch (call.callName) {
@@ -2713,9 +2659,11 @@ async function executeValidTellaskCalls(args: {
     let parseResult: TellaskRoutingParseResult | null;
     switch (call.callName) {
       case 'tellaskBack': {
-        targetForError = args.dlg instanceof SubDialog ? args.dlg.supdialog.agentId : undefined;
+        targetForError = args.dlg instanceof SideDialog ? args.dlg.askerDialog.agentId : undefined;
         parseResult =
-          args.dlg instanceof SubDialog ? { type: 'A', agentId: args.dlg.supdialog.agentId } : null;
+          args.dlg instanceof SideDialog
+            ? { type: 'A', agentId: args.dlg.askerDialog.agentId }
+            : null;
         break;
       }
       case 'replyTellask':
@@ -2781,7 +2729,7 @@ async function executeValidTellaskCalls(args: {
       runtimeMentionList,
       call.tellaskContent,
       call.callId,
-      args.callbacks,
+      registrationPhaseCallbacks,
       {
         callName: call.callName,
         parseResult,
@@ -2790,6 +2738,10 @@ async function executeValidTellaskCalls(args: {
       },
     );
     results.push(toolOutputs);
+  }
+
+  for (const scheduled of deferredScheduleCalls) {
+    args.callbacks.scheduleDrive(scheduled.dialog, scheduled.options);
   }
 
   return {
@@ -2834,7 +2786,11 @@ export async function processTellaskFunctionRound(args: {
 }): Promise<TellaskFunctionRoundResult> {
   type OrderedTellaskDisposition =
     | Readonly<{ kind: 'valid'; handled: ResolvedTellaskFunctionCall }>
-    | Readonly<{ kind: 'invalid'; issue: InvalidTellaskFunctionCall }>;
+    | Readonly<{
+        kind: 'invalid';
+        callName: TellaskCallFunctionName;
+        issue: InvalidTellaskFunctionCall;
+      }>;
   const multiAskHumanCalls = args.funcCalls.filter(
     (call) => call.name === 'askHuman' && args.allowedSpecials.has('askHuman'),
   );
@@ -2862,6 +2818,7 @@ export async function processTellaskFunctionRound(args: {
     if (multiAskHumanCalls.length > 1 && originalCall.name === 'askHuman') {
       orderedSpecialDispositions.push({
         kind: 'invalid',
+        callName: originalCall.name,
         issue: {
           originalCall,
           error: MULTIPLE_ASKHUMAN_CALLS_ERROR,
@@ -2878,7 +2835,7 @@ export async function processTellaskFunctionRound(args: {
     }
     const issue = invalidByCallId.get(originalCall.id);
     if (issue) {
-      orderedSpecialDispositions.push({ kind: 'invalid', issue });
+      orderedSpecialDispositions.push({ kind: 'invalid', callName: originalCall.name, issue });
       continue;
     }
     throw new Error(
@@ -2934,7 +2891,7 @@ export async function processTellaskFunctionRound(args: {
     });
     await args.dlg.persistTellaskCallResultPair({
       id: issue.originalCall.id,
-      name: issue.originalCall.name as TellaskCallFunctionName,
+      name: disposition.callName,
       rawArgumentsText: issue.rawArgumentsText,
       genseq: issue.originalCall.genseq,
       result,

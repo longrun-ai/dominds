@@ -5,13 +5,13 @@
 
 import {
   ApiDialogHierarchyResponse,
-  ApiDialogListSubdialogNode,
-  ApiDialogListSubdialogNodeResponse,
+  ApiDialogListSideDialogNode,
+  ApiDialogListSideDialogNodeResponse,
   ApiForkDialogRequest,
   ApiForkDialogResponse,
+  ApiMainDialogResponse,
   ApiMoveDialogsRequest,
   ApiMoveDialogsResponse,
-  ApiRootDialogResponse,
   DomindsRuntimeStatus,
   DomindsSelfUpdateStatus as KernelDomindsSelfUpdateStatus,
   ListPrimingScriptsResponse,
@@ -134,14 +134,14 @@ function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
   return true;
 }
 
-function isApiDialogListSubdialogNodeResponse(
+function isApiDialogListSideDialogNodeResponse(
   value: unknown,
-): value is ApiDialogListSubdialogNodeResponse {
+): value is ApiDialogListSideDialogNodeResponse {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;
   if (record['success'] !== true) return false;
-  const subdialogNode = record['subdialogNode'];
-  return typeof subdialogNode === 'object' && subdialogNode !== null;
+  const sideDialogNode = record['sideDialogNode'];
+  return typeof sideDialogNode === 'object' && sideDialogNode !== null;
 }
 
 function getApiErrorMessage(status: number, statusText: string, data: unknown): string {
@@ -382,15 +382,15 @@ export class ApiClient {
   /**
    * Get root dialogs in a specific status directory.
    */
-  async getRootDialogsByStatus(
+  async getMainDialogsByStatus(
     status: PersistableDialogStatus,
-  ): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+  ): Promise<ApiResponse<ApiMainDialogResponse[]>> {
     const query = new URLSearchParams({ status }).toString();
     const response = await this.request(`/api/dialogs?${query}`);
     if (response.success && response.data) {
       const payload = response.data as
-        | { dialogs: ApiRootDialogResponse[] }
-        | ApiRootDialogResponse[];
+        | { dialogs: ApiMainDialogResponse[] }
+        | ApiMainDialogResponse[];
       const dialogs = Array.isArray(payload)
         ? payload
         : Array.isArray(payload.dialogs)
@@ -403,14 +403,14 @@ export class ApiClient {
         timestamp: response.timestamp,
       };
     }
-    return response as ApiResponse<ApiRootDialogResponse[]>;
+    return response as ApiResponse<ApiMainDialogResponse[]>;
   }
 
   /**
    * Get running root dialogs.
    */
-  async getRootDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
-    return await this.getRootDialogsByStatus('running');
+  async getMainDialogs(): Promise<ApiResponse<ApiMainDialogResponse[]>> {
+    return await this.getMainDialogsByStatus('running');
   }
 
   async getRunControlCounts(): Promise<
@@ -442,25 +442,18 @@ export class ApiClient {
   }
 
   /**
-   * Backward-compatible alias for getRootDialogs().
-   */
-  async getDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
-    return await this.getRootDialogs();
-  }
-
-  /**
    * Get full hierarchy for a single root dialog
    */
   async getDialogHierarchy(
-    rootDialogId: string,
+    mainDialogId: string,
     status: PersistableDialogStatus = 'running',
   ): Promise<ApiResponse<ApiDialogHierarchyResponse['hierarchy']>> {
     const query = new URLSearchParams({ status }).toString();
     const response = await this.request(
-      `/api/dialogs/${encodeURIComponent(rootDialogId)}/hierarchy?${query}`,
+      `/api/dialogs/${encodeURIComponent(mainDialogId)}/hierarchy?${query}`,
     );
     if (response.success && response.data) {
-      // Backend returns {success: true, hierarchy: {root, subdialogs}}
+      // Backend returns {success: true, hierarchy: {root, sideDialogs}}
       // Unwrap to get just the hierarchy object
       const payload = response.data as { hierarchy: ApiDialogHierarchyResponse['hierarchy'] };
       if (payload && payload.hierarchy) {
@@ -476,33 +469,33 @@ export class ApiClient {
   }
 
   /**
-   * Get one subdialog node specifically for dialog-list backfill.
+   * Get one sideDialog node specifically for dialog-list backfill.
    */
-  async getDialogListSubdialogNode(
-    rootDialogId: string,
+  async getDialogListSideDialogNode(
+    mainDialogId: string,
     selfDialogId: string,
     status: PersistableDialogStatus = 'running',
-  ): Promise<ApiResponse<ApiDialogListSubdialogNode>> {
+  ): Promise<ApiResponse<ApiDialogListSideDialogNode>> {
     const query = new URLSearchParams({ status }).toString();
     const response = await this.request(
-      `/api/dialogs/${encodeURIComponent(rootDialogId)}/subdialogs/${encodeURIComponent(selfDialogId)}/list-node?${query}`,
+      `/api/dialogs/${encodeURIComponent(mainDialogId)}/sideDialogs/${encodeURIComponent(selfDialogId)}/list-node?${query}`,
     );
-    if (response.success && isApiDialogListSubdialogNodeResponse(response.data)) {
+    if (response.success && isApiDialogListSideDialogNodeResponse(response.data)) {
       return {
         success: true,
         status: response.status,
-        data: response.data.subdialogNode,
+        data: response.data.sideDialogNode,
         timestamp: response.timestamp,
       };
     }
-    return response as ApiResponse<ApiDialogListSubdialogNode>;
+    return response as ApiResponse<ApiDialogListSideDialogNode>;
   }
 
   async resolveDialogStatus(
-    rootDialogId: string,
+    mainDialogId: string,
     selfDialogId?: string,
   ): Promise<ApiResponse<ResolvedDialogStatus>> {
-    const params = new URLSearchParams({ rootId: rootDialogId });
+    const params = new URLSearchParams({ rootId: mainDialogId });
     if (typeof selfDialogId === 'string' && selfDialogId.trim() !== '') {
       params.set('selfId', selfDialogId.trim());
     }
@@ -551,10 +544,10 @@ export class ApiClient {
   }
 
   async forkDialog(
-    rootDialogId: string,
+    mainDialogId: string,
     request: ApiForkDialogRequest,
   ): Promise<ApiResponse<ApiForkDialogResponse>> {
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}/fork`, {
+    return this.request(`/api/dialogs/${encodeURIComponent(mainDialogId)}/fork`, {
       method: 'POST',
       body: request,
     });
@@ -603,12 +596,12 @@ export class ApiClient {
    * Update dialog metadata
    */
   async updateDialog(
-    rootDialogId: string,
+    mainDialogId: string,
     selfDialogId: string | undefined,
     updates: Record<string, unknown>,
   ): Promise<ApiResponse<void>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`, {
+    return this.request(`/api/dialogs/${encodeURIComponent(mainDialogId)}${seg}`, {
       method: 'PATCH',
       body: updates,
     });
@@ -618,13 +611,13 @@ export class ApiClient {
    * Delete a dialog
    */
   async deleteDialog(
-    rootDialogId: string,
+    mainDialogId: string,
     fromStatus: PersistableDialogStatus,
     selfDialogId?: string,
   ): Promise<ApiResponse<{ deleted: boolean; fromStatus: PersistableDialogStatus }>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
     const query = new URLSearchParams({ fromStatus }).toString();
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}?${query}`, {
+    return this.request(`/api/dialogs/${encodeURIComponent(mainDialogId)}${seg}?${query}`, {
       method: 'DELETE',
     });
   }
@@ -633,7 +626,7 @@ export class ApiClient {
    * Get messages for a dialog
    */
   async getMessages(
-    rootDialogId: string,
+    mainDialogId: string,
     selfDialogId?: string,
     limit?: number,
     offset?: number,
@@ -645,7 +638,7 @@ export class ApiClient {
     const query = params.toString() ? `?${params.toString()}` : '';
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
     const response = await this.request(
-      `/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}/messages${query}`,
+      `/api/dialogs/${encodeURIComponent(mainDialogId)}${seg}/messages${query}`,
     );
 
     if (response.success && response.data) {
@@ -663,12 +656,12 @@ export class ApiClient {
    * Send a message to a dialog
    */
   async sendMessage(
-    rootDialogId: string,
+    mainDialogId: string,
     selfDialogId: string | undefined,
     content: string,
   ): Promise<ApiResponse<unknown>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}/messages`, {
+    return this.request(`/api/dialogs/${encodeURIComponent(mainDialogId)}${seg}/messages`, {
       method: 'POST',
       body: {
         content,
@@ -676,8 +669,6 @@ export class ApiClient {
       },
     });
   }
-
-  // Removed legacy getTeamMembers; use getTeamConfig instead
 
   /**
    * Get team configuration
@@ -878,7 +869,7 @@ export class ApiClient {
   async searchDialogs(
     query: string,
     filters?: { agentId?: string; status?: string; dateRange?: { start: string; end: string } },
-  ): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+  ): Promise<ApiResponse<ApiMainDialogResponse[]>> {
     const params = new URLSearchParams();
     params.append('q', query);
 
@@ -893,11 +884,11 @@ export class ApiClient {
     if (response.success && response.data) {
       return {
         success: true,
-        data: Array.isArray(response.data) ? (response.data as ApiRootDialogResponse[]) : [],
+        data: Array.isArray(response.data) ? (response.data as ApiMainDialogResponse[]) : [],
         timestamp: response.timestamp,
       };
     }
-    return response as ApiResponse<ApiRootDialogResponse[]>;
+    return response as ApiResponse<ApiMainDialogResponse[]>;
   }
 
   /**

@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { DialogStore, RootDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import {
@@ -28,8 +28,8 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     new DialogStore(),
     'daemon-reminder-retained-after-exit.tsk',
     undefined,
@@ -37,7 +37,7 @@ function createDialog(agentId: string): RootDialog {
   );
 }
 
-function requireReminder(dialog: RootDialog) {
+function requireReminder(dialog: MainDialog) {
   return dialog
     .listVisibleReminders()
     .then((reminders) =>

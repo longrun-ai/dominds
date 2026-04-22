@@ -6,7 +6,7 @@ import type {
   DomindsAppRunControlResult,
 } from '@longrun-ai/kernel/app-json';
 import type { AppsHostClient, EnabledAppForHost } from '../../main/apps-host/client';
-import { DialogStore, RootDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import { materializeReminder } from '../../main/tool';
 import {
@@ -17,8 +17,8 @@ import {
 } from '../../main/tools/app-reminders';
 import { getReminderOwner } from '../../main/tools/registry';
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     new DialogStore(),
     'app-reminder-render-mode-preserve.tsk',
     undefined,

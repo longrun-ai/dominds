@@ -121,7 +121,7 @@ async function main(): Promise<void> {
 
     const ctx = {
       dialogId: 'dlg_1',
-      rootDialogId: 'root_1',
+      mainDialogId: 'root_1',
       agentId: 'tester',
       taskDocPath: 'task.md',
       callerId: 'tester',

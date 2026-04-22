@@ -29,7 +29,7 @@ export interface DialogIdent {
   status?: Exclude<DialogStatusKind, 'quarantining'>;
 }
 
-export interface AssignmentFromSup {
+export interface AssignmentFromAsker {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
@@ -88,7 +88,7 @@ export type WebSocketMessage =
   | EmergencyStopRequest
   | ResumeDialogRequest
   | ResumeAllRequest
-  | DeclareSubdialogDeadRequest
+  | DeclareSideDialogDeadRequest
   | DisplayRemindersRequest
   | DisplayCourseRequest
   | DriveDialogRequest
@@ -149,9 +149,9 @@ export interface DomindsRuntimeStatusMessage {
 
 export type ResumeNotEligibleReason =
   | 'missing'
-  | 'waiting_for_subdialogs'
+  | 'waiting_for_sideDialogs'
   | 'needs_human_input'
-  | 'needs_human_input_and_subdialogs'
+  | 'needs_human_input_and_sideDialogs'
   | 'idle_waiting_user'
   | 'already_running'
   | 'stopped_not_resumable'
@@ -304,8 +304,8 @@ export interface ResumeAllRequest {
   type: 'resume_all';
 }
 
-export interface DeclareSubdialogDeadRequest {
-  type: 'declare_subdialog_dead';
+export interface DeclareSideDialogDeadRequest {
+  type: 'declare_sideDialog_dead';
   dialog: DialogIdent;
   note?: string;
 }
@@ -415,9 +415,9 @@ export interface DialogReadyMessage {
   dialog: DialogIdent;
   agentId: string;
   taskDocPath: string;
-  supdialogId?: string;
+  askerDialogId?: string;
   sessionSlug?: string;
-  assignmentFromSup?: AssignmentFromSup;
+  assignmentFromAsker?: AssignmentFromAsker;
   disableDiligencePush?: boolean;
   diligencePushMax?: number;
   diligencePushRemainingBudget?: number;

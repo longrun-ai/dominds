@@ -20,8 +20,8 @@ import type {
   NativeToolCallPayload,
   Q4HAnsweredEvent,
   RuntimeGuideEvent,
+  SideDialogEvent,
   StreamErrorEvent,
-  SubdialogEvent,
   TellaskCallAnchorEvent,
   TellaskCallStartEvent,
   TellaskCarryoverEvent,
@@ -46,19 +46,22 @@ import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
+  AskerDialogStackFrame,
+  DialogAskerStackState,
   DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogLatestFile,
   DialogMetadataFile,
   DialogPendingCourseStartPrompt,
-  DialogSubdialogReplyTarget,
+  DialogSideDialogReplyTarget,
   FuncCallRecord,
   FuncResultRecord,
   HumanQuestion,
   HumanTextRecord,
+  MainDialogMetadataFile,
   NativeToolCallRecord,
-  PendingSubdialogsReconciledRecord,
-  PendingSubdialogStateRecord,
+  PendingSideDialogsReconciledRecord,
+  PendingSideDialogStateRecord,
   PersistedDialogRecord,
   ProviderData,
   Questions4HumanFile,
@@ -68,15 +71,14 @@ import type {
   ReminderSnapshotItem,
   RemindersReconciledRecord,
   ReminderStateFile,
-  RootDialogMetadataFile,
   RootGenerationAnchor,
   RuntimeGuideRecord,
-  SubdialogCreatedRecord,
-  SubdialogMetadataFile,
-  SubdialogRegistryReconciledRecord,
-  SubdialogRegistryStateRecord,
-  SubdialogResponsesReconciledRecord,
-  SubdialogResponseStateRecord,
+  SideDialogCreatedRecord,
+  SideDialogMetadataFile,
+  SideDialogRegistryReconciledRecord,
+  SideDialogRegistryStateRecord,
+  SideDialogResponsesReconciledRecord,
+  SideDialogResponseStateRecord,
   TellaskCallRecord,
   TellaskCallRecordName,
   TellaskCarryoverRecord,
@@ -103,8 +105,15 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
-import type { PendingSubdialog } from './dialog';
-import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
+import type { PendingSideDialog } from './dialog';
+import {
+  buildSideDialogAskerStack,
+  Dialog,
+  DialogID,
+  DialogStore,
+  MainDialog,
+  SideDialog,
+} from './dialog';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
@@ -127,7 +136,7 @@ let dialogsQuarantinedBroadcaster: ((msg: DialogsQuarantinedMessage) => void) | 
 let prepareDialogQuarantineHook:
   | ((args: {
       dialogId: DialogID;
-      rootDialogId: DialogID;
+      mainDialogId: DialogID;
       status: DialogStatusKind;
       reason: string;
       error: Error;
@@ -136,7 +145,7 @@ let prepareDialogQuarantineHook:
 let finalizeDialogQuarantineHook:
   | ((args: {
       dialogId: DialogID;
-      rootDialogId: DialogID;
+      mainDialogId: DialogID;
       status: DialogStatusKind;
       reason: string;
       error: Error;
@@ -174,7 +183,7 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     status: latest.status,
     messageCount: latest.messageCount ?? null,
     functionCallCount: latest.functionCallCount ?? null,
-    subdialogCount: latest.subdialogCount ?? null,
+    sideDialogCount: latest.sideDialogCount ?? null,
     generating: latest.generating ?? false,
     needsDrive: latest.needsDrive ?? false,
     disableDiligencePush: latest.disableDiligencePush ?? false,
@@ -188,9 +197,9 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
       latest.pendingCourseStartPrompt?.userLanguageCode ?? null,
     pendingCourseStartPromptContentLength: latest.pendingCourseStartPrompt?.content.length ?? null,
     pendingCourseStartPromptReplyTargetCallId:
-      latest.pendingCourseStartPrompt?.subdialogReplyTarget?.callId ?? null,
+      latest.pendingCourseStartPrompt?.sideDialogReplyTarget?.callId ?? null,
     pendingCourseStartPromptReplyTargetOwnerDialogId:
-      latest.pendingCourseStartPrompt?.subdialogReplyTarget?.ownerDialogId ?? null,
+      latest.pendingCourseStartPrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
     pendingCourseStartPromptExpectedReplyCallName:
       latest.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
     pendingCourseStartPromptTargetCallId:
@@ -212,7 +221,7 @@ function summarizeLatestMutationPatch(
     status: patch.status ?? null,
     messageCount: patch.messageCount ?? null,
     functionCallCount: patch.functionCallCount ?? null,
-    subdialogCount: patch.subdialogCount ?? null,
+    sideDialogCount: patch.sideDialogCount ?? null,
     generating: patch.generating ?? null,
     needsDrive: patch.needsDrive ?? null,
     disableDiligencePush: patch.disableDiligencePush ?? null,
@@ -226,9 +235,9 @@ function summarizeLatestMutationPatch(
       patch.pendingCourseStartPrompt?.userLanguageCode ?? null,
     pendingCourseStartPromptContentLength: patch.pendingCourseStartPrompt?.content.length ?? null,
     pendingCourseStartPromptReplyTargetOwnerDialogId:
-      patch.pendingCourseStartPrompt?.subdialogReplyTarget?.ownerDialogId ?? null,
+      patch.pendingCourseStartPrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
     pendingCourseStartPromptReplyTargetCallId:
-      patch.pendingCourseStartPrompt?.subdialogReplyTarget?.callId ?? null,
+      patch.pendingCourseStartPrompt?.sideDialogReplyTarget?.callId ?? null,
     pendingCourseStartPromptExpectedReplyCallName:
       patch.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
     pendingCourseStartPromptTargetCallId:
@@ -338,7 +347,7 @@ function normalizeGeneratingDisplayStateMismatch(
     executionMarker: hasInterruptedExecutionMarker ? undefined : latest.executionMarker,
   };
 }
-const quarantiningRootDialogs = new Set<string>();
+const quarantiningMainDialogs = new Set<string>();
 const PERSISTABLE_DIALOG_STATUSES = ['running', 'completed', 'archived'] as const;
 type PersistableDialogStatus = (typeof PERSISTABLE_DIALOG_STATUSES)[number];
 const RUN_STATUS_DIR = 'run';
@@ -372,7 +381,7 @@ export function setPrepareDialogQuarantineHook(
   fn:
     | ((args: {
         dialogId: DialogID;
-        rootDialogId: DialogID;
+        mainDialogId: DialogID;
         status: DialogStatusKind;
         reason: string;
         error: Error;
@@ -386,7 +395,7 @@ export function setFinalizeDialogQuarantineHook(
   fn:
     | ((args: {
         dialogId: DialogID;
-        rootDialogId: DialogID;
+        mainDialogId: DialogID;
         status: DialogStatusKind;
         reason: string;
         error: Error;
@@ -433,6 +442,12 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
   if (
     raw.startsWith('支线对话仍在进行中，已持续 ') ||
     raw.startsWith('Sideline dialog is still running (elapsed ')
+  ) {
+    return true;
+  }
+  if (
+    (raw.startsWith('[Dominds 诉请状态]') || raw.startsWith('[Dominds tellask status]')) &&
+    (raw.includes('当前仍在等待') || raw.includes('is still waiting'))
   ) {
     return true;
   }
@@ -1168,10 +1183,10 @@ function isReplyTellaskCallRecordName(
 }
 
 function resolveRootGenerationAnchor(dialog: Dialog): RootGenerationAnchor {
-  const rootDialog = dialog instanceof SubDialog ? dialog.rootDialog : dialog;
+  const mainDialog = dialog instanceof SideDialog ? dialog.mainDialog : dialog;
   return toRootGenerationAnchor({
-    rootCourse: rootDialog.currentCourse,
-    rootGenseq: rootDialog.activeGenSeqOrUndefined ?? 0,
+    rootCourse: mainDialog.currentCourse,
+    rootGenseq: mainDialog.activeGenSeqOrUndefined ?? 0,
   });
 }
 
@@ -1206,15 +1221,15 @@ function attachRootGenerationRef<T extends PersistedDialogRecord>(dialog: Dialog
   };
 }
 
-function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFile {
+function isMainDialogMetadataFile(value: unknown): value is MainDialogMetadataFile {
   if (!isRecord(value)) return false;
   if (typeof value.id !== 'string') return false;
   if (typeof value.agentId !== 'string') return false;
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
-  if (value.supdialogId !== undefined) return false;
+  if (value.askerDialogId !== undefined) return false;
   if (value.sessionSlug !== undefined) return false;
-  if (value.assignmentFromSup !== undefined) return false;
+  if (value.assignmentFromAsker !== undefined) return false;
   if (value.priming !== undefined) {
     if (!isRecord(value.priming)) return false;
     if (!Array.isArray(value.priming.scriptRefs)) return false;
@@ -1224,49 +1239,42 @@ function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFi
   return true;
 }
 
-function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile {
+function isSideDialogAssignmentFromAsker(
+  value: unknown,
+): value is SideDialogMetadataFile['assignmentFromAsker'] {
   if (!isRecord(value)) return false;
-  if (typeof value.id !== 'string') return false;
-  if (typeof value.agentId !== 'string') return false;
-  if (typeof value.taskDocPath !== 'string') return false;
-  if (typeof value.createdAt !== 'string') return false;
-  if (typeof value.supdialogId !== 'string') return false;
-  if (value.priming !== undefined) return false;
-  if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
-  const assignment = value.assignmentFromSup;
-  if (!isRecord(assignment)) return false;
-  if (typeof assignment.tellaskContent !== 'string') return false;
-  if (typeof assignment.originMemberId !== 'string') return false;
-  if (typeof assignment.callerDialogId !== 'string') return false;
-  if (typeof assignment.callId !== 'string') return false;
-  if (assignment.collectiveTargets !== undefined) {
-    if (!Array.isArray(assignment.collectiveTargets)) return false;
-    if (!assignment.collectiveTargets.every((item) => typeof item === 'string')) return false;
+  if (typeof value.tellaskContent !== 'string') return false;
+  if (typeof value.originMemberId !== 'string') return false;
+  if (typeof value.callerDialogId !== 'string') return false;
+  if (typeof value.callId !== 'string') return false;
+  if (value.collectiveTargets !== undefined) {
+    if (!Array.isArray(value.collectiveTargets)) return false;
+    if (!value.collectiveTargets.every((item) => typeof item === 'string')) return false;
   }
-  if (assignment.effectiveFbrEffort !== undefined) {
+  if (value.effectiveFbrEffort !== undefined) {
     if (
-      typeof assignment.effectiveFbrEffort !== 'number' ||
-      !Number.isInteger(assignment.effectiveFbrEffort)
+      typeof value.effectiveFbrEffort !== 'number' ||
+      !Number.isInteger(value.effectiveFbrEffort)
     ) {
       return false;
     }
-    if (assignment.effectiveFbrEffort < 1 || assignment.effectiveFbrEffort > 100) {
+    if (value.effectiveFbrEffort < 1 || value.effectiveFbrEffort > 100) {
       return false;
     }
   }
 
-  switch (assignment.callName) {
+  switch (value.callName) {
     case 'tellask':
     case 'tellaskSessionless': {
-      if (!Array.isArray(assignment.mentionList)) return false;
-      if (assignment.mentionList.length < 1) return false;
-      if (!assignment.mentionList.every((item) => typeof item === 'string')) return false;
-      if (assignment.effectiveFbrEffort !== undefined) return false;
+      if (!Array.isArray(value.mentionList)) return false;
+      if (value.mentionList.length < 1) return false;
+      if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+      if (value.effectiveFbrEffort !== undefined) return false;
       break;
     }
     case 'freshBootsReasoning': {
-      if (assignment.mentionList !== undefined) return false;
-      if (assignment.effectiveFbrEffort === undefined) return false;
+      if (value.mentionList !== undefined) return false;
+      if (value.effectiveFbrEffort === undefined) return false;
       break;
     }
     default:
@@ -1275,8 +1283,20 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
   return true;
 }
 
+function isSideDialogMetadataFile(value: unknown): value is SideDialogMetadataFile {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string') return false;
+  if (typeof value.agentId !== 'string') return false;
+  if (typeof value.taskDocPath !== 'string') return false;
+  if (typeof value.createdAt !== 'string') return false;
+  if (typeof value.askerDialogId !== 'string') return false;
+  if (value.priming !== undefined) return false;
+  if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
+  return isSideDialogAssignmentFromAsker(value.assignmentFromAsker);
+}
+
 function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
-  return isRootDialogMetadataFile(value) || isSubdialogMetadataFile(value);
+  return isMainDialogMetadataFile(value) || isSideDialogMetadataFile(value);
 }
 
 function parseTellaskReplyDirective(value: unknown): TellaskReplyDirective | null {
@@ -1294,24 +1314,130 @@ function parseTellaskReplyDirective(value: unknown): TellaskReplyDirective | nul
   if (typeof targetCallId !== 'string' || typeof tellaskContent !== 'string') {
     return null;
   }
+  const targetDialogId = value.targetDialogId;
+  if (typeof targetDialogId !== 'string') return null;
   if (expectedReplyCallName === 'replyTellaskBack') {
-    const targetDialogId = value.targetDialogId;
-    if (typeof targetDialogId !== 'string') return null;
     return {
       expectedReplyCallName,
-      targetCallId,
       targetDialogId,
+      targetCallId,
       tellaskContent,
     };
   }
   return {
     expectedReplyCallName,
+    targetDialogId,
     targetCallId,
     tellaskContent,
   };
 }
 
-function parseDialogSubdialogReplyTarget(value: unknown): DialogSubdialogReplyTarget | null {
+function isAskerDialogStackFrame(value: unknown): value is AskerDialogStackFrame {
+  if (!isRecord(value)) return false;
+  if (value.kind !== 'asker_dialog_stack_frame') return false;
+  if (typeof value.askerDialogId !== 'string') return false;
+  if (
+    value.assignmentFromAsker !== undefined &&
+    !isSideDialogAssignmentFromAsker(value.assignmentFromAsker)
+  ) {
+    return false;
+  }
+  if (
+    value.assignmentFromAsker !== undefined &&
+    value.assignmentFromAsker.callerDialogId !== value.askerDialogId
+  ) {
+    return false;
+  }
+  if (value.tellaskReplyObligation !== undefined) {
+    const directive = parseTellaskReplyDirective(value.tellaskReplyObligation);
+    if (directive === null) return false;
+    if (value.assignmentFromAsker !== undefined) {
+      const expectedReplyCallName =
+        value.assignmentFromAsker.callName === 'tellask'
+          ? 'replyTellask'
+          : 'replyTellaskSessionless';
+      if (directive.expectedReplyCallName !== expectedReplyCallName) return false;
+      if (directive.targetDialogId !== value.askerDialogId) return false;
+      if (directive.targetCallId !== value.assignmentFromAsker.callId) return false;
+      if (directive.tellaskContent !== value.assignmentFromAsker.tellaskContent) return false;
+    } else if (directive.targetDialogId !== value.askerDialogId) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isDialogAskerStackState(value: unknown): value is DialogAskerStackState {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.askerStack)) return false;
+  return value.askerStack.every(isAskerDialogStackFrame);
+}
+
+function getDialogAskerStackTop(state: DialogAskerStackState): AskerDialogStackFrame {
+  const top = state.askerStack[state.askerStack.length - 1];
+  if (!top) {
+    throw new Error('asker stack invariant violation: empty stack');
+  }
+  return top;
+}
+
+function getDialogAskerStackCurrentAssignment(
+  state: DialogAskerStackState,
+): SideDialogMetadataFile['assignmentFromAsker'] {
+  for (let index = state.askerStack.length - 1; index >= 0; index -= 1) {
+    const frame = state.askerStack[index];
+    if (frame?.assignmentFromAsker !== undefined) {
+      return frame.assignmentFromAsker;
+    }
+  }
+  throw new Error('asker stack invariant violation: missing assignment frame');
+}
+
+function buildAssignmentTellaskReplyObligation(args: {
+  targetDialogId: string;
+  assignment: SideDialogMetadataFile['assignmentFromAsker'];
+}): TellaskReplyDirective {
+  switch (args.assignment.callName) {
+    case 'tellask':
+      return {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: args.targetDialogId,
+        targetCallId: args.assignment.callId,
+        tellaskContent: args.assignment.tellaskContent,
+      };
+    case 'tellaskSessionless':
+    case 'freshBootsReasoning':
+      return {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: args.targetDialogId,
+        targetCallId: args.assignment.callId,
+        tellaskContent: args.assignment.tellaskContent,
+      };
+  }
+}
+
+function buildAssignmentAskerStackFrame(args: {
+  askerDialogId: string;
+  assignment: SideDialogMetadataFile['assignmentFromAsker'];
+}): AskerDialogStackFrame {
+  return {
+    kind: 'asker_dialog_stack_frame',
+    askerDialogId: args.askerDialogId,
+    assignmentFromAsker: args.assignment,
+    tellaskReplyObligation: buildAssignmentTellaskReplyObligation({
+      targetDialogId: args.assignment.callerDialogId,
+      assignment: args.assignment,
+    }),
+  };
+}
+
+type DialogAskerStackJsonlRow = Readonly<{
+  frame: AskerDialogStackFrame;
+  startOffset: number;
+  endOffset: number;
+}>;
+
+function parseDialogSideDialogReplyTarget(value: unknown): DialogSideDialogReplyTarget | null {
   if (!isRecord(value)) return null;
   const ownerDialogId = value.ownerDialogId;
   const callType = value.callType;
@@ -1357,28 +1483,28 @@ function parseDialogPendingCourseStartPrompt(
   if (value.tellaskReplyDirective !== undefined && tellaskReplyDirective === null) {
     return null;
   }
-  const subdialogReplyTarget =
-    value.subdialogReplyTarget === undefined
+  const sideDialogReplyTarget =
+    value.sideDialogReplyTarget === undefined
       ? undefined
-      : parseDialogSubdialogReplyTarget(value.subdialogReplyTarget);
-  if (value.subdialogReplyTarget !== undefined && subdialogReplyTarget === null) {
+      : parseDialogSideDialogReplyTarget(value.sideDialogReplyTarget);
+  if (value.sideDialogReplyTarget !== undefined && sideDialogReplyTarget === null) {
     return null;
   }
   const userLanguageCode = userLanguageCodeRaw;
   const skipTaskdoc = skipTaskdocRaw;
   const normalizedTellaskReplyDirective =
     tellaskReplyDirective === null ? undefined : tellaskReplyDirective;
-  const normalizedSubdialogReplyTarget =
-    subdialogReplyTarget === null ? undefined : subdialogReplyTarget;
+  const normalizedSideDialogReplyTarget =
+    sideDialogReplyTarget === null ? undefined : sideDialogReplyTarget;
   if (
-    normalizedSubdialogReplyTarget !== undefined &&
+    normalizedSideDialogReplyTarget !== undefined &&
     normalizedTellaskReplyDirective === undefined
   ) {
     return null;
   }
   if (
     normalizedTellaskReplyDirective !== undefined &&
-    normalizedSubdialogReplyTarget !== undefined
+    normalizedSideDialogReplyTarget !== undefined
   ) {
     return {
       content: value.content,
@@ -1388,7 +1514,7 @@ function parseDialogPendingCourseStartPrompt(
       ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
       ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
       tellaskReplyDirective: normalizedTellaskReplyDirective,
-      subdialogReplyTarget: normalizedSubdialogReplyTarget,
+      sideDialogReplyTarget: normalizedSideDialogReplyTarget,
     };
   }
   if (normalizedTellaskReplyDirective !== undefined) {
@@ -1431,7 +1557,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (value.messageCount !== undefined && typeof value.messageCount !== 'number') return null;
   if (value.functionCallCount !== undefined && typeof value.functionCallCount !== 'number')
     return null;
-  if (value.subdialogCount !== undefined && typeof value.subdialogCount !== 'number') return null;
+  if (value.sideDialogCount !== undefined && typeof value.sideDialogCount !== 'number') return null;
   if (value.generating !== undefined && typeof value.generating !== 'boolean') return null;
   if (value.needsDrive !== undefined && typeof value.needsDrive !== 'boolean') return null;
 
@@ -1463,10 +1589,13 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       switch (reason.kind) {
         case 'needs_human_input':
           return { kind: 'blocked', reason: { kind: 'needs_human_input' } } as const;
-        case 'waiting_for_subdialogs':
-          return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } } as const;
-        case 'needs_human_input_and_subdialogs':
-          return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } } as const;
+        case 'waiting_for_sideDialogs':
+          return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } } as const;
+        case 'needs_human_input_and_sideDialogs':
+          return {
+            kind: 'blocked',
+            reason: { kind: 'needs_human_input_and_sideDialogs' },
+          } as const;
         default:
           return null;
       }
@@ -1586,7 +1715,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     lastModified: value.lastModified,
     messageCount: value.messageCount,
     functionCallCount: value.functionCallCount,
-    subdialogCount: value.subdialogCount,
+    sideDialogCount: value.sideDialogCount,
     status: value.status,
     generating: value.generating,
     needsDrive: value.needsDrive,
@@ -1600,10 +1729,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   };
 }
 
-function isSubdialogResponseRecord(value: unknown): value is SubdialogResponseStateRecord {
+function isSideDialogResponseRecord(value: unknown): value is SideDialogResponseStateRecord {
   if (!isRecord(value)) return false;
   if (typeof value.responseId !== 'string') return false;
-  if (typeof value.subdialogId !== 'string') return false;
+  if (value.responseId.trim() === '') return false;
+  if (typeof value.sideDialogId !== 'string') return false;
   if (typeof value.response !== 'string') return false;
   if (typeof value.completedAt !== 'string') return false;
   if (value.status !== undefined && value.status !== 'completed' && value.status !== 'failed')
@@ -1634,6 +1764,25 @@ function isSubdialogResponseRecord(value: unknown): value is SubdialogResponseSt
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
   return true;
+}
+
+function assertUniqueSideDialogResponseIds(
+  records: readonly SideDialogResponseStateRecord[],
+  context: string,
+): void {
+  const seen = new Set<string>();
+  for (const record of records) {
+    const responseId = record.responseId.trim();
+    if (responseId === '') {
+      throw new Error(`sideDialog responses empty responseId invariant violation: ${context}`);
+    }
+    if (seen.has(responseId)) {
+      throw new Error(
+        `sideDialog responses duplicate responseId invariant violation: ${context} responseId=${responseId}`,
+      );
+    }
+    seen.add(responseId);
+  }
 }
 
 function isReminderPriority(value: unknown): value is 'high' | 'medium' | 'low' {
@@ -1869,12 +2018,12 @@ export class DiskFileDialogStore extends DialogStore {
     this.dialogId = dialogId;
   }
 
-  // === DialogStore interface methods (for compatibility) ===
+  // === DialogStore interface methods ===
 
   /**
-   * Create subdialog with automatic persistence
+   * Create sideDialog with automatic persistence
    */
-  public async createSubDialog(
+  public async createSideDialog(
     callerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
@@ -1888,60 +2037,63 @@ export class DiskFileDialogStore extends DialogStore {
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
     },
-  ): Promise<SubDialog> {
+  ): Promise<SideDialog> {
     const generatedId = generateDialogID();
     const nowTs = formatUnifiedTimestamp(new Date());
-    const rootDialog =
-      callerDialog instanceof RootDialog
+    const mainDialog =
+      callerDialog instanceof MainDialog
         ? callerDialog
-        : callerDialog instanceof SubDialog
-          ? callerDialog.rootDialog
+        : callerDialog instanceof SideDialog
+          ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
               );
             })();
-    const rootStatus = rootDialog.status;
+    const rootStatus = mainDialog.status;
     if (rootStatus !== 'running') {
       throw new Error(
-        `createSubDialog invariant violation: root dialog must be running (rootId=${rootDialog.id.rootId}, status=${rootStatus})`,
+        `createSideDialog invariant violation: root dialog must be running (rootId=${mainDialog.id.rootId}, status=${rootStatus})`,
       );
     }
-    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
+    const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
 
-    // Prepare subdialog store
-    const subdialogStore = new DiskFileDialogStore(subdialogId);
-    const subdialog = new SubDialog(
-      subdialogStore,
-      rootDialog,
+    // Prepare sideDialog store
+    const sideDialogStore = new DiskFileDialogStore(sideDialogId);
+    const sideDialog = new SideDialog(
+      sideDialogStore,
+      mainDialog,
       callerDialog.taskDocPath,
-      subdialogId,
+      sideDialogId,
       targetAgentId,
-      {
-        callName: options.callName,
-        mentionList,
-        tellaskContent,
-        originMemberId: options.originMemberId,
-        callerDialogId: options.callerDialogId,
-        callId: options.callId,
-        collectiveTargets: options.collectiveTargets,
-        effectiveFbrEffort: options.effectiveFbrEffort,
-      },
+      buildSideDialogAskerStack({
+        askerDialogId: options.callerDialogId,
+        assignment: {
+          callName: options.callName,
+          mentionList,
+          tellaskContent,
+          originMemberId: options.originMemberId,
+          callerDialogId: options.callerDialogId,
+          callId: options.callId,
+          collectiveTargets: options.collectiveTargets,
+          effectiveFbrEffort: options.effectiveFbrEffort,
+        },
+      }),
       options.sessionSlug,
     );
 
-    // Initial subdialog user prompt is now persisted at first drive (driver.ts)
+    // Initial sideDialog user prompt is now persisted at first drive (driver.ts)
 
-    // Ensure subdialog directory and persist metadata under supdialog/.subdialogs/
-    await this.ensureSubdialogDirectory(subdialogId);
-    const metadata: SubdialogMetadataFile = {
-      id: subdialogId.selfId,
+    // Ensure sideDialog directory and persist metadata under askerDialog/.sideDialogs/
+    await this.ensureSideDialogDirectory(sideDialogId);
+    const metadata: SideDialogMetadataFile = {
+      id: sideDialogId.selfId,
       agentId: targetAgentId,
       taskDocPath: callerDialog.taskDocPath,
       createdAt: nowTs,
-      supdialogId: callerDialog.id.selfId,
+      askerDialogId: callerDialog.id.selfId,
       sessionSlug: options.sessionSlug,
-      assignmentFromSup: {
+      assignmentFromAsker: {
         callName: options.callName,
         mentionList,
         tellaskContent,
@@ -1952,21 +2104,21 @@ export class DiskFileDialogStore extends DialogStore {
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
-    await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
+    await DialogPersistence.saveSideDialogMetadata(sideDialogId, metadata);
 
     const rootAnchor = resolveRootGenerationAnchor(callerDialog);
     const parentCourse = callerDialog.activeGenCourseOrUndefined ?? callerDialog.currentCourse;
-    const subdialogCreatedRecord: SubdialogCreatedRecord = {
+    const sideDialogCreatedRecord: SideDialogCreatedRecord = {
       ts: nowTs,
-      type: 'subdialog_created_record',
+      type: 'sideDialog_created_record',
       ...cloneRootGenerationAnchor(rootAnchor),
-      subdialogId: subdialogId.selfId,
-      supdialogId: callerDialog.id.selfId,
+      sideDialogId: sideDialogId.selfId,
+      askerDialogId: callerDialog.id.selfId,
       agentId: targetAgentId,
       taskDocPath: callerDialog.taskDocPath,
       createdAt: nowTs,
       sessionSlug: options.sessionSlug,
-      assignmentFromSup: {
+      assignmentFromAsker: {
         callName: options.callName,
         mentionList,
         tellaskContent,
@@ -1977,10 +2129,10 @@ export class DiskFileDialogStore extends DialogStore {
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
-    await this.appendEvent(callerDialog, parentCourse, subdialogCreatedRecord);
+    await this.appendEvent(callerDialog, parentCourse, sideDialogCreatedRecord);
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
-    await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
+    await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
       kind: 'replace',
       next: {
         currentCourse: 1,
@@ -1988,23 +2140,23 @@ export class DiskFileDialogStore extends DialogStore {
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: false,
       },
     }));
 
-    // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
-    const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
-      rootDialog.id,
+    // AskerDialog clarification context is persisted in sideDialog metadata (askerDialogCall)
+    const rootSideDialogCount = await DialogPersistence.countAllSideDialogsUnderRoot(
+      mainDialog.id,
       rootStatus,
     );
 
-    const subdialogCreatedEvt: SubdialogEvent = {
-      type: 'subdialog_created_evt',
+    const sideDialogCreatedEvt: SideDialogEvent = {
+      type: 'sideDialog_created_evt',
       dialog: {
-        selfId: subdialogId.selfId,
-        rootId: subdialogId.rootId,
+        selfId: sideDialogId.selfId,
+        rootId: sideDialogId.rootId,
       },
       timestamp: new Date().toISOString(),
       course: parentCourse,
@@ -2012,19 +2164,19 @@ export class DiskFileDialogStore extends DialogStore {
         selfId: callerDialog.id.selfId,
         rootId: callerDialog.id.rootId,
       },
-      subDialog: {
-        selfId: subdialogId.selfId,
-        rootId: subdialogId.rootId,
+      sideDialog: {
+        selfId: sideDialogId.selfId,
+        rootId: sideDialogId.rootId,
       },
       targetAgentId,
       callName: options.callName,
       mentionList,
       tellaskContent,
-      rootSubdialogCount,
-      subDialogNode: {
-        selfId: subdialogId.selfId,
-        rootId: subdialogId.rootId,
-        supdialogId: callerDialog.id.selfId,
+      rootSideDialogCount,
+      sideDialogNode: {
+        selfId: sideDialogId.selfId,
+        rootId: sideDialogId.rootId,
+        askerDialogId: callerDialog.id.selfId,
         agentId: targetAgentId,
         taskDocPath: callerDialog.taskDocPath,
         status: rootStatus,
@@ -2033,7 +2185,7 @@ export class DiskFileDialogStore extends DialogStore {
         lastModified: nowTs,
         displayState: { kind: 'idle_waiting_user' },
         sessionSlug: options.sessionSlug,
-        assignmentFromSup: {
+        assignmentFromAsker: {
           callName: options.callName,
           mentionList,
           tellaskContent,
@@ -2044,11 +2196,11 @@ export class DiskFileDialogStore extends DialogStore {
         },
       },
     };
-    // Post subdialog_created_evt to PARENT's PubChan so frontend can receive it
-    // The frontend subscribes to the parent's events, not the subdialog's
-    postDialogEvent(callerDialog, subdialogCreatedEvt);
+    // Post sideDialog_created_evt to PARENT's PubChan so frontend can receive it
+    // The frontend subscribes to the parent's events, not the sideDialog's
+    postDialogEvent(callerDialog, sideDialogCreatedEvt);
 
-    return subdialog;
+    return sideDialog;
   }
 
   /**
@@ -2138,10 +2290,10 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Ensure subdialog directory exists (delegate to DialogPersistence)
+   * Ensure sideDialog directory exists (delegate to DialogPersistence)
    */
-  private async ensureSubdialogDirectory(dialogId: DialogID): Promise<string> {
-    return await DialogPersistence.ensureSubdialogDirectory(dialogId);
+  private async ensureSideDialogDirectory(dialogId: DialogID): Promise<string> {
+    return await DialogPersistence.ensureSideDialogDirectory(dialogId);
   }
 
   private async findExistingFuncResultRecord(
@@ -3047,6 +3199,13 @@ export class DiskFileDialogStore extends DialogStore {
     if (deferredReplyReassertion?.directive.targetCallId === payload.targetCallId) {
       await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
     }
+    const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      dialog.id,
+      dialog.status,
+    );
+    if (activeObligation?.targetCallId === payload.targetCallId) {
+      await DialogPersistence.setActiveTellaskReplyObligation(dialog.id, undefined, dialog.status);
+    }
   }
 
   /**
@@ -3295,41 +3454,42 @@ export class DiskFileDialogStore extends DialogStore {
     return await DialogPersistence.loadDialogMetadata(dialogId, status);
   }
 
-  public async loadPendingSubdialogs(
-    rootDialogId: DialogID,
+  public async loadPendingSideDialogs(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<PendingSubdialog[]> {
-    const records = await DialogPersistence.loadPendingSubdialogs(rootDialogId, status);
+  ): Promise<PendingSideDialog[]> {
+    const records = await DialogPersistence.loadPendingSideDialogs(mainDialogId, status);
     return records.map((record) => ({
-      subdialogId: new DialogID(record.subdialogId, rootDialogId.rootId),
+      sideDialogId: new DialogID(record.sideDialogId, mainDialogId.rootId),
       createdAt: record.createdAt,
       mentionList: record.mentionList,
       tellaskContent: record.tellaskContent,
       targetAgentId: record.targetAgentId,
       callId: record.callId,
       callingCourse: record.callingCourse,
+      callingGenseq: record.callingGenseq,
       callType: record.callType,
       sessionSlug: record.sessionSlug,
     }));
   }
 
-  public async saveSubdialogRegistry(
-    dialog: RootDialog,
-    rootDialogId: DialogID,
+  public async saveSideDialogRegistry(
+    dialog: MainDialog,
+    mainDialogId: DialogID,
     entries: Array<{
       key: string;
-      subdialogId: DialogID;
+      sideDialogId: DialogID;
       agentId: string;
       sessionSlug?: string;
     }>,
     status: DialogStatusKind,
   ): Promise<void> {
-    await DialogPersistence.saveSubdialogRegistry(rootDialogId, entries, status);
-    await DialogPersistence.appendSubdialogRegistryReconciledRecord(
-      rootDialogId,
+    await DialogPersistence.saveSideDialogRegistry(mainDialogId, entries, status);
+    await DialogPersistence.appendSideDialogRegistryReconciledRecord(
+      mainDialogId,
       entries.map((entry) => ({
         key: entry.key,
-        subdialogId: entry.subdialogId.selfId,
+        sideDialogId: entry.sideDialogId.selfId,
         agentId: entry.agentId,
         sessionSlug: entry.sessionSlug,
       })),
@@ -3338,134 +3498,138 @@ export class DiskFileDialogStore extends DialogStore {
     );
   }
 
-  public async loadSubdialogRegistry(
-    rootDialog: RootDialog,
+  public async loadSideDialogRegistry(
+    mainDialog: MainDialog,
     status: DialogStatusKind,
   ): Promise<void> {
-    const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
+    const entries = await DialogPersistence.loadSideDialogRegistry(mainDialog.id, status);
     const shouldPruneDead = status === 'running';
     let prunedDeadRegistryEntries = false;
-    const restoringSubdialogs = new Map<string, Promise<SubDialog>>();
+    const restoringSideDialogs = new Map<string, Promise<SideDialog>>();
 
-    const ensureSubdialogLoaded = async (
-      subdialogId: DialogID,
+    const ensureSideDialogLoaded = async (
+      sideDialogId: DialogID,
       ancestry: Set<string> = new Set(),
-    ): Promise<SubDialog> => {
-      if (ancestry.has(subdialogId.selfId)) {
+    ): Promise<SideDialog> => {
+      if (ancestry.has(sideDialogId.selfId)) {
         throw new Error(
-          `Subdialog registry restore invariant violation: cyclic parent chain ` +
-            `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+          `SideDialog registry restore invariant violation: cyclic parent chain ` +
+            `(rootId=${mainDialog.id.rootId}, selfId=${sideDialogId.selfId})`,
         );
       }
-      const existing = rootDialog.lookupDialog(subdialogId.selfId);
+      const existing = mainDialog.lookupDialog(sideDialogId.selfId);
       if (existing) {
-        if (!(existing instanceof SubDialog)) {
+        if (!(existing instanceof SideDialog)) {
           throw new Error(
-            `Dialog registry type invariant violation: expected SubDialog ` +
-              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+            `Dialog registry type invariant violation: expected SideDialog ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${sideDialogId.selfId})`,
           );
         }
         return existing;
       }
 
-      const inFlight = restoringSubdialogs.get(subdialogId.selfId);
+      const inFlight = restoringSideDialogs.get(sideDialogId.selfId);
       if (inFlight) {
         return await inFlight;
       }
 
-      const task = (async (): Promise<SubDialog> => {
+      const task = (async (): Promise<SideDialog> => {
         const nextAncestry = new Set(ancestry);
-        nextAncestry.add(subdialogId.selfId);
-        const subdialogState = await DialogPersistence.restoreDialog(subdialogId, status);
-        if (!subdialogState) {
+        nextAncestry.add(sideDialogId.selfId);
+        const sideDialogState = await DialogPersistence.restoreDialog(sideDialogId, status);
+        if (!sideDialogState) {
           throw new Error(
-            `Subdialog registry restore invariant violation: missing dialog state ` +
-              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+            `SideDialog registry restore invariant violation: missing dialog state ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${sideDialogId.selfId})`,
           );
         }
 
-        const metadata = subdialogState.metadata;
-        if (!isSubdialogMetadataFile(metadata)) {
+        const metadata = sideDialogState.metadata;
+        if (!isSideDialogMetadataFile(metadata)) {
           throw new Error(
-            `Subdialog registry restore invariant violation: expected subdialog metadata ` +
-              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+            `SideDialog registry restore invariant violation: expected sideDialog metadata ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${sideDialogId.selfId})`,
           );
         }
 
-        const assignmentFromSup = metadata.assignmentFromSup;
-        if (!assignmentFromSup) {
+        const askerStack = await DialogPersistence.loadSideDialogAskerStackState(
+          sideDialogId,
+          status,
+        );
+        if (!askerStack) {
           throw new Error(
-            `Subdialog registry restore invariant violation: missing assignmentFromSup ` +
-              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+            `SideDialog registry restore invariant violation: missing asker stack ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${sideDialogId.selfId})`,
           );
         }
+        const assignmentFromAsker = getDialogAskerStackCurrentAssignment(askerStack);
 
         const parentIds: string[] = [];
         const maybePushParentId = (candidate: string | undefined): void => {
           if (!candidate) return;
-          if (candidate === rootDialog.id.rootId) return;
-          if (candidate === subdialogId.selfId) return;
+          if (candidate === mainDialog.id.rootId) return;
+          if (candidate === sideDialogId.selfId) return;
           if (parentIds.includes(candidate)) return;
           parentIds.push(candidate);
         };
-        maybePushParentId(metadata.supdialogId);
-        maybePushParentId(assignmentFromSup.callerDialogId);
+        maybePushParentId(metadata.askerDialogId);
+        maybePushParentId(assignmentFromAsker.callerDialogId);
 
         for (const parentId of parentIds) {
-          if (rootDialog.lookupDialog(parentId)) {
+          if (mainDialog.lookupDialog(parentId)) {
             continue;
           }
-          const parentDialogId = new DialogID(parentId, rootDialog.id.rootId);
+          const parentDialogId = new DialogID(parentId, mainDialog.id.rootId);
           const parentMeta = await DialogPersistence.loadDialogMetadata(parentDialogId, status);
           if (!parentMeta) {
             throw new Error(
-              `Subdialog registry restore invariant violation: missing parent metadata ` +
-                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: missing parent metadata ` +
+                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
             );
           }
-          if (!isSubdialogMetadataFile(parentMeta)) {
+          if (!isSideDialogMetadataFile(parentMeta)) {
             throw new Error(
-              `Subdialog registry restore invariant violation: parent is not a subdialog ` +
-                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: parent is not a sideDialog ` +
+                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
             );
           }
-          await ensureSubdialogLoaded(parentDialogId, nextAncestry);
-          if (!rootDialog.lookupDialog(parentId)) {
+          await ensureSideDialogLoaded(parentDialogId, nextAncestry);
+          if (!mainDialog.lookupDialog(parentId)) {
             throw new Error(
-              `Subdialog registry restore invariant violation: parent restore failed ` +
-                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: parent restore failed ` +
+                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
             );
           }
         }
 
-        const subdialogStore = new DiskFileDialogStore(subdialogId);
-        const subdialog = new SubDialog(
-          subdialogStore,
-          rootDialog,
+        const sideDialogStore = new DiskFileDialogStore(sideDialogId);
+        const sideDialog = new SideDialog(
+          sideDialogStore,
+          mainDialog,
           metadata.taskDocPath,
-          new DialogID(subdialogId.selfId, rootDialog.id.rootId),
+          new DialogID(sideDialogId.selfId, mainDialog.id.rootId),
           metadata.agentId,
-          assignmentFromSup,
+          askerStack,
           metadata.sessionSlug,
           {
-            messages: subdialogState.messages,
-            reminders: subdialogState.reminders,
-            currentCourse: subdialogState.currentCourse,
-            contextHealth: subdialogState.contextHealth,
+            messages: sideDialogState.messages,
+            reminders: sideDialogState.reminders,
+            currentCourse: sideDialogState.currentCourse,
+            contextHealth: sideDialogState.contextHealth,
           },
         );
-        const latest = await DialogPersistence.loadDialogLatest(subdialogId, status);
-        subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
-        if (subdialog.sessionSlug) {
-          rootDialog.registerSubdialog(subdialog);
+        const latest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
+        sideDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+        if (sideDialog.sessionSlug) {
+          mainDialog.registerSideDialog(sideDialog);
         }
-        return subdialog;
+        return sideDialog;
       })();
-      restoringSubdialogs.set(subdialogId.selfId, task);
+      restoringSideDialogs.set(sideDialogId.selfId, task);
       try {
         return await task;
       } finally {
-        restoringSubdialogs.delete(subdialogId.selfId);
+        restoringSideDialogs.delete(sideDialogId.selfId);
       }
     };
 
@@ -3473,14 +3637,14 @@ export class DiskFileDialogStore extends DialogStore {
       if (!entry.sessionSlug) continue;
 
       if (shouldPruneDead) {
-        const latest = await DialogPersistence.loadDialogLatest(entry.subdialogId, status);
+        const latest = await DialogPersistence.loadDialogLatest(entry.sideDialogId, status);
         const executionMarker = latest?.executionMarker;
         if (executionMarker && executionMarker.kind === 'dead') {
           prunedDeadRegistryEntries = true;
-          rootDialog.unregisterSubdialog(entry.agentId, entry.sessionSlug);
-          log.debug('Skip dead subdialog while loading Type B registry', undefined, {
-            rootId: rootDialog.id.rootId,
-            subdialogId: entry.subdialogId.selfId,
+          mainDialog.unregisterSideDialog(entry.agentId, entry.sessionSlug);
+          log.debug('Skip dead sideDialog while loading Type B registry', undefined, {
+            rootId: mainDialog.id.rootId,
+            sideDialogId: entry.sideDialogId.selfId,
             agentId: entry.agentId,
             sessionSlug: entry.sessionSlug,
           });
@@ -3488,32 +3652,32 @@ export class DiskFileDialogStore extends DialogStore {
         }
       }
 
-      const subdialog = await ensureSubdialogLoaded(entry.subdialogId);
-      if (!subdialog.sessionSlug) {
+      const sideDialog = await ensureSideDialogLoaded(entry.sideDialogId);
+      if (!sideDialog.sessionSlug) {
         throw new Error(
-          `Subdialog registry invariant violation: missing sessionSlug on loaded subdialog ` +
-            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, expectedSessionSlug=${entry.sessionSlug})`,
+          `SideDialog registry invariant violation: missing sessionSlug on loaded sideDialog ` +
+            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, expectedSessionSlug=${entry.sessionSlug})`,
         );
       }
-      if (subdialog.sessionSlug !== entry.sessionSlug) {
+      if (sideDialog.sessionSlug !== entry.sessionSlug) {
         throw new Error(
-          `Subdialog registry invariant violation: sessionSlug mismatch ` +
-            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, ` +
-            `expected=${entry.sessionSlug}, actual=${subdialog.sessionSlug})`,
+          `SideDialog registry invariant violation: sessionSlug mismatch ` +
+            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
+            `expected=${entry.sessionSlug}, actual=${sideDialog.sessionSlug})`,
         );
       }
-      if (subdialog.agentId !== entry.agentId) {
+      if (sideDialog.agentId !== entry.agentId) {
         throw new Error(
-          `Subdialog registry invariant violation: agentId mismatch ` +
-            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, ` +
-            `expected=${entry.agentId}, actual=${subdialog.agentId})`,
+          `SideDialog registry invariant violation: agentId mismatch ` +
+            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
+            `expected=${entry.agentId}, actual=${sideDialog.agentId})`,
         );
       }
-      rootDialog.registerSubdialog(subdialog);
+      mainDialog.registerSideDialog(sideDialog);
     }
 
     if (prunedDeadRegistryEntries) {
-      await rootDialog.saveSubdialogRegistry();
+      await mainDialog.saveSideDialogRegistry();
     }
   }
 
@@ -4331,84 +4495,84 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'quest_for_sup_record': {
-        // Handle subdialog creation requests
+      case 'sideDialog_request_record': {
+        // Handle sideDialog creation requests
         const persistedStatus = assertPersistableDialogStatus(
           status,
-          'sendEventDirectlyToWebSocket:quest_for_sup_record',
+          'sendEventDirectlyToWebSocket:sideDialog_request_record',
         );
-        const subdialogId = new DialogID(event.subDialogId, dialog.id.rootId);
-        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, status);
-        if (!metadata || !isSubdialogMetadataFile(metadata)) {
+        const sideDialogId = new DialogID(event.sideDialogId, dialog.id.rootId);
+        const metadata = await DialogPersistence.loadDialogMetadata(sideDialogId, status);
+        if (!metadata || !isSideDialogMetadataFile(metadata)) {
           throw new Error(
-            `subdialog_created_evt replay invariant violation: metadata missing for ${subdialogId.valueOf()} in ${status}`,
+            `sideDialog_created_evt replay invariant violation: metadata missing for ${sideDialogId.valueOf()} in ${status}`,
           );
         }
-        const subMeta = metadata;
-        const subLatest = await DialogPersistence.loadDialogLatest(subdialogId, status);
+        const sideMeta = metadata;
+        const sideLatest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
 
-        const derivedSupdialogId =
-          subMeta.assignmentFromSup?.callerDialogId &&
-          subMeta.assignmentFromSup.callerDialogId.trim() !== ''
-            ? subMeta.assignmentFromSup.callerDialogId
-            : typeof subMeta.supdialogId === 'string' && subMeta.supdialogId.trim() !== ''
-              ? subMeta.supdialogId
+        const derivedAskerDialogId =
+          sideMeta.assignmentFromAsker?.callerDialogId &&
+          sideMeta.assignmentFromAsker.callerDialogId.trim() !== ''
+            ? sideMeta.assignmentFromAsker.callerDialogId
+            : typeof sideMeta.askerDialogId === 'string' && sideMeta.askerDialogId.trim() !== ''
+              ? sideMeta.askerDialogId
               : dialog.id.selfId;
-        const callName = subMeta.assignmentFromSup?.callName;
+        const callName = sideMeta.assignmentFromAsker?.callName;
         if (
           callName !== 'tellask' &&
           callName !== 'tellaskSessionless' &&
           callName !== 'freshBootsReasoning'
         ) {
           throw new Error(
-            `subdialog_created_evt replay invariant violation: missing assignment callName for ${subdialogId.valueOf()} in ${status}`,
+            `sideDialog_created_evt replay invariant violation: missing assignment callName for ${sideDialogId.valueOf()} in ${status}`,
           );
         }
-        const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
-          new DialogID(subdialogId.rootId),
+        const rootSideDialogCount = await DialogPersistence.countAllSideDialogsUnderRoot(
+          new DialogID(sideDialogId.rootId),
           persistedStatus,
         );
 
-        const subdialogCreatedEvent: SubdialogEvent = {
-          type: 'subdialog_created_evt',
+        const sideDialogCreatedEvent: SideDialogEvent = {
+          type: 'sideDialog_created_evt',
           course,
           dialog: {
             // Add dialog field for proper event routing
-            selfId: subdialogId.selfId,
-            rootId: subdialogId.rootId,
+            selfId: sideDialogId.selfId,
+            rootId: sideDialogId.rootId,
           },
           parentDialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
           },
-          subDialog: {
-            selfId: subdialogId.selfId,
-            rootId: subdialogId.rootId,
+          sideDialog: {
+            selfId: sideDialogId.selfId,
+            rootId: sideDialogId.rootId,
           },
-          targetAgentId: subMeta.agentId,
+          targetAgentId: sideMeta.agentId,
           callName,
           mentionList: event.mentionList,
           tellaskContent: event.tellaskContent,
-          rootSubdialogCount,
-          subDialogNode: {
-            selfId: subMeta.id,
-            rootId: subdialogId.rootId,
-            supdialogId: derivedSupdialogId,
-            agentId: subMeta.agentId,
-            taskDocPath: subMeta.taskDocPath,
+          rootSideDialogCount,
+          sideDialogNode: {
+            selfId: sideMeta.id,
+            rootId: sideDialogId.rootId,
+            askerDialogId: derivedAskerDialogId,
+            agentId: sideMeta.agentId,
+            taskDocPath: sideMeta.taskDocPath,
             status: persistedStatus,
-            currentCourse: subLatest?.currentCourse || 1,
-            createdAt: subMeta.createdAt,
-            lastModified: subLatest?.lastModified || subMeta.createdAt,
-            displayState: subLatest?.displayState,
-            sessionSlug: subMeta.sessionSlug,
-            assignmentFromSup: subMeta.assignmentFromSup,
+            currentCourse: sideLatest?.currentCourse || 1,
+            createdAt: sideMeta.createdAt,
+            lastModified: sideLatest?.lastModified || sideMeta.createdAt,
+            displayState: sideLatest?.displayState,
+            sessionSlug: sideMeta.sessionSlug,
+            assignmentFromAsker: sideMeta.assignmentFromAsker,
           },
           timestamp: event.ts,
         };
 
         if (ws.readyState === 1) {
-          ws.send(JSON.stringify(subdialogCreatedEvent));
+          ws.send(JSON.stringify(sideDialogCreatedEvent));
         }
         break;
       }
@@ -4458,12 +4622,12 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'subdialog_created_record':
+      case 'sideDialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
-      case 'pending_subdialogs_reconciled_record':
-      case 'subdialog_registry_reconciled_record':
-      case 'subdialog_responses_reconciled_record':
+      case 'pending_sideDialogs_reconciled_record':
+      case 'sideDialog_registry_reconciled_record':
+      case 'sideDialog_responses_reconciled_record':
         break;
 
       case 'tellask_carryover_record': {
@@ -4584,23 +4748,23 @@ type Q4HWriteBackEntry =
       inFlight: Promise<void>;
     };
 
-type PendingSubdialogsWriteBackState =
-  | { kind: 'file'; records: PendingSubdialogStateRecord[] }
+type PendingSideDialogsWriteBackState =
+  | { kind: 'file'; records: PendingSideDialogStateRecord[] }
   | { kind: 'deleted' };
 
-type PendingSubdialogsWriteBackEntry =
+type PendingSideDialogsWriteBackEntry =
   | {
       kind: 'scheduled';
       dialogId: DialogID;
       status: DialogStatusKind;
-      state: PendingSubdialogsWriteBackState;
+      state: PendingSideDialogsWriteBackState;
       timer: NodeJS.Timeout;
     }
   | {
       kind: 'flushing';
       dialogId: DialogID;
       status: DialogStatusKind;
-      state: PendingSubdialogsWriteBackState;
+      state: PendingSideDialogsWriteBackState;
       dirty: boolean;
       inFlight: Promise<void>;
     };
@@ -4618,18 +4782,18 @@ type Q4HMutateOutcome = {
   removedQuestion?: HumanQuestion;
 };
 
-type PendingSubdialogsMutation =
+type PendingSideDialogsMutation =
   | { kind: 'noop' }
-  | { kind: 'append'; record: PendingSubdialogStateRecord }
-  | { kind: 'removeBySubdialogId'; subdialogId: string }
-  | { kind: 'removeBySubdialogIds'; subdialogIds: string[] }
-  | { kind: 'replace'; records: PendingSubdialogStateRecord[] }
+  | { kind: 'append'; record: PendingSideDialogStateRecord }
+  | { kind: 'removeBySideDialogId'; sideDialogId: string }
+  | { kind: 'removeBySideDialogIds'; sideDialogIds: string[] }
+  | { kind: 'replace'; records: PendingSideDialogStateRecord[] }
   | { kind: 'clear' };
 
-type PendingSubdialogsMutateOutcome = {
-  previousRecords: PendingSubdialogStateRecord[];
-  records: PendingSubdialogStateRecord[];
-  removedRecords: PendingSubdialogStateRecord[];
+type PendingSideDialogsMutateOutcome = {
+  previousRecords: PendingSideDialogStateRecord[];
+  records: PendingSideDialogStateRecord[];
+  removedRecords: PendingSideDialogStateRecord[];
 };
 
 type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
@@ -4642,16 +4806,16 @@ type DialogLatestMutation =
   | { kind: 'patch'; patch: DialogLatestPatch }
   | { kind: 'replace'; next: DialogLatestFile };
 
-type RootDialogWriteBackCancellationToken = Readonly<{
+type MainDialogWriteBackCancellationToken = Readonly<{
   scopeKey: string;
   generation: number;
-  rootDialogId: string;
+  mainDialogId: string;
   status: DialogStatusKind;
 }>;
 
 class DialogWriteBackCanceledError extends Error {
-  constructor(token: RootDialogWriteBackCancellationToken, phase: string) {
-    super(`Dialog writeback canceled for ${token.rootDialogId} (${token.status}) during ${phase}`);
+  constructor(token: MainDialogWriteBackCancellationToken, phase: string) {
+    super(`Dialog writeback canceled for ${token.mainDialogId} (${token.status}) during ${phase}`);
     this.name = 'DialogWriteBackCanceledError';
   }
 }
@@ -4669,8 +4833,8 @@ export class DialogPersistence {
   private static readonly RUN_DIR = 'run';
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
-  private static readonly SUBDIALOGS_DIR = 'subdialogs';
-  private static readonly quarantinedRootDialogScopes = new Set<string>();
+  private static readonly SUBDIALOGS_DIR = 'sideDialogs';
+  private static readonly quarantinedMainDialogScopes = new Set<string>();
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
   private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
@@ -4682,13 +4846,15 @@ export class DialogPersistence {
   private static readonly q4hWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
 
-  private static readonly pendingSubdialogsWriteBackMutexes: Map<string, AsyncFifoMutex> =
+  private static readonly pendingSideDialogsWriteBackMutexes: Map<string, AsyncFifoMutex> =
     new Map();
-  private static readonly pendingSubdialogsWriteBack: Map<string, PendingSubdialogsWriteBackEntry> =
-    new Map();
+  private static readonly pendingSideDialogsWriteBack: Map<
+    string,
+    PendingSideDialogsWriteBackEntry
+  > = new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
-  private static readonly rootDialogWriteBackCancelGenerations: Map<string, number> = new Map();
+  private static readonly mainDialogWriteBackCancelGenerations: Map<string, number> = new Map();
 
   private static getLatestWriteBackMutex(key: string): AsyncFifoMutex {
     const existing = this.latestWriteBackMutexes.get(key);
@@ -4722,11 +4888,11 @@ export class DialogPersistence {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
   }
 
-  private static getPendingSubdialogsWriteBackMutex(key: string): AsyncFifoMutex {
-    const existing = this.pendingSubdialogsWriteBackMutexes.get(key);
+  private static getPendingSideDialogsWriteBackMutex(key: string): AsyncFifoMutex {
+    const existing = this.pendingSideDialogsWriteBackMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
-    this.pendingSubdialogsWriteBackMutexes.set(key, created);
+    this.pendingSideDialogsWriteBackMutexes.set(key, created);
     return created;
   }
 
@@ -4740,43 +4906,43 @@ export class DialogPersistence {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|q4h`;
   }
 
-  private static getPendingSubdialogsWriteBackKey(
-    rootDialogId: DialogID,
+  private static getPendingSideDialogsWriteBackKey(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
   ): string {
-    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.valueOf()}|pending-subdialogs`;
+    return `${this.getDialogsRootDir()}|${status}|${mainDialogId.valueOf()}|pending-sideDialogs`;
   }
 
-  private static getRootDialogWriteBackCancelScopeKey(
-    rootDialogId: DialogID,
+  private static getMainDialogWriteBackCancelScopeKey(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
   ): string {
-    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.selfId}|writeback-cancel`;
+    return `${this.getDialogsRootDir()}|${status}|${mainDialogId.selfId}|writeback-cancel`;
   }
 
-  private static createRootDialogWriteBackCancellationToken(
+  private static createMainDialogWriteBackCancellationToken(
     dialogId: DialogID,
     status: DialogStatusKind,
-  ): RootDialogWriteBackCancellationToken {
-    const rootDialogId =
+  ): MainDialogWriteBackCancellationToken {
+    const mainDialogId =
       dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
-    const scopeKey = this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status);
+    const scopeKey = this.getMainDialogWriteBackCancelScopeKey(mainDialogId, status);
     return {
       scopeKey,
-      generation: this.rootDialogWriteBackCancelGenerations.get(scopeKey) ?? 0,
-      rootDialogId: rootDialogId.selfId,
+      generation: this.mainDialogWriteBackCancelGenerations.get(scopeKey) ?? 0,
+      mainDialogId: mainDialogId.selfId,
       status,
     };
   }
 
-  private static assertRootDialogWriteBackNotCanceled(
-    token: RootDialogWriteBackCancellationToken,
+  private static assertMainDialogWriteBackNotCanceled(
+    token: MainDialogWriteBackCancellationToken,
     phase: string,
   ): void {
-    if (this.quarantinedRootDialogScopes.has(token.scopeKey)) {
+    if (this.quarantinedMainDialogScopes.has(token.scopeKey)) {
       throw new DialogWriteBackCanceledError(token, phase);
     }
-    const currentGeneration = this.rootDialogWriteBackCancelGenerations.get(token.scopeKey) ?? 0;
+    const currentGeneration = this.mainDialogWriteBackCancelGenerations.get(token.scopeKey) ?? 0;
     if (currentGeneration !== token.generation) {
       throw new DialogWriteBackCanceledError(token, phase);
     }
@@ -4785,14 +4951,14 @@ export class DialogPersistence {
   private static async rethrowWriteBackPathMissingAsCanceled(
     error: unknown,
     dialogPath: string,
-    cancellationToken: RootDialogWriteBackCancellationToken | undefined,
+    cancellationToken: MainDialogWriteBackCancellationToken | undefined,
     phase: string,
   ): Promise<void> {
     if (getErrorCode(error) !== 'ENOENT') {
       throw error;
     }
     if (cancellationToken) {
-      this.assertRootDialogWriteBackNotCanceled(cancellationToken, phase);
+      this.assertMainDialogWriteBackNotCanceled(cancellationToken, phase);
       if (!(await this.pathExists(dialogPath))) {
         throw new DialogWriteBackCanceledError(cancellationToken, `${phase}:dialog-path-missing`);
       }
@@ -4800,37 +4966,45 @@ export class DialogPersistence {
     throw error;
   }
 
-  private static cancelRootDialogWriteBacks(
-    rootDialogId: DialogID,
+  private static cancelMainDialogWriteBacks(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
   ): void {
-    const scopeKey = this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status);
-    const nextGeneration = (this.rootDialogWriteBackCancelGenerations.get(scopeKey) ?? 0) + 1;
-    this.rootDialogWriteBackCancelGenerations.set(scopeKey, nextGeneration);
-    this.clearWriteBackEntriesForRootDialog(rootDialogId, status);
+    const scopeKey = this.getMainDialogWriteBackCancelScopeKey(mainDialogId, status);
+    const nextGeneration = (this.mainDialogWriteBackCancelGenerations.get(scopeKey) ?? 0) + 1;
+    this.mainDialogWriteBackCancelGenerations.set(scopeKey, nextGeneration);
+    this.clearWriteBackEntriesForMainDialog(mainDialogId, status);
   }
 
   private static getDialogMetadataPath(dialogId: DialogID, status: DialogStatusKind): string {
     const dialogPath =
       dialogId.rootId === dialogId.selfId
-        ? this.getRootDialogPath(dialogId, status)
-        : this.getSubdialogPath(dialogId, status);
+        ? this.getMainDialogPath(dialogId, status)
+        : this.getSideDialogPath(dialogId, status);
     return path.join(dialogPath, 'dialog.yaml');
+  }
+
+  private static getDialogAskerStackPath(dialogId: DialogID, status: DialogStatusKind): string {
+    const dialogPath =
+      dialogId.rootId === dialogId.selfId
+        ? this.getMainDialogPath(dialogId, status)
+        : this.getSideDialogPath(dialogId, status);
+    return path.join(dialogPath, 'asker-stack.jsonl');
   }
 
   private static async assertDialogMetadataExistsForAppend(
     dialogId: DialogID,
     status: DialogStatusKind,
-    cancellationToken: RootDialogWriteBackCancellationToken,
+    cancellationToken: MainDialogWriteBackCancellationToken,
     phase: string,
   ): Promise<void> {
-    this.assertRootDialogWriteBackNotCanceled(cancellationToken, phase);
+    this.assertMainDialogWriteBackNotCanceled(cancellationToken, phase);
     const metadataPath = this.getDialogMetadataPath(dialogId, status);
     try {
       await fs.promises.access(metadataPath);
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
-        this.assertRootDialogWriteBackNotCanceled(cancellationToken, `${phase}:metadata-missing`);
+        this.assertMainDialogWriteBackNotCanceled(cancellationToken, `${phase}:metadata-missing`);
         throw new Error(
           `Refusing to append events for dialog ${dialogId.valueOf()}: missing dialog metadata at ${metadataPath}`,
         );
@@ -4843,15 +5017,15 @@ export class DialogPersistence {
     dialogId: DialogID,
     status: DialogStatusKind,
   ): Promise<void> {
-    const rootDialogId =
+    const mainDialogId =
       dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
-    const rootPath = this.getRootDialogPath(rootDialogId, status);
+    const rootPath = this.getMainDialogPath(mainDialogId, status);
     await fs.promises.rm(rootPath, { recursive: true, force: true });
   }
 
-  private static clonePendingSubdialogRecords(
-    records: readonly PendingSubdialogStateRecord[],
-  ): PendingSubdialogStateRecord[] {
+  private static clonePendingSideDialogRecords(
+    records: readonly PendingSideDialogStateRecord[],
+  ): PendingSideDialogStateRecord[] {
     return records.map((record) => ({
       ...record,
       mentionList: record.mentionList ? [...record.mentionList] : undefined,
@@ -4866,16 +5040,16 @@ export class DialogPersistence {
   }
 
   private static cloneRegistryEntries(
-    entries: readonly SubdialogRegistryStateRecord[],
-  ): SubdialogRegistryStateRecord[] {
+    entries: readonly SideDialogRegistryStateRecord[],
+  ): SideDialogRegistryStateRecord[] {
     return entries.map((entry) => ({
       ...entry,
     }));
   }
 
-  private static cloneSubdialogResponses(
-    responses: readonly SubdialogResponseStateRecord[],
-  ): SubdialogResponseStateRecord[] {
+  private static cloneSideDialogResponses(
+    responses: readonly SideDialogResponseStateRecord[],
+  ): SideDialogResponseStateRecord[] {
     return responses.map((response) => ({
       ...response,
       mentionList: response.mentionList ? [...response.mentionList] : undefined,
@@ -4922,17 +5096,17 @@ export class DialogPersistence {
     );
   }
 
-  static async appendPendingSubdialogsReconciledRecord(
+  static async appendPendingSideDialogsReconciledRecord(
     dialogId: DialogID,
-    pendingSubdialogs: readonly PendingSubdialogStateRecord[],
+    pendingSideDialogs: readonly PendingSideDialogStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
     status: DialogStatusKind,
   ): Promise<void> {
-    const record: PendingSubdialogsReconciledRecord = {
+    const record: PendingSideDialogsReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
-      type: 'pending_subdialogs_reconciled_record',
+      type: 'pending_sideDialogs_reconciled_record',
       ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
-      pendingSubdialogs: this.clonePendingSubdialogRecords(pendingSubdialogs),
+      pendingSideDialogs: this.clonePendingSideDialogRecords(pendingSideDialogs),
     };
     await this.appendEvent(
       dialogId,
@@ -4942,15 +5116,15 @@ export class DialogPersistence {
     );
   }
 
-  static async appendSubdialogRegistryReconciledRecord(
+  static async appendSideDialogRegistryReconciledRecord(
     dialogId: DialogID,
-    entries: readonly SubdialogRegistryStateRecord[],
+    entries: readonly SideDialogRegistryStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
     status: DialogStatusKind,
   ): Promise<void> {
-    const record: SubdialogRegistryReconciledRecord = {
+    const record: SideDialogRegistryReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
-      type: 'subdialog_registry_reconciled_record',
+      type: 'sideDialog_registry_reconciled_record',
       ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
       entries: this.cloneRegistryEntries(entries),
     };
@@ -4962,17 +5136,17 @@ export class DialogPersistence {
     );
   }
 
-  static async appendSubdialogResponsesReconciledRecord(
+  static async appendSideDialogResponsesReconciledRecord(
     dialogId: DialogID,
-    responses: readonly SubdialogResponseStateRecord[],
+    responses: readonly SideDialogResponseStateRecord[],
     writeTarget: ReconciledRecordWriteTarget,
     status: DialogStatusKind,
   ): Promise<void> {
-    const record: SubdialogResponsesReconciledRecord = {
+    const record: SideDialogResponsesReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
-      type: 'subdialog_responses_reconciled_record',
+      type: 'sideDialog_responses_reconciled_record',
       ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
-      responses: this.cloneSubdialogResponses(responses),
+      responses: this.cloneSideDialogResponses(responses),
     };
     await this.appendEvent(
       dialogId,
@@ -4992,38 +5166,38 @@ export class DialogPersistence {
   /**
    * Get the full path for a dialog directory
    */
-  static getRootDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
+  static getMainDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId !== dialogId.selfId) {
       throw new Error('Expected root dialog id');
     }
-    const statusDir = getPersistableStatusDirName(status, 'DialogPersistence.getRootDialogPath');
+    const statusDir = getPersistableStatusDirName(status, 'DialogPersistence.getMainDialogPath');
     return path.join(this.getDialogsRootDir(), statusDir, dialogId.selfId);
   }
 
   /**
-   * Get the events/state directory for a dialog (composite ID for subdialogs)
+   * Get the events/state directory for a dialog (composite ID for sideDialogs)
    */
   static getDialogEventsPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     // Root dialogs store events under their own directory.
-    // Subdialogs store events under the root's subdialogs/<self> directory.
+    // SideDialogs store events under the root's sideDialogs/<self> directory.
     if (dialogId.rootId === dialogId.selfId) {
-      return this.getRootDialogPath(dialogId, status);
+      return this.getMainDialogPath(dialogId, status);
     }
-    return this.getSubdialogPath(dialogId, status);
+    return this.getSideDialogPath(dialogId, status);
   }
 
   /**
-   * Get the path for a subdialog within a supdialog
+   * Get the path for a sideDialog within a askerDialog
    */
-  static getSubdialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
+  static getSideDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId === dialogId.selfId) {
-      throw new Error('Expected subdialog id (self differs from root)');
+      throw new Error('Expected sideDialog id (self differs from root)');
     }
-    const rootPath = this.getRootDialogPath(new DialogID(dialogId.rootId), status);
+    const rootPath = this.getMainDialogPath(new DialogID(dialogId.rootId), status);
     return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
   }
 
-  private static getMalformedRootDialogPath(dialogId: DialogID, status: DialogStatusKind): string {
+  private static getMalformedMainDialogPath(dialogId: DialogID, status: DialogStatusKind): string {
     if (dialogId.rootId !== dialogId.selfId) {
       throw new Error('Expected root dialog id');
     }
@@ -5031,7 +5205,7 @@ export class DialogPersistence {
     return path.join(this.getDialogsRootDir(), this.MALFORMED_DIR, dialogId.selfId);
   }
 
-  private static inferRootDialogIdFromMetadataRelativeDir(relativeDir: string): DialogID | null {
+  private static inferMainDialogIdFromMetadataRelativeDir(relativeDir: string): DialogID | null {
     const dir = relativeDir.trim();
     if (dir === '' || dir === '.' || dir === path.sep) {
       return null;
@@ -5040,8 +5214,8 @@ export class DialogPersistence {
     if (segments.length === 0) {
       return null;
     }
-    const subdialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
-    const rootSegments = subdialogsIndex === -1 ? segments : segments.slice(0, subdialogsIndex);
+    const sideDialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    const rootSegments = sideDialogsIndex === -1 ? segments : segments.slice(0, sideDialogsIndex);
     if (rootSegments.length === 0) {
       return null;
     }
@@ -5057,26 +5231,26 @@ export class DialogPersistence {
     if (segments.length === 0) {
       return null;
     }
-    const subdialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
-    if (subdialogsIndex === -1) {
+    const sideDialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    if (sideDialogsIndex === -1) {
       return segments.join('/');
     }
-    const subdialogSegments = segments.slice(subdialogsIndex + 1);
-    if (subdialogSegments.length === 0) {
+    const sideDialogSegments = segments.slice(sideDialogsIndex + 1);
+    if (sideDialogSegments.length === 0) {
       return null;
     }
-    return subdialogSegments.join('/');
+    return sideDialogSegments.join('/');
   }
 
-  private static async listSubdialogIdsUnderRoot(
-    rootDialogId: DialogID,
+  private static async listSideDialogIdsUnderRoot(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
   ): Promise<string[]> {
-    const subdialogsPath = path.join(
-      this.getRootDialogPath(rootDialogId, status),
+    const sideDialogsPath = path.join(
+      this.getMainDialogPath(mainDialogId, status),
       this.SUBDIALOGS_DIR,
     );
-    const subdialogIds = new Set<string>();
+    const sideDialogIds = new Set<string>();
 
     const visit = async (dirPath: string, relativePath: string = ''): Promise<void> => {
       let entries: fs.Dirent[];
@@ -5104,10 +5278,10 @@ export class DialogPersistence {
           );
           if (!inferredId) {
             throw new Error(
-              `Failed to infer subdialog id from relative path ${entryRelativePath} under root ${rootDialogId.selfId}`,
+              `Failed to infer sideDialog id from relative path ${entryRelativePath} under root ${mainDialogId.selfId}`,
             );
           }
-          subdialogIds.add(inferredId);
+          sideDialogIds.add(inferredId);
           continue;
         } catch (error: unknown) {
           if (getErrorCode(error) !== 'ENOENT') {
@@ -5119,8 +5293,8 @@ export class DialogPersistence {
       }
     };
 
-    await visit(subdialogsPath);
-    return [...subdialogIds];
+    await visit(sideDialogsPath);
+    return [...sideDialogIds];
   }
 
   private static async pathExists(targetPath: string): Promise<boolean> {
@@ -5145,55 +5319,55 @@ export class DialogPersistence {
     this.latestWriteBackMutexes.delete(key);
   }
 
-  private static clearWriteBackEntriesForRootDialog(
-    rootDialogId: DialogID,
+  private static clearWriteBackEntriesForMainDialog(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
   ): void {
-    const basePrefix = `${this.getDialogsRootDir()}|${status}|${rootDialogId.selfId}`;
-    const matchesRootDialogKey = (key: string): boolean =>
+    const basePrefix = `${this.getDialogsRootDir()}|${status}|${mainDialogId.selfId}`;
+    const matchesMainDialogKey = (key: string): boolean =>
       key === basePrefix || key.startsWith(`${basePrefix}#`) || key.startsWith(`${basePrefix}|`);
 
     for (const [key, entry] of this.latestWriteBack.entries()) {
-      if (!matchesRootDialogKey(key)) continue;
+      if (!matchesMainDialogKey(key)) continue;
       if (entry.kind === 'scheduled') {
         clearTimeout(entry.timer);
       }
       this.latestWriteBack.delete(key);
     }
     for (const key of this.latestWriteBackMutexes.keys()) {
-      if (matchesRootDialogKey(key)) {
+      if (matchesMainDialogKey(key)) {
         this.latestWriteBackMutexes.delete(key);
       }
     }
 
     for (const [key, entry] of this.q4hWriteBack.entries()) {
-      if (!matchesRootDialogKey(key)) continue;
+      if (!matchesMainDialogKey(key)) continue;
       if (entry.kind === 'scheduled') {
         clearTimeout(entry.timer);
       }
       this.q4hWriteBack.delete(key);
     }
     for (const key of this.q4hWriteBackMutexes.keys()) {
-      if (matchesRootDialogKey(key)) {
+      if (matchesMainDialogKey(key)) {
         this.q4hWriteBackMutexes.delete(key);
       }
     }
 
-    for (const [key, entry] of this.pendingSubdialogsWriteBack.entries()) {
-      if (!matchesRootDialogKey(key)) continue;
+    for (const [key, entry] of this.pendingSideDialogsWriteBack.entries()) {
+      if (!matchesMainDialogKey(key)) continue;
       if (entry.kind === 'scheduled') {
         clearTimeout(entry.timer);
       }
-      this.pendingSubdialogsWriteBack.delete(key);
+      this.pendingSideDialogsWriteBack.delete(key);
     }
-    for (const key of this.pendingSubdialogsWriteBackMutexes.keys()) {
-      if (matchesRootDialogKey(key)) {
-        this.pendingSubdialogsWriteBackMutexes.delete(key);
+    for (const key of this.pendingSideDialogsWriteBackMutexes.keys()) {
+      if (matchesMainDialogKey(key)) {
+        this.pendingSideDialogsWriteBackMutexes.delete(key);
       }
     }
 
     for (const key of this.courseAppendMutexes.keys()) {
-      if (matchesRootDialogKey(key)) {
+      if (matchesMainDialogKey(key)) {
         this.courseAppendMutexes.delete(key);
       }
     }
@@ -5205,52 +5379,52 @@ export class DialogPersistence {
     reason: string,
     error: Error,
   ): Promise<void> {
-    const rootDialogId =
+    const mainDialogId =
       dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
-    const quarantineKey = `${status}|${rootDialogId.selfId}`;
-    if (quarantiningRootDialogs.has(quarantineKey)) {
+    const quarantineKey = `${status}|${mainDialogId.selfId}`;
+    if (quarantiningMainDialogs.has(quarantineKey)) {
       return;
     }
-    quarantiningRootDialogs.add(quarantineKey);
+    quarantiningMainDialogs.add(quarantineKey);
     let quarantined = false;
     try {
       await prepareDialogQuarantineHook?.({
         dialogId,
-        rootDialogId,
+        mainDialogId,
         status,
         reason,
         error,
       });
-      this.quarantinedRootDialogScopes.add(
-        this.getRootDialogWriteBackCancelScopeKey(rootDialogId, status),
+      this.quarantinedMainDialogScopes.add(
+        this.getMainDialogWriteBackCancelScopeKey(mainDialogId, status),
       );
-      this.cancelRootDialogWriteBacks(rootDialogId, status);
+      this.cancelMainDialogWriteBacks(mainDialogId, status);
 
-      const sourcePath = this.getRootDialogPath(rootDialogId, status);
+      const sourcePath = this.getMainDialogPath(mainDialogId, status);
       if (!(await this.pathExists(sourcePath))) {
         return;
       }
 
-      let destinationPath = this.getMalformedRootDialogPath(rootDialogId, status);
+      let destinationPath = this.getMalformedMainDialogPath(mainDialogId, status);
       if (await this.pathExists(destinationPath)) {
         destinationPath = path.join(
           this.getDialogsRootDir(),
           this.MALFORMED_DIR,
-          `${rootDialogId.selfId}__${randomUUID()}`,
+          `${mainDialogId.selfId}__${randomUUID()}`,
         );
       }
 
       await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
       await fs.promises.rename(sourcePath, destinationPath);
       quarantined = true;
-      log.warn(`Quarantined malformed dialog ${rootDialogId.selfId}`, undefined, {
+      log.warn(`Quarantined malformed dialog ${mainDialogId.selfId}`, undefined, {
         status,
         reason,
         sourcePath,
         destinationPath,
         errorMessage: error.message,
         dialogId: dialogId.valueOf(),
-        rootDialogId: rootDialogId.valueOf(),
+        mainDialogId: mainDialogId.valueOf(),
       });
       dialogsQuarantinedBroadcaster?.({
         type: 'dialogs_quarantined',
@@ -5259,7 +5433,7 @@ export class DialogPersistence {
           status,
           'DialogPersistence.quarantineMalformedDialog(fromStatus)',
         ),
-        rootId: rootDialogId.selfId,
+        rootId: mainDialogId.selfId,
         dialogId: dialogId.selfId,
         reason,
         timestamp: formatUnifiedTimestamp(new Date()),
@@ -5268,14 +5442,14 @@ export class DialogPersistence {
       try {
         await finalizeDialogQuarantineHook?.({
           dialogId,
-          rootDialogId,
+          mainDialogId,
           status,
           reason,
           error,
           quarantined,
         });
       } finally {
-        quarantiningRootDialogs.delete(quarantineKey);
+        quarantiningMainDialogs.delete(quarantineKey);
       }
     }
   }
@@ -5314,11 +5488,11 @@ export class DialogPersistence {
   /**
    * Ensure dialog directory structure exists
    */
-  static async ensureRootDialogDirectory(
+  static async ensureMainDialogDirectory(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<string> {
-    const dialogPath = this.getRootDialogPath(dialogId, status);
+    const dialogPath = this.getMainDialogPath(dialogId, status);
 
     try {
       await fs.promises.mkdir(dialogPath, { recursive: true });
@@ -5330,19 +5504,19 @@ export class DialogPersistence {
   }
 
   /**
-   * Ensure subdialog directory structure exists
+   * Ensure sideDialog directory structure exists
    */
-  static async ensureSubdialogDirectory(
+  static async ensureSideDialogDirectory(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<string> {
-    const subdialogPath = this.getSubdialogPath(dialogId, status);
+    const sideDialogPath = this.getSideDialogPath(dialogId, status);
 
     try {
-      await fs.promises.mkdir(subdialogPath, { recursive: true });
-      return subdialogPath;
+      await fs.promises.mkdir(sideDialogPath, { recursive: true });
+      return sideDialogPath;
     } catch (error) {
-      log.error(`Failed to create subdialog directory ${subdialogPath}:`, error);
+      log.error(`Failed to create sideDialog directory ${sideDialogPath}:`, error);
       throw error;
     }
   }
@@ -5352,8 +5526,8 @@ export class DialogPersistence {
    */
   static async markDialogCompleted(dialogId: DialogID): Promise<void> {
     try {
-      const dialogPath = this.getRootDialogPath(dialogId, 'running');
-      const completedPath = this.getRootDialogPath(dialogId, 'completed');
+      const dialogPath = this.getMainDialogPath(dialogId, 'running');
+      const completedPath = this.getMainDialogPath(dialogId, 'completed');
 
       await fs.promises.mkdir(completedPath, { recursive: true });
 
@@ -5435,12 +5609,12 @@ export class DialogPersistence {
               } catch (yamlError: unknown) {
                 const persistenceError = findDomindsPersistenceFileError(yamlError);
                 if (persistenceError) {
-                  const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(
+                  const mainDialogId = this.inferMainDialogIdFromMetadataRelativeDir(
                     path.dirname(entryRelativePath),
                   );
-                  if (rootDialogId) {
+                  if (mainDialogId) {
                     await this.quarantineMalformedDialog(
-                      rootDialogId,
+                      mainDialogId,
                       status,
                       'listDialogs',
                       persistenceError,
@@ -5486,8 +5660,8 @@ export class DialogPersistence {
   }
 
   /**
-   * List all dialog IDs (root + subdialogs) together with their root IDs.
-   * This is the only safe way to enumerate subdialogs because their directory names
+   * List all dialog IDs (root + sideDialogs) together with their root IDs.
+   * This is the only safe way to enumerate sideDialogs because their directory names
    * are not guaranteed to be their selfId.
    *
    * Like `listDialogs()`, this is a candidate scanner rather than a full metadata validator.
@@ -5502,10 +5676,10 @@ export class DialogPersistence {
     );
 
     const result: DialogID[] = [];
-    const rootDialogIdByDialogYamlPath = new Map<string, string | null>();
+    const mainDialogIdByDialogYamlPath = new Map<string, string | null>();
 
     const readDialogYamlId = async (dialogYamlPath: string): Promise<string | null> => {
-      const cached = rootDialogIdByDialogYamlPath.get(dialogYamlPath);
+      const cached = mainDialogIdByDialogYamlPath.get(dialogYamlPath);
       if (cached !== undefined) return cached;
       try {
         const content = await readPersistenceTextFile({
@@ -5534,23 +5708,23 @@ export class DialogPersistence {
           });
         }
         const normalized = idValue.trim();
-        rootDialogIdByDialogYamlPath.set(dialogYamlPath, normalized);
+        mainDialogIdByDialogYamlPath.set(dialogYamlPath, normalized);
         return normalized;
       } catch (error: unknown) {
         const persistenceError = findDomindsPersistenceFileError(error);
         if (persistenceError) {
           const relativeDir = path.relative(specificDir, path.dirname(dialogYamlPath));
-          const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(relativeDir);
-          if (rootDialogId) {
+          const mainDialogId = this.inferMainDialogIdFromMetadataRelativeDir(relativeDir);
+          if (mainDialogId) {
             await this.quarantineMalformedDialog(
-              rootDialogId,
+              mainDialogId,
               status,
               'listAllDialogIds:readDialogYamlId',
               persistenceError,
             );
           }
         }
-        rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
+        mainDialogIdByDialogYamlPath.set(dialogYamlPath, null);
         return null;
       }
     };
@@ -5564,7 +5738,7 @@ export class DialogPersistence {
       // Root dialog IDs in this repo can contain path separators (e.g. "f4/44/cd85c4e2").
       // The root dialog directory is therefore nested (RUN_DIR/<rootId>/dialog.yaml).
       //
-      // To infer the rootId for any dialog.yaml we find (root or subdialog), scan prefixes of the
+      // To infer the rootId for any dialog.yaml we find (root or sideDialog), scan prefixes of the
       // directory path and pick the first prefix that is itself a valid root dialog directory:
       // - it has a dialog.yaml
       // - its dialog.yaml id matches the prefix joined with '/'
@@ -5642,10 +5816,10 @@ export class DialogPersistence {
         } catch (yamlError: unknown) {
           const persistenceError = findDomindsPersistenceFileError(yamlError);
           if (persistenceError) {
-            const rootDialogId = this.inferRootDialogIdFromMetadataRelativeDir(relDir);
-            if (rootDialogId) {
+            const mainDialogId = this.inferMainDialogIdFromMetadataRelativeDir(relDir);
+            if (mainDialogId) {
               await this.quarantineMalformedDialog(
-                rootDialogId,
+                mainDialogId,
                 status,
                 'listAllDialogIds',
                 persistenceError,
@@ -5685,7 +5859,7 @@ export class DialogPersistence {
   ): Promise<void> {
     const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
-    const cancellationToken = this.createRootDialogWriteBackCancellationToken(dialogId, status);
+    const cancellationToken = this.createMainDialogWriteBackCancellationToken(dialogId, status);
     try {
       if (events.length === 0) {
         return;
@@ -6338,7 +6512,7 @@ export class DialogPersistence {
 
         clearTimeout(entry.timer);
 
-        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+        const cancellationToken = this.createMainDialogWriteBackCancellationToken(
           entry.dialogId,
           entry.status,
         );
@@ -6433,10 +6607,10 @@ export class DialogPersistence {
     dialogId: DialogID,
     state: Q4HWriteBackState,
     status: DialogStatusKind,
-    cancellationToken?: RootDialogWriteBackCancellationToken,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
   ): Promise<void> {
     if (cancellationToken) {
-      this.assertRootDialogWriteBackNotCanceled(cancellationToken, 'writeQ4HStateToDisk:start');
+      this.assertMainDialogWriteBackNotCanceled(cancellationToken, 'writeQ4HStateToDisk:start');
     }
     const dialogPath = this.getDialogEventsPath(dialogId, status);
     const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
@@ -6483,7 +6657,7 @@ export class DialogPersistence {
     }>
   > {
     try {
-      // Get all running dialogs (root + subdialogs) with correct rootId association.
+      // Get all running dialogs (root + sideDialogs) with correct rootId association.
       const dialogIds = await this.listAllDialogIds('running');
       const allQuestions: Array<{
         id: string;
@@ -6558,18 +6732,18 @@ export class DialogPersistence {
   // === PHASE 6: SUBDIALOG SUPPLY PERSISTENCE ===
 
   /**
-   * Save pending subdialogs for Type A supply mechanism.
-   * Tracks subdialogs that were created but not yet completed.
+   * Save pending sideDialogs for Type A supply mechanism.
+   * Tracks sideDialogs that were created but not yet completed.
    */
-  static async savePendingSubdialogs(
-    rootDialogId: DialogID,
-    pendingSubdialogs: PendingSubdialogStateRecord[],
+  static async savePendingSideDialogs(
+    mainDialogId: DialogID,
+    pendingSideDialogs: PendingSideDialogStateRecord[],
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    const next = pendingSubdialogs.map((r) => ({ ...r }));
-    await this.mutatePendingSubdialogs(
-      rootDialogId,
+    const next = pendingSideDialogs.map((r) => ({ ...r }));
+    await this.mutatePendingSideDialogs(
+      mainDialogId,
       () => ({ kind: 'replace', records: next }),
       rootAnchor,
       status,
@@ -6577,34 +6751,34 @@ export class DialogPersistence {
   }
 
   /**
-   * Load pending subdialogs for Type A supply mechanism.
+   * Load pending sideDialogs for Type A supply mechanism.
    */
-  static async loadPendingSubdialogs(
-    rootDialogId: DialogID,
+  static async loadPendingSideDialogs(
+    mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<PendingSubdialogStateRecord[]> {
-    const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
-    const staged = this.pendingSubdialogsWriteBack.get(key);
+  ): Promise<PendingSideDialogStateRecord[]> {
+    const key = this.getPendingSideDialogsWriteBackKey(mainDialogId, status);
+    const staged = this.pendingSideDialogsWriteBack.get(key);
     if (staged) {
       return staged.state.kind === 'deleted' ? [] : staged.state.records;
     }
 
     try {
-      return await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
+      return await this.loadPendingSideDialogsFromDisk(mainDialogId, status);
     } catch (error: unknown) {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
-        rootDialogId,
+        mainDialogId,
         status,
-        'loadPendingSubdialogs',
+        'loadPendingSideDialogs',
         error,
       );
-      throw new Error('unreachable after loadPendingSubdialogs persistence rethrow');
+      throw new Error('unreachable after loadPendingSideDialogs persistence rethrow');
     }
   }
 
-  private static isPendingSubdialogRecord(value: unknown): value is PendingSubdialogStateRecord {
+  private static isPendingSideDialogRecord(value: unknown): value is PendingSideDialogStateRecord {
     if (!isRecord(value)) return false;
-    if (typeof value.subdialogId !== 'string') return false;
+    if (typeof value.sideDialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
     if (
       value.callName !== 'tellask' &&
@@ -6627,22 +6801,12 @@ export class DialogPersistence {
     if (typeof value.tellaskContent !== 'string') return false;
     if (typeof value.targetAgentId !== 'string') return false;
     if (typeof value.callId !== 'string') return false;
-    if ('callingCourse' in value) {
-      const callingCourse = value.callingCourse;
-      if (callingCourse !== undefined) {
-        if (typeof callingCourse !== 'number') return false;
-        if (!Number.isFinite(callingCourse)) return false;
-        if (Math.floor(callingCourse) <= 0) return false;
-      }
-    }
-    if ('callingGenseq' in value) {
-      const callingGenseq = value.callingGenseq;
-      if (callingGenseq !== undefined) {
-        if (typeof callingGenseq !== 'number') return false;
-        if (!Number.isFinite(callingGenseq)) return false;
-        if (Math.floor(callingGenseq) <= 0) return false;
-      }
-    }
+    if (typeof value.callingCourse !== 'number') return false;
+    if (!Number.isInteger(value.callingCourse)) return false;
+    if (value.callingCourse <= 0) return false;
+    if (typeof value.callingGenseq !== 'number') return false;
+    if (!Number.isInteger(value.callingGenseq)) return false;
+    if (value.callingGenseq <= 0) return false;
     if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
     if ('sessionSlug' in value) {
       const sessionSlug = value.sessionSlug;
@@ -6651,26 +6815,26 @@ export class DialogPersistence {
     return true;
   }
 
-  private static async loadPendingSubdialogsFromDisk(
-    rootDialogId: DialogID,
+  private static async loadPendingSideDialogsFromDisk(
+    mainDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<PendingSubdialogStateRecord[]> {
-    const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-    const filePath = path.join(dialogPath, 'pending-subdialogs.json');
+  ): Promise<PendingSideDialogStateRecord[]> {
+    const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
+    const filePath = path.join(dialogPath, 'pending-sideDialogs.json');
     try {
       const content = await readPersistenceTextFile({
         filePath,
-        source: 'pending_subdialogs',
+        source: 'pending_sideDialogs',
         format: 'json',
       });
       const parsed: unknown = parsePersistenceJson({
         content,
         filePath,
-        source: 'pending_subdialogs',
+        source: 'pending_sideDialogs',
       });
-      if (!Array.isArray(parsed) || !parsed.every((item) => this.isPendingSubdialogRecord(item))) {
+      if (!Array.isArray(parsed) || !parsed.every((item) => this.isPendingSideDialogRecord(item))) {
         throw buildInvalidPersistenceFileError({
-          source: 'pending_subdialogs',
+          source: 'pending_sideDialogs',
           format: 'json',
           filePath,
         });
@@ -6682,44 +6846,44 @@ export class DialogPersistence {
     }
   }
 
-  static async mutatePendingSubdialogs(
-    rootDialogId: DialogID,
-    mutator: (previous: PendingSubdialogStateRecord[]) => PendingSubdialogsMutation,
+  static async mutatePendingSideDialogs(
+    mainDialogId: DialogID,
+    mutator: (previous: PendingSideDialogStateRecord[]) => PendingSideDialogsMutation,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
-  ): Promise<PendingSubdialogsMutateOutcome> {
-    const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
-    const mutex = this.getPendingSubdialogsWriteBackMutex(key);
+  ): Promise<PendingSideDialogsMutateOutcome> {
+    const key = this.getPendingSideDialogsWriteBackKey(mainDialogId, status);
+    const mutex = this.getPendingSideDialogsWriteBackMutex(key);
 
     const release = await mutex.acquire();
     try {
-      const staged = this.pendingSubdialogsWriteBack.get(key);
+      const staged = this.pendingSideDialogsWriteBack.get(key);
       const previousRecords =
         staged && staged.state.kind === 'file'
           ? staged.state.records
           : staged && staged.state.kind === 'deleted'
             ? []
-            : await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
+            : await this.loadPendingSideDialogsFromDisk(mainDialogId, status);
 
       const mutation = mutator(previousRecords);
-      let nextRecords: PendingSubdialogStateRecord[] = previousRecords;
-      const removedRecords: PendingSubdialogStateRecord[] = [];
+      let nextRecords: PendingSideDialogStateRecord[] = previousRecords;
+      const removedRecords: PendingSideDialogStateRecord[] = [];
 
       if (mutation.kind === 'noop') {
         return { previousRecords, records: previousRecords, removedRecords: [] };
       } else if (mutation.kind === 'append') {
         nextRecords = [...previousRecords, mutation.record];
-      } else if (mutation.kind === 'removeBySubdialogId') {
+      } else if (mutation.kind === 'removeBySideDialogId') {
         for (const r of previousRecords) {
-          if (r.subdialogId === mutation.subdialogId) removedRecords.push(r);
+          if (r.sideDialogId === mutation.sideDialogId) removedRecords.push(r);
         }
-        nextRecords = previousRecords.filter((r) => r.subdialogId !== mutation.subdialogId);
-      } else if (mutation.kind === 'removeBySubdialogIds') {
-        const remove = new Set(mutation.subdialogIds);
+        nextRecords = previousRecords.filter((r) => r.sideDialogId !== mutation.sideDialogId);
+      } else if (mutation.kind === 'removeBySideDialogIds') {
+        const remove = new Set(mutation.sideDialogIds);
         for (const r of previousRecords) {
-          if (remove.has(r.subdialogId)) removedRecords.push(r);
+          if (remove.has(r.sideDialogId)) removedRecords.push(r);
         }
-        nextRecords = previousRecords.filter((r) => !remove.has(r.subdialogId));
+        nextRecords = previousRecords.filter((r) => !remove.has(r.sideDialogId));
       } else if (mutation.kind === 'replace') {
         nextRecords = [...mutation.records];
       } else if (mutation.kind === 'clear') {
@@ -6727,21 +6891,30 @@ export class DialogPersistence {
         removedRecords.push(...previousRecords);
       } else {
         const _exhaustive: never = mutation;
-        throw new Error(`Unhandled pending-subdialogs mutation: ${String(_exhaustive)}`);
+        throw new Error(`Unhandled pending-sideDialogs mutation: ${String(_exhaustive)}`);
       }
 
-      const nextState: PendingSubdialogsWriteBackState =
+      for (let index = 0; index < nextRecords.length; index += 1) {
+        if (!this.isPendingSideDialogRecord(nextRecords[index])) {
+          throw new Error(
+            `pending-sideDialogs write invariant violation: malformed record at index ${index} ` +
+              `(rootId=${mainDialogId.rootId}, selfId=${mainDialogId.selfId}, status=${status})`,
+          );
+        }
+      }
+
+      const nextState: PendingSideDialogsWriteBackState =
         nextRecords.length === 0 ? { kind: 'deleted' } : { kind: 'file', records: nextRecords };
 
-      const pending = this.pendingSubdialogsWriteBack.get(key);
+      const pending = this.pendingSideDialogsWriteBack.get(key);
       if (!pending) {
         const timer = setTimeout(() => {
-          void this.flushPendingSubdialogsWriteBack(key);
+          void this.flushPendingSideDialogsWriteBack(key);
         }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
 
-        this.pendingSubdialogsWriteBack.set(key, {
+        this.pendingSideDialogsWriteBack.set(key, {
           kind: 'scheduled',
-          dialogId: rootDialogId,
+          dialogId: mainDialogId,
           status,
           state: nextState,
           timer,
@@ -6752,8 +6925,8 @@ export class DialogPersistence {
       }
 
       if (rootAnchor) {
-        await this.appendPendingSubdialogsReconciledRecord(
-          rootDialogId,
+        await this.appendPendingSideDialogsReconciledRecord(
+          mainDialogId,
           nextRecords,
           rootAnchorWriteTarget(rootAnchor),
           status,
@@ -6766,50 +6939,55 @@ export class DialogPersistence {
     }
   }
 
-  static async appendPendingSubdialog(
-    rootDialogId: DialogID,
-    record: PendingSubdialogStateRecord,
+  static async appendPendingSideDialog(
+    mainDialogId: DialogID,
+    record: PendingSideDialogStateRecord,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.mutatePendingSubdialogs(
-      rootDialogId,
+    await this.mutatePendingSideDialogs(
+      mainDialogId,
       () => ({ kind: 'append', record }),
       rootAnchor,
       status,
     );
   }
 
-  static async removePendingSubdialog(
-    rootDialogId: DialogID,
-    subdialogId: string,
+  static async removePendingSideDialog(
+    mainDialogId: DialogID,
+    sideDialogId: string,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.mutatePendingSubdialogs(
-      rootDialogId,
-      () => ({ kind: 'removeBySubdialogId', subdialogId }),
+    await this.mutatePendingSideDialogs(
+      mainDialogId,
+      () => ({ kind: 'removeBySideDialogId', sideDialogId }),
       rootAnchor,
       status,
     );
   }
 
-  static async clearPendingSubdialogs(
-    rootDialogId: DialogID,
+  static async clearPendingSideDialogs(
+    mainDialogId: DialogID,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'clear' }), rootAnchor, status);
+    await this.mutatePendingSideDialogs(
+      mainDialogId,
+      () => ({ kind: 'clear' }),
+      rootAnchor,
+      status,
+    );
   }
 
-  private static async flushPendingSubdialogsWriteBack(key: string): Promise<void> {
-    const mutex = this.getPendingSubdialogsWriteBackMutex(key);
+  private static async flushPendingSideDialogsWriteBack(key: string): Promise<void> {
+    const mutex = this.getPendingSideDialogsWriteBackMutex(key);
 
     let captured:
       | {
           dialogId: DialogID;
           status: DialogStatusKind;
-          stateToWrite: PendingSubdialogsWriteBackState;
+          stateToWrite: PendingSideDialogsWriteBackState;
           inFlight: Promise<void>;
         }
       | undefined;
@@ -6817,17 +6995,17 @@ export class DialogPersistence {
     {
       const release = await mutex.acquire();
       try {
-        const entry = this.pendingSubdialogsWriteBack.get(key);
+        const entry = this.pendingSideDialogsWriteBack.get(key);
         if (!entry) return;
         if (entry.kind === 'flushing') return;
         if (entry.kind !== 'scheduled') return;
         clearTimeout(entry.timer);
 
-        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+        const cancellationToken = this.createMainDialogWriteBackCancellationToken(
           entry.dialogId,
           entry.status,
         );
-        const inFlight = this.writePendingSubdialogsToDisk(
+        const inFlight = this.writePendingSideDialogsToDisk(
           entry.dialogId,
           entry.state,
           entry.status,
@@ -6839,7 +7017,7 @@ export class DialogPersistence {
           stateToWrite: entry.state,
           inFlight,
         };
-        this.pendingSubdialogsWriteBack.set(key, {
+        this.pendingSideDialogsWriteBack.set(key, {
           kind: 'flushing',
           dialogId: entry.dialogId,
           status: entry.status,
@@ -6859,20 +7037,20 @@ export class DialogPersistence {
     } catch (error) {
       const release = await mutex.acquire();
       try {
-        const entry = this.pendingSubdialogsWriteBack.get(key);
+        const entry = this.pendingSideDialogsWriteBack.get(key);
         if (!entry) return;
         if (entry.kind !== 'flushing') return;
         if (entry.inFlight !== captured.inFlight) return;
         if (isDialogWriteBackCanceledError(error)) {
-          this.pendingSubdialogsWriteBack.delete(key);
+          this.pendingSideDialogsWriteBack.delete(key);
           return;
         }
 
         const timer = setTimeout(() => {
-          void this.flushPendingSubdialogsWriteBack(key);
+          void this.flushPendingSideDialogsWriteBack(key);
         }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
 
-        this.pendingSubdialogsWriteBack.set(key, {
+        this.pendingSideDialogsWriteBack.set(key, {
           kind: 'scheduled',
           dialogId: entry.dialogId,
           status: entry.status,
@@ -6887,20 +7065,20 @@ export class DialogPersistence {
 
     const release = await mutex.acquire();
     try {
-      const entry = this.pendingSubdialogsWriteBack.get(key);
+      const entry = this.pendingSideDialogsWriteBack.get(key);
       if (!entry) return;
       if (entry.kind !== 'flushing') return;
       if (entry.inFlight !== captured.inFlight) return;
 
       if (!entry.dirty) {
-        this.pendingSubdialogsWriteBack.delete(key);
+        this.pendingSideDialogsWriteBack.delete(key);
         return;
       }
 
       const timer = setTimeout(() => {
-        void this.flushPendingSubdialogsWriteBack(key);
+        void this.flushPendingSideDialogsWriteBack(key);
       }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
-      this.pendingSubdialogsWriteBack.set(key, {
+      this.pendingSideDialogsWriteBack.set(key, {
         kind: 'scheduled',
         dialogId: entry.dialogId,
         status: entry.status,
@@ -6912,20 +7090,20 @@ export class DialogPersistence {
     }
   }
 
-  private static async writePendingSubdialogsToDisk(
-    rootDialogId: DialogID,
-    state: PendingSubdialogsWriteBackState,
+  private static async writePendingSideDialogsToDisk(
+    mainDialogId: DialogID,
+    state: PendingSideDialogsWriteBackState,
     status: DialogStatusKind,
-    cancellationToken?: RootDialogWriteBackCancellationToken,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
   ): Promise<void> {
     if (cancellationToken) {
-      this.assertRootDialogWriteBackNotCanceled(
+      this.assertMainDialogWriteBackNotCanceled(
         cancellationToken,
-        'writePendingSubdialogsToDisk:start',
+        'writePendingSideDialogsToDisk:start',
       );
     }
-    const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-    const filePath = path.join(dialogPath, 'pending-subdialogs.json');
+    const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
+    const filePath = path.join(dialogPath, 'pending-sideDialogs.json');
 
     if (state.kind === 'deleted') {
       await fs.promises.rm(filePath, { force: true });
@@ -6944,7 +7122,7 @@ export class DialogPersistence {
         error,
         dialogPath,
         cancellationToken,
-        'writePendingSubdialogsToDisk:write-temp',
+        'writePendingSideDialogsToDisk:write-temp',
       );
       throw error;
     }
@@ -6952,36 +7130,37 @@ export class DialogPersistence {
   }
 
   /**
-   * Get the path for storing subdialog responses (supports both root and subdialog parents).
-   * For Type C subdialogs created inside another subdialog, responses are stored at the parent's level.
+   * Get the path for storing sideDialog responses (supports both root and sideDialog parents).
+   * For Type C sideDialogs created inside another sideDialog, responses are stored at the parent's level.
    */
   static getDialogResponsesPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     // Root dialogs store responses in their own directory.
-    // Subdialogs store responses in the parent's location (root or subdialog).
+    // SideDialogs store responses in the parent's location (root or sideDialog).
     if (dialogId.rootId === dialogId.selfId) {
       // Root dialog: use root's directory
-      return this.getRootDialogPath(dialogId, status);
+      return this.getMainDialogPath(dialogId, status);
     }
-    // Subdialog: store in parent's subdialogs directory
-    // The parent is always identified by rootId (could be root or parent subdialog)
+    // SideDialog: store in parent's sideDialogs directory
+    // The parent is always identified by rootId (could be root or parent sideDialog)
     const parentSelfId = dialogId.rootId;
-    const rootPath = this.getRootDialogPath(new DialogID(parentSelfId), status);
+    const rootPath = this.getMainDialogPath(new DialogID(parentSelfId), status);
     return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
   }
 
   /**
-   * Save subdialog responses for Type A supply mechanism.
-   * Tracks responses from completed subdialogs.
+   * Save sideDialog responses for Type A supply mechanism.
+   * Tracks responses from completed sideDialogs.
    */
-  static async saveSubdialogResponses(
-    rootDialogId: DialogID,
-    responses: SubdialogResponseStateRecord[],
+  static async saveSideDialogResponses(
+    mainDialogId: DialogID,
+    responses: SideDialogResponseStateRecord[],
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-      const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      assertUniqueSideDialogResponseIds(responses, `save rootId=${mainDialogId.rootId}`);
+      const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
+      const filePath = path.join(dialogPath, 'sideDialog-responses.json');
 
       // Atomic write operation
       const jsonContent = JSON.stringify(responses, null, 2);
@@ -6992,49 +7171,49 @@ export class DialogPersistence {
       await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
       await this.renameWithRetry(tempFile, filePath);
       if (rootAnchor) {
-        await this.appendSubdialogResponsesReconciledRecord(
-          rootDialogId,
+        await this.appendSideDialogResponsesReconciledRecord(
+          mainDialogId,
           responses,
           rootAnchorWriteTarget(rootAnchor),
           status,
         );
       }
     } catch (error) {
-      log.error(`Failed to save subdialog responses for dialog ${rootDialogId}:`, error);
+      log.error(`Failed to save sideDialog responses for dialog ${mainDialogId}:`, error);
       throw error;
     }
   }
 
   /**
-   * Load subdialog responses for Type A supply mechanism.
+   * Load sideDialog responses for Type A supply mechanism.
    */
-  static async loadSubdialogResponses(
-    rootDialogId: DialogID,
+  static async loadSideDialogResponses(
+    mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<SubdialogResponseStateRecord[]> {
+  ): Promise<SideDialogResponseStateRecord[]> {
     try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-      const filePath = path.join(dialogPath, 'subdialog-responses.json');
-      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+      const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
+      const filePath = path.join(dialogPath, 'sideDialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'sideDialog-responses.processing.json');
 
       try {
-        const results: SubdialogResponseStateRecord[] = [];
+        const results: SideDialogResponseStateRecord[] = [];
 
         const tryReadArray = async (p: string): Promise<unknown[]> => {
           try {
             const content = await readPersistenceTextFile({
               filePath: p,
-              source: 'subdialog_responses',
+              source: 'sideDialog_responses',
               format: 'json',
             });
             const parsed: unknown = parsePersistenceJson({
               content,
               filePath: p,
-              source: 'subdialog_responses',
+              source: 'sideDialog_responses',
             });
             if (!Array.isArray(parsed)) {
               throw buildInvalidPersistenceFileError({
-                source: 'subdialog_responses',
+                source: 'sideDialog_responses',
                 format: 'json',
                 filePath: p,
               });
@@ -7051,22 +7230,20 @@ export class DialogPersistence {
         const primary = await tryReadArray(filePath);
         const inflight = await tryReadArray(inflightPath);
         for (const item of [...primary, ...inflight]) {
-          if (!isSubdialogResponseRecord(item)) {
+          if (!isSideDialogResponseRecord(item)) {
             throw buildInvalidPersistenceFileError({
-              source: 'subdialog_responses',
+              source: 'sideDialog_responses',
               format: 'json',
               filePath,
             });
           }
           results.push(item);
         }
-
-        // Deduplicate by responseId (primary wins over inflight order is irrelevant)
-        const byId = new Map<string, (typeof results)[number]>();
-        for (const r of results) {
-          byId.set(r.responseId, r);
-        }
-        return Array.from(byId.values());
+        assertUniqueSideDialogResponseIds(
+          results,
+          `load rootId=${mainDialogId.rootId} status=${status}`,
+        );
+        return results;
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
           return [];
@@ -7075,39 +7252,43 @@ export class DialogPersistence {
       }
     } catch (error: unknown) {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
-        rootDialogId,
+        mainDialogId,
         status,
-        'loadSubdialogResponses',
+        'loadSideDialogResponses',
         error,
       );
-      throw new Error('unreachable after loadSubdialogResponses persistence rethrow');
+      throw new Error('unreachable after loadSideDialogResponses persistence rethrow');
     }
   }
 
-  static async loadSubdialogResponsesQueue(
+  static async loadSideDialogResponsesQueue(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<SubdialogResponseStateRecord[]> {
+  ): Promise<SideDialogResponseStateRecord[]> {
     try {
       const dialogPath = this.getDialogResponsesPath(dialogId, status);
-      const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      const filePath = path.join(dialogPath, 'sideDialog-responses.json');
       const content = await readPersistenceTextFile({
         filePath,
-        source: 'subdialog_responses',
+        source: 'sideDialog_responses',
         format: 'json',
       });
       const parsed: unknown = parsePersistenceJson({
         content,
         filePath,
-        source: 'subdialog_responses',
+        source: 'sideDialog_responses',
       });
-      if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+      if (!Array.isArray(parsed) || !parsed.every((item) => isSideDialogResponseRecord(item))) {
         throw buildInvalidPersistenceFileError({
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
           format: 'json',
           filePath,
         });
       }
+      assertUniqueSideDialogResponseIds(
+        parsed,
+        `load queue rootId=${dialogId.rootId} selfId=${dialogId.selfId} status=${status}`,
+      );
       return parsed;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
@@ -7116,31 +7297,31 @@ export class DialogPersistence {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         dialogId,
         status,
-        'loadSubdialogResponsesQueue',
+        'loadSideDialogResponsesQueue',
         error,
       );
-      throw new Error('unreachable after loadSubdialogResponsesQueue persistence rethrow');
+      throw new Error('unreachable after loadSideDialogResponsesQueue persistence rethrow');
     }
   }
 
-  static async appendSubdialogResponse(
+  static async appendSideDialogResponse(
     dialogId: DialogID,
-    response: SubdialogResponseStateRecord,
+    response: SideDialogResponseStateRecord,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    const existing = await this.loadSubdialogResponsesQueue(dialogId, status);
+    const existing = await this.loadSideDialogResponsesQueue(dialogId, status);
     existing.push(response);
-    await this.saveSubdialogResponses(dialogId, existing, rootAnchor, status);
+    await this.saveSideDialogResponses(dialogId, existing, rootAnchor, status);
   }
 
-  static async takeSubdialogResponses(
+  static async takeSideDialogResponses(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<
     Array<{
       responseId: string;
-      subdialogId: string;
+      sideDialogId: string;
       response: string;
       completedAt: string;
       status?: 'completed' | 'failed';
@@ -7156,8 +7337,8 @@ export class DialogPersistence {
     try {
       const dialogPath = this.getDialogResponsesPath(dialogId, status);
 
-      const filePath = path.join(dialogPath, 'subdialog-responses.json');
-      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+      const filePath = path.join(dialogPath, 'sideDialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'sideDialog-responses.processing.json');
 
       // If a previous processing file exists, merge it back so it will be re-processed.
       try {
@@ -7168,7 +7349,7 @@ export class DialogPersistence {
         }
       }
       if (await this.pathExists(inflightPath)) {
-        await this.rollbackTakenSubdialogResponses(dialogId, status);
+        await this.rollbackTakenSideDialogResponses(dialogId, status);
       }
 
       try {
@@ -7182,21 +7363,25 @@ export class DialogPersistence {
 
       const raw = await readPersistenceTextFile({
         filePath: inflightPath,
-        source: 'subdialog_responses',
+        source: 'sideDialog_responses',
         format: 'json',
       });
       const parsed: unknown = parsePersistenceJson({
         content: raw,
         filePath: inflightPath,
-        source: 'subdialog_responses',
+        source: 'sideDialog_responses',
       });
-      if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+      if (!Array.isArray(parsed) || !parsed.every((item) => isSideDialogResponseRecord(item))) {
         throw buildInvalidPersistenceFileError({
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
           format: 'json',
           filePath: inflightPath,
         });
       }
+      assertUniqueSideDialogResponseIds(
+        parsed,
+        `take rootId=${dialogId.rootId} selfId=${dialogId.selfId} status=${status}`,
+      );
       return parsed;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
@@ -7205,47 +7390,47 @@ export class DialogPersistence {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         dialogId,
         status,
-        'takeSubdialogResponses',
+        'takeSideDialogResponses',
         error,
       );
-      throw new Error('unreachable after takeSubdialogResponses persistence rethrow');
+      throw new Error('unreachable after takeSideDialogResponses persistence rethrow');
     }
   }
 
-  static async commitTakenSubdialogResponses(
+  static async commitTakenSideDialogResponses(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     const dialogPath = this.getDialogResponsesPath(dialogId, status);
-    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+    const inflightPath = path.join(dialogPath, 'sideDialog-responses.processing.json');
     await fs.promises.rm(inflightPath, { force: true });
   }
 
-  static async rollbackTakenSubdialogResponses(
+  static async rollbackTakenSideDialogResponses(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
       const dialogPath = this.getDialogResponsesPath(dialogId, status);
 
-      const filePath = path.join(dialogPath, 'subdialog-responses.json');
-      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+      const filePath = path.join(dialogPath, 'sideDialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'sideDialog-responses.processing.json');
 
-      let inflight: SubdialogResponseStateRecord[] = [];
+      let inflight: SideDialogResponseStateRecord[] = [];
       try {
         const raw = await readPersistenceTextFile({
           filePath: inflightPath,
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
           format: 'json',
         });
         const parsed: unknown = parsePersistenceJson({
           content: raw,
           filePath: inflightPath,
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
         });
-        if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+        if (!Array.isArray(parsed) || !parsed.every((item) => isSideDialogResponseRecord(item))) {
           throw buildInvalidPersistenceFileError({
-            source: 'subdialog_responses',
+            source: 'sideDialog_responses',
             format: 'json',
             filePath: inflightPath,
           });
@@ -7258,21 +7443,21 @@ export class DialogPersistence {
         throw error;
       }
 
-      let primary: SubdialogResponseStateRecord[] = [];
+      let primary: SideDialogResponseStateRecord[] = [];
       try {
         const raw = await readPersistenceTextFile({
           filePath,
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
           format: 'json',
         });
         const parsed: unknown = parsePersistenceJson({
           content: raw,
           filePath,
-          source: 'subdialog_responses',
+          source: 'sideDialog_responses',
         });
-        if (!Array.isArray(parsed) || !parsed.every((item) => isSubdialogResponseRecord(item))) {
+        if (!Array.isArray(parsed) || !parsed.every((item) => isSideDialogResponseRecord(item))) {
           throw buildInvalidPersistenceFileError({
-            source: 'subdialog_responses',
+            source: 'sideDialog_responses',
             format: 'json',
             filePath,
           });
@@ -7284,12 +7469,11 @@ export class DialogPersistence {
         }
       }
 
-      const merged = [...inflight, ...primary];
-      const byId = new Map<string, (typeof merged)[number]>();
-      for (const r of merged) {
-        byId.set(r.responseId, r);
-      }
-      const result = Array.from(byId.values());
+      const result = [...inflight, ...primary];
+      assertUniqueSideDialogResponseIds(
+        result,
+        `rollback rootId=${dialogId.rootId} selfId=${dialogId.selfId} status=${status}`,
+      );
 
       const jsonContent = JSON.stringify(result, null, 2);
       const tempFile = path.join(
@@ -7303,23 +7487,23 @@ export class DialogPersistence {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         dialogId,
         status,
-        'rollbackTakenSubdialogResponses',
+        'rollbackTakenSideDialogResponses',
         error,
       );
-      throw new Error('unreachable after rollbackTakenSubdialogResponses persistence rethrow');
+      throw new Error('unreachable after rollbackTakenSideDialogResponses persistence rethrow');
     }
   }
 
   /**
    * Save root dialog metadata (write-once pattern)
    */
-  static async saveRootDialogMetadata(
+  static async saveMainDialogMetadata(
     dialogId: DialogID,
-    metadata: RootDialogMetadataFile,
+    metadata: MainDialogMetadataFile,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getRootDialogPath(dialogId, status);
+      const dialogPath = this.getMainDialogPath(dialogId, status);
 
       // Ensure dialog directory exists first
       await fs.promises.mkdir(dialogPath, { recursive: true });
@@ -7348,41 +7532,29 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
-      if (!isRootDialogMetadataFile(metadata)) {
+      if (!isMainDialogMetadataFile(metadata)) {
         throw new Error(`Expected root dialog metadata for ${dialogId.selfId}`);
       }
-      return this.saveRootDialogMetadata(dialogId, metadata, status);
+      return this.saveMainDialogMetadata(dialogId, metadata, status);
     }
 
-    // For subdialogs, delegate to saveSubdialogMetadata
-    if (!isSubdialogMetadataFile(metadata)) {
-      throw new Error(`Expected subdialog metadata for ${dialogId.selfId}`);
+    // For sideDialogs, delegate to saveSideDialogMetadata
+    if (!isSideDialogMetadataFile(metadata)) {
+      throw new Error(`Expected sideDialog metadata for ${dialogId.selfId}`);
     }
-    return this.saveSubdialogMetadata(dialogId, metadata, status);
+    return this.saveSideDialogMetadata(dialogId, metadata, status);
   }
 
   /**
-   * Save dialog metadata (legacy - use saveRootDialogMetadata instead)
-   * @deprecated
+   * Save sideDialog metadata under the askerDialog's .sideDialogs directory
    */
-  static async _saveDialogMetadata(
+  static async saveSideDialogMetadata(
     dialogId: DialogID,
-    metadata: RootDialogMetadataFile,
-    status: DialogStatusKind = 'running',
-  ): Promise<void> {
-    return this.saveRootDialogMetadata(dialogId, metadata, status);
-  }
-
-  /**
-   * Save subdialog metadata under the supdialog's .subdialogs directory
-   */
-  static async saveSubdialogMetadata(
-    dialogId: DialogID,
-    metadata: SubdialogMetadataFile,
+    metadata: SideDialogMetadataFile,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
-      const subPath = this.getSubdialogPath(dialogId, status);
+      const subPath = this.getSideDialogPath(dialogId, status);
       const metadataFilePath = path.join(subPath, 'dialog.yaml');
 
       // Creation sites must ensure the directory exists first. Update paths intentionally do not
@@ -7394,46 +7566,363 @@ export class DialogPersistence {
       );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
       await this.renameWithRetry(tempFile, metadataFilePath);
+      if ((await this.loadSideDialogAskerStackState(dialogId, status)) === null) {
+        await this.saveSideDialogAskerStackState(
+          dialogId,
+          {
+            askerStack: [
+              buildAssignmentAskerStackFrame({
+                askerDialogId: metadata.askerDialogId,
+                assignment: metadata.assignmentFromAsker,
+              }),
+            ],
+          },
+          status,
+        );
+      }
     } catch (error) {
       log.error(
-        `Failed to save subdialog YAML for ${dialogId.selfId} under root dialog ${dialogId.rootId}:`,
+        `Failed to save sideDialog YAML for ${dialogId.selfId} under root dialog ${dialogId.rootId}:`,
         error,
       );
       throw error;
     }
   }
 
-  /**
-   * Update assignmentFromSup for an existing subdialog.
-   */
-  static async updateSubdialogAssignment(
+  static async saveSideDialogAskerStackState(
     dialogId: DialogID,
-    assignment: SubdialogMetadataFile['assignmentFromSup'],
+    state: DialogAskerStackState,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
-      throw new Error('updateSubdialogAssignment expects a subdialog id');
+      throw new Error('saveSideDialogAskerStackState expects a sideDialog id');
+    }
+    if (!isDialogAskerStackState(state)) {
+      throw new Error(`Invalid asker stack for dialog ${dialogId.selfId}`);
+    }
+    await this.saveDialogAskerStack(dialogId, state, status);
+  }
+
+  static async loadSideDialogAskerStackState(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<DialogAskerStackState | null> {
+    if (dialogId.rootId === dialogId.selfId) {
+      return null;
+    }
+    const stack = await this.loadDialogAskerStack(dialogId, status);
+    return stack.askerStack.length === 0 ? null : stack;
+  }
+
+  private static parseDialogAskerStackJsonlRows(args: { content: string; filePath: string }): {
+    state: DialogAskerStackState;
+    rows: DialogAskerStackJsonlRow[];
+  } {
+    const askerStack: AskerDialogStackFrame[] = [];
+    const rows: DialogAskerStackJsonlRow[] = [];
+    const rawLines = args.content.split(/(?<=\n)/u);
+    let byteOffset = 0;
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const rawLine = rawLines[index];
+      const line = rawLine.endsWith('\n') ? rawLine.slice(0, -1) : rawLine;
+      const startOffset = byteOffset;
+      const endOffset = startOffset + Buffer.byteLength(rawLine, 'utf-8');
+      byteOffset = endOffset;
+      if (line.trim() === '') continue;
+      const parsed = parsePersistenceJson({
+        content: line,
+        filePath: args.filePath,
+        source: 'dialog_asker_stack',
+        lineNumber: index + 1,
+      });
+      if (!isAskerDialogStackFrame(parsed)) {
+        throw buildInvalidPersistenceFileError({
+          source: 'dialog_asker_stack',
+          format: 'jsonl',
+          filePath: args.filePath,
+          lineNumber: index + 1,
+        });
+      }
+      askerStack.push(parsed);
+      rows.push({
+        frame: parsed,
+        startOffset,
+        endOffset,
+      });
+    }
+    return { state: { askerStack }, rows };
+  }
+
+  private static async appendDialogAskerStackFrames(
+    dialogId: DialogID,
+    frames: readonly AskerDialogStackFrame[],
+    status: DialogStatusKind,
+  ): Promise<void> {
+    if (frames.length === 0) return;
+    const filePath = this.getDialogAskerStackPath(dialogId, status);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    const content = frames.map((frame) => `${JSON.stringify(frame)}\n`).join('');
+    await fs.promises.appendFile(filePath, content, 'utf-8');
+  }
+
+  static async saveDialogAskerStack(
+    dialogId: DialogID,
+    state: DialogAskerStackState,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    if (!isDialogAskerStackState(state)) {
+      throw new Error(`Invalid asker stack for dialog ${dialogId.selfId}`);
+    }
+    const filePath = this.getDialogAskerStackPath(dialogId, status);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.truncate(filePath, 0).catch(async (error: unknown) => {
+      if (getErrorCode(error) === 'ENOENT') {
+        await fs.promises.writeFile(filePath, '', 'utf-8');
+        return;
+      }
+      throw error;
+    });
+    await this.appendDialogAskerStackFrames(dialogId, state.askerStack, status);
+  }
+
+  static async loadDialogAskerStack(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<DialogAskerStackState> {
+    return (await this.loadDialogAskerStackRows(dialogId, status)).state;
+  }
+
+  private static async loadDialogAskerStackRows(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<{
+    filePath: string;
+    state: DialogAskerStackState;
+    rows: DialogAskerStackJsonlRow[];
+  }> {
+    const filePath = this.getDialogAskerStackPath(dialogId, status);
+    try {
+      const content = await readPersistenceTextFile({
+        filePath,
+        source: 'dialog_asker_stack',
+        format: 'jsonl',
+      });
+      return { filePath, ...this.parseDialogAskerStackJsonlRows({ content, filePath }) };
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return { filePath, state: { askerStack: [] }, rows: [] };
+      }
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadDialogAskerStack',
+        error,
+      );
+      throw new Error('unreachable after loadDialogAskerStack persistence rethrow');
+    }
+  }
+
+  private static async truncateDialogAskerStackToDepth(
+    dialogId: DialogID,
+    depth: number,
+    status: DialogStatusKind,
+  ): Promise<DialogAskerStackState> {
+    const loaded = await this.loadDialogAskerStackRows(dialogId, status);
+    if (!Number.isInteger(depth) || depth < 0 || depth > loaded.rows.length) {
+      throw new Error(
+        `asker stack truncate invariant violation: invalid depth ` +
+          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, depth=${String(depth)}, size=${String(loaded.rows.length)})`,
+      );
+    }
+    const truncateOffset =
+      depth === loaded.rows.length
+        ? (loaded.rows[loaded.rows.length - 1]?.endOffset ?? 0)
+        : (loaded.rows[depth]?.startOffset ?? 0);
+    await fs.promises.mkdir(path.dirname(loaded.filePath), { recursive: true });
+    await fs.promises.truncate(loaded.filePath, truncateOffset).catch(async (error: unknown) => {
+      if (getErrorCode(error) === 'ENOENT' && truncateOffset === 0) {
+        await fs.promises.writeFile(loaded.filePath, '', 'utf-8');
+        return;
+      }
+      throw error;
+    });
+    return { askerStack: loaded.rows.slice(0, depth).map((row) => row.frame) };
+  }
+
+  private static async replaceDialogAskerStackFrameAndAppend(args: {
+    dialogId: DialogID;
+    status: DialogStatusKind;
+    findFrame: (frame: AskerDialogStackFrame) => boolean;
+    missingFrameMessage: string;
+    appendFrame: AskerDialogStackFrame;
+  }): Promise<DialogAskerStackState> {
+    const loaded = await this.loadDialogAskerStackRows(args.dialogId, args.status);
+    const matchingIndexes = loaded.rows
+      .map((row, index) => (args.findFrame(row.frame) ? index : -1))
+      .filter((index) => index >= 0);
+    if (matchingIndexes.length === 0) {
+      throw new Error(args.missingFrameMessage);
+    }
+    if (matchingIndexes.length > 1) {
+      throw new Error(
+        `replace pending asker stack invariant violation: duplicate old frames ` +
+          `(rootId=${args.dialogId.rootId}, selfId=${args.dialogId.selfId}, matches=${String(matchingIndexes.length)})`,
+      );
+    }
+    const replaceIndex = matchingIndexes[0];
+    const replacedRow = loaded.rows[replaceIndex];
+    await fs.promises.truncate(loaded.filePath, replacedRow.startOffset);
+    const retainedBefore = loaded.rows.slice(0, replaceIndex).map((row) => row.frame);
+    const retainedAfter = loaded.rows.slice(replaceIndex + 1).map((row) => row.frame);
+    await this.appendDialogAskerStackFrames(
+      args.dialogId,
+      [args.appendFrame, ...retainedAfter],
+      args.status,
+    );
+    return {
+      askerStack: [...retainedBefore, args.appendFrame, ...retainedAfter],
+    };
+  }
+
+  static async pushTellaskReplyObligation(
+    dialogId: DialogID,
+    obligation: TellaskReplyDirective,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    const frame: AskerDialogStackFrame = {
+      kind: 'asker_dialog_stack_frame',
+      askerDialogId: obligation.targetDialogId,
+      tellaskReplyObligation: obligation,
+    };
+    if (dialogId.rootId === dialogId.selfId) {
+      await this.appendDialogAskerStackFrames(dialogId, [frame], status);
+      return;
+    }
+    const state = await this.loadSideDialogAskerStackState(dialogId, status);
+    if (!state) {
+      throw new Error(`Missing asker stack for sideDialog ${dialogId.selfId}`);
+    }
+    await this.appendDialogAskerStackFrames(dialogId, [frame], status);
+  }
+
+  static async setActiveTellaskReplyObligation(
+    dialogId: DialogID,
+    obligation: TellaskReplyDirective | undefined,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    if (obligation !== undefined) {
+      await this.pushTellaskReplyObligation(dialogId, obligation, status);
+      return;
+    }
+    if (dialogId.rootId === dialogId.selfId) {
+      const stackFile = await this.loadDialogAskerStack(dialogId, status);
+      if (stackFile.askerStack.length === 0) return;
+      await this.truncateDialogAskerStackToDepth(dialogId, stackFile.askerStack.length - 1, status);
+      return;
+    }
+    const state = await this.loadSideDialogAskerStackState(dialogId, status);
+    if (!state) {
+      throw new Error(`Missing asker stack for sideDialog ${dialogId.selfId}`);
+    }
+    if (state.askerStack.length > 1) {
+      await this.truncateDialogAskerStackToDepth(dialogId, state.askerStack.length - 1, status);
+      return;
+    }
+    const top = getDialogAskerStackTop(state);
+    await this.truncateDialogAskerStackToDepth(dialogId, 0, status);
+    if (top.assignmentFromAsker === undefined) {
+      return;
+    }
+    await this.appendDialogAskerStackFrames(
+      dialogId,
+      [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: top.askerDialogId,
+          assignmentFromAsker: top.assignmentFromAsker,
+        },
+      ],
+      status,
+    );
+  }
+
+  static async loadActiveTellaskReplyObligation(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<TellaskReplyDirective | undefined> {
+    if (dialogId.rootId === dialogId.selfId) {
+      const stack = (await this.loadDialogAskerStack(dialogId, status)).askerStack;
+      return stack[stack.length - 1]?.tellaskReplyObligation;
+    }
+    return getDialogAskerStackTop(await this.requireSideDialogAskerStackState(dialogId, status))
+      .tellaskReplyObligation;
+  }
+
+  private static async requireSideDialogAskerStackState(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<DialogAskerStackState> {
+    const state = await this.loadSideDialogAskerStackState(dialogId, status);
+    if (!state) {
+      throw new Error(`Missing asker stack for sideDialog ${dialogId.selfId}`);
+    }
+    return state;
+  }
+
+  /**
+   * Update assignmentFromAsker for an existing sideDialog.
+   */
+  static async updateSideDialogAssignment(
+    dialogId: DialogID,
+    assignment: SideDialogMetadataFile['assignmentFromAsker'],
+    status: DialogStatusKind = 'running',
+    options?: Readonly<{
+      replacePendingCallId?: string;
+    }>,
+  ): Promise<void> {
+    if (dialogId.rootId === dialogId.selfId) {
+      throw new Error('updateSideDialogAssignment expects a sideDialog id');
     }
     const metadata = await this.loadDialogMetadata(dialogId, status);
-    if (!metadata || !isSubdialogMetadataFile(metadata)) {
-      throw new Error(`Missing dialog metadata for subdialog ${dialogId.selfId}`);
+    if (!metadata || !isSideDialogMetadataFile(metadata)) {
+      throw new Error(`Missing dialog metadata for sideDialog ${dialogId.selfId}`);
     }
-    const next: SubdialogMetadataFile = {
+    const nextAssignmentFrame = buildAssignmentAskerStackFrame({
+      askerDialogId: assignment.callerDialogId,
+      assignment,
+    });
+    if (options?.replacePendingCallId === undefined) {
+      await this.requireSideDialogAskerStackState(dialogId, status);
+      await this.appendDialogAskerStackFrames(dialogId, [nextAssignmentFrame], status);
+    } else {
+      await this.replaceDialogAskerStackFrameAndAppend({
+        dialogId,
+        status,
+        findFrame: (frame) =>
+          frame.assignmentFromAsker?.callerDialogId === assignment.callerDialogId &&
+          frame.assignmentFromAsker.callId === options.replacePendingCallId,
+        missingFrameMessage:
+          `replace pending asker stack invariant violation: missing old frame ` +
+          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, askerDialogId=${assignment.callerDialogId}, callId=${options.replacePendingCallId})`,
+        appendFrame: nextAssignmentFrame,
+      });
+    }
+    const next: SideDialogMetadataFile = {
       ...metadata,
-      assignmentFromSup: assignment,
+      assignmentFromAsker: assignment,
     };
-    await this.saveSubdialogMetadata(dialogId, next, status);
+    await this.saveSideDialogMetadata(dialogId, next, status);
   }
 
   /**
    * Load root dialog metadata
    */
-  static async loadRootDialogMetadata(
+  static async loadMainDialogMetadata(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
     try {
-      const dialogPath = this.getRootDialogPath(dialogId, status);
+      const dialogPath = this.getMainDialogPath(dialogId, status);
       const metadataFilePath = path.join(dialogPath, 'dialog.yaml');
 
       try {
@@ -7473,10 +7962,10 @@ export class DialogPersistence {
         await this.rethrowAfterQuarantiningDialogPersistenceProblem(
           dialogId,
           status,
-          'loadRootDialogMetadata',
+          'loadMainDialogMetadata',
           error,
         );
-        throw new Error('unreachable after loadRootDialogMetadata persistence rethrow');
+        throw new Error('unreachable after loadMainDialogMetadata persistence rethrow');
       }
     } catch (error: unknown) {
       log.error(`Failed to load dialog YAML for dialog ${dialogId.selfId}:`, error);
@@ -7492,14 +7981,14 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
     // For root dialogs, use the selfId
-    // For subdialogs, this is more complex - we need to find the root metadata
+    // For sideDialogs, this is more complex - we need to find the root metadata
     if (dialogId.rootId === dialogId.selfId) {
-      return this.loadRootDialogMetadata(dialogId, status);
+      return this.loadMainDialogMetadata(dialogId, status);
     }
 
-    // For subdialogs, we need to load from the subdialog location
-    const subdialogPath = this.getSubdialogPath(dialogId, status);
-    const metadataFilePath = path.join(subdialogPath, 'dialog.yaml');
+    // For sideDialogs, we need to load from the sideDialog location
+    const sideDialogPath = this.getSideDialogPath(dialogId, status);
+    const metadataFilePath = path.join(sideDialogPath, 'dialog.yaml');
 
     try {
       const content = await readPersistenceTextFile({
@@ -7512,14 +8001,27 @@ export class DialogPersistence {
         filePath: metadataFilePath,
         source: 'dialog_metadata',
       });
-      if (!isDialogMetadataFile(parsed)) {
+      if (!isSideDialogMetadataFile(parsed)) {
         throw buildInvalidPersistenceFileError({
           source: 'dialog_metadata',
           format: 'yaml',
           filePath: metadataFilePath,
         });
       }
-      return parsed;
+      const askerStack = await this.loadSideDialogAskerStackState(dialogId, status);
+      if (!askerStack) {
+        throw buildInvalidPersistenceFileError({
+          source: 'dialog_asker_stack',
+          format: 'jsonl',
+          filePath: this.getDialogAskerStackPath(dialogId, status),
+        });
+      }
+      const assignmentFromAsker = getDialogAskerStackCurrentAssignment(askerStack);
+      return {
+        ...parsed,
+        askerDialogId: assignmentFromAsker.callerDialogId,
+        assignmentFromAsker,
+      };
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
@@ -7541,11 +8043,11 @@ export class DialogPersistence {
     dialogId: DialogID,
     latest: DialogLatestFile,
     status: DialogStatusKind = 'running',
-    cancellationToken?: RootDialogWriteBackCancellationToken,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
   ): Promise<void> {
     try {
       if (cancellationToken) {
-        this.assertRootDialogWriteBackNotCanceled(
+        this.assertMainDialogWriteBackNotCanceled(
           cancellationToken,
           'writeDialogLatestToDisk:start',
         );
@@ -7592,14 +8094,14 @@ export class DialogPersistence {
     source: string,
     destination: string,
     maxRetries: number = 5,
-    cancellationToken?: RootDialogWriteBackCancellationToken,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
   ): Promise<void> {
     let lastError: Error | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         if (cancellationToken) {
-          this.assertRootDialogWriteBackNotCanceled(
+          this.assertMainDialogWriteBackNotCanceled(
             cancellationToken,
             `renameWithRetry:${path.basename(destination)}:before-rename`,
           );
@@ -7668,16 +8170,16 @@ export class DialogPersistence {
     dialogId: DialogID,
     mutator: (previous: DialogLatestFile) => DialogLatestMutation,
     status: DialogStatusKind = 'running',
-    cancellationToken?: RootDialogWriteBackCancellationToken,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
   ): Promise<DialogLatestFile> {
     const key = this.getLatestWriteBackKey(dialogId, status);
     const mutex = this.getLatestWriteBackMutex(key);
     const effectiveCancellationToken =
-      cancellationToken ?? this.createRootDialogWriteBackCancellationToken(dialogId, status);
+      cancellationToken ?? this.createMainDialogWriteBackCancellationToken(dialogId, status);
 
     const release = await mutex.acquire();
     try {
-      this.assertRootDialogWriteBackNotCanceled(effectiveCancellationToken, 'mutateDialogLatest');
+      this.assertMainDialogWriteBackNotCanceled(effectiveCancellationToken, 'mutateDialogLatest');
       const staged = this.latestWriteBack.get(key);
       const latestFromDisk = staged ? null : await this.loadDialogLatestFromDisk(dialogId, status);
       const existing = (staged ? staged.latest : latestFromDisk) || {
@@ -7720,7 +8222,7 @@ export class DialogPersistence {
         latestWriteBackKey: key,
       });
 
-      this.assertRootDialogWriteBackNotCanceled(
+      this.assertMainDialogWriteBackNotCanceled(
         effectiveCancellationToken,
         'mutateDialogLatest:before-stage',
       );
@@ -7804,7 +8306,7 @@ export class DialogPersistence {
         clearTimeout(entry.timer);
 
         const latestToWrite = entry.latest;
-        const cancellationToken = this.createRootDialogWriteBackCancellationToken(
+        const cancellationToken = this.createMainDialogWriteBackCancellationToken(
           entry.dialogId,
           entry.status,
         );
@@ -8052,25 +8554,25 @@ export class DialogPersistence {
   }
 
   /**
-   * Count subdialogs under a root dialog (no single-layer listing exposed)
+   * Count sideDialogs under a root dialog (no single-layer listing exposed)
    */
-  static async countAllSubdialogsUnderRoot(
-    rootDialogId: DialogID,
+  static async countAllSideDialogsUnderRoot(
+    mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<number> {
-    if (rootDialogId.rootId !== rootDialogId.selfId) {
+    if (mainDialogId.rootId !== mainDialogId.selfId) {
       throw new Error(
-        `countAllSubdialogsUnderRoot invariant violation: expected root dialog id, got ${rootDialogId.valueOf()}`,
+        `countAllSideDialogsUnderRoot invariant violation: expected root dialog id, got ${mainDialogId.valueOf()}`,
       );
     }
     try {
       const dialogIds = await this.listAllDialogIds(status);
       return dialogIds.filter(
         (dialogId) =>
-          dialogId.rootId === rootDialogId.rootId && dialogId.selfId !== dialogId.rootId,
+          dialogId.rootId === mainDialogId.rootId && dialogId.selfId !== dialogId.rootId,
       ).length;
     } catch (error) {
-      log.error(`Failed to count all subdialogs under root ${rootDialogId.selfId}:`, error);
+      log.error(`Failed to count all sideDialogs under root ${mainDialogId.selfId}:`, error);
       throw error;
     }
   }
@@ -8081,25 +8583,25 @@ export class DialogPersistence {
    * Restore complete dialog tree from disk
    */
   static async restoreDialogTree(
-    rootDialogId: DialogID,
+    mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<DialogPersistenceState | null> {
     try {
       // First restore the root dialog
-      const rootState = await this.restoreDialog(rootDialogId, status);
+      const rootState = await this.restoreDialog(mainDialogId, status);
       if (!rootState) {
         return null;
       }
 
-      // Recursively restore subdialogs
-      const subdialogIds = await this.listSubdialogIdsUnderRoot(rootDialogId, status);
-      for (const subdialogId of subdialogIds) {
-        await this.restoreDialogTree(new DialogID(subdialogId, rootDialogId.rootId), status);
+      // Recursively restore sideDialogs
+      const sideDialogIds = await this.listSideDialogIdsUnderRoot(mainDialogId, status);
+      for (const sideDialogId of sideDialogIds) {
+        await this.restoreDialogTree(new DialogID(sideDialogId, mainDialogId.rootId), status);
       }
 
       return rootState;
     } catch (error) {
-      log.error(`Failed to restore dialog tree for ${rootDialogId.valueOf()}:`, error);
+      log.error(`Failed to restore dialog tree for ${mainDialogId.valueOf()}:`, error);
       return null;
     }
   }
@@ -8355,7 +8857,7 @@ export class DialogPersistence {
             contextHealth = event.contextHealth;
           }
           break;
-        case 'quest_for_sup_record':
+        case 'sideDialog_request_record':
           // These events are handled separately in dialog restoration
           // Skip them for message reconstruction
           break;
@@ -8366,12 +8868,12 @@ export class DialogPersistence {
         case 'ui_only_markdown_record':
           // UI-only records are replay-only rendering facts. They do not enter dialog messages or ctx.
           break;
-        case 'subdialog_created_record':
+        case 'sideDialog_created_record':
         case 'reminders_reconciled_record':
         case 'questions4human_reconciled_record':
-        case 'pending_subdialogs_reconciled_record':
-        case 'subdialog_registry_reconciled_record':
-        case 'subdialog_responses_reconciled_record':
+        case 'pending_sideDialogs_reconciled_record':
+        case 'sideDialog_registry_reconciled_record':
+        case 'sideDialog_responses_reconciled_record':
           break;
 
         default:
@@ -8430,24 +8932,24 @@ export class DialogPersistence {
   }
 
   /**
-   * Delete a root dialog directory (including subdialogs) from disk.
+   * Delete a root dialog directory (including sideDialogs) from disk.
    * Caller must provide the source status explicitly.
    */
-  static async deleteRootDialog(
-    rootDialogId: DialogID,
+  static async deleteMainDialog(
+    mainDialogId: DialogID,
     fromStatus: DialogStatusKind,
   ): Promise<boolean> {
-    if (rootDialogId.selfId !== rootDialogId.rootId) {
-      throw new Error('deleteRootDialog expects a root dialog id');
+    if (mainDialogId.selfId !== mainDialogId.rootId) {
+      throw new Error('deleteMainDialog expects a root dialog id');
     }
-    const exists = await this.loadRootDialogMetadata(rootDialogId, fromStatus);
+    const exists = await this.loadMainDialogMetadata(mainDialogId, fromStatus);
     if (!exists) return false;
 
     // Best-effort cleanup: remove the dialog from all status directories to avoid leaving behind
     // orphaned placeholder paths (e.g. `run/<id>/latest.yaml`) after a delete.
     for (const candidate of PERSISTABLE_DIALOG_STATUSES) {
-      this.cancelRootDialogWriteBacks(rootDialogId, candidate);
-      const candidatePath = this.getRootDialogPath(rootDialogId, candidate);
+      this.cancelMainDialogWriteBacks(mainDialogId, candidate);
+      const candidatePath = this.getMainDialogPath(mainDialogId, candidate);
       await fs.promises.rm(candidatePath, { recursive: true, force: true });
     }
     return true;
@@ -8456,25 +8958,25 @@ export class DialogPersistence {
   // === REGISTRY PERSISTENCE ===
 
   /**
-   * Save subdialog registry (TYPE B entries).
+   * Save sideDialog registry (TYPE B entries).
    */
-  static async saveSubdialogRegistry(
-    rootDialogId: DialogID,
+  static async saveSideDialogRegistry(
+    mainDialogId: DialogID,
     entries: Array<{
       key: string;
-      subdialogId: DialogID;
+      sideDialogId: DialogID;
       agentId: string;
       sessionSlug?: string;
     }>,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
       const serializableEntries = entries.map((entry) => ({
         key: entry.key,
-        subdialogId: entry.subdialogId.selfId,
+        sideDialogId: entry.sideDialogId.selfId,
         agentId: entry.agentId,
         sessionSlug: entry.sessionSlug,
       }));
@@ -8487,43 +8989,43 @@ export class DialogPersistence {
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
       await this.renameWithRetry(tempFile, registryFilePath);
     } catch (error) {
-      log.error(`Failed to save subdialog registry for dialog ${rootDialogId}:`, error);
+      log.error(`Failed to save sideDialog registry for dialog ${mainDialogId}:`, error);
       throw error;
     }
   }
 
   /**
-   * Load subdialog registry.
+   * Load sideDialog registry.
    */
-  static async loadSubdialogRegistry(
-    rootDialogId: DialogID,
+  static async loadSideDialogRegistry(
+    mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<
     Array<{
       key: string;
-      subdialogId: DialogID;
+      sideDialogId: DialogID;
       agentId: string;
       sessionSlug?: string;
     }>
   > {
     try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
       const content = await readPersistenceTextFile({
         filePath: registryFilePath,
-        source: 'subdialog_registry',
+        source: 'sideDialog_registry',
         format: 'yaml',
       });
       const parsed: unknown = parsePersistenceYaml({
         content,
         filePath: registryFilePath,
-        source: 'subdialog_registry',
+        source: 'sideDialog_registry',
       });
 
       if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
         throw buildInvalidPersistenceFileError({
-          source: 'subdialog_registry',
+          source: 'sideDialog_registry',
           format: 'yaml',
           filePath: registryFilePath,
         });
@@ -8533,19 +9035,19 @@ export class DialogPersistence {
         if (
           !isRecord(entry) ||
           typeof entry.key !== 'string' ||
-          typeof entry.subdialogId !== 'string' ||
+          typeof entry.sideDialogId !== 'string' ||
           typeof entry.agentId !== 'string' ||
           (entry.sessionSlug !== undefined && typeof entry.sessionSlug !== 'string')
         ) {
           throw buildInvalidPersistenceFileError({
-            source: 'subdialog_registry',
+            source: 'sideDialog_registry',
             format: 'yaml',
             filePath: registryFilePath,
           });
         }
         return {
           key: entry.key,
-          subdialogId: new DialogID(entry.subdialogId, rootDialogId.rootId),
+          sideDialogId: new DialogID(entry.sideDialogId, mainDialogId.rootId),
           agentId: entry.agentId,
           sessionSlug: entry.sessionSlug,
         };
@@ -8557,12 +9059,12 @@ export class DialogPersistence {
         return [];
       }
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
-        rootDialogId,
+        mainDialogId,
         status,
-        'loadSubdialogRegistry',
+        'loadSideDialogRegistry',
         error,
       );
-      throw new Error('unreachable after loadSubdialogRegistry persistence rethrow');
+      throw new Error('unreachable after loadSideDialogRegistry persistence rethrow');
     }
   }
 }

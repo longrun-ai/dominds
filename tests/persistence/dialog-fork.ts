@@ -5,16 +5,16 @@ import * as path from 'node:path';
 
 import type {
   DialogLatestFile,
-  PendingSubdialogsReconciledRecord,
+  MainDialogMetadataFile,
+  PendingSideDialogsReconciledRecord,
   RemindersReconciledRecord,
-  RootDialogMetadataFile,
-  SubdialogCreatedRecord,
-  SubdialogMetadataFile,
+  SideDialogCreatedRecord,
+  SideDialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from '../../main/dialog';
-import { forkRootDialogTreeAtGeneration } from '../../main/dialog-fork';
+import { forkMainDialogTreeAtGeneration } from '../../main/dialog-fork';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
 
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     const nestedSubId = new DialogID('11/22/nestedfork', rootId.rootId);
     const createdAt = formatUnifiedTimestamp(new Date('2026-03-09T01:00:00.000Z'));
 
-    const rootMeta: RootDialogMetadataFile = {
+    const rootMeta: MainDialogMetadataFile = {
       id: rootId.selfId,
       agentId: 'rtws',
       taskDocPath: 'plans/demo.tsk',
@@ -55,14 +55,20 @@ async function main(): Promise<void> {
     };
     await DialogPersistence.saveDialogMetadata(rootId, rootMeta);
     await writeLatest(rootId, 1);
+    await DialogPersistence.pushTellaskReplyObligation(rootId, {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetCallId: 'root-askback-call',
+      targetDialogId: rootId.selfId,
+      tellaskContent: 'Resolve the active root ask-back.',
+    });
 
-    const subMeta: SubdialogMetadataFile = {
+    const subMeta: SideDialogMetadataFile = {
       id: subId.selfId,
       agentId: 'scribe',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      supdialogId: rootId.selfId,
-      assignmentFromSup: {
+      askerDialogId: rootId.selfId,
+      assignmentFromAsker: {
         callName: 'tellaskSessionless',
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate',
@@ -71,17 +77,17 @@ async function main(): Promise<void> {
         callId: 'call-sub-1',
       },
     };
-    await DialogPersistence.ensureSubdialogDirectory(subId, 'running');
+    await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
     await DialogPersistence.saveDialogMetadata(subId, subMeta);
     await writeLatest(subId, 1);
 
-    const nestedSubMeta: SubdialogMetadataFile = {
+    const nestedSubMeta: SideDialogMetadataFile = {
       id: nestedSubId.selfId,
       agentId: 'critic',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      supdialogId: subId.selfId,
-      assignmentFromSup: {
+      askerDialogId: subId.selfId,
+      assignmentFromAsker: {
         callName: 'freshBootsReasoning',
         tellaskContent: 'Challenge the parent sideline.',
         originMemberId: 'scribe',
@@ -90,7 +96,7 @@ async function main(): Promise<void> {
         effectiveFbrEffort: 1,
       },
     };
-    await DialogPersistence.ensureSubdialogDirectory(nestedSubId, 'running');
+    await DialogPersistence.ensureSideDialogDirectory(nestedSubId, 'running');
     await DialogPersistence.saveDialogMetadata(nestedSubId, nestedSubMeta);
     await writeLatest(nestedSubId, 1);
 
@@ -114,16 +120,16 @@ async function main(): Promise<void> {
       genseq: 1,
       content: 'first answer',
     });
-    const subCreatedRecord: SubdialogCreatedRecord = {
+    const subCreatedRecord: SideDialogCreatedRecord = {
       ts: createdAt,
-      type: 'subdialog_created_record',
+      type: 'sideDialog_created_record',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
-      subdialogId: subId.selfId,
-      supdialogId: rootId.selfId,
+      sideDialogId: subId.selfId,
+      askerDialogId: rootId.selfId,
       agentId: 'scribe',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      assignmentFromSup: {
+      assignmentFromAsker: {
         callName: 'tellaskSessionless',
         mentionList: ['@scribe'],
         tellaskContent: 'Investigate',
@@ -157,19 +163,19 @@ async function main(): Promise<void> {
       ts: createdAt,
       type: 'agent_words_record',
       genseq: 1,
-      content: 'subdialog baseline',
+      content: 'sideDialog baseline',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
     });
     await DialogPersistence.appendEvent(subId, 1, {
       ts: createdAt,
-      type: 'subdialog_created_record',
+      type: 'sideDialog_created_record',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
-      subdialogId: nestedSubId.selfId,
-      supdialogId: subId.selfId,
+      sideDialogId: nestedSubId.selfId,
+      askerDialogId: subId.selfId,
       agentId: 'critic',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      assignmentFromSup: {
+      assignmentFromAsker: {
         callName: 'freshBootsReasoning',
         tellaskContent: 'Challenge the parent sideline.',
         originMemberId: 'scribe',
@@ -205,19 +211,21 @@ async function main(): Promise<void> {
       ],
     };
     await DialogPersistence.appendEvent(rootId, 1, postSecondReminderRecord);
-    const postSecondPendingRecord: PendingSubdialogsReconciledRecord = {
+    const postSecondPendingRecord: PendingSideDialogsReconciledRecord = {
       ts: secondTs,
-      type: 'pending_subdialogs_reconciled_record',
+      type: 'pending_sideDialogs_reconciled_record',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
-      pendingSubdialogs: [
+      pendingSideDialogs: [
         {
-          subdialogId: subId.selfId,
+          sideDialogId: subId.selfId,
           createdAt: secondTs,
           callName: 'tellaskSessionless',
           mentionList: ['@scribe'],
           tellaskContent: 'Investigate',
           targetAgentId: 'scribe',
           callId: 'call-sub-1',
+          callingCourse: 1,
+          callingGenseq: 1,
           callType: 'B',
         },
       ],
@@ -232,7 +240,7 @@ async function main(): Promise<void> {
       ts: secondTs,
       type: 'agent_words_record',
       genseq: 2,
-      content: 'subdialog future answer',
+      content: 'sideDialog future answer',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
     });
     await DialogPersistence.appendEvent(nestedSubId, 1, {
@@ -250,7 +258,7 @@ async function main(): Promise<void> {
       materializeReminder({ id: 'sub-reminder', content: 'sub reminder' }),
     ]);
 
-    const forkBeforeSecond = await forkRootDialogTreeAtGeneration({
+    const forkBeforeSecond = await forkMainDialogTreeAtGeneration({
       sourceRootId: rootId.selfId,
       sourceStatus: 'running',
       course: 1,
@@ -259,6 +267,26 @@ async function main(): Promise<void> {
     assert.equal(forkBeforeSecond.action.kind, 'auto_continue');
 
     const forkedRootId = new DialogID(forkBeforeSecond.rootId);
+    const forkedRootAskerStack = await DialogPersistence.loadDialogAskerStack(
+      forkedRootId,
+      'running',
+    );
+    assert.deepEqual(
+      forkedRootAskerStack.askerStack,
+      [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: forkedRootId.selfId,
+          tellaskReplyObligation: {
+            expectedReplyCallName: 'replyTellaskBack',
+            targetCallId: 'root-askback-call',
+            targetDialogId: forkedRootId.selfId,
+            tellaskContent: 'Resolve the active root ask-back.',
+          },
+        },
+      ],
+      'forked root must preserve active root reply obligation stack and rewrite the root target',
+    );
     const forkedEvents = await DialogPersistence.readCourseEvents(forkedRootId, 1, 'running');
     assert.equal(
       forkedEvents.some((event) => event.type === 'agent_words_record' && event.genseq === 2),
@@ -266,29 +294,29 @@ async function main(): Promise<void> {
       'forked root must exclude selected bubble events',
     );
     assert.equal(
-      forkedEvents.some((event) => event.type === 'subdialog_created_record'),
+      forkedEvents.some((event) => event.type === 'sideDialog_created_record'),
       true,
-      'forked root must include baseline subdialog-created records',
+      'forked root must include baseline sideDialog-created records',
     );
     assert.equal(
       forkedEvents.some(
         (event) =>
-          event.type === 'subdialog_created_record' && event.subdialogId === nestedSubId.selfId,
+          event.type === 'sideDialog_created_record' && event.sideDialogId === nestedSubId.selfId,
       ),
       false,
-      'forked root must not hoist nested subdialog-created records out of their actual parent sideline',
+      'forked root must not hoist nested sideDialog-created records out of their actual parent sideline',
     );
     const forkedCreatedRecord = forkedEvents.find(
-      (event): event is SubdialogCreatedRecord => event.type === 'subdialog_created_record',
+      (event): event is SideDialogCreatedRecord => event.type === 'sideDialog_created_record',
     );
-    assert.ok(forkedCreatedRecord, 'forked root must persist baseline subdialog-created record');
+    assert.ok(forkedCreatedRecord, 'forked root must persist baseline sideDialog-created record');
     assert.equal(
-      forkedCreatedRecord.supdialogId,
+      forkedCreatedRecord.askerDialogId,
       forkedRootId.selfId,
-      'forked baseline record must point to the new root as supdialog',
+      'forked baseline record must point to the new root as askerDialog',
     );
     assert.equal(
-      forkedCreatedRecord.assignmentFromSup.callerDialogId,
+      forkedCreatedRecord.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
       'forked baseline record must point to the new root as caller dialog',
     );
@@ -311,16 +339,16 @@ async function main(): Promise<void> {
       new DialogID(subId.selfId, forkedRootId.selfId),
       'running',
     );
-    assert.ok(forkedSubMeta, 'forked subdialog metadata must exist');
+    assert.ok(forkedSubMeta, 'forked sideDialog metadata must exist');
     assert.equal(
-      forkedSubMeta.supdialogId,
+      forkedSubMeta.askerDialogId,
       forkedRootId.selfId,
-      'forked subdialog metadata must point to the new root as supdialog',
+      'forked sideDialog metadata must point to the new root as askerDialog',
     );
     assert.equal(
-      forkedSubMeta.assignmentFromSup.callerDialogId,
+      forkedSubMeta.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
-      'forked subdialog assignment must point to the new root as caller dialog',
+      'forked sideDialog assignment must point to the new root as caller dialog',
     );
     const forkedSubEvents = await DialogPersistence.readCourseEvents(
       new DialogID(subId.selfId, forkedRootId.selfId),
@@ -328,49 +356,49 @@ async function main(): Promise<void> {
       'running',
     );
     const forkedNestedCreatedRecord = forkedSubEvents.find(
-      (event): event is SubdialogCreatedRecord =>
-        event.type === 'subdialog_created_record' && event.subdialogId === nestedSubId.selfId,
+      (event): event is SideDialogCreatedRecord =>
+        event.type === 'sideDialog_created_record' && event.sideDialogId === nestedSubId.selfId,
     );
     assert.ok(
       forkedNestedCreatedRecord,
-      'forked parent subdialog must keep baseline nested subdialog-created record on its own course',
+      'forked parent sideDialog must keep baseline nested sideDialog-created record on its own course',
     );
     assert.equal(
-      forkedNestedCreatedRecord?.supdialogId,
+      forkedNestedCreatedRecord?.askerDialogId,
       subId.selfId,
-      'forked nested baseline record must keep the parent sideline as supdialog',
+      'forked nested baseline record must keep the parent sideline as askerDialog',
     );
     assert.equal(
-      forkedNestedCreatedRecord?.assignmentFromSup.callerDialogId,
+      forkedNestedCreatedRecord?.assignmentFromAsker.callerDialogId,
       subId.selfId,
       'forked nested baseline record must keep the parent sideline as caller dialog',
     );
     assert.equal(
       forkedSubEvents.some(
         (event) =>
-          event.type === 'agent_words_record' && event.content === 'subdialog future answer',
+          event.type === 'agent_words_record' && event.content === 'sideDialog future answer',
       ),
       false,
-      'forked subdialog must exclude transcript after cutoff root genseq',
+      'forked sideDialog must exclude transcript after cutoff root genseq',
     );
 
     const forkedNestedMeta = await DialogPersistence.loadDialogMetadata(
       new DialogID(nestedSubId.selfId, forkedRootId.selfId),
       'running',
     );
-    assert.ok(forkedNestedMeta, 'forked nested subdialog metadata must exist');
+    assert.ok(forkedNestedMeta, 'forked nested sideDialog metadata must exist');
     assert.equal(
-      forkedNestedMeta.supdialogId,
+      forkedNestedMeta.askerDialogId,
       subId.selfId,
-      'forked nested subdialog metadata must keep the parent sideline as supdialog',
+      'forked nested sideDialog metadata must keep the parent sideline as askerDialog',
     );
     assert.equal(
-      forkedNestedMeta.assignmentFromSup.callerDialogId,
+      forkedNestedMeta.assignmentFromAsker.callerDialogId,
       subId.selfId,
-      'forked nested subdialog assignment must keep the parent sideline as caller dialog',
+      'forked nested sideDialog assignment must keep the parent sideline as caller dialog',
     );
 
-    const forkBeforeFirst = await forkRootDialogTreeAtGeneration({
+    const forkBeforeFirst = await forkMainDialogTreeAtGeneration({
       sourceRootId: rootId.selfId,
       sourceStatus: 'running',
       course: 1,

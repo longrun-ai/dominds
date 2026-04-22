@@ -7,7 +7,6 @@
  *   dominds read [options] [<member-id>]
  *
  * Options:
- *   --no-hints           Don't show hints
  *   --only-prompt        Show only system prompt
  *   --only-mem           Show only memories
  *   --audit              Run prompt audit via hidden teammate @fuxi (skip when default LLM unavailable)
@@ -62,7 +61,7 @@ type PromptAuditReport = Readonly<{
 
 function printUsage(): void {
   console.log(
-    'Usage: dominds read [<member-id>] [--no-hints] [--only-prompt|--only-mem] [--audit] [--find <pattern>]',
+    'Usage: dominds read [<member-id>] [--only-prompt|--only-mem] [--audit] [--find <pattern>]',
   );
   console.log('');
   console.log('Print agent system prompt and memories with filtering flags.');
@@ -452,9 +451,6 @@ function parseArgs(args: string[]): ReadArgs {
       }
       findPatterns.push(next);
       i++;
-    } else if (arg === '--no-hints') {
-      // Deprecated, but keep for compatibility
-      console.warn('Warning: --no-hints is deprecated, use --only-prompt or --only-mem instead');
     } else if (arg === '-h' || arg === '--help') {
       printUsage();
       process.exit(0);

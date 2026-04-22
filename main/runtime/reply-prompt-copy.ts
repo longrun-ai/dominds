@@ -66,13 +66,41 @@ export function buildActiveReplyToolNote(args: {
   ].join('\n');
 }
 
-export function buildSidelineCompletionRule(language: LanguageCode): string {
-  return language === 'zh'
-    ? '当前支线已完成并能给出最终交付时：先专注把当前任务做对；若运行时点名了精确 reply 函数，就只在最终交付收口时调用那个函数，不要改选其他 `reply*`，也不要再走 `tellaskBack`。'
-    : 'If the current sideline is complete and can deliver the final result: stay focused on finishing the actual task first; if runtime names an exact reply function, call that function only at final upstream delivery, do not switch among `reply*` variants, and do not use `tellaskBack` for final delivery.';
+export function buildActiveReplyObligationContextText(args: {
+  language: LanguageCode;
+  directive: TellaskReplyDirective;
+}): string {
+  if (args.language === 'zh') {
+    return [
+      '[Dominds 当前跨对话回复义务]',
+      '这是运行时状态，不是新的用户请求。',
+      `必须回复的目标对话：${args.directive.targetDialogId}`,
+      `必须结清的调用：${args.directive.targetCallId}`,
+      `最终交付时精确调用：\`${args.directive.expectedReplyCallName}({ replyContent })\``,
+      '',
+      '原始诉请内容：',
+      args.directive.tellaskContent,
+    ].join('\n');
+  }
+  return [
+    '[Dominds active inter-dialog reply obligation]',
+    'This is runtime state, not a new user request.',
+    `Target dialog to reply to: ${args.directive.targetDialogId}`,
+    `Call to settle: ${args.directive.targetCallId}`,
+    `At final delivery, call exactly: \`${args.directive.expectedReplyCallName}({ replyContent })\``,
+    '',
+    'Original request content:',
+    args.directive.tellaskContent,
+  ].join('\n');
 }
 
-export function buildSubdialogRoleHeaderCopy(args: {
+export function buildSideDialogCompletionRule(language: LanguageCode): string {
+  return language === 'zh'
+    ? '当前支线已完成并能给出最终交付时：先专注把当前任务做对；若运行时点名了精确 reply 函数，就只在最终交付收口时调用那个函数，不要改选其他 `reply*`，也不要再走 `tellaskBack`。'
+    : 'If the current Sideline dialog is complete and can deliver the final result: stay focused on finishing the actual task first; if runtime names an exact reply function, call that function only at final upstream delivery, do not switch among `reply*` variants, and do not use `tellaskBack` for final delivery.';
+}
+
+export function buildSideDialogRoleHeaderCopy(args: {
   language: LanguageCode;
   requesterId: string;
   expectedReplyTool?: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack' | undefined;
@@ -141,7 +169,7 @@ export function buildReplyToolReminderText(args: {
         `你刚才已经写了正文，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
         '',
         buildReplyToolReminderLine(args),
-        '如果你再次直接输出最终消息而仍不调用该工具，运行时当前会暂按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
+        '如果你再次直接输出最终消息而仍不调用该工具，运行时会按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
       ].join('\n')
     : [
         args.prefix,
@@ -149,7 +177,7 @@ export function buildReplyToolReminderText(args: {
         `You already wrote the reply body, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
         '',
         buildReplyToolReminderLine(args),
-        'If you still emit a plain final message without the tool, runtime will currently deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
+        'If you still emit a plain final message without the tool, runtime will deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
       ].join('\n');
 }
 

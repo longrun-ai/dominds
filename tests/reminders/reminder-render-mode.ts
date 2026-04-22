@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { DialogStore, RootDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import type { Team } from '../../main/team';
 import { addReminderTool, updateReminderTool } from '../../main/tools/ctrl';
@@ -20,8 +20,8 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(new DialogStore(), 'reminder-render-mode.tsk', undefined, agentId);
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(new DialogStore(), 'reminder-render-mode.tsk', undefined, agentId);
 }
 
 async function main(): Promise<void> {

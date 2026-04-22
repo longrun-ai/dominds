@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 
 import {
-  formatAssignmentFromSupdialog,
-  formatSupdialogCallPrompt,
+  formatAskerDialogCallPrompt,
+  formatAssignmentFromAskerDialog,
 } from '../../main/runtime/inter-dialog-format';
 import {
   buildReplyObligationReassertionText,
   buildReplyToolReminderText,
-  buildSubdialogRoleHeaderCopy,
+  buildSideDialogRoleHeaderCopy,
 } from '../../main/runtime/reply-prompt-copy';
 import { getTellaskKindLabel } from '../../main/runtime/tellask-labels';
 
@@ -33,7 +33,7 @@ function main(): void {
     '【Tellask Session】',
   );
   assert.equal(
-    buildSubdialogRoleHeaderCopy({
+    buildSideDialogRoleHeaderCopy({
       language: 'zh',
       requesterId: 'tester',
       expectedReplyTool: 'replyTellask',
@@ -41,7 +41,7 @@ function main(): void {
     '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有确实需要向上游回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
   );
   assert.equal(
-    buildSubdialogRoleHeaderCopy({
+    buildSideDialogRoleHeaderCopy({
       language: 'en',
       requesterId: 'tester',
       expectedReplyTool: 'replyTellaskSessionless',
@@ -49,7 +49,7 @@ function main(): void {
     '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask upstream back and existing SOP cannot directly identify another owner.',
   );
 
-  const startAssignment = formatAssignmentFromSupdialog({
+  const startAssignment = formatAssignmentFromAskerDialog({
     callName: 'tellask',
     fromAgentId: 'tester',
     toAgentId: 'pangu',
@@ -62,14 +62,14 @@ function main(): void {
   assert.match(startAssignment, /@tester 已通过【长线诉请】安排你处理下述诉请内容/u);
   assert.match(startAssignment, /诉请内容（sticky）：/u);
 
-  const askBackPrompt = formatSupdialogCallPrompt({
+  const askBackPrompt = formatAskerDialogCallPrompt({
     fromAgentId: 'pangu',
     toAgentId: 'tester',
-    subdialogRequest: {
+    sideDialogRequest: {
       callName: 'tellaskBack',
       tellaskContent: 'Please confirm the exact final answer.',
     },
-    supdialogAssignment: {
+    askerDialogAssignment: {
       callName: 'tellask',
       mentionList: ['@pangu'],
       tellaskContent: 'Please answer 1+1.',
@@ -107,6 +107,7 @@ function main(): void {
 
   const assignmentDirective = {
     expectedReplyCallName: 'replyTellaskSessionless' as const,
+    targetDialogId: 'root-dialog',
     targetCallId: 'root-to-pangu-call',
     tellaskContent: 'Finish the parent sideline after the nested work returns.',
   };

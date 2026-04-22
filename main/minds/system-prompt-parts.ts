@@ -8,7 +8,7 @@ export type ContextHealthPromptMode = 'normal' | 'caution' | 'critical';
 export type PromptdocContext = {
   language: LanguageCode;
   agentId: string;
-  isSubdialog: boolean;
+  isSideDialog: boolean;
   taskdocMaintainerId: string;
   agentHasTeamMemoryTools: boolean;
   agentHasPersonalMemoryTools: boolean;
@@ -225,13 +225,13 @@ type MemoryPromptCopy = Readonly<{
   remindersLine: string;
   teamMemoryLine: string;
   personalMemoryLine: string;
-  subdialogDutyLine: string;
-  mainlineDutyLine: string;
+  sideDialogDutyLine: string;
+  mainDialogDutyLine: string;
   teammateTellaskRoundDoneLine: string;
   teamMemoryHintLine: string;
   personalMemoryHintLine: string;
-  subdialogWorkflowLine: string;
-  mainlineWorkflowLine: string;
+  sideDialogWorkflowLine: string;
+  mainDialogWorkflowLine: string;
   contextHealthLine: string;
   taskdocLogLine: string;
 }>;
@@ -285,15 +285,15 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
-      subdialogDutyLine: `你当前处于支线对话：此处不允许 \`change_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出你已合并好的“新全文/替换稿”（用于替换对应章节全文）。不要声称已更新，除非看到回执。`,
-      mainlineDutyLine:
+      sideDialogDutyLine: `你当前处于支线对话：此处不允许 \`change_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出你已合并好的“新全文/替换稿”（用于替换对应章节全文）。不要声称已更新，除非看到回执。`,
+      mainDialogDutyLine:
         '你当前处于主线对话：你负责综合维护全队共享差遣牒（尤其是 progress 公告牌）。当队友/支线对话提出更新建议时，及时合并、压缩并保持清晰。',
       teammateTellaskRoundDoneLine: `队友诉请重要语义：当你在上游上下文中收到带${runtimeMarkers.finalCompleted}标记的回贴，表示该轮诉请已经结束；对方不会继续执行同一轮诉请。此时如果目标未达成，“等待”是错误的：必须显式发起新一轮 tellask 才能继续推进。`,
       teamMemoryHintLine:
         '提示：你具备团队记忆工具（`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`），可在必要时维护团队记忆（谨慎、少量、只写稳定约定）。',
       personalMemoryHintLine: `提示：你具备个人记忆工具（\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`）。个人记忆仅对当前智能体可见，且系统会自动按成员隔离到 \`.minds/memory/individual/<member-id>/...\`；因此 \`path\` 不应包含你的成员 id（不要写 \`${ctx.agentId}/...\`）。首次创建时直接用 \`add_personal_memory\` 即可，目录会由系统自动创建。记忆会在每次生成时自动注入上下文：保持少量、保持准确、按“未来会一起更新的内容”合并；写稳定事实（关键路径 + 最小必要约定），不要写任务进度/当天状态；一旦你修改了相关文件或发现记忆过期/冲突，立刻用 \`replace_personal_memory\` 更新。`,
-      subdialogWorkflowLine: `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`,
-      mainlineWorkflowLine:
+      sideDialogWorkflowLine: `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`,
+      mainDialogWorkflowLine:
         '工作流：先做事 → 再提炼（`update_reminder` + `change_mind(progress)`）→ 然后 `clear_mind` 清空噪音。',
       contextHealthLine: contextHealthLineZh,
       taskdocLogLine: taskdocLogLineZh,
@@ -322,15 +322,15 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
-    subdialogDutyLine: `You are currently in a subdialog: \`change_mind\` is not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with a fully merged replacement draft (full-section replacement). Do not claim it is updated until you see a receipt.`,
-    mainlineDutyLine:
-      'You are currently in the main dialog: you are responsible for keeping the team-shared Taskdoc coherent and up to date (especially the progress bulletin board). Merge proposals from teammates/subdialogs promptly and keep it concise.',
+    sideDialogDutyLine: `You are currently in a Sideline dialog: \`change_mind\` is not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with a fully merged replacement draft (full-section replacement). Do not claim it is updated until you see a receipt.`,
+    mainDialogDutyLine:
+      'You are currently in the Mainline dialog: you are responsible for keeping the team-shared Taskdoc coherent and up to date (especially the progress bulletin board). Merge proposals from teammates/Sideline dialogs promptly and keep it concise.',
     teammateTellaskRoundDoneLine: `Teammate Tellask semantics: when you receive an upstream reply with the ${runtimeMarkers.finalCompleted} marker, that Tellask round is finished; the responder will not keep executing the same call in the background. If the objective is not met, “waiting” is wrong: you must explicitly start a new Tellask round to continue.`,
     teamMemoryHintLine:
       'Hint: you have team-memory tools (`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`) and may maintain team memory when it is truly stable and worth sharing.',
     personalMemoryHintLine: `Hint: you have personal-memory tools (\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`). Personal memory is private to the current agent and is automatically isolated under \`.minds/memory/individual/<member-id>/...\`; therefore \`path\` MUST NOT include your member id (do not write \`${ctx.agentId}/...\`). For first-time setup, just call \`add_personal_memory\`—the directory will be created automatically. Memory is automatically injected into context on each generation: keep it small, keep it accurate, and group facts that are updated together. Store stable facts (exact key paths + minimal contracts), not daily state/progress. If you changed those files or detect staleness/conflicts, immediately \`replace_personal_memory\` to keep it accurate.`,
-    subdialogWorkflowLine: `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft a merged replacement and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`,
-    mainlineWorkflowLine:
+    sideDialogWorkflowLine: `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft a merged replacement and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`,
+    mainDialogWorkflowLine:
       'Workflow: do work → distill (`update_reminder` + `change_mind(progress)`) → then `clear_mind` to drop noise.',
     contextHealthLine: contextHealthLineEn,
     taskdocLogLine: taskdocLogLineEn,
@@ -353,11 +353,11 @@ export function buildMemorySystemPrompt(ctx: PromptdocContext): string {
     copy.teamMemoryLine,
     copy.personalMemoryLine,
     '',
-    ctx.isSubdialog ? copy.subdialogDutyLine : copy.mainlineDutyLine,
+    ctx.isSideDialog ? copy.sideDialogDutyLine : copy.mainDialogDutyLine,
     copy.teammateTellaskRoundDoneLine,
     ...(ctx.agentHasTeamMemoryTools ? [copy.teamMemoryHintLine] : []),
     ...(ctx.agentHasPersonalMemoryTools ? [copy.personalMemoryHintLine] : []),
-    ctx.isSubdialog ? copy.subdialogWorkflowLine : copy.mainlineWorkflowLine,
+    ctx.isSideDialog ? copy.sideDialogWorkflowLine : copy.mainDialogWorkflowLine,
     copy.contextHealthLine,
     copy.taskdocLogLine,
   ].join('\n');

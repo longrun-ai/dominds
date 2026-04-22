@@ -1,7 +1,7 @@
 export {
   driveDialogStream,
   emitSayingEventsBridge as emitSayingEvents,
-  supplyResponseToSupdialog,
+  supplyResponseToAskerDialog,
 } from './engine';
 export { runBackendDriver } from './loop';
 export { restoreDialogHierarchy } from './restore';

@@ -9,7 +9,7 @@ export type RunControlVisualState =
   | { kind: 'proceeding_stop_requested' }
   | { kind: 'stopped' }
   | { kind: 'blocked_q4h' }
-  | { kind: 'blocked_subdialogs' }
+  | { kind: 'blocked_sideDialogs' }
   | { kind: 'blocked_both' };
 
 export type DisplayStateClassSuffix =
@@ -18,16 +18,16 @@ export type DisplayStateClassSuffix =
   | 'state-proceeding-stop'
   | 'state-stopped'
   | 'state-blocked-q4h'
-  | 'state-blocked-subdialogs'
+  | 'state-blocked-sideDialogs'
   | 'state-blocked-both';
 
 function blockedReasonToVisualState(reason: DialogBlockedReason): RunControlVisualState {
   switch (reason.kind) {
     case 'needs_human_input':
       return { kind: 'blocked_q4h' };
-    case 'waiting_for_subdialogs':
-      return { kind: 'blocked_subdialogs' };
-    case 'needs_human_input_and_subdialogs':
+    case 'waiting_for_sideDialogs':
+      return { kind: 'blocked_sideDialogs' };
+    case 'needs_human_input_and_sideDialogs':
       return { kind: 'blocked_both' };
     default: {
       const _exhaustive: never = reason;
@@ -74,8 +74,8 @@ export function displayStateClassSuffixFromDisplayState(
       return 'state-stopped';
     case 'blocked_q4h':
       return 'state-blocked-q4h';
-    case 'blocked_subdialogs':
-      return 'state-blocked-subdialogs';
+    case 'blocked_sideDialogs':
+      return 'state-blocked-sideDialogs';
     case 'blocked_both':
       return 'state-blocked-both';
     default: {

@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import { materializeReminder } from '../../main/tool';
 import { resetTrackedDaemonsForTests, shellCmdReminderOwner } from '../../main/tools/os';
 
@@ -24,8 +24,8 @@ async function withTempDir<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     {} as unknown as DialogStore,
     'shared-daemon-reminder-wrapper-command-match.tsk',
     undefined,

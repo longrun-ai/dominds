@@ -8,7 +8,7 @@ import {
   recoverPendingReplyTellaskCallsForDialog,
 } from '../../main/recovery/reply-special';
 import { setWorkLanguage } from '../../main/runtime/work-language';
-import { createRootDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 function requirePersistedContent(
   event: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>[number] | undefined,
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot);
 
-    const liveRoot = await createRootDialog('tester');
+    const liveRoot = await createMainDialog('tester');
     await deliverTellaskBackReplyFromDirective({
       replyingDialog: liveRoot,
       directive: {
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
       'expected live replyTellaskBack delivery to mirror tellask result into target dialog msgs',
     );
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     const tellaskContent = 'Need a final upstream answer.';
     const targetCallId = 'tellask-back-target';
 
@@ -60,6 +60,7 @@ async function main(): Promise<void> {
       targetCallId,
       tellaskContent,
     };
+    await DialogPersistence.pushTellaskReplyObligation(root.id, directive, root.status);
     await root.persistUserMessage(
       'Reply-tool recovery directive',
       'directive-msg',
@@ -105,13 +106,18 @@ async function main(): Promise<void> {
       'expected restart recovery to deliver tellask result to the caller dialog',
     );
 
-    const resolutionOnlyRoot = await createRootDialog('tester');
+    const resolutionOnlyRoot = await createMainDialog('tester');
     const resolutionDirective: TellaskReplyDirective = {
       expectedReplyCallName: 'replyTellaskBack',
       targetDialogId: resolutionOnlyRoot.id.selfId,
       targetCallId: 'tellask-back-target',
       tellaskContent: 'Need a final upstream answer.',
     };
+    await DialogPersistence.pushTellaskReplyObligation(
+      resolutionOnlyRoot.id,
+      resolutionDirective,
+      resolutionOnlyRoot.status,
+    );
     await resolutionOnlyRoot.persistUserMessage(
       'Reply-tool recovery directive',
       'directive-msg',
@@ -148,13 +154,18 @@ async function main(): Promise<void> {
       'expected restart recovery to synthesize success func_result_record when resolution already exists',
     );
 
-    const concurrentRoot = await createRootDialog('tester');
+    const concurrentRoot = await createMainDialog('tester');
     const concurrentDirective: TellaskReplyDirective = {
       expectedReplyCallName: 'replyTellaskBack',
       targetDialogId: concurrentRoot.id.selfId,
       targetCallId: 'tellask-back-target-concurrent',
       tellaskContent: 'Need only one recovered reply.',
     };
+    await DialogPersistence.pushTellaskReplyObligation(
+      concurrentRoot.id,
+      concurrentDirective,
+      concurrentRoot.status,
+    );
     await concurrentRoot.persistUserMessage(
       'Concurrent reply-tool recovery directive',
       'directive-msg-concurrent',

@@ -4,34 +4,42 @@
  * Factory for creating Dialog instances with proper type hierarchy.
  * Provides a single point of dialog creation to ensure consistent initialization.
  */
-import { Dialog, DialogID, DialogInitParams, DialogStore, RootDialog, SubDialog } from './dialog';
+import {
+  buildSideDialogAskerStack,
+  Dialog,
+  DialogID,
+  DialogInitParams,
+  DialogStore,
+  MainDialog,
+  SideDialog,
+} from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { generateDialogID } from './utils/id';
 
 /**
  * Factory for creating Dialog instances.
- * Abstracts the creation of RootDialog and SubDialog with proper type hierarchy.
+ * Abstracts the creation of MainDialog and SideDialog with proper type hierarchy.
  */
 export class DialogFactory {
   /**
-   * Create a new RootDialog instance.
+   * Create a new MainDialog instance.
    */
-  static createRootDialog(
+  static createMainDialog(
     dlgStore: DialogStore,
     taskDocPath: string,
     agentId: string,
     id?: DialogID,
     initialState?: DialogInitParams['initialState'],
-  ): RootDialog {
-    const rootDialog = new RootDialog(dlgStore, taskDocPath, id, agentId, initialState);
-    globalDialogRegistry.register(rootDialog);
-    return rootDialog;
+  ): MainDialog {
+    const mainDialog = new MainDialog(dlgStore, taskDocPath, id, agentId, initialState);
+    globalDialogRegistry.register(mainDialog);
+    return mainDialog;
   }
 
   /**
-   * Create a new SubDialog instance.
+   * Create a new SideDialog instance.
    */
-  static createSubDialog(
+  static createSideDialog(
     callerDialog: Dialog,
     taskDocPath: string,
     targetAgentId: string,
@@ -47,52 +55,55 @@ export class DialogFactory {
       effectiveFbrEffort?: number;
     },
     initialState?: DialogInitParams['initialState'],
-  ): SubDialog {
+  ): SideDialog {
     const generatedId = generateDialogID();
-    const rootDialog =
-      callerDialog instanceof RootDialog
+    const mainDialog =
+      callerDialog instanceof MainDialog
         ? callerDialog
-        : callerDialog instanceof SubDialog
-          ? callerDialog.rootDialog
+        : callerDialog instanceof SideDialog
+          ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
               );
             })();
-    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
+    const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
 
-    return new SubDialog(
+    return new SideDialog(
       callerDialog.dlgStore,
-      rootDialog,
+      mainDialog,
       taskDocPath,
-      subdialogId,
+      sideDialogId,
       targetAgentId,
-      {
-        callName: options.callName,
-        mentionList,
-        tellaskContent,
-        originMemberId: options.originMemberId,
-        callerDialogId: options.callerDialogId,
-        callId: options.callId,
-        collectiveTargets: options.collectiveTargets,
-        effectiveFbrEffort: options.effectiveFbrEffort,
-      },
+      buildSideDialogAskerStack({
+        askerDialogId: options.callerDialogId,
+        assignment: {
+          callName: options.callName,
+          mentionList,
+          tellaskContent,
+          originMemberId: options.originMemberId,
+          callerDialogId: options.callerDialogId,
+          callId: options.callId,
+          collectiveTargets: options.collectiveTargets,
+          effectiveFbrEffort: options.effectiveFbrEffort,
+        },
+      }),
       options.sessionSlug,
       initialState,
     );
   }
 
   /**
-   * Check if a dialog is a RootDialog.
+   * Check if a dialog is a MainDialog.
    */
-  static isRootDialog(dialog: Dialog): dialog is RootDialog {
-    return dialog instanceof RootDialog;
+  static isMainDialog(dialog: Dialog): dialog is MainDialog {
+    return dialog instanceof MainDialog;
   }
 
   /**
-   * Check if a dialog is a SubDialog.
+   * Check if a dialog is a SideDialog.
    */
-  static isSubDialog(dialog: Dialog): dialog is SubDialog {
-    return dialog instanceof SubDialog;
+  static isSideDialog(dialog: Dialog): dialog is SideDialog {
+    return dialog instanceof SideDialog;
   }
 }

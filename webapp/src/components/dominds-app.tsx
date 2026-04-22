@@ -5,10 +5,10 @@
 import type { ConnectionState } from '@/services/store';
 import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import type {
-  ApiDialogListSubdialogNode,
+  ApiDialogListSideDialogNode,
   ApiForkDialogResponse,
+  ApiMainDialogResponse,
   ApiMoveDialogsRequest,
-  ApiRootDialogResponse,
   DialogInfo,
   DialogStatusKind,
   PrimingScriptSummary,
@@ -25,7 +25,7 @@ import type {
   NewQ4HAskedEvent,
   Q4HAnsweredEvent,
   ReminderContent,
-  SubdialogEvent,
+  SideDialogEvent,
   TypedDialogEvent,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
@@ -228,10 +228,10 @@ type DiligenceStateSnapshot = {
   remaining: number | null;
 };
 
-type RootDialogsByStatus = {
-  running: ApiRootDialogResponse[];
-  completed: ApiRootDialogResponse[];
-  archived: ApiRootDialogResponse[];
+type MainDialogsByStatus = {
+  running: ApiMainDialogResponse[];
+  completed: ApiMainDialogResponse[];
+  archived: ApiMainDialogResponse[];
 };
 
 type DialogListBootstrapState = { kind: 'loading' } | { kind: 'ready' };
@@ -261,14 +261,14 @@ export class DomindsApp extends HTMLElement {
   private authState: AuthState = { kind: 'uninitialized' };
   private urlAuthPresent: boolean = false;
   // Backend is the single source of truth.
-  // Frontend keeps only render-scope snapshots: roots by status + visible subdialogs for expanded roots.
-  private rootDialogsByStatus: RootDialogsByStatus = {
+  // Frontend keeps only render-scope snapshots: roots by status + visible sideDialogs for expanded roots.
+  private mainDialogsByStatus: MainDialogsByStatus = {
     running: [],
     completed: [],
     archived: [],
   };
-  private visibleSubdialogsByRoot = new Map<string, ApiRootDialogResponse[]>();
-  private dialogListSubdialogNodeBackfillInFlight = new Set<string>();
+  private visibleSideDialogsByRoot = new Map<string, ApiMainDialogResponse[]>();
+  private dialogListSideDialogNodeBackfillInFlight = new Set<string>();
   private rootStatusById = new Map<string, PersistableDialogStatus>();
   private dialogListBootstrapState: DialogListBootstrapState = { kind: 'loading' };
   private dialogDisplayStatesByKey = new Map<string, DialogDisplayState>();
@@ -304,7 +304,7 @@ export class DomindsApp extends HTMLElement {
   private lastRunControlRefresh: { timestamp: string; reason: RunControlRefreshReason } | null =
     null;
   private lastRunControlRefreshScheduledAtMs: number | null = null;
-  private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
+  private sideDialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private authModal: HTMLElement | null = null;
   private createDialogFlow = new CreateDialogFlowController({
     getLanguage: () => this.uiLanguage,
@@ -1594,7 +1594,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   // Type guard to check if WebSocketMessage has dialog context
-  // Also accepts subdialog events which have parentDialog/subDialog instead of dialog
+  // Also accepts sideDialog events which have parentDialog/sideDialog instead of dialog
   private hasDialogContext(
     message: WebSocketMessage,
   ): message is WebSocketMessage & { dialog: { selfId: string; rootId: string } } {
@@ -1615,16 +1615,16 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Get the target dialog ID from a message (handles both dialog and subdialog event structures)
+   * Get the target dialog ID from a message (handles both dialog and sideDialog event structures)
    */
   private getTargetDialogId(message: WebSocketMessage): string | null {
     // Standard dialog events
     if ('dialog' in message && message.dialog) {
       return message.dialog.selfId;
     }
-    // Subdialog events (have parentDialog/subDialog)
-    if ('subDialog' in message && message.subDialog) {
-      return message.subDialog.selfId;
+    // SideDialog events (have parentDialog/sideDialog)
+    if ('sideDialog' in message && message.sideDialog) {
+      return message.sideDialog.selfId;
     }
     return null;
   }
@@ -1642,12 +1642,12 @@ export class DomindsApp extends HTMLElement {
       return this.shadowRoot?.querySelector('#dialog-container') as DomindsDialogContainer | null;
     }
 
-    // Check if we're currently viewing a subdialog
+    // Check if we're currently viewing a sideDialog
     const currentDialog = this.currentDialog;
-    const isViewingSubdialog = currentDialog && currentDialog.selfId !== currentDialog.rootId;
+    const isViewingSideDialog = currentDialog && currentDialog.selfId !== currentDialog.rootId;
 
-    if (isViewingSubdialog) {
-      // When viewing a subdialog, only route events for THIS subdialog to the container
+    if (isViewingSideDialog) {
+      // When viewing a sideDialog, only route events for THIS sideDialog to the container
       // Parent dialog events should stay in the main container
       if (targetDialogId === currentDialog.selfId) {
         const mainContainer = this.shadowRoot?.querySelector(
@@ -1657,17 +1657,17 @@ export class DomindsApp extends HTMLElement {
           return mainContainer;
         }
       }
-      // For events not targeting the current subdialog, fall through to main container
+      // For events not targeting the current sideDialog, fall through to main container
       return this.shadowRoot?.querySelector('#dialog-container') as DomindsDialogContainer | null;
     }
 
-    // Not viewing a subdialog - check if this is a known subdialog
-    const subdialogContainer = this.subdialogContainers.get(targetDialogId);
-    if (subdialogContainer) {
-      return subdialogContainer as DomindsDialogContainer;
+    // Not viewing a sideDialog - check if this is a known sideDialog
+    const sideDialogContainer = this.sideDialogContainers.get(targetDialogId);
+    if (sideDialogContainer) {
+      return sideDialogContainer as DomindsDialogContainer;
     }
 
-    // Not a known subdialog, use main container
+    // Not a known sideDialog, use main container
     return this.shadowRoot?.querySelector('#dialog-container') as DomindsDialogContainer | null;
   }
 
@@ -2001,7 +2001,7 @@ export class DomindsApp extends HTMLElement {
 
   /**
    * Surgical update: Update only the dialog list without destroying the container.
-   * Use this after dialog list changes (e.g., subdialog creation, dialog loading).
+   * Use this after dialog list changes (e.g., sideDialog creation, dialog loading).
    */
   private updateDialogList(): void {
     this.syncAllDialogLists();
@@ -2527,14 +2527,14 @@ export class DomindsApp extends HTMLElement {
     return null;
   }
 
-  private getRootDialogsForStatus(status: PersistableDialogStatus): ApiRootDialogResponse[] {
+  private getMainDialogsForStatus(status: PersistableDialogStatus): ApiMainDialogResponse[] {
     switch (status) {
       case 'running':
-        return this.rootDialogsByStatus.running;
+        return this.mainDialogsByStatus.running;
       case 'completed':
-        return this.rootDialogsByStatus.completed;
+        return this.mainDialogsByStatus.completed;
       case 'archived':
-        return this.rootDialogsByStatus.archived;
+        return this.mainDialogsByStatus.archived;
       default: {
         const _exhaustive: never = status;
         throw new Error(`Unhandled dialog status: ${String(_exhaustive)}`);
@@ -2542,9 +2542,9 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private setRootDialogsForStatus(
+  private setMainDialogsForStatus(
     status: PersistableDialogStatus,
-    roots: ApiRootDialogResponse[],
+    roots: ApiMainDialogResponse[],
   ): void {
     const normalized = roots
       .filter((d) => !d.selfId)
@@ -2554,13 +2554,13 @@ export class DomindsApp extends HTMLElement {
       }));
     switch (status) {
       case 'running':
-        this.rootDialogsByStatus.running = normalized;
+        this.mainDialogsByStatus.running = normalized;
         break;
       case 'completed':
-        this.rootDialogsByStatus.completed = normalized;
+        this.mainDialogsByStatus.completed = normalized;
         break;
       case 'archived':
-        this.rootDialogsByStatus.archived = normalized;
+        this.mainDialogsByStatus.archived = normalized;
         break;
       default: {
         const _exhaustive: never = status;
@@ -2572,16 +2572,16 @@ export class DomindsApp extends HTMLElement {
   private rebuildRootStatusIndex(): void {
     this.rootStatusById.clear();
     for (const status of ['running', 'completed', 'archived'] as const) {
-      for (const root of this.getRootDialogsForStatus(status)) {
+      for (const root of this.getMainDialogsForStatus(status)) {
         this.rootStatusById.set(root.rootId, status);
       }
     }
   }
 
-  private pruneVisibleSubdialogRoots(): void {
-    for (const rootId of Array.from(this.visibleSubdialogsByRoot.keys())) {
+  private pruneVisibleSideDialogRoots(): void {
+    for (const rootId of Array.from(this.visibleSideDialogsByRoot.keys())) {
       if (!this.rootStatusById.has(rootId)) {
-        this.visibleSubdialogsByRoot.delete(rootId);
+        this.visibleSideDialogsByRoot.delete(rootId);
       }
     }
   }
@@ -2591,21 +2591,21 @@ export class DomindsApp extends HTMLElement {
     return status ?? null;
   }
 
-  private getRootDialog(rootId: string): ApiRootDialogResponse | null {
+  private getMainDialog(rootId: string): ApiMainDialogResponse | null {
     const status = this.getRootStatus(rootId);
     if (!status) return null;
-    const match = this.getRootDialogsForStatus(status).find((d) => d.rootId === rootId);
+    const match = this.getMainDialogsForStatus(status).find((d) => d.rootId === rootId);
     return match ?? null;
   }
 
-  private getVisibleSubdialogsForRoot(rootId: string): ApiRootDialogResponse[] {
-    return this.visibleSubdialogsByRoot.get(rootId) ?? [];
+  private getVisibleSideDialogsForRoot(rootId: string): ApiMainDialogResponse[] {
+    return this.visibleSideDialogsByRoot.get(rootId) ?? [];
   }
 
   private isDialogWaitingForFreshBootsReasoning(rootId: string, selfId: string): boolean {
     const target =
       selfId === rootId
-        ? this.getRootDialog(rootId)
+        ? this.getMainDialog(rootId)
         : this.findDisplayedDialogByIds(rootId, selfId);
     return target?.waitingForFreshBootsReasoning === true;
   }
@@ -2619,95 +2619,95 @@ export class DomindsApp extends HTMLElement {
     if (!status) return;
 
     if (selfId === rootId) {
-      const rootDialog = this.getRootDialog(rootId);
+      const mainDialog = this.getMainDialog(rootId);
       if (
-        rootDialog &&
-        rootDialog.waitingForFreshBootsReasoning !== waitingForFreshBootsReasoning
+        mainDialog &&
+        mainDialog.waitingForFreshBootsReasoning !== waitingForFreshBootsReasoning
       ) {
-        this.upsertRootDialogSnapshot({ ...rootDialog, waitingForFreshBootsReasoning });
+        this.upsertMainDialogSnapshot({ ...mainDialog, waitingForFreshBootsReasoning });
       }
-    } else if (this.visibleSubdialogsByRoot.has(rootId)) {
-      const subdialogs = this.getVisibleSubdialogsForRoot(rootId);
+    } else if (this.visibleSideDialogsByRoot.has(rootId)) {
+      const sideDialogs = this.getVisibleSideDialogsForRoot(rootId);
       let changed = false;
-      const updated = subdialogs.map((subdialog) => {
-        if (subdialog.selfId !== selfId) return subdialog;
-        if (subdialog.waitingForFreshBootsReasoning === waitingForFreshBootsReasoning) {
-          return subdialog;
+      const updated = sideDialogs.map((sideDialog) => {
+        if (sideDialog.selfId !== selfId) return sideDialog;
+        if (sideDialog.waitingForFreshBootsReasoning === waitingForFreshBootsReasoning) {
+          return sideDialog;
         }
         changed = true;
-        return { ...subdialog, waitingForFreshBootsReasoning };
+        return { ...sideDialog, waitingForFreshBootsReasoning };
       });
       if (changed) {
-        this.setVisibleSubdialogsForRoot(rootId, updated);
+        this.setVisibleSideDialogsForRoot(rootId, updated);
       }
     }
 
     this.patchDialogListEntry(status, { rootId, selfId }, { waitingForFreshBootsReasoning });
   }
 
-  private setVisibleSubdialogsForRoot(rootId: string, subdialogs: ApiRootDialogResponse[]): void {
+  private setVisibleSideDialogsForRoot(rootId: string, sideDialogs: ApiMainDialogResponse[]): void {
     const rootStatus = this.getRootStatus(rootId);
-    const normalized: ApiRootDialogResponse[] = [];
+    const normalized: ApiMainDialogResponse[] = [];
     const seenSelfIds = new Set<string>();
-    for (const subdialog of subdialogs) {
-      if (subdialog.rootId !== rootId) {
+    for (const sideDialog of sideDialogs) {
+      if (sideDialog.rootId !== rootId) {
         throw new Error(
-          `CRITICAL: visible subdialog rootId mismatch. expected=${rootId} actual=${subdialog.rootId}`,
+          `CRITICAL: visible sideDialog rootId mismatch. expected=${rootId} actual=${sideDialog.rootId}`,
         );
       }
-      if (!subdialog.selfId) {
-        throw new Error(`CRITICAL: visible subdialog missing selfId for rootId=${rootId}`);
+      if (!sideDialog.selfId) {
+        throw new Error(`CRITICAL: visible sideDialog missing selfId for rootId=${rootId}`);
       }
-      if (subdialog.selfId === rootId) {
-        throw new Error(`CRITICAL: visible subdialog selfId equals rootId=${rootId}`);
+      if (sideDialog.selfId === rootId) {
+        throw new Error(`CRITICAL: visible sideDialog selfId equals rootId=${rootId}`);
       }
-      if (seenSelfIds.has(subdialog.selfId)) {
+      if (seenSelfIds.has(sideDialog.selfId)) {
         throw new Error(
-          `CRITICAL: duplicate visible subdialog selfId=${subdialog.selfId} under rootId=${rootId}`,
+          `CRITICAL: duplicate visible sideDialog selfId=${sideDialog.selfId} under rootId=${rootId}`,
         );
       }
-      seenSelfIds.add(subdialog.selfId);
+      seenSelfIds.add(sideDialog.selfId);
       normalized.push(
-        rootStatus && subdialog.status !== rootStatus
-          ? { ...subdialog, status: rootStatus }
-          : subdialog,
+        rootStatus && sideDialog.status !== rootStatus
+          ? { ...sideDialog, status: rootStatus }
+          : sideDialog,
       );
     }
-    this.visibleSubdialogsByRoot.set(rootId, normalized);
+    this.visibleSideDialogsByRoot.set(rootId, normalized);
   }
 
-  private mergeVisibleSubdialogsForRootFromHierarchy(
+  private mergeVisibleSideDialogsForRootFromHierarchy(
     rootId: string,
-    hierarchySubdialogs: ApiRootDialogResponse[],
-  ): ApiRootDialogResponse[] {
-    const existing = this.getVisibleSubdialogsForRoot(rootId);
+    hierarchySideDialogs: ApiMainDialogResponse[],
+  ): ApiMainDialogResponse[] {
+    const existing = this.getVisibleSideDialogsForRoot(rootId);
     if (existing.length === 0) {
-      return hierarchySubdialogs;
+      return hierarchySideDialogs;
     }
 
-    const merged = new Map<string, ApiRootDialogResponse>();
-    for (const subdialog of existing) {
-      if (!subdialog.selfId) continue;
-      merged.set(subdialog.selfId, subdialog);
+    const merged = new Map<string, ApiMainDialogResponse>();
+    for (const sideDialog of existing) {
+      if (!sideDialog.selfId) continue;
+      merged.set(sideDialog.selfId, sideDialog);
     }
-    for (const subdialog of hierarchySubdialogs) {
-      if (!subdialog.selfId) continue;
-      merged.set(subdialog.selfId, subdialog);
+    for (const sideDialog of hierarchySideDialogs) {
+      if (!sideDialog.selfId) continue;
+      merged.set(sideDialog.selfId, sideDialog);
     }
     return [...merged.values()];
   }
 
-  private shouldBackfillDialogListSubdialogNode(
+  private shouldBackfillDialogListSideDialogNode(
     rootId: string,
     status: PersistableDialogStatus,
   ): boolean {
-    if (this.visibleSubdialogsByRoot.has(rootId)) {
+    if (this.visibleSideDialogsByRoot.has(rootId)) {
       return true;
     }
     return status === 'running' && this.isRootExpandedInRunningListDom(rootId);
   }
 
-  private buildDialogListSubdialogNodeBackfillKey(
+  private buildDialogListSideDialogNodeBackfillKey(
     rootId: string,
     selfId: string,
     status: PersistableDialogStatus,
@@ -2715,34 +2715,34 @@ export class DomindsApp extends HTMLElement {
     return `${status}:${rootId}:${selfId}`;
   }
 
-  private requestDialogListSubdialogNodeBackfill(
+  private requestDialogListSideDialogNodeBackfill(
     rootId: string,
     selfId: string,
     status: PersistableDialogStatus,
   ): void {
-    void this.backfillDialogListSubdialogNode(rootId, selfId, status).catch((error: unknown) => {
+    void this.backfillDialogListSideDialogNode(rootId, selfId, status).catch((error: unknown) => {
       console.warn(
-        `Failed to backfill dialog-list subdialog node for rootId=${rootId} selfId=${selfId} status=${status}:`,
+        `Failed to backfill dialog-list sideDialog node for rootId=${rootId} selfId=${selfId} status=${status}:`,
         error,
       );
     });
   }
 
-  private async backfillDialogListSubdialogNode(
+  private async backfillDialogListSideDialogNode(
     rootId: string,
     selfId: string,
     status: PersistableDialogStatus,
   ): Promise<void> {
     if (selfId === rootId) return;
     if (this.findDisplayedDialogByIds(rootId, selfId)) return;
-    if (!this.shouldBackfillDialogListSubdialogNode(rootId, status)) return;
+    if (!this.shouldBackfillDialogListSideDialogNode(rootId, status)) return;
 
-    const requestKey = this.buildDialogListSubdialogNodeBackfillKey(rootId, selfId, status);
-    if (this.dialogListSubdialogNodeBackfillInFlight.has(requestKey)) return;
-    this.dialogListSubdialogNodeBackfillInFlight.add(requestKey);
+    const requestKey = this.buildDialogListSideDialogNodeBackfillKey(rootId, selfId, status);
+    if (this.dialogListSideDialogNodeBackfillInFlight.has(requestKey)) return;
+    this.dialogListSideDialogNodeBackfillInFlight.add(requestKey);
 
     try {
-      const response = await this.apiClient.getDialogListSubdialogNode(rootId, selfId, status);
+      const response = await this.apiClient.getDialogListSideDialogNode(rootId, selfId, status);
       if (!response.success) {
         if (response.status === 401) {
           this.onAuthRejected('api');
@@ -2752,51 +2752,51 @@ export class DomindsApp extends HTMLElement {
         if (response.status !== 404) {
           throw new Error(
             response.error ||
-              `Failed to load dialog-list subdialog node for ${rootId}/${selfId} in ${status}`,
+              `Failed to load dialog-list sideDialog node for ${rootId}/${selfId} in ${status}`,
           );
         }
         console.warn(
-          `Dialog-list subdialog node not found during backfill. rootId=${rootId} selfId=${selfId} status=${status}`,
+          `Dialog-list sideDialog node not found during backfill. rootId=${rootId} selfId=${selfId} status=${status}`,
         );
         return;
       }
 
-      const node: ApiDialogListSubdialogNode | undefined = response.data;
+      const node: ApiDialogListSideDialogNode | undefined = response.data;
       if (!node) {
         throw new Error(
-          `Dialog-list subdialog node response missing data for rootId=${rootId} selfId=${selfId}`,
+          `Dialog-list sideDialog node response missing data for rootId=${rootId} selfId=${selfId}`,
         );
       }
       if (node.rootId !== rootId) {
         throw new Error(
-          `CRITICAL: dialog-list subdialog node rootId mismatch. expected=${rootId} actual=${node.rootId}`,
+          `CRITICAL: dialog-list sideDialog node rootId mismatch. expected=${rootId} actual=${node.rootId}`,
         );
       }
       if (node.selfId !== selfId) {
         throw new Error(
-          `CRITICAL: dialog-list subdialog node selfId mismatch. expected=${selfId} actual=${node.selfId}`,
+          `CRITICAL: dialog-list sideDialog node selfId mismatch. expected=${selfId} actual=${node.selfId}`,
         );
       }
       if (node.selfId === node.rootId) {
         throw new Error(
-          `CRITICAL: dialog-list subdialog node returned root dialog for rootId=${rootId} selfId=${selfId}`,
+          `CRITICAL: dialog-list sideDialog node returned root dialog for rootId=${rootId} selfId=${selfId}`,
         );
       }
-      if (!Number.isInteger(node.rootSubdialogCount) || node.rootSubdialogCount < 0) {
+      if (!Number.isInteger(node.rootSideDialogCount) || node.rootSideDialogCount < 0) {
         throw new Error(
-          `CRITICAL: dialog-list subdialog node returned invalid rootSubdialogCount=${String(node.rootSubdialogCount)} rootId=${rootId} selfId=${selfId}`,
+          `CRITICAL: dialog-list sideDialog node returned invalid rootSideDialogCount=${String(node.rootSideDialogCount)} rootId=${rootId} selfId=${selfId}`,
         );
       }
       if (node.status !== status) {
         throw new Error(
-          `CRITICAL: dialog-list subdialog node status mismatch. expected=${status} actual=${node.status} rootId=${rootId} selfId=${selfId}`,
+          `CRITICAL: dialog-list sideDialog node status mismatch. expected=${status} actual=${node.status} rootId=${rootId} selfId=${selfId}`,
         );
       }
 
       const currentRootStatus = this.getRootStatus(rootId);
       if (currentRootStatus !== status) return;
       if (this.findDisplayedDialogByIds(rootId, selfId)) return;
-      if (!this.shouldBackfillDialogListSubdialogNode(rootId, status)) return;
+      if (!this.shouldBackfillDialogListSideDialogNode(rootId, status)) return;
 
       const nodeKey = this.dialogKey(node.rootId, node.selfId);
       const effectiveDisplayState =
@@ -2807,7 +2807,7 @@ export class DomindsApp extends HTMLElement {
         this.dialogDisplayStatesByKey.set(nodeKey, effectiveDisplayState);
       }
 
-      const incomingSubdialog: ApiRootDialogResponse = {
+      const incomingSideDialog: ApiMainDialogResponse = {
         rootId: node.rootId,
         selfId: node.selfId,
         agentId: node.agentId,
@@ -2817,45 +2817,45 @@ export class DomindsApp extends HTMLElement {
         createdAt: node.createdAt,
         lastModified: node.lastModified,
         displayState: effectiveDisplayState,
-        supdialogId: this.resolveSupdialogIdForSubdialog(node),
+        askerDialogId: this.resolveAskerDialogIdForSideDialog(node),
         sessionSlug: node.sessionSlug,
-        assignmentFromSup: node.assignmentFromSup,
+        assignmentFromAsker: node.assignmentFromAsker,
         waitingForFreshBootsReasoning: node.waitingForFreshBootsReasoning === true,
       };
 
-      const existing = this.getVisibleSubdialogsForRoot(rootId);
-      this.setVisibleSubdialogsForRoot(rootId, [...existing, incomingSubdialog]);
+      const existing = this.getVisibleSideDialogsForRoot(rootId);
+      this.setVisibleSideDialogsForRoot(rootId, [...existing, incomingSideDialog]);
 
-      const rootDialog = this.getRootDialog(rootId);
-      if (rootDialog) {
+      const mainDialog = this.getMainDialog(rootId);
+      if (mainDialog) {
         const nodeUpdatedAtMs = parseUnifiedTimestampMs(node.lastModified);
-        const rootUpdatedAtMs = parseUnifiedTimestampMs(rootDialog.lastModified);
+        const rootUpdatedAtMs = parseUnifiedTimestampMs(mainDialog.lastModified);
         const visibleCountFloor = existing.length + 1;
-        if (node.rootSubdialogCount < visibleCountFloor) {
+        if (node.rootSideDialogCount < visibleCountFloor) {
           throw new Error(
-            `CRITICAL: dialog-list subdialog node rootSubdialogCount under visible count. rootId=${rootId} selfId=${selfId} backend=${node.rootSubdialogCount} visible=${visibleCountFloor}`,
+            `CRITICAL: dialog-list sideDialog node rootSideDialogCount under visible count. rootId=${rootId} selfId=${selfId} backend=${node.rootSideDialogCount} visible=${visibleCountFloor}`,
           );
         }
-        const nextSubdialogCount = node.rootSubdialogCount;
+        const nextSideDialogCount = node.rootSideDialogCount;
         if (
-          typeof rootDialog.subdialogCount !== 'number' ||
-          !Number.isInteger(rootDialog.subdialogCount) ||
-          rootDialog.subdialogCount < 0
+          typeof mainDialog.sideDialogCount !== 'number' ||
+          !Number.isInteger(mainDialog.sideDialogCount) ||
+          mainDialog.sideDialogCount < 0
         ) {
-          throw new Error(`Root dialog ${rootId} has invalid backend subdialogCount`);
+          throw new Error(`Root dialog ${rootId} has invalid backend sideDialogCount`);
         }
         const nextLastModified =
           nodeUpdatedAtMs !== null &&
           (rootUpdatedAtMs === null || nodeUpdatedAtMs > rootUpdatedAtMs)
             ? node.lastModified
-            : rootDialog.lastModified;
+            : mainDialog.lastModified;
         if (
-          nextSubdialogCount !== rootDialog.subdialogCount ||
-          nextLastModified !== rootDialog.lastModified
+          nextSideDialogCount !== mainDialog.sideDialogCount ||
+          nextLastModified !== mainDialog.lastModified
         ) {
-          this.upsertRootDialogSnapshot({
-            ...rootDialog,
-            subdialogCount: nextSubdialogCount,
+          this.upsertMainDialogSnapshot({
+            ...mainDialog,
+            sideDialogCount: nextSideDialogCount,
             lastModified: nextLastModified,
           });
         }
@@ -2863,25 +2863,25 @@ export class DomindsApp extends HTMLElement {
 
       this.syncDialogListByStatus(status);
     } finally {
-      this.dialogListSubdialogNodeBackfillInFlight.delete(requestKey);
+      this.dialogListSideDialogNodeBackfillInFlight.delete(requestKey);
     }
   }
 
-  private updateVisibleSubdialogStatusesForRoot(
+  private updateVisibleSideDialogStatusesForRoot(
     rootId: string,
     status: PersistableDialogStatus,
   ): void {
-    const current = this.visibleSubdialogsByRoot.get(rootId);
+    const current = this.visibleSideDialogsByRoot.get(rootId);
     if (!current) return;
     const normalized = current.map((d) => (d.status === status ? d : { ...d, status }));
-    this.visibleSubdialogsByRoot.set(rootId, normalized);
+    this.visibleSideDialogsByRoot.set(rootId, normalized);
   }
 
-  private getDisplayedDialogsForStatus(status: PersistableDialogStatus): ApiRootDialogResponse[] {
-    const roots = this.getRootDialogsForStatus(status);
-    const out: ApiRootDialogResponse[] = [...roots];
+  private getDisplayedDialogsForStatus(status: PersistableDialogStatus): ApiMainDialogResponse[] {
+    const roots = this.getMainDialogsForStatus(status);
+    const out: ApiMainDialogResponse[] = [...roots];
     for (const root of roots) {
-      const subs = this.visibleSubdialogsByRoot.get(root.rootId);
+      const subs = this.visibleSideDialogsByRoot.get(root.rootId);
       if (!subs) continue;
       for (const sub of subs) {
         out.push(sub.status === status ? sub : { ...sub, status });
@@ -2890,7 +2890,7 @@ export class DomindsApp extends HTMLElement {
     return out;
   }
 
-  private getAllDisplayedDialogs(): ApiRootDialogResponse[] {
+  private getAllDisplayedDialogs(): ApiMainDialogResponse[] {
     return [
       ...this.getDisplayedDialogsForStatus('running'),
       ...this.getDisplayedDialogsForStatus('completed'),
@@ -2898,74 +2898,71 @@ export class DomindsApp extends HTMLElement {
     ];
   }
 
-  private findDisplayedDialogByIds(rootId: string, selfId: string): ApiRootDialogResponse | null {
+  private findDisplayedDialogByIds(rootId: string, selfId: string): ApiMainDialogResponse | null {
     if (selfId === rootId) {
-      return this.getRootDialog(rootId);
+      return this.getMainDialog(rootId);
     }
-    const sub = this.getVisibleSubdialogsForRoot(rootId).find((d) => d.selfId === selfId);
+    const sub = this.getVisibleSideDialogsForRoot(rootId).find((d) => d.selfId === selfId);
     return sub ?? null;
   }
 
-  private findDisplayedDialogByAnyId(dialogId: string): ApiRootDialogResponse | null {
-    const root = this.getRootDialog(dialogId);
+  private findDisplayedDialogByAnyId(dialogId: string): ApiMainDialogResponse | null {
+    const root = this.getMainDialog(dialogId);
     if (root) return root;
-    for (const [rootId, subs] of this.visibleSubdialogsByRoot.entries()) {
+    for (const [rootId, subs] of this.visibleSideDialogsByRoot.entries()) {
       const found = subs.find((d) => d.selfId === dialogId);
       if (found) return found;
       if (rootId === dialogId) {
-        const rootDialog = this.getRootDialog(rootId);
-        if (rootDialog) return rootDialog;
+        const mainDialog = this.getMainDialog(rootId);
+        if (mainDialog) return mainDialog;
       }
     }
     return null;
   }
 
-  private resolveSupdialogIdForSubdialog(subdialog: {
+  private resolveAskerDialogIdForSideDialog(sideDialog: {
     rootId: string;
     selfId: string;
-    supdialogId?: string;
-    assignmentFromSup?: { callerDialogId: string } | undefined;
+    askerDialogId?: string;
+    assignmentFromAsker?: { callerDialogId: string } | undefined;
   }): string {
-    const assignmentCallerId = subdialog.assignmentFromSup?.callerDialogId?.trim();
+    const assignmentFromAsker = sideDialog.assignmentFromAsker;
+    const assignmentCallerId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
     if (assignmentCallerId) {
       return assignmentCallerId;
     }
-    const explicitSupdialogId = subdialog.supdialogId?.trim();
-    if (explicitSupdialogId) {
-      return explicitSupdialogId;
-    }
     throw new Error(
-      `Subdialog hierarchy invariant violation: missing supdialogId/callerDialogId (rootId=${subdialog.rootId}, selfId=${subdialog.selfId})`,
+      `SideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId (rootId=${sideDialog.rootId}, selfId=${sideDialog.selfId})`,
     );
   }
 
-  private upsertRootDialogSnapshot(nextRoot: ApiRootDialogResponse): void {
+  private upsertMainDialogSnapshot(nextRoot: ApiMainDialogResponse): void {
     if (nextRoot.selfId) {
       throw new Error(
-        `upsertRootDialogSnapshot expected root dialog, got subdialog selfId=${nextRoot.selfId}`,
+        `upsertMainDialogSnapshot expected root dialog, got sideDialog selfId=${nextRoot.selfId}`,
       );
     }
-    const incomingStatus = this.requirePersistableStatus(nextRoot.status, 'upsertRootDialog');
+    const incomingStatus = this.requirePersistableStatus(nextRoot.status, 'upsertMainDialog');
     const previousStatus = this.getRootStatus(nextRoot.rootId);
 
     if (previousStatus && previousStatus !== incomingStatus) {
-      const previousList = this.getRootDialogsForStatus(previousStatus).filter(
+      const previousList = this.getMainDialogsForStatus(previousStatus).filter(
         (d) => d.rootId !== nextRoot.rootId,
       );
-      this.setRootDialogsForStatus(previousStatus, previousList);
+      this.setMainDialogsForStatus(previousStatus, previousList);
     }
 
-    const targetList = this.getRootDialogsForStatus(incomingStatus);
+    const targetList = this.getMainDialogsForStatus(incomingStatus);
     const idx = targetList.findIndex((d) => d.rootId === nextRoot.rootId);
     if (idx >= 0) {
       const updated = [...targetList];
       updated[idx] = nextRoot;
-      this.setRootDialogsForStatus(incomingStatus, updated);
+      this.setMainDialogsForStatus(incomingStatus, updated);
     } else {
-      this.setRootDialogsForStatus(incomingStatus, [...targetList, nextRoot]);
+      this.setMainDialogsForStatus(incomingStatus, [...targetList, nextRoot]);
     }
     this.rootStatusById.set(nextRoot.rootId, incomingStatus);
-    this.updateVisibleSubdialogStatusesForRoot(nextRoot.rootId, incomingStatus);
+    this.updateVisibleSideDialogStatusesForRoot(nextRoot.rootId, incomingStatus);
   }
 
   public getStyles(): string {
@@ -6660,7 +6657,7 @@ export class DomindsApp extends HTMLElement {
       this.updateRemindersWidget();
     });
 
-    // Dialog list expand (lazy subdialog loading) across all list views
+    // Dialog list expand (lazy sideDialog loading) across all list views
     // Policy: unresolved nodes always fetch from backend; no preloaded global cache.
     // The list event must carry an already-known persisted status. Expands are list-scoped
     // business actions, not id-only lookups that are allowed to guess a directory.
@@ -6670,11 +6667,11 @@ export class DomindsApp extends HTMLElement {
         this.requestRootHierarchyFromList(rootId, status);
       }
     });
-    // Collapse explicitly drops subdialog nodes from frontend memory.
+    // Collapse explicitly drops sideDialog nodes from frontend memory.
     this.shadowRoot.addEventListener('dialog-collapse', (event) => {
       const { rootId, status } = event.detail;
       if (rootId.trim() === '') return;
-      this.pruneSubdialogsForRoot(rootId, status);
+      this.pruneSideDialogsForRoot(rootId, status);
     });
 
     // Team members events from dominds-team-members (sidebar activity)
@@ -7823,11 +7820,11 @@ export class DomindsApp extends HTMLElement {
       };
     }
     if (selfId !== rootId) {
-      // For subdialogs, do not fallback to root metadata.
-      // Caller should load the root hierarchy first, then resolve the real subdialog node.
+      // For sideDialogs, do not fallback to root metadata.
+      // Caller should load the root hierarchy first, then resolve the real sideDialog node.
       return null;
     }
-    const rootMatch = this.getRootDialog(rootId);
+    const rootMatch = this.getMainDialog(rootId);
     if (!rootMatch) return null;
     return {
       selfId,
@@ -8500,9 +8497,9 @@ export class DomindsApp extends HTMLElement {
     try {
       const api = getApiClient();
       const [runningResp, doneResp, archivedResp, runControlCountsResp] = await Promise.all([
-        api.getRootDialogsByStatus('running'),
-        api.getRootDialogsByStatus('completed'),
-        api.getRootDialogsByStatus('archived'),
+        api.getMainDialogsByStatus('running'),
+        api.getMainDialogsByStatus('completed'),
+        api.getMainDialogsByStatus('archived'),
         api.getRunControlCounts(),
       ]);
 
@@ -8523,11 +8520,11 @@ export class DomindsApp extends HTMLElement {
       const completedRoots = (doneResp.data ?? []).filter((d) => !d.selfId);
       const archivedRoots = (archivedResp.data ?? []).filter((d) => !d.selfId);
 
-      this.setRootDialogsForStatus('running', runningRoots);
-      this.setRootDialogsForStatus('completed', completedRoots);
-      this.setRootDialogsForStatus('archived', archivedRoots);
+      this.setMainDialogsForStatus('running', runningRoots);
+      this.setMainDialogsForStatus('completed', completedRoots);
+      this.setMainDialogsForStatus('archived', archivedRoots);
       this.rebuildRootStatusIndex();
-      this.pruneVisibleSubdialogRoots();
+      this.pruneVisibleSideDialogRoots();
 
       this.dialogDisplayStatesByKey.clear();
       for (const root of this.getAllDisplayedDialogs()) {
@@ -8705,10 +8702,10 @@ export class DomindsApp extends HTMLElement {
       if (movedRootIds.length > 0) {
         let didUpdate = false;
         for (const rootId of movedRootIds) {
-          const existing = this.getRootDialog(rootId);
+          const existing = this.getMainDialog(rootId);
           if (!existing) continue;
           if (existing.status === toStatus) continue;
-          this.upsertRootDialogSnapshot({ ...existing, status: toStatus });
+          this.upsertMainDialogSnapshot({ ...existing, status: toStatus });
           didUpdate = true;
         }
         if (didUpdate) {
@@ -8782,7 +8779,7 @@ export class DomindsApp extends HTMLElement {
     status: PersistableDialogStatus,
   ): Promise<void> {
     try {
-      const rootEntry = this.getRootDialog(rootId);
+      const rootEntry = this.getMainDialog(rootId);
       const api = getApiClient();
       const hierarchyResp = await api.getDialogHierarchy(rootId, status);
 
@@ -8799,12 +8796,12 @@ export class DomindsApp extends HTMLElement {
       }
 
       const h = hierarchyResp.data;
-      if (!Array.isArray(h.subdialogs)) {
-        throw new Error(`Hierarchy response for ${rootId} has invalid subdialogs payload`);
+      if (!Array.isArray(h.sideDialogs)) {
+        throw new Error(`Hierarchy response for ${rootId} has invalid sideDialogs payload`);
       }
-      if (!Number.isInteger(h.root.subdialogCount) || h.root.subdialogCount < 0) {
+      if (!Number.isInteger(h.root.sideDialogCount) || h.root.sideDialogCount < 0) {
         throw new Error(
-          `Hierarchy response for ${rootId} has invalid root subdialogCount=${String(h.root.subdialogCount)}`,
+          `Hierarchy response for ${rootId} has invalid root sideDialogCount=${String(h.root.sideDialogCount)}`,
         );
       }
 
@@ -8817,65 +8814,65 @@ export class DomindsApp extends HTMLElement {
         this.dialogDisplayStatesByKey.set(this.dialogKey(rootId, rootId), rootDisplayState);
       }
 
-      const newSubdialogs: ApiRootDialogResponse[] = [];
-      for (const subdialog of h.subdialogs) {
-        if (!subdialog) {
-          throw new Error(`Hierarchy response for ${rootId} contains empty subdialog entry`);
+      const newSideDialogs: ApiMainDialogResponse[] = [];
+      for (const sideDialog of h.sideDialogs) {
+        if (!sideDialog) {
+          throw new Error(`Hierarchy response for ${rootId} contains empty sideDialog entry`);
         }
-        if (!subdialog.rootId) {
-          throw new Error(`Hierarchy response for ${rootId} contains subdialog without rootId`);
+        if (!sideDialog.rootId) {
+          throw new Error(`Hierarchy response for ${rootId} contains sideDialog without rootId`);
         }
-        if (subdialog.rootId !== rootId) {
+        if (sideDialog.rootId !== rootId) {
           throw new Error(
-            `Hierarchy response for ${rootId} contains subdialog with mismatched rootId=${subdialog.rootId}`,
+            `Hierarchy response for ${rootId} contains sideDialog with mismatched rootId=${sideDialog.rootId}`,
           );
         }
-        if (!subdialog.selfId) {
-          throw new Error(`Hierarchy response for ${rootId} contains subdialog without selfId`);
+        if (!sideDialog.selfId) {
+          throw new Error(`Hierarchy response for ${rootId} contains sideDialog without selfId`);
         }
-        if (subdialog.selfId === rootId) {
+        if (sideDialog.selfId === rootId) {
           throw new Error(
-            `Hierarchy response for ${rootId} contains root dialog inside subdialog list`,
+            `Hierarchy response for ${rootId} contains root dialog inside sideDialog list`,
           );
         }
         const cachedDisplayState = this.dialogDisplayStatesByKey.get(
-          this.dialogKey(subdialog.rootId, subdialog.selfId),
+          this.dialogKey(sideDialog.rootId, sideDialog.selfId),
         );
         const effectiveDisplayState =
-          status === 'running' ? (subdialog.displayState ?? cachedDisplayState) : undefined;
+          status === 'running' ? (sideDialog.displayState ?? cachedDisplayState) : undefined;
         if (effectiveDisplayState) {
           this.dialogDisplayStatesByKey.set(
-            this.dialogKey(subdialog.rootId, subdialog.selfId),
+            this.dialogKey(sideDialog.rootId, sideDialog.selfId),
             effectiveDisplayState,
           );
         }
-        newSubdialogs.push({
-          rootId: subdialog.rootId,
-          selfId: subdialog.selfId,
-          agentId: subdialog.agentId,
-          taskDocPath: subdialog.taskDocPath,
-          status: subdialog.status,
-          currentCourse: subdialog.currentCourse,
-          createdAt: subdialog.createdAt,
-          lastModified: subdialog.lastModified,
+        newSideDialogs.push({
+          rootId: sideDialog.rootId,
+          selfId: sideDialog.selfId,
+          agentId: sideDialog.agentId,
+          taskDocPath: sideDialog.taskDocPath,
+          status: sideDialog.status,
+          currentCourse: sideDialog.currentCourse,
+          createdAt: sideDialog.createdAt,
+          lastModified: sideDialog.lastModified,
           displayState: effectiveDisplayState,
-          supdialogId: this.resolveSupdialogIdForSubdialog(subdialog),
-          sessionSlug: subdialog.sessionSlug,
-          assignmentFromSup: subdialog.assignmentFromSup,
-          waitingForFreshBootsReasoning: subdialog.waitingForFreshBootsReasoning === true,
+          askerDialogId: this.resolveAskerDialogIdForSideDialog(sideDialog),
+          sessionSlug: sideDialog.sessionSlug,
+          assignmentFromAsker: sideDialog.assignmentFromAsker,
+          waitingForFreshBootsReasoning: sideDialog.waitingForFreshBootsReasoning === true,
         });
       }
-      const mergedSubdialogs = this.mergeVisibleSubdialogsForRootFromHierarchy(
+      const mergedSideDialogs = this.mergeVisibleSideDialogsForRootFromHierarchy(
         rootId,
-        newSubdialogs,
+        newSideDialogs,
       );
-      if (h.root.subdialogCount < mergedSubdialogs.length) {
+      if (h.root.sideDialogCount < mergedSideDialogs.length) {
         throw new Error(
-          `Hierarchy response for ${rootId} has root subdialogCount below loaded subdialog count. backend=${h.root.subdialogCount} loaded=${mergedSubdialogs.length}`,
+          `Hierarchy response for ${rootId} has root sideDialogCount below loaded sideDialog count. backend=${h.root.sideDialogCount} loaded=${mergedSideDialogs.length}`,
         );
       }
 
-      const nextRoot: ApiRootDialogResponse = {
+      const nextRoot: ApiMainDialogResponse = {
         rootId,
         agentId: h.root.agentId,
         taskDocPath: h.root.taskDocPath,
@@ -8885,11 +8882,11 @@ export class DomindsApp extends HTMLElement {
         lastModified: h.root.lastModified,
         displayState: rootDisplayState ?? rootEntry?.displayState,
         waitingForFreshBootsReasoning: h.root.waitingForFreshBootsReasoning === true,
-        subdialogCount: h.root.subdialogCount,
+        sideDialogCount: h.root.sideDialogCount,
       };
 
-      this.upsertRootDialogSnapshot(nextRoot);
-      this.setVisibleSubdialogsForRoot(rootId, mergedSubdialogs);
+      this.upsertMainDialogSnapshot(nextRoot);
+      this.setVisibleSideDialogsForRoot(rootId, mergedSideDialogs);
       this.syncDialogListByStatus(status);
     } catch (hierarchyError) {
       console.warn(`Failed to load hierarchy for root dialog ${rootId}:`, hierarchyError);
@@ -8909,7 +8906,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private refreshRootHierarchyAfterTellask(rootId: string): void {
-    // Tell/ask carryover may create new sideline dialogs. This refresh is background-only, but
+    // Tell/ask carryover may create new Sideline dialogs. This refresh is background-only, but
     // still must terminate its Promise locally so we do not accumulate unhandled rejections.
     void this.loadRootHierarchyForKnownStatus(rootId, 'running').catch((error: unknown) => {
       console.error(
@@ -8920,12 +8917,12 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Drop all subdialogs under a collapsed root to keep frontend memory bounded.
+   * Drop all sideDialogs under a collapsed root to keep frontend memory bounded.
    * Re-expanding must refetch from backend instead of reusing stale in-memory copies.
    */
-  private pruneSubdialogsForRoot(rootId: string, status?: PersistableDialogStatus): void {
-    if (!this.visibleSubdialogsByRoot.has(rootId)) return;
-    this.visibleSubdialogsByRoot.delete(rootId);
+  private pruneSideDialogsForRoot(rootId: string, status?: PersistableDialogStatus): void {
+    if (!this.visibleSideDialogsByRoot.has(rootId)) return;
+    this.visibleSideDialogsByRoot.delete(rootId);
 
     for (const key of Array.from(this.dialogDisplayStatesByKey.keys())) {
       if (key.startsWith(`${rootId}#`)) {
@@ -8938,30 +8935,30 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    const rootStatus = status ?? this.toPersistableStatus(this.getRootDialog(rootId)?.status);
+    const rootStatus = status ?? this.toPersistableStatus(this.getMainDialog(rootId)?.status);
     if (rootStatus !== null) {
       this.syncDialogListByStatus(rootStatus);
     }
   }
 
-  private removeQuarantinedRootDialog(rootId: string, fromStatus: DialogStatusKind): void {
+  private removeQuarantinedMainDialog(rootId: string, fromStatus: DialogStatusKind): void {
     const persistedFromStatus = this.requirePersistableStatus(
       fromStatus,
-      'removeQuarantinedRootDialog',
+      'removeQuarantinedMainDialog',
     );
     let removed = false;
     for (const candidateStatus of ['running', 'completed', 'archived'] as const) {
-      const current = this.getRootDialogsForStatus(candidateStatus);
+      const current = this.getMainDialogsForStatus(candidateStatus);
       const next = current.filter((dialog) => dialog.rootId !== rootId);
       if (next.length !== current.length) {
-        this.setRootDialogsForStatus(candidateStatus, next);
+        this.setMainDialogsForStatus(candidateStatus, next);
         removed = true;
       }
     }
 
-    const hadVisibleSubdialogs = this.visibleSubdialogsByRoot.has(rootId);
+    const hadVisibleSideDialogs = this.visibleSideDialogsByRoot.has(rootId);
     this.rootStatusById.delete(rootId);
-    this.visibleSubdialogsByRoot.delete(rootId);
+    this.visibleSideDialogsByRoot.delete(rootId);
     const nextBacklog = this.q4hQuestions.filter((question) => {
       const global = question as { rootId?: unknown; selfId?: unknown };
       const selfId = typeof global.selfId === 'string' ? global.selfId : null;
@@ -8994,7 +8991,7 @@ export class DomindsApp extends HTMLElement {
       this.showToast(getUiStrings(this.uiLanguage).dialogQuarantinedToast, 'warning');
     }
 
-    if (!removed && !removedCurrentDialog && !hadVisibleSubdialogs) {
+    if (!removed && !removedCurrentDialog && !hadVisibleSideDialogs) {
       return;
     }
 
@@ -9008,17 +9005,17 @@ export class DomindsApp extends HTMLElement {
     if (selfId === rootId) {
       let removed = false;
       for (const candidateStatus of ['running', 'completed', 'archived'] as const) {
-        const current = this.getRootDialogsForStatus(candidateStatus);
+        const current = this.getMainDialogsForStatus(candidateStatus);
         const next = current.filter((dialog) => dialog.rootId !== rootId);
         if (next.length !== current.length) {
-          this.setRootDialogsForStatus(candidateStatus, next);
+          this.setMainDialogsForStatus(candidateStatus, next);
           removed = true;
         }
       }
 
-      const hadVisibleSubdialogs = this.visibleSubdialogsByRoot.has(rootId);
+      const hadVisibleSideDialogs = this.visibleSideDialogsByRoot.has(rootId);
       this.rootStatusById.delete(rootId);
-      this.visibleSubdialogsByRoot.delete(rootId);
+      this.visibleSideDialogsByRoot.delete(rootId);
       const nextBacklog = this.q4hQuestions.filter((question) => {
         const global = question as { rootId?: unknown; selfId?: unknown };
         const questionSelfId = typeof global.selfId === 'string' ? global.selfId : null;
@@ -9050,7 +9047,7 @@ export class DomindsApp extends HTMLElement {
         this.clearCurrentDialogSelection();
       }
 
-      if (!removed && !removedCurrentDialog && !hadVisibleSubdialogs && !removedQuestions) {
+      if (!removed && !removedCurrentDialog && !hadVisibleSideDialogs && !removedQuestions) {
         return;
       }
 
@@ -9061,11 +9058,11 @@ export class DomindsApp extends HTMLElement {
       return;
     }
 
-    const currentSubdialogs = this.getVisibleSubdialogsForRoot(rootId);
-    const nextSubdialogs = currentSubdialogs.filter((dialog) => dialog.selfId !== selfId);
-    const removedSubdialog = nextSubdialogs.length !== currentSubdialogs.length;
-    if (removedSubdialog) {
-      this.setVisibleSubdialogsForRoot(rootId, nextSubdialogs);
+    const currentSideDialogs = this.getVisibleSideDialogsForRoot(rootId);
+    const nextSideDialogs = currentSideDialogs.filter((dialog) => dialog.selfId !== selfId);
+    const removedSideDialog = nextSideDialogs.length !== currentSideDialogs.length;
+    if (removedSideDialog) {
+      this.setVisibleSideDialogsForRoot(rootId, nextSideDialogs);
     }
 
     const dialogKey = this.dialogKey(rootId, selfId);
@@ -9093,7 +9090,7 @@ export class DomindsApp extends HTMLElement {
     }
 
     if (
-      !removedSubdialog &&
+      !removedSideDialog &&
       !hadDisplayState &&
       !hadContextHealth &&
       !removedQuestions &&
@@ -9193,7 +9190,7 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private validateDialogTaskDocPaths(dialogs: ApiRootDialogResponse[]): void {
+  private validateDialogTaskDocPaths(dialogs: ApiMainDialogResponse[]): void {
     dialogs.forEach((dialog, index) => {
       if (!dialog.taskDocPath || dialog.taskDocPath.trim() === '') {
         throw new Error(
@@ -9253,7 +9250,7 @@ export class DomindsApp extends HTMLElement {
   private patchDialogListEntry(
     status: PersistableDialogStatus,
     dialogId: { rootId: string; selfId: string },
-    patch: Partial<ApiRootDialogResponse>,
+    patch: Partial<ApiMainDialogResponse>,
   ): boolean {
     if (!this.shadowRoot) return false;
     switch (status) {
@@ -9293,13 +9290,13 @@ export class DomindsApp extends HTMLElement {
     if (directStatus) return directStatus;
     const isRoot = dialog.selfId === dialog.rootId;
     if (isRoot) {
-      const match = this.getRootDialog(dialog.rootId);
+      const match = this.getMainDialog(dialog.rootId);
       return match ? this.toPersistableStatus(match.status) : null;
     }
     const match = this.findDisplayedDialogByIds(dialog.rootId, dialog.selfId);
     if (match) return this.toPersistableStatus(match.status);
-    // Subdialogs always share the same persistence status directory as their root dialog.
-    const rootMatch = this.getRootDialog(dialog.rootId);
+    // SideDialogs always share the same persistence status directory as their root dialog.
+    const rootMatch = this.getMainDialog(dialog.rootId);
     return rootMatch ? this.toPersistableStatus(rootMatch.status) : null;
   }
 
@@ -9310,13 +9307,13 @@ export class DomindsApp extends HTMLElement {
     if (!rootId || !selfId) return null;
     const isRoot = selfId === rootId;
     if (isRoot) {
-      const match = this.getRootDialog(rootId);
+      const match = this.getMainDialog(rootId);
       return match ? this.toPersistableStatus(match.status) : null;
     }
     const match = this.findDisplayedDialogByIds(rootId, selfId);
     if (match) return this.toPersistableStatus(match.status);
-    // Subdialogs always share the same persistence status directory as their root dialog.
-    const rootMatch = this.getRootDialog(rootId);
+    // SideDialogs always share the same persistence status directory as their root dialog.
+    const rootMatch = this.getMainDialog(rootId);
     return rootMatch ? this.toPersistableStatus(rootMatch.status) : null;
   }
 
@@ -9334,12 +9331,12 @@ export class DomindsApp extends HTMLElement {
   ): string {
     const t = getUiStrings(this.uiLanguage);
     switch (reason) {
-      case 'waiting_for_subdialogs':
-        return t.resumeRejectedResumptionPanelWaitingSubdialogs;
+      case 'waiting_for_sideDialogs':
+        return t.resumeRejectedResumptionPanelWaitingSideDialogs;
       case 'needs_human_input':
         return t.resumeRejectedResumptionPanelNeedsHumanInput;
-      case 'needs_human_input_and_subdialogs':
-        return t.resumeRejectedResumptionPanelNeedsHumanInputAndSubdialogs;
+      case 'needs_human_input_and_sideDialogs':
+        return t.resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs;
       case 'idle_waiting_user':
         return t.resumeRejectedResumptionPanelIdleWaitingUser;
       case 'already_running':
@@ -9647,10 +9644,10 @@ export class DomindsApp extends HTMLElement {
     }
 
     if (normalizedDialog.selfId !== normalizedDialog.rootId) {
-      const subdialogLoaded = this.getVisibleSubdialogsForRoot(normalizedDialog.rootId).some(
+      const sideDialogLoaded = this.getVisibleSideDialogsForRoot(normalizedDialog.rootId).some(
         (d) => d.selfId === normalizedDialog.selfId,
       );
-      if (!subdialogLoaded) {
+      if (!sideDialogLoaded) {
         await this.loadRootHierarchyForKnownStatus(normalizedDialog.rootId, status);
       }
     }
@@ -9672,7 +9669,7 @@ export class DomindsApp extends HTMLElement {
     try {
       const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
       if (dialogContainer instanceof DomindsDialogContainer) {
-        const entry = this.getRootDialog(normalizedDialog.rootId) ?? undefined;
+        const entry = this.getMainDialog(normalizedDialog.rootId) ?? undefined;
         const agentId = normalizedDialog.agentId || entry?.agentId;
         await dialogContainer.setDialog({
           ...normalizedDialog,
@@ -9692,9 +9689,9 @@ export class DomindsApp extends HTMLElement {
       const dialogTitle = this.shadowRoot?.querySelector('#current-dialog-title') as HTMLElement;
       if (dialogTitle) {
         let titleText = '';
-        const isFbrSideline =
-          normalizedDialog.assignmentFromSup?.callName === 'freshBootsReasoning';
-        const callsign = isFbrSideline ? 'FBR' : `@${normalizedDialog.agentId}`;
+        const isFbrSideDialog =
+          normalizedDialog.assignmentFromAsker?.callName === 'freshBootsReasoning';
+        const callsign = isFbrSideDialog ? 'FBR' : `@${normalizedDialog.agentId}`;
         titleText = `${callsign} (${normalizedDialog.selfId})`;
         titleText += ` • ${normalizedDialog.taskDocPath}`;
         dialogTitle.textContent = titleText;
@@ -9905,10 +9902,10 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Get the subdialog hierarchy from parent to current (for E2E testing)
+   * Get the sideDialog hierarchy from parent to current (for E2E testing)
    * @returns Array of dialog IDs in the hierarchy
    */
-  public getSubdialogHierarchy(): Array<{ selfId: string; rootId: string; agentId: string }> {
+  public getSideDialogHierarchy(): Array<{ selfId: string; rootId: string; agentId: string }> {
     const hierarchy: Array<{ selfId: string; rootId: string; agentId: string }> = [];
 
     // Start from current dialog and build hierarchy
@@ -9921,16 +9918,16 @@ export class DomindsApp extends HTMLElement {
         agentId: currentDialog.agentId,
       });
 
-      // For subdialogs, we need to find parent from currently visible hierarchy.
+      // For sideDialogs, we need to find parent from currently visible hierarchy.
       const currentDialogData = this.findDisplayedDialogByIds(
         currentDialog.rootId,
         currentDialog.selfId,
       );
-      if (currentDialogData?.supdialogId) {
-        // This is a subdialog, find the parent
+      if (currentDialogData?.askerDialogId) {
+        // This is a sideDialog, find the parent
         const parentDialog = this.findDisplayedDialogByIds(
           currentDialog.rootId,
-          currentDialogData.supdialogId,
+          currentDialogData.askerDialogId,
         );
         if (parentDialog) {
           current = {
@@ -9950,11 +9947,11 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Navigate from a subdialog back to its parent (for E2E testing)
+   * Navigate from a sideDialog back to its parent (for E2E testing)
    * @returns Promise that resolves when navigation is complete
    */
   public async navigateToParent(): Promise<boolean> {
-    const hierarchy = this.getSubdialogHierarchy();
+    const hierarchy = this.getSideDialogHierarchy();
     if (hierarchy.length <= 1) {
       // Already at root or no dialog selected
       return false;
@@ -9981,41 +9978,41 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Open a subdialog by its root and self ID (for E2E testing)
+   * Open a sideDialog by its root and self ID (for E2E testing)
    * @param rootId - The root (parent) dialog ID
-   * @param subdialogId - The subdialog's self ID
+   * @param sideDialogId - The sideDialog's self ID
    * @returns Promise that resolves when navigation is complete
    */
-  public async openSubdialog(rootId: string, subdialogId: string): Promise<boolean> {
-    let subdialog = this.findDisplayedDialogByIds(rootId, subdialogId);
+  public async openSideDialog(rootId: string, sideDialogId: string): Promise<boolean> {
+    let sideDialog = this.findDisplayedDialogByIds(rootId, sideDialogId);
 
-    if (!subdialog) {
-      await this.ensureSubdialogsLoaded(rootId);
-      subdialog = this.findDisplayedDialogByIds(rootId, subdialogId);
+    if (!sideDialog) {
+      await this.ensureSideDialogsLoaded(rootId);
+      sideDialog = this.findDisplayedDialogByIds(rootId, sideDialogId);
     }
 
-    if (!subdialog) {
-      console.warn(`Subdialog not found: ${rootId}:${subdialogId}`);
+    if (!sideDialog) {
+      console.warn(`SideDialog not found: ${rootId}:${sideDialogId}`);
       return false;
     }
 
-    const subdialogStatus =
-      this.toPersistableStatus(subdialog.status) ??
-      this.toPersistableStatus(this.getRootDialog(rootId)?.status);
-    if (subdialogStatus === null) {
-      console.warn(`Subdialog status unavailable for selection: ${rootId}:${subdialogId}`);
+    const sideDialogStatus =
+      this.toPersistableStatus(sideDialog.status) ??
+      this.toPersistableStatus(this.getMainDialog(rootId)?.status);
+    if (sideDialogStatus === null) {
+      console.warn(`SideDialog status unavailable for selection: ${rootId}:${sideDialogId}`);
       return false;
     }
     await this.openDialogWithKnownStatus(
       {
-        rootId: subdialog.rootId,
-        selfId: subdialog.selfId || subdialog.rootId,
-        agentId: subdialog.agentId,
+        rootId: sideDialog.rootId,
+        selfId: sideDialog.selfId || sideDialog.rootId,
+        agentId: sideDialog.agentId,
         agentName: '',
-        taskDocPath: subdialog.taskDocPath || '',
-        status: subdialogStatus,
+        taskDocPath: sideDialog.taskDocPath || '',
+        status: sideDialogStatus,
       },
-      subdialogStatus,
+      sideDialogStatus,
       {
         syncAddressBar: true,
         showLoadedToast: true,
@@ -10026,27 +10023,27 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Ensure subdialogs for a root dialog are loaded (for E2E testing + lazy loading).
+   * Ensure sideDialogs for a root dialog are loaded (for E2E testing + lazy loading).
    */
-  public async ensureSubdialogsLoaded(rootId: string): Promise<boolean> {
+  public async ensureSideDialogsLoaded(rootId: string): Promise<boolean> {
     if (!rootId) return false;
-    const rootDialog = this.getRootDialog(rootId);
-    if (!rootDialog) return false;
+    const mainDialog = this.getMainDialog(rootId);
+    if (!mainDialog) return false;
     if (
-      typeof rootDialog.subdialogCount !== 'number' ||
-      !Number.isInteger(rootDialog.subdialogCount) ||
-      rootDialog.subdialogCount < 0
+      typeof mainDialog.sideDialogCount !== 'number' ||
+      !Number.isInteger(mainDialog.sideDialogCount) ||
+      mainDialog.sideDialogCount < 0
     ) {
-      throw new Error(`Root dialog ${rootId} has invalid backend subdialogCount`);
+      throw new Error(`Root dialog ${rootId} has invalid backend sideDialogCount`);
     }
-    const expectedCount = rootDialog.subdialogCount;
+    const expectedCount = mainDialog.sideDialogCount;
     if (expectedCount === 0) return true;
-    const alreadyLoaded = this.getVisibleSubdialogsForRoot(rootId).length > 0;
+    const alreadyLoaded = this.getVisibleSideDialogsForRoot(rootId).length > 0;
     if (alreadyLoaded) return true;
-    const status = this.toPersistableStatus(rootDialog.status);
+    const status = this.toPersistableStatus(mainDialog.status);
     if (status === null) return false;
     await this.loadRootHierarchyForKnownStatus(rootId, status);
-    return this.getVisibleSubdialogsForRoot(rootId).length > 0;
+    return this.getVisibleSideDialogsForRoot(rootId).length > 0;
   }
 
   private handleConnectionStateChange(state: ConnectionState): void {
@@ -10957,23 +10954,23 @@ export class DomindsApp extends HTMLElement {
       return {};
     }
 
-    const rootDialog = this.getRootDialog(currentDialog.rootId) ?? undefined;
+    const mainDialog = this.getMainDialog(currentDialog.rootId) ?? undefined;
     const agentId =
       typeof currentDialog.agentId === 'string' && currentDialog.agentId.trim() !== ''
         ? currentDialog.agentId.trim()
-        : typeof rootDialog?.agentId === 'string' && rootDialog.agentId.trim() !== ''
-          ? rootDialog.agentId.trim()
+        : typeof mainDialog?.agentId === 'string' && mainDialog.agentId.trim() !== ''
+          ? mainDialog.agentId.trim()
           : undefined;
     const taskDocPath =
       typeof currentDialog.taskDocPath === 'string' && currentDialog.taskDocPath.trim() !== ''
         ? currentDialog.taskDocPath.trim()
-        : typeof rootDialog?.taskDocPath === 'string' && rootDialog.taskDocPath.trim() !== ''
-          ? rootDialog.taskDocPath.trim()
+        : typeof mainDialog?.taskDocPath === 'string' && mainDialog.taskDocPath.trim() !== ''
+          ? mainDialog.taskDocPath.trim()
           : undefined;
     const status =
       this.currentDialogStatus ??
       this.lookupVisibleDialogStatus(currentDialog) ??
-      this.toPersistableStatus(rootDialog?.status) ??
+      this.toPersistableStatus(mainDialog?.status) ??
       undefined;
 
     return {
@@ -11191,9 +11188,9 @@ export class DomindsApp extends HTMLElement {
           agentId: readyMsg.agentId,
           agentName: readyMsg.agentId, // agentId serves as the name for display
           taskDocPath: readyMsg.taskDocPath,
-          supdialogId: readyMsg.supdialogId,
+          askerDialogId: readyMsg.askerDialogId,
           sessionSlug: readyMsg.sessionSlug,
-          assignmentFromSup: readyMsg.assignmentFromSup,
+          assignmentFromAsker: readyMsg.assignmentFromAsker,
         };
         this.currentDialog = nextDialog;
 
@@ -11293,7 +11290,7 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'dialogs_quarantined': {
-        this.removeQuarantinedRootDialog(message.rootId, message.fromStatus);
+        this.removeQuarantinedMainDialog(message.rootId, message.fromStatus);
         return true;
       }
       case 'run_control_counts_evt': {
@@ -11325,7 +11322,7 @@ export class DomindsApp extends HTMLElement {
           message.dialog.selfId !== message.dialog.rootId &&
           !this.findDisplayedDialogByIds(message.dialog.rootId, message.dialog.selfId)
         ) {
-          this.requestDialogListSubdialogNodeBackfill(
+          this.requestDialogListSideDialogNodeBackfill(
             message.dialog.rootId,
             message.dialog.selfId,
             status,
@@ -11405,34 +11402,34 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'subdialog_created_evt': {
-          const subdialogEvent = message as SubdialogEvent;
-          const node = subdialogEvent.subDialogNode;
+        case 'sideDialog_created_evt': {
+          const sideDialogEvent = message as SideDialogEvent;
+          const node = sideDialogEvent.sideDialogNode;
           if (!node) {
             throw new Error(
-              `CRITICAL: subdialog_created event missing subDialogNode. rootId=${subdialogEvent.subDialog.rootId} selfId=${subdialogEvent.subDialog.selfId}`,
+              `CRITICAL: sideDialog_created event missing sideDialogNode. rootId=${sideDialogEvent.sideDialog.rootId} selfId=${sideDialogEvent.sideDialog.selfId}`,
             );
           }
 
-          if (node.selfId !== subdialogEvent.subDialog.selfId) {
+          if (node.selfId !== sideDialogEvent.sideDialog.selfId) {
             throw new Error(
-              `CRITICAL: subdialog_created event selfId mismatch. node=${node.selfId} evt=${subdialogEvent.subDialog.selfId}`,
+              `CRITICAL: sideDialog_created event selfId mismatch. node=${node.selfId} evt=${sideDialogEvent.sideDialog.selfId}`,
             );
           }
-          if (node.rootId !== subdialogEvent.subDialog.rootId) {
+          if (node.rootId !== sideDialogEvent.sideDialog.rootId) {
             throw new Error(
-              `CRITICAL: subdialog_created event rootId mismatch. node=${node.rootId} evt=${subdialogEvent.subDialog.rootId}`,
+              `CRITICAL: sideDialog_created event rootId mismatch. node=${node.rootId} evt=${sideDialogEvent.sideDialog.rootId}`,
             );
           }
 
-          const subdialogKey = this.dialogKey(node.rootId, node.selfId);
+          const sideDialogKey = this.dialogKey(node.rootId, node.selfId);
           const effectiveDisplayState =
-            node.displayState ?? this.dialogDisplayStatesByKey.get(subdialogKey);
+            node.displayState ?? this.dialogDisplayStatesByKey.get(sideDialogKey);
           if (effectiveDisplayState) {
-            this.dialogDisplayStatesByKey.set(subdialogKey, effectiveDisplayState);
+            this.dialogDisplayStatesByKey.set(sideDialogKey, effectiveDisplayState);
           }
 
-          const incomingSubdialog: ApiRootDialogResponse = {
+          const incomingSideDialog: ApiMainDialogResponse = {
             rootId: node.rootId,
             selfId: node.selfId,
             agentId: node.agentId,
@@ -11442,80 +11439,82 @@ export class DomindsApp extends HTMLElement {
             createdAt: node.createdAt,
             lastModified: node.lastModified,
             displayState: effectiveDisplayState,
-            supdialogId: node.supdialogId,
+            askerDialogId: node.askerDialogId,
             sessionSlug: node.sessionSlug,
-            assignmentFromSup: node.assignmentFromSup,
+            assignmentFromAsker: node.assignmentFromAsker,
             waitingForFreshBootsReasoning: false,
           };
 
-          if (subdialogEvent.callName === 'freshBootsReasoning') {
+          if (sideDialogEvent.callName === 'freshBootsReasoning') {
             this.setDialogWaitingForFreshBootsReasoning(
-              subdialogEvent.parentDialog.rootId,
-              subdialogEvent.parentDialog.selfId,
+              sideDialogEvent.parentDialog.rootId,
+              sideDialogEvent.parentDialog.selfId,
               true,
             );
           }
 
-          const hadLoadedSubdialogs = this.visibleSubdialogsByRoot.has(node.rootId);
+          const hadLoadedSideDialogs = this.visibleSideDialogsByRoot.has(node.rootId);
           const rootExpandedInDom =
             node.status === 'running' && this.isRootExpandedInRunningListDom(node.rootId);
-          const rootDialog = this.getRootDialog(node.rootId);
-          if (!rootDialog) {
+          const mainDialog = this.getMainDialog(node.rootId);
+          if (!mainDialog) {
             throw new Error(
-              `CRITICAL: subdialog_created event for unknown rootId=${node.rootId} selfId=${node.selfId}`,
+              `CRITICAL: sideDialog_created event for unknown rootId=${node.rootId} selfId=${node.selfId}`,
             );
           }
           if (
-            !Number.isInteger(subdialogEvent.rootSubdialogCount) ||
-            subdialogEvent.rootSubdialogCount < 0
+            !Number.isInteger(sideDialogEvent.rootSideDialogCount) ||
+            sideDialogEvent.rootSideDialogCount < 0
           ) {
             throw new Error(
-              `CRITICAL: subdialog_created event returned invalid rootSubdialogCount=${String(subdialogEvent.rootSubdialogCount)} rootId=${node.rootId} selfId=${node.selfId}`,
+              `CRITICAL: sideDialog_created event returned invalid rootSideDialogCount=${String(sideDialogEvent.rootSideDialogCount)} rootId=${node.rootId} selfId=${node.selfId}`,
             );
           }
-          const existingSubdialogs = this.getVisibleSubdialogsForRoot(node.rootId);
-          const alreadyVisible = existingSubdialogs.some(
-            (subdialog) => subdialog.selfId === incomingSubdialog.selfId,
+          const existingSideDialogs = this.getVisibleSideDialogsForRoot(node.rootId);
+          const alreadyVisible = existingSideDialogs.some(
+            (sideDialog) => sideDialog.selfId === incomingSideDialog.selfId,
           );
           const visibleCountFloor =
-            hadLoadedSubdialogs || rootExpandedInDom
-              ? existingSubdialogs.length + (alreadyVisible ? 0 : 1)
+            hadLoadedSideDialogs || rootExpandedInDom
+              ? existingSideDialogs.length + (alreadyVisible ? 0 : 1)
               : 1;
-          if (subdialogEvent.rootSubdialogCount < visibleCountFloor) {
+          if (sideDialogEvent.rootSideDialogCount < visibleCountFloor) {
             throw new Error(
-              `CRITICAL: subdialog_created event rootSubdialogCount under visible count. rootId=${node.rootId} selfId=${node.selfId} backend=${subdialogEvent.rootSubdialogCount} visible=${visibleCountFloor}`,
+              `CRITICAL: sideDialog_created event rootSideDialogCount under visible count. rootId=${node.rootId} selfId=${node.selfId} backend=${sideDialogEvent.rootSideDialogCount} visible=${visibleCountFloor}`,
             );
           }
-          const nextCount = subdialogEvent.rootSubdialogCount;
-          this.upsertRootDialogSnapshot({
-            ...rootDialog,
-            subdialogCount: nextCount,
-            lastModified: node.lastModified || rootDialog.lastModified,
+          const nextCount = sideDialogEvent.rootSideDialogCount;
+          this.upsertMainDialogSnapshot({
+            ...mainDialog,
+            sideDialogCount: nextCount,
+            lastModified: node.lastModified || mainDialog.lastModified,
           });
 
-          if (hadLoadedSubdialogs || rootExpandedInDom) {
-            const idx = existingSubdialogs.findIndex((d) => d.selfId === incomingSubdialog.selfId);
+          if (hadLoadedSideDialogs || rootExpandedInDom) {
+            const idx = existingSideDialogs.findIndex(
+              (d) => d.selfId === incomingSideDialog.selfId,
+            );
             if (idx >= 0) {
-              const updated = [...existingSubdialogs];
-              updated[idx] = incomingSubdialog;
-              this.setVisibleSubdialogsForRoot(node.rootId, updated);
+              const updated = [...existingSideDialogs];
+              updated[idx] = incomingSideDialog;
+              this.setVisibleSideDialogsForRoot(node.rootId, updated);
             } else {
-              this.setVisibleSubdialogsForRoot(node.rootId, [
-                ...existingSubdialogs,
-                incomingSubdialog,
+              this.setVisibleSideDialogsForRoot(node.rootId, [
+                ...existingSideDialogs,
+                incomingSideDialog,
               ]);
             }
           }
 
-          if (hadLoadedSubdialogs || rootExpandedInDom || node.status !== 'running') {
+          if (hadLoadedSideDialogs || rootExpandedInDom || node.status !== 'running') {
             this.syncDialogListByStatus(node.status);
           } else {
             this.patchDialogListEntry(
               'running',
               { rootId: node.rootId, selfId: node.rootId },
               {
-                subdialogCount: nextCount,
-                lastModified: node.lastModified || rootDialog.lastModified,
+                sideDialogCount: nextCount,
+                lastModified: node.lastModified || mainDialog.lastModified,
               },
             );
           }
@@ -11622,22 +11621,22 @@ export class DomindsApp extends HTMLElement {
           const shouldClearWaitingForFreshBootsReasoning =
             this.isDialogWaitingForFreshBootsReasoning(rootId, selfId) &&
             (typedDisplayState.kind !== 'blocked' ||
-              (typedDisplayState.reason.kind !== 'waiting_for_subdialogs' &&
-                typedDisplayState.reason.kind !== 'needs_human_input_and_subdialogs'));
+              (typedDisplayState.reason.kind !== 'waiting_for_sideDialogs' &&
+                typedDisplayState.reason.kind !== 'needs_human_input_and_sideDialogs'));
           this.dialogDisplayStatesByKey.set(key, typedDisplayState);
 
           // Update currently rendered snapshot entry if present.
           if (selfId === rootId) {
-            const rootDialog = this.getRootDialog(rootId);
-            if (rootDialog) {
-              this.upsertRootDialogSnapshot({ ...rootDialog, displayState: typedDisplayState });
+            const mainDialog = this.getMainDialog(rootId);
+            if (mainDialog) {
+              this.upsertMainDialogSnapshot({ ...mainDialog, displayState: typedDisplayState });
             }
-          } else if (this.visibleSubdialogsByRoot.has(rootId)) {
-            const subs = this.getVisibleSubdialogsForRoot(rootId);
+          } else if (this.visibleSideDialogsByRoot.has(rootId)) {
+            const subs = this.getVisibleSideDialogsForRoot(rootId);
             const updated = subs.map((d) =>
               d.selfId === selfId ? { ...d, displayState: typedDisplayState } : d,
             );
-            this.setVisibleSubdialogsForRoot(rootId, updated);
+            this.setVisibleSideDialogsForRoot(rootId, updated);
           }
 
           // Update input primary action for the active dialog
@@ -11663,7 +11662,7 @@ export class DomindsApp extends HTMLElement {
           if (
             typedDisplayState.kind === 'blocked' &&
             (typedDisplayState.reason.kind === 'needs_human_input' ||
-              typedDisplayState.reason.kind === 'needs_human_input_and_subdialogs')
+              typedDisplayState.reason.kind === 'needs_human_input_and_sideDialogs')
           ) {
             this.wsManager.sendRaw({ type: 'get_q4h_state' });
           }
@@ -11702,16 +11701,16 @@ export class DomindsApp extends HTMLElement {
             this.dialogDisplayStatesByKey.set(key, markerDisplayState);
 
             if (selfId === rootId) {
-              const rootDialog = this.getRootDialog(rootId);
-              if (rootDialog) {
-                this.upsertRootDialogSnapshot({ ...rootDialog, displayState: markerDisplayState });
+              const mainDialog = this.getMainDialog(rootId);
+              if (mainDialog) {
+                this.upsertMainDialogSnapshot({ ...mainDialog, displayState: markerDisplayState });
               }
-            } else if (this.visibleSubdialogsByRoot.has(rootId)) {
-              const subs = this.getVisibleSubdialogsForRoot(rootId);
+            } else if (this.visibleSideDialogsByRoot.has(rootId)) {
+              const subs = this.getVisibleSideDialogsForRoot(rootId);
               const updated = subs.map((d) =>
                 d.selfId === selfId ? { ...d, displayState: markerDisplayState } : d,
               );
-              this.setVisibleSubdialogsForRoot(rootId, updated);
+              this.setVisibleSideDialogsForRoot(rootId, updated);
             }
 
             if (
@@ -11835,21 +11834,21 @@ export class DomindsApp extends HTMLElement {
     if (!isoTs) return;
     let changed = false;
 
-    const root = this.getRootDialog(dialogId.rootId);
+    const root = this.getMainDialog(dialogId.rootId);
     if (root && root.lastModified !== isoTs) {
-      this.upsertRootDialogSnapshot({ ...root, lastModified: isoTs });
+      this.upsertMainDialogSnapshot({ ...root, lastModified: isoTs });
       changed = true;
     }
 
-    if (dialogId.selfId !== dialogId.rootId && this.visibleSubdialogsByRoot.has(dialogId.rootId)) {
-      const subs = this.getVisibleSubdialogsForRoot(dialogId.rootId);
+    if (dialogId.selfId !== dialogId.rootId && this.visibleSideDialogsByRoot.has(dialogId.rootId)) {
+      const subs = this.getVisibleSideDialogsForRoot(dialogId.rootId);
       const updated = subs.map((sub) => {
         if (sub.selfId !== dialogId.selfId) return sub;
         if (sub.lastModified === isoTs) return sub;
         changed = true;
         return { ...sub, lastModified: isoTs };
       });
-      this.setVisibleSubdialogsForRoot(dialogId.rootId, updated);
+      this.setVisibleSideDialogsForRoot(dialogId.rootId, updated);
     }
 
     if (!changed) return;
@@ -12575,7 +12574,7 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    // Sort contexts: root dialog first, then subdialogs
+    // Sort contexts: root dialog first, then sideDialogs
     const sortedContexts = Array.from(contextMap.values()).sort((a, b) => {
       const aIsRoot = a.selfId === a.rootId ? 1 : 0;
       const bIsRoot = b.selfId === b.rootId ? 1 : 0;
@@ -12599,19 +12598,19 @@ export class DomindsApp extends HTMLElement {
     // Fallback: try to find in loaded root snapshots.
     // This is limited since we don't have direct question-to-dialog mapping
     const roots = [
-      ...this.rootDialogsByStatus.running,
-      ...this.rootDialogsByStatus.completed,
-      ...this.rootDialogsByStatus.archived,
+      ...this.mainDialogsByStatus.running,
+      ...this.mainDialogsByStatus.completed,
+      ...this.mainDialogsByStatus.archived,
     ];
     if (roots.length > 0) {
-      const rootDialog = roots[0];
-      if (rootDialog) {
+      const mainDialog = roots[0];
+      if (mainDialog) {
         return {
-          selfId: rootDialog.rootId,
-          rootId: rootDialog.rootId,
-          agentId: rootDialog.agentId,
-          agentName: rootDialog.agentId,
-          taskDocPath: rootDialog.taskDocPath,
+          selfId: mainDialog.rootId,
+          rootId: mainDialog.rootId,
+          agentId: mainDialog.agentId,
+          agentName: mainDialog.agentId,
+          taskDocPath: mainDialog.taskDocPath,
         };
       }
     }

@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { DialogStore, RootDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import type { Team } from '../../main/team';
 import {
   resetTrackedDaemonsForTests,
@@ -26,8 +26,8 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     new DialogStore(),
     'daemon-reminder-no-jitter-without-output-change.tsk',
     undefined,

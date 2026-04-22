@@ -9,7 +9,7 @@ import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
 
 export type ToolCtx = Readonly<{
   dialogId: string;
-  rootDialogId: string;
+  mainDialogId: string;
   agentId: string;
   callerId: string;
 }>;
@@ -600,7 +600,7 @@ export async function createPhaseGateFixture(): Promise<PhaseGateFixture> {
     tools: getPhaseGateTools(host),
     toolCtx: {
       dialogId: 'dlg-owner',
-      rootDialogId: 'root-owner',
+      mainDialogId: 'root-owner',
       agentId: 'owner',
       callerId: '@owner',
     },

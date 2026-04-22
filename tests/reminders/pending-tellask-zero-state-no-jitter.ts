@@ -9,7 +9,7 @@ import {
   pendingTellaskReminderOwner,
   syncPendingTellaskReminderState,
 } from '../../main/tools/pending-tellask-reminder';
-import { createRootDialog } from '../kernel-driver/helpers';
+import { createMainDialog } from '../kernel-driver/helpers';
 
 async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(
@@ -25,24 +25,24 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function persistPendingSubdialog(args: {
+async function persistPendingSideDialog(args: {
   rootId: string;
   selfId: string;
   createdAt: string;
   lastModified: string;
   callId: string;
 }): Promise<void> {
-  const subdialogId = new DialogID(args.selfId, args.rootId);
-  await DialogPersistence.ensureSubdialogDirectory(subdialogId, 'running');
-  await DialogPersistence.saveSubdialogMetadata(
-    subdialogId,
+  const sideDialogId = new DialogID(args.selfId, args.rootId);
+  await DialogPersistence.ensureSideDialogDirectory(sideDialogId, 'running');
+  await DialogPersistence.saveSideDialogMetadata(
+    sideDialogId,
     {
       id: args.selfId,
       agentId: 'worker',
       taskDocPath: 'task.md',
       createdAt: args.createdAt,
-      supdialogId: args.rootId,
-      assignmentFromSup: {
+      askerDialogId: args.rootId,
+      assignmentFromAsker: {
         callName: 'tellask',
         mentionList: ['@worker'],
         tellaskContent: 'Follow the current assignment',
@@ -53,7 +53,7 @@ async function persistPendingSubdialog(args: {
     },
     'running',
   );
-  await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
+  await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
     kind: 'patch',
     patch: {
       currentCourse: 1,
@@ -61,7 +61,7 @@ async function persistPendingSubdialog(args: {
       status: 'active',
       messageCount: 0,
       functionCallCount: 0,
-      subdialogCount: 0,
+      sideDialogCount: 0,
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
@@ -69,32 +69,34 @@ async function persistPendingSubdialog(args: {
   }));
 }
 
-function requirePendingReminder(root: Awaited<ReturnType<typeof createRootDialog>>) {
+function requirePendingReminder(root: Awaited<ReturnType<typeof createMainDialog>>) {
   return root.reminders.find((reminder) => reminder.owner === pendingTellaskReminderOwner);
 }
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
 
-    await persistPendingSubdialog({
+    await persistPendingSideDialog({
       rootId: root.id.rootId,
       selfId: 'sub001',
       createdAt: '2026-04-16 10:01:00',
       lastModified: '2026-04-16 10:03:00',
       callId: 'call-sub001',
     });
-    await DialogPersistence.savePendingSubdialogs(
+    await DialogPersistence.savePendingSideDialogs(
       root.id,
       [
         {
-          subdialogId: 'sub001',
+          sideDialogId: 'sub001',
           createdAt: '2026-04-16 10:01:00',
           callName: 'tellask',
           mentionList: ['@worker'],
           tellaskContent: 'Follow the current assignment',
           targetAgentId: 'worker',
           callId: 'call-sub001',
+          callingCourse: 1,
+          callingGenseq: 1,
           callType: 'B',
         },
       ],
@@ -104,7 +106,7 @@ async function main(): Promise<void> {
 
     await syncPendingTellaskReminderState(root);
 
-    await DialogPersistence.savePendingSubdialogs(root.id, [], undefined, root.status);
+    await DialogPersistence.savePendingSideDialogs(root.id, [], undefined, root.status);
     await syncPendingTellaskReminderState(root);
 
     const zeroStateReminder = requirePendingReminder(root);

@@ -12,11 +12,11 @@ import type {
   JsonValue,
   NativeToolCallRecord,
   PersistedDialogRecord,
-  QuestForSupRecord,
   ReasoningContentItem,
   ReasoningPayload,
   ReasoningSummaryItem,
   RuntimeGuideRecord,
+  SideDialogRequestRecord,
   TellaskCallAnchorRecord,
   TellaskCallRecord,
   TellaskCarryoverRecord,
@@ -65,12 +65,12 @@ type PrimingUnsupportedRecord = Extract<
   PersistedDialogRecord,
   {
     type:
-      | 'subdialog_created_record'
+      | 'sideDialog_created_record'
       | 'reminders_reconciled_record'
       | 'questions4human_reconciled_record'
-      | 'pending_subdialogs_reconciled_record'
-      | 'subdialog_registry_reconciled_record'
-      | 'subdialog_responses_reconciled_record';
+      | 'pending_sideDialogs_reconciled_record'
+      | 'sideDialog_registry_reconciled_record'
+      | 'sideDialog_responses_reconciled_record';
   }
 >;
 type PrimingReplayRecord = StripTs<Exclude<PersistedDialogRecord, PrimingUnsupportedRecord>>;
@@ -360,7 +360,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'human_text_record' ||
     raw === 'func_result_record' ||
     raw === 'tellask_result_record' ||
-    raw === 'quest_for_sup_record' ||
+    raw === 'sideDialog_request_record' ||
     raw === 'tellask_reply_resolution_record' ||
     raw === 'tellask_call_anchor_record' ||
     raw === 'tellask_carryover_record' ||
@@ -379,7 +379,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'func_result_record':
     case 'tellask_result_record':
       return 'content';
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
       return 'tellaskContent';
     case 'tellask_reply_resolution_record':
     case 'tellask_call_record':
@@ -615,6 +615,7 @@ function parseTellaskReplyDirective(
     throw new Error(`${context}.tellaskReplyDirective must be an object when provided`);
   }
   const expectedReplyCallName = raw['expectedReplyCallName'];
+  const targetDialogId = raw['targetDialogId'];
   const targetCallId = raw['targetCallId'];
   const tellaskContent = raw['tellaskContent'];
   if (
@@ -629,14 +630,13 @@ function parseTellaskReplyDirective(
   if (typeof targetCallId !== 'string') {
     throw new Error(`${context}.tellaskReplyDirective.targetCallId must be a string`);
   }
+  if (typeof targetDialogId !== 'string') {
+    throw new Error(`${context}.tellaskReplyDirective.targetDialogId must be a string`);
+  }
   if (typeof tellaskContent !== 'string') {
     throw new Error(`${context}.tellaskReplyDirective.tellaskContent must be a string`);
   }
   if (expectedReplyCallName === 'replyTellaskBack') {
-    const targetDialogId = raw['targetDialogId'];
-    if (typeof targetDialogId !== 'string') {
-      throw new Error(`${context}.tellaskReplyDirective.targetDialogId must be a string`);
-    }
     return {
       expectedReplyCallName,
       targetCallId,
@@ -646,6 +646,7 @@ function parseTellaskReplyDirective(
   }
   return {
     expectedReplyCallName,
+    targetDialogId,
     targetCallId,
     tellaskContent,
   };
@@ -1318,15 +1319,15 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'quest_for_sup_record': {
+    case 'sideDialog_request_record': {
       const mentionList = parseOptionalStringArray(raw, 'mentionList', context) ?? [];
-      const record: QuestForSupRecord = {
+      const record: SideDialogRequestRecord = {
         ts: '',
         type,
         genseq: expectIntegerField(raw, 'genseq', context),
         mentionList,
         tellaskContent: expectStringField(raw, 'tellaskContent', context, true),
-        subDialogId: expectStringField(raw, 'subDialogId', context),
+        sideDialogId: expectStringField(raw, 'sideDialogId', context),
       };
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
@@ -2087,7 +2088,7 @@ function remapRecordGenseq(
     case 'native_tool_call_record':
     case 'human_text_record':
     case 'func_result_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -2155,7 +2156,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
     case 'tellask_carryover_record':
@@ -2183,7 +2184,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
     case 'tellask_carryover_record':
@@ -2329,7 +2330,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
     case 'tool_result_image_ingest_record':
     case 'user_image_ingest_record':
     case 'native_tool_call_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
     case 'tellask_reply_resolution_record':
     case 'gen_start_record':
@@ -2535,10 +2536,10 @@ function formatScriptMarkdown(args: {
         blockBody = record.content;
         break;
       }
-      case 'quest_for_sup_record': {
+      case 'sideDialog_request_record': {
         blockMeta['genseq'] = record.genseq;
         blockMeta['mentionList'] = record.mentionList;
-        blockMeta['subDialogId'] = record.subDialogId;
+        blockMeta['sideDialogId'] = record.sideDialogId;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.tellaskContent;
         break;
@@ -2684,7 +2685,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'human_text_record':
     case 'func_result_record':
     case 'tellask_result_record':
-    case 'quest_for_sup_record':
+    case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
     case 'tellask_carryover_record':
     case 'gen_start_record':
@@ -2692,12 +2693,12 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
       const { ts: _unusedTs, ...withoutTs } = event;
       return withoutTs;
     }
-    case 'subdialog_created_record':
+    case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_subdialogs_reconciled_record':
-    case 'subdialog_registry_reconciled_record':
-    case 'subdialog_responses_reconciled_record':
+    case 'pending_sideDialogs_reconciled_record':
+    case 'sideDialog_registry_reconciled_record':
+    case 'sideDialog_responses_reconciled_record':
     case 'tellask_reply_resolution_record':
       throw new Error(`Record type ${event.type} is not supported in priming scripts`);
     default: {
@@ -2710,12 +2711,12 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
 function extractPrimingRecordsFromEvents(events: PersistedDialogRecord[]): PrimingReplayRecord[] {
   return events.flatMap((event) => {
     switch (event.type) {
-      case 'subdialog_created_record':
+      case 'sideDialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
-      case 'pending_subdialogs_reconciled_record':
-      case 'subdialog_registry_reconciled_record':
-      case 'subdialog_responses_reconciled_record':
+      case 'pending_sideDialogs_reconciled_record':
+      case 'sideDialog_registry_reconciled_record':
+      case 'sideDialog_responses_reconciled_record':
         return [];
       default:
         return [stripTimestampFromRecord(event)];
@@ -2863,7 +2864,7 @@ export function normalizePrimingSlug(raw: string): string | null {
   return normalizeSlug(raw);
 }
 
-export function getRootDialogPrimingConfig(
+export function getMainDialogPrimingConfig(
   metadata: unknown,
 ): { scriptRefs: string[]; showInUi: boolean } | undefined {
   if (!isRecord(metadata)) return undefined;
@@ -2886,7 +2887,7 @@ export function getRootDialogPrimingConfig(
   };
 }
 
-export function buildRootDialogPrimingMetadata(
+export function buildMainDialogPrimingMetadata(
   priming: DialogPrimingInput | undefined,
 ): { scriptRefs: string[]; showInUi: boolean } | undefined {
   if (!priming) return undefined;

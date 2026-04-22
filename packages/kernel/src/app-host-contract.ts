@@ -129,7 +129,7 @@ export type DomindsAppDynamicToolsetsContext = Readonly<{
   memberId: string;
   taskDocPath: string;
   dialogId?: string;
-  rootDialogId?: string;
+  mainDialogId?: string;
   agentId?: string;
   sessionSlug?: string;
 }>;

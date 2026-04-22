@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 
-import { DialogStore, RootDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import { materializeReminder } from '../../main/tool';
 import { shellCmdReminderOwner } from '../../main/tools/os';
 
-function createDialog(): RootDialog {
-  return new RootDialog(
+function createDialog(): MainDialog {
+  return new MainDialog(
     new DialogStore(),
     'daemon-reminder-gone-exit-snapshot.tsk',
     undefined,

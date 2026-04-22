@@ -12,7 +12,7 @@ import {
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
-import { Dialog, RootDialog, SubDialog } from '../../dialog';
+import { Dialog, MainDialog, SideDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
   clearDialogInterruptedExecutionMarker,
@@ -36,7 +36,10 @@ import {
   formatReminderContextGuide,
   formatReminderItemGuide,
 } from '../../runtime/driver-messages';
-import { isStandaloneRuntimeGuidePromptContent } from '../../runtime/reply-prompt-copy';
+import {
+  buildActiveReplyObligationContextText,
+  isStandaloneRuntimeGuidePromptContent,
+} from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import {
@@ -112,6 +115,7 @@ import {
 } from './runtime';
 import {
   formatPendingTellaskFuncResultContent,
+  formatResolvedTellaskFuncResultContent,
   isTellaskCallFunctionName,
   processTellaskFunctionRound,
   type TellaskCallFunctionName,
@@ -123,7 +127,7 @@ import type {
   KernelDriverPrompt,
   KernelDriverRuntimeGuidePrompt,
   KernelDriverRuntimeReplyPrompt,
-  KernelDriverRuntimeSubdialogPrompt,
+  KernelDriverRuntimeSideDialogPrompt,
   KernelDriverUserPrompt,
 } from './types';
 
@@ -250,12 +254,12 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void
   throw new KernelDriverInterruptedError(buildAbortedSystemStopReason());
 }
 
-function isFbrSubdialogDialog(dlg: Dialog): dlg is SubDialog {
-  return dlg instanceof SubDialog && dlg.assignmentFromSup.callName === 'freshBootsReasoning';
+function isFbrSideDialog(dlg: Dialog): dlg is SideDialog {
+  return dlg instanceof SideDialog && dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
 }
 
 async function loadDialogFbrState(dialog: Dialog): Promise<DialogFbrState | undefined> {
-  if (!isFbrSubdialogDialog(dialog)) return undefined;
+  if (!isFbrSideDialog(dialog)) return undefined;
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
   return latest?.fbrState;
 }
@@ -271,18 +275,19 @@ async function persistDialogFbrState(
 }
 
 function buildKernelDriverFbrPrompt(
-  dlg: SubDialog,
+  dlg: SideDialog,
   state: DialogFbrState,
 ): KernelDriverRuntimeGuidePrompt {
   const collectiveTargets =
-    dlg.assignmentFromSup.collectiveTargets && dlg.assignmentFromSup.collectiveTargets.length > 0
-      ? [...dlg.assignmentFromSup.collectiveTargets]
+    dlg.assignmentFromAsker.collectiveTargets &&
+    dlg.assignmentFromAsker.collectiveTargets.length > 0
+      ? [...dlg.assignmentFromAsker.collectiveTargets]
       : [dlg.agentId];
   return {
     content: buildFbrPromptForState({
       state,
-      tellaskContent: dlg.assignmentFromSup.tellaskContent,
-      fromAgentId: dlg.assignmentFromSup.originMemberId,
+      tellaskContent: dlg.assignmentFromAsker.tellaskContent,
+      fromAgentId: dlg.assignmentFromAsker.originMemberId,
       toAgentId: dlg.agentId,
       language: getWorkLanguage(),
       collectiveTargets,
@@ -498,7 +503,7 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
     type: 'func',
     name: 'freshBootsReasoning',
     description:
-      'Start a tool-less FBR sideline. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
+      'Start a tool-less FBR Sideline dialog. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
       fbrDefaultHint,
     parameters: {
       type: 'object',
@@ -510,7 +515,7 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
         },
         effort: {
           type: 'integer',
-          description: `Optional absolute FBR effort (0..100 integer). “x3” / “3x” means \`effort: 3\`, not “3 × current fbr_effort”. Runtime maps effort N to N serial FBR passes in one sideline window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
+          description: `Optional absolute FBR effort (0..100 integer). “x3” / “3x” means \`effort: 3\`, not “3 × current fbr_effort”. Runtime maps effort N to N serial FBR passes in one Sideline dialog window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
         },
       },
       required: ['tellaskContent'],
@@ -527,7 +532,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskBack',
     description:
-      'Ask back to the requester dialog in sideline context when upstream clarification/decision is required or ownership cannot be determined from SOP.',
+      'Ask back to the requester dialog in Sideline dialog context when upstream clarification/decision is required or ownership cannot be determined from SOP.',
     parameters: {
       type: 'object',
       properties: {
@@ -543,7 +548,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellask',
-    description: 'Create or resume a teammate sideline dialog with sessionSlug.',
+    description: 'Create or resume a teammate Sideline dialog with sessionSlug.',
     parameters: {
       type: 'object',
       properties: {
@@ -562,7 +567,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskSessionless',
     description:
-      'Create a one-shot teammate sideline dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
+      'Create a one-shot teammate Sideline dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
     parameters: {
       type: 'object',
       properties: {
@@ -746,7 +751,7 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
 }
 
 function emitDiligenceBudgetEvent(
-  dlg: RootDialog,
+  dlg: MainDialog,
   options: { maxInjectCount: number; nextRemainingBudget: number },
 ): void {
   const maxInjectCount = Math.max(0, Math.floor(options.maxInjectCount));
@@ -801,7 +806,7 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverPrompt | undefined {
     case 'registered_assignment_update':
     case 'new_course_runtime_guide':
     case 'new_course_runtime_reply':
-    case 'new_course_runtime_subdialog': {
+    case 'new_course_runtime_sideDialog': {
       const runtimeCommon = {
         ...common,
         origin: 'runtime' as const,
@@ -809,12 +814,12 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverPrompt | undefined {
       };
       if (
         upNext.kind === 'registered_assignment_update' ||
-        upNext.kind === 'new_course_runtime_subdialog'
+        upNext.kind === 'new_course_runtime_sideDialog'
       ) {
-        const prompt: KernelDriverRuntimeSubdialogPrompt = {
+        const prompt: KernelDriverRuntimeSideDialogPrompt = {
           ...runtimeCommon,
           tellaskReplyDirective: upNext.tellaskReplyDirective,
-          subdialogReplyTarget: upNext.subdialogReplyTarget,
+          sideDialogReplyTarget: upNext.sideDialogReplyTarget,
         };
         return prompt;
       }
@@ -874,14 +879,12 @@ function hasSameReplyDirective(
   if (left.expectedReplyCallName !== right.expectedReplyCallName) {
     return false;
   }
-  if (left.targetCallId !== right.targetCallId || left.tellaskContent !== right.tellaskContent) {
+  if (
+    left.targetDialogId !== right.targetDialogId ||
+    left.targetCallId !== right.targetCallId ||
+    left.tellaskContent !== right.tellaskContent
+  ) {
     return false;
-  }
-  if (left.expectedReplyCallName === 'replyTellaskBack') {
-    return (
-      right.expectedReplyCallName === 'replyTellaskBack' &&
-      left.targetDialogId === right.targetDialogId
-    );
   }
   return true;
 }
@@ -897,13 +900,12 @@ function buildPendingTellaskFuncResult(args: {
     genseq: args.genseq,
     id: args.callId,
     name: args.callName,
-    content: formatPendingTellaskFuncResultContent(args.callName, null),
+    content: formatPendingTellaskFuncResultContent(args.callName, null, args.callId),
   };
 }
 
 type ProjectedTellaskContext = Readonly<{
   messages: ChatMessage[];
-  projectedResultCallIds: ReadonlySet<string>;
 }>;
 
 type PendingTellaskSpecialState = Readonly<{
@@ -916,8 +918,11 @@ async function loadPendingTellaskSpecialStates(
 ): Promise<ReadonlyMap<string, PendingTellaskSpecialState>> {
   const pendingByCallId = new Map<string, PendingTellaskSpecialState>();
 
-  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialog.id, dialog.status);
-  for (const pending of pendingSubdialogs) {
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
+    dialog.id,
+    dialog.status,
+  );
+  for (const pending of pendingSideDialogs) {
     const callId = pending.callId.trim();
     if (callId === '') {
       continue;
@@ -956,23 +961,33 @@ async function projectTellaskFuncResultsForContext(args: {
   if (!hasSpecialFuncCall) {
     return {
       messages: [...args.dialogMsgsForContext],
-      projectedResultCallIds: new Set<string>(),
     };
   }
 
   const pendingSpecialByCallId = await loadPendingTellaskSpecialStates(args.dialog);
 
-  // Only technical tool-result-shaped messages can satisfy provider tool-call adjacency. A
-  // carryover message is different: it is already the canonical latest-course business context and
-  // intentionally does not act as a tool-result surrogate for an older-course call that is no
-  // longer present in current context.
+  // Only technical tool-result-shaped messages can satisfy provider tool-call adjacency. Tellask
+  // result/carryover messages are business facts in timeline order; the adjacent call-site
+  // projection must be only a pending/pointer status, never the real reply body.
   const pairedToolResultContentByCallId = new Map<string, string>();
   const existingSpecialFuncResults = new Map<string, FuncResultMsg>();
   for (const msg of args.dialogMsgsForContext) {
     if (msg.type === 'tellask_result_msg') {
       const callId = typeof msg.callId === 'string' ? msg.callId.trim() : '';
       if (callId !== '') {
-        pairedToolResultContentByCallId.set(callId, msg.content);
+        if (!isTellaskCallFunctionName(msg.callName)) {
+          throw new Error(
+            `tellask result projection invariant violation: unsupported callName '${msg.callName}' for callId=${callId}`,
+          );
+        }
+        pairedToolResultContentByCallId.set(
+          callId,
+          formatResolvedTellaskFuncResultContent({
+            name: msg.callName,
+            callId,
+            status: msg.status,
+          }),
+        );
       }
       continue;
     }
@@ -982,7 +997,6 @@ async function projectTellaskFuncResultsForContext(args: {
   }
 
   const projected: ChatMessage[] = [];
-  const projectedResultCallIds = new Set<string>();
   const specialCallIds = new Set<string>();
   for (const msg of args.dialogMsgsForContext) {
     if (msg.type === 'func_result_msg' && specialCallIds.has(msg.id)) {
@@ -1001,7 +1015,6 @@ async function projectTellaskFuncResultsForContext(args: {
     specialCallIds.add(msg.id);
     const pairedToolResultContent = pairedToolResultContentByCallId.get(msg.id);
     if (pairedToolResultContent !== undefined) {
-      projectedResultCallIds.add(msg.id);
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
@@ -1015,26 +1028,27 @@ async function projectTellaskFuncResultsForContext(args: {
 
     const existingResult = existingSpecialFuncResults.get(msg.id);
     if (existingResult) {
-      projectedResultCallIds.add(msg.id);
       projected.push(existingResult);
       continue;
     }
 
     const pendingSpecialState = pendingSpecialByCallId.get(msg.id);
     if (pendingSpecialState?.callName === msg.name) {
-      projectedResultCallIds.add(msg.id);
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
         genseq: msg.genseq,
         id: msg.id,
         name: msg.name,
-        content: formatPendingTellaskFuncResultContent(msg.name, pendingSpecialState.startedAtMs),
+        content: formatPendingTellaskFuncResultContent(
+          msg.name,
+          pendingSpecialState.startedAtMs,
+          msg.id,
+        ),
       });
       continue;
     }
 
-    projectedResultCallIds.add(msg.id);
     projected.push(
       buildPendingTellaskFuncResult({
         callId: msg.id,
@@ -1046,7 +1060,6 @@ async function projectTellaskFuncResultsForContext(args: {
 
   return {
     messages: projected,
-    projectedResultCallIds,
   };
 }
 
@@ -1056,16 +1069,28 @@ async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
     dialog: dlg,
     dialogMsgsForContext: rawDialogMsgsForContext,
   });
-  const businessFiltered = projected.messages.filter((msg) => {
-    if (msg.type !== 'tellask_result_msg') {
-      return true;
-    }
-    // Business tellask result bubbles stay in storage/UI, but when the same latest-course call is
-    // also projected into an adjacent technical tool result for provider context we omit the
-    // duplicate bubble form here. Carryover messages are intentionally not filtered by this branch:
-    // they are already the canonical latest-course context, not a tool-pair surrogate.
-    return !projected.projectedResultCallIds.has(msg.callId);
-  });
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dlg.id,
+    dlg.status,
+  );
+  const activeReplyObligationContext: ChatMessage[] =
+    activeReplyObligation === undefined
+      ? []
+      : [
+          {
+            type: 'environment_msg',
+            role: 'user',
+            content: buildActiveReplyObligationContextText({
+              language: getWorkLanguage(),
+              directive: activeReplyObligation,
+            }),
+          },
+        ];
+  const businessFiltered = [...activeReplyObligationContext, ...projected.messages].filter(
+    (msg) => {
+      return msg.type !== 'tellask_result_msg' || msg.content.trim() !== '';
+    },
+  );
   const sanitized = sanitizeToolContextForProvider(businessFiltered);
   if (sanitized.droppedViolations.length > 0) {
     const details = sanitized.droppedViolations.map((violation) =>
@@ -1404,16 +1429,16 @@ async function maybeContinueWithDiligencePrompt(args: {
   dlg: Dialog;
   team: Team;
   suppressDiligencePushForDrive: boolean;
-  allowPendingSubdialogs?: boolean;
+  allowPendingSideDialogs?: boolean;
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
-  const { dlg, team, suppressDiligencePushForDrive, allowPendingSubdialogs } = args;
+  const { dlg, team, suppressDiligencePushForDrive, allowPendingSideDialogs } = args;
 
-  if (!(dlg instanceof RootDialog)) {
+  if (!(dlg instanceof MainDialog)) {
     return { kind: 'break' };
   }
 
   const suspension = await dlg.getSuspensionStatus({
-    allowPendingSubdialogs: allowPendingSubdialogs === true,
+    allowPendingSideDialogs: allowPendingSideDialogs === true,
   });
   if (!suspension.canDrive) {
     if (suspension.q4h) {
@@ -1424,7 +1449,7 @@ async function maybeContinueWithDiligencePrompt(args: {
 
   const prepared = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isRootDialog: true,
+    isMainDialog: true,
     remainingBudget: dlg.diligencePushRemainingBudget,
     diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
     suppressDiligencePush: suppressDiligencePushForDrive,
@@ -1475,9 +1500,9 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
     // `diligence_push_once` is a provider-quirk deadlock breaker rather than the ordinary
     // "dialog is about to go idle" auto-continue path. In practice this can happen in a
     // function-result-driven generation round right after the root dialog has already registered
-    // a pending tellask/subdialog. Keep Q4H as a hard blocker, but do not let pending subdialogs
+    // a pending tellask/sideDialog. Keep Q4H as a hard blocker, but do not let pending sideDialogs
     // veto this one-time recovery injection or the same-context deadlock cannot be broken.
-    allowPendingSubdialogs: true,
+    allowPendingSideDialogs: true,
   });
 }
 
@@ -1493,7 +1518,7 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
   const { dlg, providerCfg, model } = args;
 
   // This path is only used as a higher-priority alternative to Diligence Push.
-  if (!(dlg instanceof RootDialog)) {
+  if (!(dlg instanceof MainDialog)) {
     return { kind: 'no_health_prompt' };
   }
 
@@ -1582,7 +1607,7 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
-  let lastAssistantReplyTarget: KernelDriverPrompt['subdialogReplyTarget'] | undefined;
+  let lastAssistantReplyTarget: KernelDriverPrompt['sideDialogReplyTarget'] | undefined;
   let fbrConclusion:
     | {
         responseText: string;
@@ -1623,7 +1648,7 @@ export async function driveDialogStreamCore(
         throwIfAborted(abortSignal, dlg);
 
         const activeFbrState = await loadDialogFbrState(dlg);
-        if (isFbrSubdialogDialog(dlg)) {
+        if (isFbrSideDialog(dlg)) {
           dlg.setFbrConclusionToolsEnabled(
             activeFbrState !== undefined && isFbrFinalizationState(activeFbrState),
           );
@@ -1720,12 +1745,12 @@ export async function driveDialogStreamCore(
         const canonicalFuncTools: FuncTool[] = agentTools.filter(
           (t): t is FuncTool => t.type === 'func',
         );
-        const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
+        const isSideDialog = dlg.id.rootId !== dlg.id.selfId;
         const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
         const effectiveFuncTools: FuncTool[] =
           policy.mode === 'default'
             ? mergeTellaskVirtualTools(canonicalFuncTools, {
-                includeTellaskBack: isSubdialog,
+                includeTellaskBack: isSideDialog,
                 fbrEffortDefault,
               })
             : canonicalFuncTools;
@@ -1814,7 +1839,7 @@ export async function driveDialogStreamCore(
         let contextHealthForGen: ContextHealthSnapshot | undefined;
         let llmGenModelForGen: string = model;
         const currentPrompt = pendingPrompt;
-        const currentReplyTarget = currentPrompt?.subdialogReplyTarget;
+        const currentReplyTarget = currentPrompt?.sideDialogReplyTarget;
         const currentFbrState = await loadDialogFbrState(dlg);
         let currentRuntimeGuideMsg:
           | Extract<ChatMessage, { type: 'transient_guide_msg' }>
@@ -2024,7 +2049,7 @@ export async function driveDialogStreamCore(
             // Ideal: provider SDKs should support a dedicated role='environment' for runtime
             // metadata. Today, most providers only accept user/assistant (and tool as a special
             // case), so Dominds must project environment/system-like content as role='user'.
-            const replyTarget = currentPrompt.subdialogReplyTarget;
+            const replyTarget = currentPrompt.sideDialogReplyTarget;
             if (replyTarget) {
               const normalizedCallId = replyTarget.callId.trim();
               if (normalizedCallId === '') {
@@ -2039,9 +2064,9 @@ export async function driveDialogStreamCore(
                 callId: normalizedCallId,
                 genseq: dlg.activeGenSeq,
                 ...toRootGenerationAnchor({
-                  rootCourse: (dlg instanceof SubDialog ? dlg.rootDialog : dlg).currentCourse,
+                  rootCourse: (dlg instanceof SideDialog ? dlg.mainDialog : dlg).currentCourse,
                   rootGenseq:
-                    (dlg instanceof SubDialog ? dlg.rootDialog : dlg).activeGenSeqOrUndefined ?? 0,
+                    (dlg instanceof SideDialog ? dlg.mainDialog : dlg).activeGenSeqOrUndefined ?? 0,
                 }),
               };
               const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
@@ -2537,7 +2562,7 @@ export async function driveDialogStreamCore(
             }
             const nextFbrState = advanceFbrState(persistedFbrState);
             if (nextFbrState) {
-              if (!isFbrSubdialogDialog(dlg)) {
+              if (!isFbrSideDialog(dlg)) {
                 throw new Error(
                   `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
                 );
@@ -2554,7 +2579,7 @@ export async function driveDialogStreamCore(
               }),
               responseGenseq: genseq,
             };
-            if (!isFbrSubdialogDialog(dlg)) {
+            if (!isFbrSideDialog(dlg)) {
               throw new Error(
                 `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
               );
@@ -2605,7 +2630,7 @@ export async function driveDialogStreamCore(
                   responseText: inspection.content,
                   responseGenseq: inspection.genseq,
                 };
-                if (!isFbrSubdialogDialog(dlg)) {
+                if (!isFbrSideDialog(dlg)) {
                   throw new Error(
                     `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
                   );
@@ -2626,7 +2651,7 @@ export async function driveDialogStreamCore(
 
             const nextFbrState = advanceFbrState(persistedFbrState);
             if (nextFbrState) {
-              if (!isFbrSubdialogDialog(dlg)) {
+              if (!isFbrSideDialog(dlg)) {
                 throw new Error(
                   `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
                 );
@@ -2648,7 +2673,7 @@ export async function driveDialogStreamCore(
                 dlg.activeGenSeqOrUndefined ??
                 1,
             };
-            if (!isFbrSubdialogDialog(dlg)) {
+            if (!isFbrSideDialog(dlg)) {
               throw new Error(
                 `kernel-driver FBR invariant violation: persisted FBR state on non-FBR dialog (${dlg.id.valueOf()})`,
               );
@@ -2683,10 +2708,10 @@ export async function driveDialogStreamCore(
             pubRemindersVer = dlg.remindersVer;
           }
 
-          // Tool execution may have created pending Q4H/subdialogs mid-round. Respect the
+          // Tool execution may have created pending Q4H/sideDialogs mid-round. Respect the
           // dialog's actual suspension state here so auto-continue is decided in one place.
           const suspensionAfterToolRound = await dlg.getSuspensionStatus({
-            allowPendingSubdialogs: routed.hasImmediateFollowupToolCalls,
+            allowPendingSideDialogs: routed.hasImmediateFollowupToolCalls,
           });
           if (!suspensionAfterToolRound.canDrive) {
             await resetDiligenceBudgetAfterQ4H(dlg, team);

@@ -2,8 +2,8 @@ import type { DialogID } from '../../dialog';
 import { DialogPersistence } from '../../persistence';
 import { AsyncFifoMutex } from '../../runtime/async-fifo-mutex';
 
-export type TakenSubdialogResponse = Awaited<
-  ReturnType<typeof DialogPersistence.takeSubdialogResponses>
+export type TakenSideDialogResponse = Awaited<
+  ReturnType<typeof DialogPersistence.takeSideDialogResponses>
 >[number];
 
 const suspensionStateMutexes = new Map<string, AsyncFifoMutex>();
@@ -23,34 +23,34 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
   }
 }
 
-export async function takeSubdialogResponses(
+export async function takeSideDialogResponses(
   dialogId: DialogID,
-): Promise<TakenSubdialogResponse[]> {
+): Promise<TakenSideDialogResponse[]> {
   return await withSuspensionStateLock(dialogId, async () => {
-    return await DialogPersistence.takeSubdialogResponses(dialogId);
+    return await DialogPersistence.takeSideDialogResponses(dialogId);
   });
 }
 
-export async function commitTakenSubdialogResponses(dialogId: DialogID): Promise<void> {
+export async function commitTakenSideDialogResponses(dialogId: DialogID): Promise<void> {
   await withSuspensionStateLock(dialogId, async () => {
-    await DialogPersistence.commitTakenSubdialogResponses(dialogId);
+    await DialogPersistence.commitTakenSideDialogResponses(dialogId);
   });
 }
 
-export async function rollbackTakenSubdialogResponses(dialogId: DialogID): Promise<void> {
+export async function rollbackTakenSideDialogResponses(dialogId: DialogID): Promise<void> {
   await withSuspensionStateLock(dialogId, async () => {
-    await DialogPersistence.rollbackTakenSubdialogResponses(dialogId);
+    await DialogPersistence.rollbackTakenSideDialogResponses(dialogId);
   });
 }
 
-export async function withSubdialogTxnLock<T>(
+export async function withSideDialogTxnLock<T>(
   dialogId: DialogID,
   fn: () => Promise<T>,
 ): Promise<T> {
   return await withSuspensionStateLock(dialogId, fn);
 }
 
-export async function withSubdialogTxnLocks<T>(
+export async function withSideDialogTxnLocks<T>(
   dialogIds: readonly DialogID[],
   fn: () => Promise<T>,
 ): Promise<T> {

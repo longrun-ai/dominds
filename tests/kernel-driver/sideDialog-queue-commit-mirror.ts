@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTeammateResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   makeUserPrompt,
   waitFor,
@@ -24,14 +24,14 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Trigger root subdialog and verify live mirror ordering.';
+    const trigger = 'Trigger root sideDialog and verify live mirror ordering.';
     const rootFirstResponse = 'Start.';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please compute 1+1.\nReturn only the number.';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellaskSessionless',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -44,20 +44,21 @@ async function main(): Promise<void> {
       language,
     });
 
-    const subdialogResponseText = '2';
-    const mirroredSubdialogResponse = formatTeammateResponseContent({
+    const sideDialogResponseText = '2';
+    const mirroredSideDialogResponse = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'root-call-pangu',
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList,
       tellaskContent: tellaskBody,
-      responseBody: subdialogResponseText,
+      responseBody: sideDialogResponseText,
       status: 'completed',
       deliveryMode: 'reply_tool',
       language,
     });
     const rootResumeResponse =
-      'Ack: mirrored subdialog response is live before follow-up generation.';
+      'Ack: mirrored sideDialog response is live before follow-up generation.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -75,23 +76,23 @@ async function main(): Promise<void> {
           },
         ],
       },
-      { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
-      { message: mirroredSubdialogResponse, role: 'tool', response: rootResumeResponse },
+      { message: expectedSideDialogPrompt, role: 'user', response: sideDialogResponseText },
+      { message: mirroredSideDialogResponse, role: 'tool', response: rootResumeResponse },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(
       dlg,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-commit-mirror'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-commit-mirror'),
       true,
     );
 
     await waitFor(
       async () => lastAssistantSaying(dlg) === rootResumeResponse,
       3_000,
-      'root dialog to generate after subdialog response',
+      'root dialog to generate after sideDialog response',
     );
 
     await waitForAllDialogsUnlocked(dlg, 3_000);
@@ -106,7 +107,7 @@ async function main(): Promise<void> {
       msg.role === 'tool' &&
       (msg.responder?.responderId ?? msg.responderId) === 'pangu' &&
       (msg.call?.tellaskContent ?? msg.tellaskContent) === tellaskBody &&
-      msg.content === mirroredSubdialogResponse;
+      msg.content === mirroredSideDialogResponse;
     assert.ok(tellaskResultMsgs.length > 0, 'expected mirrored tellask_result_msg after commit');
     assert.ok(
       tellaskResultMsgs.some(isCanonicalMirroredResult),
@@ -128,11 +129,11 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-live-mirror-order: PASS');
+  console.log('kernel-driver sideDialog-live-mirror-order: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-live-mirror-order: FAIL\n${message}`);
+  console.error(`kernel-driver sideDialog-live-mirror-order: FAIL\n${message}`);
   process.exit(1);
 });

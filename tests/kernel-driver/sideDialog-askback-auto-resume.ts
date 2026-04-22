@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromSupdialog,
-  formatSupdialogCallPrompt,
+  formatAskerDialogCallPrompt,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitFor,
@@ -31,12 +31,12 @@ async function main(): Promise<void> {
     const tellaskBody = 'Please answer 1+1, but first ask me back for confirmation.';
     const askBackBody = 'Before I finish, please confirm the exact final answer.';
     const askBackReply = 'Use exactly `2`.';
-    const subdialogFinalResponse = '2';
+    const sideDialogFinalResponse = '2';
     const rootAskBackNarration = 'Replying to the sideline ask-back now.';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -50,15 +50,15 @@ async function main(): Promise<void> {
       language,
     });
 
-    const expectedSupdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatSupdialogCallPrompt({
+    const expectedAskerDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAskerDialogCallPrompt({
         fromAgentId: 'pangu',
         toAgentId: 'tester',
-        subdialogRequest: {
+        sideDialogRequest: {
           callName: 'tellaskBack',
           tellaskContent: askBackBody,
         },
-        supdialogAssignment: {
+        askerDialogAssignment: {
           callName: 'tellask',
           mentionList,
           tellaskContent: tellaskBody,
@@ -71,6 +71,7 @@ async function main(): Promise<void> {
 
     const tellaskBackResponse = formatTellaskResponseContent({
       callName: 'tellaskBack',
+      callId: 'sideDialog-ask-back',
       responderId: 'tester',
       requesterId: 'pangu',
       tellaskContent: askBackBody,
@@ -98,12 +99,12 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSubdialogPrompt,
+        message: expectedSideDialogPrompt,
         role: 'user',
         response: 'I need one clarification before I can finish.',
         funcCalls: [
           {
-            id: 'subdialog-ask-back',
+            id: 'sideDialog-ask-back',
             name: 'tellaskBack',
             arguments: {
               tellaskContent: askBackBody,
@@ -112,7 +113,7 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSupdialogPrompt,
+        message: expectedAskerDialogPrompt,
         role: 'user',
         response: rootAskBackNarration,
         funcCalls: [
@@ -128,23 +129,23 @@ async function main(): Promise<void> {
       {
         message: tellaskBackResponse,
         role: 'tool',
-        response: subdialogFinalResponse,
+        response: sideDialogFinalResponse,
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
 
     await driveDialogStream(
       root,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-askback-auto-resume'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-askback-auto-resume'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await waitFor(
       async () => {
-        const pending = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
+        const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
         return pending.length === 0;
       },
       3_000,
@@ -152,16 +153,16 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
+    const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(pending.length, 0, 'expected ask-back sideline to clear the root pending list');
 
-    const subdialog = root.lookupSubdialog('pangu', sessionSlug);
-    assert.ok(subdialog, 'expected registered subdialog to exist after ask-back completion');
+    const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
+    assert.ok(sideDialog, 'expected registered sideDialog to exist after ask-back completion');
 
     const events = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     assert.ok(
       events.some(
@@ -170,15 +171,15 @@ async function main(): Promise<void> {
           event.anchorRole === 'response' &&
           event.callId === 'root-call-pangu-askback',
       ),
-      'expected subdialog to emit the original tellask response anchor after ask-back resolution',
+      'expected sideDialog to emit the original tellask response anchor after ask-back resolution',
     );
   });
 
-  console.log('kernel-driver subdialog-askback-auto-resume: PASS');
+  console.log('kernel-driver sideDialog-askback-auto-resume: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-askback-auto-resume: FAIL\n${message}`);
+  console.error(`kernel-driver sideDialog-askback-auto-resume: FAIL\n${message}`);
   process.exit(1);
 });

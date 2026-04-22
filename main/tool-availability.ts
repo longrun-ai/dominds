@@ -137,7 +137,7 @@ async function buildAppDynamicLayer(params: {
     taskDocPath: params.taskDocPath,
     agentId: params.agentId,
     dialogId: params.dialog?.selfId,
-    rootDialogId: params.dialog?.rootId,
+    mainDialogId: params.dialog?.rootId,
     sessionSlug: params.dialog?.sessionSlug,
   });
   if (result.status === 'not_applicable') {

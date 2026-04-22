@@ -51,14 +51,14 @@ export interface DialogDisplayStateMarkerEvent {
   reason?: DialogInterruptionReason;
 }
 
-export interface SubdialogEvent extends DialogEventBase {
-  type: 'subdialog_created_evt';
+export interface SideDialogEvent extends DialogEventBase {
+  type: 'sideDialog_created_evt';
   course: number;
   parentDialog: {
     selfId: string;
     rootId: string;
   };
-  subDialog: {
+  sideDialog: {
     selfId: string;
     rootId: string;
   };
@@ -66,11 +66,11 @@ export interface SubdialogEvent extends DialogEventBase {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
-  rootSubdialogCount: number;
-  subDialogNode: {
+  rootSideDialogCount: number;
+  sideDialogNode: {
     selfId: string;
     rootId: string;
-    supdialogId: string;
+    askerDialogId: string;
     agentId: string;
     taskDocPath: string;
     status: 'running' | 'completed' | 'archived';
@@ -79,7 +79,7 @@ export interface SubdialogEvent extends DialogEventBase {
     lastModified: string;
     displayState?: DialogDisplayState;
     sessionSlug?: string;
-    assignmentFromSup?: {
+    assignmentFromAsker?: {
       callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       mentionList?: string[];
       tellaskContent: string;
@@ -597,7 +597,7 @@ export type DialogEvent =
   | TellaskResultEvent
   | TellaskCallAnchorEvent
   | TellaskCarryoverEvent
-  | SubdialogEvent
+  | SideDialogEvent
   | QueueUserMsgEvent
   | RuntimeGuideEvent
   | EndOfUserSayingEvent

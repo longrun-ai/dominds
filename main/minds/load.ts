@@ -9,7 +9,7 @@ import type { Dirent } from 'fs';
 import { access, readFile, readdir, stat } from 'fs/promises';
 import path from 'path';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
-import { Dialog, SubDialog } from '../dialog';
+import { Dialog, SideDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getMcpDeclaredServerRuntimeStatuses } from '../mcp/supervisor';
@@ -291,8 +291,8 @@ export async function loadAgentMinds(
     clearMindTool,
     recallTaskdocTool,
   ];
-  // change_mind is only available in main dialogs (not subdialogs).
-  if (dialog === undefined || dialog.supdialog === undefined) {
+  // change_mind is only available in main dialogs (not sideDialogs).
+  if (dialog === undefined || dialog.askerDialog === undefined) {
     intrinsicFuncTools.push(changeMindTool);
   }
 
@@ -358,9 +358,9 @@ export async function loadAgentMinds(
 
   const agentHasTeamMemoryTools = funcTools.some((t) => isTeamMemoryToolName(t.name));
   const agentHasPersonalMemoryTools = funcTools.some((t) => isPersonalMemoryToolName(t.name));
-  const isSubdialog = dialog !== undefined && dialog.supdialog !== undefined;
+  const isSideDialog = dialog !== undefined && dialog.askerDialog !== undefined;
   const taskdocMaintainerId =
-    dialog && dialog instanceof SubDialog ? dialog.rootDialog.agentId : agent.id;
+    dialog && dialog instanceof SideDialog ? dialog.mainDialog.agentId : agent.id;
   const contextHealthSnapshot = dialog?.getLastContextHealth();
   const contextHealthPromptMode: ContextHealthPromptMode =
     contextHealthSnapshot &&
@@ -375,7 +375,7 @@ export async function loadAgentMinds(
   const promptdocContext = {
     language: workingLanguage,
     agentId: agent.id,
-    isSubdialog,
+    isSideDialog,
     taskdocMaintainerId,
     agentHasTeamMemoryTools,
     agentHasPersonalMemoryTools,
@@ -411,7 +411,7 @@ export async function loadAgentMinds(
 
   const systemPrompt = buildSystemPrompt({
     language: workingLanguage,
-    dialogScope: isSubdialog ? 'sideline' : 'mainline',
+    dialogScope: isSideDialog ? 'sideDialog' : 'mainDialog',
     contextHealthPromptMode,
     agent,
     persona,

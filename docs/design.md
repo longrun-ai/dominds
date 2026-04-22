@@ -334,17 +334,17 @@ Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 
 ```
 
-Main Dialog (Root Dialog)
+Mainline dialog (Root Dialog)
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (rtws Taskdoc package)
 ├── Reminders (Working Memory)
 ├── Dialog Messages (Ephemeral)
-└── Subdialogs (Tree-Structured, Stored Flat Under Main Dialog)
+└── SideDialogs (Tree-Structured, Stored Flat Under Mainline dialog)
 ├── Specialized Agent A
 │ ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
 │ ├── Parent Call Context
 │ ├── Local Reminders
 │ └── Local Dialog Messages
-│ └── Sub-Subdialogs (Further Nesting Possible)
+│ └── Sub-SideDialogs (Further Nesting Possible)
 └── Specialized Agent B
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
 ├── Parent Call Context
@@ -358,9 +358,9 @@ Main Dialog (Root Dialog)
 - All dialogs reference the same rtws Taskdoc (a `*.tsk/` Taskdoc package, e.g. `tasks/feature-auth.tsk/`)
 - Multiple dialog trees can reference the same Taskdoc for collaborative work
 - Taskdocs persist beyond individual conversations and survive team changes
-- Subdialogs can be tree-structured with unlimited nesting depth
-- All subdialog state is stored flat under the main dialog's (root dialog's) `subdialogs/` directory
-- Each subdialog maintains its own working memory while referencing the same Taskdoc
+- SideDialogs can be tree-structured with unlimited nesting depth
+- All sideDialog state is stored flat under the main dialog's (root dialog's) `sideDialogs/` directory
+- Each sideDialog maintains its own working memory while referencing the same Taskdoc
 
 ### Memory Layers
 
@@ -372,7 +372,7 @@ Main Dialog (Root Dialog)
    - Taskdocs persist throughout the entire product lifecycle, spanning multiple conversations and team changes
    - Can link to other product documentation and evolve as project requirements change
 2. **Reminders**: Semi-persistent, dialog-scoped, survives conversation cleanup
-3. **Parent Call Context**: Inherited context for subdialogs
+3. **Parent Call Context**: Inherited context for sideDialogs
 4. **Dialog Messages**: Ephemeral, subject to cleanup for mental clarity
 
 #### rtws-Persistent Memory (DevOps Lifecycle)
@@ -398,8 +398,8 @@ Main Dialog (Root Dialog)
 
 ### Information Flow
 
-- **Upward**: Subdialogs communicate results and escalations to parents
-- **Downward**: Parents provide context and objectives to subdialogs
+- **Upward**: SideDialogs communicate results and escalations to parents
+- **Downward**: Parents provide context and objectives to sideDialogs
 - **Lateral**: Coordination through shared Taskdocs and parent mediation
 - **Temporal**: Reminders and Taskdocs provide continuity across time
 
@@ -417,7 +417,7 @@ For detailed implementation specifications, including core tools, technical arch
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
 - **Memory Layers**: Dialog-scoped and rtws-persistent memory with autonomous evolution
 
-The implementation emphasizes autonomous agent operation, enabling agents to independently manage their cognitive state, create and manage subdialogs, and coordinate with minimal human oversight.
+The implementation emphasizes autonomous agent operation, enabling agents to independently manage their cognitive state, create and manage sideDialogs, and coordinate with minimal human oversight.
 
 ---
 

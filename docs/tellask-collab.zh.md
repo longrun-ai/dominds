@@ -52,7 +52,7 @@
 对诉请者来说，一次队友诉请的运行时节奏是：
 
 1. 发出 `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." }) ...`。
-2. 当前对话进入挂起/等待（pending subdialogs）。
+2. 当前对话进入挂起/等待（pending sideDialogs）。
 3. 被诉请者完成本轮驱动并回贴结果。
 4. 诉请者恢复继续。
 

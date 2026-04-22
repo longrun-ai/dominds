@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import type { Team } from '../../main/team';
 import {
   getDaemonOutputTool,
@@ -42,8 +42,8 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     {} as unknown as DialogStore,
     'shared-daemon-reminder-persistence.tsk',
     undefined,
@@ -52,7 +52,7 @@ function createDialog(agentId: string): RootDialog {
 }
 
 function requireDaemonPid(
-  reminder: ReturnType<RootDialog['listVisibleReminders']> extends Promise<infer T>
+  reminder: ReturnType<MainDialog['listVisibleReminders']> extends Promise<infer T>
     ? T extends Array<infer U>
       ? U | undefined
       : never

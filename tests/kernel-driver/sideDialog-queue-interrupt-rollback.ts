@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTeammateResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitFor,
@@ -28,15 +28,15 @@ async function main(): Promise<void> {
     });
 
     const trigger =
-      'Trigger subdialog and ensure response is NOT supplied before nested suspension resolves.';
+      'Trigger sideDialog and ensure response is NOT supplied before nested suspension resolves.';
     const rootFirstResponse = 'Start.';
     const rootMentionList = ['@pangu'];
     const rootTellaskBody =
       'Please solve 1+1 and continue if needed.\nReturn your current best result.';
     const language = getWorkLanguage();
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellaskSessionless',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     const panguMentionList = ['@coder'];
     const panguTellaskBody = 'Please verify that 1+1 equals 2.\nReply with exactly `2` if correct.';
     const expectedCoderPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellaskSessionless',
         fromAgentId: 'pangu',
         toAgentId: 'coder',
@@ -68,6 +68,7 @@ async function main(): Promise<void> {
     const coderReply = '2';
     const expectedCoderInjected = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'pangu-call-coder',
       responderId: 'coder',
       requesterId: 'pangu',
       mentionList: panguMentionList,
@@ -80,17 +81,18 @@ async function main(): Promise<void> {
     const panguFinalResponse = 'Verified. Final answer remains 2.';
     const expectedPanguInjected = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
+      callId: 'root-call-pangu',
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList: rootMentionList,
       tellaskContent: rootTellaskBody,
       responseBody: panguFinalResponse,
       status: 'completed',
-      deliveryMode: 'reply_tool',
+      deliveryMode: 'direct_fallback',
       language,
     });
 
-    const rootFinalResponse = 'Ack: received final verified result from subdialog.';
+    const rootFinalResponse = 'Ack: received final verified result from sideDialog.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -109,7 +111,7 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSubdialogPrompt,
+        message: expectedSideDialogPrompt,
         role: 'user',
         response: panguFirstResponse,
         funcCalls: [
@@ -130,12 +132,12 @@ async function main(): Promise<void> {
       { message: expectedPanguInjected, role: 'tool', response: rootFinalResponse },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(
       dlg,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-supply-before-suspension'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-supply-before-suspension'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
@@ -156,7 +158,7 @@ async function main(): Promise<void> {
     assert.equal(
       interimMirrorIndex,
       -1,
-      'intermediate subdialog result must not be mirrored to root before nested tellask settles',
+      'intermediate sideDialog result must not be mirrored to root before nested tellask settles',
     );
 
     await waitFor(
@@ -175,7 +177,7 @@ async function main(): Promise<void> {
         return false;
       },
       8_000,
-      'root dialog to resume only after nested subdialog chain is finalized',
+      'root dialog to resume only after nested sideDialog chain is finalized',
     );
 
     await waitForAllDialogsUnlocked(dlg, 6_000);
@@ -188,21 +190,21 @@ async function main(): Promise<void> {
       (msg: ChatMessage, index: number) =>
         index > mirrorIndex && msg.type === 'saying_msg' && msg.role === 'assistant',
     );
-    assert.ok(mirrorIndex >= 0, 'expected mirrored subdialog response in root messages');
+    assert.ok(mirrorIndex >= 0, 'expected mirrored sideDialog response in root messages');
     assert.ok(sayingIndex >= 0, 'expected root follow-up response');
     assert.ok(
       mirrorIndex < sayingIndex,
-      'mirrored subdialog response must appear before root follow-up generation',
+      'mirrored sideDialog response must appear before root follow-up generation',
     );
   });
 
-  console.log('kernel-driver subdialog-no-early-supply-before-nested-completion: PASS');
+  console.log('kernel-driver sideDialog-no-early-supply-before-nested-completion: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver subdialog-no-early-supply-before-nested-completion: FAIL\n${message}`,
+    `kernel-driver sideDialog-no-early-supply-before-nested-completion: FAIL\n${message}`,
   );
   process.exit(1);
 });

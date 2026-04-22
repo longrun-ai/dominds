@@ -6,7 +6,7 @@ import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   withTempRtws,
   writeMockDb,
@@ -41,11 +41,11 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 
-    const pendingSubdialog = await root.createSubDialog(
+    const pendingSideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
       'Background sideline work is still pending.',
@@ -53,18 +53,20 @@ async function main(): Promise<void> {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
         callerDialogId: root.id.selfId,
-        callId: 'root-pending-subdialog-call',
+        callId: 'root-pending-sideDialog-call',
         collectiveTargets: ['pangu'],
       },
     );
-    await DialogPersistence.appendPendingSubdialog(root.id, {
-      subdialogId: pendingSubdialog.id.selfId,
+    await DialogPersistence.appendPendingSideDialog(root.id, {
+      sideDialogId: pendingSideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
       tellaskContent: 'Background sideline work is still pending.',
       targetAgentId: 'pangu',
-      callId: 'root-pending-subdialog-call',
+      callId: 'root-pending-sideDialog-call',
+      callingCourse: 1,
+      callingGenseq: 1,
       callType: 'C',
     });
 
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
           tellaskReplyDirective: {
             expectedReplyCallName: 'replyTellaskBack',
             targetCallId: 'reply-back-target',
-            targetDialogId: pendingSubdialog.id.selfId,
+            targetDialogId: pendingSideDialog.id.selfId,
             tellaskContent: 'Please confirm the sideline result.',
           },
         },

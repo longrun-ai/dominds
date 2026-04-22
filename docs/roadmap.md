@@ -8,7 +8,7 @@ This document outlines Dominds’ stage goals and major-version evolution to ali
 
 Dominds’ long-term direction is to solidify “agent social division of labor” into a reusable, extensible, installable/uninstallable runtime system: **microkernel + Apps**.
 
-Terminology (Mainline/Sideline, etc.): [`dominds-terminology.md`](./dominds-terminology.md)
+Terminology (Mainline dialog/Sideline dialog, etc.): [`dominds-terminology.md`](./dominds-terminology.md)
 
 ---
 
@@ -26,7 +26,7 @@ Become a **microkernel for agent social division of labor and collaboration**:
 
 Positioning: validate “stable and effective ways of working”, and make the core mechanisms work end-to-end, reliably, and debuggably.
 
-- Establish reusable work patterns: mainline progress + parallel sideline dialogs + result backflow/aggregation (Tellask / FBR, etc.).
+- Establish reusable work patterns: Mainline dialog progress + parallel Sideline dialogs + result backflow/aggregation (Tellask / FBR, etc.).
 - Harden a minimal runtime loop: dialog persistence, tool invocation, streaming output + transcripts, basic observability and failure diagnosis.
 - Iterate in small steps: allow internal structure to change rapidly while continuously distilling what is stable/effective into explicit constraints.
 

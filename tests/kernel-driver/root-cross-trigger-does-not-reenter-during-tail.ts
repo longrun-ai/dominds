@@ -6,7 +6,7 @@ import { runBackendDriver } from '../../main/llm/kernel-driver/loop';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  createRootDialog,
+  createMainDialog,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -42,12 +42,12 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
     void runBackendDriver();
 
-    const pendingSubdialog = await root.createSubDialog(
+    const pendingSideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
       'Background sideline work is still pending.',
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
         callerDialogId: root.id.selfId,
-        callId: 'root-cross-trigger-pending-subdialog',
+        callId: 'root-cross-trigger-pending-sideDialog',
         collectiveTargets: ['pangu'],
       },
     );
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
           tellaskReplyDirective: {
             expectedReplyCallName: 'replyTellaskBack',
             targetCallId: 'reply-back-target',
-            targetDialogId: pendingSubdialog.id.selfId,
+            targetDialogId: pendingSideDialog.id.selfId,
             tellaskContent: 'Please confirm the sideline result.',
           },
         },

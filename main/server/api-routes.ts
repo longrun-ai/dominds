@@ -21,9 +21,9 @@ import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
-import { DialogID, DialogStore, RootDialog } from '../dialog';
+import { DialogID, DialogStore, MainDialog } from '../dialog';
 import { getRunControlCountsSnapshot } from '../dialog-display-state';
-import { forkRootDialogTreeAtGeneration } from '../dialog-fork';
+import { forkMainDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -31,7 +31,7 @@ import { findDomindsPersistenceFileError } from '../persistence-errors';
 import type { PrimingScriptLoadIssue } from '../priming';
 import {
   applyPrimingScriptsToDialog,
-  buildRootDialogPrimingMetadata,
+  buildMainDialogPrimingMetadata,
   listApplicablePrimingScripts,
   saveDialogCourseAsIndividualPrimingScript,
   searchApplicablePrimingScripts,
@@ -158,13 +158,13 @@ async function loadDialogMetadataForLookup(
   }
 }
 
-async function loadRootDialogMetadataForLookup(
+async function loadMainDialogMetadataForLookup(
   dialogId: DialogID,
   status: PersistableDialogStatus,
   context: string,
 ): Promise<DialogMetadataFile | null> {
   try {
-    return await DialogPersistence.loadRootDialogMetadata(dialogId, status);
+    return await DialogPersistence.loadMainDialogMetadata(dialogId, status);
   } catch (error: unknown) {
     if (!findDomindsPersistenceFileError(error)) {
       throw error;
@@ -201,17 +201,17 @@ async function detectWaitingForFreshBootsReasoning(
   status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
-    // Pending-subdialogs is also lazy-loaded per dialog. A malformed queue should quarantine just
+    // Pending-sideDialogs is also lazy-loaded per dialog. A malformed queue should quarantine just
     // that dialog and degrade this derived flag to "unknown/false" instead of taking down the
     // surrounding list or hierarchy response.
-    const pending = await DialogPersistence.loadPendingSubdialogs(dialogId, status);
+    const pending = await DialogPersistence.loadPendingSideDialogs(dialogId, status);
     return pending.some((entry) => entry.callName === 'freshBootsReasoning');
   } catch (error: unknown) {
     if (!findDomindsPersistenceFileError(error)) {
       throw error;
     }
     log.warn(
-      'detectWaitingForFreshBootsReasoning: pending-subdialogs quarantined during lookup',
+      'detectWaitingForFreshBootsReasoning: pending-sideDialogs quarantined during lookup',
       error,
       {
         dialogId: dialogId.valueOf(),
@@ -1343,7 +1343,7 @@ export async function handleApiRoute(
       return await handleGetDialogHierarchy(res, rootId, status);
     }
 
-    // Get one subdialog node specifically for dialog-list backfill
+    // Get one sideDialog node specifically for dialog-list backfill
     if (
       pathname.startsWith('/api/dialogs/') &&
       pathname.endsWith('/list-node') &&
@@ -1359,9 +1359,9 @@ export async function handleApiRoute(
         respondJson(res, 400, { success: false, error: 'Invalid dialog id path encoding' });
         return true;
       }
-      const subdialogsSeg = parts[4];
+      const sideDialogsSeg = parts[4];
       const listNodeSeg = parts[6];
-      if (!rootId || subdialogsSeg !== 'subdialogs' || !selfId || listNodeSeg !== 'list-node') {
+      if (!rootId || sideDialogsSeg !== 'sideDialogs' || !selfId || listNodeSeg !== 'list-node') {
         respondJson(res, 404, { success: false, error: 'Not Found' });
         return true;
       }
@@ -1372,7 +1372,7 @@ export async function handleApiRoute(
         return true;
       }
       const status = parsedStatus.kind === 'missing' ? 'running' : parsedStatus.status;
-      return await handleGetDialogListSubdialogNode(res, { rootId, selfId, status });
+      return await handleGetDialogListSideDialogNode(res, { rootId, selfId, status });
     }
 
     // Serve persisted dialog artifacts (binary)
@@ -2337,14 +2337,14 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
 }
 
 /**
- * Get dialog list - returns root dialogs with subdialogCount
+ * Get dialog list - returns root dialogs with sideDialogCount
  */
 async function handleGetDialogs(
   res: ServerResponse,
   status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
-    const rootDialogs: Array<{
+    const mainDialogs: Array<{
       rootId: string;
       agentId: string;
       taskDocPath: string;
@@ -2354,29 +2354,29 @@ async function handleGetDialogs(
       lastModified: string;
       displayState?: DialogLatestFile['displayState'];
       waitingForFreshBootsReasoning?: boolean;
-      subdialogCount: number;
+      sideDialogCount: number;
     }> = [];
 
     const allDialogIds = await DialogPersistence.listAllDialogIds(status);
-    const subdialogCountByRootId = new Map<string, number>();
+    const sideDialogCountByRootId = new Map<string, number>();
     for (const dialogId of allDialogIds) {
       if (dialogId.selfId === dialogId.rootId) continue;
-      subdialogCountByRootId.set(
+      sideDialogCountByRootId.set(
         dialogId.rootId,
-        (subdialogCountByRootId.get(dialogId.rootId) ?? 0) + 1,
+        (sideDialogCountByRootId.get(dialogId.rootId) ?? 0) + 1,
       );
     }
 
     const ids = await DialogPersistence.listDialogs(status);
     for (const id of ids) {
       const dialogId = new DialogID(id);
-      const meta = await loadRootDialogMetadataForLookup(dialogId, status, 'handleListDialogs');
+      const meta = await loadMainDialogMetadataForLookup(dialogId, status, 'handleListDialogs');
       if (!meta) continue;
 
       // listDialogs() only yields candidate IDs. Metadata/latest stay lazy so one malformed dialog
       // can quarantine itself here without taking down the whole list response.
       const latest = await loadDialogLatestForLookup(dialogId, status, 'handleListDialogs');
-      const rootPath = DialogPersistence.getRootDialogPath(dialogId, status);
+      const rootPath = DialogPersistence.getMainDialogPath(dialogId, status);
       const rootStillExists = await pathStillExistsForLookup(rootPath);
       if (!rootStillExists) {
         continue;
@@ -2386,12 +2386,12 @@ async function handleGetDialogs(
         status,
       );
 
-      const subdialogCount = subdialogCountByRootId.get(meta.id) ?? 0;
+      const sideDialogCount = sideDialogCountByRootId.get(meta.id) ?? 0;
       if (!(await pathStillExistsForLookup(rootPath))) {
         continue;
       }
 
-      rootDialogs.push({
+      mainDialogs.push({
         rootId: meta.id,
         agentId: meta.agentId,
         taskDocPath: meta.taskDocPath,
@@ -2401,11 +2401,11 @@ async function handleGetDialogs(
         lastModified: latest?.lastModified || meta.createdAt,
         displayState: latest?.displayState,
         waitingForFreshBootsReasoning,
-        subdialogCount,
+        sideDialogCount,
       });
     }
 
-    respondJson(res, 200, { success: true, dialogs: rootDialogs });
+    respondJson(res, 200, { success: true, dialogs: mainDialogs });
     return true;
   } catch (error) {
     log.error('Error getting root dialogs:', error);
@@ -2433,7 +2433,7 @@ async function handleGetRunControlCounts(res: ServerResponse): Promise<boolean> 
 }
 
 /**
- * Get full hierarchy (root + subdialogs) for a single root dialog
+ * Get full hierarchy (root + sideDialogs) for a single root dialog
  */
 async function handleGetDialogHierarchy(
   res: ServerResponse,
@@ -2441,7 +2441,7 @@ async function handleGetDialogHierarchy(
   status: PersistableDialogStatus,
 ): Promise<boolean> {
   try {
-    const rootMeta = await loadRootDialogMetadataForLookup(
+    const rootMeta = await loadMainDialogMetadataForLookup(
       new DialogID(rootId),
       status,
       'handleGetDialogHierarchy:root',
@@ -2460,7 +2460,7 @@ async function handleGetDialogHierarchy(
       status,
       'handleGetDialogHierarchy:root',
     );
-    const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootId), status);
+    const rootPath = DialogPersistence.getMainDialogPath(new DialogID(rootId), status);
     const rootStillExists = await pathStillExistsForLookup(rootPath);
     if (!rootStillExists) {
       respondJson(res, 404, {
@@ -2492,10 +2492,10 @@ async function handleGetDialogHierarchy(
       return true;
     }
 
-    let subdialogs: Array<{
+    let sideDialogs: Array<{
       selfId: string;
       rootId: string;
-      supdialogId?: string;
+      askerDialogId?: string;
       agentId: string;
       taskDocPath: string;
       status: PersistableDialogStatus;
@@ -2504,7 +2504,7 @@ async function handleGetDialogHierarchy(
       lastModified: string;
       displayState?: DialogLatestFile['displayState'];
       sessionSlug?: string;
-      assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
+      assignmentFromAsker?: DialogMetadataFile['assignmentFromAsker'];
       waitingForFreshBootsReasoning?: boolean;
     }> = [];
 
@@ -2516,7 +2516,7 @@ async function handleGetDialogHierarchy(
       const meta = await loadDialogMetadataForLookup(
         dialogId,
         status,
-        'handleGetDialogHierarchy:subdialog',
+        'handleGetDialogHierarchy:sideDialog',
       );
       if (!meta) {
         continue;
@@ -2525,28 +2525,37 @@ async function handleGetDialogHierarchy(
       const subLatest = await loadDialogLatestForLookup(
         dialogId,
         status,
-        'handleGetDialogHierarchy:subdialog',
+        'handleGetDialogHierarchy:sideDialog',
       );
       const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
         dialogId,
         status,
       );
-      const subdialogPath = DialogPersistence.getSubdialogPath(dialogId, status);
-      if (!(await pathStillExistsForLookup(subdialogPath))) {
+      const sideDialogPath = DialogPersistence.getSideDialogPath(dialogId, status);
+      if (!(await pathStillExistsForLookup(sideDialogPath))) {
         continue;
       }
-      const derivedSupdialogId =
-        meta.assignmentFromSup?.callerDialogId &&
-        meta.assignmentFromSup.callerDialogId.trim() !== ''
-          ? meta.assignmentFromSup.callerDialogId
-          : typeof meta.supdialogId === 'string' && meta.supdialogId.trim() !== ''
-            ? meta.supdialogId
-            : undefined;
+      const assignmentFromAsker = meta.assignmentFromAsker;
+      const derivedAskerDialogId = assignmentFromAsker
+        ? assignmentFromAsker.callerDialogId.trim()
+        : '';
+      if (!derivedAskerDialogId) {
+        const error = new Error(
+          `sideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId ` +
+            `(rootId=${rootId}, selfId=${dialogId.selfId}, status=${status})`,
+        );
+        log.error(
+          'sideDialog hierarchy invariant violation: missing assignmentFromAsker.callerDialogId',
+          error,
+          { rootId, selfId: dialogId.selfId, status },
+        );
+        throw error;
+      }
 
-      subdialogs.push({
+      sideDialogs.push({
         selfId: meta.id,
         rootId,
-        supdialogId: derivedSupdialogId,
+        askerDialogId: derivedAskerDialogId,
         agentId: meta.agentId,
         taskDocPath: meta.taskDocPath,
         status,
@@ -2555,7 +2564,7 @@ async function handleGetDialogHierarchy(
         lastModified: subLatest?.lastModified || meta.createdAt,
         displayState: subLatest?.displayState,
         sessionSlug: meta.sessionSlug,
-        assignmentFromSup: meta.assignmentFromSup,
+        assignmentFromAsker: meta.assignmentFromAsker,
         waitingForFreshBootsReasoning,
       });
     }
@@ -2563,8 +2572,8 @@ async function handleGetDialogHierarchy(
     respondJson(res, 200, {
       success: true,
       hierarchy: {
-        root: { ...rootInfo, subdialogCount: subdialogs.length },
-        subdialogs,
+        root: { ...rootInfo, sideDialogCount: sideDialogs.length },
+        sideDialogs,
       },
     });
     return true;
@@ -2576,9 +2585,9 @@ async function handleGetDialogHierarchy(
 }
 
 /**
- * Get one subdialog node for dialog-list backfill without reloading the whole hierarchy.
+ * Get one sideDialog node for dialog-list backfill without reloading the whole hierarchy.
  */
-async function handleGetDialogListSubdialogNode(
+async function handleGetDialogListSideDialogNode(
   res: ServerResponse,
   dialog: DialogIdent & { status: PersistableDialogStatus },
 ): Promise<boolean> {
@@ -2587,7 +2596,7 @@ async function handleGetDialogListSubdialogNode(
     if (dialog.selfId === dialog.rootId) {
       respondJson(res, 400, {
         success: false,
-        error: 'Dialog-list subdialog node requires a subdialog selfId',
+        error: 'Dialog-list sideDialog node requires a sideDialog selfId',
       });
       return true;
     }
@@ -2596,7 +2605,7 @@ async function handleGetDialogListSubdialogNode(
     const metadata = await loadDialogMetadataForLookup(
       dialogId,
       status,
-      'handleGetDialogListSubdialogNode',
+      'handleGetDialogListSideDialogNode',
     );
     if (!metadata) {
       respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
@@ -2604,49 +2613,58 @@ async function handleGetDialogListSubdialogNode(
     }
     if (metadata.id !== dialog.selfId) {
       throw new Error(
-        `CRITICAL: dialog-list subdialog node metadata id mismatch. expected=${dialog.selfId} actual=${metadata.id} rootId=${dialog.rootId} status=${status}`,
+        `CRITICAL: dialog-list sideDialog node metadata id mismatch. expected=${dialog.selfId} actual=${metadata.id} rootId=${dialog.rootId} status=${status}`,
       );
     }
     if (metadata.id === dialog.rootId) {
       throw new Error(
-        `CRITICAL: dialog-list subdialog node lookup resolved root dialog. rootId=${dialog.rootId} selfId=${dialog.selfId} status=${status}`,
+        `CRITICAL: dialog-list sideDialog node lookup resolved root dialog. rootId=${dialog.rootId} selfId=${dialog.selfId} status=${status}`,
       );
     }
 
     const latest = await loadDialogLatestForLookup(
       dialogId,
       status,
-      'handleGetDialogListSubdialogNode',
+      'handleGetDialogListSideDialogNode',
     );
     const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
       dialogId,
       status,
     );
-    const rootSubdialogCount = await DialogPersistence.countAllSubdialogsUnderRoot(
+    const rootSideDialogCount = await DialogPersistence.countAllSideDialogsUnderRoot(
       new DialogID(dialog.rootId),
       status,
     );
-    const subdialogPath = DialogPersistence.getSubdialogPath(dialogId, status);
-    if (!(await pathStillExistsForLookup(subdialogPath))) {
+    const sideDialogPath = DialogPersistence.getSideDialogPath(dialogId, status);
+    if (!(await pathStillExistsForLookup(sideDialogPath))) {
       respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
       return true;
     }
 
-    const derivedSupdialogId =
-      metadata.assignmentFromSup?.callerDialogId &&
-      metadata.assignmentFromSup.callerDialogId.trim() !== ''
-        ? metadata.assignmentFromSup.callerDialogId
-        : typeof metadata.supdialogId === 'string' && metadata.supdialogId.trim() !== ''
-          ? metadata.supdialogId
-          : undefined;
+    const assignmentFromAsker = metadata.assignmentFromAsker;
+    const derivedAskerDialogId = assignmentFromAsker
+      ? assignmentFromAsker.callerDialogId.trim()
+      : '';
+    if (!derivedAskerDialogId) {
+      const error = new Error(
+        `dialog-list sideDialog node invariant violation: missing assignmentFromAsker.callerDialogId ` +
+          `(rootId=${dialog.rootId}, selfId=${dialog.selfId}, status=${status})`,
+      );
+      log.error(
+        'dialog-list sideDialog node invariant violation: missing assignmentFromAsker.callerDialogId',
+        error,
+        { rootId: dialog.rootId, selfId: dialog.selfId, status },
+      );
+      throw error;
+    }
 
     respondJson(res, 200, {
       success: true,
-      subdialogNode: {
+      sideDialogNode: {
         selfId: metadata.id,
         rootId: dialog.rootId,
-        rootSubdialogCount,
-        supdialogId: derivedSupdialogId,
+        rootSideDialogCount,
+        askerDialogId: derivedAskerDialogId,
         agentId: metadata.agentId,
         taskDocPath: metadata.taskDocPath,
         status,
@@ -2655,16 +2673,16 @@ async function handleGetDialogListSubdialogNode(
         lastModified: latest?.lastModified ?? metadata.createdAt,
         displayState: latest?.displayState,
         sessionSlug: metadata.sessionSlug,
-        assignmentFromSup: metadata.assignmentFromSup,
+        assignmentFromAsker: metadata.assignmentFromAsker,
         waitingForFreshBootsReasoning,
       },
     });
     return true;
   } catch (error) {
-    log.error('Error getting dialog-list subdialog node:', error);
+    log.error('Error getting dialog-list sideDialog node:', error);
     respondJson(res, 500, {
       success: false,
-      error: 'Failed to get dialog-list subdialog node',
+      error: 'Failed to get dialog-list sideDialog node',
     });
     return true;
   }
@@ -2707,8 +2725,8 @@ async function handleCreateDialog(
     // Always use DiskFileDialogStore for file-based persistence
     const dialogUI: DialogStore = new DiskFileDialogStore(dialogId);
 
-    // Create RootDialog
-    const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    // Create MainDialog
+    const dialog = new MainDialog(dialogUI, taskDocPath, dialogId, agentId);
     dialog.setPersistenceStatus('running');
     globalDialogRegistry.register(dialog);
 
@@ -2726,7 +2744,7 @@ async function handleCreateDialog(
       agentId: agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
-      priming: buildRootDialogPrimingMetadata(priming),
+      priming: buildMainDialogPrimingMetadata(priming),
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -2739,7 +2757,7 @@ async function handleCreateDialog(
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
@@ -2832,7 +2850,7 @@ async function handleForkDialog(
       return true;
     }
 
-    const result = await forkRootDialogTreeAtGeneration({
+    const result = await forkMainDialogTreeAtGeneration({
       sourceRootId: rootId,
       sourceStatus: status,
       course,
@@ -2918,7 +2936,7 @@ async function handleMoveDialogs(
         return true;
       }
 
-      const meta = await loadRootDialogMetadataForLookup(
+      const meta = await loadMainDialogMetadataForLookup(
         new DialogID(rootId),
         fromStatus,
         'handleMoveDialogs:root',
@@ -2963,7 +2981,7 @@ async function handleMoveDialogs(
     const ids = await DialogPersistence.listDialogs(fromStatus);
     for (const id of ids) {
       if (typeof id !== 'string' || id.trim() === '') continue;
-      const meta = await loadRootDialogMetadataForLookup(
+      const meta = await loadMainDialogMetadataForLookup(
         new DialogID(id),
         fromStatus,
         'handleMoveDialogs:task-scan',
@@ -3100,7 +3118,7 @@ async function handleDeleteDialog(
       return true;
     }
 
-    const deleted = await DialogPersistence.deleteRootDialog(new DialogID(rootId), fromStatus);
+    const deleted = await DialogPersistence.deleteMainDialog(new DialogID(rootId), fromStatus);
     if (!deleted) {
       respondJson(res, 404, { error: `Dialog not found in ${fromStatus}` });
       return true;

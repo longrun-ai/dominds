@@ -6,7 +6,7 @@ function buildPrompt(mode: 'normal' | 'caution' | 'critical'): string {
   const agent = new Team.Member({ id: 'tester', name: 'Tester' });
   return buildSystemPrompt({
     language: 'zh',
-    dialogScope: 'mainline',
+    dialogScope: 'mainDialog',
     contextHealthPromptMode: mode,
     agent,
     persona: 'persona',

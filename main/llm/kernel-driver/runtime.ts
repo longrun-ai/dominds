@@ -133,7 +133,7 @@ async function resolveRtwsDiligenceConfig(): Promise<RtwsDiligenceResolution> {
 
 export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
-  isRootDialog: boolean;
+  isMainDialog: boolean;
   remainingBudget: number;
   diligencePushMax: number;
   suppressDiligencePush?: boolean;
@@ -147,7 +147,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
       nextRemainingBudget: number;
     }
 > {
-  if (!options.isRootDialog) {
+  if (!options.isMainDialog) {
     return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
   }
 

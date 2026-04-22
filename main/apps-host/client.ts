@@ -152,7 +152,7 @@ export type AppsHostClient = Readonly<{
     args: ToolArguments,
     ctx: Readonly<{
       dialogId: string;
-      rootDialogId: string;
+      mainDialogId: string;
       agentId: string;
       taskDocPath: string;
       sessionSlug?: string;

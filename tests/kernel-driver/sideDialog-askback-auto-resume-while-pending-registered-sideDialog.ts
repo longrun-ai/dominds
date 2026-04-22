@@ -2,15 +2,13 @@ import assert from 'node:assert/strict';
 
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { formatResolvedTellaskFuncResultContent } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
-import {
-  formatSupdialogCallPrompt,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
+import { formatAskerDialogCallPrompt } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -34,8 +32,8 @@ async function main(): Promise<void> {
     const resumedResponse =
       'I have the answer from upstream and can continue the registered practitioner loop now.';
 
-    const root = await createRootDialog('tester');
-    const pangu = await root.createSubDialog('pangu', ['@pangu'], parentTellaskBody, {
+    const root = await createMainDialog('tester');
+    const pangu = await root.createSideDialog('pangu', ['@pangu'], parentTellaskBody, {
       callName: 'tellask',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
@@ -46,14 +44,16 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     pangu.disableDiligencePush = true;
 
-    await DialogPersistence.appendPendingSubdialog(root.id, {
-      subdialogId: pangu.id.selfId,
+    await DialogPersistence.appendPendingSideDialog(root.id, {
+      sideDialogId: pangu.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellask',
       mentionList: ['@pangu'],
       tellaskContent: parentTellaskBody,
       targetAgentId: 'pangu',
       callId: 'root-call-pangu-main',
+      callingCourse: 1,
+      callingGenseq: 1,
       callType: 'B',
       sessionSlug: 'main-longline',
     });
@@ -67,12 +67,13 @@ async function main(): Promise<void> {
       undefined,
       {
         expectedReplyCallName: 'replyTellask',
+        targetDialogId: root.id.selfId,
         targetCallId: 'root-call-pangu-main',
         tellaskContent: parentTellaskBody,
       },
     );
 
-    const nested = await pangu.createSubDialog('nuwa', ['@nuwa'], nestedTellaskBody, {
+    const nested = await pangu.createSideDialog('nuwa', ['@nuwa'], nestedTellaskBody, {
       callName: 'tellask',
       originMemberId: 'pangu',
       callerDialogId: pangu.id.selfId,
@@ -81,27 +82,29 @@ async function main(): Promise<void> {
       collectiveTargets: ['nuwa'],
     });
     nested.disableDiligencePush = true;
-    await DialogPersistence.appendPendingSubdialog(pangu.id, {
-      subdialogId: nested.id.selfId,
+    await DialogPersistence.appendPendingSideDialog(pangu.id, {
+      sideDialogId: nested.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellask',
       mentionList: ['@nuwa'],
       tellaskContent: nestedTellaskBody,
       targetAgentId: 'nuwa',
       callId: 'pangu-call-nuwa-registered',
+      callingCourse: 1,
+      callingGenseq: 1,
       callType: 'B',
       sessionSlug: 'nested-live-dom',
     });
 
-    const expectedSupdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatSupdialogCallPrompt({
+    const expectedAskerDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAskerDialogCallPrompt({
         fromAgentId: 'pangu',
         toAgentId: 'tester',
-        subdialogRequest: {
+        sideDialogRequest: {
           callName: 'tellaskBack',
           tellaskContent: askBackBody,
         },
-        supdialogAssignment: {
+        askerDialogAssignment: {
           callName: 'tellask',
           mentionList: ['@pangu'],
           tellaskContent: parentTellaskBody,
@@ -113,15 +116,10 @@ async function main(): Promise<void> {
       language,
     });
 
-    const tellaskBackResponse = formatTellaskResponseContent({
-      callName: 'tellaskBack',
-      responderId: 'tester',
-      requesterId: 'pangu',
-      tellaskContent: askBackBody,
-      responseBody: askBackReply,
+    const tellaskBackToolResult = formatResolvedTellaskFuncResultContent({
+      name: 'tellaskBack',
+      callId: 'pangu-ask-back-for-loop-resume',
       status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
     });
 
     await writeMockDb(tmpRoot, [
@@ -140,7 +138,7 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: expectedSupdialogPrompt,
+        message: expectedAskerDialogPrompt,
         role: 'user',
         response: rootAskBackNarration,
         funcCalls: [
@@ -154,7 +152,7 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: tellaskBackResponse,
+        message: tellaskBackToolResult,
         role: 'tool',
         response: resumedResponse,
       },
@@ -164,7 +162,7 @@ async function main(): Promise<void> {
       pangu,
       {
         content: 'Use ask-back before continuing the registered practitioner loop.',
-        msgId: 'subdialog-askback-auto-resume-while-pending-registered-subdialog',
+        msgId: 'sideDialog-askback-auto-resume-while-pending-registered-sideDialog',
         grammar: 'markdown',
         origin: 'runtime',
       },
@@ -181,18 +179,18 @@ async function main(): Promise<void> {
             msg.content === resumedResponse,
         ),
       3_000,
-      'ask-back requester subdialog to auto-resume even while the registered nested sideline remains pending',
+      'ask-back requester sideDialog to auto-resume even while the registered nested sideline remains pending',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSubdialogs(pangu.id, pangu.status);
+    const pending = await DialogPersistence.loadPendingSideDialogs(pangu.id, pangu.status);
     assert.equal(
       pending.length,
       1,
       'auto-resume should not consume the still-pending registered nested sideline',
     );
     assert.equal(
-      pending[0]?.subdialogId,
+      pending[0]?.sideDialogId,
       nested.id.selfId,
       'the still-pending registered sideline should remain the nested practitioner dialog',
     );
@@ -202,7 +200,7 @@ async function main(): Promise<void> {
       latest?.displayState,
       {
         kind: 'blocked',
-        reason: { kind: 'waiting_for_subdialogs' },
+        reason: { kind: 'waiting_for_sideDialogs' },
       },
       'after the auto-resume round, the requester should return to waiting on the nested registered sideline',
     );
@@ -215,19 +213,19 @@ async function main(): Promise<void> {
     assert.equal(
       events.filter((event) => event.type === 'gen_start_record').length,
       2,
-      'the requester subdialog should run a second generation round after replyTellaskBack lands',
+      'the requester sideDialog should run a second generation round after replyTellaskBack lands',
     );
   });
 
   console.log(
-    'kernel-driver subdialog-askback-auto-resume-while-pending-registered-subdialog: PASS',
+    'kernel-driver sideDialog-askback-auto-resume-while-pending-registered-sideDialog: PASS',
   );
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver subdialog-askback-auto-resume-while-pending-registered-subdialog: FAIL\n${message}`,
+    `kernel-driver sideDialog-askback-auto-resume-while-pending-registered-sideDialog: FAIL\n${message}`,
   );
   process.exit(1);
 });

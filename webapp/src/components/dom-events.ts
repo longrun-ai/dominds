@@ -119,7 +119,7 @@ export type ScrollToCallSiteDetail =
       callId?: undefined;
     };
 
-export type SubdialogCreatedDetail = {
+export type SideDialogCreatedDetail = {
   rootId: string;
   calleeDialogId: string;
 };
@@ -153,7 +153,7 @@ export interface DomindsCustomEventMap {
   'scroll-to-call-site': CustomEvent<ScrollToCallSiteDetail>;
   'scroll-to-genseq': CustomEvent<ScrollToGenseqDetail>;
   'snippet-insert': CustomEvent<SnippetInsertDetail>;
-  'subdialog-created': CustomEvent<SubdialogCreatedDetail>;
+  'sideDialog-created': CustomEvent<SideDialogCreatedDetail>;
   'team-member-mention': CustomEvent<TeamMembersMentionEventDetail>;
   'team-members-refresh': CustomEvent<undefined>;
   'ui-toast': CustomEvent<UiToastDetail>;

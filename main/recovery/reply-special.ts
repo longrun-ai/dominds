@@ -1,5 +1,5 @@
 import { Dialog, DialogID } from '../dialog';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
 import { driveDialogStream } from '../llm/kernel-driver';
 import { recoverPendingReplyTellaskCalls } from '../llm/kernel-driver/tellask-special';
 import type { KernelDriverDriveCallOptions } from '../llm/kernel-driver/types';
@@ -24,7 +24,7 @@ export async function recoverPendingReplyTellaskCallsForDialog(dialog: Dialog): 
   }
 
   // This helper is reserved for execution-oriented flows only (restart recovery, resume, and
-  // dead-subdialog remediation). Those flows are allowed to have side effects and may legitimately
+  // dead-sideDialog remediation). Those flows are allowed to have side effects and may legitimately
   // unblock downstream dialogs, so reply recovery keeps normal immediate drive behavior here.
   // Pure read/display flows must not call into this helper.
   const recoveryPromise = recoverPendingReplyTellaskCalls({
@@ -90,14 +90,14 @@ export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<voi
       if (!(await dialogNeedsReplyRecovery(dialogId))) {
         continue;
       }
-      const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, 'running');
-      if (!rootDialog) {
+      const mainDialog = await getOrRestoreMainDialog(dialogId.rootId, 'running');
+      if (!mainDialog) {
         continue;
       }
       const dialog =
         dialogId.selfId === dialogId.rootId
-          ? rootDialog
-          : await ensureDialogLoaded(rootDialog, dialogId, 'running');
+          ? mainDialog
+          : await ensureDialogLoaded(mainDialog, dialogId, 'running');
       if (!dialog) {
         continue;
       }

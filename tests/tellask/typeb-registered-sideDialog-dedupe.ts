@@ -9,7 +9,7 @@ import {
   clearInstalledGlobalDialogEventBroadcaster,
   installRecordingGlobalDialogEventBroadcaster,
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, RootDialog } from '../../main/dialog';
+import { DialogID, MainDialog } from '../../main/dialog';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
@@ -56,13 +56,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForDialogsToUnlock(root: RootDialog, timeoutMs: number): Promise<void> {
+async function waitForDialogsToUnlock(root: MainDialog, timeoutMs: number): Promise<void> {
   const startedAt = Date.now();
   for (;;) {
     const locked = root.getAllDialogs().some((d) => d.isLocked());
     if (!locked) return;
     if (Date.now() - startedAt > timeoutMs) {
-      throw new Error('Timed out waiting for subdialog background drives to finish');
+      throw new Error('Timed out waiting for sideDialog background drives to finish');
     }
     await sleep(10);
   }
@@ -71,7 +71,7 @@ async function waitForDialogsToUnlock(root: RootDialog, timeoutMs: number): Prom
 async function main(): Promise<void> {
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-typeb-dedupe-'));
   installRecordingGlobalDialogEventBroadcaster({
-    label: 'tests/typeb-registered-subdialog-dedupe',
+    label: 'tests/typeb-registered-sideDialog-dedupe',
   });
 
   try {
@@ -171,9 +171,9 @@ async function main(): Promise<void> {
     );
 
     const rootId = generateDialogID();
-    const rootDialogId = new DialogID(rootId);
-    const store = new DiskFileDialogStore(rootDialogId);
-    const dlg = new RootDialog(store, 'task.md', rootDialogId, 'tester');
+    const mainDialogId = new DialogID(rootId);
+    const store = new DiskFileDialogStore(mainDialogId);
+    const dlg = new MainDialog(store, 'task.md', mainDialogId, 'tester');
     const createdAt = formatUnifiedTimestamp(new Date());
     await DialogPersistence.saveDialogMetadata(dlg.id, {
       id: dlg.id.selfId,
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: false,
         diligencePushRemainingBudget: 0,
@@ -202,14 +202,14 @@ async function main(): Promise<void> {
       true,
     );
 
-    const subdialogsDir = path.join(tmpRoot, '.dialogs', 'run', rootId, 'subdialogs');
+    const sideDialogsDir = path.join(tmpRoot, '.dialogs', 'run', rootId, 'sideDialogs');
     assert.ok(
-      await pathExists(subdialogsDir),
-      `expected subdialogs dir to exist: ${subdialogsDir}`,
+      await pathExists(sideDialogsDir),
+      `expected sideDialogs dir to exist: ${sideDialogsDir}`,
     );
 
     let matching = 0;
-    const metaPaths = await collectDialogYamlPaths(subdialogsDir);
+    const metaPaths = await collectDialogYamlPaths(sideDialogsDir);
     for (const metaPath of metaPaths) {
       const raw = await fs.readFile(metaPath, 'utf-8');
       // YAML is untyped runtime data; validate minimal fields without assuming structure.
@@ -226,13 +226,13 @@ async function main(): Promise<void> {
     assert.equal(
       matching,
       1,
-      `expected exactly 1 registered subdialog for agentId=pangu sessionSlug=dupe-session, got ${matching}`,
+      `expected exactly 1 registered sideDialog for agentId=pangu sessionSlug=dupe-session, got ${matching}`,
     );
 
-    // First round schedules subdialog drives in background.
+    // First round schedules sideDialog drives in background.
     await waitForDialogsToUnlock(dlg, 2_000);
-    const firstRegistered = dlg.lookupSubdialog('pangu', 'dupe-session');
-    assert.ok(firstRegistered, 'expected first registered subdialog for dupe-session');
+    const firstRegistered = dlg.lookupSideDialog('pangu', 'dupe-session');
+    assert.ok(firstRegistered, 'expected first registered sideDialog for dupe-session');
     await setDialogDisplayState(firstRegistered.id, {
       kind: 'dead',
       reason: { kind: 'declared_by_user' },
@@ -250,16 +250,16 @@ async function main(): Promise<void> {
     );
 
     await waitForDialogsToUnlock(dlg, 2_000);
-    const secondRegistered = dlg.lookupSubdialog('pangu', 'dupe-session');
-    assert.ok(secondRegistered, 'expected registered subdialog after dead-session reuse');
+    const secondRegistered = dlg.lookupSideDialog('pangu', 'dupe-session');
+    assert.ok(secondRegistered, 'expected registered sideDialog after dead-session reuse');
     assert.notEqual(
       secondRegistered.id.selfId,
       firstRegistered.id.selfId,
-      'expected a new subdialog id when reusing a slug after the previous one is dead',
+      'expected a new sideDialog id when reusing a slug after the previous one is dead',
     );
 
     let matchingAfterDeadReuse = 0;
-    const metaPathsAfterDeadReuse = await collectDialogYamlPaths(subdialogsDir);
+    const metaPathsAfterDeadReuse = await collectDialogYamlPaths(sideDialogsDir);
     for (const metaPath of metaPathsAfterDeadReuse) {
       const raw = await fs.readFile(metaPath, 'utf-8');
       const parsed = yaml.parse(raw) as unknown;
@@ -274,7 +274,7 @@ async function main(): Promise<void> {
     assert.equal(
       matchingAfterDeadReuse,
       2,
-      `expected 2 subdialogs for agentId=pangu sessionSlug=dupe-session after dead-session reuse, got ${matchingAfterDeadReuse}`,
+      `expected 2 sideDialogs for agentId=pangu sessionSlug=dupe-session after dead-session reuse, got ${matchingAfterDeadReuse}`,
     );
 
     const registryPath = path.join(tmpRoot, '.dialogs', 'run', rootId, 'registry.yaml');
@@ -289,9 +289,9 @@ async function main(): Promise<void> {
       if (entry.agentId !== 'pangu' || entry.sessionSlug !== 'dupe-session') continue;
       matchingRegistryEntries += 1;
       assert.equal(
-        entry.subdialogId,
+        entry.sideDialogId,
         secondRegistered.id.selfId,
-        'expected registry entry for dupe-session to point to the fresh subdialog id',
+        'expected registry entry for dupe-session to point to the fresh sideDialog id',
       );
     }
     assert.equal(
@@ -300,20 +300,20 @@ async function main(): Promise<void> {
       `expected exactly 1 registry entry for agentId=pangu sessionSlug=dupe-session, got ${matchingRegistryEntries}`,
     );
 
-    // executeTellaskCall schedules subdialog drives in the background. Keep the test rtws cwd
+    // executeTellaskCall schedules sideDialog drives in the background. Keep the test rtws cwd
     // stable until those tasks complete, so the mock DB remains available.
     await waitForDialogsToUnlock(dlg, 2_000);
 
-    console.log('type B registered subdialog dedupe: PASS');
+    console.log('type B registered sideDialog dedupe: PASS');
   } finally {
     clearInstalledGlobalDialogEventBroadcaster();
-    // Background subdialog work may still consult process.cwd() briefly after the final await.
+    // Background sideDialog work may still consult process.cwd() briefly after the final await.
     // This script exits immediately afterwards, so restoring cwd here is riskier than helpful.
   }
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`type B registered subdialog dedupe: FAIL\n${message}`);
+  console.error(`type B registered sideDialog dedupe: FAIL\n${message}`);
   process.exit(1);
 });

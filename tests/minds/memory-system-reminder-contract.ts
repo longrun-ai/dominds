@@ -5,7 +5,7 @@ async function main(): Promise<void> {
   const zh = buildMemorySystemPrompt({
     language: 'zh',
     agentId: 'tester',
-    isSubdialog: false,
+    isSideDialog: false,
     taskdocMaintainerId: 'maintainer',
     agentHasTeamMemoryTools: false,
     agentHasPersonalMemoryTools: false,
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const en = buildMemorySystemPrompt({
     language: 'en',
     agentId: 'tester',
-    isSubdialog: true,
+    isSideDialog: true,
     taskdocMaintainerId: 'maintainer',
     agentHasTeamMemoryTools: false,
     agentHasPersonalMemoryTools: false,

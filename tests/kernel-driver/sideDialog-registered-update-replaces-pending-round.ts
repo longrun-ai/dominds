@@ -2,20 +2,16 @@ import assert from 'node:assert/strict';
 
 import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { supplySubdialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/subdialog';
+import { supplySideDialogResponseToAssignedCallerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
-import { formatRegisteredTellaskCallerUpdateNotice } from '../../main/runtime/driver-messages';
 import {
-  formatAssignmentFromSupdialog,
-  formatTellaskReplacementNoticeContent,
-  formatUpdatedAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
+  formatUpdatedAssignmentFromAskerDialog,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
-  listTellaskResultContents,
-  waitFor,
+  createMainDialog,
   waitForAllDialogsUnlocked,
   withTempRtws,
   wrapPromptWithExpectedReplyTool,
@@ -27,7 +23,7 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     const language = getWorkLanguage();
     const sessionSlug = 'sticky-session';
@@ -36,7 +32,7 @@ async function main(): Promise<void> {
     const updatedTrigger = 'Update the registered sideline with newer requirements.';
 
     const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -73,7 +69,7 @@ async function main(): Promise<void> {
         response: 'I need an extra nudge before finishing.',
         funcCalls: [
           {
-            id: 'subdialog-q4h-blocker',
+            id: 'sideDialog-q4h-blocker',
             name: 'askHuman',
             arguments: {
               tellaskContent: 'Please keep this sideline waiting for the updated request test.',
@@ -111,8 +107,8 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const subdialog = root.lookupSubdialog('pangu', sessionSlug);
-    assert.ok(subdialog, 'expected registered subdialog after the first tellask');
+    const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
+    assert.ok(sideDialog, 'expected registered sideDialog after the first tellask');
 
     await driveDialogStream(
       root,
@@ -124,24 +120,10 @@ async function main(): Promise<void> {
       },
       true,
     );
-    const expectedReplacement = formatTellaskReplacementNoticeContent({
-      responderId: 'pangu',
-      requesterId: 'tester',
-      mentionList: ['@pangu'],
-      sessionSlug,
-      tellaskContent: initialBody,
-      responseBody: formatRegisteredTellaskCallerUpdateNotice(language),
-      language,
-    });
-    await waitFor(
-      async () => listTellaskResultContents(root.msgs).includes(expectedReplacement),
-      3_000,
-      'caller replacement notice to land',
-    );
     await waitForAllDialogsUnlocked(root, 3_000);
 
     const expectedUpdatedPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatUpdatedAssignmentFromSupdialog({
+      prompt: formatUpdatedAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -154,21 +136,21 @@ async function main(): Promise<void> {
       expectedReplyToolName: 'replyTellask',
       language,
     });
-    const subdialogEventsAfterUpdate = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+    const sideDialogEventsAfterUpdate = await DialogPersistence.loadCourseEvents(
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     assert.ok(
-      subdialogEventsAfterUpdate.some(
+      sideDialogEventsAfterUpdate.some(
         (event) =>
           event.type === 'human_text_record' &&
           event.content.trim() === expectedUpdatedPrompt.trim(),
       ),
-      'expected updated assignment to be rendered locally for the subdialog',
+      'expected updated assignment to be rendered locally for the sideDialog',
     );
     assert.ok(
-      subdialogEventsAfterUpdate.some(
+      sideDialogEventsAfterUpdate.some(
         (event) =>
           event.type === 'tellask_call_anchor_record' &&
           event.anchorRole === 'assignment' &&
@@ -177,16 +159,16 @@ async function main(): Promise<void> {
       'expected updated assignment anchor to be persisted for the replacement round',
     );
 
-    const pendingAfterUpdate = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
-    assert.equal(pendingAfterUpdate.length, 1, 'expected exactly one pending round after update');
-    assert.equal(pendingAfterUpdate[0]?.callId, 'call-updated-round');
-    assert.ok(
-      listTellaskResultContents(root.msgs).includes(expectedReplacement),
-      'caller should receive the failed system result for the replaced round',
+    const pendingAfterUpdate = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    assert.equal(pendingAfterUpdate.length, 2, 'expected stacked pending rounds after update');
+    assert.deepEqual(
+      pendingAfterUpdate.map((record) => record.callId).sort(),
+      ['call-initial-round', 'call-updated-round'],
+      'new registered assignment should push onto the reply stack instead of replacing the old round',
     );
 
-    const supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-      subdialog,
+    const supplied = await supplySideDialogResponseToAssignedCallerIfPendingV2({
+      sideDialog,
       responseText: 'Old reply that should not be delivered to the updated round.',
       responseGenseq: 1,
       scheduleDrive: async () => {},
@@ -197,15 +179,16 @@ async function main(): Promise<void> {
       'expected stale reply to stay local until the updated assignment is rendered',
     );
 
-    const pendingAfterBlockedReply = await DialogPersistence.loadPendingSubdialogs(
+    const pendingAfterBlockedReply = await DialogPersistence.loadPendingSideDialogs(
       root.id,
       root.status,
     );
     assert.equal(
       pendingAfterBlockedReply[0]?.callId,
-      'call-updated-round',
-      'updated pending round should remain waiting after blocked stale reply',
+      'call-initial-round',
+      'earlier pending round should remain present while the newer stack top is blocked',
     );
+    assert.equal(pendingAfterBlockedReply[1]?.callId, 'call-updated-round');
 
     const rootEvents = await DialogPersistence.loadCourseEvents(
       root.id,
@@ -223,13 +206,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-registered-update-replaces-pending-round: PASS');
+  console.log('kernel-driver sideDialog-registered-update-replaces-pending-round: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver subdialog-registered-update-replaces-pending-round: FAIL\n${message}`,
+    `kernel-driver sideDialog-registered-update-replaces-pending-round: FAIL\n${message}`,
   );
   process.exit(1);
 });

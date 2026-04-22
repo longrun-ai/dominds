@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 
 import { DialogPersistence } from '../../main/persistence';
-import { createRootDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot);
 
-    const missingResponderDlg = await createRootDialog('tester');
+    const missingResponderDlg = await createMainDialog('tester');
     await assert.rejects(
       missingResponderDlg.receiveTellaskResult({
         type: 'tellask_result_msg',
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
       'expected missing responderId to persist no tellask_result_record',
     );
 
-    const missingContentDlg = await createRootDialog('tester');
+    const missingContentDlg = await createMainDialog('tester');
     await assert.rejects(
       missingContentDlg.receiveTellaskResult({
         type: 'tellask_result_msg',
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       'expected empty tellaskContent to persist no tellask_result_record',
     );
 
-    const missingSessionSlugDlg = await createRootDialog('tester');
+    const missingSessionSlugDlg = await createMainDialog('tester');
     await assert.rejects(
       missingSessionSlugDlg.receiveTellaskResult({
         type: 'tellask_result_msg',

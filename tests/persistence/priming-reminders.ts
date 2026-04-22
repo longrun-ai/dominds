@@ -7,12 +7,12 @@ import YAML from 'yaml';
 
 import type {
   DialogLatestFile,
-  PendingSubdialogStateRecord,
-  RootDialogMetadataFile,
+  MainDialogMetadataFile,
+  PendingSideDialogStateRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { DialogID, type DialogStore, RootDialog } from '../../main/dialog';
+import { DialogID, type DialogStore, MainDialog } from '../../main/dialog';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import {
   applyPrimingScriptsToDialog,
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   await withTempCwd(async () => {
     const primingSlug = `priming-reminders-${path.basename(process.cwd())}`;
     const sourceId = new DialogID('11/22/priming-source');
-    const sourceMeta: RootDialogMetadataFile = {
+    const sourceMeta: MainDialogMetadataFile = {
       id: sourceId.selfId,
       agentId: 'rtws',
       taskDocPath: 'plans/demo.tsk',
@@ -108,17 +108,19 @@ async function main(): Promise<void> {
     });
     await DialogPersistence._saveReminderState(sourceId, [sourceReminder], 'running');
 
-    const pendingRecord: PendingSubdialogStateRecord = {
-      subdialogId: 'sub-pending-1',
+    const pendingRecord: PendingSideDialogStateRecord = {
+      sideDialogId: 'sub-pending-1',
       createdAt: ts,
       callName: 'tellaskSessionless',
       mentionList: ['@scribe'],
       tellaskContent: 'Investigate the environment',
       targetAgentId: 'scribe',
       callId: 'call-pending-1',
+      callingCourse: 1,
+      callingGenseq: 1,
       callType: 'B',
     };
-    await DialogPersistence.savePendingSubdialogs(
+    await DialogPersistence.savePendingSideDialogs(
       sourceId,
       [pendingRecord],
       toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
@@ -136,14 +138,14 @@ async function main(): Promise<void> {
     const frontmatter = parseTopLevelFrontmatter(savedMarkdown);
     assert.ok(Array.isArray(frontmatter['reminders']), 'priming frontmatter must export reminders');
     assert.equal(
-      savedMarkdown.includes('pendingSubdialogs'),
+      savedMarkdown.includes('pendingSideDialogs'),
       false,
       'priming markdown must not export pending runtime state',
     );
 
     const replayId = new DialogID('11/22/priming-replay');
     const replayStore: DialogStore = new DiskFileDialogStore(replayId);
-    const replayDialog = new RootDialog(replayStore, 'plans/demo.tsk', replayId, 'rtws');
+    const replayDialog = new MainDialog(replayStore, 'plans/demo.tsk', replayId, 'rtws');
     replayDialog.setPersistenceStatus('running');
     await DialogPersistence.saveDialogMetadata(replayId, {
       id: replayId.selfId,
@@ -178,7 +180,7 @@ async function main(): Promise<void> {
     assert.deepEqual(persistedReminders[0]?.meta, sourceReminder.meta);
     assert.equal(persistedReminders[0]?.echoback, false);
 
-    const persistedPending = await DialogPersistence.loadPendingSubdialogs(replayId, 'running');
+    const persistedPending = await DialogPersistence.loadPendingSideDialogs(replayId, 'running');
     assert.deepEqual(
       persistedPending,
       [],
@@ -188,7 +190,7 @@ async function main(): Promise<void> {
     const replayedEvents = await DialogPersistence.readCourseEvents(replayId, 1, 'running');
     assert.equal(replayedEvents[0]?.type, 'reminders_reconciled_record');
     assert.equal(
-      replayedEvents.some((event) => event.type === 'pending_subdialogs_reconciled_record'),
+      replayedEvents.some((event) => event.type === 'pending_sideDialogs_reconciled_record'),
       false,
       'replayed priming must not append pending runtime state records',
     );

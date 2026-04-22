@@ -22,7 +22,7 @@ function isMindsPath(targetPath: string): boolean {
   return normalized === '.minds' || normalized.startsWith('.minds/');
 }
 
-function isRootDialogsPath(targetPath: string): boolean {
+function isMainDialogsPath(targetPath: string): boolean {
   // Only deny `.dialogs/**` at rtws root; allow nested `foo/.dialogs/**` for dev rtws layouts.
   const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
   return normalized === '.dialogs' || normalized.startsWith('.dialogs/');
@@ -220,7 +220,7 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
 
   // Root dialogs (`.dialogs/**`) are reserved runtime state.
   // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
-  if (isRootDialogsPath(relativePath)) {
+  if (isMainDialogsPath(relativePath)) {
     return false;
   }
 
@@ -298,7 +298,7 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
 
   // Root dialogs (`.dialogs/**`) are reserved runtime state.
   // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
-  if (isRootDialogsPath(relativePath)) {
+  if (isMainDialogsPath(relativePath)) {
     return false;
   }
 
@@ -426,7 +426,7 @@ export function getAccessDeniedMessage(
     }
   }
 
-  if (isRootDialogsPath(targetPath)) {
+  if (isMainDialogsPath(targetPath)) {
     lines.push('');
     if (language === 'zh') {
       lines.push(

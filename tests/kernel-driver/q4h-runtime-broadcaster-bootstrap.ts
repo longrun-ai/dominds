@@ -5,7 +5,7 @@ import { requireRecordingGlobalDialogEventRecorder } from '../../main/bootstrap/
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     );
     recorder.clear();
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
 
     await driveDialogStream(

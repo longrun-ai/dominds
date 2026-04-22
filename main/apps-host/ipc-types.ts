@@ -31,7 +31,7 @@ export type AppsHostKernelToolCallMessage = Readonly<{
   args: ToolArguments;
   ctx: Readonly<{
     dialogId: string;
-    rootDialogId: string;
+    mainDialogId: string;
     agentId: string;
     taskDocPath: string;
     sessionSlug?: string;
@@ -46,7 +46,7 @@ export type AppsHostKernelDynamicToolsetsMessage = Readonly<{
     memberId: string;
     taskDocPath: string;
     dialogId?: string;
-    rootDialogId?: string;
+    mainDialogId?: string;
     agentId?: string;
     sessionSlug?: string;
   }>;
@@ -394,7 +394,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     if (!isRecord(args)) throw new Error('Invalid tool_call message: args must be object');
     if (!isRecord(ctx)) throw new Error('Invalid tool_call message: ctx must be object');
     const dialogId = asString(ctx['dialogId']);
-    const rootDialogId = asString(ctx['rootDialogId']);
+    const mainDialogId = asString(ctx['mainDialogId']);
     const agentId = asString(ctx['agentId']);
     const taskDocPath = asString(ctx['taskDocPath']);
     const sessionSlugRaw = ctx['sessionSlug'];
@@ -406,7 +406,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
           : null;
     const callerId = asString(ctx['callerId']);
     if (!dialogId) throw new Error('Invalid tool_call message: ctx.dialogId required');
-    if (!rootDialogId) throw new Error('Invalid tool_call message: ctx.rootDialogId required');
+    if (!mainDialogId) throw new Error('Invalid tool_call message: ctx.mainDialogId required');
     if (!agentId) throw new Error('Invalid tool_call message: ctx.agentId required');
     if (!taskDocPath) throw new Error('Invalid tool_call message: ctx.taskDocPath required');
     if (sessionSlugRaw !== undefined && !sessionSlug) {
@@ -421,7 +421,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       args: args as ToolArguments,
       ctx: {
         dialogId,
-        rootDialogId,
+        mainDialogId,
         agentId,
         taskDocPath,
         sessionSlug: normalizedSessionSlug,
@@ -439,8 +439,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     const taskDocPath = asString(ctx['taskDocPath']);
     const dialogIdRaw = ctx['dialogId'];
     const dialogId = dialogIdRaw === undefined ? undefined : asString(dialogIdRaw);
-    const rootDialogIdRaw = ctx['rootDialogId'];
-    const rootDialogId = rootDialogIdRaw === undefined ? undefined : asString(rootDialogIdRaw);
+    const mainDialogIdRaw = ctx['mainDialogId'];
+    const mainDialogId = mainDialogIdRaw === undefined ? undefined : asString(mainDialogIdRaw);
     const agentIdRaw = ctx['agentId'];
     const agentId = agentIdRaw === undefined ? undefined : asString(agentIdRaw);
     const sessionSlugRaw = ctx['sessionSlug'];
@@ -450,9 +450,9 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     if (dialogIdRaw !== undefined && dialogId === null) {
       throw new Error('Invalid dynamic_toolsets message: ctx.dialogId must be string when present');
     }
-    if (rootDialogIdRaw !== undefined && rootDialogId === null) {
+    if (mainDialogIdRaw !== undefined && mainDialogId === null) {
       throw new Error(
-        'Invalid dynamic_toolsets message: ctx.rootDialogId must be string when present',
+        'Invalid dynamic_toolsets message: ctx.mainDialogId must be string when present',
       );
     }
     if (agentIdRaw !== undefined && agentId === null) {
@@ -464,7 +464,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       );
     }
     const normalizedDialogId = dialogId ?? undefined;
-    const normalizedRootDialogId = rootDialogId ?? undefined;
+    const normalizedMainDialogId = mainDialogId ?? undefined;
     const normalizedAgentId = agentId ?? undefined;
     const normalizedSessionSlug = sessionSlug ?? undefined;
     return {
@@ -474,7 +474,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
         memberId,
         taskDocPath,
         dialogId: normalizedDialogId,
-        rootDialogId: normalizedRootDialogId,
+        mainDialogId: normalizedMainDialogId,
         agentId: normalizedAgentId,
         sessionSlug: normalizedSessionSlug,
       },

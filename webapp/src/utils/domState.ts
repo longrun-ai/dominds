@@ -126,19 +126,19 @@ export function setCurrentDialogId(
 /**
  * Get current root dialog ID from DOM
  */
-export function getCurrentRootDialogId(element: Element = document.body): string | null {
+export function getCurrentMainDialogId(element: Element = document.body): string | null {
   return getDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID);
 }
 
 /**
  * Set current root dialog ID in DOM
  */
-export function setCurrentRootDialogId(
-  rootDialogId: string | null,
+export function setCurrentMainDialogId(
+  mainDialogId: string | null,
   element: Element = document.body,
 ): void {
-  if (rootDialogId) {
-    setDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID, rootDialogId);
+  if (mainDialogId) {
+    setDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID, mainDialogId);
   } else {
     removeDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID);
   }

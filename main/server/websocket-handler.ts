@@ -16,7 +16,7 @@ import type {
   CreateDialogErrorCode,
   CreateDialogRequest,
   CreateDialogResult,
-  DeclareSubdialogDeadRequest,
+  DeclareSideDialogDeadRequest,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
   DisplayCourseRequest,
@@ -62,17 +62,17 @@ import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
 import { installGlobalDialogEventBroadcaster } from '../bootstrap/global-dialog-event-broadcaster';
-import { Dialog, DialogID, RootDialog } from '../dialog';
+import { Dialog, DialogID, MainDialog } from '../dialog';
 import {
-  clearRootDialogQuarantining,
-  clearRootDialogQuarantiningIfIdle,
-  forceStopActiveRunsForRootDialog,
+  clearMainDialogQuarantining,
+  clearMainDialogQuarantiningIfIdle,
+  forceStopActiveRunsForMainDialog,
   getRunControlCountsSnapshot,
   getStopRequestedReason,
   hasActiveRun,
   isDialogLatestResumable,
   loadDialogExecutionMarker,
-  markRootDialogQuarantining,
+  markMainDialogQuarantining,
   refreshRunControlProjectionFromPersistenceFacts,
   requestEmergencyStopAll,
   requestInterruptDialog,
@@ -83,11 +83,11 @@ import {
 import { globalDialogRegistry } from '../dialog-global-registry';
 import {
   ensureDialogLoaded,
-  getOrRestoreRootDialog,
+  getOrRestoreMainDialog,
   type DialogPersistenceStatus,
 } from '../dialog-instance-registry';
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
-import { driveDialogStream, supplyResponseToSupdialog } from '../llm/kernel-driver';
+import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/kernel-driver/runtime';
 import { createLogger } from '../log';
 import {
@@ -100,8 +100,8 @@ import {
 import { findDomindsPersistenceFileError } from '../persistence-errors';
 import {
   applyPrimingScriptsToDialog,
-  buildRootDialogPrimingMetadata,
-  getRootDialogPrimingConfig,
+  buildMainDialogPrimingMetadata,
+  getMainDialogPrimingConfig,
 } from '../priming';
 import {
   clearResolvedProblems,
@@ -320,7 +320,7 @@ function readOptionalPersistableDialogStatus(raw: unknown):
   return { kind: 'value', status };
 }
 
-function formatDeclaredDeadSubdialogNotice(
+function formatDeclaredDeadSideDialogNotice(
   language: 'zh' | 'en',
   dialogId: string,
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
@@ -338,11 +338,11 @@ function formatDeclaredDeadSubdialogNotice(
 
   switch (callName) {
     case 'tellask':
-      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new Sideline dialog, but previous context is no longer retained; include the latest complete context in the new tellask body.`;
     case 'tellaskSessionless':
-      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was a one-shot sideline dialog; if you still need the work, start a new sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was a one-shot Sideline dialog; if you still need the work, start a new Sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
     case 'freshBootsReasoning':
-      return `${formatSystemNoticePrefix('en')} sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was an FBR sideline dialog; if you still need the work, start a new FBR sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was an FBR Sideline dialog; if you still need the work, start a new FBR Sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
   }
 }
 
@@ -388,11 +388,11 @@ function buildResumeIneligibleMessage(
   switch (state.kind) {
     case 'blocked':
       switch (state.reason.kind) {
-        case 'needs_human_input_and_subdialogs':
+        case 'needs_human_input_and_sideDialogs':
           return {
-            reason: 'needs_human_input_and_subdialogs',
+            reason: 'needs_human_input_and_sideDialogs',
             message:
-              'Fresh state scan shows this dialog is waiting for both human input and sideline dialogs, so it cannot resume yet.',
+              'Fresh state scan shows this dialog is waiting for both human input and Sideline dialogs, so it cannot resume yet.',
           };
         case 'needs_human_input':
           return {
@@ -400,11 +400,11 @@ function buildResumeIneligibleMessage(
             message:
               'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
           };
-        case 'waiting_for_subdialogs':
+        case 'waiting_for_sideDialogs':
           return {
-            reason: 'waiting_for_subdialogs',
+            reason: 'waiting_for_sideDialogs',
             message:
-              'Fresh state scan shows this dialog is waiting for sideline dialogs, so it cannot resume yet.',
+              'Fresh state scan shows this dialog is waiting for Sideline dialogs, so it cannot resume yet.',
           };
         default: {
           const _exhaustive: never = state.reason;
@@ -704,8 +704,8 @@ export async function handleWebSocketMessage(
         await handleResumeAll(ws, packet);
         break;
 
-      case 'declare_subdialog_dead':
-        await handleDeclareSubdialogDead(ws, packet);
+      case 'declare_sideDialog_dead':
+        await handleDeclareSideDialogDead(ws, packet);
         break;
 
       default:
@@ -728,9 +728,9 @@ export async function handleWebSocketMessage(
   }
 }
 
-async function handleDeclareSubdialogDead(
+async function handleDeclareSideDialogDead(
   ws: WebSocket,
-  packet: DeclareSubdialogDeadRequest,
+  packet: DeclareSideDialogDeadRequest,
 ): Promise<void> {
   const dialog = packet.dialog;
   const noteRaw = typeof packet.note === 'string' ? packet.note : '';
@@ -739,7 +739,7 @@ async function handleDeclareSubdialogDead(
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: 'declare_subdialog_dead requires dialog.selfId/rootId',
+        message: 'declare_sideDialog_dead requires dialog.selfId/rootId',
       }),
     );
     return;
@@ -749,7 +749,7 @@ async function handleDeclareSubdialogDead(
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: 'declare_subdialog_dead is allowed only for subdialogs (selfId must differ)',
+        message: 'declare_sideDialog_dead is allowed only for sideDialogs (selfId must differ)',
       }),
     );
     return;
@@ -761,7 +761,7 @@ async function handleDeclareSubdialogDead(
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: 'declare_subdialog_dead requires status running, completed, or archived',
+        message: 'declare_sideDialog_dead requires status running, completed, or archived',
       }),
     );
     return;
@@ -772,7 +772,7 @@ async function handleDeclareSubdialogDead(
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: 'declare_subdialog_dead is available only for running dialogs',
+        message: 'declare_sideDialog_dead is available only for running dialogs',
       }),
     );
     return;
@@ -802,42 +802,45 @@ async function handleDeclareSubdialogDead(
   });
   await setDialogDisplayState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
 
-  // If a supdialog is waiting on this subdialog (pending-subdialogs.json), supply a system-style
-  // response so the supdialog can unblock and the model sees the failure reason.
+  // If a askerDialog is waiting on this sideDialog (pending-sideDialogs.json), supply a system-style
+  // response so the askerDialog can unblock and the model sees the failure reason.
   const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
   if (!metadata) return;
 
   if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
     const rootRestored = await restoreDialogForDrive(new DialogID(dialogIdObj.rootId), 'running');
-    if (!(rootRestored instanceof RootDialog)) {
+    if (!(rootRestored instanceof MainDialog)) {
       throw new Error(`Expected root dialog instance for ${dialogIdObj.rootId}`);
     }
-    const removed = rootRestored.unregisterSubdialog(metadata.agentId, metadata.sessionSlug);
+    const removed = rootRestored.unregisterSideDialog(metadata.agentId, metadata.sessionSlug);
     if (removed) {
-      await rootRestored.saveSubdialogRegistry();
+      await rootRestored.saveSideDialogRegistry();
     }
   }
 
-  if (!('assignmentFromSup' in metadata)) return;
-  if (!metadata.assignmentFromSup) return;
+  if (!('assignmentFromAsker' in metadata)) return;
+  if (!metadata.assignmentFromAsker) return;
 
-  const callerDialogId = metadata.assignmentFromSup.callerDialogId;
+  const callerDialogId = metadata.assignmentFromAsker.callerDialogId;
   if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') return;
 
   const callerDialogIdObj = new DialogID(callerDialogId, dialogIdObj.rootId);
-  const pending = await DialogPersistence.loadPendingSubdialogs(callerDialogIdObj, requestedStatus);
-  const pendingRecord = pending.find((p) => p.subdialogId === dialogIdObj.selfId);
+  const pending = await DialogPersistence.loadPendingSideDialogs(
+    callerDialogIdObj,
+    requestedStatus,
+  );
+  const pendingRecord = pending.find((p) => p.sideDialogId === dialogIdObj.selfId);
   if (!pendingRecord) {
-    // Caller is not waiting on this subdialog anymore; do not auto-revive.
+    // Caller is not waiting on this sideDialog anymore; do not auto-revive.
     return;
   }
 
   const parentDialog = await restoreDialogForDrive(callerDialogIdObj, 'running');
 
-  const responseText = formatDeclaredDeadSubdialogNotice(
+  const responseText = formatDeclaredDeadSideDialogNotice(
     getWorkLanguage(),
     dialogIdObj.valueOf(),
-    metadata.assignmentFromSup.callName,
+    metadata.assignmentFromAsker.callName,
   );
   const responseTextWithNote =
     note === ''
@@ -846,12 +849,12 @@ async function handleDeclareSubdialogDead(
         ? `${responseText}\n\n使用者补充（来自输入框）：\n${note}`
         : `${responseText}\n\nUser note (from the input box):\n${note}`;
 
-  await supplyResponseToSupdialog(
+  await supplyResponseToAskerDialog(
     parentDialog,
     dialogIdObj,
     responseTextWithNote,
     pendingRecord.callType,
-    metadata.assignmentFromSup.callId,
+    metadata.assignmentFromAsker.callId,
     'failed',
   );
 }
@@ -886,7 +889,7 @@ async function handleSetDiligencePush(
       return;
     }
 
-    // Diligence Push is root-dialog state. Even if a subdialog is displayed, always mutate the root.
+    // Diligence Push is root-dialog state. Even if a sideDialog is displayed, always mutate the root.
     const dialogIdObj = new DialogID(rootId);
     const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
     if (requestedStatusInput.kind === 'invalid') {
@@ -927,9 +930,9 @@ async function handleSetDiligencePush(
     );
 
     // Update live in-memory instance if it's loaded.
-    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, requestedStatus);
-    if (rootDialog) {
-      rootDialog.disableDiligencePush = disableDiligencePush;
+    const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, requestedStatus);
+    if (mainDialog) {
+      mainDialog.disableDiligencePush = disableDiligencePush;
     }
 
     const msg: DiligencePushUpdatedMessage = {
@@ -944,9 +947,9 @@ async function handleSetDiligencePush(
       requestedStatus === 'running' &&
       prevDisableDiligencePush &&
       !disableDiligencePush &&
-      rootDialog instanceof RootDialog;
+      mainDialog instanceof MainDialog;
     if (shouldTriggerImmediateDiligence) {
-      void maybeTriggerImmediateDiligencePrompt(rootDialog);
+      void maybeTriggerImmediateDiligencePrompt(mainDialog);
     }
   } catch (error: unknown) {
     log.warn('Failed to handle set_diligence_push', error);
@@ -965,61 +968,61 @@ function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
   return Math.max(0, Math.floor(value));
 }
 
-async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Promise<void> {
+async function maybeTriggerImmediateDiligencePrompt(mainDialog: MainDialog): Promise<void> {
   try {
-    if (rootDialog.disableDiligencePush) {
+    if (mainDialog.disableDiligencePush) {
       return;
     }
 
-    if (hasActiveRun(rootDialog.id)) {
+    if (hasActiveRun(mainDialog.id)) {
       return;
     }
-    if (getStopRequestedReason(rootDialog.id) !== undefined) {
+    if (getStopRequestedReason(mainDialog.id) !== undefined) {
       return;
     }
-    const executionMarker = await loadDialogExecutionMarker(rootDialog.id, 'running');
+    const executionMarker = await loadDialogExecutionMarker(mainDialog.id, 'running');
     if (executionMarker?.kind === 'interrupted' || executionMarker?.kind === 'dead') {
       return;
     }
 
-    const suspension = await rootDialog.getSuspensionStatus();
+    const suspension = await mainDialog.getSuspensionStatus();
     if (!suspension.canDrive) {
       return;
     }
 
     const team = await Team.load();
     const prepared = await maybePrepareDiligenceAutoContinuePrompt({
-      dlg: rootDialog,
-      isRootDialog: true,
-      remainingBudget: rootDialog.diligencePushRemainingBudget,
-      diligencePushMax: resolveMemberDiligencePushMax(team, rootDialog.agentId),
+      dlg: mainDialog,
+      isMainDialog: true,
+      remainingBudget: mainDialog.diligencePushRemainingBudget,
+      diligencePushMax: resolveMemberDiligencePushMax(team, mainDialog.agentId),
     });
 
-    rootDialog.diligencePushRemainingBudget = prepared.nextRemainingBudget;
-    await DialogPersistence.mutateDialogLatest(rootDialog.id, () => ({
+    mainDialog.diligencePushRemainingBudget = prepared.nextRemainingBudget;
+    await DialogPersistence.mutateDialogLatest(mainDialog.id, () => ({
       kind: 'patch',
-      patch: { diligencePushRemainingBudget: rootDialog.diligencePushRemainingBudget },
+      patch: { diligencePushRemainingBudget: mainDialog.diligencePushRemainingBudget },
     }));
 
     if (prepared.kind !== 'disabled') {
-      postDialogEvent(rootDialog, {
+      postDialogEvent(mainDialog, {
         type: 'diligence_budget_evt',
         maxInjectCount: prepared.maxInjectCount,
         injectedCount: Math.max(0, prepared.maxInjectCount - prepared.nextRemainingBudget),
         remainingCount: Math.max(0, prepared.nextRemainingBudget),
-        disableDiligencePush: rootDialog.disableDiligencePush,
+        disableDiligencePush: mainDialog.disableDiligencePush,
       });
     }
 
     if (prepared.kind === 'prompt') {
-      await driveDialogStream(rootDialog, prepared.prompt, true, {
+      await driveDialogStream(mainDialog, prepared.prompt, true, {
         source: 'ws_diligence_push',
         reason: 'enable_keep_going_immediate_prompt',
       });
     }
   } catch (error) {
     log.warn('Failed to trigger immediate diligence prompt after enabling keep-going', error, {
-      dialogId: rootDialog.id.valueOf(),
+      dialogId: mainDialog.id.valueOf(),
     });
   }
 }
@@ -1046,7 +1049,7 @@ async function handleRefillDiligencePushBudget(
     return;
   }
 
-  const rootDialogId = new DialogID(rootId);
+  const mainDialogId = new DialogID(rootId);
   const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
   if (requestedStatusInput.kind === 'invalid') {
     ws.send(
@@ -1059,23 +1062,23 @@ async function handleRefillDiligencePushBudget(
   }
   const requestedStatus =
     requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
-  const rootMeta = await DialogPersistence.loadDialogMetadata(rootDialogId, requestedStatus);
+  const rootMeta = await DialogPersistence.loadDialogMetadata(mainDialogId, requestedStatus);
   if (!rootMeta) {
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: `Dialog ${rootDialogId.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
+        message: `Dialog ${mainDialogId.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
       }),
     );
     return;
   }
 
-  const rootDialog = await getOrRestoreRootDialog(rootDialogId.rootId, requestedStatus);
-  if (!rootDialog) {
+  const mainDialog = await getOrRestoreMainDialog(mainDialogId.rootId, requestedStatus);
+  if (!mainDialog) {
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: `Root dialog ${rootDialogId.rootId} is not available for refill`,
+        message: `Root dialog ${mainDialogId.rootId} is not available for refill`,
       }),
     );
     return;
@@ -1083,30 +1086,30 @@ async function handleRefillDiligencePushBudget(
 
   const team = await Team.load();
   const configuredMax = normalizeDiligencePushMax(
-    resolveMemberDiligencePushMax(team, rootDialog.agentId),
+    resolveMemberDiligencePushMax(team, mainDialog.agentId),
   );
 
   if (configuredMax > 0) {
-    rootDialog.diligencePushRemainingBudget = configuredMax;
+    mainDialog.diligencePushRemainingBudget = configuredMax;
   } else {
-    rootDialog.diligencePushRemainingBudget =
-      clampNonNegativeFiniteInt(rootDialog.diligencePushRemainingBudget, 0) + 3;
+    mainDialog.diligencePushRemainingBudget =
+      clampNonNegativeFiniteInt(mainDialog.diligencePushRemainingBudget, 0) + 3;
   }
   await DialogPersistence.mutateDialogLatest(
-    rootDialogId,
+    mainDialogId,
     () => ({
       kind: 'patch',
-      patch: { diligencePushRemainingBudget: rootDialog.diligencePushRemainingBudget },
+      patch: { diligencePushRemainingBudget: mainDialog.diligencePushRemainingBudget },
     }),
     requestedStatus,
   );
 
-  postDialogEvent(rootDialog, {
+  postDialogEvent(mainDialog, {
     type: 'diligence_budget_evt',
     maxInjectCount: configuredMax > 0 ? configuredMax : 0,
     injectedCount: 0,
-    remainingCount: rootDialog.diligencePushRemainingBudget,
-    disableDiligencePush: rootDialog.disableDiligencePush,
+    remainingCount: mainDialog.diligencePushRemainingBudget,
+    disableDiligencePush: mainDialog.disableDiligencePush,
   });
 }
 
@@ -1187,8 +1190,8 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     // Create DiskFileDialogStore for file-based persistence
     const dialogUI = new DiskFileDialogStore(dialogId);
 
-    // Create RootDialog instance with the new store
-    const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    // Create MainDialog instance with the new store
+    const dialog = new MainDialog(dialogUI, taskDocPath, dialogId, agentId);
     // display_dialog is intentionally read-only. Do not trigger replyTellask* recovery here:
     // merely opening a dialog must not deliver persisted replies or kick off follow-up drives.
     syncDialogLanguagePreference(dialog, resolveUserLanguageCode(ws, undefined, dialog));
@@ -1202,7 +1205,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
-      priming: buildRootDialogPrimingMetadata(priming),
+      priming: buildMainDialogPrimingMetadata(priming),
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -1223,7 +1226,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
-        subdialogCount: 0,
+        sideDialogCount: 0,
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
@@ -1295,10 +1298,10 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
 
     // Extract dialog ID from DialogIdent
     let dialogId = dialogIdent.selfId;
-    let rootDialogId = dialogIdent.rootId;
+    let mainDialogId = dialogIdent.rootId;
 
     // Handle case where dialogIdent properties might be objects instead of strings
-    if (typeof dialogId !== 'string' || typeof rootDialogId !== 'string') {
+    if (typeof dialogId !== 'string' || typeof mainDialogId !== 'string') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1314,12 +1317,12 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     const existing = wsLiveDlg.get(ws);
     if (existing) {
       const existingId = existing.id;
-      const isSameDialog = existingId.selfId === dialogId && existingId.rootId === rootDialogId;
+      const isSameDialog = existingId.selfId === dialogId && existingId.rootId === mainDialogId;
       if (isSameDialog) {
         log.debug(
           'display_dialog: refreshing the same dialog; cancelling existing subscription to prevent duplicate stream events',
           undefined,
-          { dialogId, rootDialogId },
+          { dialogId, mainDialogId },
         );
       } else {
         log.debug(
@@ -1327,14 +1330,14 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           undefined,
           {
             previousDialogId: existingId.valueOf(),
-            nextDialogId: new DialogID(dialogId, rootDialogId).valueOf(),
+            nextDialogId: new DialogID(dialogId, mainDialogId).valueOf(),
           },
         );
       }
       cleanupWsClient(ws);
     }
 
-    const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const dialogIdObj = new DialogID(dialogId, mainDialogId);
     const requestedStatusInput = readOptionalPersistableDialogStatus(
       (dialogIdent as { status?: unknown }).status,
     );
@@ -1358,7 +1361,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       );
     }
     const rootPrimingConfig =
-      dialogIdObj.selfId === dialogIdObj.rootId ? getRootDialogPrimingConfig(metadata) : undefined;
+      dialogIdObj.selfId === dialogIdObj.rootId ? getMainDialogPrimingConfig(metadata) : undefined;
     const showPrimingEventsInUi = rootPrimingConfig?.showInUi !== false;
 
     const decidedCourse =
@@ -1366,19 +1369,19 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       (dialogState.currentCourse ?? 1);
 
     const enableLive = requestedStatus === 'running';
-    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, requestedStatus);
-    if (!rootDialog) {
+    const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, requestedStatus);
+    if (!mainDialog) {
       throw new Error('Root dialog not found');
     }
     if (enableLive) {
-      globalDialogRegistry.register(rootDialog);
+      globalDialogRegistry.register(mainDialog);
     }
 
     let dialog: Dialog;
     if (dialogIdObj.selfId === dialogIdObj.rootId) {
-      dialog = rootDialog;
+      dialog = mainDialog;
     } else {
-      const loaded = await ensureDialogLoaded(rootDialog, dialogIdObj, requestedStatus);
+      const loaded = await ensureDialogLoaded(mainDialog, dialogIdObj, requestedStatus);
       if (!loaded) {
         throw new Error('Dialog not found');
       }
@@ -1429,28 +1432,44 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
         ? rootLatest.disableDiligencePush
         : defaultDisableDiligencePush;
     const effectiveDisableDiligencePush = persistedDisableDiligencePush;
-    rootDialog.disableDiligencePush = effectiveDisableDiligencePush;
-    const derivedSupdialogId =
-      metadata.assignmentFromSup?.callerDialogId &&
-      metadata.assignmentFromSup.callerDialogId.trim() !== ''
-        ? metadata.assignmentFromSup.callerDialogId
-        : metadata.supdialogId;
+    mainDialog.disableDiligencePush = effectiveDisableDiligencePush;
+    let derivedAskerDialogId: string | undefined;
+    if (dialogIdObj.selfId !== dialogIdObj.rootId) {
+      const assignmentFromAsker = metadata.assignmentFromAsker;
+      derivedAskerDialogId = assignmentFromAsker ? assignmentFromAsker.callerDialogId.trim() : '';
+    }
+    if (dialogIdObj.selfId !== dialogIdObj.rootId && !derivedAskerDialogId) {
+      const error = new Error(
+        `dialog_ready invariant violation: missing assignmentFromAsker.callerDialogId ` +
+          `(rootId=${dialogIdObj.rootId}, selfId=${dialogIdObj.selfId}, status=${requestedStatus})`,
+      );
+      log.error(
+        'dialog_ready invariant violation: missing assignmentFromAsker.callerDialogId',
+        error,
+        {
+          rootId: dialogIdObj.rootId,
+          selfId: dialogIdObj.selfId,
+          status: requestedStatus,
+        },
+      );
+      throw error;
+    }
     const dialogReadyResponse: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
         selfId: dialogId,
-        rootId: rootDialogId,
+        rootId: mainDialogId,
         status: requestedStatus,
       },
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
-      supdialogId: derivedSupdialogId,
+      askerDialogId: derivedAskerDialogId,
       sessionSlug: metadata.sessionSlug,
-      assignmentFromSup: metadata.assignmentFromSup,
+      assignmentFromAsker: metadata.assignmentFromAsker,
       disableDiligencePush: effectiveDisableDiligencePush,
       diligencePushMax,
       diligencePushRemainingBudget: clampNonNegativeFiniteInt(
-        rootDialog.diligencePushRemainingBudget,
+        mainDialog.diligencePushRemainingBudget,
         diligencePushMax > 0 ? diligencePushMax : 0,
       ),
     };
@@ -1526,7 +1545,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
     const allQuestions = await DialogPersistence.loadAllQ4HState();
 
     // Transform to wire `Q4HStateResponse` question entries.
-    // `selfId` + `rootId` uniquely identify the originating dialog (including subdialogs).
+    // `selfId` + `rootId` uniquely identify the originating dialog (including sideDialogs).
     const questions = allQuestions.map((q) => ({
       id: q.id,
       selfId: q.selfId,
@@ -1592,10 +1611,10 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
 
     // Extract dialog ID from DialogIdent
     let dialogIdStr = dialog.selfId;
-    let rootDialogIdStr = dialog.rootId;
+    let mainDialogIdStr = dialog.rootId;
 
     // Handle case where dialog properties might be objects instead of strings
-    if (typeof dialogIdStr !== 'string' || typeof rootDialogIdStr !== 'string') {
+    if (typeof dialogIdStr !== 'string' || typeof mainDialogIdStr !== 'string') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1605,7 +1624,7 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
       return;
     }
 
-    const dialogId = new DialogID(dialogIdStr, rootDialogIdStr);
+    const dialogId = new DialogID(dialogIdStr, mainDialogIdStr);
 
     try {
       const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
@@ -1632,13 +1651,13 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
       const totalCourses =
         (await DialogPersistence.getCurrentCourseNumber(dialogId, requestedStatus)) || course;
 
-      const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, requestedStatus);
-      if (!rootDialog) return;
+      const mainDialog = await getOrRestoreMainDialog(dialogId.rootId, requestedStatus);
+      if (!mainDialog) return;
 
       const restoredDialog =
         dialogId.selfId === dialogId.rootId
-          ? rootDialog
-          : await ensureDialogLoaded(rootDialog, dialogId, requestedStatus);
+          ? mainDialog
+          : await ensureDialogLoaded(mainDialog, dialogId, requestedStatus);
       if (!restoredDialog) return;
 
       const store = restoredDialog.dlgStore;
@@ -1687,10 +1706,10 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 
     // Extract dialog ID from DialogIdent
     const dialogId = dialogIdent.selfId;
-    const rootDialogId = dialogIdent.rootId;
+    const mainDialogId = dialogIdent.rootId;
 
     // Validate dialog identifiers
-    if (typeof dialogId !== 'string' || typeof rootDialogId !== 'string') {
+    if (typeof dialogId !== 'string' || typeof mainDialogId !== 'string') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1701,7 +1720,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
-    const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const dialogIdObj = new DialogID(dialogId, mainDialogId);
     const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
     if (latest?.executionMarker?.kind === 'dead') {
       ws.send(
@@ -1723,7 +1742,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
-    // drive it directly to preserve in-memory state (pending subdialogs, teammate tellask tracking, etc).
+    // drive it directly to preserve in-memory state (pending sideDialogs, teammate tellask tracking, etc).
     //
     // IMPORTANT: do not drive a view-only dialog instance here. When users browse a completed/archived
     // dialog, handleDisplayDialog restores it with dialog.status set to completed/archived. If that
@@ -1735,7 +1754,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     if (
       existingDialog &&
       existingDialog.id.selfId === dialogId &&
-      existingDialog.id.rootId === rootDialogId &&
+      existingDialog.id.rootId === mainDialogId &&
       existingDialog.status === 'running' &&
       existingSub &&
       existingSub.dialogKey === existingDialog.id.valueOf()
@@ -1771,20 +1790,20 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
-    // Dialog not found in wsLiveDlg - drive using the canonical root/subdialog instances.
-    // This supports driving subdialogs and cross-client revival without creating duplicate dialog objects.
+    // Dialog not found in wsLiveDlg - drive using the canonical root/sideDialog instances.
+    // This supports driving sideDialogs and cross-client revival without creating duplicate dialog objects.
     try {
-      const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
-      if (!rootDialog) {
+      const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, 'running');
+      if (!mainDialog) {
         ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
         return;
       }
-      globalDialogRegistry.register(rootDialog);
+      globalDialogRegistry.register(mainDialog);
 
       const dialog =
         dialogIdObj.selfId === dialogIdObj.rootId
-          ? rootDialog
-          : await ensureDialogLoaded(rootDialog, dialogIdObj, 'running');
+          ? mainDialog
+          : await ensureDialogLoaded(mainDialog, dialogIdObj, 'running');
       if (!dialog) {
         ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
         return;
@@ -1848,22 +1867,22 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 }
 
 async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): Promise<Dialog> {
-  const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, status);
-  if (!rootDialog) {
+  const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, status);
+  if (!mainDialog) {
     throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
   }
-  globalDialogRegistry.register(rootDialog);
+  globalDialogRegistry.register(mainDialog);
 
   // This helper is intentionally for business operations that will mutate or continue execution
-  // immediately after restore (for example resume_dialog, resume_all, or dead-subdialog recovery).
+  // immediately after restore (for example resume_dialog, resume_all, or dead-sideDialog recovery).
   // Because those operations are execution-oriented, we repair pending replyTellask* delivery
   // before handing the dialog back to the caller.
   if (dialogIdObj.selfId === dialogIdObj.rootId) {
-    await recoverPendingReplyTellaskCallsForDialog(rootDialog);
-    return rootDialog;
+    await recoverPendingReplyTellaskCallsForDialog(mainDialog);
+    return mainDialog;
   }
 
-  const sub = await ensureDialogLoaded(rootDialog, dialogIdObj, status);
+  const sub = await ensureDialogLoaded(mainDialog, dialogIdObj, status);
   if (!sub) {
     throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
   }
@@ -2033,10 +2052,10 @@ async function handleReceiveHumanReply(
 
     // Extract dialog ID from DialogIdent
     const dialogId = dialogIdent.selfId;
-    const rootDialogId = dialogIdent.rootId;
+    const mainDialogId = dialogIdent.rootId;
 
     // Validate dialog identifiers
-    if (typeof dialogId !== 'string' || typeof rootDialogId !== 'string') {
+    if (typeof dialogId !== 'string' || typeof mainDialogId !== 'string') {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -2047,7 +2066,7 @@ async function handleReceiveHumanReply(
       return;
     }
 
-    const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const dialogIdObj = new DialogID(dialogId, mainDialogId);
     const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
     if (latest?.executionMarker?.kind === 'dead') {
       ws.send(
@@ -2067,18 +2086,18 @@ async function handleReceiveHumanReply(
     };
     const preparedAttachments = prepareUserImageAttachments(attachments);
 
-    // Restore the canonical dialog instances (root + subdialogs) to avoid duplicates.
-    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
-    if (!rootDialog) {
+    // Restore the canonical dialog instances (root + sideDialogs) to avoid duplicates.
+    const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, 'running');
+    if (!mainDialog) {
       ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
       return;
     }
-    globalDialogRegistry.register(rootDialog);
+    globalDialogRegistry.register(mainDialog);
 
     const dialog =
       dialogIdObj.selfId === dialogIdObj.rootId
-        ? rootDialog
-        : await ensureDialogLoaded(rootDialog, dialogIdObj, 'running');
+        ? mainDialog
+        : await ensureDialogLoaded(mainDialog, dialogIdObj, 'running');
     if (!dialog) {
       ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
       return;
@@ -2120,6 +2139,7 @@ async function handleReceiveHumanReply(
     const askHumanCarryoverContent = formatTellaskCarryoverResultContent({
       originCourse: askHumanOriginCourse,
       callName: 'askHuman',
+      callId: removedQuestion.callId,
       responderId: 'human',
       tellaskContent: removedQuestion.tellaskContent,
       responseBody: effectivePrompt.content,
@@ -2154,10 +2174,10 @@ async function handleReceiveHumanReply(
     };
     postDialogEvent(dialog, answeredEvent);
 
-    const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
-    if (hasPendingSubdialogs) {
+    const hasPendingSideDialogs = await dialog.hasPendingSideDialogs();
+    if (hasPendingSideDialogs) {
       // This queued item is only the post-answer continuation input that resumes the suspended
-      // round after subdialogs settle. The human answer fact has already been persisted above as
+      // round after sideDialogs settle. The human answer fact has already been persisted above as
       // askHuman tellask result/carryover and must not be reinterpreted as a new user prompt.
       dialog.queueDeferredQ4HAnswerPrompt({
         prompt: effectivePrompt.content,
@@ -2168,7 +2188,7 @@ async function handleReceiveHumanReply(
         q4hAnswerCallId: askHumanCallId,
       });
       log.debug(
-        'Deferred post-Q4H continuation input until pending subdialogs resolve',
+        'Deferred post-Q4H continuation input until pending sideDialogs resolve',
         undefined,
         {
           rootId: dialog.id.rootId,
@@ -2238,7 +2258,7 @@ export function setupWebSocketServer(
 
   // Broadcast global dialog events to all connected clients:
   // - Q4H updates are rtws-global state in WebUI
-  // - subdialog creation must refresh hierarchy/list even when current subscription is elsewhere
+  // - sideDialog creation must refresh hierarchy/list even when current subscription is elsewhere
   // - dlg_touched_evt keeps dialog list timestamps/reordering in sync across clients
   installGlobalDialogEventBroadcaster({
     label: 'websocket-server',
@@ -2253,23 +2273,23 @@ export function setupWebSocketServer(
     broadcastToClients(msg);
   };
 
-  setPrepareDialogQuarantineHook(async ({ rootDialogId, status }) => {
+  setPrepareDialogQuarantineHook(async ({ mainDialogId, status }) => {
     if (status !== 'running') {
       return;
     }
-    markRootDialogQuarantining(rootDialogId);
-    await forceStopActiveRunsForRootDialog(rootDialogId);
+    markMainDialogQuarantining(mainDialogId);
+    await forceStopActiveRunsForMainDialog(mainDialogId);
   });
 
-  setFinalizeDialogQuarantineHook(({ rootDialogId, status, quarantined }) => {
+  setFinalizeDialogQuarantineHook(({ mainDialogId, status, quarantined }) => {
     if (status !== 'running') {
       return;
     }
     if (quarantined) {
-      clearRootDialogQuarantiningIfIdle(rootDialogId);
+      clearMainDialogQuarantiningIfIdle(mainDialogId);
       return;
     }
-    clearRootDialogQuarantining(rootDialogId);
+    clearMainDialogQuarantining(mainDialogId);
   });
 
   setDialogsQuarantinedBroadcaster((msg) => {

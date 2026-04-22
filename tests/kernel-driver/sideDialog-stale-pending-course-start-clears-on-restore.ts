@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 
 import { DialogID } from '../../main/dialog';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../../main/dialog-instance-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -20,12 +20,12 @@ async function main(): Promise<void> {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     const tellaskContent = 'Clear stale pending course-start prompt after restore.';
     const callId = 'call-stale-pending-course-start';
 
-    const subdialog = await root.createSubDialog('pangu', ['@pangu'], tellaskContent, {
+    const sideDialog = await root.createSideDialog('pangu', ['@pangu'], tellaskContent, {
       callName: 'tellask',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
@@ -33,10 +33,10 @@ async function main(): Promise<void> {
       sessionSlug: 'stale-pending-course-start',
       collectiveTargets: ['pangu'],
     });
-    subdialog.disableDiligencePush = true;
-    await DialogPersistence.savePendingSubdialogs(root.id, [
+    sideDialog.disableDiligencePush = true;
+    await DialogPersistence.savePendingSideDialogs(root.id, [
       {
-        subdialogId: subdialog.id.selfId,
+        sideDialogId: sideDialog.id.selfId,
         createdAt: '2026-04-15 00:00:00',
         callName: 'tellask',
         mentionList: ['@pangu'],
@@ -44,18 +44,19 @@ async function main(): Promise<void> {
         targetAgentId: 'pangu',
         callId,
         callingCourse: 1,
+        callingGenseq: 1,
         callType: 'B',
         sessionSlug: 'stale-pending-course-start',
       },
     ]);
 
-    await subdialog.startNewCourse(
+    await sideDialog.startNewCourse(
       formatNewCourseStartPrompt('en', {
         nextCourse: 2,
         source: 'clear_mind',
       }),
     );
-    const queuedPrompt = subdialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekUpNext();
     assert.ok(queuedPrompt, 'expected clear_mind to queue a pending course-start prompt');
 
     await writeMockDb(tmpRoot, [
@@ -65,10 +66,10 @@ async function main(): Promise<void> {
         response: 'Prompt persisted before simulated crash window.',
       },
     ]);
-    await driveDialogStream(subdialog, undefined, true);
+    await driveDialogStream(sideDialog, undefined, true);
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    await DialogPersistence.mutateDialogLatest(subdialog.id, (previous) => ({
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, (previous) => ({
       kind: 'patch',
       patch: {
         needsDrive: true,
@@ -86,29 +87,29 @@ async function main(): Promise<void> {
           ...(queuedPrompt.skipTaskdoc === undefined
             ? {}
             : { skipTaskdoc: queuedPrompt.skipTaskdoc }),
-          ...(queuedPrompt.subdialogReplyTarget === undefined
+          ...(queuedPrompt.sideDialogReplyTarget === undefined
             ? {}
-            : { subdialogReplyTarget: queuedPrompt.subdialogReplyTarget }),
+            : { sideDialogReplyTarget: queuedPrompt.sideDialogReplyTarget }),
         },
         lastModified: previous.lastModified,
       },
     }));
 
-    const restoredRoot = await getOrRestoreRootDialog(root.id.rootId, 'running');
+    const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'expected root dialog restore to succeed');
-    const restoredSubdialog = await ensureDialogLoaded(
+    const restoredSideDialog = await ensureDialogLoaded(
       restoredRoot,
-      new DialogID(subdialog.id.selfId, subdialog.id.rootId),
+      new DialogID(sideDialog.id.selfId, sideDialog.id.rootId),
       'running',
     );
-    assert.ok(restoredSubdialog, 'expected subdialog restore to succeed');
+    assert.ok(restoredSideDialog, 'expected sideDialog restore to succeed');
     assert.equal(
-      restoredSubdialog.peekUpNext(),
+      restoredSideDialog.peekUpNext(),
       undefined,
       'restore should not requeue a stale course-start prompt that is already persisted in course events',
     );
 
-    const latestAfterRestore = await DialogPersistence.loadDialogLatest(subdialog.id, 'running');
+    const latestAfterRestore = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
     assert.equal(
       latestAfterRestore?.pendingCourseStartPrompt,
       undefined,
@@ -131,13 +132,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-stale-pending-course-start-clears-on-restore: PASS');
+  console.log('kernel-driver sideDialog-stale-pending-course-start-clears-on-restore: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver subdialog-stale-pending-course-start-clears-on-restore: FAIL\n${message}`,
+    `kernel-driver sideDialog-stale-pending-course-start-clears-on-restore: FAIL\n${message}`,
   );
   process.exit(1);
 });

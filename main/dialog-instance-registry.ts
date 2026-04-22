@@ -1,6 +1,6 @@
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
 import type { DialogRuntimePrompt } from '@longrun-ai/kernel/types/drive-intent';
-import { Dialog, DialogID, RootDialog, SubDialog } from './dialog';
+import { Dialog, DialogID, MainDialog, SideDialog } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { DialogPersistence, DiskFileDialogStore } from './persistence';
 import { Team } from './team';
@@ -53,29 +53,29 @@ async function resolvePendingCourseStartPromptForRestore(args: {
   return { pendingCourseStartPrompt: pending };
 }
 
-export async function getOrRestoreRootDialog(
+export async function getOrRestoreMainDialog(
   rootId: string,
   status: DialogPersistenceStatus,
-): Promise<RootDialog | undefined> {
+): Promise<MainDialog | undefined> {
   const existing = globalDialogRegistry.get(rootId);
   if (existing) {
     existing.setPersistenceStatus(status);
-    await existing.loadSubdialogRegistry();
-    await existing.loadPendingSubdialogsFromPersistence();
+    await existing.loadSideDialogRegistry();
+    await existing.loadPendingSideDialogsFromPersistence();
     return existing;
   }
 
-  const rootDialogId = new DialogID(rootId);
-  const rootState = await DialogPersistence.restoreDialog(rootDialogId, status);
+  const mainDialogId = new DialogID(rootId);
+  const rootState = await DialogPersistence.restoreDialog(mainDialogId, status);
   if (!rootState) return undefined;
   const rootMetadata = rootState.metadata;
-  if (rootMetadata.supdialogId !== undefined) {
+  if (rootMetadata.askerDialogId !== undefined) {
     return undefined;
   }
 
-  const latest = await DialogPersistence.loadDialogLatest(rootDialogId, status);
+  const latest = await DialogPersistence.loadDialogLatest(mainDialogId, status);
   const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
-    dialogId: rootDialogId,
+    dialogId: mainDialogId,
     status,
     messages: rootState.messages,
     latest,
@@ -91,11 +91,11 @@ export async function getOrRestoreRootDialog(
   }
   const defaultDisableDiligencePush = diligencePushMax <= 0;
 
-  const rootStore = new DiskFileDialogStore(rootDialogId);
-  const rootDialog = new RootDialog(
+  const rootStore = new DiskFileDialogStore(mainDialogId);
+  const mainDialog = new MainDialog(
     rootStore,
     rootMetadata.taskDocPath,
-    rootDialogId,
+    mainDialogId,
     rootMetadata.agentId,
     {
       messages: rootState.messages,
@@ -109,7 +109,7 @@ export async function getOrRestoreRootDialog(
     latest && typeof latest.disableDiligencePush === 'boolean'
       ? latest.disableDiligencePush
       : defaultDisableDiligencePush;
-  rootDialog.disableDiligencePush = persistedDisableDiligencePush;
+  mainDialog.disableDiligencePush = persistedDisableDiligencePush;
 
   const persistedRemainingBudget =
     latest && typeof latest.diligencePushRemainingBudget === 'number'
@@ -119,30 +119,30 @@ export async function getOrRestoreRootDialog(
     persistedRemainingBudget,
     diligencePushMax > 0 ? diligencePushMax : 0,
   );
-  rootDialog.diligencePushRemainingBudget =
+  mainDialog.diligencePushRemainingBudget =
     diligencePushMax > 0
       ? Math.min(normalizedRemainingBudget, diligencePushMax)
       : normalizedRemainingBudget;
 
-  rootDialog.setPersistenceStatus(status);
-  globalDialogRegistry.register(rootDialog);
+  mainDialog.setPersistenceStatus(status);
+  globalDialogRegistry.register(mainDialog);
 
   // Keep the in-memory root dialog fully hydrated regardless of persistence status
-  // (running/completed/archived) so subdialog lookup is stable across UI navigation.
-  await rootDialog.loadSubdialogRegistry();
-  await rootDialog.loadPendingSubdialogsFromPersistence();
-  return rootDialog;
+  // (running/completed/archived) so sideDialog lookup is stable across UI navigation.
+  await mainDialog.loadSideDialogRegistry();
+  await mainDialog.loadPendingSideDialogsFromPersistence();
+  return mainDialog;
 }
 
 export async function ensureDialogLoaded(
-  rootDialog: RootDialog,
+  mainDialog: MainDialog,
   targetId: DialogID,
   status: DialogPersistenceStatus,
   visitedSelfIds: Set<string> = new Set(),
 ): Promise<Dialog | undefined> {
-  if (targetId.selfId === targetId.rootId) return rootDialog;
+  if (targetId.selfId === targetId.rootId) return mainDialog;
 
-  const existing = rootDialog.lookupDialog(targetId.selfId);
+  const existing = mainDialog.lookupDialog(targetId.selfId);
   if (existing) return existing;
 
   if (visitedSelfIds.has(targetId.selfId)) return undefined;
@@ -150,12 +150,30 @@ export async function ensureDialogLoaded(
 
   const metadata = await DialogPersistence.loadDialogMetadata(targetId, status);
   if (!metadata) return undefined;
+  if (!('askerDialogId' in metadata)) {
+    throw new Error(
+      `ensureDialogLoaded invariant violation: expected sideDialog metadata for ${targetId.valueOf()}`,
+    );
+  }
 
-  // Ensure parent dialog (supdialog) exists in root registry for SubDialog.supdialog resolution.
-  if (metadata.supdialogId && metadata.supdialogId !== targetId.rootId) {
+  const askerStack = await DialogPersistence.loadSideDialogAskerStackState(targetId, status);
+  if (!askerStack) {
+    throw new Error(
+      `ensureDialogLoaded invariant violation: missing asker stack for ${targetId.valueOf()}`,
+    );
+  }
+  const askerStackTop = askerStack.askerStack[askerStack.askerStack.length - 1];
+  if (!askerStackTop) {
+    throw new Error(
+      `ensureDialogLoaded invariant violation: empty askerDialog stack for ${targetId.valueOf()}`,
+    );
+  }
+
+  // Ensure asker dialog exists in root registry for dynamic asker/askerDialog resolution.
+  if (askerStackTop.askerDialogId !== targetId.rootId) {
     await ensureDialogLoaded(
-      rootDialog,
-      new DialogID(metadata.supdialogId, targetId.rootId),
+      mainDialog,
+      new DialogID(askerStackTop.askerDialogId, targetId.rootId),
       status,
       visitedSelfIds,
     );
@@ -172,32 +190,41 @@ export async function ensureDialogLoaded(
     latest,
   });
 
-  const assignmentFromSup = state.metadata.assignmentFromSup;
-  if (!assignmentFromSup) return undefined;
+  const assignmentFromAsker = (() => {
+    for (let index = askerStack.askerStack.length - 1; index >= 0; index -= 1) {
+      const frame = askerStack.askerStack[index];
+      if (frame?.assignmentFromAsker !== undefined) {
+        return frame.assignmentFromAsker;
+      }
+    }
+    throw new Error(
+      `ensureDialogLoaded invariant violation: missing assignment frame in asker stack for ${targetId.valueOf()}`,
+    );
+  })();
 
-  // Ensure the caller dialog exists so SubDialog can resolve its effective supdialog.
+  // Ensure the caller dialog exists so SideDialog can resolve its effective askerDialog.
   if (
-    assignmentFromSup.callerDialogId &&
-    assignmentFromSup.callerDialogId !== targetId.rootId &&
-    assignmentFromSup.callerDialogId !== targetId.selfId
+    assignmentFromAsker.callerDialogId &&
+    assignmentFromAsker.callerDialogId !== targetId.rootId &&
+    assignmentFromAsker.callerDialogId !== targetId.selfId
   ) {
     await ensureDialogLoaded(
-      rootDialog,
-      new DialogID(assignmentFromSup.callerDialogId, targetId.rootId),
+      mainDialog,
+      new DialogID(assignmentFromAsker.callerDialogId, targetId.rootId),
       status,
       visitedSelfIds,
     );
   }
 
   const store = new DiskFileDialogStore(targetId);
-  const subdialog = new SubDialog(
+  const sideDialog = new SideDialog(
     store,
-    rootDialog,
-    state.metadata.taskDocPath,
+    mainDialog,
+    metadata.taskDocPath,
     targetId,
-    state.metadata.agentId,
-    assignmentFromSup,
-    state.metadata.sessionSlug,
+    metadata.agentId,
+    askerStack,
+    metadata.sessionSlug,
     {
       messages: state.messages,
       reminders: state.reminders,
@@ -206,9 +233,9 @@ export async function ensureDialogLoaded(
       pendingCourseStartPrompt,
     },
   );
-  subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
-  if (subdialog.sessionSlug) {
-    rootDialog.registerSubdialog(subdialog);
+  sideDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+  if (sideDialog.sessionSlug) {
+    mainDialog.registerSideDialog(sideDialog);
   }
-  return subdialog;
+  return sideDialog;
 }

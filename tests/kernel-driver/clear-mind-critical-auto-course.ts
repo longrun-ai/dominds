@@ -5,7 +5,7 @@ import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   lastAssistantSaying,
   withTempRtws,
   writeMockDb,
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import type { Reminder } from '../../main/tool';
@@ -32,8 +32,8 @@ function requireObjectRecord(value: unknown, label: string): Record<string, unkn
   return value as Record<string, unknown>;
 }
 
-function createDialog(): RootDialog {
-  return new RootDialog(
+function createDialog(): MainDialog {
+  return new MainDialog(
     {} as unknown as DialogStore,
     'daemon-reminder-render.tsk',
     undefined,

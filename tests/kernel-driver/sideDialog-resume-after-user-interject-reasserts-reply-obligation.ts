@@ -9,7 +9,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { isUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
@@ -26,8 +26,12 @@ async function main(): Promise<void> {
       extraMembers: ['nuwa'],
     });
 
+    const root = await createMainDialog('tester');
+    root.disableDiligencePush = true;
+
     const assignmentDirective = {
       expectedReplyCallName: 'replyTellaskSessionless' as const,
+      targetDialogId: root.id.selfId,
       targetCallId: 'root-to-pangu-call',
       tellaskContent: 'Finish the parent sideline after the nested work returns.',
     };
@@ -40,10 +44,7 @@ async function main(): Promise<void> {
     const secondCycleInterjectResponse = 'Handled the second-cycle interruption locally too.';
     const finalResponse = 'Nested work is back, so I can now finalize the parent sideline.';
 
-    const root = await createRootDialog('tester');
-    root.disableDiligencePush = true;
-
-    const subdialog = await root.createSubDialog(
+    const sideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
       assignmentDirective.tellaskContent,
@@ -55,10 +56,10 @@ async function main(): Promise<void> {
         collectiveTargets: ['pangu'],
       },
     );
-    subdialog.disableDiligencePush = true;
+    sideDialog.disableDiligencePush = true;
 
     const reassertionPrompt = await buildReplyObligationReassertionPrompt({
-      dlg: subdialog,
+      dlg: sideDialog,
       directive: assignmentDirective,
       language: 'en',
     });
@@ -89,8 +90,8 @@ async function main(): Promise<void> {
       },
     ]);
 
-    await DialogPersistence.appendPendingSubdialog(root.id, {
-      subdialogId: subdialog.id.selfId,
+    await DialogPersistence.appendPendingSideDialog(root.id, {
+      sideDialogId: sideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
@@ -98,35 +99,38 @@ async function main(): Promise<void> {
       targetAgentId: 'pangu',
       callId: assignmentDirective.targetCallId,
       callingCourse: toCallingCourseNumber(1),
+      callingGenseq: 1,
       callType: 'C',
     });
 
-    const nestedSubdialog = await subdialog.createSubDialog(
+    const nestedSideDialog = await sideDialog.createSideDialog(
       'nuwa',
       ['@nuwa'],
       'Wait for nested sideline work to return.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'pangu',
-        callerDialogId: subdialog.id.selfId,
+        callerDialogId: sideDialog.id.selfId,
         callId: 'pangu-to-nuwa-call',
         collectiveTargets: ['nuwa'],
       },
     );
-    await DialogPersistence.appendPendingSubdialog(subdialog.id, {
-      subdialogId: nestedSubdialog.id.selfId,
+    await DialogPersistence.appendPendingSideDialog(sideDialog.id, {
+      sideDialogId: nestedSideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellaskSessionless',
       mentionList: ['@nuwa'],
       tellaskContent: 'Wait for nested sideline work to return.',
       targetAgentId: 'nuwa',
       callId: 'pangu-to-nuwa-call',
+      callingCourse: 1,
+      callingGenseq: 1,
       callType: 'C',
     });
 
-    await subdialog.persistUserMessage(
+    await sideDialog.persistUserMessage(
       'Initial parent sideline assignment.',
-      'subdialog-runtime-assignment',
+      'sideDialog-runtime-assignment',
       'markdown',
       'runtime',
       'en',
@@ -135,8 +139,8 @@ async function main(): Promise<void> {
     );
 
     await driveDialogStream(
-      subdialog,
-      makeUserPrompt(interjectPrompt, 'subdialog-user-interject-before-resume', {
+      sideDialog,
+      makeUserPrompt(interjectPrompt, 'sideDialog-user-interject-before-resume', {
         userLanguageCode: 'en',
       }),
       true,
@@ -145,8 +149,8 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(root, 2_000);
 
     const deferredAfterInterjection = await DialogPersistence.getDeferredReplyReassertion(
-      subdialog.id,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.status,
     );
     assert.deepEqual(
       deferredAfterInterjection,
@@ -154,11 +158,11 @@ async function main(): Promise<void> {
         reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
       },
-      'user interjection while nested subdialog is pending should arm deferred reply reassertion',
+      'user interjection while nested sideDialog is pending should arm deferred reply reassertion',
     );
     const latestAfterInterjection = await DialogPersistence.loadDialogLatest(
-      subdialog.id,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.status,
     );
     assert.equal(
       latestAfterInterjection?.displayState?.kind,
@@ -183,8 +187,8 @@ async function main(): Promise<void> {
     );
 
     await driveDialogStream(
-      subdialog,
-      makeUserPrompt(followupInterjectPrompt, 'subdialog-user-interject-while-stopped', {
+      sideDialog,
+      makeUserPrompt(followupInterjectPrompt, 'sideDialog-user-interject-while-stopped', {
         userLanguageCode: 'en',
       }),
       true,
@@ -194,7 +198,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
     assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
@@ -203,7 +207,7 @@ async function main(): Promise<void> {
     );
 
     await driveDialogStream(
-      subdialog,
+      sideDialog,
       undefined,
       true,
       makeDriveOptions({
@@ -216,18 +220,18 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(root, 2_000);
 
     const latestAfterContinueWhileBlocked = await DialogPersistence.loadDialogLatest(
-      subdialog.id,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.status,
     );
     assert.deepEqual(
       latestAfterContinueWhileBlocked?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } },
+      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
       'Continue should exit the temporary interjection stop and restore the true blocked state when nested work is still pending',
     );
     const eventsAfterContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const surfacedRuntimeGuides = eventsAfterContinueWhileBlocked.filter(
       (
@@ -243,7 +247,7 @@ async function main(): Promise<void> {
       'Continue while still blocked should immediately surface the reply reassertion guide exactly once',
     );
     assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
@@ -259,8 +263,8 @@ async function main(): Promise<void> {
     );
 
     await driveDialogStream(
-      subdialog,
-      makeUserPrompt(secondCycleInterjectPrompt, 'subdialog-user-interject-second-cycle', {
+      sideDialog,
+      makeUserPrompt(secondCycleInterjectPrompt, 'sideDialog-user-interject-second-cycle', {
         userLanguageCode: 'en',
       }),
       true,
@@ -270,7 +274,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
     assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
@@ -279,7 +283,7 @@ async function main(): Promise<void> {
     );
 
     await driveDialogStream(
-      subdialog,
+      sideDialog,
       undefined,
       true,
       makeDriveOptions({
@@ -292,9 +296,9 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(root, 2_000);
 
     const eventsAfterSecondContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const surfacedRuntimeGuidesAfterSecondContinue = eventsAfterSecondContinueWhileBlocked.filter(
       (
@@ -310,7 +314,7 @@ async function main(): Promise<void> {
       'each blocked Continue after a fresh interjection should surface a fresh reply reassertion guide',
     );
     assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: assignmentDirective,
@@ -319,47 +323,49 @@ async function main(): Promise<void> {
       'the second blocked Continue should mark the reassertion as surfaced again',
     );
 
-    await DialogPersistence.removePendingSubdialog(
-      subdialog.id,
-      nestedSubdialog.id.selfId,
+    await DialogPersistence.removePendingSideDialog(
+      sideDialog.id,
+      nestedSideDialog.id.selfId,
       undefined,
-      subdialog.status,
+      sideDialog.status,
     );
 
     await driveDialogStream(
-      subdialog,
+      sideDialog,
       undefined,
       true,
       makeDriveOptions({
         source: 'kernel_driver_supply_response_parent_revive',
-        reason: 'nested_subdialog_resolved',
+        reason: 'nested_sideDialog_resolved',
         suppressDiligencePush: true,
-        noPromptSubdialogResumeEntitlement: {
-          ownerDialogId: subdialog.id.selfId,
-          reason: 'resolved_pending_subdialog_reply',
-          subdialogId: nestedSubdialog.id.selfId,
+        noPromptSideDialogResumeEntitlement: {
+          ownerDialogId: sideDialog.id.selfId,
+          reason: 'resolved_pending_sideDialog_reply',
+          sideDialogId: nestedSideDialog.id.selfId,
           callType: 'C',
           callId: 'pangu-to-nuwa-call',
+          callingCourse: 1,
+          callingGenseq: 1,
         },
       }),
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
     assert.equal(
-      await DialogPersistence.getDeferredReplyReassertion(subdialog.id, subdialog.status),
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       undefined,
       'deferred reply reassertion should be consumed on resume',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const repeatedReassertionPrompt = events.find(
       (event): event is Extract<(typeof events)[number], { type: 'human_text_record' }> =>
         event.type === 'human_text_record' &&
-        event.msgId !== 'subdialog-runtime-assignment' &&
+        event.msgId !== 'sideDialog-runtime-assignment' &&
         event.origin === 'runtime' &&
         event.content === reassertionPrompt,
     );
@@ -378,19 +384,19 @@ async function main(): Promise<void> {
       'actual resume should not emit any duplicate reassertion guide beyond the two blocked-Continue surfacings',
     );
 
-    const pendingAtRoot = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
+    const pendingAtRoot = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(pendingAtRoot.length, 0, 'resumed reply should clear the parent pending sideline');
   });
 
   console.log(
-    'kernel-driver subdialog-resume-after-user-interject-reasserts-reply-obligation: PASS',
+    'kernel-driver sideDialog-resume-after-user-interject-reasserts-reply-obligation: PASS',
   );
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    'kernel-driver subdialog-resume-after-user-interject-reasserts-reply-obligation: FAIL\n' +
+    'kernel-driver sideDialog-resume-after-user-interject-reasserts-reply-obligation: FAIL\n' +
       message,
   );
   process.exit(1);

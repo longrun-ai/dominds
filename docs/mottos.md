@@ -160,7 +160,7 @@ Taskdoc Structure:
 
 **In dominds (recommended syntax)**
 
-- Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-subdialogs**.
+- Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-sideDialogs**.
 - Use `freshBootsReasoning({ tellaskContent: "..." })` for the default “fresh boots” session: isolate one sub-problem, answer, and return.
 - Use `freshBootsReasoning({ tellaskContent: "..." })` whenever you need tool-less, clean-slate reasoning on a bounded sub-problem.
 

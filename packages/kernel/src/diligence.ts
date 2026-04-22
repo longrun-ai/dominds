@@ -67,6 +67,6 @@ export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
     '',
     'If an in-flight Tellask becomes outdated, needs correction, or should wrap up earlier, do not try to “terminate” it by deleting the reminder. Mistaken deletion while non-zero in-flight will be rejected with guidance. The correct action is to update that specific Tellask’s assignment instead (for a sessioned Tellask, send another `tellask` with the same `sessionSlug`) so the responder can deliver a final reply naturally under the latest assignment.',
     '',
-    'Important: a one-shot Tellask (`tellaskSessionless`) has no assignment-update channel. You cannot open another `tellaskSessionless` to tell the earlier one-shot sideline to stop; that only creates another transient sideline. If later correction or earlier wrap-up may be needed, choose `tellask` with a `sessionSlug` from the start.',
+    'Important: a one-shot Tellask (`tellaskSessionless`) has no assignment-update channel. You cannot open another `tellaskSessionless` to tell the earlier one-shot Side Dialog to stop; that only creates another transient Side Dialog. If later correction or earlier wrap-up may be needed, choose `tellask` with a `sessionSlug` from the start.',
   ].join('\n'),
 };

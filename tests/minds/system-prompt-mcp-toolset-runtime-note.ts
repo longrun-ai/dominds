@@ -14,7 +14,7 @@ function buildPrompt(language: 'zh' | 'en'): string {
 
   return buildSystemPrompt({
     language,
-    dialogScope: 'mainline',
+    dialogScope: 'mainDialog',
     contextHealthPromptMode: 'normal',
     agent,
     persona: 'persona',

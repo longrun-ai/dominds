@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import { assembleDriveContextMessages } from '../../main/llm/kernel-driver/context';
 import {
@@ -14,7 +14,7 @@ import { reminderEchoBackEnabled } from '../../main/tool';
 async function main(): Promise<void> {
   setWorkLanguage('zh');
 
-  const dlg = new RootDialog(
+  const dlg = new MainDialog(
     {} as unknown as DialogStore,
     'plain-reminder-role.tsk',
     undefined,

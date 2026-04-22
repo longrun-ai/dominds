@@ -67,7 +67,7 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
     switch (evt.type) {
       case 'new_q4h_asked':
       case 'q4h_answered':
-      case 'subdialog_created_evt':
+      case 'sideDialog_created_evt':
       case 'dlg_touched_evt':
         break;
       default:
@@ -178,11 +178,6 @@ export function setGlobalDialogEventBroadcaster(
   dialogEventRegistry.setGlobalDialogEventBroadcaster(fn);
 }
 
-// Backward-compatible alias used by existing tests/callers.
-export function setQ4HBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
-  setGlobalDialogEventBroadcaster(fn);
-}
-
 // Export helper function to import in other modules
 export function postDialogEvent(dlg: Dialog, event: DialogEvent): void {
   dialogEventRegistry.postEvent(dlg, event);
@@ -190,7 +185,7 @@ export function postDialogEvent(dlg: Dialog, event: DialogEvent): void {
 
 /**
  * Post an event to a specific dialog's PubChan by ID.
- * Useful for posting subdialog events when only the subdialog ID is available.
+ * Useful for posting sideDialog events when only the sideDialog ID is available.
  */
 export function postDialogEventById(dialogId: DialogID, event: DialogEvent): void {
   dialogEventRegistry.postEventById(dialogId, event);

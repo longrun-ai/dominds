@@ -1,20 +1,20 @@
-import type { ApiRootDialogResponse } from '@longrun-ai/kernel/types';
+import type { ApiMainDialogResponse } from '@longrun-ai/kernel/types';
 
 export function bumpDialogsLastModified(
-  dialogs: ApiRootDialogResponse[],
+  dialogs: ApiMainDialogResponse[],
   dialogId: { rootId: string; selfId: string },
   isoTs: string,
-): { dialogs: ApiRootDialogResponse[]; changed: boolean } {
+): { dialogs: ApiMainDialogResponse[]; changed: boolean } {
   let changed = false;
   const next = dialogs.map((d) => {
     if (d.rootId !== dialogId.rootId) return d;
 
     // Always bump the root row of the tree so it reflects recent activity
-    // even when the activity happened inside a subdialog.
+    // even when the activity happened inside a sideDialog.
     const isRootRow = d.selfId === undefined;
 
-    // Bump only the targeted dialog node (root or subdialog) and the root row.
-    // IMPORTANT: Do not bump sibling subdialogs: they share the same rootId.
+    // Bump only the targeted dialog node (root or sideDialog) and the root row.
+    // IMPORTANT: Do not bump sibling sideDialogs: they share the same rootId.
     const dSelfId = d.selfId ?? d.rootId;
     const isTargetNode = dSelfId === dialogId.selfId;
     if (!isRootRow && !isTargetNode) return d;

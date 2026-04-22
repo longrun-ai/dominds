@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 
 import { DiskFileDialogStore } from '../../main/persistence';
 
-import { createRootDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot);
-    const dlg = await createRootDialog('tester');
+    const dlg = await createMainDialog('tester');
 
     await dlg.persistUiOnlyMarkdown('Budget exhausted. Please continue manually.', 1);
 

@@ -20,9 +20,9 @@ reminder snapshot.
   - transcript / tool / tellask history records
   - current reminder snapshot
 - Explicitly dropped:
-  - pending subdialogs
+  - pending sideDialogs
   - questions4human
-  - subdialog registry / subdialog responses
+  - sideDialog registry / sideDialog responses
   - other runtime-only waiting / blocking / orchestration state
 
 This is an intentional semantic downgrade relative to a full runtime snapshot: a new dialog inherits
@@ -158,7 +158,7 @@ Runtime behavior:
 - Replayed events are tagged with `sourceTag: priming_script`.
 - Replay is injected into `dialog.msgs` for downstream model context.
 - `showInUi=false` only affects rendering; persistence/context remain unchanged.
-- `pending/q4h/subdialog-*` runtime state is not restored.
+- `pending/q4h/sideDialog-*` runtime state is not restored.
 
 ## Save Startup Script (WebUI)
 
@@ -173,7 +173,7 @@ Export rules:
 - Export the current reminder snapshot into top-level frontmatter.
 - Empty course export is rejected.
 - Frontmatter stores source dialog metadata (`rootId/selfId/course/status`).
-- `pending/q4h/subdialog-*` runtime state is not exported; this is an explicit semantic downgrade in
+- `pending/q4h/sideDialog-*` runtime state is not exported; this is an explicit semantic downgrade in
   the current priming design.
 
 ## Recent Usage Storage

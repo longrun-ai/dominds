@@ -2,12 +2,13 @@ export type DomindsPersistenceFileSource =
   | 'dialog_state'
   | 'dialog_latest'
   | 'dialog_metadata'
+  | 'dialog_asker_stack'
   | 'dialog_course_events'
   | 'reminder_state'
   | 'questions4human_state'
-  | 'pending_subdialogs'
-  | 'subdialog_responses'
-  | 'subdialog_registry';
+  | 'pending_sideDialogs'
+  | 'sideDialog_responses'
+  | 'sideDialog_registry';
 
 export type DomindsPersistenceFileOperation = 'read' | 'parse';
 

@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { DialogStore } from '../../main/dialog';
-import { RootDialog } from '../../main/dialog';
+import { MainDialog } from '../../main/dialog';
 import type { Team } from '../../main/team';
 import { materializeReminder } from '../../main/tool';
 import { addReminderTool, deleteReminderTool, updateReminderTool } from '../../main/tools/ctrl';
@@ -21,8 +21,8 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
   }
 }
 
-function createDialog(agentId: string): RootDialog {
-  return new RootDialog(
+function createDialog(agentId: string): MainDialog {
+  return new MainDialog(
     {} as unknown as DialogStore,
     'personal-reminder-scope.tsk',
     undefined,
@@ -33,7 +33,7 @@ function createDialog(agentId: string): RootDialog {
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
     const caller = {} as Team.Member;
-    const dialogA = new RootDialog(
+    const dialogA = new MainDialog(
       {} as unknown as DialogStore,
       'personal-reminder-scope.tsk',
       undefined,

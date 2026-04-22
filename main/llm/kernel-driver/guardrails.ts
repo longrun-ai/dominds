@@ -1,5 +1,5 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { Dialog, SubDialog } from '../../dialog';
+import { Dialog, SideDialog } from '../../dialog';
 import type { Team } from '../../team';
 import type { Tool } from '../../tool';
 import type { ChatMessage } from '../client';
@@ -26,9 +26,9 @@ export type KernelDriverPolicyState = Readonly<{
 
 export type KernelDriverPolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
 
-function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
-  if (!(dlg instanceof SubDialog)) return false;
-  return dlg.assignmentFromSup.callName === 'freshBootsReasoning';
+function isToollessFbrSelfSideDialog(dlg: Dialog): dlg is SideDialog {
+  if (!(dlg instanceof SideDialog)) return false;
+  return dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
 }
 
 function mergeModelParams(
@@ -54,7 +54,7 @@ export function buildKernelDriverPolicy(args: {
   language: LanguageCode;
 }): KernelDriverPolicyState {
   const { dlg, agent, systemPrompt, agentTools, language } = args;
-  if (!isToollessFbrSelfSubdialog(dlg)) {
+  if (!isToollessFbrSelfSideDialog(dlg)) {
     return {
       mode: 'default',
       effectiveAgent: agent,

@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-import { formatAssignmentFromSupdialog } from '../../main/runtime/inter-dialog-format';
+import { formatAssignmentFromAskerDialog } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
@@ -29,8 +29,8 @@ async function main(): Promise<void> {
     const language = getWorkLanguage();
     const followUpAnswer = 'I finished the local env check while @pangu is still pending.';
 
-    const expectedSubdialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromSupdialog({
+    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
         callName: 'tellask',
         fromAgentId: 'tester',
         toAgentId: 'pangu',
@@ -74,12 +74,12 @@ async function main(): Promise<void> {
         response: followUpAnswer,
       },
       {
-        message: expectedSubdialogPrompt,
+        message: expectedSideDialogPrompt,
         role: 'user',
         response: 'I need a human blocker before I can finish.',
         funcCalls: [
           {
-            id: 'call-subdialog-q4h',
+            id: 'call-sideDialog-q4h',
             name: 'askHuman',
             arguments: {
               tellaskContent: 'Please answer this blocker later.',
@@ -89,12 +89,12 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
 
     await driveDialogStream(
       root,
-      makeUserPrompt(trigger, 'kernel-driver-subdialog-mixed-tool-round-honors-suspension'),
+      makeUserPrompt(trigger, 'kernel-driver-sideDialog-mixed-tool-round-honors-suspension'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     assert.equal(
       genStartCount,
       2,
-      'ordinary tool use should allow one more follow-up generation even while subdialogs are pending',
+      'ordinary tool use should allow one more follow-up generation even while sideDialogs are pending',
     );
     assert.ok(
       rootEvents.some((event) => event.type === 'func_call_record' && event.name === 'env_get'),
@@ -129,27 +129,27 @@ async function main(): Promise<void> {
     assert.equal(
       assistantSayings.length,
       2,
-      'root dialog should open exactly one post-tool follow-up assistant round while subdialogs are pending',
+      'root dialog should open exactly one post-tool follow-up assistant round while sideDialogs are pending',
     );
     assert.equal(
       assistantSayings[assistantSayings.length - 1]?.content,
       followUpAnswer,
-      'follow-up assistant round should complete before the dialog suspends on pending subdialogs',
+      'follow-up assistant round should complete before the dialog suspends on pending sideDialogs',
     );
 
-    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
+    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(
-      pendingSubdialogs.length,
+      pendingSideDialogs.length,
       1,
-      'expected the tellask-created subdialog to remain pending after the follow-up round suspends',
+      'expected the tellask-created sideDialog to remain pending after the follow-up round suspends',
     );
   });
 
-  console.log('kernel-driver subdialog-mixed-tool-round-honors-suspension: PASS');
+  console.log('kernel-driver sideDialog-mixed-tool-round-honors-suspension: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-mixed-tool-round-honors-suspension: FAIL\n${message}`);
+  console.error(`kernel-driver sideDialog-mixed-tool-round-honors-suspension: FAIL\n${message}`);
   process.exit(1);
 });

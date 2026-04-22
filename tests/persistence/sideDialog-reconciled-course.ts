@@ -7,10 +7,10 @@ import {
   installRecordingGlobalDialogEventBroadcaster,
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogPersistence } from '../../main/persistence';
-import { createRootDialog } from '../kernel-driver/helpers';
+import { createMainDialog } from '../kernel-driver/helpers';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-subdialog-course-'));
+  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-sideDialog-course-'));
   const previousCwd = process.cwd();
   process.chdir(sandboxDir);
   try {
@@ -24,27 +24,32 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
 async function main(): Promise<void> {
   await withTempCwd(async () => {
     installRecordingGlobalDialogEventBroadcaster({
-      label: 'tests/subdialog-reconciled-course',
+      label: 'tests/sideDialog-reconciled-course',
     });
     try {
-      const root = await createRootDialog();
-      const subdialog = await root.createSubDialog('tester', ['@tester'], 'debug current course', {
-        callName: 'tellaskSessionless',
-        originMemberId: 'tester',
-        callerDialogId: root.id.selfId,
-        callId: 'call-subdialog-course-regression',
-      });
+      const root = await createMainDialog();
+      const sideDialog = await root.createSideDialog(
+        'tester',
+        ['@tester'],
+        'debug current course',
+        {
+          callName: 'tellaskSessionless',
+          originMemberId: 'tester',
+          callerDialogId: root.id.selfId,
+          callId: 'call-sideDialog-course-regression',
+        },
+      );
 
       assert.equal(
         root.currentCourse,
         1,
         'root dialog should stay on course #1 for this regression',
       );
-      await subdialog.startNewCourse('continue in course two');
-      assert.equal(subdialog.currentCourse, 2, 'subdialog should advance to course #2');
+      await sideDialog.startNewCourse('continue in course two');
+      assert.equal(sideDialog.currentCourse, 2, 'sideDialog should advance to course #2');
 
-      const course1Before = await DialogPersistence.readCourseEvents(subdialog.id, 1, 'running');
-      const course2Before = await DialogPersistence.readCourseEvents(subdialog.id, 2, 'running');
+      const course1Before = await DialogPersistence.readCourseEvents(sideDialog.id, 1, 'running');
+      const course2Before = await DialogPersistence.readCourseEvents(sideDialog.id, 2, 'running');
       const course1ReminderCountBefore = course1Before.filter(
         (event) => event.type === 'reminders_reconciled_record',
       ).length;
@@ -52,19 +57,19 @@ async function main(): Promise<void> {
         (event) => event.type === 'reminders_reconciled_record',
       ).length;
 
-      subdialog.addReminder('persist on subdialog course two');
-      await subdialog.processReminderUpdates();
+      sideDialog.addReminder('persist on sideDialog course two');
+      await sideDialog.processReminderUpdates();
 
-      const latest = await DialogPersistence.loadDialogLatest(subdialog.id, 'running');
-      assert.ok(latest, 'subdialog latest.yaml should exist');
+      const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
+      assert.ok(latest, 'sideDialog latest.yaml should exist');
       assert.equal(
         latest.currentCourse,
         2,
-        'reconciled subdialog records must not downgrade latest.currentCourse back to root course',
+        'reconciled sideDialog records must not downgrade latest.currentCourse back to root course',
       );
 
-      const course1 = await DialogPersistence.readCourseEvents(subdialog.id, 1, 'running');
-      const course2 = await DialogPersistence.readCourseEvents(subdialog.id, 2, 'running');
+      const course1 = await DialogPersistence.readCourseEvents(sideDialog.id, 1, 'running');
+      const course2 = await DialogPersistence.readCourseEvents(sideDialog.id, 2, 'running');
       const course1ReminderCountAfter = course1.filter(
         (event) => event.type === 'reminders_reconciled_record',
       ).length;
@@ -75,12 +80,12 @@ async function main(): Promise<void> {
       assert.equal(
         course1ReminderCountAfter,
         course1ReminderCountBefore,
-        'reconciled reminder state must not append new records to subdialog course #1 after clear_mind',
+        'reconciled reminder state must not append new records to sideDialog course #1 after clear_mind',
       );
       assert.equal(
         course2ReminderCountAfter,
         course2ReminderCountBefore + 1,
-        'reconciled reminder state must append exactly one new record to the active subdialog course',
+        'reconciled reminder state must append exactly one new record to the active sideDialog course',
       );
     } finally {
       clearInstalledGlobalDialogEventBroadcaster();

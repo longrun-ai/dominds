@@ -4,13 +4,13 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import {
-  formatAssignmentFromSupdialog,
+  formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
-  createRootDialog,
+  createMainDialog,
   listTellaskResultContents,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const root = await createRootDialog('tester');
+    const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     const language = getWorkLanguage();
     const sessionSlug = 'sticky-session';
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     const newBody = 'Updated assignment after clear mind';
     const finalReply = 'Final answer delivered from the rebound clear-mind course.';
 
-    const subdialog = await root.createSubDialog('pangu', ['@pangu'], oldBody, {
+    const sideDialog = await root.createSideDialog('pangu', ['@pangu'], oldBody, {
       callName: 'tellask',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
@@ -43,11 +43,11 @@ async function main(): Promise<void> {
       sessionSlug,
       collectiveTargets: ['pangu'],
     });
-    subdialog.disableDiligencePush = true;
+    sideDialog.disableDiligencePush = true;
 
-    await subdialog.persistUserMessage(
+    await sideDialog.persistUserMessage(
       wrapPromptWithExpectedReplyTool({
-        prompt: formatAssignmentFromSupdialog({
+        prompt: formatAssignmentFromAskerDialog({
           callName: 'tellask',
           fromAgentId: 'tester',
           toAgentId: 'pangu',
@@ -67,21 +67,22 @@ async function main(): Promise<void> {
       undefined,
       {
         expectedReplyCallName: 'replyTellask',
+        targetDialogId: root.id.selfId,
         targetCallId: oldCallId,
         tellaskContent: oldBody,
       },
     );
 
     const updatedAssignment = {
-      ...subdialog.assignmentFromSup,
+      ...sideDialog.assignmentFromAsker,
       tellaskContent: newBody,
       callId: newCallId,
     };
-    subdialog.assignmentFromSup = updatedAssignment;
-    await DialogPersistence.updateSubdialogAssignment(subdialog.id, updatedAssignment);
-    await DialogPersistence.savePendingSubdialogs(root.id, [
+    sideDialog.assignmentFromAsker = updatedAssignment;
+    await DialogPersistence.updateSideDialogAssignment(sideDialog.id, updatedAssignment);
+    await DialogPersistence.savePendingSideDialogs(root.id, [
       {
-        subdialogId: subdialog.id.selfId,
+        sideDialogId: sideDialog.id.selfId,
         createdAt: '2026-04-15 00:00:00',
         callName: 'tellask',
         mentionList: ['@pangu'],
@@ -89,18 +90,19 @@ async function main(): Promise<void> {
         targetAgentId: 'pangu',
         callId: newCallId,
         callingCourse: 1,
+        callingGenseq: 1,
         callType: 'B',
         sessionSlug,
       },
     ]);
 
-    await subdialog.startNewCourse(
+    await sideDialog.startNewCourse(
       formatNewCourseStartPrompt('en', {
         nextCourse: 2,
         source: 'clear_mind',
       }),
     );
-    const queuedPrompt = subdialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekUpNext();
     assert.ok(queuedPrompt, 'expected clear_mind to queue the rebound new-course prompt');
     const newCoursePrompt = queuedPrompt?.prompt;
 
@@ -121,11 +123,12 @@ async function main(): Promise<void> {
       },
     ]);
 
-    await driveDialogStream(subdialog, undefined, true);
+    await driveDialogStream(sideDialog, undefined, true);
     await waitForAllDialogsUnlocked(root, 3_000);
 
     const expectedDeliveredContent = formatTellaskResponseContent({
       callName: 'tellask',
+      callId: newCallId,
       responderId: 'pangu',
       requesterId: 'tester',
       mentionList: ['@pangu'],
@@ -142,26 +145,26 @@ async function main(): Promise<void> {
       'updated registered clear-mind reply to land on the caller dialog',
     );
 
-    const pendingAfterReply = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
+    const pendingAfterReply = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(
       pendingAfterReply.length,
       0,
-      'caller pending-subdialogs should clear after the rebound clear-mind reply lands',
+      'caller pending-sideDialogs should clear after the rebound clear-mind reply lands',
     );
 
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(
-      subdialog.id,
-      subdialog.currentCourse,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
     );
     const latestAfterDrive = await DialogPersistence.loadDialogLatest(
-      subdialog.id,
-      subdialog.status,
+      sideDialog.id,
+      sideDialog.status,
     );
     assert.equal(
       latestAfterDrive?.needsDrive,
       false,
-      'subdialog latest.yaml should clear needsDrive after the rebound clear-mind prompt is consumed',
+      'sideDialog latest.yaml should clear needsDrive after the rebound clear-mind prompt is consumed',
     );
     const latestPromptRecord = courseTwoEvents.find(
       (event): event is Extract<(typeof courseTwoEvents)[number], { type: 'human_text_record' }> =>
@@ -183,13 +186,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-registered-update-clear-mind-rebinds-reply-target: PASS');
+  console.log('kernel-driver sideDialog-registered-update-clear-mind-rebinds-reply-target: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver subdialog-registered-update-clear-mind-rebinds-reply-target: FAIL\n${message}`,
+    `kernel-driver sideDialog-registered-update-clear-mind-rebinds-reply-target: FAIL\n${message}`,
   );
   process.exit(1);
 });

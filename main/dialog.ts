@@ -2,15 +2,15 @@
  * Module: dialog
  *
  * Provides the `Dialog` object for orchestrating conversations:
- * - Tracks messages, agent identity, optional supdialog/subdialog relationships
+ * - Tracks messages, agent identity, optional askerDialog/sideDialog relationships
  * - Receivers for streaming LLM output and tool results
- * - Helpers for spawning subdialogs and prompting human input
+ * - Helpers for spawning sideDialogs and prompting human input
  * - Persistence support for dialog state and message history
  *
  * Architecture (Phase 2):
  * - `Dialog` - Abstract base class for all dialogs
- * - `RootDialog` - Root dialog with subdialog registry
- * - `SubDialog` - Subdialog with root dialog reference and dynamic supdialog resolution
+ * - `MainDialog` - Root dialog with sideDialog registry
+ * - `SideDialog` - SideDialog with root dialog reference and dynamic askerDialog resolution
  */
 import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import type {
@@ -31,8 +31,8 @@ import type {
   DialogRuntimeGuidePrompt,
   DialogRuntimePrompt,
   DialogRuntimeReplyPrompt,
-  DialogRuntimeSubdialogPrompt,
-  DialogSubdialogReplyTarget,
+  DialogRuntimeSideDialogPrompt,
+  DialogSideDialogReplyTarget,
   DialogUserPrompt,
   DriveIntent,
 } from '@longrun-ai/kernel/types/drive-intent';
@@ -42,6 +42,7 @@ import type {
   CalleeGenerationSeqNumber,
   CallingCourseNumber,
   CallingGenerationSeqNumber,
+  DialogAskerStackState,
   DialogMetadataFile,
   HumanQuestion,
   ProviderData,
@@ -61,7 +62,7 @@ import {
   formatCurrentUserLanguagePreference,
   formatUserLanguagePreferenceChangedNotice,
 } from './runtime/driver-messages';
-import { formatAssignmentFromSupdialog } from './runtime/inter-dialog-format';
+import { formatAssignmentFromAskerDialog } from './runtime/inter-dialog-format';
 import { getWorkLanguage } from './runtime/work-language';
 import { loadAgentSharedReminders, replaceAgentSharedReminders } from './shared-reminders';
 import type { JsonValue } from './tool';
@@ -88,10 +89,10 @@ type NewCourseHook = (args: {
 }) => Promise<NewCourseHookResult>;
 
 export type DialogSuspensionStatusOptions = Readonly<{
-  // Some foreground rounds legitimately continue even while tellask-created subdialogs are still
+  // Some foreground rounds legitimately continue even while tellask-created sideDialogs are still
   // pending. Today that includes certain ordinary post-tool rounds and provider-quirk deadlock
   // recovery injections. Callers must opt into that allowance explicitly.
-  allowPendingSubdialogs?: boolean;
+  allowPendingSideDialogs?: boolean;
 }>;
 
 export class DialogID {
@@ -144,27 +145,28 @@ export class DialogID {
 }
 
 /**
- * Phase 6: Pending subdialog record for Type A subdialog supply mechanism.
- * Tracks a subdialog that was created but not yet completed.
+ * Phase 6: Pending sideDialog record for Type A sideDialog supply mechanism.
+ * Tracks a sideDialog that was created but not yet completed.
  */
-export interface PendingSubdialog {
-  subdialogId: DialogID;
+export interface PendingSideDialog {
+  sideDialogId: DialogID;
   createdAt: string;
   mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
-  callingCourse?: CallingCourseNumber;
+  callingCourse: CallingCourseNumber;
+  callingGenseq: CallingGenerationSeqNumber;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
 
 /**
- * Phase 6: Subdialog response record for Type A subdialog supply mechanism.
- * Tracks the response from a completed subdialog.
+ * Phase 6: SideDialog response record for Type A sideDialog supply mechanism.
+ * Tracks the response from a completed sideDialog.
  */
-export interface SubdialogResponse {
-  subdialogId: DialogID;
+export interface SideDialogResponse {
+  sideDialogId: DialogID;
   response: string;
   completedAt: string;
   callType: 'A' | 'B' | 'C';
@@ -182,7 +184,7 @@ function getGlobalDialogMutex(dialogId: DialogID): AsyncFifoMutex {
 }
 
 /**
- * Common dialog initialization parameters (shared between RootDialog and SubDialog)
+ * Common dialog initialization parameters (shared between MainDialog and SideDialog)
  */
 export interface DialogInitParams {
   taskDocPath: string;
@@ -219,9 +221,9 @@ function compareVisibleReminderTargetOrder(
 }
 
 /**
- * Assignment from supdialog for subdialogs
+ * Assignment from askerDialog for sideDialogs
  */
-export interface AssignmentFromSup {
+export interface AssignmentFromAsker {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
@@ -232,19 +234,63 @@ export interface AssignmentFromSup {
   effectiveFbrEffort?: number;
 }
 
-function buildSubdialogAssignmentPromptMeta(
-  subdialog: SubDialog,
-): Pick<DialogRuntimeSubdialogPrompt, 'tellaskReplyDirective' | 'subdialogReplyTarget'> {
-  const assignment = subdialog.assignmentFromSup;
+export function buildSideDialogAskerStack(args: {
+  askerDialogId: string;
+  assignment: AssignmentFromAsker;
+}): DialogAskerStackState {
+  const expectedReplyCallName =
+    args.assignment.callName === 'tellask' ? 'replyTellask' : 'replyTellaskSessionless';
+  return {
+    askerStack: [
+      {
+        kind: 'asker_dialog_stack_frame',
+        askerDialogId: args.askerDialogId,
+        assignmentFromAsker: args.assignment,
+        tellaskReplyObligation: {
+          expectedReplyCallName,
+          targetDialogId: args.assignment.callerDialogId,
+          targetCallId: args.assignment.callId,
+          tellaskContent: args.assignment.tellaskContent,
+        },
+      },
+    ],
+  };
+}
+
+function getSideDialogAskerStackTop(askerStack: DialogAskerStackState) {
+  const top = askerStack.askerStack[askerStack.askerStack.length - 1];
+  if (!top) {
+    throw new Error('SideDialog askerStack invariant violation: empty reply obligation stack');
+  }
+  return top;
+}
+
+function getSideDialogAskerStackCurrentAssignment(
+  askerStack: DialogAskerStackState,
+): AssignmentFromAsker {
+  for (let index = askerStack.askerStack.length - 1; index >= 0; index -= 1) {
+    const frame = askerStack.askerStack[index];
+    if (frame?.assignmentFromAsker !== undefined) {
+      return frame.assignmentFromAsker;
+    }
+  }
+  throw new Error('SideDialog askerStack invariant violation: missing assignment frame');
+}
+
+function buildSideDialogAssignmentPromptMeta(
+  sideDialog: SideDialog,
+): Pick<DialogRuntimeSideDialogPrompt, 'tellaskReplyDirective' | 'sideDialogReplyTarget'> {
+  const assignment = sideDialog.assignmentFromAsker;
   switch (assignment.callName) {
     case 'tellask':
       return {
         tellaskReplyDirective: {
           expectedReplyCallName: 'replyTellask',
+          targetDialogId: assignment.callerDialogId,
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
-        subdialogReplyTarget: {
+        sideDialogReplyTarget: {
           ownerDialogId: assignment.callerDialogId,
           callType: 'B',
           callId: assignment.callId,
@@ -255,10 +301,11 @@ function buildSubdialogAssignmentPromptMeta(
       return {
         tellaskReplyDirective: {
           expectedReplyCallName: 'replyTellaskSessionless',
+          targetDialogId: assignment.callerDialogId,
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
-        subdialogReplyTarget: {
+        sideDialogReplyTarget: {
           ownerDialogId: assignment.callerDialogId,
           callType: 'C',
           callId: assignment.callId,
@@ -269,7 +316,7 @@ function buildSubdialogAssignmentPromptMeta(
 
 /**
  * Abstract base class for all dialog types.
- * Contains common properties and methods shared between RootDialog and SubDialog.
+ * Contains common properties and methods shared between MainDialog and SideDialog.
  */
 export abstract class Dialog {
   public readonly dlgStore: DialogStore;
@@ -306,17 +353,17 @@ export abstract class Dialog {
   protected _coursePrefixMsgs: ChatMessage[] = [];
   protected _courseRuntimeNoticeMsgs: ChatMessage[] = [];
   // Track whether the current course's initial events (user_text, generating_start)
-  // have been fully processed. Used to ensure subdialog_final_response_evt arrives
+  // have been fully processed. Used to ensure sideDialog_final_response_evt arrives
   // only after parent events are emitted.
   protected _generationStarted: boolean = false;
   // Track the generation sequence when _generationStarted was set
   // Used to ensure proper ordering when multiple generations occur
   protected _generationStartedGenseq: number = 0;
 
-  // Pending subdialog IDs (for auto-revive tracking)
-  protected _pendingSubdialogIds: DialogID[] = [];
+  // Pending sideDialog IDs (for auto-revive tracking)
+  protected _pendingSideDialogIds: DialogID[] = [];
 
-  // Phase 11: Suspension state for Type A subdialog mechanism
+  // Phase 11: Suspension state for Type A sideDialog mechanism
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
   protected _suspensionState: 'active' | 'suspended' | 'resumed' = 'active';
 
@@ -333,7 +380,7 @@ export abstract class Dialog {
   // - Set when tellask-special call results are finalized
   // - Retrieved during inline call-result emission (for receiveTellaskCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
-  // - NOT used for sideline-response bubbles (which use calleeDialogId instead)
+  // - NOT used for Sideline dialog-response bubbles (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
 
   constructor(
@@ -400,7 +447,7 @@ export abstract class Dialog {
     this._remindersVer++;
   }
 
-  public get supdialog(): Dialog | undefined {
+  public get askerDialog(): Dialog | undefined {
     return undefined;
   }
 
@@ -459,7 +506,7 @@ export abstract class Dialog {
    *
    * Call Types:
    * - tellask-special function call: callId is set when call results are finalized and used for inline result correlation
-   * - Subdialog response bubbles: use calleeDialogId instead of callId
+   * - SideDialog response bubbles: use calleeDialogId instead of callId
    *
    * @returns The current callId for call correlation, or null if no active call
    */
@@ -529,14 +576,14 @@ export abstract class Dialog {
   }
 
   /**
-   * Check if dialog has pending subdialogs.
+   * Check if dialog has pending sideDialogs.
    */
-  public async hasPendingSubdialogs(): Promise<boolean> {
+  public async hasPendingSideDialogs(): Promise<boolean> {
     try {
-      const pending = await this.dlgStore.loadPendingSubdialogs(this.id, this.status);
+      const pending = await this.dlgStore.loadPendingSideDialogs(this.id, this.status);
       return pending.length > 0;
     } catch (err) {
-      log.warn('Failed to load pending subdialogs for pending check', undefined, {
+      log.warn('Failed to load pending sideDialogs for pending check', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -545,7 +592,7 @@ export abstract class Dialog {
   }
 
   /**
-   * Check if dialog can be driven (not suspended for Q4H or subdialogs).
+   * Check if dialog can be driven (not suspended for Q4H or sideDialogs).
    */
   public async canDrive(options?: DialogSuspensionStatusOptions): Promise<boolean> {
     const suspension = await this.getSuspensionStatus(options);
@@ -557,50 +604,50 @@ export abstract class Dialog {
    */
   public async getSuspensionStatus(options?: DialogSuspensionStatusOptions): Promise<{
     q4h: boolean;
-    subdialogs: boolean;
-    blockingSubdialogs: boolean;
+    sideDialogs: boolean;
+    blockingSideDialogs: boolean;
     canDrive: boolean;
   }> {
     const hasQ4H = await this.hasPendingQ4H();
-    const hasSubdialogs = await this.hasPendingSubdialogs();
-    const blockingSubdialogs = hasSubdialogs && options?.allowPendingSubdialogs !== true;
+    const hasSideDialogs = await this.hasPendingSideDialogs();
+    const blockingSideDialogs = hasSideDialogs && options?.allowPendingSideDialogs !== true;
     return {
       q4h: hasQ4H,
-      subdialogs: hasSubdialogs,
-      blockingSubdialogs,
-      canDrive: !hasQ4H && !blockingSubdialogs,
+      sideDialogs: hasSideDialogs,
+      blockingSideDialogs,
+      canDrive: !hasQ4H && !blockingSideDialogs,
     };
   }
 
-  public get pendingSubdialogIds(): ReadonlyArray<DialogID> {
-    return this._pendingSubdialogIds;
+  public get pendingSideDialogIds(): ReadonlyArray<DialogID> {
+    return this._pendingSideDialogIds;
   }
 
-  public addPendingSubdialogs(ids: DialogID[]): void {
-    this._pendingSubdialogIds.push(...ids);
+  public addPendingSideDialogs(ids: DialogID[]): void {
+    this._pendingSideDialogIds.push(...ids);
   }
 
-  public removePendingSubdialog(id: DialogID): void {
-    this._pendingSubdialogIds = this._pendingSubdialogIds.filter(
+  public removePendingSideDialog(id: DialogID): void {
+    this._pendingSideDialogIds = this._pendingSideDialogIds.filter(
       (pending) => pending.selfId !== id.selfId,
     );
   }
 
-  public clearPendingSubdialogs(): void {
-    this._pendingSubdialogIds = [];
+  public clearPendingSideDialogs(): void {
+    this._pendingSideDialogIds = [];
   }
 
   /**
-   * Load pending subdialogs from persistence into memory.
+   * Load pending sideDialogs from persistence into memory.
    * Used during crash recovery to restore suspension state.
    */
-  public async loadPendingSubdialogsFromPersistence(): Promise<void> {
+  public async loadPendingSideDialogsFromPersistence(): Promise<void> {
     try {
-      const pending = await this.dlgStore.loadPendingSubdialogs(this.id, this.status);
-      this.clearPendingSubdialogs();
-      this.addPendingSubdialogs(pending.map((record) => record.subdialogId));
+      const pending = await this.dlgStore.loadPendingSideDialogs(this.id, this.status);
+      this.clearPendingSideDialogs();
+      this.addPendingSideDialogs(pending.map((record) => record.sideDialogId));
     } catch (err) {
-      log.warn('Failed to load pending subdialogs from persistence', undefined, {
+      log.warn('Failed to load pending sideDialogs from persistence', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -608,10 +655,10 @@ export abstract class Dialog {
   }
 
   /**
-   * Abstract method for creating subdialogs.
-   * Implemented by RootDialog to create SubDialog instances.
+   * Abstract method for creating sideDialogs.
+   * Implemented by MainDialog to create SideDialog instances.
    */
-  abstract createSubDialog(
+  abstract createSideDialog(
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -623,7 +670,7 @@ export abstract class Dialog {
       sessionSlug?: string;
       collectiveTargets?: string[];
     },
-  ): Promise<SubDialog>;
+  ): Promise<SideDialog>;
 
   /**
    * Post a dialog event using the standard event registry.
@@ -910,7 +957,7 @@ export abstract class Dialog {
 
   /**
    * Check if generation has started for the current course.
-   * Used to ensure subdialog_final_response_evt arrives after parent events.
+   * Used to ensure sideDialog_final_response_evt arrives after parent events.
    */
   public get generationStarted(): boolean {
     return this._generationStarted;
@@ -918,7 +965,7 @@ export abstract class Dialog {
 
   /**
    * Mark generation as started (after user_text event has been emitted).
-   * This ensures subdialog_final_response_evt waits for this signal.
+   * This ensures sideDialog_final_response_evt waits for this signal.
    * @param genseq The generation sequence number when this flag is set
    */
   public markGenerationStarted(genseq?: number): void {
@@ -996,15 +1043,15 @@ export abstract class Dialog {
               return prompt;
             }
             case 'registered_assignment_update':
-            case 'new_course_runtime_subdialog': {
-              const prompt: DialogRuntimeSubdialogPrompt = {
+            case 'new_course_runtime_sideDialog': {
+              const prompt: DialogRuntimeSideDialogPrompt = {
                 ...promptCommon,
                 origin: 'runtime',
                 ...(nextPrompt.skipTaskdoc === undefined
                   ? {}
                   : { skipTaskdoc: nextPrompt.skipTaskdoc }),
                 tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
-                subdialogReplyTarget: nextPrompt.subdialogReplyTarget,
+                sideDialogReplyTarget: nextPrompt.sideDialogReplyTarget,
               };
               return prompt;
             }
@@ -1071,12 +1118,12 @@ export abstract class Dialog {
       ...(prepared.skipTaskdoc === undefined ? {} : { skipTaskdoc: prepared.skipTaskdoc }),
     };
     const normalized: DialogRuntimePrompt =
-      prepared.subdialogReplyTarget !== undefined
+      prepared.sideDialogReplyTarget !== undefined
         ? (() => {
-            const prompt: DialogRuntimeSubdialogPrompt = {
+            const prompt: DialogRuntimeSideDialogPrompt = {
               ...runtimeCommon,
               tellaskReplyDirective: prepared.tellaskReplyDirective,
-              subdialogReplyTarget: prepared.subdialogReplyTarget,
+              sideDialogReplyTarget: prepared.sideDialogReplyTarget,
             };
             return prompt;
           })()
@@ -1093,9 +1140,9 @@ export abstract class Dialog {
               return prompt;
             })();
     this._upNextQueue = [
-      normalized.subdialogReplyTarget !== undefined
+      normalized.sideDialogReplyTarget !== undefined
         ? {
-            kind: 'new_course_runtime_subdialog',
+            kind: 'new_course_runtime_sideDialog',
             prompt: normalized.content,
             msgId: normalized.msgId,
             grammar: normalized.grammar,
@@ -1103,7 +1150,7 @@ export abstract class Dialog {
             origin: 'runtime',
             tellaskReplyDirective: normalized.tellaskReplyDirective,
             skipTaskdoc: normalized.skipTaskdoc,
-            subdialogReplyTarget: normalized.subdialogReplyTarget,
+            sideDialogReplyTarget: normalized.sideDialogReplyTarget,
           }
         : normalized.tellaskReplyDirective !== undefined
           ? {
@@ -1175,13 +1222,13 @@ export abstract class Dialog {
             return prompt;
           }
           case 'registered_assignment_update':
-          case 'new_course_runtime_subdialog': {
-            const prompt: DialogRuntimeSubdialogPrompt = {
+          case 'new_course_runtime_sideDialog': {
+            const prompt: DialogRuntimeSideDialogPrompt = {
               ...promptCommon,
               origin: 'runtime',
               ...(state.skipTaskdoc === undefined ? {} : { skipTaskdoc: state.skipTaskdoc }),
               tellaskReplyDirective: state.tellaskReplyDirective,
-              subdialogReplyTarget: state.subdialogReplyTarget,
+              sideDialogReplyTarget: state.sideDialogReplyTarget,
             };
             return prompt;
           }
@@ -1305,7 +1352,7 @@ export abstract class Dialog {
     userLanguageCode?: LanguageCode;
     tellaskReplyDirective: TellaskReplyDirective;
     skipTaskdoc?: boolean;
-    subdialogReplyTarget: DialogSubdialogReplyTarget;
+    sideDialogReplyTarget: DialogSideDialogReplyTarget;
   }): DialogQueuedPromptState {
     const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
@@ -1323,7 +1370,7 @@ export abstract class Dialog {
         origin: 'runtime',
         tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
-        subdialogReplyTarget: options.subdialogReplyTarget,
+        sideDialogReplyTarget: options.sideDialogReplyTarget,
         runControl: undefined,
       };
       this.enqueueQueuedPromptState(created);
@@ -1339,7 +1386,7 @@ export abstract class Dialog {
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
       tellaskReplyDirective: options.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
-      subdialogReplyTarget: options.subdialogReplyTarget,
+      sideDialogReplyTarget: options.sideDialogReplyTarget,
       runControl: undefined,
     };
     this.replaceQueuedPromptState(existing.msgId, merged);
@@ -1408,27 +1455,27 @@ export abstract class Dialog {
     }
 
     const combinedPrompt =
-      this instanceof SubDialog
-        ? `${formatAssignmentFromSupdialog({
-            fromAgentId: this.assignmentFromSup.originMemberId,
+      this instanceof SideDialog
+        ? `${formatAssignmentFromAskerDialog({
+            fromAgentId: this.assignmentFromAsker.originMemberId,
             toAgentId: this.agentId,
-            callName: this.assignmentFromSup.callName,
-            mentionList: this.assignmentFromSup.mentionList,
-            tellaskContent: this.assignmentFromSup.tellaskContent,
+            callName: this.assignmentFromAsker.callName,
+            mentionList: this.assignmentFromAsker.mentionList,
+            tellaskContent: this.assignmentFromAsker.tellaskContent,
             language: getWorkLanguage(),
-            collectiveTargets: this.assignmentFromSup.collectiveTargets ?? [this.agentId],
+            collectiveTargets: this.assignmentFromAsker.collectiveTargets ?? [this.agentId],
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
 
     const basePrompt: DialogRuntimePrompt =
-      this instanceof SubDialog
+      this instanceof SideDialog
         ? {
             content: combinedPrompt,
             msgId: generateShortId(),
             grammar: 'markdown',
             userLanguageCode: this._lastUserLanguageCode,
             origin: 'runtime',
-            ...buildSubdialogAssignmentPromptMeta(this),
+            ...buildSideDialogAssignmentPromptMeta(this),
           }
         : {
             content: combinedPrompt,
@@ -1579,7 +1626,7 @@ export abstract class Dialog {
     mentionList: string[] | undefined,
     tellaskContent: string,
     status: 'completed' | 'failed',
-    subdialogId: DialogID | undefined,
+    sideDialogId: DialogID | undefined,
     options: {
       response: string;
       agentId: string;
@@ -1596,7 +1643,7 @@ export abstract class Dialog {
   ): Promise<TellaskResultMsg | TellaskCarryoverMsg> {
     const currentCourse = this.activeGenCourseOrUndefined ?? this.currentCourse;
     const resultRoute = {
-      ...(subdialogId ? { calleeDialogId: subdialogId.selfId } : {}),
+      ...(sideDialogId ? { calleeDialogId: sideDialogId.selfId } : {}),
       ...(typeof options.calleeCourse === 'number' ? { calleeCourse: options.calleeCourse } : {}),
       ...(typeof options.calleeGenseq === 'number' ? { calleeGenseq: options.calleeGenseq } : {}),
     };
@@ -1754,7 +1801,7 @@ export abstract class Dialog {
     }
 
     // Mark generation as started with the actual genseq
-    // This ensures subdialog_final_response_evt waits for both user_text and generating_start_evt
+    // This ensures sideDialog_final_response_evt waits for both user_text and generating_start_evt
     this.markGenerationStarted();
 
     await this.dlgStore.notifyGeneratingStart(this, msgId);
@@ -2005,12 +2052,12 @@ export abstract class Dialog {
   }
 
   /**
-   * Post subdialog completion response to this dialog.
-   * Phase 14: No wait - emit immediately with virtual gen markers for Type C subdialogs
+   * Post sideDialog completion response to this dialog.
+   * Phase 14: No wait - emit immediately with virtual gen markers for Type C sideDialogs
    */
-  public async postSubdialogResponse(subdialogId: DialogID, response: string): Promise<void> {
+  public async postSideDialogResponse(sideDialogId: DialogID, response: string): Promise<void> {
     try {
-      let responderId = subdialogId.rootId;
+      let responderId = sideDialogId.rootId;
       let responderAgentId: string | undefined;
       let callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' = 'tellaskSessionless';
       let mentionList: string[] | undefined;
@@ -2019,35 +2066,35 @@ export abstract class Dialog {
       let callId = '';
       let sessionSlug: string | undefined;
       try {
-        const metadata = await this.dlgStore.loadDialogMetadata(subdialogId, 'running');
+        const metadata = await this.dlgStore.loadDialogMetadata(sideDialogId, 'running');
         if (metadata) {
           if (metadata.agentId) {
             responderId = metadata.agentId;
             responderAgentId = metadata.agentId;
             originMemberId = metadata.agentId;
           }
-          if (metadata.assignmentFromSup) {
-            callName = metadata.assignmentFromSup.callName;
-            mentionList = metadata.assignmentFromSup.mentionList;
-            tellaskContent = metadata.assignmentFromSup.tellaskContent;
-            originMemberId = metadata.assignmentFromSup.originMemberId;
-            callId = metadata.assignmentFromSup.callId;
+          if (metadata.assignmentFromAsker) {
+            callName = metadata.assignmentFromAsker.callName;
+            mentionList = metadata.assignmentFromAsker.mentionList;
+            tellaskContent = metadata.assignmentFromAsker.tellaskContent;
+            originMemberId = metadata.assignmentFromAsker.originMemberId;
+            callId = metadata.assignmentFromAsker.callId;
           }
           if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
             sessionSlug = metadata.sessionSlug.trim();
           }
         }
       } catch (err) {
-        log.warn('Failed to load subdialog metadata for response labeling', undefined, {
+        log.warn('Failed to load sideDialog metadata for response labeling', undefined, {
           dialogId: this.id.selfId,
-          subdialogId: subdialogId.selfId,
+          sideDialogId: sideDialogId.selfId,
           error: err,
         });
       }
       if (callId.trim() === '') {
-        log.warn('Missing callId for subdialog response', undefined, {
+        log.warn('Missing callId for sideDialog response', undefined, {
           dialogId: this.id.selfId,
-          subdialogId: subdialogId.selfId,
+          sideDialogId: sideDialogId.selfId,
         });
       }
       if (
@@ -2059,7 +2106,7 @@ export abstract class Dialog {
 
       // NO WAIT - emit immediately with virtual gen markers
 
-      // Emit virtual generating_start_evt for subdialog response bubble
+      // Emit virtual generating_start_evt for sideDialog response bubble
       await this.notifyGeneratingStart();
 
       const rawResponse = response;
@@ -2070,8 +2117,8 @@ export abstract class Dialog {
           case 'tellask':
             if (!sessionSlug) {
               throw new Error(
-                `postSubdialogResponse invariant violation: missing sessionSlug for tellask ` +
-                  `(dialogId=${this.id.selfId}, subdialogId=${subdialogId.selfId}, callId=${callId})`,
+                `postSideDialogResponse invariant violation: missing sessionSlug for tellask ` +
+                  `(dialogId=${this.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${callId})`,
               );
             }
             return {
@@ -2092,7 +2139,7 @@ export abstract class Dialog {
                 originMemberId,
               },
               route: {
-                calleeDialogId: subdialogId.selfId,
+                calleeDialogId: sideDialogId.selfId,
               },
             };
           case 'tellaskSessionless':
@@ -2113,7 +2160,7 @@ export abstract class Dialog {
                 originMemberId,
               },
               route: {
-                calleeDialogId: subdialogId.selfId,
+                calleeDialogId: sideDialogId.selfId,
               },
             };
           case 'freshBootsReasoning':
@@ -2133,7 +2180,7 @@ export abstract class Dialog {
                 originMemberId,
               },
               route: {
-                calleeDialogId: subdialogId.selfId,
+                calleeDialogId: sideDialogId.selfId,
               },
             };
         }
@@ -2152,53 +2199,86 @@ export abstract class Dialog {
 }
 
 /**
- * SubDialog - A subdialog created by a RootDialog for autonomous tellask sideline work.
- * Stores the root dialog for registry and lookup, and resolves its effective supdialog dynamically.
+ * SideDialog - A sideDialog created by a MainDialog for autonomous tellask Sideline dialog work.
+ * Stores the root dialog for registry and lookup, and resolves its effective askerDialog dynamically.
  */
-export class SubDialog extends Dialog {
-  public readonly rootDialog: RootDialog;
+export class SideDialog extends Dialog {
+  public readonly mainDialog: MainDialog;
   public readonly sessionSlug?: string;
-  public assignmentFromSup: AssignmentFromSup;
-  protected readonly _supdialog: Dialog;
+  public askerStack: DialogAskerStackState;
   private _fbrConclusionToolsEnabled: boolean = false;
 
   constructor(
     dlgStore: DialogStore,
-    rootDialog: RootDialog,
+    mainDialog: MainDialog,
     taskDocPath: string,
     id: DialogID | undefined,
     agentId: string,
-    assignmentFromSup: AssignmentFromSup,
+    askerStack: DialogAskerStackState,
     sessionSlug?: string,
     initialState?: DialogInitParams['initialState'],
   ) {
     super(dlgStore, taskDocPath, id, agentId, initialState);
-    this.rootDialog = rootDialog;
+    this.mainDialog = mainDialog;
     this.sessionSlug = sessionSlug;
-    this.assignmentFromSup = assignmentFromSup;
-    const resolvedSupdialog = rootDialog.lookupDialog(assignmentFromSup.callerDialogId);
-    if (resolvedSupdialog && resolvedSupdialog.id.selfId === this.id.selfId) {
+    this.askerStack = askerStack;
+    const top = getSideDialogAskerStackTop(askerStack);
+    const assignmentFromAsker = getSideDialogAskerStackCurrentAssignment(askerStack);
+    if (
+      top.assignmentFromAsker !== undefined &&
+      top.askerDialogId !== assignmentFromAsker.callerDialogId
+    ) {
       throw new Error(
-        `SubDialog supdialog invariant violation: caller resolved to self ` +
-          `(rootId=${rootDialog.id.rootId}, selfId=${this.id.selfId}, callerDialogId=${assignmentFromSup.callerDialogId})`,
-      );
-    } else if (resolvedSupdialog) {
-      this._supdialog = resolvedSupdialog;
-    } else {
-      throw new Error(
-        `SubDialog supdialog invariant violation: caller missing from root registry ` +
-          `(rootId=${rootDialog.id.rootId}, selfId=${this.id.selfId}, callerDialogId=${assignmentFromSup.callerDialogId})`,
+        `SideDialog askerStack invariant violation: askerDialogId must match assignment callerDialogId ` +
+          `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId}, callerDialogId=${assignmentFromAsker.callerDialogId})`,
       );
     }
-    this.rootDialog.registerDialog(this);
+    const resolvedAskerDialog = mainDialog.lookupDialog(top.askerDialogId);
+    if (resolvedAskerDialog && resolvedAskerDialog.id.selfId === this.id.selfId) {
+      throw new Error(
+        `SideDialog askerDialog invariant violation: caller resolved to self ` +
+          `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId})`,
+      );
+    } else if (!resolvedAskerDialog) {
+      throw new Error(
+        `SideDialog askerDialog invariant violation: caller missing from root registry ` +
+          `(rootId=${mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${top.askerDialogId})`,
+      );
+    }
+    this.mainDialog.registerDialog(this);
   }
 
-  public override get supdialog(): Dialog {
-    return this._supdialog;
+  public get assignmentFromAsker(): AssignmentFromAsker {
+    return getSideDialogAskerStackCurrentAssignment(this.askerStack);
+  }
+
+  public set assignmentFromAsker(assignment: AssignmentFromAsker) {
+    const nextFrame = buildSideDialogAskerStack({
+      askerDialogId: assignment.callerDialogId,
+      assignment,
+    }).askerStack[0];
+    if (!nextFrame) {
+      throw new Error(`SideDialog assignment stack invariant violation: empty generated frame`);
+    }
+    this.askerStack = {
+      askerStack: [...this.askerStack.askerStack, nextFrame],
+    };
+  }
+
+  public override get askerDialog(): Dialog {
+    const askerDialogId = getSideDialogAskerStackTop(this.askerStack).askerDialogId;
+    const resolved = this.mainDialog.lookupDialog(askerDialogId);
+    if (!resolved || resolved.id.selfId === this.id.selfId) {
+      throw new Error(
+        `SideDialog askerDialog invariant violation: caller missing or self ` +
+          `(rootId=${this.mainDialog.id.rootId}, selfId=${this.id.selfId}, askerDialogId=${askerDialogId})`,
+      );
+    }
+    return resolved;
   }
 
   public override get status(): 'running' | 'completed' | 'archived' {
-    return this.rootDialog.status;
+    return this.mainDialog.status;
   }
 
   public setFbrConclusionToolsEnabled(enabled: boolean): void {
@@ -2210,10 +2290,10 @@ export class SubDialog extends Dialog {
   }
 
   /**
-   * Create a subdialog under the same root dialog tree.
-   * The new subdialog's effective supdialog is resolved via AssignmentFromSup.callerDialogId.
+   * Create a sideDialog under the same root dialog tree.
+   * The new sideDialog's effective askerDialog is resolved via AssignmentFromAsker.callerDialogId.
    */
-  async createSubDialog(
+  async createSideDialog(
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -2226,8 +2306,8 @@ export class SubDialog extends Dialog {
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
     },
-  ): Promise<SubDialog> {
-    return await this.dlgStore.createSubDialog(
+  ): Promise<SideDialog> {
+    return await this.dlgStore.createSideDialog(
       this,
       targetAgentId,
       mentionList,
@@ -2238,16 +2318,16 @@ export class SubDialog extends Dialog {
 }
 
 /**
- * RootDialog - The main/root dialog that can create and manage subdialogs.
+ * MainDialog - The main/root dialog that can create and manage sideDialogs.
  * Uses in-memory registries for O(1) dialog and Type B lookup.
  */
-export class RootDialog extends Dialog {
+export class MainDialog extends Dialog {
   private _status: 'running' | 'completed' | 'archived' = 'running';
 
   // Tracks all dialogs in this dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
-  // Tracks Type-B registered subdialogs by agentId!sessionSlug
-  private _subdialogRegistry: Map<string, SubDialog> = new Map();
+  // Tracks Type-B registered sideDialogs by agentId!sessionSlug
+  private _sideDialogRegistry: Map<string, SideDialog> = new Map();
 
   constructor(
     dlgStore: DialogStore,
@@ -2269,7 +2349,7 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Register a dialog (self or subdialog) in the local registry.
+   * Register a dialog (self or sideDialog) in the local registry.
    */
   registerDialog(dialog: Dialog): void {
     this._localRegistry.set(dialog.id.selfId, dialog);
@@ -2299,54 +2379,54 @@ export class RootDialog extends Dialog {
   /**
    * Generate a registry key from agentId and sessionSlug.
    */
-  static makeSubdialogKey(agentId: string, sessionSlug: string): string {
+  static makeSideDialogKey(agentId: string, sessionSlug: string): string {
     return `${agentId}!${sessionSlug}`;
   }
 
   /**
-   * Register a Type-B subdialog for resumption.
+   * Register a Type-B sideDialog for resumption.
    */
-  registerSubdialog(subdialog: SubDialog): void {
-    if (!subdialog.sessionSlug) {
+  registerSideDialog(sideDialog: SideDialog): void {
+    if (!sideDialog.sessionSlug) {
       return;
     }
-    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.sessionSlug);
-    this._subdialogRegistry.set(key, subdialog);
-    this.registerDialog(subdialog);
+    const key = MainDialog.makeSideDialogKey(sideDialog.agentId, sideDialog.sessionSlug);
+    this._sideDialogRegistry.set(key, sideDialog);
+    this.registerDialog(sideDialog);
   }
 
   /**
-   * Lookup a Type-B subdialog by agentId and sessionSlug.
+   * Lookup a Type-B sideDialog by agentId and sessionSlug.
    */
-  lookupSubdialog(agentId: string, sessionSlug: string): SubDialog | undefined {
-    const key = RootDialog.makeSubdialogKey(agentId, sessionSlug);
-    return this._subdialogRegistry.get(key);
+  lookupSideDialog(agentId: string, sessionSlug: string): SideDialog | undefined {
+    const key = MainDialog.makeSideDialogKey(agentId, sessionSlug);
+    return this._sideDialogRegistry.get(key);
   }
 
   /**
-   * Remove a Type-B subdialog from registry.
+   * Remove a Type-B sideDialog from registry.
    */
-  unregisterSubdialog(agentId: string, sessionSlug: string): boolean {
-    const key = RootDialog.makeSubdialogKey(agentId, sessionSlug);
-    const subdialog = this._subdialogRegistry.get(key);
-    if (subdialog) {
-      this._localRegistry.delete(subdialog.id.selfId);
-      return this._subdialogRegistry.delete(key);
+  unregisterSideDialog(agentId: string, sessionSlug: string): boolean {
+    const key = MainDialog.makeSideDialogKey(agentId, sessionSlug);
+    const sideDialog = this._sideDialogRegistry.get(key);
+    if (sideDialog) {
+      this._localRegistry.delete(sideDialog.id.selfId);
+      return this._sideDialogRegistry.delete(key);
     }
     return false;
   }
 
   /**
-   * Get all registered subdialogs.
+   * Get all registered sideDialogs.
    */
-  getRegisteredSubdialogs(): SubDialog[] {
-    return Array.from(this._subdialogRegistry.values());
+  getRegisteredSideDialogs(): SideDialog[] {
+    return Array.from(this._sideDialogRegistry.values());
   }
 
   /**
-   * Create a new subdialog for autonomous tellask sideline work.
+   * Create a new sideDialog for autonomous tellask Sideline dialog work.
    */
-  async createSubDialog(
+  async createSideDialog(
     targetAgentId: string,
     mentionList: string[] | undefined,
     tellaskContent: string,
@@ -2359,8 +2439,8 @@ export class RootDialog extends Dialog {
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
     },
-  ): Promise<SubDialog> {
-    return await this.dlgStore.createSubDialog(
+  ): Promise<SideDialog> {
+    return await this.dlgStore.createSideDialog(
       this,
       targetAgentId,
       mentionList,
@@ -2370,23 +2450,23 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Save subdialog registry to disk (registry.yaml).
+   * Save sideDialog registry to disk (registry.yaml).
    */
-  async saveSubdialogRegistry(): Promise<void> {
-    const entries = Array.from(this._subdialogRegistry.entries()).map(([key, subdialog]) => ({
+  async saveSideDialogRegistry(): Promise<void> {
+    const entries = Array.from(this._sideDialogRegistry.entries()).map(([key, sideDialog]) => ({
       key,
-      subdialogId: subdialog.id,
-      agentId: subdialog.agentId,
-      sessionSlug: subdialog.sessionSlug,
+      sideDialogId: sideDialog.id,
+      agentId: sideDialog.agentId,
+      sessionSlug: sideDialog.sessionSlug,
     }));
-    await this.dlgStore.saveSubdialogRegistry(this, this.id, entries, this.status);
+    await this.dlgStore.saveSideDialogRegistry(this, this.id, entries, this.status);
   }
 
   /**
-   * Load subdialog registry from disk (registry.yaml).
+   * Load sideDialog registry from disk (registry.yaml).
    */
-  async loadSubdialogRegistry(): Promise<void> {
-    await this.dlgStore.loadSubdialogRegistry(this, this.status);
+  async loadSideDialogRegistry(): Promise<void> {
+    await this.dlgStore.loadSideDialogRegistry(this, this.status);
   }
 }
 
@@ -2405,7 +2485,7 @@ export abstract class DialogStore {
    * @param tellaskContent
    * @returns
    */
-  public async createSubDialog(
+  public async createSideDialog(
     callerDialog: Dialog,
     targetAgentId: string,
     mentionList: string[] | undefined,
@@ -2419,35 +2499,39 @@ export abstract class DialogStore {
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
     },
-  ): Promise<SubDialog> {
+  ): Promise<SideDialog> {
     const generatedId = generateDialogID();
-    const rootDialog =
-      callerDialog instanceof RootDialog
+    const mainDialog =
+      callerDialog instanceof MainDialog
         ? callerDialog
-        : callerDialog instanceof SubDialog
-          ? callerDialog.rootDialog
+        : callerDialog instanceof SideDialog
+          ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSubDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
               );
             })();
-    const subdialogId = new DialogID(generatedId, rootDialog.id.rootId);
-    return new SubDialog(
+    const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
+    const assignment: AssignmentFromAsker = {
+      callName: options.callName,
+      mentionList,
+      tellaskContent,
+      originMemberId: options.originMemberId,
+      callerDialogId: options.callerDialogId,
+      callId: options.callId,
+      collectiveTargets: options.collectiveTargets,
+      effectiveFbrEffort: options.effectiveFbrEffort,
+    };
+    return new SideDialog(
       this,
-      rootDialog,
+      mainDialog,
       callerDialog.taskDocPath,
-      subdialogId,
+      sideDialogId,
       targetAgentId,
-      {
-        callName: options.callName,
-        mentionList,
-        tellaskContent,
-        originMemberId: options.originMemberId,
-        callerDialogId: options.callerDialogId,
-        callId: options.callId,
-        collectiveTargets: options.collectiveTargets,
-        effectiveFbrEffort: options.effectiveFbrEffort,
-      },
+      buildSideDialogAskerStack({
+        askerDialogId: options.callerDialogId,
+        assignment,
+      }),
       options.sessionSlug,
     );
   }
@@ -2514,27 +2598,27 @@ export abstract class DialogStore {
     return null;
   }
 
-  public async loadPendingSubdialogs(
+  public async loadPendingSideDialogs(
     _dialogId: DialogID,
     _status: 'running' | 'completed' | 'archived',
-  ): Promise<PendingSubdialog[]> {
+  ): Promise<PendingSideDialog[]> {
     return [];
   }
 
-  public async saveSubdialogRegistry(
-    _dialog: RootDialog,
-    _rootDialogId: DialogID,
+  public async saveSideDialogRegistry(
+    _dialog: MainDialog,
+    _mainDialogId: DialogID,
     _entries: Array<{
       key: string;
-      subdialogId: DialogID;
+      sideDialogId: DialogID;
       agentId: string;
       sessionSlug?: string;
     }>,
     _status: 'running' | 'completed' | 'archived',
   ): Promise<void> {}
 
-  public async loadSubdialogRegistry(
-    _rootDialog: RootDialog,
+  public async loadSideDialogRegistry(
+    _mainDialog: MainDialog,
     _status: 'running' | 'completed' | 'archived',
   ): Promise<void> {}
 

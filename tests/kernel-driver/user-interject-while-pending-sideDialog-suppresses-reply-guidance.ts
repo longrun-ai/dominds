@@ -11,7 +11,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { isUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
-  createRootDialog,
+  createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
@@ -45,7 +45,7 @@ function assertNoInjectedReplyGuidance(contents: readonly string[]): void {
   }
 }
 
-async function runRootDialogScenario(): Promise<void> {
+async function runMainDialogScenario(): Promise<void> {
   const interjectPrompt = 'Please handle this local interruption only.';
   const interjectResponse = 'Handled the local interruption without touching the sideline reply.';
   const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
@@ -59,10 +59,10 @@ async function runRootDialogScenario(): Promise<void> {
     },
   ]);
 
-  const root = await createRootDialog('tester');
+  const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const pendingSubdialog = await root.createSubDialog(
+  const pendingSideDialog = await root.createSideDialog(
     'pangu',
     ['@pangu'],
     'Background sideline work is still pending.',
@@ -70,18 +70,20 @@ async function runRootDialogScenario(): Promise<void> {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
-      callId: 'root-pending-subdialog-call',
+      callId: 'root-pending-sideDialog-call',
       collectiveTargets: ['pangu'],
     },
   );
-  await DialogPersistence.appendPendingSubdialog(root.id, {
-    subdialogId: pendingSubdialog.id.selfId,
+  await DialogPersistence.appendPendingSideDialog(root.id, {
+    sideDialogId: pendingSideDialog.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
     tellaskContent: 'Background sideline work is still pending.',
     targetAgentId: 'pangu',
-    callId: 'root-pending-subdialog-call',
+    callId: 'root-pending-sideDialog-call',
+    callingCourse: 1,
+    callingGenseq: 1,
     callType: 'C',
   });
 
@@ -95,14 +97,14 @@ async function runRootDialogScenario(): Promise<void> {
     {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target',
-      targetDialogId: pendingSubdialog.id.selfId,
+      targetDialogId: pendingSideDialog.id.selfId,
       tellaskContent: 'Please confirm the sideline result.',
     },
   );
 
   await driveDialogStream(
     root,
-    makeUserPrompt(interjectPrompt, 'root-user-interject-while-pending-subdialog', {
+    makeUserPrompt(interjectPrompt, 'root-user-interject-while-pending-sideDialog', {
       userLanguageCode: 'en',
     }),
     true,
@@ -118,7 +120,7 @@ async function runRootDialogScenario(): Promise<void> {
       event.type === 'human_text_record',
   );
   const interjectRecord = humanTextRecords.find(
-    (event) => event.msgId === 'root-user-interject-while-pending-subdialog',
+    (event) => event.msgId === 'root-user-interject-while-pending-sideDialog',
   );
   assert.ok(interjectRecord, 'expected persisted user interjection record for root dialog');
   assert.equal(interjectRecord?.content, interjectPrompt);
@@ -129,11 +131,11 @@ async function runRootDialogScenario(): Promise<void> {
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
-  const pending = await DialogPersistence.loadPendingSubdialogs(root.id, root.status);
-  assert.equal(pending.length, 1, 'root should keep waiting on the original pending subdialog');
+  const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+  assert.equal(pending.length, 1, 'root should keep waiting on the original pending sideDialog');
 }
 
-async function runSubdialogScenario(): Promise<void> {
+async function runSideDialogScenario(): Promise<void> {
   const interjectPrompt = 'Pause the nested sideline and handle this local note first.';
   const interjectResponse = 'Handled the local note without replying upstream.';
   const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
@@ -147,10 +149,10 @@ async function runSubdialogScenario(): Promise<void> {
     },
   ]);
 
-  const root = await createRootDialog('tester');
+  const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const subdialog = await root.createSubDialog('pangu', ['@pangu'], 'Finish the assigned task.', {
+  const sideDialog = await root.createSideDialog('pangu', ['@pangu'], 'Finish the assigned task.', {
     callName: 'tellask',
     originMemberId: 'tester',
     callerDialogId: root.id.selfId,
@@ -158,48 +160,51 @@ async function runSubdialogScenario(): Promise<void> {
     sessionSlug: 'parent-session',
     collectiveTargets: ['pangu'],
   });
-  subdialog.disableDiligencePush = true;
+  sideDialog.disableDiligencePush = true;
 
-  const nestedSubdialog = await subdialog.createSubDialog(
+  const nestedSideDialog = await sideDialog.createSideDialog(
     'nuwa',
     ['@nuwa'],
     'Investigate a nested sideline.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'pangu',
-      callerDialogId: subdialog.id.selfId,
+      callerDialogId: sideDialog.id.selfId,
       callId: 'pangu-to-nuwa-call',
       collectiveTargets: ['nuwa'],
     },
   );
-  await DialogPersistence.appendPendingSubdialog(subdialog.id, {
-    subdialogId: nestedSubdialog.id.selfId,
+  await DialogPersistence.appendPendingSideDialog(sideDialog.id, {
+    sideDialogId: nestedSideDialog.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@nuwa'],
     tellaskContent: 'Investigate a nested sideline.',
     targetAgentId: 'nuwa',
     callId: 'pangu-to-nuwa-call',
+    callingCourse: 1,
+    callingGenseq: 1,
     callType: 'C',
   });
 
-  await subdialog.persistUserMessage(
+  await sideDialog.persistUserMessage(
     'Initial sideline assignment from upstream.',
-    'subdialog-runtime-assignment',
+    'sideDialog-runtime-assignment',
     'markdown',
     'runtime',
     'en',
     undefined,
     {
       expectedReplyCallName: 'replyTellask',
+      targetDialogId: root.id.selfId,
       targetCallId: 'root-to-pangu-call',
       tellaskContent: 'Finish the assigned task.',
     },
   );
 
   await driveDialogStream(
-    subdialog,
-    makeUserPrompt(interjectPrompt, 'subdialog-user-interject-while-pending-subdialog', {
+    sideDialog,
+    makeUserPrompt(interjectPrompt, 'sideDialog-user-interject-while-pending-sideDialog', {
       userLanguageCode: 'en',
     }),
     true,
@@ -207,31 +212,35 @@ async function runSubdialogScenario(): Promise<void> {
   );
   await waitForAllDialogsUnlocked(root, 2_000);
 
-  assert.equal(lastAssistantSayingContent(subdialog.msgs), interjectResponse);
+  assert.equal(lastAssistantSayingContent(sideDialog.msgs), interjectResponse);
 
   const events = await DialogPersistence.loadCourseEvents(
-    subdialog.id,
-    subdialog.currentCourse,
-    subdialog.status,
+    sideDialog.id,
+    sideDialog.currentCourse,
+    sideDialog.status,
   );
   const humanTextRecords = events.filter(
     (event): event is Extract<(typeof events)[number], { type: 'human_text_record' }> =>
       event.type === 'human_text_record',
   );
   const interjectRecord = humanTextRecords.find(
-    (event) => event.msgId === 'subdialog-user-interject-while-pending-subdialog',
+    (event) => event.msgId === 'sideDialog-user-interject-while-pending-sideDialog',
   );
-  assert.ok(interjectRecord, 'expected persisted user interjection record for subdialog');
+  assert.ok(interjectRecord, 'expected persisted user interjection record for sideDialog');
   assert.equal(interjectRecord?.content, interjectPrompt);
   assert.equal(
     interjectRecord?.tellaskReplyDirective,
     undefined,
-    'subdialog interjection should not inherit the upstream reply directive',
+    'sideDialog interjection should not inherit the upstream reply directive',
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
-  const pending = await DialogPersistence.loadPendingSubdialogs(subdialog.id, subdialog.status);
-  assert.equal(pending.length, 1, 'subdialog should keep waiting on its nested pending subdialog');
+  const pending = await DialogPersistence.loadPendingSideDialogs(sideDialog.id, sideDialog.status);
+  assert.equal(
+    pending.length,
+    1,
+    'sideDialog should keep waiting on its nested pending sideDialog',
+  );
 }
 
 async function runRepeatedRootInterjectionScenario(): Promise<void> {
@@ -257,10 +266,10 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     },
   ]);
 
-  const root = await createRootDialog('tester');
+  const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const pendingSubdialog = await root.createSubDialog(
+  const pendingSideDialog = await root.createSideDialog(
     'pangu',
     ['@pangu'],
     'Background sideline work is still pending.',
@@ -268,18 +277,20 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       callerDialogId: root.id.selfId,
-      callId: 'root-pending-subdialog-call-repeated',
+      callId: 'root-pending-sideDialog-call-repeated',
       collectiveTargets: ['pangu'],
     },
   );
-  await DialogPersistence.appendPendingSubdialog(root.id, {
-    subdialogId: pendingSubdialog.id.selfId,
+  await DialogPersistence.appendPendingSideDialog(root.id, {
+    sideDialogId: pendingSideDialog.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
     tellaskContent: 'Background sideline work is still pending.',
     targetAgentId: 'pangu',
-    callId: 'root-pending-subdialog-call-repeated',
+    callId: 'root-pending-sideDialog-call-repeated',
+    callingCourse: 1,
+    callingGenseq: 1,
     callType: 'C',
   });
 
@@ -293,14 +304,14 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-repeated',
-      targetDialogId: pendingSubdialog.id.selfId,
+      targetDialogId: pendingSideDialog.id.selfId,
       tellaskContent: 'Please confirm the sideline result.',
     },
   );
 
   await driveDialogStream(
     root,
-    makeUserPrompt(firstPrompt, 'root-user-interject-pending-subdialog-first', {
+    makeUserPrompt(firstPrompt, 'root-user-interject-pending-sideDialog-first', {
       userLanguageCode: 'en',
     }),
     true,
@@ -311,7 +322,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
 
   await driveDialogStream(
     root,
-    makeUserPrompt(secondPrompt, 'root-user-interject-pending-subdialog-second', {
+    makeUserPrompt(secondPrompt, 'root-user-interject-pending-sideDialog-second', {
       userLanguageCode: 'en',
     }),
     true,
@@ -350,7 +361,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     },
   ]);
 
-  const root = await createRootDialog('tester');
+  const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
@@ -416,7 +427,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
 }
 
 async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
-  const root = await createRootDialog('tester');
+  const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
@@ -493,22 +504,22 @@ async function main(): Promise<void> {
       includePangu: true,
       extraMembers: ['nuwa'],
     });
-    await runRootDialogScenario();
-    await runSubdialogScenario();
+    await runMainDialogScenario();
+    await runSideDialogScenario();
     await runRepeatedRootInterjectionScenario();
     await runProceedingReplyObligationScenario();
     await runQ4HAnswerNeverCountsAsInterjectionScenario();
   });
 
   console.log(
-    'kernel-driver user-interject-while-pending-subdialog-suppresses-reply-guidance: PASS',
+    'kernel-driver user-interject-while-pending-sideDialog-suppresses-reply-guidance: PASS',
   );
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    'kernel-driver user-interject-while-pending-subdialog-suppresses-reply-guidance: FAIL\n' +
+    'kernel-driver user-interject-while-pending-sideDialog-suppresses-reply-guidance: FAIL\n' +
       message,
   );
   process.exit(1);

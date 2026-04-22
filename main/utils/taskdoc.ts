@@ -5,7 +5,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { Dialog, SubDialog } from '../dialog';
+import { Dialog, SideDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { getWorkLanguage } from '../runtime/work-language';
 import {
@@ -38,8 +38,8 @@ export async function formatTaskDocContent(dlg: Dialog): Promise<ChatMessage> {
     };
   }
 
-  const isSubdialog = dlg instanceof SubDialog;
-  const taskdocMaintainerId = isSubdialog ? dlg.rootDialog.agentId : dlg.agentId;
+  const isSideDialog = dlg instanceof SideDialog;
+  const taskdocMaintainerId = isSideDialog ? dlg.mainDialog.agentId : dlg.agentId;
   const workspaceRoot = path.resolve(process.cwd());
   const fullPath = path.resolve(workspaceRoot, taskDocPath);
 
@@ -241,7 +241,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
                 .map((n) => `\`${n}\``)
                 .join(', ')}`
             : '';
-        const maintenanceLine = isSubdialog
+        const maintenanceLine = isSideDialog
           ? `- 支线对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
           : `- 维护方式：用函数工具 \`change_mind\` 指定分段（顶层 selector: \`goals\` / \`constraints\` / \`progress\`；或 category+selector 指定额外章节）。每次调用会替换该章节全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一程中多次调用来一次更新多个章节（禁止覆盖/抹掉他人条目）。`;
         return [
@@ -270,7 +270,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         ].join('\n');
       }
 
-      const maintenanceLine = isSubdialog
+      const maintenanceLine = isSideDialog
         ? `- Sideline dialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
         : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (top-level selector: \`goals\` / \`constraints\` / \`progress\`, or category+selector for extra sections). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
       const bearEn =
@@ -288,7 +288,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       return [
         `**Taskdoc Constitution (Encapsulated \`*.tsk/\`):**`,
         `- Our Taskdoc is a \`*.tsk/\` directory: it always auto-injects the 3 top-level sections (\`goals\` / \`constraints\` / \`progress\`); it may auto-inject \`bearinmind/\` (fixed whitelist); any other sections are NOT auto-injected and must be read via \`recall_taskdoc\` (only an index is shown).`,
-        `- Team-shared: all 3 sections are visible to teammates and subdialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
+        `- Team-shared: all 3 sections are visible to teammates and sideDialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
         `- Section semantics: \`goals\` / \`constraints\` are the task contract; \`progress\` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers, not a personal “what I'm doing now” notebook.`,
         `- Taskdoc maintainer (runs \`change_mind\`): @${taskdocMaintainerId}`,
         `- Important: Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc; do not try to read files under \`*.tsk/\` via general file tools (they will be rejected).`,
@@ -316,7 +316,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     const maxSize = 100 * 1024; // 100KB
     if (bytes > maxSize) {
       if (language === 'zh') {
-        const howToUpdate = isSubdialog
+        const howToUpdate = isSideDialog
           ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
           : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`change_mind\` 来更新（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量更新；禁止覆盖/抹掉他人条目）。`;
         return {
@@ -332,7 +332,7 @@ ${howToUpdate}`,
         };
       }
 
-      const howToUpdate = isSubdialog
+      const howToUpdate = isSideDialog
         ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSideline dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
         : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use the function tool \`change_mind\` to update (each call replaces one section; you may call it multiple times in a single turn to batch updates; do not overwrite/delete other contributors).`;
       return {
@@ -349,7 +349,7 @@ ${howToUpdate}`,
     }
 
     if (language === 'zh') {
-      const footerLine = isSubdialog
+      const footerLine = isSideDialog
         ? `*支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
         : `*在当前对话中用函数工具 \`change_mind\` 来替换分段（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量替换；更新时禁止覆盖他人条目）。*`;
       return {
@@ -373,7 +373,7 @@ ${footerLine}
       };
     }
 
-    const footerLine = isSubdialog
+    const footerLine = isSideDialog
       ? `*Sideline dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).*`
       : `*In this dialog, use the function tool \`change_mind\` to replace sections (each call replaces one entire section; you may call it multiple times in a single turn to batch replacements; do not overwrite other contributors).*`;
     return {

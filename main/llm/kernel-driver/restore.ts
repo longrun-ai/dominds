@@ -3,7 +3,7 @@ import path from 'path';
 
 import { Dialog, DialogID } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
-import { ensureDialogLoaded, getOrRestoreRootDialog } from '../../dialog-instance-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 
@@ -16,38 +16,38 @@ type RestoreSummary = {
 };
 
 export async function restoreDialogHierarchy(
-  rootDialogId: string,
+  mainDialogId: string,
   status: RestoreStatus = 'running',
 ): Promise<{
-  rootDialog: Dialog;
-  subdialogs: Map<string, Dialog>;
+  mainDialog: Dialog;
+  sideDialogs: Map<string, Dialog>;
   summary: RestoreSummary;
 }> {
   try {
-    const rootDialogIdent = new DialogID(rootDialogId);
-    const rootMeta = await DialogPersistence.loadRootDialogMetadata(rootDialogIdent, status);
-    if (rootMeta?.supdialogId) {
+    const mainDialogIdent = new DialogID(mainDialogId);
+    const rootMeta = await DialogPersistence.loadMainDialogMetadata(mainDialogIdent, status);
+    if (rootMeta?.askerDialogId) {
       throw new Error(
-        `Expected root dialog ${rootDialogId} but found subdialog metadata with supdialogId: ${rootMeta.supdialogId}`,
+        `Expected root dialog ${mainDialogId} but found sideDialog metadata with askerDialogId: ${rootMeta.askerDialogId}`,
       );
     }
 
-    const rootDialog = await getOrRestoreRootDialog(rootDialogId, status);
-    if (!rootDialog) {
+    const mainDialog = await getOrRestoreMainDialog(mainDialogId, status);
+    if (!mainDialog) {
       throw new Error(
-        `Failed to restore dialog hierarchy for ${rootDialogId} from status ${status}`,
+        `Failed to restore dialog hierarchy for ${mainDialogId} from status ${status}`,
       );
     }
-    globalDialogRegistry.register(rootDialog);
+    globalDialogRegistry.register(mainDialog);
 
-    const subdialogs = new Map<string, Dialog>();
-    const rootPath = DialogPersistence.getRootDialogPath(rootDialogIdent, status);
-    const subdialogsPath = path.join(rootPath, 'subdialogs');
+    const sideDialogs = new Map<string, Dialog>();
+    const rootPath = DialogPersistence.getMainDialogPath(mainDialogIdent, status);
+    const sideDialogsPath = path.join(rootPath, 'sideDialogs');
 
-    let allSubdialogIds: string[] = [];
+    let allSideDialogIds: string[] = [];
     try {
-      const entries = await fs.promises.readdir(subdialogsPath, { withFileTypes: true });
-      allSubdialogIds = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+      const entries = await fs.promises.readdir(sideDialogsPath, { withFileTypes: true });
+      allSideDialogIds = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     } catch (err: unknown) {
       const code =
         typeof err === 'object' && err !== null && 'code' in err
@@ -55,24 +55,24 @@ export async function restoreDialogHierarchy(
           : undefined;
       if (code !== 'ENOENT') {
         log.warn(
-          `Failed to read subdialogs directory: ${subdialogsPath}, returning empty array`,
+          `Failed to read sideDialogs directory: ${sideDialogsPath}, returning empty array`,
           err,
         );
       }
-      allSubdialogIds = [];
+      allSideDialogIds = [];
     }
 
-    for (const subdialogId of allSubdialogIds) {
-      const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
-      const dialog = await ensureDialogLoaded(rootDialog, restoredSubdialogId, status);
+    for (const sideDialogId of allSideDialogIds) {
+      const restoredSideDialogId = new DialogID(sideDialogId, mainDialog.id.rootId);
+      const dialog = await ensureDialogLoaded(mainDialog, restoredSideDialogId, status);
       if (dialog && dialog.id.selfId !== dialog.id.rootId) {
-        subdialogs.set(subdialogId, dialog);
+        sideDialogs.set(sideDialogId, dialog);
       }
     }
 
-    let totalMessages = rootDialog.msgs.length;
-    let totalCourses = rootDialog.currentCourse;
-    for (const dialog of subdialogs.values()) {
+    let totalMessages = mainDialog.msgs.length;
+    let totalCourses = mainDialog.currentCourse;
+    for (const dialog of sideDialogs.values()) {
       totalMessages += dialog.msgs.length;
       if (dialog.currentCourse > totalCourses) {
         totalCourses = dialog.currentCourse;
@@ -86,12 +86,12 @@ export async function restoreDialogHierarchy(
     };
 
     return {
-      rootDialog,
-      subdialogs,
+      mainDialog,
+      sideDialogs,
       summary,
     };
   } catch (error) {
-    log.error(`Failed to restore dialog hierarchy for ${rootDialogId}:`, error);
+    log.error(`Failed to restore dialog hierarchy for ${mainDialogId}:`, error);
     throw error;
   }
 }

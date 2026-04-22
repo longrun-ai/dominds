@@ -8,16 +8,16 @@ Dominds root dialogs are intended for long-run operation. A root dialog "stoppin
 is often not what operators want: they want the agent to keep pushing forward until it either:
 
 - legitimately suspends for a human decision (Q4H), or
-- legitimately suspends waiting for subdialogs (tellask/backfill).
+- legitimately suspends waiting for sideDialogs (tellask/backfill).
 
 This document specifies a runtime mechanism ("diligence-push") that, for **root/main dialogs only**,
 prevents the dialog from stopping: whenever the driver would otherwise stop, it auto-sends a short
 diligence prompt (rendered as a normal user bubble) and continues generation, except when the dialog
-is legitimately suspended (Q4H or pending subdialogs).
+is legitimately suspended (Q4H or pending sideDialogs).
 
 ## Goals
 
-- Prevent root dialogs from stopping except for legitimate suspension states (Q4H / subdialogs).
+- Prevent root dialogs from stopping except for legitimate suspension states (Q4H / sideDialogs).
 - Keep behavior predictable and bounded (no infinite loops).
 - Make the Diligence Push text configurable per rtws (runtime workspace) and language.
 - Provide a clear, user-controlled "disable" mechanism.
@@ -25,12 +25,12 @@ is legitimately suspended (Q4H or pending subdialogs).
 ## Non-goals
 
 - Auto-completing / auto-marking a dialog as done.
-- Applying this behavior to subdialogs (subdialogs remain scoped and should report back to their caller).
+- Applying this behavior to sideDialogs (sideDialogs remain scoped and should report back to their caller).
 
 ## Definitions
 
-- **Root/main dialog**: a `RootDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
-- **Subdialog**: a `SubDialog`, created for tellask / scoped work.
+- **Root/main dialog**: a `MainDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
+- **SideDialog**: a `SideDialog`, created for tellask / scoped work.
 - **Q4H**: "Questions for Human", initiated via `askHuman()`, which suspends dialog progression until the human responds.
 
 ## Expected "normal" completion path (recommended)
@@ -49,19 +49,19 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
 
 ### Trigger conditions (must all hold)
 
-- Dialog is the **root/main dialog** (never for subdialogs).
+- Dialog is the **root/main dialog** (never for sideDialogs).
 - Dialog is **not suspended**:
   - no pending Q4H, and
-  - no pending subdialogs (waiting for backfill).
+  - no pending sideDialogs (waiting for backfill).
 - The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
 ### Exception: provider deadlock recovery
 
 Some provider/API quirk handlers may request a one-time Diligence Push recovery after Dominds stops
 same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
-idle" path. In that recovery-only case, pending subdialogs do not veto the single Diligence Push
+idle" path. In that recovery-only case, pending sideDialogs do not veto the single Diligence Push
 injection, because the deadlock may happen in a function-result-driven generation round right after
-the root dialog has already registered an in-flight tellask/subdialog. Q4H remains a hard blocker.
+the root dialog has already registered an in-flight tellask/sideDialog. Q4H remains a hard blocker.
 
 ### Action
 
@@ -145,9 +145,9 @@ Rules:
 Implemented in the kernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
 post-iteration check:
 
-1. If the dialog is suspended, stop (Q4H / subdialog pending), except for the deadlock-recovery
+1. If the dialog is suspended, stop (Q4H / sideDialog pending), except for the deadlock-recovery
    special case described above where one recovery-only Diligence Push may ignore pending
-   subdialogs.
+   sideDialogs.
 2. If there is any tool feedback, continue normally.
 3. Otherwise (root only), attempt diligence-push auto-continue:
    - If disabled → stop normally.
@@ -183,7 +183,7 @@ Regression tests should cover:
 
 - Root dialog: tool-only output → diligence injection → continued response
 - Root dialog: empty assistant output → diligence injection → continued response
-- Subdialog: no diligence injection
+- SideDialog: no diligence injection
 - rtws config:
   - `.minds/diligence.md` is honored when lang-specific file is absent
   - empty diligence file disables diligence-push

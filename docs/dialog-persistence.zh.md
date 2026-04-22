@@ -45,7 +45,7 @@
 
 ### 设计原则
 
-- **扁平子对话存储**：所有子对话扁平存储在主对话（根对话）的 `subdialogs/` 目录下，无论嵌套深度如何
+- **扁平子对话存储**：所有子对话扁平存储在主对话（根对话）的 `sideDialogs/` 目录下，无论嵌套深度如何
 - **仅追加流**：消息流是仅追加的，用于审计追踪和重放能力
 - **原子操作**：所有持久化操作都是原子的，以防止损坏
 - **人类可读格式**：存储使用 YAML 和 JSONL 以实现透明性和调试
@@ -185,7 +185,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ├── <course>.jsonl            # 每一程的流式事件
 ├── <course>.yaml             # 每一程的元数据
 ├── artifacts/                # 二进制工件（例如 MCP 工具输出图片；由 func_result_msg.contentItems 引用）
-└── subdialogs/               # 扁平子对话存储
+└── sideDialogs/               # 扁平子对话存储
     ├── <subDialogId1>/       # 第一级子对话
     │   ├── dialog.yaml       # 子对话元数据
     │   ├── latest.yaml       # 子对话当前状态
@@ -236,8 +236,8 @@ id: 'dd/ee/ffffffff' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'bob' # 负责此对话的智能体
 taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径（从父级继承）
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
-supdialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
-assignmentFromSup: # 来自父级的任务上下文
+askerDialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
+assignmentFromAsker: # 来自父级的任务上下文
   mentionList: ['@bob']
   tellaskContent: 'Implement user authentication; create secure login system with JWT tokens'
   originMemberId: 'alice'
@@ -254,7 +254,7 @@ currentCourse: 3 # 当前对话过程编号（基于 1）
 lastModified: '2024-01-15T11:45:00Z' # 最后活动的 ISO 时间戳
 messageCount: 12 # 当前对话过程中的总消息数
 functionCallCount: 3 # 当前对话过程中的总函数调用数
-subdialogCount: 1 # 创建的子对话总数
+sideDialogCount: 1 # 创建的子对话总数
 status: 'active' # 当前对话状态
 ```
 
@@ -313,20 +313,20 @@ status: 'active' # 当前对话状态
 
 **新增/强化的持久化记录**：
 
-- `subdialog_created_record`
+- `sideDialog_created_record`
   - 持久化在 root transcript 中
   - 记录某个子对话何时在 root 时间线上已“存在”，供 fork 时判断是否应纳入新树
 - `reminders_reconciled_record`
 - `questions4human_reconciled_record`
-- `pending_subdialogs_reconciled_record`
-- `subdialog_registry_reconciled_record`
-- `subdialog_responses_reconciled_record`
+- `pending_sideDialogs_reconciled_record`
+- `sideDialog_registry_reconciled_record`
+- `sideDialog_responses_reconciled_record`
 
 **规范要求**：
 
 - 这些对账记录是状态快照，不属于 LLM transcript 内容；重建消息上下文时应跳过
 - 子对话 transcript 中凡是需要参与 root fork 边界裁剪的记录，都必须带 `rootCourse/rootGenseq`
-- fork 写入新 root 时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending subdialogs / registry / responses 恢复到切点前状态
+- fork 写入新 root 时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending sideDialogs / registry / responses 恢复到切点前状态
 
 ---
 
@@ -391,7 +391,7 @@ started_at: '2024-01-15T11:30:00Z'
 completed_at: '2024-01-15T11:45:00Z'
 message_count: 12
 function_calls: 3
-subdialogs_created: 1
+sideDialogs_created: 1
 status: 'completed'
 ```
 
@@ -470,8 +470,8 @@ taskdocChecksum: 'sha256:abc123...'
 1. 使用 `generateDialogID()` 生成唯一子对话 ID
 2. 创建具有以下内容的 `DialogID` 实例：
    - `selfDlgId`：新生成的子对话 ID
-   - `rootDlgId`：从 supdialog 的 `rootDlgId` 继承
-3. 在父级的 `subdialogs/` 下创建子对话目录（仅使用 `selfDlgId` 作为目录名）
+   - `rootDlgId`：从 askerDialog 的 `rootDlgId` 继承
+3. 在父级的 `sideDialogs/` 下创建子对话目录（仅使用 `selfDlgId` 作为目录名）
 4. 从父级设置差遣牒路径引用
 5. 在元数据中设置父调用上下文
 6. 初始化子对话状态，元数据中仅存储 `selfDlgId`
@@ -486,7 +486,7 @@ taskdocChecksum: 'sha256:abc123...'
    - 移动中包含所有子对话
 4. 对于子对话：
    - 更新元数据中的状态
-   - 使用完整的序列化 DialogID 通知 supdialog 完成
+   - 使用完整的序列化 DialogID 通知 askerDialog 完成
 5. 根据保留策略归档旧对话
 
 ### 记忆更新
@@ -645,7 +645,7 @@ rtws/
 │   │   │   ├── metadata.yaml     # 对话配置和状态
 │   │   │   ├── checkpoints/      # 定期状态快照
 │   │   │   ├── temp/             # 流式传输期间的临时文件
-│   │   │   └── subdialogs/       # 子对话存储
+│   │   │   └── sideDialogs/       # 子对话存储
 │   │   │       └── {sub-dialog-id}/  # 子对话目录（仅使用 selfDlgId）
 │   │   │           ├── stream.jsonl
 │   │   │           ├── metadata.yaml
@@ -664,7 +664,7 @@ rtws/
 在此建议结构中：
 
 - 根对话按其 `root-dialog-id` 组织
-- 子对话存储在其根对话的 `subdialogs/` 目录中，目录名称仅使用他们的 `selfDlgId`
+- 子对话存储在其根对话的 `sideDialogs/` 目录中，目录名称仅使用他们的 `selfDlgId`
 - 元数据在 `id` 字段中仅存储 `selfDlgId`
 - 完整的 `rootDlgId#selfDlgId` 格式在加载时重建，并用于索引中以实现高效查找
 
