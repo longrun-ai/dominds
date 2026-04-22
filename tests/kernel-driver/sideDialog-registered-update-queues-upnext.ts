@@ -162,11 +162,11 @@ async function main(): Promise<void> {
     );
 
     const pendingAfterUpdate = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
-    assert.equal(pendingAfterUpdate.length, 2, 'expected stacked pending rounds after update');
-    assert.deepEqual(pendingAfterUpdate.map((record) => record.callId).sort(), [
-      'call-initial-round',
-      'call-updated-round',
-    ]);
+    assert.equal(pendingAfterUpdate.length, 1, 'expected updated tellask to replace pending');
+    assert.deepEqual(
+      pendingAfterUpdate.map((record) => record.callId),
+      ['call-updated-round'],
+    );
 
     await waitFor(
       async () => {
@@ -207,13 +207,13 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       pendingAfterUpdatedReply.map((record) => record.callId),
-      ['call-initial-round'],
-      'after replying to the stack top, the earlier pending round should be restored',
+      [],
+      'after replying to the replacement round, no earlier pending round should be restored',
     );
     assert.equal(
       sideDialog.assignmentFromAsker.callId,
-      'call-initial-round',
-      'after popping the stack top, the sideDialog should resume the earlier askerDialog frame',
+      'call-updated-round',
+      'after replacement delivery, the sideDialog should keep the latest assignment frame',
     );
   });
 

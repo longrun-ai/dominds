@@ -161,6 +161,57 @@ async function main(): Promise<void> {
     assert.equal(assignmentOnlyFrame.tellaskReplyObligation, undefined);
     assert.equal(assignmentOnlyFrame.assignmentFromAsker.callId, 'call-sub-2');
 
+    const previousAskerAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
+      ...initialAssignment,
+      tellaskContent: 'Previous asker assignment',
+      callerDialogId: mainId.selfId,
+      callId: 'call-from-previous-asker',
+    };
+    const previousAskerFrame: AskerDialogStackFrame = {
+      kind: 'asker_dialog_stack_frame',
+      askerDialogId: mainId.selfId,
+      assignmentFromAsker: previousAskerAssignment,
+      tellaskReplyObligation: {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: mainId.selfId,
+        targetCallId: previousAskerAssignment.callId,
+        tellaskContent: previousAskerAssignment.tellaskContent,
+      },
+    };
+    await DialogPersistence.saveDialogAskerStack(
+      sideId,
+      { askerStack: [previousAskerFrame] },
+      'running',
+    );
+    await DialogPersistence.updateSideDialogAssignment(
+      sideId,
+      {
+        ...previousAskerAssignment,
+        tellaskContent: 'New asker assignment',
+        callerDialogId: 'side-asker',
+        callId: 'call-from-new-asker',
+      },
+      'running',
+      {
+        replacePendingCallId: previousAskerAssignment.callId,
+        replacePendingAskerDialogId: previousAskerAssignment.callerDialogId,
+      },
+    );
+    const crossAskerRows = await loadStackRows(sideId);
+    assert.equal(crossAskerRows.length, 1);
+    assert.equal(
+      asRecord(crossAskerRows[0]['assignmentFromAsker'])['callerDialogId'],
+      'side-asker',
+    );
+    assert.equal(
+      asRecord(crossAskerRows[0]['assignmentFromAsker'])['callId'],
+      'call-from-new-asker',
+    );
+    assert.ok(
+      !JSON.stringify(crossAskerRows).includes(previousAskerAssignment.callId),
+      'cross-asker replacement must remove the old asker frame',
+    );
+
     const duplicateAssignment: SideDialogMetadataFile['assignmentFromAsker'] = {
       ...initialAssignment,
       tellaskContent: 'Duplicate pending assignment',

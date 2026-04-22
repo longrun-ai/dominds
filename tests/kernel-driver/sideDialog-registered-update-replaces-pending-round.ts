@@ -160,11 +160,33 @@ async function main(): Promise<void> {
     );
 
     const pendingAfterUpdate = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
-    assert.equal(pendingAfterUpdate.length, 2, 'expected stacked pending rounds after update');
+    assert.equal(
+      pendingAfterUpdate.length,
+      1,
+      'expected updated registered tellask to replace pending',
+    );
     assert.deepEqual(
-      pendingAfterUpdate.map((record) => record.callId).sort(),
-      ['call-initial-round', 'call-updated-round'],
-      'new registered assignment should push onto the reply stack instead of replacing the old round',
+      pendingAfterUpdate.map((record) => record.callId),
+      ['call-updated-round'],
+      'new registered assignment should replace the old pending round for the same sessionSlug',
+    );
+    const visibleRemindersAfterUpdate = await root.listVisibleReminders();
+    const pendingReminderAfterUpdate = visibleRemindersAfterUpdate.find(
+      (reminder) => reminder.owner?.name === 'pendingTellask',
+    );
+    assert.ok(
+      pendingReminderAfterUpdate,
+      'expected pending tellask reminder after registered update',
+    );
+    assert.equal(
+      pendingReminderAfterUpdate.content.includes('Initial assignment'),
+      false,
+      'pending tellask reminder should not show the replaced assignment',
+    );
+    assert.equal(
+      pendingReminderAfterUpdate.content.includes('Updated assignment'),
+      true,
+      'pending tellask reminder should show the latest assignment',
     );
 
     const supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
@@ -183,12 +205,11 @@ async function main(): Promise<void> {
       root.id,
       root.status,
     );
-    assert.equal(
-      pendingAfterBlockedReply[0]?.callId,
-      'call-initial-round',
-      'earlier pending round should remain present while the newer stack top is blocked',
+    assert.deepEqual(
+      pendingAfterBlockedReply.map((record) => record.callId),
+      ['call-updated-round'],
+      'blocked stale response should not restore the replaced pending round',
     );
-    assert.equal(pendingAfterBlockedReply[1]?.callId, 'call-updated-round');
 
     const rootEvents = await DialogPersistence.loadCourseEvents(
       root.id,

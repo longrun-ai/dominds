@@ -185,6 +185,47 @@ async function main(): Promise<void> {
     );
   });
 
+  await withTempCwd(async () => {
+    const root = await createMainDialog('tester');
+    await assert.rejects(
+      DialogPersistence.savePendingSideDialogs(
+        root.id,
+        [
+          {
+            sideDialogId: 'sub-old',
+            createdAt: '2026-04-16 11:01:00',
+            callName: 'tellask',
+            mentionList: ['@worker'],
+            tellaskContent: 'Old assignment',
+            targetAgentId: 'worker',
+            callId: 'call-old',
+            callingCourse: 1,
+            callingGenseq: 1,
+            callType: 'B',
+            sessionSlug: 'same-session',
+          },
+          {
+            sideDialogId: 'sub-new',
+            createdAt: '2026-04-16 11:02:00',
+            callName: 'tellask',
+            mentionList: ['@worker'],
+            tellaskContent: 'New assignment',
+            targetAgentId: 'worker',
+            callId: 'call-new',
+            callingCourse: 1,
+            callingGenseq: 2,
+            callType: 'B',
+            sessionSlug: 'same-session',
+          },
+        ],
+        undefined,
+        root.status,
+      ),
+      /duplicate sessioned tellask pending record/,
+      'Expected duplicate sessioned pending tellasks to fail loudly instead of being repaired',
+    );
+  });
+
   console.log('OK');
 }
 

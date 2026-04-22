@@ -14,6 +14,7 @@ type PendingSideDialogView = Readonly<{
   mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
+  callId: string;
   callType: 'A' | 'B' | 'C';
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   sessionSlug?: string;
@@ -102,9 +103,14 @@ function summarizeTellask(view: PendingSideDialogView): string {
 function makePendingSignature(pending: ReadonlyArray<PendingSideDialogView>): string {
   return pending
     .map((p) =>
-      [p.sideDialogId, p.targetAgentId, p.callType, p.sessionSlug ?? '', summarizeTellask(p)].join(
-        '|',
-      ),
+      [
+        p.sideDialogId,
+        p.targetAgentId,
+        p.callType,
+        p.callId,
+        p.sessionSlug ?? '',
+        summarizeTellask(p),
+      ].join('|'),
     )
     .sort()
     .join('||');
@@ -212,6 +218,7 @@ async function loadPendingSideDialogView(dlg: Dialog): Promise<PendingSideDialog
         mentionList: p.mentionList,
         tellaskContent: p.tellaskContent,
         targetAgentId: p.targetAgentId,
+        callId: p.callId,
         callType: p.callType,
         callName: p.callName,
         sessionSlug: p.sessionSlug,

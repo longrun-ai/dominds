@@ -1148,6 +1148,7 @@ async function updateSideDialogAssignment(
   assignment: AssignmentFromAsker,
   options?: Readonly<{
     replacePendingCallId?: string;
+    replacePendingAskerDialogId?: string;
   }>,
 ): Promise<void> {
   await DialogPersistence.updateSideDialogAssignment(
@@ -1953,6 +1954,11 @@ async function executeTellaskCall(
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
         const pendingOwner = askerDialog;
+        const isSameRegisteredSessionPending = (record: PendingSideDialogStateRecord): boolean =>
+          record.callType === 'B' &&
+          record.callName === 'tellask' &&
+          record.targetAgentId === parseResult.agentId &&
+          record.sessionSlug === parseResult.sessionSlug;
         const result = await (async (): Promise<
           | {
               kind: 'created';
@@ -1961,6 +1967,7 @@ async function executeTellaskCall(
           | {
               kind: 'existing';
               sideDialog: SideDialog;
+              previousPendingOwnerId: string;
             }
         > => {
           for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -1988,6 +1995,7 @@ async function executeTellaskCall(
                 if (existing.assignmentFromAsker.callerDialogId !== seededPreviousAskerId) {
                   return { kind: 'retry' as const };
                 }
+                const previousAssignment = existing.assignmentFromAsker;
                 const pendingRecord: PendingSideDialogStateRecord = {
                   sideDialogId: existing.id.selfId,
                   createdAt: formatUnifiedTimestamp(new Date()),
@@ -2002,34 +2010,43 @@ async function executeTellaskCall(
                   sessionSlug: parseResult.sessionSlug,
                 };
                 try {
-                  const previousPending = await DialogPersistence.loadPendingSideDialogs(
+                  if (previousAssignment.callerDialogId !== pendingOwner.id.selfId) {
+                    await DialogPersistence.mutatePendingSideDialogs(
+                      new DialogID(previousAssignment.callerDialogId, mainDialog.id.rootId),
+                      (previousPending) => ({
+                        kind: 'replace',
+                        records: previousPending.filter(
+                          (record) => !isSameRegisteredSessionPending(record),
+                        ),
+                      }),
+                      undefined,
+                      pendingOwner.status,
+                    );
+                  }
+
+                  await DialogPersistence.mutatePendingSideDialogs(
                     pendingOwner.id,
-                    pendingOwner.status,
-                  );
-                  const replacesExistingPending = previousPending.some(
-                    (record) =>
-                      record.sideDialogId === existing.id.selfId && record.callId === callId,
-                  );
-                  const nextPending = previousPending.filter(
-                    (record) =>
-                      record.sideDialogId !== existing.id.selfId || record.callId !== callId,
-                  );
-                  nextPending.push(pendingRecord);
-                  await DialogPersistence.savePendingSideDialogs(
-                    pendingOwner.id,
-                    nextPending,
+                    (previousPending) => ({
+                      kind: 'replace',
+                      records: [
+                        ...previousPending.filter(
+                          (record) => !isSameRegisteredSessionPending(record),
+                        ),
+                        pendingRecord,
+                      ],
+                    }),
                     undefined,
                     pendingOwner.status,
                   );
 
-                  await updateSideDialogAssignment(
-                    existing,
-                    assignment,
-                    replacesExistingPending ? { replacePendingCallId: callId } : undefined,
-                  );
+                  await updateSideDialogAssignment(existing, assignment, {
+                    replacePendingCallId: previousAssignment.callId,
+                    replacePendingAskerDialogId: previousAssignment.callerDialogId,
+                  });
                   return {
                     kind: 'existing' as const,
                     sideDialog: existing,
+                    previousPendingOwnerId: previousAssignment.callerDialogId,
                   };
                 } catch (err) {
                   log.error('Failed to update registered sideDialog assignment', err, {
@@ -2076,13 +2093,9 @@ async function executeTellaskCall(
                 callType: 'B',
                 sessionSlug: parseResult.sessionSlug,
               };
-              const nextPending = (
-                await DialogPersistence.loadPendingSideDialogs(pendingOwner.id, pendingOwner.status)
-              ).filter((record) => record.sideDialogId !== created.id.selfId);
-              nextPending.push(pendingRecord);
-              await DialogPersistence.savePendingSideDialogs(
+              await DialogPersistence.appendPendingSideDialog(
                 pendingOwner.id,
-                nextPending,
+                pendingRecord,
                 undefined,
                 pendingOwner.status,
               );
@@ -2101,6 +2114,18 @@ async function executeTellaskCall(
           pendingOwner,
           'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
         );
+        if (
+          result.kind === 'existing' &&
+          result.previousPendingOwnerId !== pendingOwner.id.selfId
+        ) {
+          const previousPendingOwner = mainDialog.lookupDialog(result.previousPendingOwnerId);
+          if (previousPendingOwner) {
+            await syncPendingTellaskReminderBestEffort(
+              previousPendingOwner,
+              'kernel-driver:executeTellaskCall:TypeB:replacePreviousPendingAssignment',
+            );
+          }
+        }
 
         if (result.kind === 'existing') {
           const resumePrompt: KernelDriverRuntimeSideDialogPrompt = {

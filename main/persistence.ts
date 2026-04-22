@@ -4833,12 +4833,12 @@ export class DialogPersistence {
   private static readonly RUN_DIR = 'run';
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
-  private static readonly SUBDIALOGS_DIR = 'sideDialogs';
+  private static readonly SIDE_DIALOGS_DIR = 'sideDialogs';
   private static readonly quarantinedMainDialogScopes = new Set<string>();
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
   private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
-  private static readonly PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS = 300;
+  private static readonly PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS = 300;
 
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
@@ -5194,7 +5194,7 @@ export class DialogPersistence {
       throw new Error('Expected sideDialog id (self differs from root)');
     }
     const rootPath = this.getMainDialogPath(new DialogID(dialogId.rootId), status);
-    return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
+    return path.join(rootPath, this.SIDE_DIALOGS_DIR, dialogId.selfId);
   }
 
   private static getMalformedMainDialogPath(dialogId: DialogID, status: DialogStatusKind): string {
@@ -5214,7 +5214,7 @@ export class DialogPersistence {
     if (segments.length === 0) {
       return null;
     }
-    const sideDialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    const sideDialogsIndex = segments.indexOf(this.SIDE_DIALOGS_DIR);
     const rootSegments = sideDialogsIndex === -1 ? segments : segments.slice(0, sideDialogsIndex);
     if (rootSegments.length === 0) {
       return null;
@@ -5231,7 +5231,7 @@ export class DialogPersistence {
     if (segments.length === 0) {
       return null;
     }
-    const sideDialogsIndex = segments.indexOf(this.SUBDIALOGS_DIR);
+    const sideDialogsIndex = segments.indexOf(this.SIDE_DIALOGS_DIR);
     if (sideDialogsIndex === -1) {
       return segments.join('/');
     }
@@ -5248,7 +5248,7 @@ export class DialogPersistence {
   ): Promise<string[]> {
     const sideDialogsPath = path.join(
       this.getMainDialogPath(mainDialogId, status),
-      this.SUBDIALOGS_DIR,
+      this.SIDE_DIALOGS_DIR,
     );
     const sideDialogIds = new Set<string>();
 
@@ -5274,7 +5274,7 @@ export class DialogPersistence {
         try {
           await fs.promises.access(dialogYamlPath);
           const inferredId = this.inferExpectedDialogIdFromMetadataRelativeDir(
-            path.join(this.SUBDIALOGS_DIR, entryRelativePath),
+            path.join(this.SIDE_DIALOGS_DIR, entryRelativePath),
           );
           if (!inferredId) {
             throw new Error(
@@ -6729,11 +6729,10 @@ export class DialogPersistence {
     }
   }
 
-  // === PHASE 6: SUBDIALOG SUPPLY PERSISTENCE ===
+  // === PHASE 6: SIDE DIALOG PENDING PERSISTENCE ===
 
   /**
-   * Save pending sideDialogs for Type A supply mechanism.
-   * Tracks sideDialogs that were created but not yet completed.
+   * Save pending sideDialogs that have an outstanding tellask/reply delivery.
    */
   static async savePendingSideDialogs(
     mainDialogId: DialogID,
@@ -6751,7 +6750,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Load pending sideDialogs for Type A supply mechanism.
+   * Load pending sideDialogs that have an outstanding tellask/reply delivery.
    */
   static async loadPendingSideDialogs(
     mainDialogId: DialogID,
@@ -6815,6 +6814,36 @@ export class DialogPersistence {
     return true;
   }
 
+  private static assertNoDuplicateSessionedTellaskPendingRecords(
+    records: readonly PendingSideDialogStateRecord[],
+    context: Readonly<{
+      rootId: string;
+      selfId: string;
+      status: DialogStatusKind;
+    }>,
+  ): void {
+    const seen = new Map<string, PendingSideDialogStateRecord>();
+    for (const record of records) {
+      if (record.callType !== 'B') continue;
+      if (record.callName !== 'tellask') continue;
+      if (record.sessionSlug === undefined) continue;
+      const sessionSlug = record.sessionSlug.trim();
+      if (sessionSlug === '') continue;
+      const key = `${record.targetAgentId}\0${sessionSlug}`;
+      const previous = seen.get(key);
+      if (previous) {
+        throw new Error(
+          `pending-sideDialogs invariant violation: duplicate sessioned tellask pending record ` +
+            `(rootId=${context.rootId}, selfId=${context.selfId}, status=${context.status}, ` +
+            `targetAgentId=${record.targetAgentId}, sessionSlug=${sessionSlug}, ` +
+            `previousSideDialogId=${previous.sideDialogId}, previousCallId=${previous.callId}, ` +
+            `duplicateSideDialogId=${record.sideDialogId}, duplicateCallId=${record.callId})`,
+        );
+      }
+      seen.set(key, record);
+    }
+  }
+
   private static async loadPendingSideDialogsFromDisk(
     mainDialogId: DialogID,
     status: DialogStatusKind,
@@ -6839,6 +6868,11 @@ export class DialogPersistence {
           filePath,
         });
       }
+      this.assertNoDuplicateSessionedTellaskPendingRecords(parsed, {
+        rootId: mainDialogId.rootId,
+        selfId: mainDialogId.selfId,
+        status,
+      });
       return parsed;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return [];
@@ -6902,6 +6936,11 @@ export class DialogPersistence {
           );
         }
       }
+      this.assertNoDuplicateSessionedTellaskPendingRecords(nextRecords, {
+        rootId: mainDialogId.rootId,
+        selfId: mainDialogId.selfId,
+        status,
+      });
 
       const nextState: PendingSideDialogsWriteBackState =
         nextRecords.length === 0 ? { kind: 'deleted' } : { kind: 'file', records: nextRecords };
@@ -6910,7 +6949,7 @@ export class DialogPersistence {
       if (!pending) {
         const timer = setTimeout(() => {
           void this.flushPendingSideDialogsWriteBack(key);
-        }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+        }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
 
         this.pendingSideDialogsWriteBack.set(key, {
           kind: 'scheduled',
@@ -7048,7 +7087,7 @@ export class DialogPersistence {
 
         const timer = setTimeout(() => {
           void this.flushPendingSideDialogsWriteBack(key);
-        }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+        }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
 
         this.pendingSideDialogsWriteBack.set(key, {
           kind: 'scheduled',
@@ -7077,7 +7116,7 @@ export class DialogPersistence {
 
       const timer = setTimeout(() => {
         void this.flushPendingSideDialogsWriteBack(key);
-      }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+      }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
       this.pendingSideDialogsWriteBack.set(key, {
         kind: 'scheduled',
         dialogId: entry.dialogId,
@@ -7144,12 +7183,11 @@ export class DialogPersistence {
     // The parent is always identified by rootId (could be root or parent sideDialog)
     const parentSelfId = dialogId.rootId;
     const rootPath = this.getMainDialogPath(new DialogID(parentSelfId), status);
-    return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
+    return path.join(rootPath, this.SIDE_DIALOGS_DIR, dialogId.selfId);
   }
 
   /**
-   * Save sideDialog responses for Type A supply mechanism.
-   * Tracks responses from completed sideDialogs.
+   * Save responses delivered back from completed sideDialogs.
    */
   static async saveSideDialogResponses(
     mainDialogId: DialogID,
@@ -7185,7 +7223,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Load sideDialog responses for Type A supply mechanism.
+   * Load responses delivered back from completed sideDialogs.
    */
   static async loadSideDialogResponses(
     mainDialogId: DialogID,
@@ -7878,6 +7916,7 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
     options?: Readonly<{
       replacePendingCallId?: string;
+      replacePendingAskerDialogId?: string;
     }>,
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
@@ -7895,15 +7934,17 @@ export class DialogPersistence {
       await this.requireSideDialogAskerStackState(dialogId, status);
       await this.appendDialogAskerStackFrames(dialogId, [nextAssignmentFrame], status);
     } else {
+      const replacePendingAskerDialogId =
+        options.replacePendingAskerDialogId ?? assignment.callerDialogId;
       await this.replaceDialogAskerStackFrameAndAppend({
         dialogId,
         status,
         findFrame: (frame) =>
-          frame.assignmentFromAsker?.callerDialogId === assignment.callerDialogId &&
+          frame.assignmentFromAsker?.callerDialogId === replacePendingAskerDialogId &&
           frame.assignmentFromAsker.callId === options.replacePendingCallId,
         missingFrameMessage:
           `replace pending asker stack invariant violation: missing old frame ` +
-          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, askerDialogId=${assignment.callerDialogId}, callId=${options.replacePendingCallId})`,
+          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, askerDialogId=${replacePendingAskerDialogId}, callId=${options.replacePendingCallId})`,
         appendFrame: nextAssignmentFrame,
       });
     }
