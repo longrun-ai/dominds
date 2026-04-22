@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Start the registered sideline now.';
+    const trigger = 'Start the registered side dialog now.';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1 with exactly `2`.';
     const sessionSlug = 'sticky-session';
@@ -59,13 +59,13 @@ async function main(): Promise<void> {
       language,
       sessionSlug,
     });
-    const rootFinalResponse = 'Ack: final registered sideline result received.';
+    const rootFinalResponse = 'Ack: final registered side dialog result received.';
 
     await writeMockDb(tmpRoot, [
       {
         message: trigger,
         role: 'user',
-        response: 'Starting the sideline.',
+        response: 'Starting the side dialog.',
         funcCalls: [
           {
             id: 'root-call-pangu-sticky',

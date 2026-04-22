@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Trigger a registered sideline and let it finish cleanly.';
+    const trigger = 'Trigger a registered side dialog and let it finish cleanly.';
     const rootFirstResponse = 'Start.';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1 with exactly `2`.';
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
       language,
       sessionSlug,
     });
-    const rootFinalResponse = 'Ack: final registered sideline result received.';
+    const rootFinalResponse = 'Ack: final registered side dialog result received.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => lastAssistantSaying(dlg) === rootFinalResponse,
       3_000,
-      'root dialog to receive final registered sideline result',
+      'main dialog to receive final registered side dialog result',
     );
     await waitForAllDialogsUnlocked(dlg, 3_000);
 

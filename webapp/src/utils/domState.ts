@@ -56,7 +56,7 @@ export const DOM_STATE_KEYS = {
   SEARCH_QUERY: 'search-query',
   FILTERS: 'filters',
   CURRENT_DIALOG_ID: 'current-dialog-id',
-  CURRENT_ROOT_DIALOG_ID: 'current-root-dialog-id',
+  CURRENT_MAIN_DIALOG_ID: 'current-main-dialog-id',
   THEME: 'theme',
 } as const;
 
@@ -124,23 +124,23 @@ export function setCurrentDialogId(
 }
 
 /**
- * Get current root dialog ID from DOM
+ * Get current main dialog ID from DOM
  */
 export function getCurrentMainDialogId(element: Element = document.body): string | null {
-  return getDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID);
+  return getDomData(element, DOM_STATE_KEYS.CURRENT_MAIN_DIALOG_ID);
 }
 
 /**
- * Set current root dialog ID in DOM
+ * Set current main dialog ID in DOM
  */
 export function setCurrentMainDialogId(
   mainDialogId: string | null,
   element: Element = document.body,
 ): void {
   if (mainDialogId) {
-    setDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID, mainDialogId);
+    setDomData(element, DOM_STATE_KEYS.CURRENT_MAIN_DIALOG_ID, mainDialogId);
   } else {
-    removeDomData(element, DOM_STATE_KEYS.CURRENT_ROOT_DIALOG_ID);
+    removeDomData(element, DOM_STATE_KEYS.CURRENT_MAIN_DIALOG_ID);
   }
 }
 

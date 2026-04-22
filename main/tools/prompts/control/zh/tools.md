@@ -27,12 +27,12 @@
 | ------------------------- | ---------------------------- | -------------------------------------------------------------------- | ----------------------------------- |
 | `replyTellask`            | `{ replyContent: string }`   | 当前支线承接的是 sessioned `tellask`，且已进入可交付完成态           | 把最终结果回复给当前 `tellask` 会话 |
 | `replyTellaskSessionless` | `{ replyContent: string }`   | 当前支线承接的是 one-shot `tellaskSessionless`，且已进入可交付完成态 | 把最终结果回复给当前一次性诉请      |
-| `replyTellaskBack`        | `{ replyContent: string }`   | 当前对话持有一条未完成的 `tellaskBack` 回复指令                      | 把对上一条回问的最终答复送回上游    |
-| `tellaskBack`             | `{ tellaskContent: string }` | 当前支线必须回问上游，且现有团队规程无法直接判责到其他负责人         | 向上游发起续诉请，不算最终交付      |
+| `replyTellaskBack`        | `{ replyContent: string }`   | 当前对话持有一条未完成的 `tellaskBack` 回复指令                      | 把对上一条回问的最终答复送回诉请者  |
+| `tellaskBack`             | `{ tellaskContent: string }` | 当前支线必须回问诉请者，且现有团队规程无法直接判责到其他负责人       | 向诉请者发起续诉请，不算最终交付    |
 
 ### 最小使用规则
 
-- 先专注把当前任务做对；只有真到最终对上游交付时，才进入 `reply*` 收口
+- 先专注把当前任务做对；只有真到最终对诉请者交付时，才进入 `reply*` 收口
 - 看见哪一个 `reply*` 被 runtime 暴露，就调用哪一个；不要自行改选别的 reply 变体
 - assignment 头部若已点名 reply 函数名，以那个名字为准
 - `replyContent` 只放最终交付正文，不要再包一层“我现在调用了 replyXXX”

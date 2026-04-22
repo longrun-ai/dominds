@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     assert.equal(
       assistantSayings.length,
       2,
-      'root dialog should open exactly one post-tool follow-up assistant round while sideDialogs are pending',
+      'main dialog should open exactly one post-tool follow-up assistant round while sideDialogs are pending',
     );
     assert.equal(
       assistantSayings[assistantSayings.length - 1]?.content,

@@ -25,14 +25,14 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Start a sideline that must ask back before finishing.';
+    const trigger = 'Start a side dialog that must ask back before finishing.';
     const sessionSlug = 'askback-auto-resume';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1, but first ask me back for confirmation.';
     const askBackBody = 'Before I finish, please confirm the exact final answer.';
     const askBackReply = 'Use exactly `2`.';
     const sideDialogFinalResponse = '2';
-    const rootAskBackNarration = 'Replying to the sideline ask-back now.';
+    const rootAskBackNarration = 'Replying to the side dialog ask-back now.';
     const language = getWorkLanguage();
 
     const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
       {
         message: trigger,
         role: 'user',
-        response: 'Starting the sideline.',
+        response: 'Starting the side dialog.',
         funcCalls: [
           {
             id: 'root-call-pangu-askback',
@@ -149,12 +149,12 @@ async function main(): Promise<void> {
         return pending.length === 0;
       },
       3_000,
-      'ask-back sideline to auto-resume and clear the root pending list',
+      'ask-back side dialog to auto-resume and clear the root pending list',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
     const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
-    assert.equal(pending.length, 0, 'expected ask-back sideline to clear the root pending list');
+    assert.equal(pending.length, 0, 'expected ask-back side dialog to clear the root pending list');
 
     const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
     assert.ok(sideDialog, 'expected registered sideDialog to exist after ask-back completion');

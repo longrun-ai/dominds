@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     const pendingSideDialog = await root.createSideDialog(
       'pangu',
       ['@pangu'],
-      'Background sideline work is still pending.',
+      'Background side dialog work is still pending.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
             expectedReplyCallName: 'replyTellaskBack',
             targetCallId: 'reply-back-target',
             targetDialogId: pendingSideDialog.id.selfId,
-            tellaskContent: 'Please confirm the sideline result.',
+            tellaskContent: 'Please confirm the side dialog result.',
           },
         },
         true,

@@ -55,9 +55,9 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
     await writeMockDb(tmpRoot, [
       {
-        message: 'Please finalize the upstream reply now.',
+        message: 'Please finalize the requester reply now.',
         role: 'user',
-        response: 'Closing the sideline with the requested reply tool.',
+        response: 'Closing the side dialog with the requested reply tool.',
         funcCalls: [
           {
             name: 'replyTellask',
@@ -334,7 +334,7 @@ async function main(): Promise<void> {
     const sideDialogEvents = dialogEventRegistry.createSubChan(liveSideDialog.id);
     await driveDialogStream(
       liveSideDialog,
-      makeUserPrompt('Please finalize the upstream reply now.', 'live-reply-user-msg'),
+      makeUserPrompt('Please finalize the requester reply now.', 'live-reply-user-msg'),
       true,
     );
     await waitForAllDialogsUnlocked(root, 2000);

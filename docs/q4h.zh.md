@@ -85,7 +85,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 
 推荐（可选，但能降低对全局 Q4H 状态到达时机的依赖）：
 
-- `rootId`：根对话 id
+- `rootId`：主线对话 id
 - `selfId`：来源对话 id（主线或支线）
 - `course`：course 编号（1-based）
 - `msg`：messageIndex（仅用于 best-effort 回退定位）

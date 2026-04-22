@@ -505,7 +505,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       noDialogsYet: '还没有对话。',
       noDoneDialogs: '还没有已完成的对话。',
       noArchivedDialogs: '还没有已归档的对话。',
-      missingRoot: '缺失的根对话',
+      missingRoot: '缺失的主线对话',
 
       dialogActionMarkDone: '标记为已完成',
       dialogActionMarkAllDone: '将此任务下全部对话标记为已完成',
@@ -521,11 +521,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       deadDialogInputDisabled: '此支线对话已宣布卡死（不可逆），输入已禁用。',
       declareDeath: '宣布卡死',
       declareDeathConfirm:
-        '宣布此支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续仍可重用相同 slug 发起全新支线，但此前上下文不再保留，新的诉请正文需提供最新完整上下文。',
+        '宣布此支线对话“卡死”？此操作不可逆转；诉请者将收到系统反馈并不再等待该支线对话。后续仍可重用相同 slug 发起全新支线，但此前上下文不再保留，新的诉请正文需提供最新完整上下文。',
       declareDeathConfirmSessionless:
-        '宣布此一次性支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
+        '宣布此一次性支线对话“卡死”？此操作不可逆转；诉请者将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
       declareDeathConfirmFbr:
-        '宣布此扪心自问（FBR）支线对话“卡死”？此操作不可逆转；诉请者对话将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的扪心自问（FBR）支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
+        '宣布此扪心自问（FBR）支线对话“卡死”？此操作不可逆转；诉请者将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的扪心自问（FBR）支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
 
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
@@ -926,14 +926,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
     readOnlyDialogInputDisabled: 'This dialog is done or archived; input is disabled.',
     deadDialogInputDisabled:
-      'This Sideline dialog has been declared dead (irreversible); input is disabled.',
+      'This Side Dialog has been declared dead (irreversible); input is disabled.',
     declareDeath: 'Declare Death',
     declareDeathConfirm:
-      'Declare this Sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. You may still reuse the same slug to start a new Sideline dialog, but prior context will be gone, so include the latest full context in the new tellask body.',
+      'Declare this Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. You may still reuse the same slug to start a new Side Dialog, but prior context will be gone, so include the latest full context in the new tellask body.',
     declareDeathConfirmSessionless:
-      'Declare this one-shot Sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. If the work is still needed later, start a new Sideline dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
+      'Declare this one-shot Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. If the work is still needed later, start a new Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
     declareDeathConfirmFbr:
-      'Declare this FBR Sideline dialog as “dead”? This is irreversible; the requesting dialog will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR Sideline dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
+      'Declare this FBR Side Dialog as “dead”? This is irreversible; the requester will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',
@@ -952,7 +952,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hCopyLinkTitle: 'Copy link',
     forkDialogTitle: 'Fork dialog',
     q4hInvalidDialogToast: 'Invalid dialog id: selfId/rootId must be strings.',
-    q4hDeclareDeadOnlySideDialogToast: 'Declare dead is available only for Sideline dialogs.',
+    q4hDeclareDeadOnlySideDialogToast: 'Declare dead is available only for Side Dialogs.',
     q4hDeclareDeadOnlyInterruptedToast:
       'Declare dead is available only when the dialog is stopped and resumable.',
     q4hActionFailedToast: 'Action failed',
@@ -992,11 +992,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     resumeRejectedResumptionPanelSummary:
       'A fresh scan of the dialog facts shows it is not currently resumable. The resumption panel you just saw may have been stale; check the latest blocker or wait for the state to change.',
     resumeRejectedResumptionPanelWaitingSideDialogs:
-      'A fresh scan of the dialog facts shows this Mainline dialog is waiting for Sideline dialogs, so it cannot resume yet.',
+      'A fresh scan of the dialog facts shows this Main Dialog is waiting for Side Dialogs, so it cannot resume yet.',
     resumeRejectedResumptionPanelNeedsHumanInput:
-      'A fresh scan of the dialog facts shows this Mainline dialog is waiting for human input, so it cannot resume yet.',
+      'A fresh scan of the dialog facts shows this Main Dialog is waiting for human input, so it cannot resume yet.',
     resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs:
-      'A fresh scan of the dialog facts shows this Mainline dialog is waiting for both human input and Sideline dialogs, so it cannot resume yet.',
+      'A fresh scan of the dialog facts shows this Main Dialog is waiting for both human input and Side Dialogs, so it cannot resume yet.',
     resumeRejectedResumptionPanelIdleWaitingUser:
       'A fresh scan of the dialog facts shows this dialog is no longer interrupted and is now waiting for a new user input.',
     resumeRejectedResumptionPanelAlreadyRunning:
@@ -1078,7 +1078,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runBadgeStoppedTitle: 'Stopped',
     runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
-    runBadgeWaitingSideDialogsTitle: 'Waiting for Sideline dialogs',
+    runBadgeWaitingSideDialogsTitle: 'Waiting for Side Dialogs',
     runBadgeWaitingFbrTitle: 'Waiting for FBR',
 
     connectionConnected: 'Connected',
@@ -1427,7 +1427,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `UI language: ${uiName}\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies.\n` +
-            `- Does NOT affect: the agent’s internal work language, system prompts, or teammate/Sideline dialog narrative formatting.\n` +
+            `- Does NOT affect: the agent’s internal work language, system prompts, or teammate/Side Dialog narrative formatting.\n` +
             `Work language is not known yet (connect first).`
           );
         }
@@ -1444,7 +1444,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `UI language: ${uiName} (not work language)\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +
-            `- Does NOT affect: internal work language remains ${serverName} (system prompts, teammate/Sideline dialog narrative formatting, internal guide messages).`
+            `- Does NOT affect: internal work language remains ${serverName} (system prompts, teammate/Side Dialog narrative formatting, internal guide messages).`
           );
         }
         default: {

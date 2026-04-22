@@ -68,7 +68,7 @@ export function formatUserLanguagePreferenceChangedNotice(
   ].join('\n');
 }
 
-export function formatRegisteredTellaskCallerUpdateNotice(language: LanguageCode): string {
+export function formatRegisteredTellaskRequesterUpdateNotice(language: LanguageCode): string {
   const prefix = formatSystemNoticePrefix(language);
   if (language === 'zh') {
     return [
@@ -565,19 +565,19 @@ export function formatDomindsNoteFbrToollessViolation(
 
   const detail =
     kind === 'tellask'
-      ? 'Detected a tellask-special invocation attempt inside an FBR Sideline dialog.'
+      ? 'Detected a tellask-special invocation attempt inside an FBR Side Dialog.'
       : kind === 'tool'
-        ? 'Detected a function tool call attempt inside an FBR Sideline dialog.'
+        ? 'Detected a function tool call attempt inside an FBR Side Dialog.'
         : kind === 'tellask_and_tool'
-          ? 'Detected both tellask-special and tool-call attempts inside an FBR Sideline dialog.'
-          : 'Internal error: cannot safely drive the FBR Sideline dialog.';
+          ? 'Detected both tellask-special and tool-call attempts inside an FBR Side Dialog.'
+          : 'Internal error: cannot safely drive the FBR Side Dialog.';
 
   return [
     'ERR_FBR_TOOLLESS_VIOLATION',
-    `Dominds note: this is a tool-less FBR Sideline dialog (triggered by \`freshBootsReasoning\`). ${detail}`,
+    `Dominds note: this is a tool-less FBR Side Dialog (triggered by \`freshBootsReasoning\`). ${detail}`,
     '',
     '- No tools are available: do not emit function tool calls.',
     '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
-    '- Provide pure reasoning and a summary grounded in the tellask body (and this Sideline dialog’s own tellaskSession history, if any).',
+    '- Provide pure reasoning and a summary grounded in the tellask body (and this Side Dialog’s own tellaskSession history, if any).',
   ].join('\n');
 }

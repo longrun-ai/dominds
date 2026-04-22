@@ -127,7 +127,7 @@ export async function getOrRestoreMainDialog(
   mainDialog.setPersistenceStatus(status);
   globalDialogRegistry.register(mainDialog);
 
-  // Keep the in-memory root dialog fully hydrated regardless of persistence status
+  // Keep the in-memory main dialog fully hydrated regardless of persistence status
   // (running/completed/archived) so sideDialog lookup is stable across UI navigation.
   await mainDialog.loadSideDialogRegistry();
   await mainDialog.loadPendingSideDialogsFromPersistence();
@@ -202,7 +202,7 @@ export async function ensureDialogLoaded(
     );
   })();
 
-  // Ensure the caller dialog exists so SideDialog can resolve its effective askerDialog.
+  // Ensure the requester exists so SideDialog can resolve its effective askerDialog.
   if (
     assignmentFromAsker.callerDialogId &&
     assignmentFromAsker.callerDialogId !== targetId.rootId &&

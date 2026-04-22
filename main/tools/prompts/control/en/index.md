@@ -29,7 +29,7 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 - **Reminder management**: Two reminder scopes. Default to dialog-local working set; use `personal` only for responsibility-linked notes that you should keep seeing in all later dialogs you lead
 - **Taskdoc operations**: Update task contracts (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
-- **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in Sideline dialog / ask-back flows
+- **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in Side Dialog / ask-back flows
 
 ## Quick Navigation
 

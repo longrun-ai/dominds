@@ -282,7 +282,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // directive.targetDialogId points to the ask-back requester that must receive the canonical
   // tellaskBack result. Keep those roles explicit, otherwise it is very easy to accidentally
   // write the same business result twice by confusing the responder's local plaintext with the
-  // canonical upstream delivery that must come only from an explicit reply tool call.
+  // canonical requester delivery that must come only from an explicit reply tool call.
   const mainDialog =
     args.replyingDialog instanceof MainDialog
       ? args.replyingDialog
@@ -290,7 +290,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
         ? args.replyingDialog.mainDialog
         : undefined;
   if (!mainDialog) {
-    throw new Error('replyTellaskBack invariant violation: missing root dialog');
+    throw new Error('replyTellaskBack invariant violation: missing main dialog');
   }
   const askBackRequesterDialogId = new DialogID(
     args.directive.targetDialogId,
@@ -1292,7 +1292,7 @@ function findDeliveredTellaskBackReplyOnAskBackRequester(args: {
   targetCallId: string;
 }): Extract<ChatMessage, { type: 'tellask_result_msg' }> | undefined {
   // `replyTellaskBack` persists the canonical tellaskBack business result onto the ask-back
-  // requester dialog immediately. Type-A orchestration must check that canonical delivery first
+  // requester immediately. Type-A orchestration must check that canonical delivery first
   // before it even considers any fallback extraction from responder plaintext, or we risk a
   // second final result with the same target callId.
   for (let i = args.requesterDialog.msgs.length - 1; i >= 0; i -= 1) {
@@ -1738,8 +1738,8 @@ async function executeTellaskCall(
     if (parseResult.type === 'A') {
       if (dlg instanceof SideDialog) {
         // Identity map for Type-A ask-back:
-        // - `askBackRequesterDialog` is the Sideline dialog that asked upstream for clarification.
-        // - `askBackResponderDialog` is the upstream dialog that must answer that ask-back.
+        // - `askBackRequesterDialog` is the Side Dialog that asked the requester for clarification.
+        // - `askBackResponderDialog` is the requester that must answer that ask-back.
         // The original tellask relationship is the opposite of the current ask-back relationship,
         // so variable names like "askerDialog" or "target" are too lossy here and invite bugs.
         const askBackRequesterDialog = dlg;
@@ -2410,7 +2410,7 @@ async function executeReplyTellaskCall(args: {
     case 'replyTellaskSessionless': {
       if (!(args.dlg instanceof SideDialog)) {
         throw new Error(
-          `${args.call.callName} invariant violation: only sideDialogs may reply upstream`,
+          `${args.call.callName} invariant violation: only sideDialogs may reply to the requester`,
         );
       }
       const assignmentCallName = args.dlg.assignmentFromAsker.callName;

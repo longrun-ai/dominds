@@ -7,17 +7,17 @@ Chinese version: [中文版](./fbr.zh.md)
 ## 1. What it is
 
 **Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
-then reporting back to the tellasker dialog.
+then reporting back to the requester.
 
 In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "...", effort?: N })`.
-The mechanism is the runtime-enforced contract applied to the spawned Sideline dialog.
+The mechanism is the runtime-enforced contract applied to the spawned Side Dialog.
 
 ## 2. Design principles and tradeoffs
 
 ### 2.1 Predictability first: FBR is tool-less until final closure
 
 FBR is meant to be “reasoning over text”, not “an agent run that explores the environment”. To keep it safe and
-predictable, FBR Sideline dialogs must be:
+predictable, FBR Side Dialogs must be:
 
 - **tool-less by construction during divergence/convergence** (technically enforced; not “please don’t use tools”), and
 - **closure-only in the final stage** (exactly two conclusion functions, no other tools), and
@@ -30,7 +30,7 @@ silent ignore is worse than an error.
 
 ### 2.3 Serial multi-pass reasoning, not “multi-agent collaboration”
 
-`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` divergence rounds, then `N` convergence rounds, inside a **single FBR Sideline dialog conversation window**. The FBR Sideline dialog itself must finish denoising and closure before reporting upstream.
+`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` divergence rounds, then `N` convergence rounds, inside a **single FBR Side Dialog conversation window**. The FBR Side Dialog itself must finish denoising and closure before reporting to requester.
 
 ## 3. User syntax
 
@@ -43,16 +43,16 @@ Use the dedicated FBR form:
 Notes:
 
 - FBR does not use `targetAgentId`, `sessionSlug`, or `mentionList`.
-- `tellaskContent` is the authoritative task context for the FBR Sideline dialog.
+- `tellaskContent` is the authoritative task context for the FBR Side Dialog.
 - `effort` is optional and sets per-call FBR intensity; when omitted, runtime uses the current member’s `fbr-effort`.
-- Intensity `N` maps to `N` serial FBR passes inside one Sideline dialog window.
+- Intensity `N` maps to `N` serial FBR passes inside one Side Dialog window.
 
 ### 3.2 Scope
 
 This document specifies the FBR mechanism and its `freshBootsReasoning({ tellaskContent: "...", effort?: N })` contract. General teammate Tellasks (`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`) follow
 the taxonomy and capability model in [`dialog-system.md`](./dialog-system.md).
 
-If you want a “fresh” Sideline dialog that still has tools, use an explicit teammate identity via the general teammate Tellask flow.
+If you want a “fresh” Side Dialog that still has tools, use an explicit teammate identity via the general teammate Tellask flow.
 
 ## 4. Runtime contract (normative)
 
@@ -60,19 +60,19 @@ This section uses MUST / MUST NOT / SHOULD / MAY for requirements.
 
 ### 4.1 Isolation and context
 
-When driving an FBR Sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })`, runtime MUST enforce:
+When driving an FBR Side Dialog created by `freshBootsReasoning({ tellaskContent: "..." })`, runtime MUST enforce:
 
-- **No dependency on tellasker dialog history**
-  - the tellaskee MUST NOT assume access to the tellasker dialog’s history
-  - the tellaskee MUST treat the tellask body as the primary, authoritative task context
+- **No dependency on requester-side history**
+  - the responder MUST NOT assume access to the requester-side dialog history
+  - the responder MUST treat the tellask body as the primary, authoritative task context
 - **Shared FBR iteration context**
   - all rounds launched by a single `freshBootsReasoning` call share the same FBR window assumptions and no-tools policy
-  - rounds run in the same Sideline dialog context as one continuous thread and stay isolated from the caller dialog history
+  - rounds run in the same Side Dialog context as one continuous thread and stay isolated from the requester-side dialog history
 - **No tool-based context fetch**
   - no reading files / running commands / browsing
   - no accessing Memory or rtws (runtime workspace) state
 
-Intuition: “fresh boots” means “fresh relative to the caller thread”, not “ignores baseline system rules”. Runtime may
+Intuition: “fresh boots” means “fresh relative to the requester-side thread”, not “ignores baseline system rules”. Runtime may
 still inject baseline policy/safety/formatting context, but the tellask body remains the authority.
 
 ### 4.2 Tool-less (prompt + technical enforcement)
@@ -86,8 +86,8 @@ Tool-less FBR has two layers, both required:
 
 The FBR system prompt MUST communicate (wording may vary, meaning must hold):
 
-- this is an FBR Sideline dialog; the tellask body is the primary context
-- do not assume access to tellasker dialog history
+- this is an FBR Side Dialog; the tellask body is the primary context
+- do not assume access to requester-side dialog history
 - if critical context is missing, list what is missing and why it blocks reasoning
 - do not emit any tellasks (including `tellaskBack` or `askHuman`)
 
@@ -108,11 +108,11 @@ If a provider integration normally injects a tool prompt or schema, then for FBR
 - omit it entirely, OR
 - inject text that is identical to the appended “no tools” notice
 
-Under no circumstances should the FBR Sideline dialog see any tool definitions.
+Under no circumstances should the FBR Side Dialog see any tool definitions.
 
 #### 4.2.3 The LLM request MUST be “zero tools”
 
-For divergence/convergence, the LLM request for an FBR Sideline dialog (`freshBootsReasoning`) MUST have **zero tools available**:
+For divergence/convergence, the LLM request for an FBR Side Dialog (`freshBootsReasoning`) MUST have **zero tools available**:
 
 - the request payload must not include tool/function definitions (effective tool list must be empty)
 - provider tool-calling / function-calling modes must not be enabled
@@ -126,17 +126,17 @@ If the model attempts any other tool/function call, runtime MUST hard-reject it 
 
 ### 4.3 Tellask restriction: none allowed
 
-FBR Sideline dialogs MUST NOT issue any tellask call (including `tellaskBack({ tellaskContent: "..." })`, `tellask({ ... })`, `tellaskSessionless({ ... })`, or `askHuman({ tellaskContent: "..." })`).
-If critical context is missing, the FBR Sideline dialog should **list the missing items** and why they block reasoning, then return.
+FBR Side Dialogs MUST NOT issue any tellask call (including `tellaskBack({ tellaskContent: "..." })`, `tellask({ ... })`, `tellaskSessionless({ ... })`, or `askHuman({ tellaskContent: "..." })`).
+If critical context is missing, the FBR Side Dialog should **list the missing items** and why they block reasoning, then return.
 
 ### 4.4 Output contract (easy to distill)
 
-An FBR Sideline dialog should denoise internally and post only one upstream-visible final artifact.
+An FBR Side Dialog should denoise internally and post only one requester-visible final artifact.
 
 1. **Divergence**: stay open to wild or minority ideas without forcing early consensus.
 2. **Convergence**: discard unsupported wild ideas as noise and keep only stable cross-round consensus.
 3. **Final closure**: end by calling exactly one of the two conclusion functions above.
-4. **Upstream delivery**: caller receives only the final low-noise conclusion, or the final “unreasonable situation” conclusion.
+4. **Requester delivery**: the requester receives only the final low-noise conclusion, or the final “unreasonable situation” conclusion.
 
 ### 4.5 Violations and errors (loud + debuggable)
 
@@ -156,16 +156,16 @@ An FBR Sideline dialog should denoise internally and post only one upstream-visi
 
 When `fbr-effort = N`:
 
-- runtime expands one `freshBootsReasoning({ tellaskContent: "..." })` into **N divergence rounds + N convergence rounds + up to N finalization retries** inside one Sideline dialog
+- runtime expands one `freshBootsReasoning({ tellaskContent: "..." })` into **N divergence rounds + N convergence rounds + up to N finalization retries** inside one Side Dialog
 - divergence rounds must explore distinct angles and stay open to ideas that may later be discarded
 - convergence rounds must denoise autonomously and preserve only stable consensus
 - conclusion functions are exposed only after divergence and convergence are complete
 - if the model still does not end via one of the required conclusion functions after `N` finalization retries, runtime must programmatically produce the `presentUnreasonableSituation` result
-- tellasker dialog receives only the final low-noise conclusion or the final unreasonable-situation conclusion
+- requester receives only the final low-noise conclusion or the final unreasonable-situation conclusion
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 
-`fbr_model_params` overrides model params **only when driving FBR Sideline dialogs**:
+`fbr_model_params` overrides model params **only when driving FBR Side Dialogs**:
 
 - Schema: identical to `model_params` (documented by `model_param_options` in `dominds/main/llm/defaults.yaml`)
 - Scope: `freshBootsReasoning({ tellaskContent: "..." })` only
@@ -192,15 +192,15 @@ freshBootsReasoning({ tellaskContent: "You are doing tool-less FBR. Use ONLY the
 
 ```yaml
 member_defaults:
-  # Run 3 rounds inside one tool-less FBR Sideline dialog per `freshBootsReasoning({ tellaskContent: "..." })`.
+  # Run 3 rounds inside one tool-less FBR Side Dialog per `freshBootsReasoning({ tellaskContent: "..." })`.
   fbr-effort: 3
 
 members:
   ux:
-    # Run 5 rounds per `freshBootsReasoning({ tellaskContent: "..." })` in the same Sideline dialog.
+    # Run 5 rounds per `freshBootsReasoning({ tellaskContent: "..." })` in the same Side Dialog.
     fbr-effort: 5
 
-    # Make FBR more exploratory without changing tellasker dialog behavior.
+    # Make FBR more exploratory without changing requester behavior.
     fbr_model_params:
       codex:
         temperature: 0.9
@@ -209,16 +209,16 @@ members:
         max_tokens: 1200
 ```
 
-## 8. Relationship to general Sideline dialogs
+## 8. Relationship to general Side Dialogs
 
 - `freshBootsReasoning({ tellaskContent: "..." })` is a special case: tool-less, body-first, tellask-restricted, optionally fanned out in sequence via `fbr-effort`.
-- General `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })` Sideline dialogs remain fully capable (tools/toolsets as configured).
-- If you need “same persona + tools” in a Sideline dialog, use an explicit teammate identity (`tellask` / `tellaskSessionless`).
+- General `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })` Side Dialogs remain fully capable (tools/toolsets as configured).
+- If you need “same persona + tools” in a Side Dialog, use an explicit teammate identity (`tellask` / `tellaskSessionless`).
 
 ## 9. Acceptance checklist
 
 - `freshBootsReasoning({ tellaskContent: "..." })` triggers tool-less FBR; the LLM request is technically “zero tools”.
 - The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
-- FBR Sideline dialogs cannot issue teammate Tellasks (including `tellaskBack`).
+- FBR Side Dialogs cannot issue teammate Tellasks (including `tellaskBack`).
 - `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.
 - `fbr_model_params` applies only to FBR and follows the same schema/merge intent as `model_params`.

@@ -103,7 +103,7 @@ Maintain shared terminology and standard wording across the team.
 add_team_memory({
   path: 'team/glossary/dialog-terms',
   content:
-    '## Dialog Terms\n\n- In user-facing copy, prefer: Mainline dialog / Sideline dialog\n- In implementation context, main dialog / sideDialog / askerDialog are acceptable\n- Do not surface implementation terms directly into user-facing copy',
+    '## Dialog Terms\n\n- In user-facing copy, prefer: Main Dialog / Side Dialog\n- In implementation context, main dialog / sideDialog / askerDialog are acceptable\n- Do not surface implementation terms directly into user-facing copy',
 });
 ```
 

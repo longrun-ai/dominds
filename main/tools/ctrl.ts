@@ -744,9 +744,9 @@ export const clearMindTool: FuncTool = {
 export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
-  description: 'Replace one shared Taskdoc section in the Mainline dialog.',
+  description: 'Replace one shared Taskdoc section in the Main Dialog.',
   descriptionI18n: {
-    en: 'Replace one shared Taskdoc section in the Mainline dialog.',
+    en: 'Replace one shared Taskdoc section in the Main Dialog.',
     zh: '在主线对话中替换一段共享差遣牒章节。',
   },
   parameters: {
@@ -781,7 +781,7 @@ export const changeMindTool: FuncTool = {
         );
       }
       return toolFailure(
-        `Error: \`change_mind\` is only available in the Mainline dialog (not in Sideline dialogs).\n` +
+        `Error: \`change_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
           `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
       );
     }

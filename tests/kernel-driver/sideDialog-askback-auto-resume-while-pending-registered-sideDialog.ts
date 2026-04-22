@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     const askBackReply = 'Yes. Continue the same live-DOM loop immediately.';
     const rootAskBackNarration = 'Resume the practitioner loop now.';
     const resumedResponse =
-      'I have the answer from upstream and can continue the registered practitioner loop now.';
+      'I have the answer from the requester and can continue the registered practitioner loop now.';
 
     const root = await createMainDialog('tester');
     const pangu = await root.createSideDialog('pangu', ['@pangu'], parentTellaskBody, {
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
     });
 
     await pangu.persistUserMessage(
-      'Initial parent sideline assignment.',
+      'Initial parent side dialog assignment.',
       'pangu-runtime-assignment',
       'markdown',
       'runtime',
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
       {
         message: 'Use ask-back before continuing the registered practitioner loop.',
         role: 'user',
-        response: 'I need one upstream answer before I can continue the practitioner loop.',
+        response: 'I need one requester answer before I can continue the practitioner loop.',
         funcCalls: [
           {
             id: 'pangu-ask-back-for-loop-resume',
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
             msg.content === resumedResponse,
         ),
       3_000,
-      'ask-back requester sideDialog to auto-resume even while the registered nested sideline remains pending',
+      'ask-back requester sideDialog to auto-resume even while the registered nested side dialog remains pending',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
@@ -187,12 +187,12 @@ async function main(): Promise<void> {
     assert.equal(
       pending.length,
       1,
-      'auto-resume should not consume the still-pending registered nested sideline',
+      'auto-resume should not consume the still-pending registered nested side dialog',
     );
     assert.equal(
       pending[0]?.sideDialogId,
       nested.id.selfId,
-      'the still-pending registered sideline should remain the nested practitioner dialog',
+      'the still-pending registered side dialog should remain the nested practitioner dialog',
     );
 
     const latest = await DialogPersistence.loadDialogLatest(pangu.id, pangu.status);
@@ -202,7 +202,7 @@ async function main(): Promise<void> {
         kind: 'blocked',
         reason: { kind: 'waiting_for_sideDialogs' },
       },
-      'after the auto-resume round, the requester should return to waiting on the nested registered sideline',
+      'after the auto-resume round, the requester should return to waiting on the nested registered side dialog',
     );
 
     const events = await DialogPersistence.loadCourseEvents(

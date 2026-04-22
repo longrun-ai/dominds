@@ -27,9 +27,9 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     const language = getWorkLanguage();
     const sessionSlug = 'sticky-session';
-    const initialTrigger = 'Start the registered sideline.';
+    const initialTrigger = 'Start the registered side dialog.';
     const initialBody = 'Initial assignment';
-    const updatedTrigger = 'Update the registered sideline with newer requirements.';
+    const updatedTrigger = 'Update the registered side dialog with newer requirements.';
 
     const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
       prompt: formatAssignmentFromAskerDialog({
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
       {
         message: initialTrigger,
         role: 'user',
-        response: 'Starting the sideline.',
+        response: 'Starting the side dialog.',
         funcCalls: [
           {
             id: 'call-initial-round',
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
             id: 'sideDialog-q4h-blocker',
             name: 'askHuman',
             arguments: {
-              tellaskContent: 'Please keep this sideline waiting for the updated request test.',
+              tellaskContent: 'Please keep this side dialog waiting for the updated request test.',
             },
           },
         ],
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       {
         message: updatedTrigger,
         role: 'user',
-        response: 'Updating the sideline now.',
+        response: 'Updating the side dialog now.',
         funcCalls: [
           {
             id: 'call-updated-round',

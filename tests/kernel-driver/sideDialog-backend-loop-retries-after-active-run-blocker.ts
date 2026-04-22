@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Start the registered sideline now.';
+    const trigger = 'Start the registered side dialog now.';
     const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1 with exactly `2`.';
     const sessionSlug = 'backend-loop-active-run-retry';
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       {
         message: trigger,
         role: 'user',
-        response: 'Starting the sideline.',
+        response: 'Starting the side dialog.',
         funcCalls: [
           {
             id: 'root-call-pangu-backend-loop-retry',
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => root.lookupSideDialog('pangu', sessionSlug) !== undefined,
       3_000,
-      'registered sideline to exist before simulating the active-run blocker',
+      'registered side dialog to exist before simulating the active-run blocker',
     );
     createActiveRun(root.id);
 

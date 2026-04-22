@@ -338,11 +338,11 @@ function formatDeclaredDeadSideDialogNotice(
 
   switch (callName) {
     case 'tellask':
-      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new Sideline dialog, but previous context is no longer retained; include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Side Dialog ${dialogId} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new Side Dialog, but previous context is no longer retained; include the latest complete context in the new tellask body.`;
     case 'tellaskSessionless':
-      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was a one-shot Sideline dialog; if you still need the work, start a new Sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Side Dialog ${dialogId} has been declared dead by the user (irreversible). This was a one-shot Side Dialog; if you still need the work, start a new Side Dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
     case 'freshBootsReasoning':
-      return `${formatSystemNoticePrefix('en')} Sideline dialog ${dialogId} has been declared dead by the user (irreversible). This was an FBR Sideline dialog; if you still need the work, start a new FBR Sideline dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
+      return `${formatSystemNoticePrefix('en')} Side Dialog ${dialogId} has been declared dead by the user (irreversible). This was an FBR Side Dialog; if you still need the work, start a new FBR Side Dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.`;
   }
 }
 
@@ -392,7 +392,7 @@ function buildResumeIneligibleMessage(
           return {
             reason: 'needs_human_input_and_sideDialogs',
             message:
-              'Fresh state scan shows this dialog is waiting for both human input and Sideline dialogs, so it cannot resume yet.',
+              'Fresh state scan shows this dialog is waiting for both human input and Side Dialogs, so it cannot resume yet.',
           };
         case 'needs_human_input':
           return {
@@ -404,7 +404,7 @@ function buildResumeIneligibleMessage(
           return {
             reason: 'waiting_for_sideDialogs',
             message:
-              'Fresh state scan shows this dialog is waiting for Sideline dialogs, so it cannot resume yet.',
+              'Fresh state scan shows this dialog is waiting for Side Dialogs, so it cannot resume yet.',
           };
         default: {
           const _exhaustive: never = state.reason;
@@ -802,7 +802,7 @@ async function handleDeclareSideDialogDead(
   });
   await setDialogDisplayState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
 
-  // If a askerDialog is waiting on this sideDialog (pending-sideDialogs.json), supply a system-style
+  // If an askerDialog is waiting on this sideDialog (pending-sideDialogs.json), supply a system-style
   // response so the askerDialog can unblock and the model sees the failure reason.
   const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
   if (!metadata) return;
@@ -810,7 +810,7 @@ async function handleDeclareSideDialogDead(
   if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
     const rootRestored = await restoreDialogForDrive(new DialogID(dialogIdObj.rootId), 'running');
     if (!(rootRestored instanceof MainDialog)) {
-      throw new Error(`Expected root dialog instance for ${dialogIdObj.rootId}`);
+      throw new Error(`Expected main dialog instance for ${dialogIdObj.rootId}`);
     }
     const removed = rootRestored.unregisterSideDialog(metadata.agentId, metadata.sessionSlug);
     if (removed) {
@@ -831,7 +831,7 @@ async function handleDeclareSideDialogDead(
   );
   const pendingRecord = pending.find((p) => p.sideDialogId === dialogIdObj.selfId);
   if (!pendingRecord) {
-    // Caller is not waiting on this sideDialog anymore; do not auto-revive.
+    // Requester is not waiting on this sideDialog anymore; do not auto-revive.
     return;
   }
 
@@ -889,7 +889,7 @@ async function handleSetDiligencePush(
       return;
     }
 
-    // Diligence Push is root-dialog state. Even if a sideDialog is displayed, always mutate the root.
+    // Diligence Push is main-dialog state. Even if a sideDialog is displayed, always mutate the root.
     const dialogIdObj = new DialogID(rootId);
     const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
     if (requestedStatusInput.kind === 'invalid') {
@@ -1078,7 +1078,7 @@ async function handleRefillDiligencePushBudget(
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: `Root dialog ${mainDialogId.rootId} is not available for refill`,
+        message: `Main dialog ${mainDialogId.rootId} is not available for refill`,
       }),
     );
     return;
@@ -1182,7 +1182,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     const { requestId, agentId, taskDocPath, priming } = parsed;
 
     const generatedId = generateDialogID();
-    // For root dialogs, self and root are the same
+    // For main dialogs, self and root are the same
     const dialogId = new DialogID(generatedId);
 
     // Import Dialog and DiskFileDialogStore
@@ -1371,7 +1371,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     const enableLive = requestedStatus === 'running';
     const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, requestedStatus);
     if (!mainDialog) {
-      throw new Error('Root dialog not found');
+      throw new Error('Main dialog not found');
     }
     if (enableLive) {
       globalDialogRegistry.register(mainDialog);
@@ -1876,7 +1876,7 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   // This helper is intentionally for business operations that will mutate or continue execution
   // immediately after restore (for example resume_dialog, resume_all, or dead-sideDialog recovery).
   // Because those operations are execution-oriented, we repair pending replyTellask* delivery
-  // before handing the dialog back to the caller.
+  // before handing the dialog back to the requester.
   if (dialogIdObj.selfId === dialogIdObj.rootId) {
     await recoverPendingReplyTellaskCallsForDialog(mainDialog);
     return mainDialog;
@@ -2086,7 +2086,7 @@ async function handleReceiveHumanReply(
     };
     const preparedAttachments = prepareUserImageAttachments(attachments);
 
-    // Restore the canonical dialog instances (root + sideDialogs) to avoid duplicates.
+    // Restore the canonical dialog instances (main dialog + sideDialogs) to avoid duplicates.
     const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, 'running');
     if (!mainDialog) {
       ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));

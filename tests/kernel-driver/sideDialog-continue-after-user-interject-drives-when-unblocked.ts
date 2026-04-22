@@ -32,11 +32,11 @@ async function main(): Promise<void> {
       expectedReplyCallName: 'replyTellaskSessionless' as const,
       targetDialogId: root.id.selfId,
       targetCallId: 'root-to-pangu-call',
-      tellaskContent: 'Finish the parent sideline after the nested work returns.',
+      tellaskContent: 'Finish the parent side dialog after the nested work returns.',
     };
     const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
     const interjectResponse = 'Handled the local interruption only.';
-    const finalResponse = 'Nested work is back, and I am now replying upstream.';
+    const finalResponse = 'Nested work is back, and I am now replying to the requester.';
 
     const sideDialog = await root.createSideDialog(
       'pangu',
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
       {
         message: reassertionPrompt,
         role: 'user',
-        response: 'Replying upstream now.',
+        response: 'Replying to the requester now.',
         funcCalls: [
           {
             id: 'call-sideDialog-reply-sessionless-after-continue',
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       {
         message: 'Reply delivered via `replyTellaskSessionless`.',
         role: 'tool',
-        response: 'The upstream reply has now been delivered.',
+        response: 'The requester reply has now been delivered.',
       },
     ]);
 
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     const nestedSideDialog = await sideDialog.createSideDialog(
       'nuwa',
       ['@nuwa'],
-      'Wait for nested sideline work to return.',
+      'Wait for nested side dialog work to return.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'pangu',
@@ -114,7 +114,7 @@ async function main(): Promise<void> {
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellaskSessionless',
       mentionList: ['@nuwa'],
-      tellaskContent: 'Wait for nested sideline work to return.',
+      tellaskContent: 'Wait for nested side dialog work to return.',
       targetAgentId: 'nuwa',
       callId: 'pangu-to-nuwa-call',
       callingCourse: 1,
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     });
 
     await sideDialog.persistUserMessage(
-      'Initial parent sideline assignment.',
+      'Initial parent side dialog assignment.',
       'sideDialog-runtime-assignment',
       'markdown',
       'runtime',
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     assert.equal(
       pendingAtRoot.length,
       0,
-      'manual Continue should let the sideDialog finish the upstream reply immediately once unblocked',
+      'manual Continue should let the sideDialog finish the requester reply immediately once unblocked',
     );
   });
 

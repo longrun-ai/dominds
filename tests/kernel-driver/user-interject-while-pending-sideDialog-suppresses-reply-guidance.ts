@@ -47,15 +47,14 @@ function assertNoInjectedReplyGuidance(contents: readonly string[]): void {
 
 async function runMainDialogScenario(): Promise<void> {
   const interjectPrompt = 'Please handle this local interruption only.';
-  const interjectResponse = 'Handled the local interruption without touching the sideline reply.';
-  const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
+  const interjectResponse =
+    'Handled the local interruption without touching the side dialog reply.';
 
   await writeMockDb(process.cwd(), [
     {
       message: interjectPrompt,
       role: 'user',
       response: interjectResponse,
-      contextContains: [suppressionGuide],
     },
   ]);
 
@@ -65,7 +64,7 @@ async function runMainDialogScenario(): Promise<void> {
   const pendingSideDialog = await root.createSideDialog(
     'pangu',
     ['@pangu'],
-    'Background sideline work is still pending.',
+    'Background side dialog work is still pending.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
@@ -79,7 +78,7 @@ async function runMainDialogScenario(): Promise<void> {
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
-    tellaskContent: 'Background sideline work is still pending.',
+    tellaskContent: 'Background side dialog work is still pending.',
     targetAgentId: 'pangu',
     callId: 'root-pending-sideDialog-call',
     callingCourse: 1,
@@ -98,7 +97,7 @@ async function runMainDialogScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target',
       targetDialogId: pendingSideDialog.id.selfId,
-      tellaskContent: 'Please confirm the sideline result.',
+      tellaskContent: 'Please confirm the side dialog result.',
     },
   );
 
@@ -122,7 +121,7 @@ async function runMainDialogScenario(): Promise<void> {
   const interjectRecord = humanTextRecords.find(
     (event) => event.msgId === 'root-user-interject-while-pending-sideDialog',
   );
-  assert.ok(interjectRecord, 'expected persisted user interjection record for root dialog');
+  assert.ok(interjectRecord, 'expected persisted user interjection record for main dialog');
   assert.equal(interjectRecord?.content, interjectPrompt);
   assert.equal(
     interjectRecord?.tellaskReplyDirective,
@@ -136,8 +135,8 @@ async function runMainDialogScenario(): Promise<void> {
 }
 
 async function runSideDialogScenario(): Promise<void> {
-  const interjectPrompt = 'Pause the nested sideline and handle this local note first.';
-  const interjectResponse = 'Handled the local note without replying upstream.';
+  const interjectPrompt = 'Pause the nested side dialog and handle this local note first.';
+  const interjectResponse = 'Handled the local note without replying to the requester.';
   const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
 
   await writeMockDb(process.cwd(), [
@@ -145,7 +144,6 @@ async function runSideDialogScenario(): Promise<void> {
       message: interjectPrompt,
       role: 'user',
       response: interjectResponse,
-      contextContains: [suppressionGuide],
     },
   ]);
 
@@ -165,7 +163,7 @@ async function runSideDialogScenario(): Promise<void> {
   const nestedSideDialog = await sideDialog.createSideDialog(
     'nuwa',
     ['@nuwa'],
-    'Investigate a nested sideline.',
+    'Investigate a nested side dialog.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'pangu',
@@ -179,7 +177,7 @@ async function runSideDialogScenario(): Promise<void> {
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@nuwa'],
-    tellaskContent: 'Investigate a nested sideline.',
+    tellaskContent: 'Investigate a nested side dialog.',
     targetAgentId: 'nuwa',
     callId: 'pangu-to-nuwa-call',
     callingCourse: 1,
@@ -188,7 +186,7 @@ async function runSideDialogScenario(): Promise<void> {
   });
 
   await sideDialog.persistUserMessage(
-    'Initial sideline assignment from upstream.',
+    'Initial side dialog assignment from the requester.',
     'sideDialog-runtime-assignment',
     'markdown',
     'runtime',
@@ -231,7 +229,7 @@ async function runSideDialogScenario(): Promise<void> {
   assert.equal(
     interjectRecord?.tellaskReplyDirective,
     undefined,
-    'sideDialog interjection should not inherit the upstream reply directive',
+    'sideDialog interjection should not inherit the requester reply directive',
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
@@ -244,8 +242,8 @@ async function runSideDialogScenario(): Promise<void> {
 }
 
 async function runRepeatedRootInterjectionScenario(): Promise<void> {
-  const firstPrompt = 'First interruption while the sideline is still pending.';
-  const secondPrompt = 'Second interruption while the same sideline is still pending.';
+  const firstPrompt = 'First interruption while the side dialog is still pending.';
+  const secondPrompt = 'Second interruption while the same side dialog is still pending.';
   const firstResponse = 'Handled the first interruption.';
   const secondResponse =
     'Handled the second interruption while keeping the previously recorded long-line suppression notice in context.';
@@ -256,13 +254,11 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
       message: firstPrompt,
       role: 'user',
       response: firstResponse,
-      contextContains: [suppressionGuide],
     },
     {
       message: secondPrompt,
       role: 'user',
       response: secondResponse,
-      contextContains: [suppressionGuide],
     },
   ]);
 
@@ -272,7 +268,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   const pendingSideDialog = await root.createSideDialog(
     'pangu',
     ['@pangu'],
-    'Background sideline work is still pending.',
+    'Background side dialog work is still pending.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
@@ -286,7 +282,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     createdAt: formatUnifiedTimestamp(new Date()),
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
-    tellaskContent: 'Background sideline work is still pending.',
+    tellaskContent: 'Background side dialog work is still pending.',
     targetAgentId: 'pangu',
     callId: 'root-pending-sideDialog-call-repeated',
     callingCourse: 1,
@@ -305,7 +301,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-repeated',
       targetDialogId: pendingSideDialog.id.selfId,
-      tellaskContent: 'Please confirm the sideline result.',
+      tellaskContent: 'Please confirm the side dialog result.',
     },
   );
 
@@ -338,26 +334,27 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   );
   assert.equal(
     runtimeGuideRecords.length,
-    1,
-    'repeated interjections should not append duplicate suppression runtime-guide records',
+    0,
+    'root interjections while blocked on side dialogs should not append reply suppression runtime-guide records',
   );
-  assert.equal(runtimeGuideRecords[0]?.content, suppressionGuide);
 
   const deferred = await DialogPersistence.getDeferredReplyReassertion(root.id, root.status);
-  assert.ok(deferred, 'repeated interjections should keep the deferred long-line state armed');
+  assert.equal(
+    deferred,
+    undefined,
+    'root interjections while blocked on side dialogs should not arm deferred reply reassertion',
+  );
 }
 
 async function runProceedingReplyObligationScenario(): Promise<void> {
-  const interjectPrompt = 'Answer this local question first before replying upstream.';
+  const interjectPrompt = 'Answer this local question first before replying to the requester.';
   const interjectResponse = 'Handled the local question first.';
-  const suppressionGuide = buildReplyObligationSuppressionGuide({ language: 'en' });
 
   await writeMockDb(process.cwd(), [
     {
       message: interjectPrompt,
       role: 'user',
       response: interjectResponse,
-      contextContains: [suppressionGuide],
     },
   ]);
 
@@ -365,7 +362,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
-    'There is still an upstream reply obligation to deliver.',
+    'There is still a requester reply obligation to deliver.',
     'root-runtime-reply-directive-proceeding',
     'markdown',
     'runtime',
@@ -375,8 +372,18 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-proceeding',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Please deliver the upstream reply once ready.',
+      tellaskContent: 'Please deliver the requester reply once ready.',
     },
+  );
+  await DialogPersistence.setActiveTellaskReplyObligation(
+    root.id,
+    {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetCallId: 'reply-back-target-proceeding',
+      targetDialogId: root.id.selfId,
+      tellaskContent: 'Please deliver the requester reply once ready.',
+    },
+    root.status,
   );
 
   await driveDialogStream(
@@ -412,7 +419,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
         expectedReplyCallName: 'replyTellaskBack',
         targetCallId: 'reply-back-target-proceeding',
         targetDialogId: root.id.selfId,
-        tellaskContent: 'Please deliver the upstream reply once ready.',
+        tellaskContent: 'Please deliver the requester reply once ready.',
       },
     },
     'a proceeding interjection should arm deferred reply reassertion instead of queueing replyTellask reminder',
@@ -431,7 +438,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
-    'An upstream reply is still pending after this askHuman round.',
+    'A requester reply is still pending after this askHuman round.',
     'root-runtime-reply-directive-q4h',
     'markdown',
     'runtime',
@@ -441,8 +448,18 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-q4h',
       targetDialogId: root.id.selfId,
-      tellaskContent: 'Deliver the upstream reply once the askHuman answer is in.',
+      tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
     },
+  );
+  await DialogPersistence.setActiveTellaskReplyObligation(
+    root.id,
+    {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetCallId: 'reply-back-target-q4h',
+      targetDialogId: root.id.selfId,
+      tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
+    },
+    root.status,
   );
   await DialogPersistence.appendQuestion4HumanState(
     root.id,
@@ -484,7 +501,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     expectedReplyCallName: 'replyTellaskBack',
     targetCallId: 'reply-back-target-q4h',
     targetDialogId: root.id.selfId,
-    tellaskContent: 'Deliver the upstream reply once the askHuman answer is in.',
+    tellaskContent: 'Deliver the requester reply once the askHuman answer is in.',
   });
   assert.equal(
     guidance.promptContent?.startsWith(ACTIVE_REPLY_PREFIX),

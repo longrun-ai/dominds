@@ -396,9 +396,9 @@ auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owne
 
 注意：不是所有 special call 都会 pending，例如参数错误、目标不存在、FBR disabled、Q4H。两阶段只覆盖“确认会创建 pending sideDialog”的 tellask / FBR 类调用。Q4H 仍是独立硬阻塞。
 
-### 7.2 Type B registered Sideline dialog update 与 replace pending
+### 7.2 Type B registered Side Dialog update 与 replace pending
 
-长线诉请同一 `agentId!sessionSlug` 被新 asker / 新 call 更新时，不能再把“注册支线被更新”粗暴理解为“替换槽位”。reply obligation 是栈，Type B registered Sideline dialog update 分两类：
+长线诉请同一 `agentId!sessionSlug` 被新 asker / 新 call 更新时，不能再把“注册支线被更新”粗暴理解为“替换槽位”。reply obligation 是栈，Type B registered Side Dialog update 分两类：
 
 1. **普通新诉请 / 新 caller / 新 call**：把新 asker frame push 到栈顶。新诉请优先处理；回复后 pop，恢复更早的 asker frame。
 2. **replace pending 特殊操作**：明确定位被替换的旧 pending / old frame，把旧 asker obligation 从栈中抽调，再把新 obligation push 到栈顶。
@@ -466,7 +466,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 - `askerStack` 是运行时内存表示；持久化文件是 `asker-stack.jsonl`，不是 `{ askerStack: [...] }`。
 - 栈顶 frame 决定当前 effective asker dialog；side dialog 的 `askerDialog` 必须按栈顶动态解析。
 - 当前 assignment 取“从栈顶向下最近的 assignment frame”，这样 `replyTellaskBack` 临时 frame 不会破坏原 assignment 恢复。
-- Type B registered Sideline dialog 普通 update push 新 frame 到栈顶；新诉请先处理，回复后 pop，恢复更早的 asker frame。
+- Type B registered Side Dialog 普通 update push 新 frame 到栈顶；新诉请先处理，回复后 pop，恢复更早的 asker frame。
 - replace pending 走 7.2 的抽调旧 frame + append 新 frame，不走普通 push。
 - `tellaskBack` 也是同一种 push：被回问的 responder dialog 把 `replyTellaskBack` obligation 压到自己的 asker stack 栈顶，回复后 pop。
 - 成功 `replyTellask*` 或 direct fallback 结清栈顶 `targetCallId` 后 pop 栈；不再靠“清空单槽字段”表示已结清。

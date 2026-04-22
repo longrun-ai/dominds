@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     );
 
     const trigger = 'Trigger duplicate type B tellasks.';
-    const triggerReuseAfterDead = 'Trigger same slug after declaring old sideline dead.';
+    const triggerReuseAfterDead = 'Trigger same slug after declaring old side dialog dead.';
     await fs.writeFile(
       path.join(tmpRoot, 'mock-db', 'default.yaml'),
       yaml.stringify({

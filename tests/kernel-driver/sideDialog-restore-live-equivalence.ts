@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => lastAssistantSaying(dlg) === resumeResponse,
       3_000,
-      'root dialog to generate after sideDialog response',
+      'main dialog to generate after sideDialog response',
     );
     await waitForAllDialogsUnlocked(dlg, 3_000);
 

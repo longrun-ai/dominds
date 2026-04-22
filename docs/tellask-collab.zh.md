@@ -63,7 +63,7 @@
 
 ### 2.4 Diligence Push 的边界
 
-- Diligence Push 会鞭策诉请者对话继续思考和推进。
+- Diligence Push 会鞭策诉请者继续思考和推进。
 - 它不负责自动补发队友诉请，也不改变 tellask 的调用生命周期。
 - 所以它能缓解“发呆”，但不能根治“口头安排不落地”的协作停滞。
 
@@ -75,7 +75,7 @@
 
 表象：
 
-- 诉请者对话收到“阶段 1 完成”的反馈后，写下“等待对方继续执行”，但没有再次诉请。
+- 诉请者收到“阶段 1 完成”的反馈后，写下“等待对方继续执行”，但没有再次诉请。
 - 实际上队友对应支线已结束，系统也没有自动继续执行原诉请。
 
 根因：
@@ -115,9 +115,9 @@
 
 **支线交付规则**：
 
-- 只有当所有目标完成时，支线对话才可直接正常回复诉请者对话（直接发正文即可，不需要调用 tellaskBack；运行时自动注入完成标记）。
+- 只有当所有目标完成时，支线对话才可直接正常回复诉请者（直接发正文即可，不需要调用 tellaskBack；运行时自动注入完成标记）。
 - 若目标尚未完成，不要默认直接 `tellaskBack`：应先按团队规程 / SOP / 职责卡判断能否明确负责人；若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人。
-- 只有当必须由上游诉请者补充需求、澄清目标、做业务裁决、确认验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者对话；不得发送普通文本中间汇报。
+- 只有当必须由诉请者补充需求、澄清目标、做业务裁决、确认验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者；不得发送普通文本中间汇报。
 - **FBR 例外**：FBR 禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）；只列缺口 + 推理与摘要并直接回复。
 - 若人类用户在支线对话中插入消息或补问：直接正常回复，不需要向诉请者汇报。
 
@@ -229,7 +229,7 @@ tellask({
 
 1. `Prelude Intro`：声明 shell 策略（`specialist_only` / `self_is_specialist` / `no_specialist`）。
 2. `uname` 基线：
-   - `specialist_only`：诉请者对话 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
+   - `specialist_only`：诉请者 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
    - 其他两种策略：运行时采集并显示 `uname -a`。
 3. `VCS Round-1`（同一 `tellaskSession`）：确认 rtws 拓扑
    - 根路径是否 git repo
@@ -274,7 +274,7 @@ tellask({
 
 ---
 
-## 6. 面向诉请者对话主理人的协作清单
+## 6. 面向诉请者主理人的协作清单
 
 每次协作循环前后，快速自检：
 
@@ -282,7 +282,7 @@ tellask({
 2. 我现在说“等待”时，是否真有 pending tellask 对应？
 3. 回贴到达后，我是否做了“判定 + 下一轮诉请/本地动作”？
 4. 我是否把“让队友做”落成了真实 `tellask* function call`，而不是口头转派给 askHuman()？
-5. 关键决策是否已写回差遣牒（仅根对话）而不是只留在聊天里？
+5. 关键决策是否已写回差遣牒（仅主线对话）而不是只留在聊天里？
 
 ---
 

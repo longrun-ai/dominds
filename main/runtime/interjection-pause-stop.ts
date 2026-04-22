@@ -16,7 +16,7 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 // this paused-original-task stop semantics.
 //
 // Do not change this file in isolation. The complete behavior depends on coordinated logic across:
-// - `reply-guidance.ts`          suppressing upstream reply obligation during interjection chat
+// - `reply-guidance.ts`          suppressing requester reply obligation during interjection chat
 // - `flow.ts`                   parking after the local reply, then re-running fresh-fact resume
 // - `dialog-display-state.ts`   preserving this paused projection until explicit Continue
 // - `websocket-handler.ts`      treating Continue as "resume attempt" rather than immediate success

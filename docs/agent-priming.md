@@ -153,7 +153,7 @@ Request contract:
 
 Runtime behavior:
 
-- On root dialog creation, selected scripts are replayed into `course-1`.
+- On main dialog creation, selected scripts are replayed into `course-1`.
 - If top-level frontmatter contains `reminders`, the current reminder snapshot is restored first.
 - Replayed events are tagged with `sourceTag: priming_script`.
 - Replay is injected into `dialog.msgs` for downstream model context.

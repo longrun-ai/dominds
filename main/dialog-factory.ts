@@ -64,7 +64,7 @@ export class DialogFactory {
           ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
               );
             })();
     const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);

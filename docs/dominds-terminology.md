@@ -33,15 +33,13 @@
 - EN: `Tellask` | ZH: `诉请`
 - EN: `Tellask headline` | ZH: `诉请头`
 - EN: `Tellask body` | ZH: `诉请正文`
-- EN: `tellasker` | ZH: `诉请者`
-- EN: `tellaskee` | ZH: `被诉请者`
-- EN: `tellasker dialog` | ZH: `诉请者对话`
-- EN: `tellaskee dialog` | ZH: `被诉请者对话`
+- EN: `requester` | ZH: `诉请者`
+- EN: `responder` | ZH: `被诉请者`
 - EN: `TellaskBack` | ZH: `回问诉请`
 - EN: `Tellask Session` | ZH: `长线诉请`
 - EN: `Fresh Tellask` | ZH: `一次性诉请`
-- EN: `Mainline dialog` | ZH: `主线对话`
-- EN: `Sideline dialog` | ZH: `支线对话`
+- EN: `Main Dialog` | ZH: `主线对话`
+- EN: `Side Dialog` | ZH: `支线对话`
 - EN: `Taskdoc` | ZH: `差遣牒`
 - EN: `Taskdoc package (*.tsk/)` | ZH: `任务包`
 - EN: `sessionSlug` | ZH: 会话 Slug（只写在 headline）
@@ -49,27 +47,27 @@
 - EN: `TUI (interactive UI)` | ZH: `TUI（交互前端）`
 - EN: `WebUI (interactive UI)` | ZH: `WebUI（交互前端）`
 
-### Dialog Terms（Mainline dialog / Sideline dialog，主线对话 / 支线对话）
+### Dialog Terms（Main Dialog / Side Dialog，主线对话 / 支线对话）
 
-- EN: **Mainline dialog** is the dialog that carries the canonical shared Taskdoc and is responsible for overall progress.
+- EN: **Main Dialog** is the dialog that carries the canonical shared Taskdoc and is responsible for overall progress.
 - ZH: **主线对话**是承载共享差遣牒（Taskdoc）并负责整体推进的那条对话。
 
-- EN: **Only the Mainline dialog responder** can call `change_mind`.
+- EN: **Only the Main Dialog responder** can call `change_mind`.
 - ZH: **只有主线对话主理人**拥有 `change_mind` 权限；支线对话主理人没有。
 
-- EN: A **Sideline dialog** is a temporary work dialog for a subtask. Between dialogs/agents, there is no hierarchy — only **tellasker/tellaskee** roles.
+- EN: A **Side Dialog** is a temporary work dialog for a subtask. Between dialogs/agents, there is no hierarchy — only **requester/responder** roles.
 - ZH: **支线对话**是为推进某个分项任务临时创建的工作对话。对话/智能体之间没有上下级关系，只有 **诉请者/被诉请者**。
 
-- EN: A **tellasker dialog** is the dialog that issued the current Tellask; it can be the Mainline dialog or any Sideline dialog.
-- ZH: **诉请者对话**是当前诉请的发起对话；它可以是主线对话，也可以是任意支线对话。
+- EN: A **requester** is the dialog that issued the current Tellask; it can be the Main Dialog or any Side Dialog.
+- ZH: **诉请者**是当前诉请的发起对话；它可以是主线对话，也可以是任意支线对话。
 
-- EN: A **tellaskee dialog** is the dialog handling the current Tellask (this dialog).
-- ZH: **被诉请者对话**是处理当前诉请的对话（也就是此对话）。
+- EN: A **responder** is the dialog handling the current Tellask (this dialog).
+- ZH: **被诉请者**是处理当前诉请的对话（也就是此对话）。
 
-- EN: These are **call roles**, not hierarchy; a tellasker dialog may or may not be the structural askerDialog.
-- ZH: 这是一次诉请的**角色关系**，不是层级关系；诉请者对话可能是也可能不是结构上的 askerDialog。
+- EN: These are **call roles**, not hierarchy; the requester may or may not be the structural askerDialog.
+- ZH: 这是一次诉请的**角色关系**，不是层级关系；诉请者可能是也可能不是结构上的 askerDialog。
 
-- EN (cross-reference): In implementation-facing docs/code, the standard class/concept names are `MainDialog` / `main dialog` for **Mainline dialog**, and `SideDialog` / `sideDialog` for **Sideline dialog**. `rootId` remains a structural identifier field, not the user-facing term.
+- EN (cross-reference): In implementation-facing docs/code, the standard class/concept names are `MainDialog` / `main dialog` for **Main Dialog**, and `SideDialog` / `sideDialog` for **Side Dialog**. `rootId` remains a structural identifier field, not the user-facing term.
 - ZH（交叉说明）: 在系统实现语境（文档/代码）中，标准类名/概念名是 **MainDialog / main dialog（主线对话）** 与 **SideDialog / sideDialog（支线对话）**。`rootId` 仍是结构标识字段，不是对外术语。
 
 ### UI Surfaces（入口界面与交互前端）
@@ -139,13 +137,13 @@
 - EN (term): `TellaskBack`
 - ZH（术语）: `回问诉请`
 
-- EN (meaning): Ask the **tellasker dialog** (the dialog that issued the current Tellask) for clarification instead of guessing.
-- ZH（含义）: 当被诉请方需要补充信息时，应**回问诉请者对话**澄清，而不是自行猜测。
+- EN (meaning): Ask the **requester** (the dialog that issued the current Tellask) for clarification instead of guessing.
+- ZH（含义）: 当被诉请方需要补充信息时，应**回问诉请者**澄清，而不是自行猜测。
 
-- EN (what “Back” means): “Back” refers to routing back to the tellasker dialog; it does **not** imply hierarchy/seniority.
-- ZH（Back 的含义）: “Back” 指回到诉请者对话，**不暗示上下级**。
+- EN (what “Back” means): “Back” refers to routing back to the requester; it does **not** imply hierarchy/seniority.
+- ZH（Back 的含义）: “Back” 指回到诉请者，**不暗示上下级**。
 
-- EN (typical carrier): `tellaskBack({ tellaskContent: "..." }) ...` (only available inside a Sideline dialog)
+- EN (typical carrier): `tellaskBack({ tellaskContent: "..." }) ...` (only available inside a Side Dialog)
 - ZH（典型载体）: `tellaskBack({ tellaskContent: "..." }) ...`（只在你处于支线对话语境时可用）
 
 Example / 示例（概念）:
@@ -213,7 +211,7 @@ tellask({
 - EN (key property): “Fresh/one-shot” is not only “new context”; it also means **no continuation semantics** — later Tellasks are not expected to resume the same session context.
 - ZH（关键性质）: “Fresh/一次性”不仅表示“新开上下文”，更表示：**没有后续续话语义** —— 后续诉请不应被期待能自动续接本次一次性诉请的上下文。
 
-- EN (operational consequence): A Fresh Tellask has **no assignment-update channel**. Another `tellaskSessionless` creates a new transient Sideline dialog; it does not update or tell the earlier one to stop.
+- EN (operational consequence): A Fresh Tellask has **no assignment-update channel**. Another `tellaskSessionless` creates a new transient Side Dialog; it does not update or tell the earlier one to stop.
 - ZH（操作后果）: 一次性诉请**没有任务安排更新通道**。再次发起 `tellaskSessionless` 只会新建另一条瞬态支线，不会更新、更不会要求先前那条支线停止。
 
 - EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `sessionSlug`.
@@ -226,7 +224,7 @@ Example / 示例（概念）:
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 
-- EN: `TellaskBack` asks the tellasker dialog for clarification; `Tellask Session` uses `sessionSlug` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
+- EN: `TellaskBack` asks the requester for clarification; `Tellask Session` uses `sessionSlug` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
 - ZH: `TellaskBack` 回问诉请者澄清；`Tellask Session` 用 `sessionSlug` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
 
 ### 为何保留 `!` 前缀？（Why keep the `!` prefix?）
@@ -396,7 +394,7 @@ Example / 示例（概念）:
 - ZH: **多程对话（multi-course dialog）**指同一个对话可以拥有**多段过程**；每一程都像一次“重新开工”的对话工作区。
 
 - EN: Course creation (how a new course starts):
-  - The **first course** exists naturally when a Mainline dialog or Sideline dialog is created.
+  - The **first course** exists naturally when a Main Dialog or Side Dialog is created.
   - After that, a **new course** is started when the dialog responder calls `clear_mind`.
   - Exception: the system may auto-start a new course for remediation (e.g., context health becomes critical).
 - ZH: “一程”如何产生（新一程如何开始）：
@@ -470,31 +468,31 @@ Example / 示例（概念）:
 - EN: A **dialog** is a persisted, driveable conversation state machine.
 - ZH: **对话（dialog）**是一个可持久化、可被后端驱动的对话状态机。
 
-### AskerDialog / 诉请者对话
+### AskerDialog / 诉请者
 
 - EN: **askerDialog** is the implementation-facing dialog that currently owns an assignment or reply obligation for a sideDialog. It may be the main dialog or another sideDialog; it is a requester/responder relationship, not inherently a hierarchy label.
-- ZH: **askerDialog（诉请者对话）**是在实现语境中当前拥有某个支线 assignment 或 reply obligation 的对话。它可以是 main dialog，也可以是另一个 sideDialog；这是诉请/回复关系，不天然表示层级上位。
+- ZH: **askerDialog（诉请者）**是在实现语境中当前拥有某个支线 assignment 或 reply obligation 的对话。它可以是 main dialog，也可以是另一个 sideDialog；这是诉请/回复关系，不天然表示层级上位。
 
-- EN: A askerDialog may receive **TellaskBack calls** from the sideDialogs that currently owe it a reply.
+- EN: An askerDialog may receive **TellaskBack calls** from the sideDialogs that currently owe it a reply.
 - ZH: askerDialog 在执行过程中可能接收来自当前需向它回复的 sideDialog 的 **TellaskBack call（回问诉请）**。
 
 ### SideDialog / 支线对话
 
-- EN: A **sideDialog** is a specialized dialog spawned by a askerDialog to handle a subtask with fresh (or session-resumed) context.
+- EN: A **sideDialog** is a specialized dialog spawned by an askerDialog to handle a subtask with fresh (or session-resumed) context.
 - ZH: **sideDialog（支线对话）**是由 askerDialog 派生出来用于处理子任务的专用对话，具备相对独立的上下文（可能是新开或按会话 key 恢复）。
 
 ### MainDialog / 主线对话
 
-- EN: A **main dialog** is the top-level Mainline dialog with no askerDialog. Prefer **Mainline dialog** in general/user-facing context and `MainDialog` / `main dialog` in implementation-facing context.
-- ZH: **main dialog（主线对话）**是没有 askerDialog 的顶层主线对话。通用/对外语境优先使用 **Mainline dialog / 主线对话**；实现语境使用 `MainDialog` / `main dialog`。
+- EN: A **main dialog** is the top-level dialog with no askerDialog. Prefer **Main Dialog** in general/user-facing context and `MainDialog` / `main dialog` in implementation-facing context.
+- ZH: **main dialog（主线对话）**是没有 askerDialog 的顶层主线对话。通用/对外语境优先使用 **Main Dialog / 主线对话**；实现语境使用 `MainDialog` / `main dialog`。
 
 ### Type A/B/C (internal taxonomy) / 内部分类
 
 - EN: The implementation may still use the internal labels **Type A/B/C** to classify teammate-tellask patterns.
 - ZH: 实现层仍可能使用 **Type A/B/C** 作为队友诉请形态的内部分类。
 
-- EN: Type A: TellaskBack call (a sideDialog asking back to its tellasker dialog); primary syntax `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`).
-- ZH: Type A：回问诉请（子对话回问其诉请者对话）；主语法 `tellaskBack({ tellaskContent: "..." })`（不带 `sessionSlug`）。
+- EN: Type A: TellaskBack call (a sideDialog asking back to its requester); primary syntax `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`).
+- ZH: Type A：回问诉请（支线对话回问其诉请者）；主语法 `tellaskBack({ tellaskContent: "..." })`（不带 `sessionSlug`）。
 
 - EN: Type B: registered sideDialog call (resumable) keyed by `agentId!sessionSlug`.
 - ZH: Type B：registered sideDialog call（可恢复），用 `agentId!sessionSlug` 作为 registry key。
@@ -505,4 +503,4 @@ Example / 示例（概念）:
 ### `sessionSlug` / 会话 Slug 指令
 
 - EN: Resumable registered sideDialogs use `sessionSlug` in the Tellask headline.
-- ZH: 可恢复的注册子对话使用 Tellask headline 内的 `sessionSlug`。
+- ZH: 可恢复的注册支线对话使用 Tellask headline 内的 `sessionSlug`。

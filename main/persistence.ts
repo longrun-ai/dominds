@@ -441,7 +441,7 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
   }
   if (
     raw.startsWith('支线对话仍在进行中，已持续 ') ||
-    raw.startsWith('Sideline dialog is still running (elapsed ')
+    raw.startsWith('Side Dialog is still running (elapsed ')
   ) {
     return true;
   }
@@ -2047,13 +2047,13 @@ export class DiskFileDialogStore extends DialogStore {
           ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
               );
             })();
     const rootStatus = mainDialog.status;
     if (rootStatus !== 'running') {
       throw new Error(
-        `createSideDialog invariant violation: root dialog must be running (rootId=${mainDialog.id.rootId}, status=${rootStatus})`,
+        `createSideDialog invariant violation: main dialog must be running (rootId=${mainDialog.id.rootId}, status=${rootStatus})`,
       );
     }
     const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);
@@ -5168,7 +5168,7 @@ export class DialogPersistence {
    */
   static getMainDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId !== dialogId.selfId) {
-      throw new Error('Expected root dialog id');
+      throw new Error('Expected main dialog id');
     }
     const statusDir = getPersistableStatusDirName(status, 'DialogPersistence.getMainDialogPath');
     return path.join(this.getDialogsRootDir(), statusDir, dialogId.selfId);
@@ -5178,7 +5178,7 @@ export class DialogPersistence {
    * Get the events/state directory for a dialog (composite ID for sideDialogs)
    */
   static getDialogEventsPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
-    // Root dialogs store events under their own directory.
+    // Main dialogs store events under their own directory.
     // SideDialogs store events under the root's sideDialogs/<self> directory.
     if (dialogId.rootId === dialogId.selfId) {
       return this.getMainDialogPath(dialogId, status);
@@ -5187,7 +5187,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Get the path for a sideDialog within a askerDialog
+   * Get the path for a sideDialog within an askerDialog
    */
   static getSideDialogPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
     if (dialogId.rootId === dialogId.selfId) {
@@ -5199,7 +5199,7 @@ export class DialogPersistence {
 
   private static getMalformedMainDialogPath(dialogId: DialogID, status: DialogStatusKind): string {
     if (dialogId.rootId !== dialogId.selfId) {
-      throw new Error('Expected root dialog id');
+      throw new Error('Expected main dialog id');
     }
     void status;
     return path.join(this.getDialogsRootDir(), this.MALFORMED_DIR, dialogId.selfId);
@@ -5545,7 +5545,7 @@ export class DialogPersistence {
   }
 
   /**
-   * List candidate root dialog IDs by scanning `dialog.yaml`.
+   * List candidate main dialog IDs by scanning `dialog.yaml`.
    *
    * This scanner intentionally stays lightweight: it only validates the path<->id identity needed
    * for safe enumeration, and leaves full metadata shape validation to the subsequent lazy-load
@@ -5660,7 +5660,7 @@ export class DialogPersistence {
   }
 
   /**
-   * List all dialog IDs (root + sideDialogs) together with their root IDs.
+   * List all dialog IDs (main dialogs + sideDialogs) together with their root IDs.
    * This is the only safe way to enumerate sideDialogs because their directory names
    * are not guaranteed to be their selfId.
    *
@@ -5735,11 +5735,11 @@ export class DialogPersistence {
       const segments = dir.split(path.sep).filter((seg) => seg.length > 0 && seg !== '.');
       if (segments.length === 0) return null;
 
-      // Root dialog IDs in this repo can contain path separators (e.g. "f4/44/cd85c4e2").
-      // The root dialog directory is therefore nested (RUN_DIR/<rootId>/dialog.yaml).
+      // Main dialog IDs in this repo can contain path separators (e.g. "f4/44/cd85c4e2").
+      // The main dialog directory is therefore nested (RUN_DIR/<rootId>/dialog.yaml).
       //
-      // To infer the rootId for any dialog.yaml we find (root or sideDialog), scan prefixes of the
-      // directory path and pick the first prefix that is itself a valid root dialog directory:
+      // To infer the rootId for any dialog.yaml we find (main dialog or sideDialog), scan prefixes of the
+      // directory path and pick the first prefix that is itself a valid main dialog directory:
       // - it has a dialog.yaml
       // - its dialog.yaml id matches the prefix joined with '/'
       for (let i = 1; i <= segments.length; i++) {
@@ -6657,7 +6657,7 @@ export class DialogPersistence {
     }>
   > {
     try {
-      // Get all running dialogs (root + sideDialogs) with correct rootId association.
+      // Get all running dialogs (main dialogs + sideDialogs) with correct rootId association.
       const dialogIds = await this.listAllDialogIds('running');
       const allQuestions: Array<{
         id: string;
@@ -7130,14 +7130,14 @@ export class DialogPersistence {
   }
 
   /**
-   * Get the path for storing sideDialog responses (supports both root and sideDialog parents).
+   * Get the path for storing sideDialog responses (supports both main dialog and sideDialog requesters).
    * For Type C sideDialogs created inside another sideDialog, responses are stored at the parent's level.
    */
   static getDialogResponsesPath(dialogId: DialogID, status: DialogStatusKind = 'running'): string {
-    // Root dialogs store responses in their own directory.
-    // SideDialogs store responses in the parent's location (root or sideDialog).
+    // Main dialogs store responses in their own directory.
+    // SideDialogs store responses in the requester's location (main dialog or sideDialog).
     if (dialogId.rootId === dialogId.selfId) {
-      // Root dialog: use root's directory
+      // Main dialog: use root's directory
       return this.getMainDialogPath(dialogId, status);
     }
     // SideDialog: store in parent's sideDialogs directory
@@ -7495,7 +7495,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Save root dialog metadata (write-once pattern)
+   * Save main dialog metadata (write-once pattern)
    */
   static async saveMainDialogMetadata(
     dialogId: DialogID,
@@ -7533,7 +7533,7 @@ export class DialogPersistence {
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
       if (!isMainDialogMetadataFile(metadata)) {
-        throw new Error(`Expected root dialog metadata for ${dialogId.selfId}`);
+        throw new Error(`Expected main dialog metadata for ${dialogId.selfId}`);
       }
       return this.saveMainDialogMetadata(dialogId, metadata, status);
     }
@@ -7582,7 +7582,7 @@ export class DialogPersistence {
       }
     } catch (error) {
       log.error(
-        `Failed to save sideDialog YAML for ${dialogId.selfId} under root dialog ${dialogId.rootId}:`,
+        `Failed to save sideDialog YAML for ${dialogId.selfId} under main dialog ${dialogId.rootId}:`,
         error,
       );
       throw error;
@@ -7915,7 +7915,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Load root dialog metadata
+   * Load main dialog metadata
    */
   static async loadMainDialogMetadata(
     dialogId: DialogID,
@@ -7980,7 +7980,7 @@ export class DialogPersistence {
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<DialogMetadataFile | null> {
-    // For root dialogs, use the selfId
+    // For main dialogs, use the selfId
     // For sideDialogs, this is more complex - we need to find the root metadata
     if (dialogId.rootId === dialogId.selfId) {
       return this.loadMainDialogMetadata(dialogId, status);
@@ -8554,7 +8554,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Count sideDialogs under a root dialog (no single-layer listing exposed)
+   * Count sideDialogs under a main dialog (no single-layer listing exposed)
    */
   static async countAllSideDialogsUnderRoot(
     mainDialogId: DialogID,
@@ -8562,7 +8562,7 @@ export class DialogPersistence {
   ): Promise<number> {
     if (mainDialogId.rootId !== mainDialogId.selfId) {
       throw new Error(
-        `countAllSideDialogsUnderRoot invariant violation: expected root dialog id, got ${mainDialogId.valueOf()}`,
+        `countAllSideDialogsUnderRoot invariant violation: expected main dialog id, got ${mainDialogId.valueOf()}`,
       );
     }
     try {
@@ -8587,7 +8587,7 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<DialogPersistenceState | null> {
     try {
-      // First restore the root dialog
+      // First restore the main dialog
       const rootState = await this.restoreDialog(mainDialogId, status);
       if (!rootState) {
         return null;
@@ -8932,7 +8932,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Delete a root dialog directory (including sideDialogs) from disk.
+   * Delete a main dialog directory (including sideDialogs) from disk.
    * Caller must provide the source status explicitly.
    */
   static async deleteMainDialog(
@@ -8940,7 +8940,7 @@ export class DialogPersistence {
     fromStatus: DialogStatusKind,
   ): Promise<boolean> {
     if (mainDialogId.selfId !== mainDialogId.rootId) {
-      throw new Error('deleteMainDialog expects a root dialog id');
+      throw new Error('deleteMainDialog expects a main dialog id');
     }
     const exists = await this.loadMainDialogMetadata(mainDialogId, fromStatus);
     if (!exists) return false;

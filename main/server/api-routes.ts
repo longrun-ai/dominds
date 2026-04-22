@@ -169,7 +169,7 @@ async function loadMainDialogMetadataForLookup(
     if (!findDomindsPersistenceFileError(error)) {
       throw error;
     }
-    log.warn(`${context}: root dialog metadata quarantined during lazy lookup`, error, {
+    log.warn(`${context}: main dialog metadata quarantined during lazy lookup`, error, {
       dialogId: dialogId.valueOf(),
       status,
     });
@@ -1290,13 +1290,13 @@ export async function handleApiRoute(
       const parts = pathname.split('/');
       const rawRoot = parts[3];
       if (!rawRoot) {
-        respondJson(res, 400, { success: false, error: 'Missing root dialog id' });
+        respondJson(res, 400, { success: false, error: 'Missing main dialog id' });
         return true;
       }
       return await handleForkDialog(req, res, context, rawRoot.replace(/%2F/g, '/'));
     }
 
-    // Delete a dialog (root dialogs only for now)
+    // Delete a dialog (main dialogs only for now)
     if (
       pathname.startsWith('/api/dialogs/') &&
       !pathname.endsWith('/hierarchy') &&
@@ -1306,7 +1306,7 @@ export async function handleApiRoute(
       const parts = pathname.split('/');
       const rawRoot = parts[3];
       if (!rawRoot) {
-        respondJson(res, 400, { error: 'Missing root dialog id' });
+        respondJson(res, 400, { error: 'Missing main dialog id' });
         return true;
       }
       const rawSelf = parts[4];
@@ -1325,7 +1325,7 @@ export async function handleApiRoute(
       return await handleDeleteDialog(res, { rootId, selfId, fromStatus: fromStatusRaw }, context);
     }
 
-    // Get full hierarchy for a single root dialog
+    // Get full hierarchy for a single main dialog
     if (
       pathname.startsWith('/api/dialogs/') &&
       pathname.endsWith('/hierarchy') &&
@@ -1386,7 +1386,7 @@ export async function handleApiRoute(
       const rawMaybeSelf = parts[4];
       const rawTail = parts[5];
       if (!rawRoot) {
-        respondJson(res, 400, { error: 'Missing root dialog id' });
+        respondJson(res, 400, { error: 'Missing main dialog id' });
         return true;
       }
       const rootId = rawRoot.replace(/%2F/g, '/');
@@ -2337,7 +2337,7 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
 }
 
 /**
- * Get dialog list - returns root dialogs with sideDialogCount
+ * Get dialog list - returns main dialogs with sideDialogCount
  */
 async function handleGetDialogs(
   res: ServerResponse,
@@ -2408,8 +2408,8 @@ async function handleGetDialogs(
     respondJson(res, 200, { success: true, dialogs: mainDialogs });
     return true;
   } catch (error) {
-    log.error('Error getting root dialogs:', error);
-    respondJson(res, 500, { success: false, error: 'Failed to get root dialogs' });
+    log.error('Error getting main dialogs:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to get main dialogs' });
     return true;
   }
 }
@@ -2433,7 +2433,7 @@ async function handleGetRunControlCounts(res: ServerResponse): Promise<boolean> 
 }
 
 /**
- * Get full hierarchy (root + sideDialogs) for a single root dialog
+ * Get full hierarchy (main dialog + sideDialogs) for a single main dialog
  */
 async function handleGetDialogHierarchy(
   res: ServerResponse,
@@ -2449,12 +2449,12 @@ async function handleGetDialogHierarchy(
     if (!rootMeta) {
       respondJson(res, 404, {
         success: false,
-        error: `Root dialog ${rootId} not found in ${status}`,
+        error: `Main dialog ${rootId} not found in ${status}`,
       });
       return true;
     }
 
-    // Load latest.yaml for root dialog currentCourse and lastModified timestamp
+    // Load latest.yaml for main dialog currentCourse and lastModified timestamp
     const rootLatest: DialogLatestFile | null = await loadDialogLatestForLookup(
       new DialogID(rootId),
       status,
@@ -2465,7 +2465,7 @@ async function handleGetDialogHierarchy(
     if (!rootStillExists) {
       respondJson(res, 404, {
         success: false,
-        error: `Root dialog ${rootId} was quarantined as malformed`,
+        error: `Main dialog ${rootId} was quarantined as malformed`,
       });
       return true;
     }
@@ -2487,7 +2487,7 @@ async function handleGetDialogHierarchy(
     if (!(await pathStillExistsForLookup(rootPath))) {
       respondJson(res, 404, {
         success: false,
-        error: `Root dialog ${rootId} was quarantined as malformed`,
+        error: `Main dialog ${rootId} was quarantined as malformed`,
       });
       return true;
     }
@@ -2618,7 +2618,7 @@ async function handleGetDialogListSideDialogNode(
     }
     if (metadata.id === dialog.rootId) {
       throw new Error(
-        `CRITICAL: dialog-list sideDialog node lookup resolved root dialog. rootId=${dialog.rootId} selfId=${dialog.selfId} status=${status}`,
+        `CRITICAL: dialog-list sideDialog node lookup resolved main dialog. rootId=${dialog.rootId} selfId=${dialog.selfId} status=${status}`,
       );
     }
 
@@ -2944,7 +2944,7 @@ async function handleMoveDialogs(
       if (!meta) {
         respondJson(res, 404, {
           success: false,
-          error: `Root dialog ${rootId} not found in ${fromStatus}`,
+          error: `Main dialog ${rootId} not found in ${fromStatus}`,
         });
         return true;
       }
@@ -3104,7 +3104,7 @@ async function handleDeleteDialog(
   try {
     const { rootId, selfId, fromStatus } = dialog;
     if (typeof rootId !== 'string' || rootId.trim() === '') {
-      respondJson(res, 400, { error: 'Invalid root dialog id' });
+      respondJson(res, 400, { error: 'Invalid main dialog id' });
       return true;
     }
     if (typeof selfId !== 'string' || selfId.trim() === '') {
@@ -3113,7 +3113,7 @@ async function handleDeleteDialog(
     }
     if (selfId !== rootId) {
       respondJson(res, 400, {
-        error: 'Only root dialog deletion is supported (use /api/dialogs/:root)',
+        error: 'Only main dialog deletion is supported (use /api/dialogs/:root)',
       });
       return true;
     }

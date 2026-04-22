@@ -52,7 +52,7 @@ class GlobalDialogRegistry {
 
   register(mainDialog: MainDialog): void {
     // This registry is keyed by the *tree root id*.
-    // Only the canonical root dialog (selfId === rootId) should be stored here.
+    // Only the canonical main dialog (selfId === rootId) should be stored here.
     if (mainDialog.id.selfId !== mainDialog.id.rootId) {
       return;
     }

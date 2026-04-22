@@ -122,7 +122,7 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
         },
         'running',
       );
-      log.warn('kernel-driver auto-persisted missing root dialog metadata', undefined, {
+      log.warn('kernel-driver auto-persisted missing main dialog metadata', undefined, {
         where,
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
@@ -368,9 +368,9 @@ export async function supplyResponseToAskerDialog(args: {
     const resolvedSideDialog =
       maybeSideDialog ??
       (lookedUpSideDialog instanceof SideDialog ? lookedUpSideDialog : undefined);
-    const upstreamResponseBody = responseText;
+    const requesterResponseBody = responseText;
     const requesterId = result.originMemberId ?? parentDialog.agentId;
-    const upstreamResponseText = formatTellaskResponseContent({
+    const requesterResponseText = formatTellaskResponseContent({
       callName: result.callName,
       callId: resolvedCallId,
       responderId: result.responderId,
@@ -378,7 +378,7 @@ export async function supplyResponseToAskerDialog(args: {
       mentionList: result.mentionList,
       sessionSlug: result.sessionSlug,
       tellaskContent: result.tellaskContent,
-      responseBody: upstreamResponseBody,
+      responseBody: requesterResponseBody,
       status,
       deliveryMode,
       language: getWorkLanguage(),
@@ -400,7 +400,7 @@ export async function supplyResponseToAskerDialog(args: {
             mentionList: result.mentionList,
             sessionSlug: result.sessionSlug,
             tellaskContent: result.tellaskContent,
-            responseBody: upstreamResponseBody,
+            responseBody: requesterResponseBody,
             status,
             language: getWorkLanguage(),
           })
@@ -418,9 +418,9 @@ export async function supplyResponseToAskerDialog(args: {
         status: parentDialog.status,
       });
       if (!assignmentRef) {
-        // A Sideline dialog can legitimately finish a pending tellask before the queued assignment
+        // A Side Dialog can legitimately finish a pending tellask before the queued assignment
         // prompt for that call is rendered locally, for example after a direct user nudge inside
-        // the Sideline dialog. Keep the caller deep-link anchor, but do not treat the missing
+        // the Side Dialog. Keep the caller deep-link anchor, but do not treat the missing
         // local assignment bubble as an invariant violation.
         log.debug('Tellask response anchor has no local assignment anchor', undefined, {
           parentId: parentDialog.id.selfId,
@@ -536,7 +536,7 @@ export async function supplyResponseToAskerDialog(args: {
       status,
       sideDialogId,
       {
-        response: upstreamResponseText,
+        response: requesterResponseText,
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
         originMemberId: requesterId,
@@ -573,7 +573,7 @@ export async function supplyResponseToAskerDialog(args: {
             callName: result.callName,
             tellaskContent: result.tellaskContent,
             status,
-            response: upstreamResponseText,
+            response: requesterResponseText,
             agentId: result.responderAgentId ?? result.responderId,
             callId: resolvedCallId,
             originMemberId: requesterId,
@@ -603,7 +603,7 @@ export async function supplyResponseToAskerDialog(args: {
             callId: resolvedCallId,
             callName: result.callName,
             status,
-            content: upstreamResponseText,
+            content: requesterResponseText,
             ...(result.callingCourse !== undefined ? { originCourse: result.callingCourse } : {}),
             ...(result.callingGenseq !== undefined
               ? { calling_genseq: result.callingGenseq }
@@ -837,7 +837,7 @@ export async function supplySideDialogResponseToAssignedCallerIfPendingV2(args: 
 
   const callerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.callerDialogId);
   if (!callerDialog) {
-    log.warn('Missing caller dialog for sideDialog response supply', undefined, {
+    log.warn('Missing requester for sideDialog response supply', undefined, {
       rootId: sideDialog.mainDialog.id.rootId,
       sideDialogId: sideDialog.id.selfId,
       callerDialogId: assignment.callerDialogId,

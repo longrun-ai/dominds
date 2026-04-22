@@ -29,9 +29,9 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     const language = getWorkLanguage();
     const sessionSlug = 'sticky-session';
-    const initialTrigger = 'Start the registered sideline.';
+    const initialTrigger = 'Start the registered side dialog.';
     const initialBody = 'Initial assignment';
-    const updatedTrigger = 'Update the registered sideline while it is still running.';
+    const updatedTrigger = 'Update the registered side dialog while it is still running.';
     const updatedBody = 'Updated assignment';
 
     const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       {
         message: initialTrigger,
         role: 'user',
-        response: 'Starting the sideline.',
+        response: 'Starting the side dialog.',
         funcCalls: [
           {
             id: 'call-initial-round',
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       {
         message: updatedTrigger,
         role: 'user',
-        response: 'Updating the sideline now.',
+        response: 'Updating the side dialog now.',
         funcCalls: [
           {
             id: 'call-updated-round',
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => listTellaskResultContents(root.msgs).includes(expectedUpdatedResult),
       4_000,
-      'updated assignment result to flow back to caller',
+      'updated assignment result to flow back to requester',
     );
     await waitForAllDialogsUnlocked(root, 6_000);
 

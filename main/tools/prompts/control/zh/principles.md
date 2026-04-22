@@ -93,20 +93,20 @@
 ### 决策规则
 
 - 当前支线未完成时，先判断团队规程 / SOP / 职责卡能否明确负责人；若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人
-- 只有当必须向上游补需求、澄清目标、裁决取舍、确认验收口径、提供缺失输入，或现有规程无法明确判责时：调用 `tellaskBack({ tellaskContent })`
+- 只有当必须向诉请者补需求、澄清目标、裁决取舍、确认验收口径、提供缺失输入，或现有规程无法明确判责时：调用 `tellaskBack({ tellaskContent })`
 - 需要人类亲自登录 / GUI / 验证码 / 高风险授权时：调用 `askHuman({ tellaskContent })`
 - 当前支线已经完成，且当前 assignment 明确要求 `replyTellask`：调用 `replyTellask({ replyContent })`
 - 当前支线已经完成，且当前 assignment 明确要求 `replyTellaskSessionless`：调用 `replyTellaskSessionless({ replyContent })`
-- 当前是在回复一条上游发来的 `tellaskBack` 续诉请，且 runtime 暴露了 `replyTellaskBack`：调用 `replyTellaskBack({ replyContent })`
+- 当前是在回复一条诉请者发来的 `tellaskBack` 续诉请，且 runtime 暴露了 `replyTellaskBack`：调用 `replyTellaskBack({ replyContent })`
 - 普通文本不是跨对话完成交付通道；如果你直接输出正文而没调 reply 工具，runtime 可能临时插入一条 `role=user` 的提醒要求你改用正确的 reply 函数
 
 ### 心智负担最小化规则
 
-- 先专注把当前任务做对；`reply*` 只在最终对上游交付时用于收口
+- 先专注把当前任务做对；`reply*` 只在最终对诉请者交付时用于收口
 - 不要靠记忆硬选 reply 变体；以当前 assignment 头部和 runtime 当前暴露的函数名为准
 - `reply*` 函数自身说明文案故意保持极简，只承载最小规格；情景判断看本手册的 principles / scenarios
 - 若 runtime 只暴露一个 `reply*`，那就是当前应调用的唯一完成路径
-- `tellaskBack` 是“无法按现有规程明确判责，或必须回问上游”的兜底动作，不是所有阻塞的默认第一动作
+- `tellaskBack` 只在“无法按现有规程明确判责，或必须回问诉请者”时成立，不是所有阻塞的默认第一动作
 
 ## 最佳实践
 

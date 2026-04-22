@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       const parentSideDialog = await root.createSideDialog(
         'mentor',
         ['@mentor'],
-        'Open the parent sideline.',
+        'Open the parent side dialog.',
         {
           callName: 'tellaskSessionless',
           originMemberId: 'tester',

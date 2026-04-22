@@ -10,11 +10,11 @@ with a stable schema and a strict access policy.
 ## Goals
 
 - **Clarity**: separate “what we want” (goals) from “what we must obey” (constraints) and “where we are” (progress).
-- **Coordination**: make the Taskdoc the task’s **live coordination bulletin board** across Mainline dialogs/agents (keep `progress.md`/`constraints.md` current; don’t bury key decisions in chat).
+- **Coordination**: make the Taskdoc the task’s **live coordination bulletin board** across Main Dialogs/agents (keep `progress.md`/`constraints.md` current; don’t bury key decisions in chat).
 - **Durability**: make task state persist across long-running work and across dialog course resets.
 - **Auditability**: make task changes explicit and attributable to a single, intentional action.
 - **Safety**: prevent accidental or tool-driven reads/writes that bypass intended UX and control points.
-- **Shareability**: ensure the Taskdoc is visible/consistent across the entire dialog tree (root + sideDialogs).
+- **Shareability**: ensure the Taskdoc is visible/consistent across the entire dialog tree (main dialog + sideDialogs).
 
 ## Non-goals
 
@@ -24,7 +24,7 @@ with a stable schema and a strict access policy.
 
 ## Terminology
 
-- **Dialog tree**: a root dialog plus any sideDialogs/teammates spawned under it.
+- **Dialog tree**: a main dialog plus any sideDialogs/teammates spawned under it.
 - **Taskdoc package**: a directory ending in `.tsk/` that stores the Taskdoc as multiple files.
 - **Taskdoc (effective)**: the logical Taskdoc content presented to the agent, derived from the Taskdoc package.
 - **Encapsulation**: treating `.tsk/` as protected internal state, not general rtws (runtime workspace) files.

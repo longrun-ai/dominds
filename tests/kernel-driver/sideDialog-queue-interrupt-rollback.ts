@@ -177,7 +177,7 @@ async function main(): Promise<void> {
         return false;
       },
       8_000,
-      'root dialog to resume only after nested sideDialog chain is finalized',
+      'main dialog to resume only after nested sideDialog chain is finalized',
     );
 
     await waitForAllDialogsUnlocked(dlg, 6_000);

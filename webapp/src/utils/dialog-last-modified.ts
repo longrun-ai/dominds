@@ -9,11 +9,11 @@ export function bumpDialogsLastModified(
   const next = dialogs.map((d) => {
     if (d.rootId !== dialogId.rootId) return d;
 
-    // Always bump the root row of the tree so it reflects recent activity
+    // Always bump the main row of the tree so it reflects recent activity
     // even when the activity happened inside a sideDialog.
     const isRootRow = d.selfId === undefined;
 
-    // Bump only the targeted dialog node (root or sideDialog) and the root row.
+    // Bump only the targeted dialog node (main dialog or sideDialog) and the main row.
     // IMPORTANT: Do not bump sibling sideDialogs: they share the same rootId.
     const dSelfId = d.selfId ?? d.rootId;
     const isTargetNode = dSelfId === dialogId.selfId;

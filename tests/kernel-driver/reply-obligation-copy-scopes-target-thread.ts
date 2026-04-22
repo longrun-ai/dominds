@@ -38,7 +38,7 @@ function main(): void {
       requesterId: 'tester',
       expectedReplyTool: 'replyTellask',
     }),
-    '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有确实需要向上游回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
+    '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
   );
   assert.equal(
     buildSideDialogRoleHeaderCopy({
@@ -46,7 +46,7 @@ function main(): void {
       requesterId: 'tester',
       expectedReplyTool: 'replyTellaskSessionless',
     }),
-    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask upstream back and existing SOP cannot directly identify another owner.',
+    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask the requester back and existing SOP cannot directly identify another owner.',
   );
 
   const startAssignment = formatAssignmentFromAskerDialog({
@@ -83,8 +83,8 @@ function main(): void {
   const askBackDirective = {
     expectedReplyCallName: 'replyTellaskBack' as const,
     targetCallId: 'reply-back-target',
-    targetDialogId: 'sideline-dialog-42',
-    tellaskContent: 'Please confirm the sideline result.',
+    targetDialogId: 'side dialog-dialog-42',
+    tellaskContent: 'Please confirm the side dialog result.',
   };
   const askBackReminder = buildReplyToolReminderText({
     language: 'zh',
@@ -107,9 +107,9 @@ function main(): void {
 
   const assignmentDirective = {
     expectedReplyCallName: 'replyTellaskSessionless' as const,
-    targetDialogId: 'root-dialog',
+    targetDialogId: 'main-dialog',
     targetCallId: 'root-to-pangu-call',
-    tellaskContent: 'Finish the parent sideline after the nested work returns.',
+    tellaskContent: 'Finish the parent side dialog after the nested work returns.',
   };
   const assignmentReassertion = buildReplyObligationReassertionText({
     language: 'zh',

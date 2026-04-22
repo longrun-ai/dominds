@@ -198,7 +198,7 @@ export class RunningDialogList extends HTMLElement {
           !Number.isInteger(next.sideDialogCount) ||
           next.sideDialogCount < 0
         ) {
-          throw new Error(`Root dialog ${rootId} received invalid backend sideDialogCount`);
+          throw new Error(`Main dialog ${rootId} received invalid backend sideDialogCount`);
         }
         countEl.textContent = String(next.sideDialogCount);
       }
@@ -372,7 +372,7 @@ export class RunningDialogList extends HTMLElement {
         subs.add(dialog.selfId);
       } else {
         if (seenRoots.has(dialog.rootId)) {
-          throw new Error(`Duplicate root dialog detected: ${dialog.rootId}`);
+          throw new Error(`Duplicate main dialog detected: ${dialog.rootId}`);
         }
         seenRoots.add(dialog.rootId);
       }
@@ -474,7 +474,7 @@ export class RunningDialogList extends HTMLElement {
     if (!rootGroup.root) return rootGroup.sideDialogs.length;
     const backendCount = rootGroup.root.sideDialogCount;
     if (typeof backendCount !== 'number' || !Number.isInteger(backendCount) || backendCount < 0) {
-      throw new Error(`Root dialog ${rootGroup.rootId} is missing backend sideDialogCount`);
+      throw new Error(`Main dialog ${rootGroup.rootId} is missing backend sideDialogCount`);
     }
     return backendCount;
   }
@@ -664,7 +664,7 @@ export class RunningDialogList extends HTMLElement {
     const t = getUiStrings(this.props.uiLanguage);
     const rootToggle = this.renderToggleIcon(rootCollapsed);
     return `
-      <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
+      <div class="dialog-item main-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
         <div class="dialog-row">
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
           <span class="dialog-title">${t.missingRoot}</span>
@@ -695,7 +695,7 @@ export class RunningDialogList extends HTMLElement {
   private reconcileSideDialogRows(rootChildren: HTMLElement, rootGroup: RootGroup): void {
     const existingRows = new Map<string, HTMLElement>();
     rootChildren
-      .querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog[data-dialog-key]')
+      .querySelectorAll<HTMLElement>(':scope > .dialog-item.side-dialog[data-dialog-key]')
       .forEach((row) => {
         const key = (row.getAttribute('data-dialog-key') ?? '').trim();
         if (key !== '') {
@@ -713,7 +713,7 @@ export class RunningDialogList extends HTMLElement {
 
     for (const sideDialog of visibleSideDialogs) {
       const key = this.getDialogKey(sideDialog);
-      const next = this.createElementFromHtml(this.renderDialogRow(sideDialog, 'sub'));
+      const next = this.createElementFromHtml(this.renderDialogRow(sideDialog, 'side'));
       const existing = existingRows.get(key);
       if (existing) {
         this.syncElement(existing, next);
@@ -756,7 +756,7 @@ export class RunningDialogList extends HTMLElement {
       : this.renderMissingRootRow(rootGroup, rootCollapsed);
 
     const existingRootRow = rootNode.querySelector<HTMLElement>(
-      ':scope > .dialog-item.root-dialog',
+      ':scope > .dialog-item.main-dialog',
     );
     if (existingRootRow) {
       this.syncElement(existingRootRow, this.createElementFromHtml(rootRowHtml));
@@ -929,7 +929,7 @@ export class RunningDialogList extends HTMLElement {
     );
     if (!(rootChildren instanceof HTMLElement)) return;
     const subRows = Array.from(
-      rootChildren.querySelectorAll<HTMLElement>(':scope > .dialog-item.sub-dialog'),
+      rootChildren.querySelectorAll<HTMLElement>(':scope > .dialog-item.side-dialog'),
     );
     if (subRows.length <= 1) return;
     subRows.sort((a, b) => {
@@ -958,8 +958,8 @@ export class RunningDialogList extends HTMLElement {
     const rootNodes = Array.from(taskRows.querySelectorAll<HTMLElement>(':scope > .rdlg-node'));
     if (rootNodes.length <= 1) return;
     rootNodes.sort((a, b) => {
-      const aRoot = a.querySelector<HTMLElement>(':scope > .dialog-item.root-dialog');
-      const bRoot = b.querySelector<HTMLElement>(':scope > .dialog-item.root-dialog');
+      const aRoot = a.querySelector<HTMLElement>(':scope > .dialog-item.main-dialog');
+      const bRoot = b.querySelector<HTMLElement>(':scope > .dialog-item.main-dialog');
       const delta =
         (bRoot ? this.getDialogUpdatedAtMsFromElement(bRoot) : 0) -
         (aRoot ? this.getDialogUpdatedAtMsFromElement(aRoot) : 0);
@@ -999,7 +999,7 @@ export class RunningDialogList extends HTMLElement {
   private getTaskMaxUpdatedAtMs(taskGroup: HTMLElement): number {
     let max = 0;
     const roots = taskGroup.querySelectorAll<HTMLElement>(
-      '.dialog-item.root-dialog[data-dialog-key]',
+      '.dialog-item.main-dialog[data-dialog-key]',
     );
     roots.forEach((row) => {
       const ts = this.getDialogUpdatedAtMsFromElement(row);
@@ -1103,7 +1103,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${displayStateClass}"
+        class="dialog-item main-dialog${isSelected ? ' selected' : ''}${displayStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
         data-dialog-key="${dialogKey}"
@@ -1142,20 +1142,20 @@ export class RunningDialogList extends HTMLElement {
     `;
   }
 
-  private renderDialogRow(dialog: ApiMainDialogResponse, kind: 'root' | 'sub'): string {
+  private renderDialogRow(dialog: ApiMainDialogResponse, kind: 'main' | 'side'): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
     const displayStateClass = this.getDisplayStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId =
-      kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
-    const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
+      kind === 'side' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
+    const rowClass = kind === 'side' ? 'dialog-item side-dialog' : 'dialog-item main-dialog';
     const updatedAt = dialog.lastModified || '';
     const sessionSlugMark = dialog.sessionSlug ?? '';
     const dialogKey = this.getDialogKey(dialog);
     const updatedAtMs = this.parseTimestamp(dialog.lastModified);
 
-    if (kind === 'sub') {
+    if (kind === 'side') {
       const callsign = this.getDialogDisplayCallsign(dialog);
       return `
         <div
@@ -1712,7 +1712,7 @@ export class RunningDialogList extends HTMLElement {
         box-sizing: border-box;
       }
 
-      .root-dialog {
+      .main-dialog {
         padding-left: 8px;
         gap: 0;
         border-top: 1px solid var(--dominds-border, #e0e0e0);
@@ -1722,7 +1722,7 @@ export class RunningDialogList extends HTMLElement {
         gap: 0;
       }
 
-      .sub-dialog {
+      .side-dialog {
         padding-left: 20px;
       }
 

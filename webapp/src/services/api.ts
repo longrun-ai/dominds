@@ -380,7 +380,7 @@ export class ApiClient {
   }
 
   /**
-   * Get root dialogs in a specific status directory.
+   * Get main dialogs in a specific status directory.
    */
   async getMainDialogsByStatus(
     status: PersistableDialogStatus,
@@ -407,7 +407,7 @@ export class ApiClient {
   }
 
   /**
-   * Get running root dialogs.
+   * Get running main dialogs.
    */
   async getMainDialogs(): Promise<ApiResponse<ApiMainDialogResponse[]>> {
     return await this.getMainDialogsByStatus('running');
@@ -442,7 +442,7 @@ export class ApiClient {
   }
 
   /**
-   * Get full hierarchy for a single root dialog
+   * Get full hierarchy for a single main dialog
    */
   async getDialogHierarchy(
     mainDialogId: string,

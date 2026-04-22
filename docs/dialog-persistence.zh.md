@@ -45,7 +45,7 @@
 
 ### 设计原则
 
-- **扁平子对话存储**：所有子对话扁平存储在主对话（根对话）的 `sideDialogs/` 目录下，无论嵌套深度如何
+- **扁平支线对话存储**：所有支线对话扁平存储在主线对话的 `sideDialogs/` 目录下，无论嵌套深度如何
 - **仅追加流**：消息流是仅追加的，用于审计追踪和重放能力
 - **原子操作**：所有持久化操作都是原子的，以防止损坏
 - **人类可读格式**：存储使用 YAML 和 JSONL 以实现透明性和调试
@@ -157,42 +157,42 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 **DialogID 模式**：系统使用 `self+root` ID 模式，在 `DialogID` 类中实现：
 
 - **selfDlgId**：此特定对话实例的唯一标识符
-- **rootDlgId**：层次结构中根对话的标识符（根对话默认为 selfDlgId）
+- **rootDlgId**：层次结构中主线对话的标识符（主线对话默认为 selfDlgId）
 - **序列化**：当 `rootDlgId` 与 `selfDlgId` 不同时，全 ID 格式化为 `rootDlgId#selfDlgId`；否则仅为 `selfDlgId`
 
-此模式能够在管理子对话关系的同时实现高效的唯一标识每个对话实例。
+此模式能够在管理支线对话关系的同时实现高效的唯一标识每个对话实例。
 
 ### 设计原理
 
 `self+root` ID 模式的实现是为了解决对话管理中的几个挑战：
 
-1. **层次关系跟踪**：为每个对话提供清晰的谱系信息，易于将子对话追溯到其根对话
-2. **高效存储组织**：允许子对话的扁平存储，同时保留关系信息
-3. **唯一标识**：确保每个对话实例具有唯一标识符，即使存在多个子对话
+1. **层次关系跟踪**：为每个对话提供清晰的谱系信息，易于将支线对话追溯到其主线对话
+2. **高效存储组织**：允许支线对话的扁平存储，同时保留关系信息
+3. **唯一标识**：确保每个对话实例具有唯一标识符，即使存在多个支线对话
 4. **简化持久化**：实现对话关系的直接序列化和反序列化
 5. **改进调试**：在日志和调试信息中提供清晰标识
-6. **可扩展性**：支持深度子对话层次结构，无需复杂的存储结构
+6. **可扩展性**：支持深度支线对话层次结构，无需复杂的存储结构
 
 此设计平衡了对清晰层次关系与高效存储和检索操作的需求。
 
 ### 活动对话结构
 
 ```
-.dialogs/run/<rootDialogId>/
+.dialogs/run/<mainDialogId>/
 ├── dialog.yaml               # 带强类型的对话元数据
 ├── latest.yaml               # 当前对话过程和 lastModified 跟踪
 ├── reminders.json            # 持久化提醒项
 ├── <course>.jsonl            # 每一程的流式事件
 ├── <course>.yaml             # 每一程的元数据
 ├── artifacts/                # 二进制工件（例如 MCP 工具输出图片；由 func_result_msg.contentItems 引用）
-└── sideDialogs/               # 扁平子对话存储
-    ├── <subDialogId1>/       # 第一级子对话
-    │   ├── dialog.yaml       # 子对话元数据
-    │   ├── latest.yaml       # 子对话当前状态
-    │   ├── reminders.json    # 子对话提醒项
-    │   ├── <course>.jsonl    # 子对话每一程的流式事件
-    │   └── <course>.yaml     # 子对话每一程的元数据
-    └── <subDialogId2>/       # 另一个子对话
+└── sideDialogs/               # 扁平支线对话存储
+    ├── <subDialogId1>/       # 第一级支线对话
+    │   ├── dialog.yaml       # 支线对话元数据
+    │   ├── latest.yaml       # 支线对话当前状态
+    │   ├── reminders.json    # 支线对话提醒项
+    │   ├── <course>.jsonl    # 支线对话每一程的流式事件
+    │   └── <course>.yaml     # 支线对话每一程的元数据
+    └── <subDialogId2>/       # 另一个支线对话
         ├── dialog.yaml
         ├── latest.yaml
         ├── reminders.json
@@ -204,14 +204,14 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 
 - **latest.yaml**：带有当前对话过程、lastModified 和状态的现代跟踪文件
 - **强类型**：所有文件使用由 `@longrun-ai/kernel/types/storage` 对外导出的 storage 类型合同
-- **原子 在所有对话修改更新**：latest.yaml时原子更新
+- **原子更新**：所有对话修改时原子更新 latest.yaml
 - **UI 集成**：latest.yaml 中的时间戳在对话列表中正确显示
 
 在此结构中：
 
-- 根对话的 `selfDlgId` 等于 `rootDlgId`
-- 子对话具有不同的 `selfDlgId` 值，与父对话具有相同的 `rootDlgId`
-- 子对话目录仅使用 `selfDlgId` 进行文件系统组织
+- 主线对话的 `selfDlgId` 等于 `rootDlgId`
+- 支线对话具有不同的 `selfDlgId` 值，与诉请者具有相同的 `rootDlgId`
+- 支线对话目录仅使用 `selfDlgId` 进行文件系统组织
 - 元数据仅存储 `selfDlgId`；加载时重建完整的 `rootDlgId#selfDlgId`
 - 完整的 `rootDlgId#selfDlgId` 格式用于内存中标识和操作
 
@@ -219,25 +219,25 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 
 使用 TypeScript 接口的现代强类型对话元数据：
 
-#### 根对话示例
+#### 主线对话示例
 
 ```yaml
 id: 'aa/bb/cccccccc' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'alice' # 负责此对话的智能体
 taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径
 createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
-# 根对话没有父字段
+# 主线对话没有父字段
 ```
 
-#### 子对话示例
+#### 支线对话示例
 
 ```yaml
 id: 'dd/ee/ffffffff' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'bob' # 负责此对话的智能体
-taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径（从父级继承）
+taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径（从诉请者继承）
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
-askerDialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
-assignmentFromAsker: # 来自父级的任务上下文
+askerDialogId: 'aa/bb/cccccccc' # 诉请者的 selfDlgId
+assignmentFromAsker: # 来自诉请者的任务上下文
   mentionList: ['@bob']
   tellaskContent: 'Implement user authentication; create secure login system with JWT tokens'
   originMemberId: 'alice'
@@ -254,7 +254,7 @@ currentCourse: 3 # 当前对话过程编号（基于 1）
 lastModified: '2024-01-15T11:45:00Z' # 最后活动的 ISO 时间戳
 messageCount: 12 # 当前对话过程中的总消息数
 functionCallCount: 3 # 当前对话过程中的总函数调用数
-sideDialogCount: 1 # 创建的子对话总数
+sideDialogCount: 1 # 创建的支线对话总数
 status: 'active' # 当前对话状态
 ```
 
@@ -263,7 +263,7 @@ status: 'active' # 当前对话状态
 - 新消息事件
 - 开启新一程对话
 - 函数调用结果
-- 子对话创建
+- 支线对话创建
 - 任何对话修改
 
 **UI 集成**：对话列表显示来自此文件的 `lastModified` 时间戳，用于准确排序和显示。
@@ -299,7 +299,7 @@ status: 'active' # 当前对话状态
 
 ### Root generation 锚点与状态对账记录
 
-为支持 root dialog fork，持久化层现在显式记录“某条数据对应的是哪一个 root generation 视角”。
+为支持 main dialog fork，持久化层现在显式记录“某条数据对应的是哪一个 root generation 视角”。
 
 **Root generation 锚点**：
 
@@ -308,14 +308,14 @@ status: 'active' # 当前对话状态
 
 **用途**：
 
-- 所有需要跨整棵 root tree 对齐的状态快照，都必须绑定到 root generation，而不是各自子对话的本地 course/genseq
+- 所有需要跨整棵 root tree 对齐的状态快照，都必须绑定到 root generation，而不是各自支线对话的本地 course/genseq
 - root fork 在切点 `(course, genseq)` 时，实际保留的是**不晚于** `(rootCourse=course, rootGenseq=genseq-1)` 的最后一个一致快照
 
 **新增/强化的持久化记录**：
 
 - `sideDialog_created_record`
   - 持久化在 root transcript 中
-  - 记录某个子对话何时在 root 时间线上已“存在”，供 fork 时判断是否应纳入新树
+  - 记录某个支线对话何时在 root 时间线上已“存在”，供 fork 时判断是否应纳入新树
 - `reminders_reconciled_record`
 - `questions4human_reconciled_record`
 - `pending_sideDialogs_reconciled_record`
@@ -325,8 +325,8 @@ status: 'active' # 当前对话状态
 **规范要求**：
 
 - 这些对账记录是状态快照，不属于 LLM transcript 内容；重建消息上下文时应跳过
-- 子对话 transcript 中凡是需要参与 root fork 边界裁剪的记录，都必须带 `rootCourse/rootGenseq`
-- fork 写入新 root 时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending sideDialogs / registry / responses 恢复到切点前状态
+- 支线对话 transcript 中凡是需要参与 root fork 边界裁剪的记录，都必须带 `rootCourse/rootGenseq`
+- fork 写入新主线对话时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending sideDialogs / registry / responses 恢复到切点前状态
 
 ---
 
@@ -451,7 +451,7 @@ taskdocChecksum: 'sha256:abc123...'
 ### 对话创建
 
 1. 使用 `generateDialogID()` 生成唯一对话 ID
-2. 创建具有 `selfDlgId` 和 `rootDlgId` 的 `DialogID` 实例（根对话的 rootDlgId 默认为 selfDlgId）
+2. 创建具有 `selfDlgId` 和 `rootDlgId` 的 `DialogID` 实例（主线对话的 rootDlgId 默认为 selfDlgId）
 3. 创建对话目录结构
 4. 使用序列化的 DialogID 写入初始 `dialog.yaml` 元数据
 5. 将 `latest.yaml` 初始化为 `currentCourse: 1`
@@ -465,26 +465,26 @@ taskdocChecksum: 'sha256:abc123...'
 3. 如果触发 `clear_mind` 开启新一程：更新 `latest.yaml.currentCourse` 并广播 course 更新事件
 4. 确保原子写入以防止损坏
 
-### 子对话创建
+### 支线对话创建
 
-1. 使用 `generateDialogID()` 生成唯一子对话 ID
+1. 使用 `generateDialogID()` 生成唯一支线对话 ID
 2. 创建具有以下内容的 `DialogID` 实例：
-   - `selfDlgId`：新生成的子对话 ID
+   - `selfDlgId`：新生成的支线对话 ID
    - `rootDlgId`：从 askerDialog 的 `rootDlgId` 继承
-3. 在父级的 `sideDialogs/` 下创建子对话目录（仅使用 `selfDlgId` 作为目录名）
-4. 从父级设置差遣牒路径引用
-5. 在元数据中设置父调用上下文
-6. 初始化子对话状态，元数据中仅存储 `selfDlgId`
+3. 在诉请者的 `sideDialogs/` 下创建支线对话目录（仅使用 `selfDlgId` 作为目录名）
+4. 从诉请者设置差遣牒路径引用
+5. 在元数据中设置诉请者上下文
+6. 初始化支线对话状态，元数据中仅存储 `selfDlgId`
 7. 加载时基于目录结构重建完整的 `DialogID` 和 `rootDlgId`
 
 ### 对话完成
 
 1. 将对话状态更新为"已完成"
 2. 完成所有对话过程元数据
-3. 对于根对话：
+3. 对于主线对话：
    - 将对话目录从 `run/` 移动到 `done/`
-   - 移动中包含所有子对话
-4. 对于子对话：
+   - 移动中包含所有支线对话
+4. 对于支线对话：
    - 更新元数据中的状态
    - 使用完整的序列化 DialogID 通知 askerDialog 完成
 5. 根据保留策略归档旧对话
@@ -519,7 +519,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 ### 存储优化
 
-**扁平子对话存储**：防止可能影响文件系统性能的深层目录嵌套。
+**扁平支线对话存储**：防止可能影响文件系统性能的深层目录嵌套。
 
 **仅追加流**：针对写入性能优化并支持高效流式传输。
 
@@ -587,14 +587,14 @@ taskdocChecksum: 'sha256:abc123...'
 - **实时跟踪**：当前对话过程和 lastModified 时间戳
 - **原子更新**：所有对话修改时自动更新
 - **UI 集成**：对话列表显示来自持久化记录的准确时间戳
-- **状态管理**：跟踪对话状态、消息计数和子对话计数
+- **状态管理**：跟踪对话状态、消息计数和支线对话计数
 
 #### ✅ 现代持久化层 (`main/persistence.ts`)
 
 - **类型安全操作**：所有方法使用强 TypeScript 接口
 - **原子文件操作**：所有写入使用临时文件 + 重命名模式
 - **自动时间戳**：latest.yaml 在事件上自动更新
-- **统一 API**：根对话和子对话的一致接口
+- **统一 API**：主线对话和支线对话的一致接口
 
 #### ✅ 更新的 API 层 (`main/server/api-routes.ts`)
 
@@ -640,20 +640,20 @@ taskdocChecksum: 'sha256:abc123...'
 rtws/
 ├── dialogs/
 │   ├── active/           # 当前流式对话
-│   │   ├── {root-dialog-id}/    # 根对话目录 (selfDlgId = rootDlgId)
+│   │   ├── {main-dialog-id}/    # 主线对话目录 (selfDlgId = rootDlgId)
 │   │   │   ├── stream.jsonl      # 仅追加消息流
 │   │   │   ├── metadata.yaml     # 对话配置和状态
 │   │   │   ├── checkpoints/      # 定期状态快照
 │   │   │   ├── temp/             # 流式传输期间的临时文件
-│   │   │   └── sideDialogs/       # 子对话存储
-│   │   │       └── {sub-dialog-id}/  # 子对话目录（仅使用 selfDlgId）
+│   │   │   └── sideDialogs/       # 支线对话存储
+│   │   │       └── {side-dialog-id}/  # 支线对话目录（仅使用 selfDlgId）
 │   │   │           ├── stream.jsonl
 │   │   │           ├── metadata.yaml
 │   │   │           └── checkpoints/
 │   │   └── index.json            # 快速查找活动对话
 │   ├── archived/         # 已完成/暂停的对话
 │   │   ├── {date}/              # 按完成日期组织
-│   │   │   ├── {root-dialog-id}.tar.gz  # 包含子对话的压缩对话归档
+│   │   │   ├── {main-dialog-id}.tar.gz  # 包含支线对话的压缩对话归档
 │   │   │   └── metadata.json       # 归档元数据
 │   │   └── index.json            # 归档查找索引
 │   └── templates/        # 对话模板和预设
@@ -663,8 +663,8 @@ rtws/
 
 在此建议结构中：
 
-- 根对话按其 `root-dialog-id` 组织
-- 子对话存储在其根对话的 `sideDialogs/` 目录中，目录名称仅使用他们的 `selfDlgId`
+- 主线对话按其 `main-dialog-id` 组织
+- 支线对话存储在其主线对话的 `sideDialogs/` 目录中，目录名称仅使用他们的 `selfDlgId`
 - 元数据在 `id` 字段中仅存储 `selfDlgId`
 - 完整的 `rootDlgId#selfDlgId` 格式在加载时重建，并用于索引中以实现高效查找
 
@@ -752,7 +752,7 @@ rtws/
 
 1. **可靠的会话恢复**：可以从持久化状态准确恢复对话会话
 2. **性能目标**：常见操作的延迟低于 100ms，支持 100+ 并发对话
-3. **数据完整性**：正常操作下零数据丢失，失败时优雅降级
+3. **数据完整性**：正常操作下零数据丢失，失败时显式报错，不静默降级
 4. **操作简单性**：易于部署、监控和维护
 5. **开发者体验**：清晰的 API、良好的错误消息、全面的文档
 

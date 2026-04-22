@@ -123,7 +123,7 @@ async function main(): Promise<void> {
         return pending.length === 1;
       },
       3_000,
-      'root dialog to enter pending-sideDialog wait state',
+      'main dialog to enter pending-sideDialog wait state',
     );
 
     await driveDialogStream(

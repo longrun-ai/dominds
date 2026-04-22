@@ -33,7 +33,7 @@ async function main(): Promise<void> {
       expectedReplyCallName: 'replyTellaskSessionless' as const,
       targetDialogId: root.id.selfId,
       targetCallId: 'root-to-pangu-call',
-      tellaskContent: 'Finish the parent sideline after the nested work returns.',
+      tellaskContent: 'Finish the parent side dialog after the nested work returns.',
     };
     const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
     const interjectResponse = 'Handled the local interruption only.';
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     const secondCycleInterjectPrompt =
       'Pause again after Continue; I still want one more temporary local answer.';
     const secondCycleInterjectResponse = 'Handled the second-cycle interruption locally too.';
-    const finalResponse = 'Nested work is back, so I can now finalize the parent sideline.';
+    const finalResponse = 'Nested work is back, so I can now finalize the parent side dialog.';
 
     const sideDialog = await root.createSideDialog(
       'pangu',
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     const nestedSideDialog = await sideDialog.createSideDialog(
       'nuwa',
       ['@nuwa'],
-      'Wait for nested sideline work to return.',
+      'Wait for nested side dialog work to return.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'pangu',
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
       createdAt: formatUnifiedTimestamp(new Date()),
       callName: 'tellaskSessionless',
       mentionList: ['@nuwa'],
-      tellaskContent: 'Wait for nested sideline work to return.',
+      tellaskContent: 'Wait for nested side dialog work to return.',
       targetAgentId: 'nuwa',
       callId: 'pangu-to-nuwa-call',
       callingCourse: 1,
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     });
 
     await sideDialog.persistUserMessage(
-      'Initial parent sideline assignment.',
+      'Initial parent side dialog assignment.',
       'sideDialog-runtime-assignment',
       'markdown',
       'runtime',
@@ -385,7 +385,11 @@ async function main(): Promise<void> {
     );
 
     const pendingAtRoot = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
-    assert.equal(pendingAtRoot.length, 0, 'resumed reply should clear the parent pending sideline');
+    assert.equal(
+      pendingAtRoot.length,
+      0,
+      'resumed reply should clear the parent pending side dialog',
+    );
   });
 
   console.log(

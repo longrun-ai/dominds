@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     }));
 
     const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
-    assert.ok(restoredRoot, 'expected root dialog restore to succeed');
+    assert.ok(restoredRoot, 'expected main dialog restore to succeed');
     const restoredSideDialog = await ensureDialogLoaded(
       restoredRoot,
       new DialogID(sideDialog.id.selfId, sideDialog.id.rootId),

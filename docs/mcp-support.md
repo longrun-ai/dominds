@@ -90,7 +90,7 @@ implemented config surface.
 - That runtime instance remains **leased to that dialog** for future function tool calls from the same
   toolset.
 - If another dialog uses the same MCP toolset concurrently, Dominds creates **another** MCP runtime
-  instance for that requesting dialog (no cross-dialog sharing).
+  instance for that requester (no cross-dialog sharing).
 - On first lease, Dominds adds a **sticky owned reminder** to the dialog instructing the agent to
   release the lease when it is confident the runtime instance won’t be needed again soon.
 

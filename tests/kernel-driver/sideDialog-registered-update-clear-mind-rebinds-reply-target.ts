@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => listTellaskResultContents(root.msgs).includes(expectedDeliveredContent),
       3_000,
-      'updated registered clear-mind reply to land on the caller dialog',
+      'updated registered clear-mind reply to land on the requester',
     );
 
     const pendingAfterReply = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);

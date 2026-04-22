@@ -142,7 +142,7 @@ export function buildFbrSystemPrompt(language: LanguageCode, phase: FbrConclusio
       '# 扪心自问（FBR）支线对话',
       '',
       '- 你正在处理一次由 `freshBootsReasoning` 触发的 FBR 支线对话。',
-      '- 诉请正文是主要任务上下文；不要假设能访问上游对话历史。',
+      '- 诉请正文是主要任务上下文；不要假设能访问诉请者一侧的对话历史。',
       '- 若使用可恢复会话，你可以使用本支线对话自身的会话历史作为显式上下文。',
       '- 发散阶段要对反直觉、离谱、少数派的候选想法保持开放，把它们当作待检验候选，而不是提前镇压。',
       '- 收敛阶段要自主去噪：只保留跨轮稳定共识、彼此能互证且能被诉请正文支撑的内容；未获独立支撑的离谱想法默认当噪音丢弃，不进入最终结论。',
@@ -154,11 +154,11 @@ export function buildFbrSystemPrompt(language: LanguageCode, phase: FbrConclusio
   }
 
   return [
-    '# Fresh Boots Reasoning (FBR) Sideline dialog',
+    '# Fresh Boots Reasoning (FBR) Side Dialog',
     '',
-    '- You are handling an FBR Sideline dialog triggered by `freshBootsReasoning`.',
-    '- The tellask body is the primary task context; do not assume access to upstream dialog history.',
-    '- If this is a resumable session, you may use this Sideline dialog’s own session history as explicit context.',
+    '- You are handling an FBR Side Dialog triggered by `freshBootsReasoning`.',
+    '- The tellask body is the primary task context; do not assume access to requester-side dialog history.',
+    '- If this is a resumable session, you may use this Side Dialog’s own session history as explicit context.',
     '- In divergence, stay open to counterintuitive, wild, or minority hypotheses; treat them as candidates to test instead of suppressing them early.',
     '- In convergence, denoise autonomously: keep only stable cross-round consensus, mutually reinforcing points, and body-grounded evidence; unsupported wild ideas default to noise and must not enter the final conclusion.',
     '- If critical context is missing, state what is missing and why it blocks a responsible conclusion.',

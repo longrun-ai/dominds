@@ -28,7 +28,7 @@ export async function restoreDialogHierarchy(
     const rootMeta = await DialogPersistence.loadMainDialogMetadata(mainDialogIdent, status);
     if (rootMeta?.askerDialogId) {
       throw new Error(
-        `Expected root dialog ${mainDialogId} but found sideDialog metadata with askerDialogId: ${rootMeta.askerDialogId}`,
+        `Expected main dialog ${mainDialogId} but found sideDialog metadata with askerDialogId: ${rootMeta.askerDialogId}`,
       );
     }
 

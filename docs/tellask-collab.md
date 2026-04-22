@@ -9,8 +9,8 @@ Chinese version: [中文版](./tellask-collab.zh.md)
 
 Dominds already has a real Tellask runtime. The current pain is not syntax, but coordination behavior:
 
-- The tellasker receives a checkpoint-style reply and assumes the tellaskee is still executing in the background.
-- The tellasker narrates “what should happen next” instead of sending the next Tellask.
+- The requester receives a checkpoint-style reply and assumes the responder is still executing in the background.
+- The requester narrates “what should happen next” instead of sending the next Tellask.
 
 That mismatch stalls execution while sounding productive.
 
@@ -36,7 +36,7 @@ These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `dili
 Important addition:
 
 - Only `Tellask Session` has an assignment-update channel.
-- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient Sideline dialog and does not affect or tell the earlier owner to stop.
+- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient Side Dialog and does not affect or tell the earlier owner to stop.
 - If later correction, earlier wrap-up, or scope change may be needed, do not choose `Fresh Tellask`; use `tellask` with `sessionSlug` from the start.
 
 ### 2.2 What `Tellask Session` really means
@@ -52,20 +52,20 @@ Short version: a Tellask Session is a resumable thread, not autonomous backgroun
 For teammate Tellasks, the runtime lifecycle is:
 
 1. Tellask is emitted.
-2. Caller waits while Sideline dialog runs.
+2. Requester waits while Side Dialog runs.
 3. A response is supplied back.
-4. Caller resumes.
+4. Requester resumes.
 
 Critical operational fact:
 
 - The current teammate response status is effectively `completed` or `failed`.
 - There is no “still running that same request” status after a response is delivered.
 
-So if more work is needed, the tellasker must issue the next Tellask explicitly.
+So if more work is needed, the requester must issue the next Tellask explicitly.
 
 ### 2.4 Diligence Push boundary
 
-- Diligence Push helps the tellasker dialog avoid going idle.
+- Diligence Push helps the requester avoid going idle.
 - It does not send teammate Tellasks on the agent’s behalf.
 - It is a pressure mechanism, not an execution orchestrator.
 
@@ -77,8 +77,8 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 Observed behavior:
 
-- Tellasker dialog receives “phase 1 done”.
-- Tellasker dialog then says “waiting for them to continue”.
+- Requester receives “phase 1 done”.
+- Requester then says “waiting for them to continue”.
 - No new Tellask is sent, so progress stops.
 
 Root cause:
@@ -98,7 +98,7 @@ That is a workflow break. The model should send the Tellask directly.
 
 ## 4. Best-practice execution protocol
 
-### 4.0 Inter-dialog transfer and Sideline dialog rule (mandatory)
+### 4.0 Inter-dialog transfer and Side Dialog rule (mandatory)
 
 **Transfer and markers (required)**:
 
@@ -106,24 +106,24 @@ That is a workflow break. The model should send the Tellask directly.
 - First-line markers are runtime-injected into that payload by semantics; agents must not hand-write them:
   - English work language:
     - Ask-back reply: `【TellaskBack】`
-    - Regular completed Sideline dialog reply: `【Completed】`
+    - Regular completed Side Dialog reply: `【Completed】`
     - FBR reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
   - Chinese work language:
     - Ask-back reply: `【回问诉请】`
-    - Regular completed Sideline dialog reply: `【最终完成】`
+    - Regular completed Side Dialog reply: `【最终完成】`
     - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
 - If the requester defines a “reply/delivery format” in tellask body, keep it to the business delivery structure; do not require responder-side hand-written markers, because Dominds runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
 
-**Sideline dialog delivery rule**:
+**Side Dialog delivery rule**:
 
-- If a Sideline dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
-- Runtime treats that direct reply as the completion delivery to the tellasker dialog and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
+- If a Side Dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- Runtime treats that direct reply as the completion delivery to the requester and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If the work is unfinished, do not default to `tellaskBack`: first use team SOP / role ownership to judge whether a responsible owner is already clear; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner.
-- Use `tellaskBack({ tellaskContent: "..." })` only when the upstream requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
+- Use `tellaskBack({ tellaskContent: "..." })` only when the requester must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
 - **FBR exception**: FBR forbids all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); list missing context + reasoning and return.
-- If a human user inserts a message or asks a follow-up in the Sideline dialog: just reply normally; no need to report back to the upstream requester.
+- If a human user inserts a message or asks a follow-up in the Side Dialog: just reply normally; no need to report back to the requester.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 
@@ -228,7 +228,7 @@ Operating rules:
 
 1. `Prelude Intro`: declare shell policy (`specialist_only` / `self_is_specialist` / `no_specialist`).
 2. `uname` baseline:
-   - `specialist_only`: tellasker dialog sends one-shot Tellask to `@<shell_specialist>` and receives response.
+   - `specialist_only`: requester sends one-shot Tellask to `@<shell_specialist>` and receives response.
    - other policies: runtime collects and displays `uname -a`.
 3. `VCS Round-1` (same `tellaskSession`): topology inventory
    - whether rtws root is a git repo
@@ -273,7 +273,7 @@ Operating rules:
 
 ---
 
-## 6. Tellasker dialog operator checklist
+## 6. Requester operator checklist
 
 Before and after each collaboration step:
 
@@ -281,7 +281,7 @@ Before and after each collaboration step:
 2. If I say “waiting”, which pending Tellask am I waiting on?
 3. After receiving feedback, did I either close the task or send the next Tellask?
 4. Did I turn “ask teammate to do X” into an actual `tellask* function call` block?
-5. Did I write key decisions back to Taskdoc (root dialog only) instead of leaving them in chat only?
+5. Did I write key decisions back to Taskdoc (main dialog only) instead of leaving them in chat only?
 
 ---
 

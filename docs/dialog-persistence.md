@@ -47,7 +47,7 @@ The implementation follows this architecture.
 
 ### Design Principles
 
-- **Flat SideDialog Storage**: All sideDialogs are stored flat under the main dialog's (root dialog's) `sideDialogs/` directory, regardless of nesting depth
+- **Flat SideDialog Storage**: All sideDialogs are stored flat under the main dialog's `sideDialogs/` directory, regardless of nesting depth
 - **Append-Only Streams**: Message streams are append-only for audit trails and replay capability
 - **Atomic Operations**: All persistence operations are atomic to prevent corruption
 - **Human-Readable Formats**: Storage uses YAML and JSONL for transparency and debugging
@@ -160,7 +160,7 @@ These paths are enforced by the memory tools (see `main/tools/mem.ts`) and loade
 **DialogID Schema**: The system uses a `self+root` ID schema implemented in the `DialogID` class:
 
 - **selfDlgId**: The unique identifier for this specific dialog instance
-- **rootDlgId**: The identifier for the root dialog in the hierarchy (defaults to selfDlgId for root dialogs)
+- **rootDlgId**: The identifier for the main dialog in the hierarchy (defaults to selfDlgId for main dialogs)
 - **Serialization**: When `rootDlgId` differs from `selfDlgId`, the full ID is formatted as `rootDlgId#selfDlgId`; otherwise, it's just `selfDlgId`
 
 This schema enables efficient management of sideDialog relationships while maintaining unique identification for each dialog instance.
@@ -169,7 +169,7 @@ This schema enables efficient management of sideDialog relationships while maint
 
 The `self+root` ID schema was implemented to address several challenges in dialog management:
 
-1. **Hierarchical Relationship Tracking**: Provides clear lineage information for each dialog, making it easy to trace sideDialogs back to their root dialog
+1. **Hierarchical Relationship Tracking**: Provides clear lineage information for each dialog, making it easy to trace sideDialogs back to their main dialog
 2. **Efficient Storage Organization**: Allows for flat storage of sideDialogs while preserving relationship information
 3. **Unique Identification**: Ensures each dialog instance has a unique identifier, even when multiple sideDialogs exist
 4. **Simplified Persistence**: Enables straightforward serialization and deserialization of dialog relationships
@@ -181,7 +181,7 @@ This design balances the need for clear hierarchical relationships with efficien
 ### Active Dialog Structure
 
 ```
-.dialogs/run/<rootDialogId>/
+.dialogs/run/<mainDialogId>/
 ├── dialog.yaml               # Dialog metadata with strong typing
 ├── latest.yaml               # Current course and lastModified tracking
 ├── reminders.json            # Persistent reminders
@@ -212,7 +212,7 @@ This design balances the need for clear hierarchical relationships with efficien
 
 In this structure:
 
-- Root dialogs have `selfDlgId` equal to `rootDlgId`
+- Main dialogs have `selfDlgId` equal to `rootDlgId`
 - SideDialogs have distinct `selfDlgId` values with the same `rootDlgId` as their parent
 - SideDialog directories use only the `selfDlgId` for file system organization
 - Metadata stores only the `selfDlgId`; full `rootDlgId#selfDlgId` is reconstructed during loading
@@ -222,14 +222,14 @@ In this structure:
 
 Modern strongly-typed dialog metadata using TypeScript interfaces:
 
-#### Root Dialog Example
+#### Main Dialog Example
 
 ```yaml
 id: 'aa/bb/cccccccc' # Unique dialog identifier (selfDlgId only)
 agentId: 'alice' # Agent responsible for this dialog
 taskDocPath: 'task.tsk' # Path to the rtws Taskdoc package directory
 createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
-# No parent fields for root dialogs
+# No parent fields for main dialogs
 ```
 
 #### SideDialog Example
@@ -302,7 +302,7 @@ Simple text file containing the current course number:
 
 ### Root-generation anchors and reconciliation records
 
-To support root dialog fork, persistence now records which root-generation viewpoint a piece of dialog state belongs to.
+To support main dialog fork, persistence now records which root-generation viewpoint a piece of dialog state belongs to.
 
 **Root-generation anchor**:
 
@@ -311,7 +311,7 @@ To support root dialog fork, persistence now records which root-generation viewp
 
 **Purpose**:
 
-- Any state snapshot that must stay aligned across the entire root dialog tree must be anchored to the root generation rather than each sideDialog's local course/genseq
+- Any state snapshot that must stay aligned across the entire main dialog tree must be anchored to the root generation rather than each sideDialog's local course/genseq
 - When forking at `(course, genseq)`, the retained state is the latest consistent snapshot at or before `(rootCourse=course, rootGenseq=genseq-1)`
 
 **New / strengthened persisted records**:
@@ -329,7 +329,7 @@ To support root dialog fork, persistence now records which root-generation viewp
 
 - These reconciliation records are state snapshots, not LLM transcript content; message reconstruction must skip them
 - Any sideDialog transcript record that participates in root-fork cutoff trimming must carry `rootCourse/rootGenseq`
-- When writing a forked root, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending sideDialogs / registry / responses are restored to the pre-cutoff state
+- When writing a forked main dialog, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending sideDialogs / registry / responses are restored to the pre-cutoff state
 
 ---
 
@@ -401,7 +401,7 @@ status: 'completed'
 ### Taskdoc Storage
 
 Taskdocs are rtws artifacts that exist independently and are referenced by dialogs through paths.
-In practice, the Taskdoc is also the task’s **live coordination bulletin board** across Mainline dialogs/agents.
+In practice, the Taskdoc is also the task’s **live coordination bulletin board** across Main Dialogs/agents.
 Taskdocs MUST be encapsulated Taskdoc packages (`*.tsk/`).
 
 ```yaml
@@ -456,7 +456,7 @@ The following operations are implemented.
 ### Dialog Creation
 
 1. Generate unique dialog ID using `generateDialogID()`
-2. Create `DialogID` instance with `selfDlgId` and `rootDlgId` (rootDlgId defaults to selfDlgId for root dialogs)
+2. Create `DialogID` instance with `selfDlgId` and `rootDlgId` (rootDlgId defaults to selfDlgId for main dialogs)
 3. Create dialog directory structure
 4. Write initial `dialog.yaml` metadata with the serialized DialogID
 5. Initialize `latest.yaml` to `currentCourse: 1`
@@ -486,7 +486,7 @@ The following operations are implemented.
 
 1. Update dialog status to "completed"
 2. Finalize all course metadata
-3. For root dialogs:
+3. For main dialogs:
    - Move dialog directory from `run/` to `done/`
    - Include all sideDialogs in the move
 4. For sideDialogs:
@@ -599,7 +599,7 @@ The persistence layer has been **completely modernized** with no backward compat
 - **Type-Safe Operations**: All methods use strong TypeScript interfaces
 - **Atomic File Operations**: All writes use temporary files + rename pattern
 - **Automatic Timestamps**: latest.yaml updated automatically on events
-- **Unified APIs**: Consistent interface for root dialogs and sideDialogs
+- **Unified APIs**: Consistent interface for main dialogs and sideDialogs
 
 #### ✅ Updated API Layer (`main/server/api-routes.ts`)
 
@@ -645,20 +645,20 @@ The redesigned file organization should support both streaming and restoration m
 rtws/
 ├── dialogs/
 │   ├── active/           # Currently streaming dialogs
-│   │   ├── {root-dialog-id}/    # Root dialog directory (selfDlgId = rootDlgId)
+│   │   ├── {main-dialog-id}/    # Main dialog directory (selfDlgId = rootDlgId)
 │   │   │   ├── stream.jsonl      # Append-only message stream
 │   │   │   ├── metadata.yaml     # Dialog configuration and state
 │   │   │   ├── checkpoints/      # Periodic state snapshots
 │   │   │   ├── temp/             # Temporary files during streaming
 │   │   │   └── sideDialogs/       # SideDialog storage
-│   │   │       └── {sub-dialog-id}/  # SideDialog directory (uses only selfDlgId)
+│   │   │       └── {side-dialog-id}/  # SideDialog directory (uses only selfDlgId)
 │   │   │           ├── stream.jsonl
 │   │   │           ├── metadata.yaml
 │   │   │           └── checkpoints/
 │   │   └── index.json            # Fast lookup for active dialogs
 │   ├── archived/         # Completed/paused dialogs
 │   │   ├── {date}/              # Organized by completion date
-│   │   │   ├── {root-dialog-id}.tar.gz  # Compressed dialog archive with sideDialogs
+│   │   │   ├── {main-dialog-id}.tar.gz  # Compressed dialog archive with sideDialogs
 │   │   │   └── metadata.json       # Archive metadata
 │   │   └── index.json            # Archive lookup index
 │   └── templates/        # Dialog templates and presets
@@ -668,8 +668,8 @@ rtws/
 
 In this proposed structure:
 
-- Root dialogs are organized by their `root-dialog-id`
-- SideDialogs are stored within their root dialog's `sideDialogs/` directory, using only their `selfDlgId` for directory names
+- Main dialogs are organized by their `main-dialog-id`
+- SideDialogs are stored within their main dialog's `sideDialogs/` directory, using only their `selfDlgId` for directory names
 - Metadata stores only the `selfDlgId` in the `id` field
 - The full `rootDlgId#selfDlgId` format is reconstructed during loading and used in indexes for efficient lookup
 
@@ -732,7 +732,7 @@ The key innovation is creating a **seamless interface** between streaming and di
 
 #### File System Reliability
 
-- **Error Recovery**: Handle file system errors gracefully with retry logic
+- **Error Recovery**: Report file-system errors loudly and retry only where the operation is explicitly designed to be retryable
 - **Corruption Detection**: Use checksums to detect and handle file corruption
 - **Backup Strategy**: Regular backups of critical dialog data
 - **Cleanup Policies**: Automatic cleanup of temporary and obsolete files

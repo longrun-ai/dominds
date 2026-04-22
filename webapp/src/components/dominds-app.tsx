@@ -2676,7 +2676,7 @@ export class DomindsApp extends HTMLElement {
     this.visibleSideDialogsByRoot.set(rootId, normalized);
   }
 
-  private mergeVisibleSideDialogsForRootFromHierarchy(
+  private mergeVisibleSideDialogsForMainFromHierarchy(
     rootId: string,
     hierarchySideDialogs: ApiMainDialogResponse[],
   ): ApiMainDialogResponse[] {
@@ -2779,7 +2779,7 @@ export class DomindsApp extends HTMLElement {
       }
       if (node.selfId === node.rootId) {
         throw new Error(
-          `CRITICAL: dialog-list sideDialog node returned root dialog for rootId=${rootId} selfId=${selfId}`,
+          `CRITICAL: dialog-list sideDialog node returned main dialog for rootId=${rootId} selfId=${selfId}`,
         );
       }
       if (!Number.isInteger(node.rootSideDialogCount) || node.rootSideDialogCount < 0) {
@@ -2842,7 +2842,7 @@ export class DomindsApp extends HTMLElement {
           !Number.isInteger(mainDialog.sideDialogCount) ||
           mainDialog.sideDialogCount < 0
         ) {
-          throw new Error(`Root dialog ${rootId} has invalid backend sideDialogCount`);
+          throw new Error(`Main dialog ${rootId} has invalid backend sideDialogCount`);
         }
         const nextLastModified =
           nodeUpdatedAtMs !== null &&
@@ -2939,7 +2939,7 @@ export class DomindsApp extends HTMLElement {
   private upsertMainDialogSnapshot(nextRoot: ApiMainDialogResponse): void {
     if (nextRoot.selfId) {
       throw new Error(
-        `upsertMainDialogSnapshot expected root dialog, got sideDialog selfId=${nextRoot.selfId}`,
+        `upsertMainDialogSnapshot expected main dialog, got sideDialog selfId=${nextRoot.selfId}`,
       );
     }
     const incomingStatus = this.requirePersistableStatus(nextRoot.status, 'upsertMainDialog');
@@ -6664,7 +6664,7 @@ export class DomindsApp extends HTMLElement {
     this.shadowRoot.addEventListener('dialog-expand', (event) => {
       const { rootId, status } = event.detail;
       if (rootId && status) {
-        this.requestRootHierarchyFromList(rootId, status);
+        this.requestMainHierarchyFromList(rootId, status);
       }
     });
     // Collapse explicitly drops sideDialog nodes from frontend memory.
@@ -6707,7 +6707,7 @@ export class DomindsApp extends HTMLElement {
       void this.handleDialogCreateAction(event.detail);
     });
 
-    // Dialog deletion actions (delete root dialogs) across done/archived list views
+    // Dialog deletion actions (delete main dialogs) across done/archived list views
     this.shadowRoot.addEventListener('dialog-delete-action', (event) => {
       void this.handleDialogDeleteAction(event.detail);
     });
@@ -7821,7 +7821,7 @@ export class DomindsApp extends HTMLElement {
     }
     if (selfId !== rootId) {
       // For sideDialogs, do not fallback to root metadata.
-      // Caller should load the root hierarchy first, then resolve the real sideDialog node.
+      // Caller should load the main hierarchy first, then resolve the real sideDialog node.
       return null;
     }
     const rootMatch = this.getMainDialog(rootId);
@@ -8086,7 +8086,7 @@ export class DomindsApp extends HTMLElement {
         const resolvedStatus = resolvedStatusResp.data.status;
         let dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
         if (!dialogInfo) {
-          await this.loadRootHierarchyForKnownStatus(rootId, resolvedStatus);
+          await this.loadMainHierarchyForKnownStatus(rootId, resolvedStatus);
           dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
         }
         if (!dialogInfo) {
@@ -8769,12 +8769,12 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Load the root hierarchy for a known persisted status.
+   * Load the main hierarchy for a known persisted status.
    * This is used by explicit business flows that already know which list/status they are acting on.
    * Do not widen this back into a "best effort by ids" helper; callers should resolve business
    * status first so we don't regress to guessing `running` from partial UI state.
    */
-  private async loadRootHierarchyForKnownStatus(
+  private async loadMainHierarchyForKnownStatus(
     rootId: string,
     status: PersistableDialogStatus,
   ): Promise<void> {
@@ -8832,7 +8832,7 @@ export class DomindsApp extends HTMLElement {
         }
         if (sideDialog.selfId === rootId) {
           throw new Error(
-            `Hierarchy response for ${rootId} contains root dialog inside sideDialog list`,
+            `Hierarchy response for ${rootId} contains main dialog inside sideDialog list`,
           );
         }
         const cachedDisplayState = this.dialogDisplayStatesByKey.get(
@@ -8862,7 +8862,7 @@ export class DomindsApp extends HTMLElement {
           waitingForFreshBootsReasoning: sideDialog.waitingForFreshBootsReasoning === true,
         });
       }
-      const mergedSideDialogs = this.mergeVisibleSideDialogsForRootFromHierarchy(
+      const mergedSideDialogs = this.mergeVisibleSideDialogsForMainFromHierarchy(
         rootId,
         newSideDialogs,
       );
@@ -8889,28 +8889,28 @@ export class DomindsApp extends HTMLElement {
       this.setVisibleSideDialogsForRoot(rootId, mergedSideDialogs);
       this.syncDialogListByStatus(status);
     } catch (hierarchyError) {
-      console.warn(`Failed to load hierarchy for root dialog ${rootId}:`, hierarchyError);
+      console.warn(`Failed to load hierarchy for main dialog ${rootId}:`, hierarchyError);
       throw hierarchyError;
     }
   }
 
-  private requestRootHierarchyFromList(rootId: string, status: PersistableDialogStatus): void {
+  private requestMainHierarchyFromList(rootId: string, status: PersistableDialogStatus): void {
     // Explicit list expansion is user-visible. The event edge cannot await, so it must terminate
     // failures here instead of leaking an unhandled rejection.
-    void this.loadRootHierarchyForKnownStatus(rootId, status).catch((error: unknown) => {
+    void this.loadMainHierarchyForKnownStatus(rootId, status).catch((error: unknown) => {
       const t = getUiStrings(this.uiLanguage);
       const message = error instanceof Error ? error.message : t.unknownError;
-      console.error(`Failed to load hierarchy from list expand for root dialog ${rootId}:`, error);
+      console.error(`Failed to load hierarchy from list expand for main dialog ${rootId}:`, error);
       this.showError(message, 'error');
     });
   }
 
-  private refreshRootHierarchyAfterTellask(rootId: string): void {
-    // Tell/ask carryover may create new Sideline dialogs. This refresh is background-only, but
+  private refreshMainHierarchyAfterTellask(rootId: string): void {
+    // Tell/ask carryover may create new Side Dialogs. This refresh is background-only, but
     // still must terminate its Promise locally so we do not accumulate unhandled rejections.
-    void this.loadRootHierarchyForKnownStatus(rootId, 'running').catch((error: unknown) => {
+    void this.loadMainHierarchyForKnownStatus(rootId, 'running').catch((error: unknown) => {
       console.error(
-        `Failed to refresh hierarchy after tellask event for root dialog ${rootId}:`,
+        `Failed to refresh hierarchy after tellask event for main dialog ${rootId}:`,
         error,
       );
     });
@@ -9295,7 +9295,7 @@ export class DomindsApp extends HTMLElement {
     }
     const match = this.findDisplayedDialogByIds(dialog.rootId, dialog.selfId);
     if (match) return this.toPersistableStatus(match.status);
-    // SideDialogs always share the same persistence status directory as their root dialog.
+    // SideDialogs always share the same persistence status directory as their main dialog.
     const rootMatch = this.getMainDialog(dialog.rootId);
     return rootMatch ? this.toPersistableStatus(rootMatch.status) : null;
   }
@@ -9312,7 +9312,7 @@ export class DomindsApp extends HTMLElement {
     }
     const match = this.findDisplayedDialogByIds(rootId, selfId);
     if (match) return this.toPersistableStatus(match.status);
-    // SideDialogs always share the same persistence status directory as their root dialog.
+    // SideDialogs always share the same persistence status directory as their main dialog.
     const rootMatch = this.getMainDialog(rootId);
     return rootMatch ? this.toPersistableStatus(rootMatch.status) : null;
   }
@@ -9648,7 +9648,7 @@ export class DomindsApp extends HTMLElement {
         (d) => d.selfId === normalizedDialog.selfId,
       );
       if (!sideDialogLoaded) {
-        await this.loadRootHierarchyForKnownStatus(normalizedDialog.rootId, status);
+        await this.loadMainHierarchyForKnownStatus(normalizedDialog.rootId, status);
       }
     }
 
@@ -10023,7 +10023,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Ensure sideDialogs for a root dialog are loaded (for E2E testing + lazy loading).
+   * Ensure sideDialogs for a main dialog are loaded (for E2E testing + lazy loading).
    */
   public async ensureSideDialogsLoaded(rootId: string): Promise<boolean> {
     if (!rootId) return false;
@@ -10034,7 +10034,7 @@ export class DomindsApp extends HTMLElement {
       !Number.isInteger(mainDialog.sideDialogCount) ||
       mainDialog.sideDialogCount < 0
     ) {
-      throw new Error(`Root dialog ${rootId} has invalid backend sideDialogCount`);
+      throw new Error(`Main dialog ${rootId} has invalid backend sideDialogCount`);
     }
     const expectedCount = mainDialog.sideDialogCount;
     if (expectedCount === 0) return true;
@@ -10042,7 +10042,7 @@ export class DomindsApp extends HTMLElement {
     if (alreadyLoaded) return true;
     const status = this.toPersistableStatus(mainDialog.status);
     if (status === null) return false;
-    await this.loadRootHierarchyForKnownStatus(rootId, status);
+    await this.loadMainHierarchyForKnownStatus(rootId, status);
     return this.getVisibleSideDialogsForRoot(rootId).length > 0;
   }
 
@@ -11591,7 +11591,7 @@ export class DomindsApp extends HTMLElement {
             tellaskOwnerIsWaitingForFreshBootsReasoning &&
             this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId) === 'running'
           ) {
-            this.refreshRootHierarchyAfterTellask(dialog.rootId);
+            this.refreshMainHierarchyAfterTellask(dialog.rootId);
           }
           const ts = (message as TypedDialogEvent).timestamp;
           const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
@@ -12574,7 +12574,7 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    // Sort contexts: root dialog first, then sideDialogs
+    // Sort contexts: main dialog first, then sideDialogs
     const sortedContexts = Array.from(contextMap.values()).sort((a, b) => {
       const aIsRoot = a.selfId === a.rootId ? 1 : 0;
       const bIsRoot = b.selfId === b.rootId ? 1 : 0;

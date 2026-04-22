@@ -71,11 +71,11 @@ replyTellask({
 - `replyContent` 直接放最终交付正文
 - 若 assignment 头部写的是 `replyTellaskSessionless`，则同结构替换函数名
 
-## 场景 3：当前未完成，需要回问上游
+## 场景 3：当前未完成，需要回问诉请者
 
 ### 场景描述
 
-当前支线仍未完成，因此需要向上游补问缺失信息。
+当前支线仍未完成，因此需要向诉请者补问缺失信息。
 
 ### 示例
 
@@ -84,12 +84,12 @@ tellaskBack({
   tellaskContent: '还缺少生产环境端口与部署入口信息。请补充这两项后我再继续给出最终方案。',
 });
 
-// 等上游补充后，runtime 会在当前对话里继续推进
+// 等诉请者补充后，runtime 会在当前对话里继续推进
 ```
 
 ### 关键点
 
-- 这里只是“必须向上游补输入”的例子，所以用 `tellaskBack`
+- 这里只是“必须向诉请者补输入”的例子，所以用 `tellaskBack`
 - 若团队规程 / SOP / 职责卡已经能明确执行负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，而不是机械因为“未完成态”就用 `tellaskBack`
 - `tellaskBack` 只负责把问题问回去，不负责最终交付
 
@@ -97,7 +97,7 @@ tellaskBack({
 
 ### 场景描述
 
-你之前发过 `tellaskBack`，上游现在补回了所需信息，runtime 暴露了 `replyTellaskBack`。
+你之前发过 `tellaskBack`，诉请者现在补回了所需信息，runtime 暴露了 `replyTellaskBack`。
 
 ### 示例
 

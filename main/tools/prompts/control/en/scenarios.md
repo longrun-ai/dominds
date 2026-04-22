@@ -51,11 +51,11 @@ delete_reminder({
 - If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
 - If the note is durable knowledge rather than an active working-set cue, move it to `personal_memory` instead
 
-## Scenario 2: Sideline dialog is complete, and the assignment header requires replyTellask
+## Scenario 2: Side Dialog is complete, and the assignment header requires replyTellask
 
 ### Scenario Description
 
-The current Sideline dialog is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
+The current Side Dialog is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
 
 ### Example
 
@@ -72,11 +72,11 @@ replyTellask({
 - Put the final deliverable body directly in `replyContent`
 - If the header says `replyTellaskSessionless`, use the same shape with that exact function name
 
-## Scenario 3: Work is not finished yet, and an upstream clarification is required
+## Scenario 3: Work is not finished yet, and requester clarification is required
 
 ### Scenario Description
 
-The Sideline dialog is still blocked or incomplete, so you need to ask upstream for missing information.
+The Side Dialog is still blocked or incomplete, so you need to ask the requester for missing information.
 
 ### Example
 
@@ -89,15 +89,15 @@ tellaskBack({
 
 ### Key Points
 
-- This example uses `tellaskBack` because upstream input is specifically required
+- This example uses `tellaskBack` because requester input is specifically required
 - If team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner instead of mapping every unfinished state to `tellaskBack`
 - Do not use `replyTellask*` for intermediate clarifications
 
-## Scenario 4: Upstream answered the ask-back, so use replyTellaskBack to close
+## Scenario 4: Requester answered the ask-back, so use replyTellaskBack to close
 
 ### Scenario Description
 
-You previously sent a `tellaskBack`, upstream has now replied, and runtime exposes `replyTellaskBack`.
+You previously sent a `tellaskBack`, the requester has now replied, and runtime exposes `replyTellaskBack`.
 
 ### Example
 

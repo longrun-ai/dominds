@@ -148,7 +148,7 @@ Darwin ...
 
 运行时行为：
 
-- 创建 root dialog 后，按 `scriptRefs` 回放脚本。
+- 创建 main dialog 后，按 `scriptRefs` 回放脚本。
 - 若脚本顶层 frontmatter 含 `reminders`，会先恢复当前 reminder 快照。
 - 回放事件写入 `course-1`，并统一标记 `sourceTag: priming_script`。
 - 同步注入 `dialog.msgs`，确保后续 LLM 上下文可见。

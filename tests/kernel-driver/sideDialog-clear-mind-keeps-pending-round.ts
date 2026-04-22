@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => lastAssistantSaying(mainDialog) === rootAfterReply,
       3_000,
-      'root dialog to resume after the callee replies from the new course',
+      'main dialog to resume after the callee replies from the new course',
     );
     await waitForAllDialogsUnlocked(mainDialog, 3_000);
 

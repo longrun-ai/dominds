@@ -43,7 +43,7 @@ async function main(): Promise<void> {
       assert.equal(
         root.currentCourse,
         1,
-        'root dialog should stay on course #1 for this regression',
+        'main dialog should stay on course #1 for this regression',
       );
       await sideDialog.startNewCourse('continue in course two');
       assert.equal(sideDialog.currentCourse, 2, 'sideDialog should advance to course #2');

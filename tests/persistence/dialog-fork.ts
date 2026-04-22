@@ -89,7 +89,7 @@ async function main(): Promise<void> {
       askerDialogId: subId.selfId,
       assignmentFromAsker: {
         callName: 'freshBootsReasoning',
-        tellaskContent: 'Challenge the parent sideline.',
+        tellaskContent: 'Challenge the parent side dialog.',
         originMemberId: 'scribe',
         callerDialogId: subId.selfId,
         callId: 'call-nested-1',
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
       createdAt,
       assignmentFromAsker: {
         callName: 'freshBootsReasoning',
-        tellaskContent: 'Challenge the parent sideline.',
+        tellaskContent: 'Challenge the parent side dialog.',
         originMemberId: 'scribe',
         callerDialogId: subId.selfId,
         callId: 'call-nested-1',
@@ -285,18 +285,18 @@ async function main(): Promise<void> {
           },
         },
       ],
-      'forked root must preserve active root reply obligation stack and rewrite the root target',
+      'forked main dialog must preserve active main reply obligation stack and rewrite the main target',
     );
     const forkedEvents = await DialogPersistence.readCourseEvents(forkedRootId, 1, 'running');
     assert.equal(
       forkedEvents.some((event) => event.type === 'agent_words_record' && event.genseq === 2),
       false,
-      'forked root must exclude selected bubble events',
+      'forked main dialog must exclude selected bubble events',
     );
     assert.equal(
       forkedEvents.some((event) => event.type === 'sideDialog_created_record'),
       true,
-      'forked root must include baseline sideDialog-created records',
+      'forked main dialog must include baseline sideDialog-created records',
     );
     assert.equal(
       forkedEvents.some(
@@ -304,28 +304,31 @@ async function main(): Promise<void> {
           event.type === 'sideDialog_created_record' && event.sideDialogId === nestedSubId.selfId,
       ),
       false,
-      'forked root must not hoist nested sideDialog-created records out of their actual parent sideline',
+      'forked main dialog must not hoist nested sideDialog-created records out of their actual parent side dialog',
     );
     const forkedCreatedRecord = forkedEvents.find(
       (event): event is SideDialogCreatedRecord => event.type === 'sideDialog_created_record',
     );
-    assert.ok(forkedCreatedRecord, 'forked root must persist baseline sideDialog-created record');
+    assert.ok(
+      forkedCreatedRecord,
+      'forked main dialog must persist baseline sideDialog-created record',
+    );
     assert.equal(
       forkedCreatedRecord.askerDialogId,
       forkedRootId.selfId,
-      'forked baseline record must point to the new root as askerDialog',
+      'forked baseline record must point to the new main dialog as askerDialog',
     );
     assert.equal(
       forkedCreatedRecord.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
-      'forked baseline record must point to the new root as caller dialog',
+      'forked baseline record must point to the new main dialog as requester',
     );
 
     const forkedReminders = await DialogPersistence.loadReminderState(forkedRootId, 'running');
     assert.deepEqual(
       forkedReminders.map((item) => item.content),
       ['alpha'],
-      'forked root reminder state should roll back to pre-target snapshot',
+      'forked main dialog reminder state should roll back to pre-target snapshot',
     );
 
     const forkedLatest = await DialogPersistence.loadDialogLatest(forkedRootId, 'running');
@@ -348,7 +351,7 @@ async function main(): Promise<void> {
     assert.equal(
       forkedSubMeta.assignmentFromAsker.callerDialogId,
       forkedRootId.selfId,
-      'forked sideDialog assignment must point to the new root as caller dialog',
+      'forked sideDialog assignment must point to the new main dialog requester',
     );
     const forkedSubEvents = await DialogPersistence.readCourseEvents(
       new DialogID(subId.selfId, forkedRootId.selfId),
@@ -366,12 +369,12 @@ async function main(): Promise<void> {
     assert.equal(
       forkedNestedCreatedRecord?.askerDialogId,
       subId.selfId,
-      'forked nested baseline record must keep the parent sideline as askerDialog',
+      'forked nested baseline record must keep the parent side dialog as askerDialog',
     );
     assert.equal(
       forkedNestedCreatedRecord?.assignmentFromAsker.callerDialogId,
       subId.selfId,
-      'forked nested baseline record must keep the parent sideline as caller dialog',
+      'forked nested baseline record must keep the requesting side dialog',
     );
     assert.equal(
       forkedSubEvents.some(
@@ -390,12 +393,12 @@ async function main(): Promise<void> {
     assert.equal(
       forkedNestedMeta.askerDialogId,
       subId.selfId,
-      'forked nested sideDialog metadata must keep the parent sideline as askerDialog',
+      'forked nested sideDialog metadata must keep the parent side dialog as askerDialog',
     );
     assert.equal(
       forkedNestedMeta.assignmentFromAsker.callerDialogId,
       subId.selfId,
-      'forked nested sideDialog assignment must keep the parent sideline as caller dialog',
+      'forked nested sideDialog assignment must keep the requesting side dialog',
     );
 
     const forkBeforeFirst = await forkMainDialogTreeAtGeneration({

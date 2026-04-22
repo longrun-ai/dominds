@@ -269,7 +269,7 @@ export function formatAssignmentFromAskerDialog(input: SideDialogAssignmentForma
         : [
             '# Fresh Boots Reasoning (FBR) request',
             '',
-            '- Constraint: this is a self-tellask FBR Sideline dialog; reason independently and produce conclusions.',
+            '- Constraint: this is a self-tellask FBR Side Dialog; reason independently and produce conclusions.',
             '- System rule: this FBR stage is still tool-less; do not emit any function call in this stage.',
             '- Only after the planned divergence and convergence rounds are complete will runtime expose the two conclusion functions for formal closure.',
             '- Protocol: reply markers are auto-injected by Dominds runtime; do not hand-write markers.',
@@ -383,7 +383,7 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
 
   if (isFbr) {
     const title =
-      language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR Sideline dialog response]';
+      language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR Side Dialog response]';
     const statusFootnote = formatTellaskStatusFootnote({
       language,
       callName: input.callName,

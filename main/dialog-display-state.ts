@@ -283,7 +283,7 @@ export async function forceStopActiveRunsForMainDialog(mainDialogId: DialogID): 
           reason: 'emergency_stop',
         });
       } catch (error: unknown) {
-        log.warn('Failed to persist stop-requested state while forcing root dialog stop', error, {
+        log.warn('Failed to persist stop-requested state while forcing main dialog stop', error, {
           dialogId: dialogId.valueOf(),
           mainDialogId: mainDialogId.valueOf(),
         });
@@ -292,7 +292,7 @@ export async function forceStopActiveRunsForMainDialog(mainDialogId: DialogID): 
     try {
       run.abortController.abort();
     } catch (error: unknown) {
-      log.warn('Failed to abort active run while forcing root dialog stop', error, {
+      log.warn('Failed to abort active run while forcing main dialog stop', error, {
         dialogId: dialogId.valueOf(),
         mainDialogId: mainDialogId.valueOf(),
       });
@@ -318,7 +318,7 @@ export async function setDialogExecutionMarker(
 ): Promise<void> {
   if (executionMarker?.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
-      'Rejecting dead executionMarker for root dialog (root dialogs must not be dead)',
+      'Rejecting dead executionMarker for main dialog (main dialogs must not be dead)',
       undefined,
       {
         dialogId: dialogId.valueOf(),
@@ -363,7 +363,7 @@ export async function setDialogDisplayState(
 ): Promise<void> {
   if (displayState.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
-      'Rejecting dead displayState for root dialog (root dialogs must not be dead)',
+      'Rejecting dead displayState for main dialog (main dialogs must not be dead)',
       undefined,
       {
         dialogId: dialogId.valueOf(),

@@ -10,7 +10,7 @@ import { DialogPersistence, setDialogsQuarantinedBroadcaster } from '../../main/
 import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-malformed-root-dialog-'));
+  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-malformed-main-dialog-'));
   const previousCwd = process.cwd();
   process.chdir(sandboxDir);
   try {

@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const domindsRootAbs = path.resolve(__dirname, '..');
   await assert.rejects(
     fs.access(path.join(domindsRootAbs, 'main', 'index.ts')),
-    'Root/main must not keep a legacy aggregation entry source.',
+    'Main dialog path must not keep a legacy aggregation entry source.',
   );
   const packageJsonText = await fs.readFile(path.join(domindsRootAbs, 'package.json'), 'utf-8');
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;

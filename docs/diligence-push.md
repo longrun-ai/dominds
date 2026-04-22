@@ -4,20 +4,20 @@ Chinese version: [中文版](./diligence-push.zh.md)
 
 ## Summary
 
-Dominds root dialogs are intended for long-run operation. A root dialog "stopping" (becoming idle)
+Dominds main dialogs are intended for long-run operation. A main dialog "stopping" (becoming idle)
 is often not what operators want: they want the agent to keep pushing forward until it either:
 
 - legitimately suspends for a human decision (Q4H), or
-- legitimately suspends waiting for sideDialogs (tellask/backfill).
+- legitimately suspends waiting for Side Dialogs (tellask/backfill).
 
-This document specifies a runtime mechanism ("diligence-push") that, for **root/main dialogs only**,
+This document specifies a runtime mechanism ("diligence-push") that, for **main dialogs only**,
 prevents the dialog from stopping: whenever the driver would otherwise stop, it auto-sends a short
 diligence prompt (rendered as a normal user bubble) and continues generation, except when the dialog
-is legitimately suspended (Q4H or pending sideDialogs).
+is legitimately suspended (Q4H or pending Side Dialogs).
 
 ## Goals
 
-- Prevent root dialogs from stopping except for legitimate suspension states (Q4H / sideDialogs).
+- Prevent main dialogs from stopping except for legitimate suspension states (Q4H / Side Dialogs).
 - Keep behavior predictable and bounded (no infinite loops).
 - Make the Diligence Push text configurable per rtws (runtime workspace) and language.
 - Provide a clear, user-controlled "disable" mechanism.
@@ -25,11 +25,11 @@ is legitimately suspended (Q4H or pending sideDialogs).
 ## Non-goals
 
 - Auto-completing / auto-marking a dialog as done.
-- Applying this behavior to sideDialogs (sideDialogs remain scoped and should report back to their caller).
+- Applying this behavior to Side Dialogs (Side Dialogs remain scoped and should report back to their requester).
 
 ## Definitions
 
-- **Root/main dialog**: a `MainDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
+- **Main Dialog**: a `MainDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
 - **SideDialog**: a `SideDialog`, created for tellask / scoped work.
 - **Q4H**: "Questions for Human", initiated via `askHuman()`, which suspends dialog progression until the human responds.
 
@@ -40,7 +40,7 @@ When the agent needs a human decision to conclude (e.g., confirm a choice or dec
 1. The agent issues a Q4H (`askHuman()`) with the necessary context and explicit decision request.
 2. The WebUI surfaces the Q4H clearly.
 3. The human decides and either:
-   - marks the root dialog "done" manually, or
+   - marks the main dialog "done" manually, or
    - provides the requested info so the dialog can proceed.
 
 This is the "controlled convergence" path. The diligence-push mechanism should **not** override legitimate suspension states.
@@ -49,10 +49,10 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
 
 ### Trigger conditions (must all hold)
 
-- Dialog is the **root/main dialog** (never for sideDialogs).
+- Dialog is the **Main Dialog** (never for Side Dialogs).
 - Dialog is **not suspended**:
   - no pending Q4H, and
-  - no pending sideDialogs (waiting for backfill).
+  - no pending Side Dialogs (waiting for backfill).
 - The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
 ### Exception: provider deadlock recovery
@@ -61,7 +61,7 @@ Some provider/API quirk handlers may request a one-time Diligence Push recovery 
 same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
 idle" path. In that recovery-only case, pending sideDialogs do not veto the single Diligence Push
 injection, because the deadlock may happen in a function-result-driven generation round right after
-the root dialog has already registered an in-flight tellask/sideDialog. Q4H remains a hard blocker.
+the main dialog has already registered an in-flight tellask/sideDialog. Q4H remains a hard blocker.
 
 ### Action
 
@@ -181,8 +181,8 @@ Recommended follow-ups (not required for initial implementation):
 
 Regression tests should cover:
 
-- Root dialog: tool-only output → diligence injection → continued response
-- Root dialog: empty assistant output → diligence injection → continued response
+- Main dialog: tool-only output → diligence injection → continued response
+- Main dialog: empty assistant output → diligence injection → continued response
 - SideDialog: no diligence injection
 - rtws config:
   - `.minds/diligence.md` is honored when lang-specific file is absent

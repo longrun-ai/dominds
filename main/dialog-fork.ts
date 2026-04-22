@@ -904,10 +904,10 @@ export async function forkMainDialogTreeAtGeneration(args: {
     args.sourceStatus,
   );
   if (!sourceMetadata) {
-    throw new Error(`Root dialog not found: ${sourceRootId} (${args.sourceStatus})`);
+    throw new Error(`Main dialog not found: ${sourceRootId} (${args.sourceStatus})`);
   }
   if (sourceMetadata.askerDialogId !== undefined) {
-    throw new Error(`fork dialog only supports root dialogs: ${sourceRootId}`);
+    throw new Error(`fork dialog only supports main dialogs: ${sourceRootId}`);
   }
 
   const targetCourse = Math.floor(args.course);

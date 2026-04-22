@@ -9,8 +9,8 @@
  *
  * Architecture (Phase 2):
  * - `Dialog` - Abstract base class for all dialogs
- * - `MainDialog` - Root dialog with sideDialog registry
- * - `SideDialog` - SideDialog with root dialog reference and dynamic askerDialog resolution
+ * - `MainDialog` - Main dialog with sideDialog registry
+ * - `SideDialog` - SideDialog with main dialog reference and dynamic askerDialog resolution
  */
 import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import type {
@@ -367,7 +367,7 @@ export abstract class Dialog {
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
   protected _suspensionState: 'active' | 'suspended' | 'resumed' = 'active';
 
-  // Diligence Push (diligence auto-continue) budget counter (root-dialog state).
+  // Diligence Push (diligence auto-continue) budget counter (main-dialog state).
   // Persisted via latest.yaml so restarts and UI navigation can restore correct remaining budget.
   public diligencePushRemainingBudget: number = 0;
 
@@ -380,7 +380,7 @@ export abstract class Dialog {
   // - Set when tellask-special call results are finalized
   // - Retrieved during inline call-result emission (for receiveTellaskCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
-  // - NOT used for Sideline dialog-response bubbles (which use calleeDialogId instead)
+  // - NOT used for Side Dialog-response bubbles (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
 
   constructor(
@@ -2199,8 +2199,8 @@ export abstract class Dialog {
 }
 
 /**
- * SideDialog - A sideDialog created by a MainDialog for autonomous tellask Sideline dialog work.
- * Stores the root dialog for registry and lookup, and resolves its effective askerDialog dynamically.
+ * SideDialog - A sideDialog created by a MainDialog for autonomous tellask Side Dialog work.
+ * Stores the main dialog for registry and lookup, and resolves its effective askerDialog dynamically.
  */
 export class SideDialog extends Dialog {
   public readonly mainDialog: MainDialog;
@@ -2290,7 +2290,7 @@ export class SideDialog extends Dialog {
   }
 
   /**
-   * Create a sideDialog under the same root dialog tree.
+   * Create a sideDialog under the same main dialog tree.
    * The new sideDialog's effective askerDialog is resolved via AssignmentFromAsker.callerDialogId.
    */
   async createSideDialog(
@@ -2318,7 +2318,7 @@ export class SideDialog extends Dialog {
 }
 
 /**
- * MainDialog - The main/root dialog that can create and manage sideDialogs.
+ * MainDialog - The main/main dialog that can create and manage sideDialogs.
  * Uses in-memory registries for O(1) dialog and Type B lookup.
  */
 export class MainDialog extends Dialog {
@@ -2424,7 +2424,7 @@ export class MainDialog extends Dialog {
   }
 
   /**
-   * Create a new sideDialog for autonomous tellask Sideline dialog work.
+   * Create a new sideDialog for autonomous tellask Side Dialog work.
    */
   async createSideDialog(
     targetAgentId: string,
@@ -2508,7 +2508,7 @@ export abstract class DialogStore {
           ? callerDialog.mainDialog
           : (() => {
               throw new Error(
-                `createSideDialog invariant violation: unsupported caller dialog type (${callerDialog.constructor.name})`,
+                `createSideDialog invariant violation: unsupported requester type (${callerDialog.constructor.name})`,
               );
             })();
     const sideDialogId = new DialogID(generatedId, mainDialog.id.rootId);

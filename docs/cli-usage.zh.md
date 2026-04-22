@@ -220,7 +220,7 @@ dominds read
 - `dialog.yaml` - 对话元数据
 - `latest.yaml` - 当前对话过程编号 + lastModified 跟踪
 - `course-001.jsonl`（第 1 程对话，后续还可以有编号递增的多程）- 流式消息文件
-- `sideDialogs/` - 嵌套子对话
+- `sideDialogs/` - 嵌套支线对话
 
 ## 错误处理
 

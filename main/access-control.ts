@@ -218,7 +218,7 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
     return false;
   }
 
-  // Root dialogs (`.dialogs/**`) are reserved runtime state.
+  // Main dialogs (`.dialogs/**`) are reserved runtime state.
   // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
   if (isMainDialogsPath(relativePath)) {
     return false;
@@ -296,7 +296,7 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
     return false;
   }
 
-  // Root dialogs (`.dialogs/**`) are reserved runtime state.
+  // Main dialogs (`.dialogs/**`) are reserved runtime state.
   // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
   if (isMainDialogsPath(relativePath)) {
     return false;

@@ -330,24 +330,24 @@ Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 
 ## Architectural Patterns
 
-### Dialog Hierarchy
+### Dialog Tree
 
 ```
 
-Mainline dialog (Root Dialog)
+Main Dialog
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (rtws Taskdoc package)
 ├── Reminders (Working Memory)
 ├── Dialog Messages (Ephemeral)
-└── SideDialogs (Tree-Structured, Stored Flat Under Mainline dialog)
+└── SideDialogs (Tree-Structured, Stored Flat Under Main Dialog)
 ├── Specialized Agent A
 │ ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
-│ ├── Parent Call Context
+│ ├── Asker Call Context
 │ ├── Local Reminders
 │ └── Local Dialog Messages
-│ └── Sub-SideDialogs (Further Nesting Possible)
+│ └── Nested SideDialogs (Further Nesting Possible)
 └── Specialized Agent B
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
-├── Parent Call Context
+├── Asker Call Context
 ├── Local Reminders
 └── Local Dialog Messages
 
@@ -359,7 +359,7 @@ Mainline dialog (Root Dialog)
 - Multiple dialog trees can reference the same Taskdoc for collaborative work
 - Taskdocs persist beyond individual conversations and survive team changes
 - SideDialogs can be tree-structured with unlimited nesting depth
-- All sideDialog state is stored flat under the main dialog's (root dialog's) `sideDialogs/` directory
+- All sideDialog state is stored flat under the main dialog's `sideDialogs/` directory
 - Each sideDialog maintains its own working memory while referencing the same Taskdoc
 
 ### Memory Layers
@@ -372,7 +372,7 @@ Mainline dialog (Root Dialog)
    - Taskdocs persist throughout the entire product lifecycle, spanning multiple conversations and team changes
    - Can link to other product documentation and evolve as project requirements change
 2. **Reminders**: Semi-persistent, dialog-scoped, survives conversation cleanup
-3. **Parent Call Context**: Inherited context for sideDialogs
+3. **Asker Call Context**: Inherited context for sideDialogs
 4. **Dialog Messages**: Ephemeral, subject to cleanup for mental clarity
 
 #### rtws-Persistent Memory (DevOps Lifecycle)
@@ -398,9 +398,9 @@ Mainline dialog (Root Dialog)
 
 ### Information Flow
 
-- **Upward**: SideDialogs communicate results and escalations to parents
-- **Downward**: Parents provide context and objectives to sideDialogs
-- **Lateral**: Coordination through shared Taskdocs and parent mediation
+- **Requester-bound**: SideDialogs communicate results and escalations to requesters
+- **Side-bound**: Requesters provide context and objectives to sideDialogs
+- **Lateral**: Coordination through shared Taskdocs and requester mediation
 - **Temporal**: Reminders and Taskdocs provide continuity across time
 
 ---

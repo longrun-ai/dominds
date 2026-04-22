@@ -503,7 +503,7 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
     type: 'func',
     name: 'freshBootsReasoning',
     description:
-      'Start a tool-less FBR Sideline dialog. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
+      'Start a tool-less FBR Side Dialog. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
       fbrDefaultHint,
     parameters: {
       type: 'object',
@@ -515,7 +515,7 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
         },
         effort: {
           type: 'integer',
-          description: `Optional absolute FBR effort (0..100 integer). “x3” / “3x” means \`effort: 3\`, not “3 × current fbr_effort”. Runtime maps effort N to N serial FBR passes in one Sideline dialog window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
+          description: `Optional absolute FBR effort (0..100 integer). “x3” / “3x” means \`effort: 3\`, not “3 × current fbr_effort”. Runtime maps effort N to N serial FBR passes in one Side Dialog window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
         },
       },
       required: ['tellaskContent'],
@@ -532,7 +532,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskBack',
     description:
-      'Ask back to the requester dialog in Sideline dialog context when upstream clarification/decision is required or ownership cannot be determined from SOP.',
+      'Ask back to the requester in Side Dialog context when requester clarification/decision is required or ownership cannot be determined from SOP.',
     parameters: {
       type: 'object',
       properties: {
@@ -548,7 +548,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellask',
-    description: 'Create or resume a teammate Sideline dialog with sessionSlug.',
+    description: 'Create or resume a teammate Side Dialog with sessionSlug.',
     parameters: {
       type: 'object',
       properties: {
@@ -567,7 +567,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskSessionless',
     description:
-      'Create a one-shot teammate Sideline dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
+      'Create a one-shot teammate Side Dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
     parameters: {
       type: 'object',
       properties: {
@@ -1499,7 +1499,7 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
     suppressDiligencePushForDrive: args.suppressDiligencePushForDrive,
     // `diligence_push_once` is a provider-quirk deadlock breaker rather than the ordinary
     // "dialog is about to go idle" auto-continue path. In practice this can happen in a
-    // function-result-driven generation round right after the root dialog has already registered
+    // function-result-driven generation round right after the main dialog has already registered
     // a pending tellask/sideDialog. Keep Q4H as a hard blocker, but do not let pending sideDialogs
     // veto this one-time recovery injection or the same-context deadlock cannot be broken.
     allowPendingSideDialogs: true,

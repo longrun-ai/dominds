@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     const dlgId = new DialogID('dlg-keep-going-test');
     const store = new DiskFileDialogStore(dlgId);
     const dlg = new MainDialog(store, 'task.md', dlgId, 'tester');
-    // Simulate normal root-dialog initialization done by server create/display handlers.
+    // Simulate normal main-dialog initialization done by server create/display handlers.
     const createdAt = formatUnifiedTimestamp(new Date());
     await DialogPersistence.saveDialogMetadata(dlg.id, {
       id: dlg.id.selfId,

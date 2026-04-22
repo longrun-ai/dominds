@@ -2705,8 +2705,8 @@ export class DomindsDialogContainer extends HTMLElement {
             : undefined;
         headlineEl.textContent =
           this.uiLanguage === 'zh'
-            ? `回问对象: 上游诉请者${requesterLabel ? ` ${requesterLabel}` : ''}`
-            : `Ask-back target: upstream requester${requesterLabel ? ` ${requesterLabel}` : ''}`;
+            ? `回问对象: 诉请者${requesterLabel ? ` ${requesterLabel}` : ''}`
+            : `Ask-back target: requester${requesterLabel ? ` ${requesterLabel}` : ''}`;
         return;
       }
       case 'askHuman':
@@ -2725,7 +2725,7 @@ export class DomindsDialogContainer extends HTMLElement {
       typeof effort === 'number' && Number.isInteger(effort) && effort > 0 ? `${effort}x ` : '';
     return this.uiLanguage === 'zh'
       ? `支线类型: ${effortPrefix}扪心自问（FBR）`
-      : `Sideline dialog type: ${effortPrefix}FBR`;
+      : `Side Dialog type: ${effortPrefix}FBR`;
   }
 
   private renderCallTiming(
@@ -4631,21 +4631,21 @@ export class DomindsDialogContainer extends HTMLElement {
         ? (() => {
             switch (funcName) {
               case 'replyTellask':
-                return '向上游提交最终回复';
+                return '向诉请者提交最终回复';
               case 'replyTellaskSessionless':
                 return '提交一次性诉请回复';
               case 'replyTellaskBack':
-                return '回答上游回问';
+                return '回答诉请者回问';
             }
           })()
         : (() => {
             switch (funcName) {
               case 'replyTellask':
-                return 'Deliver final upstream reply';
+                return 'Deliver final requester reply';
               case 'replyTellaskSessionless':
                 return 'Deliver one-shot tellask reply';
               case 'replyTellaskBack':
-                return 'Answer upstream ask-back';
+                return 'Answer requester ask-back';
             }
           })();
 
