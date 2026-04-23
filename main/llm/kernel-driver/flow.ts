@@ -42,6 +42,7 @@ import {
 } from './context-health';
 import { driveDialogStreamCore } from './drive';
 import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
+import { cancelIdleReminderWake, maybeStartIdleReminderWake } from './idle-reminder-wake';
 import {
   buildReplyObligationReassertionPrompt,
   resolvePromptReplyGuidance,
@@ -712,6 +713,7 @@ export async function executeDriveRound(args: {
   driveDialog: KernelDriverDriveInvoker;
 }): KernelDriverDriveResult {
   const [dialog, humanPrompt, waitInQue, driveOptions] = args.driveArgs;
+  cancelIdleReminderWake(dialog.id, driveOptions?.reason ?? 'drive_start');
   if (!waitInQue && dialog.isLocked()) {
     throw new Error('Dialog busy driven, see how it proceeded and try again.');
   }
@@ -1422,5 +1424,13 @@ export async function executeDriveRound(args: {
       clearActiveRun(dialog.id);
     }
     release();
+    maybeStartIdleReminderWake(
+      dialog,
+      {
+        scheduleDrive: args.scheduleDrive,
+        driveDialog: args.driveDialog,
+      },
+      driveOptions?.reason ?? 'drive_finished',
+    );
   }
 }

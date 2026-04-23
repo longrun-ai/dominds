@@ -97,6 +97,7 @@
     "reminder-delete-meta-guard": "tsx reminders/delete-reminder-meta-guard.ts",
     "reminder-update-meta-guard": "tsx reminders/update-reminder-meta-guard.ts",
     "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
+    "reminder-daemon-exit-wake-event": "tsx reminders/daemon-exit-wake-event.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
     "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",

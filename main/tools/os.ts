@@ -28,6 +28,7 @@ import type {
   Reminder,
   ReminderOwner,
   ReminderUpdateResult,
+  ReminderWakeEvent,
   ToolArguments,
   ToolCallOutput,
 } from '../tool';
@@ -427,6 +428,7 @@ type ShellCmdReminderMeta = JsonObject & {
   startTime: string;
   processGroupId?: number;
   originDialogId?: string;
+  originRootId?: string;
   completed?: boolean;
   lastUpdated?: string;
   stdoutDigestSha256?: string;
@@ -434,6 +436,8 @@ type ShellCmdReminderMeta = JsonObject & {
   stderrDigestSha256?: string;
   stderrLinesScrolledOut?: number;
   recoveryErrorText?: string;
+  exitWakeEventId?: string;
+  exitWakeNotifiedAt?: string;
 };
 
 type ShellCmdOwnedReminder = Reminder & {
@@ -477,8 +481,17 @@ function buildShellCmdReminderMeta(
   if (previousMeta.originDialogId !== undefined) {
     nextMeta['originDialogId'] = previousMeta.originDialogId;
   }
+  if (previousMeta.originRootId !== undefined) {
+    nextMeta['originRootId'] = previousMeta.originRootId;
+  }
   if (daemon.processGroupId !== undefined) {
     nextMeta['processGroupId'] = daemon.processGroupId;
+  }
+  if (previousMeta.exitWakeEventId !== undefined) {
+    nextMeta['exitWakeEventId'] = previousMeta.exitWakeEventId;
+  }
+  if (previousMeta.exitWakeNotifiedAt !== undefined) {
+    nextMeta['exitWakeNotifiedAt'] = previousMeta.exitWakeNotifiedAt;
   }
   if (options?.completed) {
     nextMeta['completed'] = true;
@@ -603,6 +616,195 @@ function stripDaemonLifecyclePhaseSummary(content: string): string {
     return content;
   }
   return normalized.slice(separatorIndex + 2);
+}
+
+function buildShellCmdExitWakeEventId(meta: ShellCmdReminderMeta): string {
+  return `shellCmd:daemonExited:${String(meta.pid)}:${meta.startTime}`;
+}
+
+function buildShellCmdExitWakeMeta(
+  meta: JsonObject,
+  eventId: string,
+  notifiedAt: string,
+): JsonObject {
+  return {
+    ...meta,
+    exitWakeEventId: eventId,
+    exitWakeNotifiedAt: notifiedAt,
+  };
+}
+
+function assertShellCmdExitWakeNotPreviouslyDelivered(
+  meta: ShellCmdReminderMeta,
+  eventId: string,
+): void {
+  if (meta.exitWakeEventId !== undefined && meta.exitWakeEventId !== eventId) {
+    throw new Error(
+      `shell_cmd daemon wake invariant violation: conflicting exit wake event id for pid ${String(meta.pid)}`,
+    );
+  }
+  if (meta.exitWakeNotifiedAt !== undefined) {
+    throw new Error(
+      `shell_cmd daemon wake invariant violation: exit wake event already delivered for pid ${String(meta.pid)}`,
+    );
+  }
+}
+
+function assertShellCmdExitWakeDeliveryFieldsConsistent(
+  meta: ShellCmdReminderMeta,
+  eventId: string,
+): void {
+  if (meta.exitWakeNotifiedAt !== undefined && meta.exitWakeEventId === undefined) {
+    throw new Error(
+      `shell_cmd daemon wake invariant violation: exit wake notified timestamp without event id for pid ${String(meta.pid)}`,
+    );
+  }
+  if (meta.exitWakeEventId !== undefined && meta.exitWakeEventId !== eventId) {
+    throw new Error(
+      `shell_cmd daemon wake invariant violation: delivered event id mismatch for pid ${String(meta.pid)}`,
+    );
+  }
+}
+
+function formatShellCmdDaemonExitWakeContent(args: {
+  command: string;
+  pid: number;
+  exitCode?: number | null;
+  exitSignal?: string | null;
+  language: LanguageCode;
+}): string {
+  const prefix = formatSystemNoticePrefix(args.language);
+  const status =
+    args.exitCode !== undefined || args.exitSignal !== undefined
+      ? `code ${String(args.exitCode ?? 'null')}, signal ${String(args.exitSignal ?? 'null')}`
+      : args.language === 'zh'
+        ? '未知（runner 已不可用）'
+        : 'unknown (runner unavailable)';
+  return args.language === 'zh'
+    ? `${prefix}
+后台进程已退出。这是 runtime 环境事件，不是新的用户指令。
+
+- PID: ${String(args.pid)}
+- 命令: ${args.command}
+- 退出状态: ${status}
+
+请根据当前任务上下文判断是否需要查看最终 stdout/stderr 或向用户汇报结果；不要只回复“收到”。`
+    : `${prefix}
+A background process has exited. This is a runtime environment event, not a new user instruction.
+
+- PID: ${String(args.pid)}
+- Command: ${args.command}
+- Exit status: ${status}
+
+Decide from the current task context whether you need to inspect final stdout/stderr or report the result to the user; do not reply with a standalone acknowledgement.`;
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    let timeout: NodeJS.Timeout;
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    const onAbort = (): void => {
+      finish();
+    };
+    timeout = setTimeout(finish, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function waitForShellCmdReminderWakeEvent(
+  reminder: ShellCmdOwnedReminder,
+  signal: AbortSignal,
+): Promise<ReminderWakeEvent | null> {
+  const eventId = buildShellCmdExitWakeEventId(reminder.meta);
+  assertShellCmdExitWakeDeliveryFieldsConsistent(reminder.meta, eventId);
+  if (reminder.meta.completed === true) {
+    return null;
+  }
+  if (reminder.meta.exitWakeNotifiedAt !== undefined) {
+    return null;
+  }
+
+  while (!signal.aborted) {
+    const resolved = await resolveDaemonFromMeta(reminder.meta);
+    const notifiedAt = formatUnifiedTimestamp(new Date());
+    const language = getWorkLanguage();
+
+    if (resolved.kind === 'gone') {
+      const isTrackedDaemon =
+        reminder.meta.runnerEndpoint !== undefined || reminder.meta.runnerPid !== undefined;
+      if (!isTrackedDaemon) return null;
+      assertShellCmdExitWakeNotPreviouslyDelivered(reminder.meta, eventId);
+      const updatedMeta = buildShellCmdExitWakeMeta(
+        buildShellCmdFinalizedMeta(reminder.meta, notifiedAt),
+        eventId,
+        notifiedAt,
+      );
+      const updatedContent = formatExitedDaemonReminderContent(
+        reminder.meta.initialCommandLine,
+        reminder.meta.pid,
+        language,
+        stripDaemonLifecyclePhaseSummary(reminder.content),
+      );
+      return {
+        eventId,
+        reminderId: reminder.id,
+        content: formatShellCmdDaemonExitWakeContent({
+          command: reminder.meta.initialCommandLine,
+          pid: reminder.meta.pid,
+          language,
+        }),
+        updatedContent,
+        updatedMeta,
+      };
+    }
+
+    if (resolved.kind === 'error') {
+      throw new Error(resolved.errorText);
+    }
+
+    const daemon = resolved.daemon;
+    if (!daemon.isRunning) {
+      assertShellCmdExitWakeNotPreviouslyDelivered(reminder.meta, eventId);
+      const updatedContent = formatExitedDaemonReminderContent(
+        daemon.command,
+        reminder.meta.pid,
+        language,
+        formatRunnerBackedDaemonStatusDetails(daemon, language),
+      );
+      const completedMeta = buildShellCmdReminderMeta(reminder.meta, daemon, {
+        completed: true,
+        lastUpdated: notifiedAt,
+      });
+      return {
+        eventId,
+        reminderId: reminder.id,
+        content: formatShellCmdDaemonExitWakeContent({
+          command: daemon.command,
+          pid: reminder.meta.pid,
+          exitCode: daemon.exitCode,
+          exitSignal: daemon.exitSignal,
+          language,
+        }),
+        updatedContent,
+        updatedMeta: buildShellCmdExitWakeMeta(completedMeta, eventId, notifiedAt),
+      };
+    }
+
+    await abortableDelay(1_000, signal);
+  }
+
+  return null;
 }
 
 type OsToolMessages = Readonly<{
@@ -1558,6 +1760,61 @@ export const shellCmdReminderOwner: ReminderOwner = {
     };
   },
 
+  async waitForReminderWakeEvent(
+    _dlg: Dialog,
+    reminders: readonly Reminder[],
+    signal: AbortSignal,
+  ): Promise<ReminderWakeEvent | readonly ReminderWakeEvent[] | null> {
+    const candidates = reminders.filter(isShellCmdReminder);
+    if (candidates.length === 0) return null;
+    const controller = new AbortController();
+    const onAbort = (): void => {
+      controller.abort();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) {
+      controller.abort();
+    }
+    const pending = candidates.map((reminder) =>
+      waitForShellCmdReminderWakeEvent(reminder, controller.signal),
+    );
+    return await new Promise<ReminderWakeEvent | null>((resolve, reject) => {
+      let settled = false;
+      let remaining = pending.length;
+      const cleanup = (): void => {
+        signal.removeEventListener('abort', onAbort);
+        controller.abort();
+      };
+      const finish = (event: ReminderWakeEvent | null): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(event);
+      };
+      const settleEmpty = (): void => {
+        if (settled) return;
+        remaining -= 1;
+        if (remaining === 0) finish(null);
+      };
+      for (const promise of pending) {
+        void promise
+          .then((event) => {
+            if (event !== null) {
+              finish(event);
+              return;
+            }
+            settleEmpty();
+          })
+          .catch((error: unknown) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error instanceof Error ? error : new Error(String(error)));
+          });
+      }
+    });
+  },
+
   async renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
     const language = getWorkLanguage();
     const prefix = formatSystemNoticePrefix(language);
@@ -1727,6 +1984,7 @@ export const shellCmdTool: FuncTool = {
         shell: initialMessage.shell,
         startTime: initialMessage.startTime,
         originDialogId: dlg.id.selfId,
+        originRootId: dlg.id.rootId,
       };
       if (initialMessage.processGroupId !== undefined) {
         reminderSeedMeta.processGroupId = initialMessage.processGroupId;

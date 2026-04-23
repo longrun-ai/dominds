@@ -29,7 +29,8 @@ export type KernelDriverDriveSource =
   | 'kernel_driver_sideDialog_resume'
   | 'kernel_driver_fbr_sideDialog_round'
   | 'kernel_driver_type_a_askerDialog_call'
-  | 'kernel_driver_supply_response_parent_revive';
+  | 'kernel_driver_supply_response_parent_revive'
+  | 'kernel_driver_idle_reminder_wake';
 
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;

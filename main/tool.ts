@@ -292,6 +292,14 @@ export type ReminderTreatment = 'drop' | 'keep' | 'update';
 
 export type ReminderUpdateResult = KernelReminderUpdateResult;
 
+export type ReminderWakeEvent = Readonly<{
+  eventId: string;
+  reminderId: string;
+  content: string;
+  updatedContent?: string;
+  updatedMeta?: JsonValue;
+}>;
+
 export interface ReminderOwner {
   readonly name: string;
   // Reminder owners own the full meaning of their reminder metadata. Framework code must
@@ -300,6 +308,13 @@ export interface ReminderOwner {
   updateReminder(dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult>;
   // Called to render a reminder from a dialog as a ChatMessage to show to ai
   renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage>;
+  // Called by the driver only after a dialog enters idle. Owners may report environment events
+  // worth waking the dialog for; ordinary reminder content changes should stay in updateReminder.
+  waitForReminderWakeEvent?(
+    dlg: Dialog,
+    reminders: readonly Reminder[],
+    signal: AbortSignal,
+  ): Promise<ReminderWakeEvent | readonly ReminderWakeEvent[] | null>;
 }
 
 export function validateArgs(
