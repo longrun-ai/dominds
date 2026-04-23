@@ -17,7 +17,12 @@ import {
   type SetupWriteTeamYamlRequest,
   type SetupWriteTeamYamlResponse,
 } from '@longrun-ai/kernel/types/setup';
-import { LlmConfig, type ProviderConfig } from '../llm/client';
+import {
+  getBuiltinDefaultsYamlPath,
+  LlmConfig,
+  readBuiltinDefaultsYamlRaw,
+  type ProviderConfig,
+} from '../llm/client';
 import { createLogger } from '../log';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 
@@ -26,7 +31,6 @@ const log = createLogger('setup-routes');
 const TEAM_YAML_PATH = path.join('.minds', 'team.yaml');
 const RTWS_LLM_YAML_PATH = path.join('.minds', 'llm.yaml');
 const RTWS_ENV_LOCAL_PATH = '.env.local';
-const BUILTIN_DEFAULTS_YAML_PATH = path.join(__dirname, '..', 'llm', 'defaults.yaml');
 
 const DOMINDS_ENV_BLOCK_START = '# >>> dominds env >>>';
 const DOMINDS_ENV_BLOCK_END = '# <<< dominds env <<<';
@@ -110,14 +114,15 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
 
 export async function buildSetupFileResponse(kind: SetupFileKind): Promise<SetupFileResponse> {
   if (kind === 'defaults_yaml') {
+    const builtinDefaultsYamlPath = getBuiltinDefaultsYamlPath();
     try {
-      const raw = await fsPromises.readFile(BUILTIN_DEFAULTS_YAML_PATH, 'utf-8');
-      return { success: true, kind, path: BUILTIN_DEFAULTS_YAML_PATH, raw };
+      const raw = await readBuiltinDefaultsYamlRaw();
+      return { success: true, kind, path: builtinDefaultsYamlPath, raw };
     } catch {
       return {
         success: false,
         kind,
-        path: BUILTIN_DEFAULTS_YAML_PATH,
+        path: builtinDefaultsYamlPath,
         error: 'Failed to read defaults.yaml',
       };
     }
@@ -317,7 +322,7 @@ export async function handleWriteRtwsLlmYaml(
 
 async function loadBuiltinProviders(): Promise<BuiltinProvidersLoadResult> {
   try {
-    const raw = await fsPromises.readFile(BUILTIN_DEFAULTS_YAML_PATH, 'utf-8');
+    const raw = await readBuiltinDefaultsYamlRaw();
     const doc = YAML.parseDocument(raw);
     const parsed: unknown = doc.toJS();
     if (!isRecord(parsed) || !isRecord(parsed.providers)) {

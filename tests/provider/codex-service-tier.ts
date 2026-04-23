@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
+import { readBuiltinDefaultsYamlRaw } from '../../main/llm/client';
 import { resolveCodexServiceTier } from '../../main/llm/gen/codex';
 import { buildSetupStatusResponse, handleWriteTeamYaml } from '../../main/server/setup-routes';
 
@@ -22,8 +23,7 @@ async function main(): Promise<void> {
   assert.equal(resolveCodexServiceTier('flex'), 'flex');
   assert.equal(resolveCodexServiceTier('scale'), 'scale');
 
-  const defaultsPath = path.join(__dirname, '..', '..', 'main', 'llm', 'defaults.yaml');
-  const defaultsRaw = await fs.readFile(defaultsPath, 'utf-8');
+  const defaultsRaw = await readBuiltinDefaultsYamlRaw();
   const parsed = asRecord(YAML.parse(defaultsRaw), 'defaults.yaml');
   const providers = asRecord(parsed['providers'], 'defaults.yaml.providers');
   const codex = asRecord(providers['codex'], 'defaults.yaml.providers.codex');

@@ -18,7 +18,7 @@ import type { WorkspaceProblem, WorkspaceProblemRecord } from '@longrun-ai/kerne
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/client';
-import { LlmConfig } from '../llm/client';
+import { LlmConfig, readBuiltinDefaultsYamlRaw } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
 import { createLogger } from '../log';
@@ -765,8 +765,7 @@ function listModelIds(models: Record<string, unknown>, maxModels: number): strin
 }
 
 async function loadBuiltinLlmProviders(): Promise<Record<string, ProviderConfig>> {
-  const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
-  const raw = await fs.readFile(defaultsPath, 'utf-8');
+  const raw = await readBuiltinDefaultsYamlRaw();
   const parsed: unknown = YAML.parse(raw);
   if (typeof parsed !== 'object' || parsed === null) {
     throw new Error('Invalid defaults.yaml');
@@ -3278,8 +3277,7 @@ function isWindowsRuntimeHost(): boolean {
 }
 
 async function loadBuiltinLlmDefaultsText(): Promise<string> {
-  const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
-  const raw = await fs.readFile(defaultsPath, 'utf-8');
+  const raw = await readBuiltinDefaultsYamlRaw();
   const parsed: unknown = YAML.parse(raw);
   if (typeof parsed !== 'object' || parsed === null) {
     return 'Invalid defaults.yaml';
@@ -3307,8 +3305,7 @@ async function loadBuiltinLlmDefaultsText(): Promise<string> {
 }
 
 async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
-  const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
-  const raw = await fs.readFile(defaultsPath, 'utf-8');
+  const raw = await readBuiltinDefaultsYamlRaw();
   const parsed: unknown = YAML.parse(raw);
   if (typeof parsed !== 'object' || parsed === null) {
     return 'Invalid defaults.yaml';

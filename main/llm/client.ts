@@ -3,6 +3,14 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
+
+const BUILTIN_DEFAULTS_YAML_PATH = path.join(__dirname, 'defaults.yaml');
+
+// Special-case cache: built-in defaults are immutable at runtime, so this file may be cached
+// forever to survive dogfooding rebuild windows. Do not generalize this to rtws/user-editable files.
+let builtinDefaultsYamlRawCache: string | undefined;
+let builtinDefaultsYamlRawReadPromise: Promise<string> | undefined;
+
 export type {
   ChatMessage,
   EnvironmentMsg,
@@ -129,8 +137,7 @@ export class LlmConfig {
 export namespace LlmConfig {
   export async function load(): Promise<LlmConfig> {
     // Load default providers from YAML file
-    const defaultsPath = path.join(__dirname, 'defaults.yaml');
-    const rawDefaults = await fs.readFile(defaultsPath, 'utf-8');
+    const rawDefaults = await readBuiltinDefaultsYamlRaw();
     const parsedDefaults: unknown = YAML.parse(rawDefaults);
     if (!isRecord(parsedDefaults) || !isRecord(parsedDefaults.providers)) {
       throw new Error('Invalid defaults.yaml: expected providers object');
@@ -167,6 +174,33 @@ export namespace LlmConfig {
 
     return new LlmConfig(mergedProviders);
   }
+}
+
+export function getBuiltinDefaultsYamlPath(): string {
+  return BUILTIN_DEFAULTS_YAML_PATH;
+}
+
+export async function readBuiltinDefaultsYamlRaw(): Promise<string> {
+  if (builtinDefaultsYamlRawCache !== undefined) return builtinDefaultsYamlRawCache;
+
+  if (builtinDefaultsYamlRawReadPromise === undefined) {
+    builtinDefaultsYamlRawReadPromise = fs
+      .readFile(BUILTIN_DEFAULTS_YAML_PATH, 'utf-8')
+      .then((raw) => {
+        const parsed: unknown = YAML.parse(raw);
+        if (!isRecord(parsed) || !isRecord(parsed.providers)) {
+          throw new Error('Invalid defaults.yaml: expected providers object');
+        }
+        builtinDefaultsYamlRawCache = raw;
+        return raw;
+      })
+      .catch((error: unknown) => {
+        builtinDefaultsYamlRawReadPromise = undefined;
+        throw error;
+      });
+  }
+
+  return builtinDefaultsYamlRawReadPromise;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
