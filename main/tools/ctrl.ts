@@ -31,7 +31,7 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog, VisibleReminderTarget } from '../dialog';
-import { SideDialog } from '../dialog';
+import { InvalidReminderIndexError, SideDialog } from '../dialog';
 import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
@@ -61,6 +61,7 @@ import {
 type CtrlMessages = Readonly<{
   invalidFormatDelete: string;
   reminderDoesNotExist: (reminderId: string) => string;
+  reminderTargetChanged: string;
   invalidFormatAdd: string;
   personalPositionUnsupported: string;
   reminderContentEmpty: string;
@@ -317,11 +318,140 @@ async function resolveReminderTarget(
   return { ok: true, target };
 }
 
+function runReminderIndexMutation(mutation: () => void): boolean {
+  try {
+    mutation();
+    return true;
+  } catch (error: unknown) {
+    if (error instanceof InvalidReminderIndexError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function findReminderIndexById(
+  sourceLabel: 'dialog' | 'shared',
+  reminders: readonly Reminder[],
+  reminderId: string,
+): number | null {
+  let foundIndex: number | null = null;
+  for (let index = 0; index < reminders.length; index += 1) {
+    const reminder = reminders[index];
+    if (reminder?.id !== reminderId) continue;
+    if (foundIndex !== null) {
+      throw new Error(`Duplicate ${sourceLabel} reminder_id detected: ${reminderId}`);
+    }
+    foundIndex = index;
+  }
+  return foundIndex;
+}
+
+async function deleteSharedReminderById(agentId: string, reminderId: string): Promise<boolean> {
+  return mutateAgentSharedReminders(agentId, (reminders) => {
+    const index = findReminderIndexById('shared', reminders, reminderId);
+    if (index === null) return false;
+    reminders.splice(index, 1);
+    return true;
+  });
+}
+
+async function updateSharedReminderById(
+  agentId: string,
+  reminderId: string,
+  updateReminder: (reminder: Reminder) => Reminder,
+): Promise<boolean> {
+  return mutateAgentSharedReminders(agentId, (reminders) => {
+    const index = findReminderIndexById('shared', reminders, reminderId);
+    if (index === null) return false;
+    const reminder = reminders[index];
+    if (reminder === undefined) {
+      throw new Error(
+        `Shared reminder index ${index} disappeared while updating reminder_id ${reminderId}`,
+      );
+    }
+    reminders[index] = updateReminder(reminder);
+    return true;
+  });
+}
+
+function replaceReminderContent(
+  reminder: Reminder,
+  content: string,
+  meta: JsonValue | undefined,
+  renderMode: ReminderRenderMode | undefined,
+): Reminder {
+  return materializeReminder({
+    id: reminder.id,
+    content,
+    owner: reminder.owner,
+    meta: meta !== undefined ? meta : reminder.meta,
+    echoback: reminder.echoback,
+    scope: reminder.scope,
+    createdAt: reminder.createdAt,
+    priority: reminder.priority,
+    renderMode: renderMode ?? reminder.renderMode,
+  });
+}
+
+async function deleteResolvedReminderTarget(
+  dlg: Dialog,
+  target: VisibleReminderTarget,
+): Promise<boolean> {
+  switch (target.source) {
+    case 'dialog': {
+      const index = findReminderIndexById('dialog', dlg.reminders, target.reminder.id);
+      if (index === null) return false;
+      return runReminderIndexMutation(() => {
+        dlg.deleteReminder(index);
+      });
+    }
+    case 'agent_shared': {
+      const deleted = await deleteSharedReminderById(target.agentId, target.reminder.id);
+      if (deleted) dlg.touchReminders();
+      return deleted;
+    }
+  }
+  const _exhaustive: never = target;
+  return _exhaustive;
+}
+
+async function updateResolvedReminderTarget(
+  dlg: Dialog,
+  target: VisibleReminderTarget,
+  content: string,
+  meta: JsonValue | undefined,
+  renderMode: ReminderRenderMode | undefined,
+): Promise<boolean> {
+  switch (target.source) {
+    case 'dialog': {
+      const index = findReminderIndexById('dialog', dlg.reminders, target.reminder.id);
+      if (index === null) return false;
+      return runReminderIndexMutation(() => {
+        dlg.updateReminder(index, content, meta, { renderMode });
+      });
+    }
+    case 'agent_shared': {
+      const updated = await updateSharedReminderById(
+        target.agentId,
+        target.reminder.id,
+        (current) => replaceReminderContent(current, content, meta, renderMode),
+      );
+      if (updated) dlg.touchReminders();
+      return updated;
+    }
+  }
+  const _exhaustive: never = target;
+  return _exhaustive;
+}
+
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
       invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_id: string })',
       reminderDoesNotExist: (reminderId) => `提醒项 '${reminderId}' 不存在。`,
+      reminderTargetChanged:
+        '错误：提醒项列表已变化，这条提醒项当前不在可见列表中。请重新查看提醒项列表后，用当前的 reminder_id 重试。',
       invalidFormatAdd:
         '参数格式不对。用法：add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" })（省略 position 表示追加）',
       personalPositionUnsupported: 'personal 范围提醒当前只支持追加，不能指定 position。',
@@ -370,6 +500,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
   return {
     invalidFormatDelete: 'Error: Invalid args. Use: delete_reminder({ reminder_id: string })',
     reminderDoesNotExist: (reminderId) => `Error: Reminder '${reminderId}' does not exist.`,
+    reminderTargetChanged:
+      'Error: The reminder list changed, and this reminder is no longer visible. Refresh the reminders and retry with the current reminder_id.',
     invalidFormatAdd:
       'Error: Invalid args. Use: add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" }) (omit position to append).',
     personalPositionUnsupported:
@@ -448,18 +580,9 @@ export const deleteReminderTool: FuncTool = {
     if (deleteAltInstruction !== undefined) {
       return toolFailure(formatManualDeleteBlockedError(language, deleteAltInstruction));
     }
-    if (resolved.target.source === 'dialog') {
-      dlg.deleteReminder(resolved.target.index);
-      return formatToolActionResult(language, 'deleted');
-    }
-    if (resolved.target.source === 'agent_shared') {
-      await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
-        reminders.splice(resolved.target.index, 1);
-      });
-      dlg.touchReminders();
-      return formatToolActionResult(language, 'deleted');
-    }
-    return toolFailure(t.invalidFormatDelete);
+    const deleted = await deleteResolvedReminderTarget(dlg, resolved.target);
+    if (!deleted) return toolFailure(t.reminderTargetChanged);
+    return formatToolActionResult(language, 'deleted');
   },
 };
 
@@ -638,37 +761,24 @@ export const updateReminderTool: FuncTool = {
     if (contextHealthLevel === undefined) {
       const stripResult = removeContinuationPackageReminderMeta(reminder?.meta);
       if (stripResult.changed) {
-        if (resolved.target.source === 'dialog') {
-          dlg.updateReminder(resolved.target.index, reminderContent, stripResult.nextMeta, {
-            renderMode: reminderRenderMode,
-          });
-        } else {
-          await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
-            reminders[resolved.target.index] = {
-              ...reminders[resolved.target.index],
-              content: reminderContent,
-              meta: stripResult.nextMeta,
-              renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
-            };
-          });
-          dlg.touchReminders();
-        }
+        const updated = await updateResolvedReminderTarget(
+          dlg,
+          resolved.target,
+          reminderContent,
+          stripResult.nextMeta,
+          reminderRenderMode,
+        );
+        if (!updated) return toolFailure(t.reminderTargetChanged);
         return formatToolActionResult(language, 'updated');
       }
-      if (resolved.target.source === 'dialog') {
-        dlg.updateReminder(resolved.target.index, reminderContent, undefined, {
-          renderMode: reminderRenderMode,
-        });
-      } else {
-        await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
-          reminders[resolved.target.index] = {
-            ...reminders[resolved.target.index],
-            content: reminderContent,
-            renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
-          };
-        });
-        dlg.touchReminders();
-      }
+      const updated = await updateResolvedReminderTarget(
+        dlg,
+        resolved.target,
+        reminderContent,
+        undefined,
+        reminderRenderMode,
+      );
+      if (!updated) return toolFailure(t.reminderTargetChanged);
       return formatToolActionResult(language, 'updated');
     }
 
@@ -678,21 +788,14 @@ export const updateReminderTool: FuncTool = {
       contextHealthLevel,
     });
 
-    if (resolved.target.source === 'dialog') {
-      dlg.updateReminder(resolved.target.index, reminderContent, reminderMeta, {
-        renderMode: reminderRenderMode,
-      });
-    } else {
-      await mutateAgentSharedReminders(resolved.target.agentId, (reminders) => {
-        reminders[resolved.target.index] = {
-          ...reminders[resolved.target.index],
-          content: reminderContent,
-          meta: reminderMeta,
-          renderMode: reminderRenderMode ?? reminders[resolved.target.index]?.renderMode,
-        };
-      });
-      dlg.touchReminders();
-    }
+    const updated = await updateResolvedReminderTarget(
+      dlg,
+      resolved.target,
+      reminderContent,
+      reminderMeta,
+      reminderRenderMode,
+    );
+    if (!updated) return toolFailure(t.reminderTargetChanged);
     return formatToolActionResult(language, 'updated');
   },
 };

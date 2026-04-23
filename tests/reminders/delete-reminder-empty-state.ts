@@ -13,12 +13,12 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     undefined,
     'tester',
   );
-  const output = (
-    await deleteReminderTool.call(dlg, {} as Team.Member, {
-      reminder_id: 'missing-id',
-    })
-  ).content;
+  const result = await deleteReminderTool.call(dlg, {} as Team.Member, {
+    reminder_id: 'missing-id',
+  });
+  const output = result.content;
 
+  assert.equal(result.outcome, 'failure');
   assert.ok(
     output.includes(expectedSubstring),
     `Expected output to include "${expectedSubstring}", got: ${output}`,

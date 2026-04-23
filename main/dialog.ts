@@ -78,6 +78,18 @@ import {
 } from './tool';
 import { generateDialogID } from './utils/id';
 
+export class InvalidReminderIndexError extends Error {
+  public readonly index: number;
+  public readonly total: number;
+
+  constructor(index: number, total: number) {
+    super(`Reminder target index ${index} is stale; current reminder count is ${total}`);
+    this.name = 'InvalidReminderIndexError';
+    this.index = index;
+    this.total = total;
+  }
+}
+
 type NewCourseHookResult =
   | { kind: 'continue'; prompt: DialogRuntimePrompt }
   | { kind: 'reject'; errorText: string };
@@ -711,9 +723,7 @@ export abstract class Dialog {
 
   public deleteReminder(index: number): Reminder {
     if (index < 0 || index >= this.reminders.length) {
-      throw new Error(
-        `Reminder index ${index} does not exist. Available reminders: 0-${this.reminders.length - 1}`,
-      );
+      throw new InvalidReminderIndexError(index, this.reminders.length);
     }
     const deleted = this.reminders.splice(index, 1)[0];
     this.touchReminders();
@@ -728,9 +738,7 @@ export abstract class Dialog {
     options?: ReminderOptions,
   ): Reminder {
     if (index < 0 || index >= this.reminders.length) {
-      throw new Error(
-        `Reminder index ${index} does not exist. Available reminders: 0-${this.reminders.length - 1}`,
-      );
+      throw new InvalidReminderIndexError(index, this.reminders.length);
     }
     const oldReminder = this.reminders[index];
     const updatedReminder = materializeReminder({
