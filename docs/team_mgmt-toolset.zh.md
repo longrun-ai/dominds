@@ -321,7 +321,8 @@ members:
 注意：
 
 - MCP 工具名称在所有工具集（内置 + MCP）中是全局的。冲突导致工具被跳过，应通过问题 + 日志暴露
-- `mcp_admin` 是一个内置工具集，包含 `mcp_restart`（每个服务器最佳努力重启）
+- `mcp_admin` 是 MCP 运维内置工具集：`mcp_restart` 启用/重启 server，`mcp_disable` 禁用
+  server 并保留 0 工具 toolset/手册可见性，`mcp_release` 释放当前对话 lease
 - 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 提供手册相关信息：
   - `contentFile`：正式 runtime 手册的 topic 文件目录前缀；`man({ "toolsetId": "<serverId>" })` 最终给 LLM 看的正文从这里加载
   - `content` / `sections`：补充给 `team_mgmt` MCP 章节看的 inline 团队管理说明（`sections` 支持 `[{ title, content }]` 或 `{ "<title>": "<content>" }`）
@@ -540,4 +541,5 @@ members:
   - 确认队友在 `.minds/team.yaml` 中被授予了相关的 `<serverId>` 工具集
 - **MCP 服务器持续 (re)load 失败**：
   - 检查问题详细信息（缺少 env 变量、无效的工具名称、冲突、连接错误）
-  - 修复配置后，使用 `mcp_admin` 中的 `mcp_restart` 进行每个服务器的最佳努力重启
+  - 修复配置后，使用 `mcp_admin` 中的 `mcp_restart` 启用/重启 server。若需禁用，使用
+    `mcp_disable`，它会保留 0 工具 toolset 和已配置手册可见性

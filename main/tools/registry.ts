@@ -35,6 +35,11 @@ export type ToolsetMeta = {
    * When omitted, `man` falls back to deriving topic files from `promptFilesI18n`.
    */
   manualSpec?: ManualSpec;
+  /**
+   * Optional notice prepended by the generic `man` tool. Runtime-generated toolsets
+   * use this to surface operational state without hiding their configured manual.
+   */
+  manualNoticeI18n?: I18nText;
 };
 
 export const toolsetMetaRegistry: Map<string, ToolsetMeta> = new Map<string, ToolsetMeta>();

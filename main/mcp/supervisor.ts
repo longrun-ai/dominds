@@ -4,6 +4,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import * as fs from 'fs';
 import { randomUUID } from 'node:crypto';
 import * as path from 'path';
+import YAML, { isMap, isScalar } from 'yaml';
 import { type Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
@@ -14,7 +15,7 @@ import {
   notifyToolAvailabilityRegistryMaybeChanged,
   notifyToolAvailabilityRuntimeLeaseChanged,
 } from '../tool-availability-updates';
-import { buildMcpManualSpec } from '../tools/manual/spec';
+import { buildMcpManualSpec, type ManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
   registerTool,
@@ -32,6 +33,8 @@ import {
   emptyMcpToolsetManualByServer,
   parseMcpManualByServer,
   reconcileMcpToolsetManualProblems,
+  type McpToolsetManual,
+  type McpToolsetManualByServer,
 } from './manual-problems';
 import {
   extractMcpDiagnosticTextI18n,
@@ -72,12 +75,13 @@ const toolsetOwnerByName: Map<string, { kind: 'mcp'; serverId: string }> = new M
 export type McpDeclaredServerRuntimeStatus = Readonly<{
   serverId: string;
   transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
-  status: 'loaded' | 'temporarily_unavailable' | 'config_invalid';
+  status: 'loaded' | 'temporarily_unavailable' | 'config_invalid' | 'disabled';
   errorText?: string;
 }>;
 
 type DeclaredServerRuntimeCatalogEntry = Readonly<{
   transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
+  disabled?: boolean;
   configErrorText?: string;
   runtimeErrorText?: string;
 }>;
@@ -186,6 +190,7 @@ class McpServerDispatch {
     for (const rt of this.leasesByDialogKey.values()) {
       rt.requestStop({ forceKillAfterMs: 3_000 });
     }
+    this.leasesByDialogKey.clear();
     for (const [dialogKey, init] of this.leaseInitByDialogKey.entries()) {
       this.canceledLeaseDialogs.add(dialogKey);
       void init
@@ -194,6 +199,7 @@ class McpServerDispatch {
           // ignore
         });
     }
+    this.leaseInitByDialogKey.clear();
   }
 
   public async callToolForDialog(
@@ -386,6 +392,13 @@ export function getMcpDeclaredServerRuntimeStatuses(): readonly McpDeclaredServe
         errorText: catalogEntry.configErrorText,
       };
     }
+    if (catalogEntry?.disabled) {
+      return {
+        serverId,
+        transport: catalogEntry.transport,
+        status: 'disabled',
+      };
+    }
     if (serverStateById.has(serverId)) {
       return {
         serverId,
@@ -502,6 +515,29 @@ export function requestMcpServerRestart(
       .catch((err: unknown) => {
         const errorText = err instanceof Error ? err.message : String(err);
         log.warn(`MCP server restart enqueue failed`, err, { serverId });
+        resolve({ ok: false, errorText });
+      });
+  });
+}
+
+export function requestMcpServerDisable(
+  serverId: string,
+): Promise<{ ok: true } | { ok: false; errorText: string }> {
+  return new Promise((resolve) => {
+    reloadChain = reloadChain
+      .then(async () => {
+        try {
+          const res = await disableServerNow(serverId);
+          resolve(res);
+        } catch (err: unknown) {
+          const errorText = err instanceof Error ? err.message : String(err);
+          log.warn(`MCP server disable failed`, err, { serverId });
+          resolve({ ok: false, errorText });
+        }
+      })
+      .catch((err: unknown) => {
+        const errorText = err instanceof Error ? err.message : String(err);
+        log.warn(`MCP server disable enqueue failed`, err, { serverId });
         resolve({ ok: false, errorText });
       });
   });
@@ -636,6 +672,8 @@ async function reloadNow(reason: string): Promise<void> {
         [],
         [],
         [],
+        [],
+        null,
         `missing file (${reason})`,
       );
       clearWorkspaceConfigProblem();
@@ -662,6 +700,8 @@ async function reloadNow(reason: string): Promise<void> {
     parsed.invalidServers,
     parsed.serverIdsInYamlOrder,
     parsed.validServerIdsInYamlOrder,
+    parsed.disabledServerIdsInYamlOrder,
+    rawText,
     reason,
   );
   await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
@@ -670,6 +710,15 @@ async function reloadNow(reason: string): Promise<void> {
 async function restartServerNow(
   serverId: string,
 ): Promise<{ ok: true } | { ok: false; errorText: string }> {
+  let removedPlaceholder = false;
+  const notifyPlaceholderRemovalOnFailure = (trigger: string): void => {
+    if (!removedPlaceholder) return;
+    notifyToolAvailabilityRegistryMaybeChanged({
+      reason: 'registry_changed',
+      trigger,
+    });
+  };
+
   let rawText: string;
   try {
     rawText = await fs.promises.readFile(MCP_YAML_PATH, 'utf8');
@@ -686,7 +735,8 @@ async function restartServerNow(
     return { ok: false, errorText: `Failed to read ${MCP_YAML_PATH}: ${String(err)}` };
   }
 
-  const parsed = parseMcpYaml(rawText);
+  let activeRawText = rawText;
+  let parsed = parseMcpYaml(activeRawText);
   if (!parsed.ok) {
     await reconcileMcpManualProblemsForRuntime([], null);
     upsertWorkspaceConfigProblem(parsed.errorText);
@@ -695,21 +745,51 @@ async function restartServerNow(
 
   clearWorkspaceConfigProblem();
 
+  const disabledServer =
+    parsed.serverIdsInYamlOrder.includes(serverId) &&
+    parsed.invalidServers.every((s) => s.serverId !== serverId) &&
+    parsed.config.servers[serverId] === undefined;
+  if (disabledServer) {
+    const enableRes = setServerEnabledInMcpYaml(rawText, serverId, true);
+    if (!enableRes.ok) {
+      await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+      return { ok: false, errorText: enableRes.errorText };
+    }
+    if (enableRes.changed) {
+      await fs.promises.writeFile(MCP_YAML_PATH, enableRes.rawText, 'utf8');
+      lastSeenMcpYamlSig = await readMcpYamlSig();
+      removedPlaceholder = unregisterMcpToolsetPlaceholder(serverId) || removedPlaceholder;
+    }
+    activeRawText = enableRes.rawText;
+    parsed = parseMcpYaml(activeRawText);
+    if (!parsed.ok) {
+      clearDeclaredServerRuntimeCatalog();
+      await reconcileMcpManualProblemsForRuntime([], null);
+      upsertWorkspaceConfigProblem(parsed.errorText);
+      notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:parse-failed`);
+      return { ok: false, errorText: parsed.errorText };
+    }
+    clearWorkspaceConfigProblem();
+  }
+
   const invalid = parsed.invalidServers.find((s) => s.serverId === serverId);
   if (invalid) {
     replaceDeclaredServerRuntimeCatalog(
       parsed.config,
       parsed.invalidServers,
       parsed.serverIdsInYamlOrder,
+      parsed.disabledServerIdsInYamlOrder,
     );
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
     upsertMcpServerConfigInvalidProblem(serverId, invalid.errorText);
+    notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:config-invalid`);
     return { ok: false, errorText: invalid.errorText };
   }
 
   const serverCfg = parsed.config.servers[serverId];
   if (!serverCfg) {
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
+    notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:not-configured`);
     return {
       ok: false,
       errorText: `MCP server '${serverId}' is not configured in ${MCP_YAML_PATH}`,
@@ -724,13 +804,18 @@ async function restartServerNow(
     parsed.config,
     parsed.invalidServers,
     parsed.serverIdsInYamlOrder,
+    parsed.disabledServerIdsInYamlOrder,
   );
+  if (!existing) {
+    removedPlaceholder = unregisterMcpToolsetPlaceholder(serverId) || removedPlaceholder;
+  }
 
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
     upsertDeclaredServerRuntimeError(serverId, res.errorText);
     upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText, res.detailTextI18n);
+    notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:runtime-unavailable`);
     return { ok: false, errorText: res.errorText };
   }
 
@@ -738,15 +823,14 @@ async function restartServerNow(
   removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
 
   if (existing) {
-    unregisterServer(existing);
-    existing.dispatch.requestStop();
+    stopLoadedServer(serverId);
   }
 
   registerServer(res.state);
   serverStateById.set(serverId, res.state);
   reconcileProblemsByPrefix(problemPrefixForServer(serverId), res.state.problems);
   reorderMcpToolsetsInRegistry(parsed.serverIdsInYamlOrder);
-  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
   notifyToolAvailabilityRegistryMaybeChanged({
     reason: 'registry_changed',
     trigger: `mcp:restart:${serverId}`,
@@ -755,6 +839,145 @@ async function restartServerNow(
     notifyToolAvailabilityRuntimeLeaseChanged(`mcp:restart:${serverId}`);
   }
   return { ok: true };
+}
+
+async function disableServerNow(
+  serverId: string,
+): Promise<{ ok: true } | { ok: false; errorText: string }> {
+  const stoppedExisting = stopLoadedServer(serverId);
+
+  let rawText: string;
+  try {
+    rawText = await fs.promises.readFile(MCP_YAML_PATH, 'utf8');
+  } catch (err: unknown) {
+    const code = isRecord(err) && 'code' in err ? err.code : undefined;
+    if (stoppedExisting) {
+      notifyToolAvailabilityRegistryMaybeChanged({
+        reason: 'registry_changed',
+        trigger: `mcp:disable:${serverId}:read-failed`,
+      });
+      notifyToolAvailabilityRuntimeLeaseChanged(`mcp:disable:${serverId}:read-failed`);
+    }
+    if (code === 'ENOENT') {
+      return { ok: false, errorText: `Cannot disable '${serverId}': ${MCP_YAML_PATH} is missing` };
+    }
+    return { ok: false, errorText: `Failed to read ${MCP_YAML_PATH}: ${String(err)}` };
+  }
+
+  const disableRes = setServerEnabledInMcpYaml(rawText, serverId, false);
+  if (!disableRes.ok) {
+    if (stoppedExisting) {
+      notifyToolAvailabilityRegistryMaybeChanged({
+        reason: 'registry_changed',
+        trigger: `mcp:disable:${serverId}:disable-failed`,
+      });
+      notifyToolAvailabilityRuntimeLeaseChanged(`mcp:disable:${serverId}:disable-failed`);
+    }
+    return { ok: false, errorText: disableRes.errorText };
+  }
+
+  if (disableRes.changed) {
+    await fs.promises.writeFile(MCP_YAML_PATH, disableRes.rawText, 'utf8');
+    lastSeenMcpYamlSig = await readMcpYamlSig();
+  }
+
+  const parsed = parseMcpYaml(disableRes.rawText);
+  if (!parsed.ok) {
+    clearDeclaredServerRuntimeCatalog();
+    await reconcileMcpManualProblemsForRuntime([], null);
+    upsertWorkspaceConfigProblem(parsed.errorText);
+    if (stoppedExisting) {
+      notifyToolAvailabilityRegistryMaybeChanged({
+        reason: 'registry_changed',
+        trigger: `mcp:disable:${serverId}:parse-failed`,
+      });
+      notifyToolAvailabilityRuntimeLeaseChanged(`mcp:disable:${serverId}:parse-failed`);
+    }
+    return { ok: false, errorText: parsed.errorText };
+  }
+
+  clearWorkspaceConfigProblem();
+  await applyWorkspaceConfig(
+    parsed.config,
+    parsed.invalidServers,
+    parsed.serverIdsInYamlOrder,
+    parsed.validServerIdsInYamlOrder,
+    parsed.disabledServerIdsInYamlOrder,
+    disableRes.rawText,
+    `mcp_disable:${serverId}`,
+  );
+  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, disableRes.rawText);
+  if (stoppedExisting) {
+    notifyToolAvailabilityRuntimeLeaseChanged(`mcp:disable:${serverId}`);
+  }
+  return { ok: true };
+}
+
+function setServerEnabledInMcpYaml(
+  rawText: string,
+  serverId: string,
+  enabled: boolean,
+): { ok: true; rawText: string; changed: boolean } | { ok: false; errorText: string } {
+  const doc = YAML.parseDocument(rawText, { prettyErrors: true });
+  if (doc.errors.length > 0) {
+    return { ok: false, errorText: doc.errors.map((e) => String(e)).join('\n') };
+  }
+
+  const parsed: unknown = doc.toJS();
+  if (!isRecord(parsed)) {
+    return { ok: false, errorText: `Invalid mcp.yaml: expected object at mcp.yaml root` };
+  }
+  if (parsed.version !== 1) {
+    return { ok: false, errorText: `Invalid mcp.yaml: expected version: 1` };
+  }
+
+  const servers = parsed.servers;
+  const server = isRecord(servers) ? servers[serverId] : undefined;
+  if (!isRecord(server)) {
+    return {
+      ok: false,
+      errorText: `MCP server '${serverId}' is not configured in ${MCP_YAML_PATH}`,
+    };
+  }
+
+  const currentEnabled = server.enabled;
+  if (currentEnabled !== undefined && typeof currentEnabled !== 'boolean') {
+    return {
+      ok: false,
+      errorText: `Invalid mcp.yaml: servers.${serverId}.enabled must be a boolean`,
+    };
+  }
+  if (currentEnabled === enabled) {
+    return { ok: true, rawText, changed: false };
+  }
+
+  const serverNode = doc.getIn(['servers', serverId], true);
+  if (!isMap(serverNode)) {
+    return {
+      ok: false,
+      errorText: `Invalid mcp.yaml: servers.${serverId} must be an object`,
+    };
+  }
+
+  const existingEnabledPair = serverNode.items.find(
+    (pair) => isScalar(pair.key) && pair.key.value === 'enabled',
+  );
+  if (existingEnabledPair) {
+    existingEnabledPair.value = doc.createNode(enabled);
+  } else {
+    serverNode.items.unshift(doc.createPair('enabled', enabled));
+  }
+  return { ok: true, rawText: String(doc), changed: true };
+}
+
+function stopLoadedServer(serverId: string): boolean {
+  const existing = serverStateById.get(serverId);
+  if (!existing) return false;
+  unregisterServer(existing);
+  existing.dispatch.requestStop();
+  serverStateById.delete(serverId);
+  reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
+  return true;
 }
 
 async function reconcileMcpManualProblemsForRuntime(
@@ -845,13 +1068,15 @@ function upsertMcpToolCallProblem(args: {
     workLanguage === 'zh'
       ? [
           '建议排查：',
-          `- 先释放租约：mcp_release({"serverId":"${args.serverId}"})`,
+          `- 如果需要全局重建该 MCP server，直接调用 mcp_restart({"serverId":"${args.serverId}"})；它成功后会清理旧 runtime 的全部 lease`,
+          `- 如果只想丢弃当前对话的连接，再调用 mcp_release({"serverId":"${args.serverId}"})`,
           `- 重新打开/关闭浏览器窗口，避免 Playwright persistent context 残留`,
           `- 查看 ${MCP_YAML_PATH} 是否已加载且配置正确（Problems 面板 / 后端日志）`,
         ]
       : [
           'Suggested checks:',
-          `- Release the lease first: mcp_release({"serverId":"${args.serverId}"})`,
+          `- To rebuild this MCP server globally, call mcp_restart({"serverId":"${args.serverId}"}) directly; a successful restart clears all leases on the old runtime`,
+          `- To discard only this dialog's connection, call mcp_release({"serverId":"${args.serverId}"})`,
           `- Close/reopen browser windows to avoid leftover Playwright persistent contexts`,
           `- Verify ${MCP_YAML_PATH} is loaded and valid (Problems panel / backend logs)`,
         ];
@@ -889,14 +1114,22 @@ async function applyWorkspaceConfig(
   invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>,
   serverIdsInYamlOrder: ReadonlyArray<string>,
   validServerIdsInYamlOrder: ReadonlyArray<string>,
+  disabledServerIdsInYamlOrder: ReadonlyArray<string>,
+  rawText: string | null,
   reason: string,
 ): Promise<void> {
   log.info(`Applying MCP rtws config (${reason})`);
-  replaceDeclaredServerRuntimeCatalog(config, invalidServers, serverIdsInYamlOrder);
+  replaceDeclaredServerRuntimeCatalog(
+    config,
+    invalidServers,
+    serverIdsInYamlOrder,
+    disabledServerIdsInYamlOrder,
+  );
   let runtimeLeaseChanged = false;
 
   const invalidIds = new Set(invalidServers.map((s) => s.serverId));
   const desiredIds = new Set([...Object.keys(config.servers), ...invalidIds]);
+  const declaredIds = new Set(serverIdsInYamlOrder);
 
   // Remove deleted servers first.
   for (const [serverId, state] of serverStateById.entries()) {
@@ -908,8 +1141,17 @@ async function applyWorkspaceConfig(
     reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
   }
 
+  // Remove disabled/deleted MCP placeholders that are no longer declared.
+  for (const [toolsetName, owner] of Array.from(toolsetOwnerByName.entries())) {
+    if (owner.kind !== 'mcp') continue;
+    if (declaredIds.has(owner.serverId)) continue;
+    unregisterToolset(toolsetName);
+    toolsetOwnerByName.delete(toolsetName);
+  }
+
   // Surface invalid server config errors (while keeping last-known-good runtimes registered).
   for (const s of invalidServers) {
+    unregisterMcpToolsetPlaceholder(s.serverId);
     upsertMcpServerConfigInvalidProblem(s.serverId, s.errorText);
   }
 
@@ -923,6 +1165,9 @@ async function applyWorkspaceConfig(
     const existing = serverStateById.get(serverId);
 
     if (!existing || existing.configFingerprint !== fingerprint) {
+      if (!existing) {
+        unregisterMcpToolsetPlaceholder(serverId);
+      }
       const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
       if (!res.ok) {
         upsertDeclaredServerRuntimeError(serverId, res.errorText);
@@ -980,6 +1225,13 @@ async function applyWorkspaceConfig(
     if (!changed) break;
   }
 
+  const manualInfo =
+    rawText === null ? emptyMcpToolsetManualByServer() : parseMcpManualByServer(rawText);
+  for (const serverId of disabledServerIdsInYamlOrder) {
+    reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
+    registerDisabledServerToolset(serverId, manualInfo);
+  }
+
   reorderMcpToolsetsInRegistry(serverIdsInYamlOrder);
   notifyToolAvailabilityRegistryMaybeChanged({
     reason: 'registry_changed',
@@ -1007,6 +1259,7 @@ function replaceDeclaredServerRuntimeCatalog(
   config: McpWorkspaceConfig,
   invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>,
   serverIdsInYamlOrder: ReadonlyArray<string>,
+  disabledServerIdsInYamlOrder: ReadonlyArray<string>,
 ): void {
   const previousRuntimeErrors = new Map<string, string>();
   for (const [serverId, entry] of declaredServerRuntimeCatalogById.entries()) {
@@ -1017,8 +1270,16 @@ function replaceDeclaredServerRuntimeCatalog(
 
   declaredServerIdsInYamlOrder = [...serverIdsInYamlOrder];
   declaredServerRuntimeCatalogById.clear();
+  const disabledIds = new Set(disabledServerIdsInYamlOrder);
 
   for (const serverId of serverIdsInYamlOrder) {
+    if (disabledIds.has(serverId)) {
+      declaredServerRuntimeCatalogById.set(serverId, {
+        transport: 'unknown',
+        disabled: true,
+      });
+      continue;
+    }
     const cfg = config.servers[serverId];
     if (!cfg) continue;
     declaredServerRuntimeCatalogById.set(serverId, {
@@ -1111,6 +1372,78 @@ function registerServer(state: ServerState): void {
     ...(manualSpec !== undefined ? { manualSpec } : {}),
   });
   toolsetOwnerByName.set(state.toolsetName, { kind: 'mcp', serverId: state.serverId });
+}
+
+function registerDisabledServerToolset(
+  serverId: string,
+  manualInfo: McpToolsetManualByServer,
+): void {
+  const existingToolset = toolsetsRegistry.get(serverId);
+  const existingOwner = toolsetOwnerByName.get(serverId);
+  if (existingToolset && (!existingOwner || existingOwner.serverId !== serverId)) {
+    upsertMcpServerConfigInvalidProblem(serverId, `Toolset name collision: ${serverId}`);
+    return;
+  }
+
+  registerToolset(serverId, []);
+  const manual = manualInfo.manualByServerId.get(serverId);
+  const manualSpec: ManualSpec = manual?.contentFile
+    ? buildMcpManualSpec(manual.contentFile)
+    : {
+        topics: ['index'],
+        warnOnMissing: false,
+        includeSchemaToolsSection: false,
+      };
+  const inlineManual = manual ? renderInlineMcpToolsetManual(manual) : '';
+  const disabledNoticeEn = [
+    `This MCP server is configured but disabled in \`.minds/mcp.yaml\` (\`enabled: false\`).`,
+    `It intentionally exposes zero tools until an MCP administrator enables it with \`mcp_restart({"serverId":"${serverId}"})\`.`,
+    inlineManual,
+  ]
+    .filter((part) => part.trim() !== '')
+    .join('\n\n');
+  const disabledNoticeZh = [
+    `该 MCP server 已在 \`.minds/mcp.yaml\` 中配置，但当前为禁用状态（\`enabled: false\`）。`,
+    `它会刻意暴露为 0 工具的 toolset；需要 MCP 排障/管理员用 \`mcp_restart({"serverId":"${serverId}"})\` 启用后才会加载工具。`,
+    inlineManual,
+  ]
+    .filter((part) => part.trim() !== '')
+    .join('\n\n');
+  setToolsetMeta(serverId, {
+    source: 'mcp',
+    descriptionI18n: {
+      en: `MCP server: ${serverId} (disabled)`,
+      zh: `MCP 服务器：${serverId}（已禁用）`,
+    },
+    manualNoticeI18n: {
+      en: disabledNoticeEn,
+      zh: disabledNoticeZh,
+    },
+    ...(manualSpec !== undefined ? { manualSpec } : {}),
+  });
+  toolsetOwnerByName.set(serverId, { kind: 'mcp', serverId });
+}
+
+function renderInlineMcpToolsetManual(manual: McpToolsetManual): string {
+  const parts: string[] = [];
+  if (manual.content) {
+    parts.push(manual.content);
+  }
+  for (const section of manual.sections) {
+    parts.push(`#### ${section.title}\n\n${section.content}`);
+  }
+  return parts.join('\n\n');
+}
+
+function unregisterMcpToolsetPlaceholder(serverId: string): boolean {
+  if (serverStateById.has(serverId)) return false;
+  const owner = toolsetOwnerByName.get(serverId);
+  if (owner?.kind !== 'mcp' || owner.serverId !== serverId) return false;
+  const tools = toolsetsRegistry.get(serverId);
+  if (tools && tools.length > 0) return false;
+  unregisterToolset(serverId);
+  toolsetOwnerByName.delete(serverId);
+  return true;
 }
 
 function unregisterServer(state: ServerState): void {

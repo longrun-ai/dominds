@@ -15,7 +15,9 @@
 
 ### 场景描述
 
-当 MCP 服务出现故障或需要刷新连接时，重启 MCP 服务。
+当 MCP 服务出现故障、需要刷新连接，或当前被 `enabled: false` 禁用时，启用并重启 MCP 服务。
+
+`mcp_restart` 会把 `enabled: false` 写回 `enabled: true` 后尝试启动；成功后会清理旧 runtime 的全部对话 lease，不需要先 `mcp_release`。
 
 ### 示例
 
@@ -53,7 +55,21 @@ env_get({
 });
 ```
 
-## 场景 4：MCP 连接故障处理
+## 场景 4：禁用 MCP 服务
+
+### 场景描述
+
+当某个 MCP server 不应继续提供工具，或排障时需要强制下线它，禁用该 server 并写入 `enabled: false`。禁用后的 server 仍会作为 0 工具 toolset 暴露，手册会明确标记已禁用。
+
+### 示例
+
+```typescript
+mcp_disable({
+  serverId: 'filesystem',
+});
+```
+
+## 场景 5：MCP 连接故障处理
 
 ### 场景描述
 
@@ -69,7 +85,7 @@ mcp_restart({
 });
 ```
 
-## 场景 5：资源清理
+## 场景 6：资源清理
 
 ### 场景描述
 

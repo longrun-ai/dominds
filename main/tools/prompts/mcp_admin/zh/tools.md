@@ -21,7 +21,7 @@
 
 ### 1. mcp_restart
 
-重启 MCP 服务。
+按当前 `.minds/mcp.yaml` 配置启用并重建 MCP 服务。如果目标 server 当前是 `enabled: false`，会先写回 `enabled: true` 再尝试启动。重启成功后会替换全局 MCP runtime/tool 注册，并清理旧 runtime 上所有对话持有的 lease；重启失败时保留旧 runtime/lease，避免排障过程中把仍可用的连接拆掉。
 
 **参数：**
 
@@ -30,9 +30,7 @@
 **返回：**
 
 ```yaml
-status: ok|error
-serverId: <MCP 服务标识符>
-restarted_at: <重启时间戳>
+ok: restarted <MCP 服务标识符>
 ```
 
 **错误：**
@@ -50,9 +48,13 @@ restarted_at: <重启时间戳>
 **返回：**
 
 ```yaml
-status: ok|error
-serverId: <MCP 服务标识符>
-released_at: <释放时间戳>
+ok: released <MCP 服务标识符> for dialog <对话标识符>
+```
+
+如果当前对话没有可释放的 lease，返回：
+
+```yaml
+ok: no active lease for <MCP 服务标识符> (or server is truely-stateless)
 ```
 
 **错误：**
@@ -60,7 +62,21 @@ released_at: <释放时间戳>
 - `MCP_NOT_FOUND`：MCP 服务不存在
 - `MCP_NOT_RUNNING`：MCP 服务未运行
 
-### 3. env_get
+### 3. mcp_disable
+
+禁用 MCP 服务并将 `.minds/mcp.yaml` 中对应 server 写为 `enabled: false`。该操作不等待新服务可用：会无条件清理已加载 runtime/lease。禁用后的 server 仍作为 0 工具 MCP toolset 可见，并在手册中明确标记为 disabled。
+
+**参数：**
+
+- `serverId`（必需）：MCP 服务标识符
+
+**返回：**
+
+```yaml
+ok: disabled <MCP 服务标识符> and set enabled=false
+```
+
+### 4. env_get
 
 获取环境变量（与 os 工具集共享）。
 
@@ -73,7 +89,7 @@ released_at: <释放时间戳>
 - 已设置：直接返回环境变量值
 - 未设置：返回 `(unset)`
 
-### 4. env_set
+### 5. env_set
 
 设置 Dominds 服务进程的环境变量（与 os 工具集共享）。
 
@@ -90,7 +106,7 @@ prev: <之前的值或 (unset)>
 next: <新的值>
 ```
 
-### 5. env_unset
+### 6. env_unset
 
 删除 Dominds 服务进程的环境变量（与 os 工具集共享）。
 
@@ -124,6 +140,14 @@ mcp_release({
 });
 ```
 
+### 禁用 MCP 服务
+
+```typescript
+mcp_disable({
+  serverId: 'browser',
+});
+```
+
 ### 获取环境变量
 
 ```typescript
@@ -149,17 +173,15 @@ env_unset({
 });
 ```
 
-## YAML 输出契约
+## 输出契约
 
-`mcp_restart` / `mcp_release` 使用带 `status` 的 YAML 输出；环境变量工具使用各自工具小节描述的返回格式：
+这些工具使用各自工具小节描述的简短文本返回格式：
 
-- `status`：操作状态，`ok` 表示成功，`error` 表示失败
-- 其他字段：具体操作的附加信息
+- 成功：以 `ok:` 开头
+- 失败：以 `error:` 开头
 
 错误时返回：
 
 ```yaml
-status: error
-error_code: <错误代码>
-message: <错误消息>
+error: <错误消息>
 ```

@@ -172,6 +172,12 @@ function buildAgentMcpToolsetRuntimeNotices(params: {
     notices.push({
       toolsetName,
       transport: runtimeStatus?.transport ?? 'unknown',
+      status:
+        runtimeStatus?.status === 'disabled'
+          ? 'disabled'
+          : runtimeStatus?.status === 'config_invalid'
+            ? 'config_invalid'
+            : 'temporarily_unavailable',
       errorText: runtimeStatus?.errorText,
     });
   }

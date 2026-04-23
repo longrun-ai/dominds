@@ -104,6 +104,55 @@ async function main(): Promise<void> {
           '  tester:',
           '    name: Tester',
           '    toolsets:',
+          '      - disabled_server',
+          '',
+        ].join('\n'),
+      },
+      {
+        relPath: '.minds/mcp.yaml',
+        content: [
+          'version: 1',
+          'servers:',
+          '  disabled_server:',
+          '    enabled: false',
+          '    transport: streamable_http',
+          '    url: http://127.0.0.1:9/mcp',
+          '',
+        ].join('\n'),
+      },
+    ],
+    async (tmpDir) => {
+      const result = runCli(
+        ['-C', tmpDir, 'validate_team_def'],
+        path.resolve(__dirname, '..', '..', '..'),
+      );
+      assert.equal(
+        result.status,
+        0,
+        `validate_team_def should treat disabled MCP toolsets as non-fatal.\nstderr:\n${result.stderr}`,
+      );
+      assert.match(
+        result.stdout,
+        /\[DISABLED\] disabled_server/,
+        'stdout should mark MCP disabled toolsets as DISABLED',
+      );
+      assert.match(
+        result.stdout,
+        /enabled: false|zero tools/i,
+        'stdout should explain that disabled MCP toolsets intentionally expose zero tools',
+      );
+    },
+  );
+
+  await withTempRtws(
+    [
+      {
+        relPath: '.minds/team.yaml',
+        content: [
+          'members:',
+          '  tester:',
+          '    name: Tester',
+          '    toolsets:',
           '      - definitely_missing_toolset',
           '',
         ].join('\n'),

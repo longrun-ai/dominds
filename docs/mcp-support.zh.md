@@ -75,6 +75,8 @@ Dominds 的行为：
 释放：
 
 - 智能体应调用 `mcp_release({"serverId":"<serverId>"})`（来自 `mcp_admin`）来释放当前对话持有的租赁运行时实例。
+- `mcp_restart({"serverId":"<serverId>"})` 会先启用被禁用的 server（`enabled: true`），再启动它。成功重启后，Dominds 会替换全局 runtime，并清理旧 runtime 上的全部对话 lease。
+- `mcp_disable({"serverId":"<serverId>"})` 会禁用 server（`enabled: false`），并停止已加载 runtime/lease。禁用 server 仍作为 0 工具 MCP toolset 可见，已配置手册也会带明确 disabled 提示继续可读。
 
 ### 共享行为（`truely-stateless: true`）
 
@@ -322,6 +324,11 @@ headers:
 version: 1
 servers:
   <serverId>:
+    # 可选运维开关。`mcp_disable` 会把它写成 false；`mcp_restart`
+    # 会在启动前写回 true。
+    # disabled server 不启动 runtime，并暴露为带 disabled 标记的 0 工具 toolset/手册。
+    enabled: true
+
     # 并发模型（重要）
     # - 默认 false：每对话客户端租赁（对有状态服务器更安全）
     # - True：跨对话共享客户端（仅适用于真正无状态的服务器）

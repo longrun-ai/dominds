@@ -384,7 +384,9 @@ Notes:
 
 - MCP tool names are global across all toolsets (built-in + MCP). Collisions cause tools to be
   skipped and should surface via Problems + logs.
-- `mcp_admin` is a built-in toolset that contains `mcp_restart` (best-effort per-server restart).
+- `mcp_admin` is a built-in toolset for MCP operations: `mcp_restart` enables/restarts a server,
+  `mcp_disable` disables a server while keeping its zero-tool toolset/manual visible, and
+  `mcp_release` releases the current dialog lease.
 - Optional manual information can live in `.minds/mcp.yaml` at `servers.<serverId>.manual`:
   - `contentFile`: the topic-file directory prefix for the formal runtime manual; the final `man({ "toolsetId": "<serverId>" })` content shown to the LLM is loaded from here
   - `content` / `sections`: inline team-management guidance shown in the `team_mgmt` MCP chapter (`sections` supports `[{ title, content }]` or `{ "<title>": "<content>" }`)
@@ -635,4 +637,5 @@ This avoids needing to grant full rtws access to configure the team.
   - Confirm the teammate is granted the relevant `<serverId>` toolset in `.minds/team.yaml`.
 - **MCP server keeps failing to (re)load**:
   - Check Problems details (missing env var, invalid tool name, collisions, connection errors).
-  - After fixing config, use `mcp_restart` (from `mcp_admin`) for a best-effort per-server restart.
+  - After fixing config, use `mcp_restart` (from `mcp_admin`) to enable/restart the server. Use
+    `mcp_disable` to disable it while keeping the configured manual visible as a zero-tool toolset.

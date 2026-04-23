@@ -105,6 +105,10 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
   }
 
   const sections: string[] = [];
+  const notice = meta.manualNoticeI18n?.[input.language]?.trim();
+  if (notice) {
+    sections.push(notice);
+  }
   if (missingTopics.length > 0) {
     sections.push(renderMissingTopicsWarning(input.language, input.toolsetId, missingTopics));
   }

@@ -21,7 +21,7 @@
 
 ### 1. mcp_restart
 
-Restart MCP service.
+Enable and rebuild an MCP service using the current `.minds/mcp.yaml` config. If the target server is currently `enabled: false`, this writes `enabled: true` before trying to start it. After a successful restart, Dominds replaces the global MCP runtime/tool registration and clears all dialog leases held on the old runtime. If restart fails, the old runtime/leases are kept so troubleshooting does not tear down a still-working connection.
 
 **Parameters:**
 
@@ -30,9 +30,7 @@ Restart MCP service.
 **Returns:**
 
 ```yaml
-status: ok|error
-serverId: <MCP service identifier>
-restarted_at: <restart timestamp>
+ok: restarted <MCP service identifier>
 ```
 
 **Errors:**
@@ -50,9 +48,13 @@ Release the current dialog's leased MCP runtime instance for a server. This stop
 **Returns:**
 
 ```yaml
-status: ok|error
-serverId: <MCP service identifier>
-released_at: <release timestamp>
+ok: released <MCP service identifier> for dialog <dialog identifier>
+```
+
+If the current dialog has no releasable lease, returns:
+
+```yaml
+ok: no active lease for <MCP service identifier> (or server is truely-stateless)
 ```
 
 **Errors:**
@@ -60,7 +62,21 @@ released_at: <release timestamp>
 - `MCP_NOT_FOUND`: MCP service doesn't exist
 - `MCP_NOT_RUNNING`: MCP service not running
 
-### 3. env_get
+### 3. mcp_disable
+
+Disable an MCP service and write `enabled: false` for that server in `.minds/mcp.yaml`. This does not wait for a replacement service to become available: it unconditionally clears the loaded runtime/leases. The disabled server remains visible as a zero-tool MCP toolset, with its manual clearly marked disabled.
+
+**Parameters:**
+
+- `serverId` (required): MCP service identifier
+
+**Returns:**
+
+```yaml
+ok: disabled <MCP service identifier> and set enabled=false
+```
+
+### 4. env_get
 
 Get environment variable (shared with os toolset).
 
@@ -73,7 +89,7 @@ Get environment variable (shared with os toolset).
 - Set: returns the environment variable value directly
 - Unset: returns `(unset)`
 
-### 4. env_set
+### 5. env_set
 
 Set an environment variable in the Dominds server process (shared with os toolset).
 
@@ -90,7 +106,7 @@ prev: <previous value or (unset)>
 next: <new value>
 ```
 
-### 5. env_unset
+### 6. env_unset
 
 Delete an environment variable from the Dominds server process (shared with os toolset).
 
@@ -124,6 +140,14 @@ mcp_release({
 });
 ```
 
+### Disable MCP Service
+
+```typescript
+mcp_disable({
+  serverId: 'browser',
+});
+```
+
 ### Get Environment Variable
 
 ```typescript
@@ -149,17 +173,15 @@ env_unset({
 });
 ```
 
-## YAML Output Contract
+## Output Contract
 
-`mcp_restart` / `mcp_release` use YAML output with `status`; environment variable tools use the return format described in their own sections:
+These tools use the short text return formats described in their own sections:
 
-- `status`: Operation status, `ok` for success, `error` for failure
-- Other fields: Additional information for specific operations
+- Success: starts with `ok:`
+- Failure: starts with `error:`
 
 On error, returns:
 
 ```yaml
-status: error
-error_code: <error code>
-message: <error message>
+error: <error message>
 ```

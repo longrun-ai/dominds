@@ -62,6 +62,7 @@ export type McpConfigLoadResult =
       invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>;
       serverIdsInYamlOrder: ReadonlyArray<string>;
       validServerIdsInYamlOrder: ReadonlyArray<string>;
+      disabledServerIdsInYamlOrder: ReadonlyArray<string>;
       rawText: string;
     }
   | { ok: false; errorText: string; rawText?: string };
@@ -86,6 +87,7 @@ export function parseMcpYaml(rawText: string): McpConfigLoadResult {
       invalidServers: res.invalidServers,
       serverIdsInYamlOrder: res.serverIdsInYamlOrder,
       validServerIdsInYamlOrder: res.validServerIdsInYamlOrder,
+      disabledServerIdsInYamlOrder: res.disabledServerIdsInYamlOrder,
       rawText,
     };
   } catch (err) {
@@ -98,6 +100,7 @@ function parseWorkspaceConfig(value: unknown): {
   invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>;
   serverIdsInYamlOrder: ReadonlyArray<string>;
   validServerIdsInYamlOrder: ReadonlyArray<string>;
+  disabledServerIdsInYamlOrder: ReadonlyArray<string>;
 } {
   const root = asRecord(value, 'mcp.yaml root');
 
@@ -112,10 +115,15 @@ function parseWorkspaceConfig(value: unknown): {
   const invalidServers: Array<{ serverId: string; errorText: string }> = [];
   const serverIdsInYamlOrder: string[] = [];
   const validServerIdsInYamlOrder: string[] = [];
+  const disabledServerIdsInYamlOrder: string[] = [];
 
   for (const [serverId, serverRaw] of Object.entries(serversRecord)) {
     serverIdsInYamlOrder.push(serverId);
     try {
+      if (isDisabledServerConfig(serverId, serverRaw)) {
+        disabledServerIdsInYamlOrder.push(serverId);
+        continue;
+      }
       servers[serverId] = parseServerConfig(serverId, serverRaw);
       validServerIdsInYamlOrder.push(serverId);
     } catch (err) {
@@ -131,7 +139,16 @@ function parseWorkspaceConfig(value: unknown): {
     invalidServers,
     serverIdsInYamlOrder,
     validServerIdsInYamlOrder,
+    disabledServerIdsInYamlOrder,
   };
+}
+
+function isDisabledServerConfig(serverId: string, value: unknown): boolean {
+  const obj = asRecord(value, `servers.${serverId}`);
+  const enabled = obj.enabled;
+  if (enabled === undefined || enabled === true) return false;
+  if (enabled === false) return true;
+  throw new Error(`Invalid mcp.yaml: servers.${serverId}.enabled must be a boolean`);
 }
 
 function parseServerConfig(serverId: string, value: unknown): McpServerConfig {

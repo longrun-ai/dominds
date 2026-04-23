@@ -79,7 +79,8 @@ Non-goals:
 Update triggers:
 
 - `.minds/mcp.yaml` reload
-- `mcp_restart`
+- `mcp_restart` (also writes `enabled: true` when a configured MCP server is disabled)
+- `mcp_disable` (writes `enabled: false`; the server remains visible as a zero-tool toolset/manual)
 - MCP collision-resolution re-registration
 
 ### 2. Runtime Lease Protocol
@@ -105,7 +106,8 @@ Update triggers:
 
 - first MCP tool call acquires a lease
 - `mcp_release`
-- restart/stop tears leases down
+- successful `mcp_restart` tears old-runtime leases down
+- `mcp_disable` tears loaded runtime leases down
 
 ### 3. Member Tool-Binding Protocol
 

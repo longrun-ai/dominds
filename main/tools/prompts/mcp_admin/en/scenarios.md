@@ -15,7 +15,9 @@
 
 ### Scenario Description
 
-When MCP service has issues or needs to refresh the connection, restart the MCP service.
+When an MCP service has issues, needs to refresh the connection, or is currently disabled with `enabled: false`, enable and restart the MCP service.
+
+`mcp_restart` writes `enabled: true` when the server is currently `enabled: false`, then tries to start it. After it succeeds, it clears every dialog lease on the old runtime; you do not need to call `mcp_release` first.
 
 ### Example
 
@@ -53,7 +55,21 @@ env_get({
 });
 ```
 
-## Scenario 4: MCP Connection Failure Handling
+## Scenario 4: Disable MCP Service
+
+### Scenario Description
+
+When an MCP server should stop providing tools, or troubleshooting needs to force it offline, disable that server and write `enabled: false`. A disabled server is still exposed as a zero-tool toolset, and its manual clearly marks it as disabled.
+
+### Example
+
+```typescript
+mcp_disable({
+  serverId: 'filesystem',
+});
+```
+
+## Scenario 5: MCP Connection Failure Handling
 
 ### Scenario Description
 
@@ -69,7 +85,7 @@ mcp_restart({
 });
 ```
 
-## Scenario 5: Resource Cleanup
+## Scenario 6: Resource Cleanup
 
 ### Scenario Description
 

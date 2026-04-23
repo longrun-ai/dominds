@@ -45,19 +45,22 @@ MCP 使用租约机制管理运行时资源，例如 HTTP 连接和 stdio 进程
 - **持有租约**：继续使用该运行时实例
 - **释放租约**：停止/断开并释放资源
 
+`mcp_restart` 会把目标 server 的 `enabled: false` 改回 `enabled: true`，然后尝试启动；成功时会替换全局 MCP runtime 并清掉旧 runtime 的所有对话 lease；不需要先逐个 `mcp_release`。如果需要强制禁用某个 server，使用 `mcp_disable`。
+
 ### 3. 环境变量
 
 与 os 工具集共享环境变量功能。
 
 ## 工具概览
 
-| 工具        | 功能          |
-| ----------- | ------------- |
-| mcp_restart | 重启 MCP 服务 |
-| mcp_release | 释放 MCP 租约 |
-| env_get     | 获取环境变量  |
-| env_set     | 设置环境变量  |
-| env_unset   | 删除环境变量  |
+| 工具        | 功能                |
+| ----------- | ------------------- |
+| mcp_restart | 启用并重启 MCP 服务 |
+| mcp_release | 释放 MCP 租约       |
+| mcp_disable | 禁用 MCP 服务       |
+| env_get     | 获取环境变量        |
+| env_set     | 设置环境变量        |
+| env_unset   | 删除环境变量        |
 
 ## 最佳实践
 
@@ -66,6 +69,7 @@ MCP 使用租约机制管理运行时资源，例如 HTTP 连接和 stdio 进程
 - **及时释放**：不再使用 MCP 时及时释放租约
 - **监控状态**：定期检查 MCP 连接状态
 - **错误处理**：处理连接失败的情况
+- **职责路由**：没有 `mcp_admin` 工具集的队友遇到 MCP 工具异常时，应按团队职责速查表/路由卡找到 MCP 排障或管理员队友协助，不要自行绕过。
 
 ### 2. 资源管理
 

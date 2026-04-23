@@ -26,8 +26,9 @@
 
 mcp_admin 是 Dominds 的 **MCP 管理工具集**，用于管理 MCP（Model Context Protocol）连接和资源：
 
-- **MCP 重启**：重启 MCP 服务
+- **MCP 重启/启用**：启用并重启 MCP 服务
 - **MCP 释放**：释放 MCP 租约
+- **MCP 禁用**：禁用 MCP 服务，并保留 0 工具 toolset/手册可见性
 - **环境变量**：读取、设置、删除本地环境变量
 
 ## 快速导航

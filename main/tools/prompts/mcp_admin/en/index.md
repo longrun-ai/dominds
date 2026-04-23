@@ -26,8 +26,9 @@
 
 mcp_admin is Dominds' **MCP administration toolset** for managing MCP (Model Context Protocol) connections and resources:
 
-- **MCP restart**: Restart MCP service
+- **MCP restart/enable**: Enable and restart MCP service
 - **MCP release**: Release MCP lease
+- **MCP disable**: Disable MCP service while keeping a zero-tool toolset/manual visible
 - **Environment variables**: Read, set, and delete local environment variables
 
 ## Quick Navigation

@@ -45,19 +45,22 @@ MCP uses a lease mechanism to manage runtime resources such as HTTP connections 
 - **Hold lease**: Keep using that runtime instance
 - **Release lease**: Stop/disconnect and release resources
 
+`mcp_restart` changes the target server from `enabled: false` back to `enabled: true`, then tries to start it. When it succeeds, it replaces the global MCP runtime and clears all dialog leases on the old runtime; you do not need to call `mcp_release` first. To force a server into the disabled state, use `mcp_disable`.
+
 ### 3. Environment Variables
 
 Shared with os toolset for environment variable functionality.
 
 ## Tool Overview
 
-| Tool        | Function                    |
-| ----------- | --------------------------- |
-| mcp_restart | Restart MCP service         |
-| mcp_release | Release MCP lease           |
-| env_get     | Get environment variable    |
-| env_set     | Set environment variable    |
-| env_unset   | Delete environment variable |
+| Tool        | Function                       |
+| ----------- | ------------------------------ |
+| mcp_restart | Enable and restart MCP service |
+| mcp_release | Release MCP lease              |
+| mcp_disable | Disable MCP service            |
+| env_get     | Get environment variable       |
+| env_set     | Set environment variable       |
+| env_unset   | Delete environment variable    |
 
 ## Best Practices
 
@@ -66,6 +69,7 @@ Shared with os toolset for environment variable functionality.
 - **Release timely**: Release lease when MCP is no longer used
 - **Monitor status**: Regularly check MCP connection status
 - **Error handling**: Handle connection failures
+- **Responsibility routing**: teammates without the `mcp_admin` toolset should use the team responsibility quick table / routing cards to ask the MCP troubleshooter or administrator for help when MCP tools stop working; they should not improvise a bypass.
 
 ### 2. Resource Management
 

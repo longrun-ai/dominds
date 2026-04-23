@@ -9,6 +9,7 @@ import { createLogger } from '../log';
 import {
   isMcpToolsetLeasedToDialog,
   releaseMcpToolsetLeaseForDialog,
+  requestMcpServerDisable,
   requestMcpServerRestart,
 } from '../mcp/supervisor';
 import { formatSystemNoticePrefix } from '../runtime/driver-messages';
@@ -36,6 +37,10 @@ type McpReleaseArgs = Readonly<{
   serverId: string;
 }>;
 
+type McpDisableArgs = Readonly<{
+  serverId: string;
+}>;
+
 type McpLeaseReminderMeta = Readonly<{
   kind: 'mcp_lease';
   serverId: string;
@@ -57,6 +62,14 @@ function parseMcpReleaseArgs(args: ToolArguments): McpReleaseArgs {
   return { serverId };
 }
 
+function parseMcpDisableArgs(args: ToolArguments): McpDisableArgs {
+  const serverId = args.serverId;
+  if (typeof serverId !== 'string' || !serverId.trim()) {
+    throw new Error(`mcp_disable.serverId must be a non-empty string`);
+  }
+  return { serverId };
+}
+
 function isMcpLeaseReminderMeta(value: unknown): value is McpLeaseReminderMeta {
   if (!isRecord(value) || Array.isArray(value)) return false;
   if (value.kind !== 'mcp_lease') return false;
@@ -69,7 +82,7 @@ const mcpRestartSchema: JsonSchema = {
     serverId: {
       type: 'string',
       description:
-        "MCP server id from `.minds/mcp.yaml` (e.g., 'sdk_stdio'). Restarts this server only.",
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'sdk_stdio'). Enables the server if needed, then restarts this server only.",
     },
   },
   required: ['serverId'],
@@ -89,14 +102,27 @@ const mcpReleaseSchema: JsonSchema = {
   additionalProperties: false,
 };
 
+const mcpDisableSchema: JsonSchema = {
+  type: 'object',
+  properties: {
+    serverId: {
+      type: 'string',
+      description:
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Stops any loaded runtime/leases and writes servers.<id>.enabled=false.",
+    },
+  },
+  required: ['serverId'],
+  additionalProperties: false,
+};
+
 export const mcpRestartTool: FuncTool = {
   type: 'func',
   name: 'mcp_restart',
   description:
-    'Restart a configured MCP server using the current `.minds/mcp.yaml` config (best-effort).',
+    'Enable a configured MCP server if needed, then restart it using the current `.minds/mcp.yaml` config.',
   descriptionI18n: {
-    en: 'Restart a configured MCP server using the current `.minds/mcp.yaml` config (best-effort).',
-    zh: '使用当前的 `.minds/mcp.yaml` 配置重启指定的 MCP 服务器（尽力而为）。',
+    en: 'Enable a configured MCP server if needed, then restart it using the current `.minds/mcp.yaml` config.',
+    zh: '按需启用指定 MCP 服务器，然后使用当前 `.minds/mcp.yaml` 配置重启它。',
   },
   parameters: mcpRestartSchema,
   argsValidation: 'dominds',
@@ -166,6 +192,42 @@ export const mcpReleaseTool: FuncTool = {
     }
     notifyToolAvailabilityRuntimeLeaseChanged(`mcp_release:${parsed.serverId}:${dialogKey}`);
     return toolSuccess(`ok: released ${parsed.serverId} for dialog ${dialogKey}`);
+  },
+};
+
+export const mcpDisableTool: FuncTool = {
+  type: 'func',
+  name: 'mcp_disable',
+  description:
+    'Disable a configured MCP server, clear its loaded runtime/leases, and persist enabled=false in `.minds/mcp.yaml`.',
+  descriptionI18n: {
+    en: 'Disable a configured MCP server, clear its loaded runtime/leases, and persist enabled=false in `.minds/mcp.yaml`.',
+    zh: '禁用指定 MCP 服务器，清理其已加载运行时/租约，并在 `.minds/mcp.yaml` 中持久写入 enabled=false。',
+  },
+  parameters: mcpDisableSchema,
+  argsValidation: 'dominds',
+  call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
+    const parsed = parseMcpDisableArgs(args);
+
+    const res = await requestMcpServerDisable(parsed.serverId);
+
+    if (res.ok) {
+      log.info('mcp_disable', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: true,
+      });
+    } else {
+      log.warn('mcp_disable failed', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: false,
+        errorText: res.errorText,
+      });
+      return toolFailure(`error: ${res.errorText}`);
+    }
+
+    return toolSuccess(`ok: disabled ${parsed.serverId} and set enabled=false`);
   },
 };
 

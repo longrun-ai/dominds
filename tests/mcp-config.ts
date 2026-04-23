@@ -101,6 +101,39 @@ servers:
   assert.equal(invalid.invalidServers.length, 1);
   assert.match(invalid.invalidServers[0]?.errorText ?? '', /headers\.Authorization\.prefix/);
 
+  const disabled = parseMcpYaml(`
+version: 1
+servers:
+  disabled_http:
+    enabled: false
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+`);
+
+  assert.equal(disabled.ok, true);
+  if (!disabled.ok) return;
+  assert.deepEqual(Object.keys(disabled.config.servers), []);
+  assert.deepEqual(disabled.serverIdsInYamlOrder, ['disabled_http']);
+  assert.deepEqual(disabled.validServerIdsInYamlOrder, []);
+  assert.deepEqual(disabled.disabledServerIdsInYamlOrder, ['disabled_http']);
+
+  const badEnabled = parseMcpYaml(`
+version: 1
+servers:
+  bad_enabled:
+    enabled: "false"
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+`);
+  assert.equal(badEnabled.ok, true);
+  if (!badEnabled.ok) return;
+  assert.deepEqual(badEnabled.invalidServers, [
+    {
+      serverId: 'bad_enabled',
+      errorText: 'Invalid mcp.yaml: servers.bad_enabled.enabled must be a boolean',
+    },
+  ]);
+
   console.log('mcp config tests: ok');
 }
 

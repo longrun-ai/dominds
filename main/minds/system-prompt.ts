@@ -63,6 +63,7 @@ export type BuildSystemPromptInput = {
 export type McpToolsetRuntimeNotice = Readonly<{
   toolsetName: string;
   transport: 'stdio' | 'streamable_http' | 'invalid' | 'unknown';
+  status: 'temporarily_unavailable' | 'config_invalid' | 'disabled';
   errorText?: string;
 }>;
 
@@ -390,26 +391,35 @@ export function formatMcpToolsetRuntimeNote(
   const lines =
     language === 'zh'
       ? [
-          '以下 MCP toolset 已配置给你，且在 `.minds/mcp.yaml` 中有声明，但当前没有加载进运行时工具注册表。',
-          '请将它们视为“当前暂时不可达”的运行时情况，例如 stdio transport 进程暂时启动失败，或 streamable HTTP transport 当前无法连接；这不代表你的权限被撤销，也不应视为系统级功能降级。',
+          '以下 MCP toolset 已配置给你，且在 `.minds/mcp.yaml` 中有声明，但当前不提供可调用的运行时 MCP 工具。',
+          '其中有些可能是暂时不可达（例如 stdio transport 进程启动失败，或 streamable HTTP transport 当前无法连接），有些可能是被明确禁用；这不代表你的权限被撤销，也不应视为系统级功能降级。',
           ...notices.map((notice) => {
+            if (notice.status === 'disabled') {
+              return `- \`${notice.toolsetName}\`：状态=已禁用；这是一个已配置但当前刻意暴露为 0 工具的 MCP toolset。如任务依赖它，请按团队职责速查表联系 MCP 排障/管理员处理。`;
+            }
             const reason =
               typeof notice.errorText === 'string' && notice.errorText.trim() !== ''
                 ? `；最近错误：${notice.errorText}`
                 : '';
-            return `- \`${notice.toolsetName}\`：transport=${formatTransportLabel(language, notice.transport)}；状态=暂时不可达${reason}`;
+            const status = notice.status === 'config_invalid' ? '配置无效' : '暂时不可达';
+            return `- \`${notice.toolsetName}\`：transport=${formatTransportLabel(language, notice.transport)}；状态=${status}${reason}`;
           }),
           '若当前任务依赖这些能力，应明确说明对应 MCP toolset 眼下不可用，并优先继续使用其余可用工具/路径推进。',
         ]
       : [
-          'The following MCP toolsets are assigned to you and declared in `.minds/mcp.yaml`, but they are not currently loaded into the runtime tool registry.',
-          'Treat this as a temporary runtime-availability condition, for example a stdio transport process failing to start right now, or a streamable HTTP transport being unreachable right now. This does not mean your permission was revoked, and it should not be treated as a system-level capability downgrade.',
+          'The following MCP toolsets are assigned to you and declared in `.minds/mcp.yaml`, but they do not currently provide callable runtime MCP tools.',
+          'Some may be temporarily unavailable (for example a stdio transport process failing to start right now, or a streamable HTTP transport being unreachable right now), and some may be explicitly disabled. This does not mean your permission was revoked, and it should not be treated as a system-level capability downgrade.',
           ...notices.map((notice) => {
+            if (notice.status === 'disabled') {
+              return `- \`${notice.toolsetName}\`: status=disabled; this is a configured MCP toolset intentionally exposed with zero tools. If the task depends on it, use the team responsibility quick table to contact the MCP troubleshooter or administrator.`;
+            }
             const reason =
               typeof notice.errorText === 'string' && notice.errorText.trim() !== ''
                 ? `; latest error: ${notice.errorText}`
                 : '';
-            return `- \`${notice.toolsetName}\`: transport=${formatTransportLabel(language, notice.transport)}; status=temporarily unavailable${reason}`;
+            const status =
+              notice.status === 'config_invalid' ? 'config invalid' : 'temporarily unavailable';
+            return `- \`${notice.toolsetName}\`: transport=${formatTransportLabel(language, notice.transport)}; status=${status}${reason}`;
           }),
           'If the current task depends on one of these capabilities, say that the corresponding MCP toolset is unavailable right now and continue with other available tools or paths first.',
         ];

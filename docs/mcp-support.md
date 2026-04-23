@@ -98,6 +98,12 @@ Releasing:
 
 - Agents should call `mcp_release({"serverId":"<serverId>"})` (from `mcp_admin`) to release the
   leased runtime instance for the current dialog.
+- `mcp_restart({"serverId":"<serverId>"})` enables a disabled server (`enabled: true`) before
+  starting it. After a successful restart, Dominds replaces the global runtime and clears all dialog
+  leases on the old runtime.
+- `mcp_disable({"serverId":"<serverId>"})` disables a server (`enabled: false`) and stops any loaded
+  runtime/leases. Disabled servers remain visible as zero-tool MCP toolsets, and their configured
+  manual remains readable with an explicit disabled notice.
 
 ### Shared behavior (`truely-stateless: true`)
 
@@ -397,6 +403,11 @@ This is a Dominds-oriented schema. It is intentionally small and should be easy 
 version: 1
 servers:
   <serverId>:
+    # Optional operational switch. `mcp_disable` writes this to false; `mcp_restart`
+    # writes it back to true before starting the server.
+    # Disabled servers start no runtime and expose a zero-tool toolset/manual marked disabled.
+    enabled: true
+
     # Concurrency model (IMPORTANT)
     # - Default false: per-dialog client leasing (safer for stateful servers)
     # - True: shared client across dialogs (only for servers that are truly stateless)

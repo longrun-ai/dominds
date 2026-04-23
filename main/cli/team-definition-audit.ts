@@ -11,11 +11,17 @@ export type McpDeclaredToolsets =
       kind: 'loaded';
       declaredServerIds: ReadonlySet<string>;
       invalidServerIds: ReadonlySet<string>;
+      disabledServerIds: ReadonlySet<string>;
     }>;
 
 export type ToolsetAuditItem = Readonly<{
   toolsetName: string;
-  status: 'registered' | 'mcp_declared_unloaded' | 'mcp_declared_invalid' | 'missing';
+  status:
+    | 'registered'
+    | 'mcp_declared_unloaded'
+    | 'mcp_declared_invalid'
+    | 'mcp_declared_disabled'
+    | 'missing';
 }>;
 
 export type ToolsetAuditReport = Readonly<{
@@ -69,6 +75,7 @@ export async function readMcpDeclaredToolsets(): Promise<McpDeclaredToolsets> {
     kind: 'loaded',
     declaredServerIds: new Set(parsed.serverIdsInYamlOrder),
     invalidServerIds: new Set(parsed.invalidServers.map((s) => s.serverId)),
+    disabledServerIds: new Set(parsed.disabledServerIdsInYamlOrder),
   };
 }
 
@@ -87,20 +94,26 @@ export function buildToolsetAuditReport(params: {
     const explicitToolsets = listExplicitToolsets(member);
     const items: ToolsetAuditItem[] = [];
     for (const toolsetName of explicitToolsets) {
-      if (registeredToolsets.has(toolsetName)) {
-        items.push({ toolsetName, status: 'registered' });
-        continue;
-      }
-
       if (params.mcp.kind === 'loaded' && params.mcp.declaredServerIds.has(toolsetName)) {
         if (params.mcp.invalidServerIds.has(toolsetName)) {
           items.push({ toolsetName, status: 'mcp_declared_invalid' });
           warnings.push(
             `@${member.id}: toolset '${toolsetName}' is declared in mcp.yaml but server config is invalid.`,
           );
+        } else if (params.mcp.disabledServerIds.has(toolsetName)) {
+          items.push({ toolsetName, status: 'mcp_declared_disabled' });
         } else {
-          items.push({ toolsetName, status: 'mcp_declared_unloaded' });
+          if (registeredToolsets.has(toolsetName)) {
+            items.push({ toolsetName, status: 'registered' });
+          } else {
+            items.push({ toolsetName, status: 'mcp_declared_unloaded' });
+          }
         }
+        continue;
+      }
+
+      if (registeredToolsets.has(toolsetName)) {
+        items.push({ toolsetName, status: 'registered' });
         continue;
       }
 
@@ -133,6 +146,7 @@ function countByStatus(
     registered: 0,
     mcp_declared_unloaded: 0,
     mcp_declared_invalid: 0,
+    mcp_declared_disabled: 0,
     missing: 0,
   };
   for (const memberReport of report.byMember) {
@@ -147,6 +161,7 @@ function statusLabel(status: ToolsetAuditItem['status']): string {
   if (status === 'registered') return 'OK';
   if (status === 'mcp_declared_unloaded') return 'DEFERRED';
   if (status === 'mcp_declared_invalid') return 'INVALID';
+  if (status === 'mcp_declared_disabled') return 'DISABLED';
   return 'MISS';
 }
 
@@ -173,18 +188,18 @@ export function printToolsetAudit(
     process.stdout.write('- MCP config: invalid (`.minds/mcp.yaml` parse/read failed)\n');
   } else {
     process.stdout.write(
-      `- MCP config: loaded (declared servers: ${report.mcp.declaredServerIds.size}, invalid server configs: ${report.mcp.invalidServerIds.size})\n`,
+      `- MCP config: loaded (declared servers: ${report.mcp.declaredServerIds.size}, invalid server configs: ${report.mcp.invalidServerIds.size}, disabled servers: ${report.mcp.disabledServerIds.size})\n`,
     );
   }
   process.stdout.write(
-    `- Summary: ${counts.registered} OK, ${counts.mcp_declared_unloaded} DEFERRED, ${counts.mcp_declared_invalid} INVALID, ${counts.missing} MISS\n`,
+    `- Summary: ${counts.registered} OK, ${counts.mcp_declared_unloaded} DEFERRED, ${counts.mcp_declared_disabled} DISABLED, ${counts.mcp_declared_invalid} INVALID, ${counts.missing} MISS\n`,
   );
   if (options?.includeTransientLegend !== false) {
     process.stdout.write(
       '- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n',
     );
     process.stdout.write(
-      '- Status notes: `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n',
+      '- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n',
     );
   }
 

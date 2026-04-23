@@ -19,11 +19,11 @@ function printUsage(): void {
     'Validate explicit toolset declarations in `.minds/team.yaml` against the current toolset registry and `.minds/mcp.yaml` declarations.',
   );
   console.log(
-    'MCP-declared but currently unloaded toolsets are reported as `DEFERRED` because they are often transient runtime availability issues rather than permanent team-definition errors.',
+    'MCP-declared but currently unloaded toolsets are reported as `DEFERRED`; disabled MCP toolsets are reported as `DISABLED` when `enabled: false` is set in `.minds/mcp.yaml`.',
   );
   console.log('');
   console.log('Exit codes:');
-  console.log('  0  No hard definition errors (`OK` / `DEFERRED` only)');
+  console.log('  0  No hard definition errors (`OK` / `DEFERRED` / `DISABLED` only)');
   console.log('  2  Hard definition errors found (`INVALID` / `MISS`)');
   console.log('');
   console.log('Examples:');
@@ -85,7 +85,7 @@ export async function main(): Promise<void> {
 
     process.stdout.write('# Team Definition Validation\n');
     process.stdout.write(
-      'This command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; if the MCP service recovers, rerun this command before editing `team.yaml`.\n',
+      'This command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n',
     );
     printToolsetAudit(report, { heading: '## Definition Audit' });
 

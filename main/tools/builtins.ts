@@ -17,7 +17,7 @@ import {
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { buildBuiltinManualSpec } from './manual/spec';
-import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
+import { mcpDisableTool, mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
   addPersonalMemoryTool,
   addSharedMemoryTool,
@@ -125,6 +125,7 @@ registerTool(envUnsetTool);
 // MCP tools (local testing/ops)
 registerTool(mcpRestartTool);
 registerTool(mcpReleaseTool);
+registerTool(mcpDisableTool);
 
 // Memory tools
 registerTool(addPersonalMemoryTool);
@@ -217,6 +218,7 @@ setToolsetMeta('os', {
 registerToolset('mcp_admin', [
   mcpRestartTool,
   mcpReleaseTool,
+  mcpDisableTool,
   envGetTool,
   envSetTool,
   envUnsetTool,
