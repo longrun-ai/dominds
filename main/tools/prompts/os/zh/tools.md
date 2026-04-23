@@ -90,16 +90,8 @@ stderr: <请求时返回 stderr 输出>
 
 **返回：**
 
-```yaml
-status: ok|error
-key: <环境变量名称>
-value: <环境变量值>
-retrieved_at: <获取时间戳>
-```
-
-**错误：**
-
-- `ENV_NOT_FOUND`：环境变量不存在
+- 已设置：直接返回环境变量值
+- 未设置：返回 `(unset)`
 
 ### 5. env_set
 
@@ -113,10 +105,9 @@ retrieved_at: <获取时间戳>
 **返回：**
 
 ```yaml
-status: ok|error
-key: <环境变量名称>
-value: <环境变量值>
-set_at: <设置时间戳>
+ok: <环境变量名称>
+prev: <之前的值或 (unset)>
+next: <新的值>
 ```
 
 ### 6. env_unset
@@ -130,9 +121,9 @@ set_at: <设置时间戳>
 **返回：**
 
 ```yaml
-status: ok|error
-key: <环境变量名称>
-unset_at: <删除时间戳>
+ok: <环境变量名称>
+prev: <之前的值或 (unset)>
+next: (unset)
 ```
 
 ## 使用示例

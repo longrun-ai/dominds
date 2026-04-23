@@ -28,7 +28,7 @@ mcp_admin 是 Dominds 的 **MCP 管理工具集**，用于管理 MCP（Model Con
 
 - **MCP 重启**：重启 MCP 服务
 - **MCP 释放**：释放 MCP 租约
-- **环境变量**：读取环境变量
+- **环境变量**：读取、设置、删除本地环境变量
 
 ## 快速导航
 
@@ -43,7 +43,8 @@ mcp_admin 是 Dominds 的 **MCP 管理工具集**，用于管理 MCP（Model Con
 
 - 状态：已实现
 - 主要实现文件：
-  - 工具实现：`dominds/main/tools/mcp-admin.ts`
+  - MCP 工具实现：`dominds/main/tools/mcp.ts`
+  - 环境变量工具实现：`dominds/main/tools/env.ts`
   - toolset 元信息：`dominds/main/tools/builtins.ts`、`dominds/main/tools/registry.ts`
 
 ## 核心概念

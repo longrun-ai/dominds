@@ -90,7 +90,7 @@ shell_cmd({
 ### 示例
 
 ```typescript
-// 查看所有环境变量
+// 查看单个环境变量
 env_get({
   key: 'PATH',
 });

@@ -17,36 +17,8 @@ const log = createLogger('tools/env');
 
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const DEFAULT_ALLOWED_PREFIXES: ReadonlyArray<string> = ['MCP_', 'UX_', 'DOMINDS_TEST_'];
-const DEFAULT_ALLOWED_EXACT: ReadonlyArray<string> = ['DOMINDS_LOG_LEVEL'];
-
-function isAllowedEnvKey(key: string): boolean {
-  if (!ENV_KEY_RE.test(key)) return false;
-  if (DEFAULT_ALLOWED_EXACT.includes(key)) return true;
-  for (const p of DEFAULT_ALLOWED_PREFIXES) {
-    if (key.startsWith(p)) return true;
-  }
-  return false;
-}
-
-function isSensitiveKeyName(key: string): boolean {
-  const upper = key.toUpperCase();
-  return (
-    upper.includes('KEY') ||
-    upper.includes('TOKEN') ||
-    upper.includes('SECRET') ||
-    upper.includes('PASSWORD')
-  );
-}
-
-function redactValue(value: string): string {
-  if (value.length <= 4) return '<redacted>';
-  return `<redacted len=${value.length} prefix=${JSON.stringify(value.slice(0, 2))} suffix=${JSON.stringify(value.slice(-2))}>`;
-}
-
 type EnvGetArgs = Readonly<{
   key: string;
-  reveal?: boolean;
 }>;
 
 type EnvSetArgs = Readonly<{
@@ -63,11 +35,8 @@ function parseEnvGetArgs(args: ToolArguments): EnvGetArgs {
   if (typeof key !== 'string' || !key.trim()) {
     throw new Error(`env_get.key must be a non-empty string`);
   }
-  const revealVal = args.reveal;
-  if (revealVal !== undefined && typeof revealVal !== 'boolean') {
-    throw new Error(`env_get.reveal must be a boolean if provided`);
-  }
-  return { key, reveal: revealVal };
+  assertValidEnvKey('env_get', key);
+  return { key };
 }
 
 function parseEnvSetArgs(args: ToolArguments): EnvSetArgs {
@@ -75,6 +44,7 @@ function parseEnvSetArgs(args: ToolArguments): EnvSetArgs {
   if (typeof key !== 'string' || !key.trim()) {
     throw new Error(`env_set.key must be a non-empty string`);
   }
+  assertValidEnvKey('env_set', key);
   const value = args.value;
   if (typeof value !== 'string') {
     throw new Error(`env_set.value must be a string`);
@@ -87,6 +57,7 @@ function parseEnvUnsetArgs(args: ToolArguments): EnvUnsetArgs {
   if (typeof key !== 'string' || !key.trim()) {
     throw new Error(`env_unset.key must be a non-empty string`);
   }
+  assertValidEnvKey('env_unset', key);
   return { key };
 }
 
@@ -94,11 +65,6 @@ const envGetSchema: JsonSchema = {
   type: 'object',
   properties: {
     key: { type: 'string', description: 'Environment variable name to read' },
-    reveal: {
-      type: 'boolean',
-      description:
-        'When true, returns the raw value. For keys that look like secrets, default is redacted unless reveal=true.',
-    },
   },
   required: ['key'],
   additionalProperties: false,
@@ -123,13 +89,10 @@ const envUnsetSchema: JsonSchema = {
   additionalProperties: false,
 };
 
-function assertAllowedKey(key: string): void {
-  if (!isAllowedEnvKey(key)) {
+function assertValidEnvKey(toolName: string, key: string): void {
+  if (!ENV_KEY_RE.test(key)) {
     throw new Error(
-      `env key '${key}' is not allowed. Allowed: ${[
-        ...DEFAULT_ALLOWED_EXACT,
-        ...DEFAULT_ALLOWED_PREFIXES.map((p) => `${p}*`),
-      ].join(', ')}`,
+      `${toolName}.key must be a valid environment variable name matching ${ENV_KEY_RE.source}`,
     );
   }
 }
@@ -146,7 +109,6 @@ export const envGetTool: FuncTool = {
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvGetArgs(args);
-    assertAllowedKey(parsed.key);
 
     const raw = process.env[parsed.key];
     const value = raw === undefined ? undefined : String(raw);
@@ -158,8 +120,6 @@ export const envGetTool: FuncTool = {
     });
 
     if (value === undefined) return toolSuccess('(unset)');
-    if (parsed.reveal === true) return toolSuccess(value);
-    if (isSensitiveKeyName(parsed.key)) return toolSuccess(redactValue(value));
     return toolSuccess(value);
   },
 };
@@ -176,7 +136,6 @@ export const envSetTool: FuncTool = {
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvSetArgs(args);
-    assertAllowedKey(parsed.key);
 
     const prev = process.env[parsed.key];
     process.env[parsed.key] = parsed.value;
@@ -188,13 +147,8 @@ export const envSetTool: FuncTool = {
       nextLen: parsed.value.length,
     });
 
-    const prevStr =
-      prev === undefined
-        ? '(unset)'
-        : isSensitiveKeyName(parsed.key)
-          ? redactValue(String(prev))
-          : String(prev);
-    const nextStr = isSensitiveKeyName(parsed.key) ? redactValue(parsed.value) : parsed.value;
+    const prevStr = prev === undefined ? '(unset)' : String(prev);
+    const nextStr = parsed.value;
     return toolSuccess(`ok: ${parsed.key}\nprev: ${prevStr}\nnext: ${nextStr}`);
   },
 };
@@ -211,7 +165,6 @@ export const envUnsetTool: FuncTool = {
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> => {
     const parsed = parseEnvUnsetArgs(args);
-    assertAllowedKey(parsed.key);
 
     const prev = process.env[parsed.key];
     delete process.env[parsed.key];
@@ -222,12 +175,7 @@ export const envUnsetTool: FuncTool = {
       prevSet: prev !== undefined,
     });
 
-    const prevStr =
-      prev === undefined
-        ? '(unset)'
-        : isSensitiveKeyName(parsed.key)
-          ? redactValue(String(prev))
-          : String(prev);
+    const prevStr = prev === undefined ? '(unset)' : String(prev);
     return toolSuccess(`ok: ${parsed.key}\nprev: ${prevStr}\nnext: (unset)`);
   },
 };

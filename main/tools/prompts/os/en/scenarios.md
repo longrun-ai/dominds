@@ -90,7 +90,7 @@ Manage environment variables.
 ### Example
 
 ```typescript
-// View all environment variables
+// View one environment variable
 env_get({
   key: 'PATH',
 });

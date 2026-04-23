@@ -56,6 +56,8 @@ MCP 使用租约机制管理运行时资源，例如 HTTP 连接和 stdio 进程
 | mcp_restart | 重启 MCP 服务 |
 | mcp_release | 释放 MCP 租约 |
 | env_get     | 获取环境变量  |
+| env_set     | 设置环境变量  |
+| env_unset   | 删除环境变量  |
 
 ## 最佳实践
 

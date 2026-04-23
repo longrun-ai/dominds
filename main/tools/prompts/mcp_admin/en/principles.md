@@ -51,11 +51,13 @@ Shared with os toolset for environment variable functionality.
 
 ## Tool Overview
 
-| Tool        | Function                 |
-| ----------- | ------------------------ |
-| mcp_restart | Restart MCP service      |
-| mcp_release | Release MCP lease        |
-| env_get     | Get environment variable |
+| Tool        | Function                    |
+| ----------- | --------------------------- |
+| mcp_restart | Restart MCP service         |
+| mcp_release | Release MCP lease           |
+| env_get     | Get environment variable    |
+| env_set     | Set environment variable    |
+| env_unset   | Delete environment variable |
 
 ## Best Practices
 

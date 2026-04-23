@@ -90,16 +90,8 @@ Get environment variable.
 
 **Returns:**
 
-```yaml
-status: ok|error
-key: <environment variable name>
-value: <environment variable value>
-retrieved_at: <retrieval timestamp>
-```
-
-**Errors:**
-
-- `ENV_NOT_FOUND`: Environment variable doesn't exist
+- Set: returns the environment variable value directly
+- Unset: returns `(unset)`
 
 ### 5. env_set
 
@@ -113,10 +105,9 @@ Set environment variable.
 **Returns:**
 
 ```yaml
-status: ok|error
-key: <environment variable name>
-value: <environment variable value>
-set_at: <set timestamp>
+ok: <environment variable name>
+prev: <previous value or (unset)>
+next: <new value>
 ```
 
 ### 6. env_unset
@@ -130,9 +121,9 @@ Delete environment variable.
 **Returns:**
 
 ```yaml
-status: ok|error
-key: <environment variable name>
-unset_at: <deletion timestamp>
+ok: <environment variable name>
+prev: <previous value or (unset)>
+next: (unset)
 ```
 
 ## Usage Examples

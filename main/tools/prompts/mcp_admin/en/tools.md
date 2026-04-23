@@ -70,16 +70,41 @@ Get environment variable (shared with os toolset).
 
 **Returns:**
 
+- Set: returns the environment variable value directly
+- Unset: returns `(unset)`
+
+### 4. env_set
+
+Set an environment variable in the Dominds server process (shared with os toolset).
+
+**Parameters:**
+
+- `key` (required): Environment variable name
+- `value` (required): Environment variable value
+
+**Returns:**
+
 ```yaml
-status: ok|error
-key: <environment variable name>
-value: <environment variable value>
-retrieved_at: <retrieval timestamp>
+ok: <environment variable name>
+prev: <previous value or (unset)>
+next: <new value>
 ```
 
-**Errors:**
+### 5. env_unset
 
-- `ENV_NOT_FOUND`: Environment variable doesn't exist
+Delete an environment variable from the Dominds server process (shared with os toolset).
+
+**Parameters:**
+
+- `key` (required): Environment variable name
+
+**Returns:**
+
+```yaml
+ok: <environment variable name>
+prev: <previous value or (unset)>
+next: (unset)
+```
 
 ## Usage Examples
 
@@ -107,9 +132,26 @@ env_get({
 });
 ```
 
+### Set Environment Variable
+
+```typescript
+env_set({
+  key: 'MCP_AUTH_TOKEN',
+  value: 'local-token',
+});
+```
+
+### Delete Environment Variable
+
+```typescript
+env_unset({
+  key: 'MCP_AUTH_TOKEN',
+});
+```
+
 ## YAML Output Contract
 
-All tool outputs use YAML format for programmatic processing:
+`mcp_restart` / `mcp_release` use YAML output with `status`; environment variable tools use the return format described in their own sections:
 
 - `status`: Operation status, `ok` for success, `error` for failure
 - Other fields: Additional information for specific operations

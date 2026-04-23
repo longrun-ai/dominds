@@ -56,34 +56,6 @@
 - Restart daemon process
 - Check daemon process logs
 
-### ENV_NOT_FOUND
-
-**Description:** Environment variable doesn't exist.
-
-**Cause:**
-
-- Environment variable not set
-- Environment variable has been deleted
-
-**Solution:**
-
-- Use `env_set` to set environment variable
-- Check if environment variable name is correct
-
-### ENV_PERMISSION_DENIED
-
-**Description:** Insufficient permissions for environment variable operation.
-
-**Cause:**
-
-- Some environment variables require root permissions
-- System-protected environment variables
-
-**Solution:**
-
-- Use sudo to elevate permissions
-- Avoid modifying system-protected environment variables
-
 ## Frequently Asked Questions
 
 ### Q: What security risks does shell command execution have?

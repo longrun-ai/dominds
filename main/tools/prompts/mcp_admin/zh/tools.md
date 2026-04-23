@@ -70,16 +70,41 @@ released_at: <释放时间戳>
 
 **返回：**
 
+- 已设置：直接返回环境变量值
+- 未设置：返回 `(unset)`
+
+### 4. env_set
+
+设置 Dominds 服务进程的环境变量（与 os 工具集共享）。
+
+**参数：**
+
+- `key`（必需）：环境变量名称
+- `value`（必需）：环境变量值
+
+**返回：**
+
 ```yaml
-status: ok|error
-key: <环境变量名称>
-value: <环境变量值>
-retrieved_at: <获取时间戳>
+ok: <环境变量名称>
+prev: <之前的值或 (unset)>
+next: <新的值>
 ```
 
-**错误：**
+### 5. env_unset
 
-- `ENV_NOT_FOUND`：环境变量不存在
+删除 Dominds 服务进程的环境变量（与 os 工具集共享）。
+
+**参数：**
+
+- `key`（必需）：环境变量名称
+
+**返回：**
+
+```yaml
+ok: <环境变量名称>
+prev: <之前的值或 (unset)>
+next: (unset)
+```
 
 ## 使用示例
 
@@ -107,9 +132,26 @@ env_get({
 });
 ```
 
+### 设置环境变量
+
+```typescript
+env_set({
+  key: 'MCP_AUTH_TOKEN',
+  value: 'local-token',
+});
+```
+
+### 删除环境变量
+
+```typescript
+env_unset({
+  key: 'MCP_AUTH_TOKEN',
+});
+```
+
 ## YAML 输出契约
 
-所有工具的输出都使用 YAML 格式，便于程序化处理：
+`mcp_restart` / `mcp_release` 使用带 `status` 的 YAML 输出；环境变量工具使用各自工具小节描述的返回格式：
 
 - `status`：操作状态，`ok` 表示成功，`error` 表示失败
 - 其他字段：具体操作的附加信息

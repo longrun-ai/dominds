@@ -68,20 +68,6 @@
 - Check lease status
 - Contact administrator
 
-### ENV_NOT_FOUND
-
-**Description:** Environment variable doesn't exist.
-
-**Cause:**
-
-- Environment variable not set
-- Environment variable name is incorrect
-
-**Solution:**
-
-- Check environment variable name
-- Set required environment variable
-
 ## Frequently Asked Questions
 
 ### Q: What is an MCP lease?

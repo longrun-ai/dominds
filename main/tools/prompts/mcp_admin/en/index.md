@@ -28,7 +28,7 @@ mcp_admin is Dominds' **MCP administration toolset** for managing MCP (Model Con
 
 - **MCP restart**: Restart MCP service
 - **MCP release**: Release MCP lease
-- **Environment variables**: Read environment variables
+- **Environment variables**: Read, set, and delete local environment variables
 
 ## Quick Navigation
 
@@ -43,7 +43,8 @@ mcp_admin is Dominds' **MCP administration toolset** for managing MCP (Model Con
 
 - Status: Implemented
 - Main implementation files:
-  - Tool implementation: `dominds/main/tools/mcp-admin.ts`
+  - MCP tool implementation: `dominds/main/tools/mcp.ts`
+  - Environment variable tool implementation: `dominds/main/tools/env.ts`
   - Toolset metadata: `dominds/main/tools/builtins.ts`, `dominds/main/tools/registry.ts`
 
 ## Core Concepts
