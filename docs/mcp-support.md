@@ -378,12 +378,13 @@ Semantics:
 
 ## HTTP Headers (`streamable_http`)
 
-`streamable_http` servers can optionally define HTTP request headers. Values use the same literal
-or `{ env: ... }` mapping form as `env`:
+`streamable_http` servers can optionally define HTTP request headers. Values can be literal strings,
+copied from env with `{ env: ... }`, or built as `prefix + env` with `{ prefix, env }`:
 
 ```yaml
 headers:
   Authorization:
+    prefix: 'Bearer '
     env: MCP_AUTH_TOKEN
   X-Client-Name: 'dominds'
 ```
@@ -416,7 +417,7 @@ servers:
     # 2) streamable_http
     # transport: streamable_http
     # url: http://127.0.0.1:3000/mcp
-    # headers: {} # optional (supports literal or { env: NAME } values)
+    # headers: {} # optional (supports literal, { env: NAME }, or { prefix, env } values)
     # sessionId: '' # optional
 
     # Tool exposure controls

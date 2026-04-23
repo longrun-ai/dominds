@@ -1638,7 +1638,7 @@ async function materializeMcpToolCallOutput(params: {
   );
 }
 
-function buildHttpHeaders(
+export function buildHttpHeaders(
   cfg: McpStreamableHttpServerConfig,
   serverId: string,
 ): Record<string, string> {
@@ -1655,7 +1655,7 @@ function buildHttpHeaders(
             `MCP server '${serverId}' missing required host env var '${v.env}' (for headers.${k})`,
           );
         }
-        headers[k] = val;
+        headers[k] = `${v.prefix}${val}`;
         break;
       }
       default: {

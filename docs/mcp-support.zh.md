@@ -304,11 +304,12 @@ env:
 
 ## HTTP 头（`streamable_http`）
 
-`streamable_http` 服务器可以选择性地定义 HTTP 请求标头。值使用与 `env` 相同的字面量或 `{ env: ... }` 映射形式：
+`streamable_http` 服务器可以选择性地定义 HTTP 请求标头。值可以是字面量字符串、`{ env: ... }` 环境变量复制，或用 `{ prefix, env }` 组装成 `prefix + env`：
 
 ```yaml
 headers:
   Authorization:
+    prefix: 'Bearer '
     env: MCP_AUTH_TOKEN
   X-Client-Name: 'dominds'
 ```
@@ -341,7 +342,7 @@ servers:
     # 2) streamable_http
     # transport: streamable_http
     # url: http://127.0.0.1:3000/mcp
-    # headers: {} # 可选（支持字面量或 { env: NAME } 值）
+    # headers: {} # 可选（支持字面量、{ env: NAME } 或 { prefix, env } 值）
     # sessionId: '' # 可选
 
     # 工具暴露控制

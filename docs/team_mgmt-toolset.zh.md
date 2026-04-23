@@ -387,7 +387,7 @@ transform:
 
 ### Env 和 headers 接线
 
-Prefer copying from the host environment for secrets:
+对于 secrets，优先从主机环境复制：
 
 ```yaml
 env:
@@ -395,7 +395,14 @@ env:
     env: MY_LOCAL_MCP_TOKEN
 ```
 
-对于 `streamable_http`，`headers` 支持相同的字面量或 env 映射。
+对于 `streamable_http`，`headers` 支持字面量字符串、env 映射，以及带前缀的 env 映射：
+
+```yaml
+headers:
+  Authorization:
+    prefix: 'Bearer '
+    env: MY_LOCAL_MCP_TOKEN
+```
 
 ### 操作行为（热重载 + 最近已知良好状态）
 

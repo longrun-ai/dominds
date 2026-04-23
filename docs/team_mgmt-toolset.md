@@ -469,7 +469,15 @@ env:
     env: MY_LOCAL_MCP_TOKEN
 ```
 
-For `streamable_http`, `headers` supports the same literal-or-env mapping.
+For `streamable_http`, `headers` supports literal strings, env mappings, and prefixed env
+mappings:
+
+```yaml
+headers:
+  Authorization:
+    prefix: 'Bearer '
+    env: MY_LOCAL_MCP_TOKEN
+```
 
 ### Operational behavior (hot reload + last-known-good)
 

@@ -6,7 +6,9 @@ const log = createLogger('mcp/config');
 
 export type McpEnvValue = { kind: 'literal'; value: string } | { kind: 'from_env'; env: string };
 
-export type McpHeaderValue = { kind: 'literal'; value: string } | { kind: 'from_env'; env: string };
+export type McpHeaderValue =
+  | { kind: 'literal'; value: string }
+  | { kind: 'from_env'; env: string; prefix: string };
 
 export type McpTransport = 'stdio' | 'streamable_http';
 
@@ -270,10 +272,15 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     const fromEnv = mapped.env;
     if (typeof fromEnv !== 'string' || !fromEnv.trim()) {
       throw new Error(
-        `Invalid mcp.yaml: servers.${serverId}.headers.${k} must be a string or { env: 'NAME' }`,
+        `Invalid mcp.yaml: servers.${serverId}.headers.${k} must be a string, { env: 'NAME' }, or { prefix: 'Bearer ', env: 'NAME' }`,
       );
     }
-    headers[k] = { kind: 'from_env', env: fromEnv };
+    const prefixVal = mapped.prefix;
+    if (prefixVal !== undefined && typeof prefixVal !== 'string') {
+      throw new Error(`Invalid mcp.yaml: servers.${serverId}.headers.${k}.prefix must be a string`);
+    }
+    const prefix = prefixVal ?? '';
+    headers[k] = { kind: 'from_env', env: fromEnv, prefix };
   }
 
   const sessionIdVal = obj.sessionId;
