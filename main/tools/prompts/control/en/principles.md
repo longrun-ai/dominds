@@ -40,7 +40,7 @@ Default to `dialog`. Use `personal` only when you should keep seeing that note i
 - `personal` reminders stay visible in all later dialogs you lead
 - Can be added, modified, or deleted at any time
 - Should stay compact, scannable, and directly actionable by default
-- Before `clear_mind`, default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable
+- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates a structured continuation-package reminder; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. If the current course is already under system remediation, Side Dialog reminder length has no technical limit and rough multi-reminder carry-over is acceptable
 
 **Difference from memory:**
 | Feature | dialog reminder | personal reminder | personal memory |
@@ -129,7 +129,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
 - Separate carriers: information that must synchronize the team's current effective state, key decisions, next steps, or still-active blockers belongs in `progress`, the quasi-real-time task bulletin board; reminders keep local resume details
 - Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile. Use `mind_more` for small additions and `change_mind` when cleanup/reordering/compression is needed
-- Collapse before clearing: default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
+- Collapse before clearing: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then creates a structured continuation-package reminder; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders. If the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
 
 ### 4. What Belongs in `progress`
@@ -150,5 +150,5 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 1. `dialog` reminders end with the dialog; `personal` reminders stay visible in all later dialogs you lead
 2. Use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement and merge existing content first
 3. `mind_more` / `change_mind` do not reset dialog rounds
-4. A continuation-package reminder should keep only details not already covered by Taskdoc but easy to lose during resume
+4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog under caution/critical remediation, maintain sufficiently detailed continuation-package reminders only
 5. Do not turn `personal` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

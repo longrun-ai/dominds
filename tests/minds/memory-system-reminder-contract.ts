@@ -32,8 +32,12 @@ async function main(): Promise<void> {
     'zh prompt should require progress updates to preserve a full current snapshot',
   );
   assert.ok(
-    zh.includes('差遣牒未覆盖'),
+    zh.includes('差遣牒仍未覆盖'),
     'zh prompt should distinguish Taskdoc-covered vs volatile details',
+  );
+  assert.ok(
+    zh.includes('尚未落实到文档、且下一程需要知会的讨论细节'),
+    'zh prompt should require documenting unrecorded discussion details before continuation reminders',
   );
   assert.ok(
     zh.includes('只有系统实际开启新一程后，第一步才是以清醒头脑复核并整理'),
@@ -47,7 +51,7 @@ async function main(): Promise<void> {
   const en = buildMemorySystemPrompt({
     language: 'en',
     agentId: 'tester',
-    isSideDialog: true,
+    isSideDialog: false,
     taskdocMaintainerId: 'maintainer',
     agentHasTeamMemoryTools: false,
     agentHasPersonalMemoryTools: false,
@@ -74,18 +78,56 @@ async function main(): Promise<void> {
     'en prompt should require progress updates to preserve a full current snapshot',
   );
   assert.ok(
-    en.includes('not already covered by Taskdoc'),
+    en.includes('still not covered by Taskdoc'),
     'en prompt should distinguish Taskdoc-covered vs volatile details',
   );
   assert.ok(
-    en.includes('rough multi-reminder bridge notes are acceptable'),
+    en.includes('Rough multi-reminder bridge notes are acceptable'),
     'en critical prompt should allow rough bridge reminders during remediation',
+  );
+  assert.ok(
+    en.includes('not yet written into documentation'),
+    'en critical prompt should require reviewing undocumented discussion details before continuation reminders',
+  );
+  assert.ok(
+    en.includes('`mind_more`/`change_mind`'),
+    'en critical prompt should name Taskdoc update tools for main-dialog remediation',
   );
   assert.ok(
     en.includes(
       'Once the system actually starts the new course, the first step is to review/rewrite them',
     ),
     'en prompt should pin clear-headed review to the system-started new course',
+  );
+
+  const enSide = buildMemorySystemPrompt({
+    language: 'en',
+    agentId: 'tester',
+    isSideDialog: true,
+    taskdocMaintainerId: 'maintainer',
+    agentHasTeamMemoryTools: false,
+    agentHasPersonalMemoryTools: false,
+    agentIsShellSpecialist: false,
+    agentHasShellTools: false,
+    agentHasReadonlyShell: false,
+    shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'critical',
+  });
+  assert.ok(
+    enSide.includes('do not maintain Taskdoc and do not draft Taskdoc update proposals'),
+    'en side critical prompt should avoid Taskdoc update/draft work during remediation',
+  );
+  assert.ok(
+    enSide.includes('Reminder length has no technical limit'),
+    'en side critical prompt should permit detailed reminders without technical length pressure',
+  );
+  assert.ok(
+    !enSide.includes('mind_more') && !enSide.includes('change_mind'),
+    'en side critical prompt should not mention Taskdoc update tools',
+  );
+  assert.ok(
+    !enSide.includes('When updating `progress`'),
+    'en side critical prompt should not include progress-update instructions',
   );
 
   console.log('OK');

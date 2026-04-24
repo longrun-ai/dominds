@@ -25,7 +25,11 @@ Dominds already has:
     (UI-visible and rendered as a normal user instruction).
   - In **critical**, enforce stability via a **countdown remediation** (max 5 turns):
     - Each turn injects a **recorded role=user prompt** (UI-visible as a user prompt) that instructs
-      the agent to curate reminders (`update_reminder`/`add_reminder`) and then `clear_mind`.
+      Main Dialogs to first record current-dialog discussion details that are not yet documented but the
+      next course needs to know into the appropriate Taskdoc sections, then curate continuation-package
+      reminders (`update_reminder`/`add_reminder`) and `clear_mind`. Side Dialogs are instructed not to
+      maintain Taskdoc or draft update proposals; they maintain sufficiently detailed continuation-package
+      reminders instead, with no technical length limit, then `clear_mind`.
     - The prompt includes a countdown signal (how many reminders remain before auto-`clear_mind`).
     - When the countdown reaches 0, Dominds **automatically** executes `clear_mind` (no Q4H; no
       suspension) to keep long-running autonomy stable.
@@ -135,10 +139,16 @@ Rules:
 - Do not let the agent branch on subjective self-assessment such as “clear-headed” vs “muddled”.
 - When the current course is not under `caution` / `critical` remediation, prefer compressing into
   one structured continuation-package reminder.
-- When the system has put the current course into `caution` / `critical` remediation, prioritize
-  preserving volatile information even via multiple rough reminders; in the current course, only
-  preserve info and `clear_mind`. Once the system actually starts the next course, the first step
-  is to review, merge, and delete redundancy.
+- When the system has put the current course into `caution` / `critical` remediation, the driver splits
+  prompts by dialog scope:
+  - Main Dialog: first fill Taskdoc with current-dialog discussion details that are not yet documented
+    but the next course needs to know; then preserve details still not covered by Taskdoc but easy to
+    lose during resume.
+  - Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; directly maintain
+    sufficiently detailed continuation-package reminders. Reminder length has no technical limit, so
+    prefer being complete.
+  - Multiple rough bridge reminders are acceptable. Once the system actually starts the next course,
+    the first step is to review, merge, and delete redundancy.
 - Do not duplicate Taskdoc content except for a short bridge when strictly needed.
 - Do not paste long raw logs/tool outputs into the continuation package.
 
@@ -157,7 +167,10 @@ Current behavior:
 - On entering `caution`, Dominds inserts the prompt once (entry injection).
 - While still `caution`, Dominds reinserts the prompt on a cadence (default: every **10**
   generations; configurable per model).
-- Each inserted prompt requires the agent to **curate reminders** (at least one call):
+- Each inserted prompt is split by the program according to dialog scope, so the agent does not decide
+  whether it is in the Main Dialog or a Side Dialog:
+  - Main Dialog: update Taskdoc first with `mind_more` / `change_mind`, then curate reminders (at least one call)
+  - Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; directly curate sufficiently detailed reminders (at least one call)
   - `update_reminder` (preferred) / `add_reminder`
   - Default to one structured continuation-package reminder; if the current course is already under remediation and one structured reminder cannot be produced directly from already observed facts, rough multi-reminder carry-over is acceptable
   - Then `clear_mind` when it becomes scannable/actionable
@@ -167,9 +180,13 @@ Current behavior:
 When `level === 'critical'`, the driver enters a **countdown remediation** (max **5** turns):
 
 - On each turn, the driver records a **role=user prompt** (persisted as a user message) that is
-  visible in the UI as a user prompt. This prompt tells the agent to:
-  - curate reminders via `update_reminder` / `add_reminder`, preferably into a continuation-package reminder but allowing rough multi-reminder carry-over when the current course is already under remediation and a single structured reminder cannot be produced directly from already observed facts, and
-  - then call `clear_mind` to start a new course.
+  visible in the UI as a user prompt. The prompt is scope-specific:
+  - Main Dialog prompt: first write undocumented discussion details that the next course needs to know
+    into the appropriate Taskdoc sections with `mind_more` / `change_mind`, then curate reminders via
+    `update_reminder` / `add_reminder`, and call `clear_mind`.
+  - Side Dialog prompt: do not maintain Taskdoc and do not draft Taskdoc update proposals; directly
+    maintain sufficiently detailed continuation-package reminders with no technical length limit, then
+    call `clear_mind`.
 - The prompt includes a countdown: after **N** turns the system will automatically clear.
 - When the countdown reaches 0, the driver **automatically calls** `clear_mind` (with empty args; no
   requirement on `reminder_content`), starting a new course without suspending.
@@ -234,9 +251,18 @@ Additional constraints:
 - v3 remediation:
   - `caution`: driver inserts a persisted role=user prompt (UI-visible user instruction).
     On entering `caution` it inserts once; while still `caution` it reinserts on a cadence (default: every
-    10 generations; configurable per model). Each time, the agent must call at least one of
-    `update_reminder` / `add_reminder` and preserve a continuation package. A single structured reminder is preferred when the current course is not under remediation pressure; during remediation, multiple rough reminders are acceptable if they can be written directly from already observed facts without further reading/analysis. In the new course the agent should reconcile them first, then `clear_mind` when ready.
+    10 generations; configurable per model). Each time, the agent must first record undocumented
+    discussion details the next course needs to know into Taskdoc, then call at least one of
+    `update_reminder` / `add_reminder` and preserve a continuation package. In a Side Dialog, the
+    prompt says not to maintain Taskdoc or draft Taskdoc update proposals; instead, maintain sufficiently
+    detailed continuation-package reminders directly.
+    A single structured reminder is preferred when the current course is not under remediation pressure;
+    during remediation, multiple rough reminders are acceptable if they can be written directly from
+    already observed facts without further reading/analysis. In the new course the agent should
+    reconcile them first, then `clear_mind` when ready.
   - `critical`: driver runs a countdown remediation (max 5 turns) using **recorded role=user prompts**.
-    Each prompt includes a countdown and instructs reminder curation + `clear_mind`. When the countdown
-    reaches 0, the driver auto-executes `clear_mind` and starts a new course (no Q4H, no suspension).
+    Each prompt includes a countdown. Main Dialog prompts instruct Taskdoc update, reminder curation,
+    then `clear_mind`; Side Dialog prompts instruct detailed reminder curation only, then `clear_mind`.
+    When the countdown reaches 0, the driver auto-executes `clear_mind` and starts a new course (no Q4H,
+    no suspension).
 - UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).

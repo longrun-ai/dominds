@@ -42,6 +42,7 @@ async function main(): Promise<void> {
     const cautionGuide = formatAgentFacingContextHealthV3RemediationGuide('en', {
       kind: 'caution',
       mode: 'soft',
+      dialogScope: 'mainDialog',
     });
     const finalAnswer = 'Context-health guide injected before continuing.';
 
@@ -52,14 +53,18 @@ async function main(): Promise<void> {
         message: trigger,
         role: 'user',
         response: 'Round-1: call env_get.',
-        funcCalls: [{ name: 'env_get', arguments: { key: testEnvKey } }],
+        funcCalls: [
+          { id: 'context-health-round-1-env-get', name: 'env_get', arguments: { key: testEnvKey } },
+        ],
         usage: { promptTokens: 150_000, completionTokens: 100 },
       },
       {
         message: '(unset)',
         role: 'tool',
         response: 'Round-2: call env_get again to simulate tool-loop continuation.',
-        funcCalls: [{ name: 'env_get', arguments: { key: testEnvKey } }],
+        funcCalls: [
+          { id: 'context-health-round-2-env-get', name: 'env_get', arguments: { key: testEnvKey } },
+        ],
         usage: { promptTokens: 210_000, completionTokens: 100 },
       },
       {

@@ -433,11 +433,13 @@ export function formatDomindsNoteQ4HRegisterFailed(
   );
 }
 
+export type ContextHealthV3RemediationDialogScope = 'mainDialog' | 'sideDialog';
 export type ContextHealthV3RemediationGuideArgs =
-  | { kind: 'caution'; mode: 'soft' }
+  | { kind: 'caution'; mode: 'soft'; dialogScope: ContextHealthV3RemediationDialogScope }
   | {
       kind: 'critical';
       mode: 'countdown';
+      dialogScope: ContextHealthV3RemediationDialogScope;
       promptsRemainingAfterThis: number;
       promptsTotal: number;
     };
@@ -445,8 +447,29 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
   args: ContextHealthV3RemediationGuideArgs,
 ): string {
+  const isSideDialog = args.dialogScope === 'sideDialog';
   if (language === 'zh') {
     if (args.kind === 'caution' && args.mode === 'soft') {
+      if (isSideDialog) {
+        return [
+          `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
+          '',
+          '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+          '',
+          '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
+          '',
+          '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是维护足够详尽的接续包提醒项，然后主动 clear_mind 开启新一程继续工作。',
+          '',
+          '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项长度没有技术限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。',
+          '',
+          '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；真正清理冗余、合并提醒项，放到系统开启新一程后再做。',
+          '',
+          '操作：',
+          '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
+          '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
+        ].join('\n');
+      }
+
       return [
         `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
         '',
@@ -454,13 +477,35 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
-        '行动：先尽量保住易丢信息。当前处于吃紧处置阶段时，优先把已经掌握的事实直接记进新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
+        '行动：你当前处于主线对话。先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息记进新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
         '',
-        '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是系统真正开启新一程后的第一步。当前程的目标是先把差遣牒未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
+        '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是系统真正开启新一程后的第一步。当前程的目标是先把未落文档的讨论细节补进差遣牒，再把差遣牒仍未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
+        '- 先写差遣牒：mind_more({ "items": ["..."] })；需要删旧/重排/压缩时改用 change_mind({ ... })',
         '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
         '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
+      ].join('\n');
+    }
+
+    if (isSideDialog) {
+      return [
+        `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急`,
+        '',
+        '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+        '',
+        `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
+        '',
+        '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的接续包提醒项，然后 clear_mind。',
+        '',
+        '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项长度没有技术限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+        '',
+        '操作：',
+        '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
+        '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
+        '- clear_mind({})',
+        '',
+        '当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
       ].join('\n');
     }
 
@@ -471,18 +516,39 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
-      '行动：尽快保住易丢信息，然后 clear_mind。当前处于告急处置阶段时，优先直接新增提醒项把事实带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+      '行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。当前处于告急处置阶段时，先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
       '',
       '操作：',
+      '- 先写差遣牒：mind_more({ "items": ["..."] })；需要删旧/重排/压缩时改用 change_mind({ ... })',
       '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
       '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
     ].join('\n');
   }
 
   if (args.kind === 'caution' && args.mode === 'soft') {
+    if (isSideDialog) {
+      return [
+        `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
+        '',
+        'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+        '',
+        'Impact: stale call/results in dialog history are creating cognitive noise.',
+        '',
+        'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders, then proactively clear_mind to start a new dialog course.',
+        '',
+        'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminder length has no technical limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.',
+        '',
+        'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; reminder cleanup and dedup belong to the new course.',
+        '',
+        'Operations:',
+        '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
+        '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
+      ].join('\n');
+    }
+
     return [
       `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
       '',
@@ -490,13 +556,35 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
-      'Action: first preserve easy-to-lose information. In caution remediation, prefer writing already observed facts into new bridge reminders directly (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
+      'Action: you are in the Main Dialog. First record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then write information still not covered by Taskdoc but easy to lose into new bridge reminders (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
       '',
-      'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after the system actually starts the new course. In the current course, the goal is to carry forward details not already covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
+      'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after the system actually starts the new course. In the current course, the goal is to first fill Taskdoc with undocumented discussion details, then carry forward details still not covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
+      '- First write Taskdoc: mind_more({ "items": ["..."] }); use change_mind({ ... }) instead when deletion/reordering/compression is needed',
       '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
       '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
+    ].join('\n');
+  }
+
+  if (isSideDialog) {
+    return [
+      `${formatSystemNoticePrefix(language)} Context state: 🔴 critical`,
+      '',
+      'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+      '',
+      `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
+      '',
+      'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders as soon as possible, then clear_mind.',
+      '',
+      'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminder length has no technical limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.',
+      '',
+      'Operations:',
+      '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
+      '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
+      '- clear_mind({})',
+      '',
+      'During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
     ].join('\n');
   }
 
@@ -507,14 +595,15 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'Action: preserve easy-to-lose information, then clear_mind. In critical remediation, prefer adding bridge reminders directly. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
+    'Action: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. In critical remediation, first record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then add bridge reminders for information still not covered by Taskdoc but easy to lose. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
     '',
     'Operations:',
+    '- First write Taskdoc: mind_more({ "items": ["..."] }); use change_mind({ ... }) instead when deletion/reordering/compression is needed',
     '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
     '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
+    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
   ].join('\n');
 }
 

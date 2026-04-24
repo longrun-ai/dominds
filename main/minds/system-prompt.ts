@@ -87,12 +87,12 @@ function buildFbrContextHealthScopeRule(
     return pickLocalized(language, {
       zh:
         scope === 'mainDialog'
-          ? '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求保信息、维护提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR 与差遣牒更新。'
-          : '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求保信息、维护提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+          ? '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再维护接续包提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。'
+          : '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按处置要求维护足够详尽的接续包提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
       en:
         scope === 'mainDialog'
-          ? '- Current context is under system critical remediation: do not start FBR in this course. Preserve volatile information, maintain reminders, and clear immediately; resume FBR and Taskdoc updates only after the system starts the new course and the continuation package has been reviewed.'
-          : '- Current context is under system critical remediation: do not start FBR in this course. Preserve volatile information, maintain reminders, and clear immediately; resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+          ? '- Current context is under system critical remediation: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then maintain continuation-package reminders and clear immediately; resume FBR only after the system starts the new course and the continuation package has been reviewed.'
+          : '- Current context is under system critical remediation: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear immediately. Resume FBR only after the system starts the new course and the continuation package has been reviewed.',
     });
   }
 
@@ -100,12 +100,12 @@ function buildFbrContextHealthScopeRule(
     return pickLocalized(language, {
       zh:
         scope === 'mainDialog'
-          ? '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR 与差遣牒更新。'
-          : '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+          ? '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。'
+          : '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按处置要求维护足够详尽的接续包提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
       en:
         scope === 'mainDialog'
-          ? '- Current context is under system caution remediation: do not start FBR in this course. Distill reminders and clear soon; resume FBR and Taskdoc updates only after the system starts the new course and the continuation package has been reviewed.'
-          : '- Current context is under system caution remediation: do not start FBR in this course. Distill reminders and clear soon; resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+          ? '- Current context is under system caution remediation: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then distill reminders and clear soon; resume FBR only after the system starts the new course and the continuation package has been reviewed.'
+          : '- Current context is under system caution remediation: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear soon. Resume FBR only after the system starts the new course and the continuation package has been reviewed.',
     });
   }
 

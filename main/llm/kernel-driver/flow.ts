@@ -970,15 +970,18 @@ export async function executeDriveRound(args: {
         resetContextHealthRoundState(dialog.id.key());
       } else if (!hasQueuedUpNext) {
         const language = getWorkLanguage();
+        const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
         const guideText =
           healthDecision.reason === 'caution_soft_remediation'
             ? formatAgentFacingContextHealthV3RemediationGuide(language, {
                 kind: 'caution',
                 mode: 'soft',
+                dialogScope,
               })
             : formatAgentFacingContextHealthV3RemediationGuide(language, {
                 kind: 'critical',
                 mode: 'countdown',
+                dialogScope,
                 promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
                 promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
               });

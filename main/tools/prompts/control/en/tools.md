@@ -45,7 +45,7 @@ Add reminder.
 Use when:
 
 - Adding a new temporary working-set item
-- Creating continuation-package notes before `clear_mind`; rough bridge notes are acceptable when context is already degraded
+- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When the current course is already under caution/critical remediation, Side Dialog reminder length has no technical limit and rough bridge notes are acceptable
 
 **Parameters:**
 
@@ -307,6 +307,6 @@ message: <error message>
 
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
 - For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
-- If the current course is already under caution/critical remediation, rough multi-reminder bridge notes are acceptable; in the current course only preserve info + `clear_mind`, and reconcile them as the first step only after the system actually starts the new course
-- Keep only details not already covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
+- If the current course is already under caution/critical remediation: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then keeps necessary continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders with no technical length limit. Rough multi-reminder bridge notes are acceptable and should be reconciled as the first step only after the system actually starts the new course
+- Keep only details still not covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
 - Do not paste long logs, large tool outputs, or raw material into reminders

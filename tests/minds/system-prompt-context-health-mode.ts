@@ -39,8 +39,12 @@ async function main(): Promise<void> {
     'caution system prompt should directly prohibit FBR in the current course',
   );
   assert.ok(
-    caution.includes('先按处置要求提炼提醒项并尽快 `clear_mind`'),
-    'caution system prompt should directly prescribe the remediation action',
+    caution.includes('先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节'),
+    'caution system prompt should prescribe documenting unrecorded discussion details first',
+  );
+  assert.ok(
+    caution.includes('再提炼提醒项并尽快 `clear_mind`'),
+    'caution system prompt should still prescribe reminder distillation and clear_mind',
   );
 
   const critical = buildPrompt('critical');
@@ -49,7 +53,11 @@ async function main(): Promise<void> {
     'critical system prompt should directly prohibit FBR in the current course',
   );
   assert.ok(
-    critical.includes('并立即 `clear_mind`'),
+    critical.includes('先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节'),
+    'critical system prompt should prescribe documenting unrecorded discussion details first',
+  );
+  assert.ok(
+    critical.includes('再维护接续包提醒项，并立即 `clear_mind`'),
     'critical system prompt should directly prescribe immediate clear_mind',
   );
 

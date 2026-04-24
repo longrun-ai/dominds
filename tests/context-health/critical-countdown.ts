@@ -18,6 +18,7 @@ async function main(): Promise<void> {
   const zh = formatAgentFacingContextHealthV3RemediationGuide('zh', {
     kind: 'critical',
     mode: 'countdown',
+    dialogScope: 'mainDialog',
     promptsRemainingAfterThis: 4,
     promptsTotal: 5,
   });
@@ -33,6 +34,12 @@ async function main(): Promise<void> {
     zh.includes('多条粗略提醒项'),
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
+  assert.ok(
+    zh.includes('尚未落实到文档、且下一程需要知会的讨论细节'),
+    'zh guide should require documenting unrecorded discussion details before bridge reminders',
+  );
+  assert.ok(zh.includes('mind_more'), 'zh guide should mention mind_more for Taskdoc updates');
+  assert.ok(zh.includes('change_mind'), 'zh guide should mention change_mind for Taskdoc updates');
   assert.ok(!zh.includes('已经发乱'), 'zh guide should avoid subjective self-assessment wording');
   assert.ok(
     zh.includes('纠正偏激/失真思路'),
@@ -58,10 +65,15 @@ async function main(): Promise<void> {
     !zh.includes('reminder_no": 1'),
     'zh guide should not hardcode reminder #1 as the target',
   );
+  assert.ok(
+    !zh.includes('支线对话'),
+    'zh main guide should not ask the agent to reason about side-dialog handling',
+  );
 
   const en = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'critical',
     mode: 'countdown',
+    dialogScope: 'mainDialog',
     promptsRemainingAfterThis: 0,
     promptsTotal: 5,
   });
@@ -78,6 +90,12 @@ async function main(): Promise<void> {
     en.includes('Multiple rough reminders'),
     'en guide should allow rough multi-reminder bridge when muddled',
   );
+  assert.ok(
+    en.includes('discussion details that are not yet documented but the next course needs to know'),
+    'en guide should require documenting unrecorded discussion details before bridge reminders',
+  );
+  assert.ok(en.includes('mind_more'), 'en guide should mention mind_more for Taskdoc updates');
+  assert.ok(en.includes('change_mind'), 'en guide should mention change_mind for Taskdoc updates');
   assert.ok(
     !en.includes('if you can still think clearly'),
     'en guide should avoid subjective self-assessment wording',
@@ -111,6 +129,56 @@ async function main(): Promise<void> {
     !en.includes('reminder_no": 1'),
     'en guide should not hardcode reminder #1 as the target',
   );
+  assert.ok(
+    !en.includes('Side Dialog'),
+    'en main guide should not ask the agent to reason about side-dialog handling',
+  );
+
+  const zhSide = formatAgentFacingContextHealthV3RemediationGuide('zh', {
+    kind: 'critical',
+    mode: 'countdown',
+    dialogScope: 'sideDialog',
+    promptsRemainingAfterThis: 2,
+    promptsTotal: 5,
+  });
+  assert.ok(
+    zhSide.includes('你当前处于支线对话'),
+    'zh side guide should be explicit about side-dialog scope',
+  );
+  assert.ok(
+    zhSide.includes('不要维护差遣牒，也不要整理差遣牒更新提案'),
+    'zh side guide should not ask the agent to decide or draft Taskdoc updates',
+  );
+  assert.ok(
+    zhSide.includes('提醒项长度没有技术限制'),
+    'zh side guide should permit detailed reminders without technical length pressure',
+  );
+  assert.ok(!zhSide.includes('mind_more'), 'zh side guide should not mention mind_more');
+  assert.ok(!zhSide.includes('change_mind'), 'zh side guide should not mention change_mind');
+
+  const enSide = formatAgentFacingContextHealthV3RemediationGuide('en', {
+    kind: 'critical',
+    mode: 'countdown',
+    dialogScope: 'sideDialog',
+    promptsRemainingAfterThis: 2,
+    promptsTotal: 5,
+  });
+  assert.ok(
+    enSide.includes('you are in a Side Dialog'),
+    'en side guide should be explicit about side-dialog scope',
+  );
+  assert.ok(
+    enSide.includes(
+      'Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals',
+    ),
+    'en side guide should not ask the agent to decide or draft Taskdoc updates',
+  );
+  assert.ok(
+    enSide.includes('Reminder length has no technical limit'),
+    'en side guide should permit detailed reminders without technical length pressure',
+  );
+  assert.ok(!enSide.includes('mind_more'), 'en side guide should not mention mind_more');
+  assert.ok(!enSide.includes('change_mind'), 'en side guide should not mention change_mind');
 
   const zhNewCoursePrompt = formatNewCourseStartPrompt('zh', {
     nextCourse: 3,
