@@ -11,7 +11,11 @@ import {
 } from '../../main/llm/api-quirks';
 import type { ProviderConfig } from '../../main/llm/client';
 import { classifyOpenAiLikeFailure } from '../../main/llm/gen/failure-classifier';
-import { LlmRetryStoppedError, runLlmRequestWithRetry } from '../../main/llm/kernel-driver/runtime';
+import {
+  LlmRequestFailedError,
+  LlmRetryStoppedError,
+  runLlmRequestWithRetry,
+} from '../../main/llm/kernel-driver/runtime';
 import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
 function buildProviderConfig(): ProviderConfig {
@@ -771,6 +775,32 @@ function verifyOpenAiProcessingFailureDefaultsToConservative(): void {
   assert.equal(failure?.retryStrategy, 'conservative');
 }
 
+function verifyOpenAiContextWindowExceededIsRejected(): void {
+  const messages = [
+    'Your input exceeds the context window of this model. Please adjust your input and try again.',
+    'Context window exceeded for this model.',
+    'Context limit exceeded.',
+    "This model's maximum context length is 128000 tokens.",
+    'Too many tokens in context.',
+  ];
+  for (const message of messages) {
+    const failure = classifyOpenAiLikeFailure(new Error(message));
+    assert.ok(failure, 'Expected OpenAI-like classifier to reject deterministic context overflow');
+    assert.equal(failure?.kind, 'rejected');
+    assert.equal(failure?.retryStrategy, undefined);
+  }
+}
+
+function verifyOpenAiContextLengthExceededCodeIsRejected(): void {
+  const failure = classifyOpenAiLikeFailure({
+    code: ' CONTEXT_LENGTH_EXCEEDED ',
+    message: 'Invalid request.',
+  });
+  assert.ok(failure, 'Expected OpenAI-like classifier to reject context-length error codes');
+  assert.equal(failure?.kind, 'rejected');
+  assert.equal(failure?.retryStrategy, undefined);
+}
+
 function verifyOpenAiTransportFailureWithStatusStaysAggressive(): void {
   const failure = classifyOpenAiLikeFailure({
     status: 503,
@@ -783,6 +813,45 @@ function verifyOpenAiTransportFailureWithStatusStaysAggressive(): void {
   );
   assert.equal(failure?.kind, 'retriable');
   assert.equal(failure?.retryStrategy, 'aggressive');
+}
+
+async function verifyRuntimeDoesNotRetryContextWindowOverflow(): Promise<void> {
+  const providerConfig = buildPlainProviderConfig();
+  const dialog = buildFakeDialog('en');
+  let attempts = 0;
+
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'openai1',
+        modelId: 'test',
+        providerConfig,
+        aggressiveRetryMaxRetries: 3,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        classifyFailure: classifyOpenAiLikeFailure,
+        canRetry: () => true,
+        doRequest: async () => {
+          attempts += 1;
+          throw new Error(
+            'Your input exceeds the context window of this model. Please adjust your input and try again.',
+          );
+        },
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmRequestFailedError);
+      if (!(error instanceof LlmRequestFailedError)) {
+        return false;
+      }
+      assert.match(error.message, /rejected the request/u);
+      return true;
+    },
+  );
+
+  assert.equal(attempts, 1);
 }
 
 async function verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax(): Promise<void> {
@@ -1085,7 +1154,10 @@ async function main(): Promise<void> {
   verifySmartRateClassification();
   verifySmartRateClassificationFromConcurrencyLimitMessage();
   verifyOpenAiProcessingFailureDefaultsToConservative();
+  verifyOpenAiContextWindowExceededIsRejected();
+  verifyOpenAiContextLengthExceededCodeIsRejected();
   verifyOpenAiTransportFailureWithStatusStaysAggressive();
+  await verifyRuntimeDoesNotRetryContextWindowOverflow();
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
   await verifyRuntimeDefaultsUnknownProviderFailuresToConservativeRetry();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();

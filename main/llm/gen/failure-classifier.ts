@@ -244,6 +244,31 @@ function isOpenAiLikeRejectedFailure(error: unknown): boolean {
   return isHighConfidenceRejectedStatus(status);
 }
 
+function isOpenAiLikeContextWindowRejectedFailure(args: {
+  lowerMessage: string;
+  lowerCode: string | undefined;
+}): boolean {
+  if (args.lowerCode === 'context_length_exceeded') {
+    return true;
+  }
+  if (
+    args.lowerMessage.includes('context window') &&
+    (args.lowerMessage.includes('exceeds') || args.lowerMessage.includes('exceeded'))
+  ) {
+    return true;
+  }
+  if (args.lowerMessage.includes('context limit exceeded')) {
+    return true;
+  }
+  if (args.lowerMessage.includes('maximum context length')) {
+    return true;
+  }
+  if (args.lowerMessage.includes('context_length_exceeded')) {
+    return true;
+  }
+  return args.lowerMessage.includes('too many tokens') && args.lowerMessage.includes('context');
+}
+
 export function isOpenAiLikeRateLimitFailure(error: unknown): boolean {
   const lowerMessage = buildFailureMessage(error).toLowerCase();
   const status = readErrorStatus(error);
@@ -281,8 +306,12 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
   const lowerMessage = message.toLowerCase();
   const status = readErrorStatus(error);
   const code = readErrorCode(error);
+  const lowerCode = typeof code === 'string' ? code.trim().toLowerCase() : undefined;
 
-  if (isOpenAiLikeRejectedFailure(error)) {
+  if (
+    isOpenAiLikeRejectedFailure(error) ||
+    isOpenAiLikeContextWindowRejectedFailure({ lowerMessage, lowerCode })
+  ) {
     return {
       kind: 'rejected',
       message,
