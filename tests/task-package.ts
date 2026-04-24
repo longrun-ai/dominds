@@ -6,7 +6,7 @@ import type { DialogStore } from '../main/dialog';
 import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
-import { recallTaskdocTool } from '../main/tools/ctrl';
+import { mindMoreTool, recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
@@ -51,6 +51,22 @@ async function main(): Promise<void> {
     const legacy = await formatTaskDocContent(legacyDlg);
     const legacyContent = requireMessageContent(legacy);
     assert.ok(legacyContent.includes('Invalid Taskdoc path') && legacyContent.includes('*.tsk'));
+
+    // Prefix-sibling paths must not pass the workspace containment check.
+    const siblingTaskDocPath = path.relative(tmpRoot, `${tmpRoot}-sibling.tsk`);
+    const siblingDlg = new MainDialog(store, siblingTaskDocPath, undefined, 'tester');
+    const sibling = await formatTaskDocContent(siblingDlg);
+    const siblingContent = requireMessageContent(sibling);
+    assert.ok(siblingContent.includes('Path must be within rtws'));
+    const siblingAppend = await mindMoreTool.call(
+      siblingDlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        items: ['- should not write outside rtws'],
+      },
+    );
+    assert.equal(siblingAppend.outcome, 'failure');
+    assert.ok(siblingAppend.content.includes('Path must be within rtws'));
 
     // 1) Formatting should describe an encapsulated Taskdoc package.
     const dlg = new MainDialog(store, taskDocPath, undefined, 'tester');
@@ -156,6 +172,70 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(recall.includes('`ux/checklist.md`'));
     assert.ok(recall.includes('UX\n'));
+
+    const missingRecall = (
+      await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
+        category: 'ux',
+        selector: 'missing',
+      })
+    ).content;
+    assert.ok(missingRecall.includes('mind_more'));
+    assert.ok(missingRecall.includes('change_mind'));
+
+    // 5) mind_more should append entries without requiring a full-section replacement.
+    const appendResult = await mindMoreTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
+      items: ['- Worker A finished backend wiring', '- Next: verify UI contract'],
+    });
+    assert.equal(appendResult.outcome, 'success');
+
+    const appended = await readTaskPackageSections(taskDir);
+    assert.equal(appended.progress.kind, 'present');
+    assert.equal(
+      appended.progress.content,
+      [
+        '- Updated Taskdoc selector vocabulary',
+        '- Worker A finished backend wiring',
+        '- Next: verify UI contract',
+      ].join('\n'),
+    );
+
+    const goalsAppend = await mindMoreTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
+      selector: 'goals',
+      items: ['- Keep Taskdoc updates low-friction'],
+      sep: '\n\n',
+    });
+    assert.equal(goalsAppend.outcome, 'success');
+    const appendedGoals = await readTaskPackageSections(taskDir);
+    assert.equal(appendedGoals.goals.kind, 'present');
+    assert.equal(
+      appendedGoals.goals.content,
+      ['- Ship v1', '- Zero regressions'].join('\n') +
+        '\n\n' +
+        '- Keep Taskdoc updates low-friction',
+    );
+
+    await updateTaskPackageSection({
+      taskPackageDirFullPath: taskDir,
+      section: 'constraints',
+      content: '- Existing constraint\n',
+      updatedBy: 'tester',
+    });
+    const constraintsAppend = await mindMoreTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        selector: 'constraints',
+        items: ['- Added constraint'],
+        sep: '\n\n',
+      },
+    );
+    assert.equal(constraintsAppend.outcome, 'success');
+    const appendedConstraints = await readTaskPackageSections(taskDir);
+    assert.equal(appendedConstraints.constraints.kind, 'present');
+    assert.equal(
+      appendedConstraints.constraints.content,
+      '- Existing constraint\n\n- Added constraint',
+    );
 
     console.log('✅ task-package tests passed');
   } finally {

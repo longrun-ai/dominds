@@ -223,35 +223,76 @@ export async function updateTaskPackageByChangeMindTarget(params: {
   const { taskPackageDirFullPath, target, content, updatedBy } = params;
   await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
 
+  const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, content, 'utf8');
+}
+
+export async function appendTaskPackageByChangeMindTarget(params: {
+  taskPackageDirFullPath: string;
+  target: TaskPackageChangeMindTarget;
+  content: string;
+  sep: string;
+  updatedBy?: string;
+}): Promise<void> {
+  const { taskPackageDirFullPath, target, content, sep, updatedBy } = params;
+  await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
+
+  const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const current = await readTextFileIfPresent(filePath);
+  const next =
+    current === null || current.trim() === '' ? content : joinForAppend(current, content, sep);
+  await fs.promises.writeFile(filePath, next, 'utf8');
+}
+
+function taskPackageFilePathForChangeMindTarget(
+  taskPackageDirFullPath: string,
+  target: TaskPackageChangeMindTarget,
+): string {
   switch (target.kind) {
-    case 'top_level': {
-      await updateTaskPackageSection({
+    case 'top_level':
+      return path.join(taskPackageDirFullPath, taskPackageFilenameForSection(target.section));
+    case 'bearinmind':
+      return path.join(
         taskPackageDirFullPath,
-        section: target.section,
-        content,
-        updatedBy,
-      });
-      return;
-    }
-    case 'bearinmind': {
-      const dir = path.join(taskPackageDirFullPath, 'bearinmind');
-      await fs.promises.mkdir(dir, { recursive: true });
-      const filePath = path.join(dir, bearInMindFilenameForSection(target.section));
-      await fs.promises.writeFile(filePath, content, 'utf8');
-      return;
-    }
-    case 'category': {
-      const dir = path.join(taskPackageDirFullPath, target.category);
-      await fs.promises.mkdir(dir, { recursive: true });
-      const filePath = path.join(dir, `${target.selector}.md`);
-      await fs.promises.writeFile(filePath, content, 'utf8');
-      return;
-    }
+        'bearinmind',
+        bearInMindFilenameForSection(target.section),
+      );
+    case 'category':
+      return path.join(taskPackageDirFullPath, target.category, `${target.selector}.md`);
     default: {
       const _exhaustive: never = target;
       return _exhaustive;
     }
   }
+}
+
+async function readTextFileIfPresent(filePath: string): Promise<string | null> {
+  try {
+    return await fs.promises.readFile(filePath, 'utf8');
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+function joinForAppend(current: string, content: string, sep: string): string {
+  if (current.endsWith(sep)) return `${current}${content}`;
+  for (let prefixLength = sep.length - 1; prefixLength > 0; prefixLength -= 1) {
+    const prefix = sep.slice(0, prefixLength);
+    if (current.endsWith(prefix)) {
+      return `${current}${sep.slice(prefixLength)}${content}`;
+    }
+  }
+  return `${current}${sep}${content}`;
 }
 
 async function fileExists(fullPath: string): Promise<boolean> {

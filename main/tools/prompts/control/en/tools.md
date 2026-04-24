@@ -160,7 +160,32 @@ updated_at: <update timestamp>
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
-### 6. recall_taskdoc
+### 6. mind_more
+
+Append entries to a Taskdoc section; defaults to `progress`, reducing full-section replacement pressure.
+
+**Parameters:**
+
+- `items` (required): Entries to append; each item must be a non-empty string
+- `sep` (optional): Separator between existing content and new content, and between entries. Defaults to `\n`
+- `selector` (optional): Chapter selector. Defaults to `progress`; use `goals` / `constraints` / `progress`
+- `category` (optional): Extra section directory; with `selector`, targets `<category>/<selector>.md`
+
+**Example:**
+
+```typescript
+mind_more({
+  items: ['- Next: review verification results', '- Blocker: none'],
+});
+```
+
+**Characteristics:**
+
+- Append-only: it does not deduplicate, rewrite, or compress old content
+- Good for adding one or two still-effective states, decisions, next steps, or blockers to `progress`
+- If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement
+
+### 7. recall_taskdoc
 
 Read taskdoc chapter.
 
@@ -229,6 +254,14 @@ update_reminder({
 ```
 
 ### Update Taskdoc Progress
+
+```typescript
+mind_more({
+  items: ['- Next: strengthen the bulletin-board semantics of Taskdoc `progress`'],
+});
+```
+
+### Replace Taskdoc Progress
 
 ```typescript
 change_mind({

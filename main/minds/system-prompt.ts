@@ -111,8 +111,8 @@ function buildFbrContextHealthScopeRule(
 
   if (scope === 'mainDialog') {
     return pickLocalized(language, {
-      zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。完成 FBR 后，基于当前可观测事实调用 `change_mind` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
-      en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. After FBR, call `change_mind` based on currently observable facts to update the Taskdoc with the latest progress; do not redundantly include information already present in the Taskdoc in the FBR body.',
+      zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。完成 FBR 后，基于当前可观测事实调用 `mind_more` 或 `change_mind` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
+      en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. After FBR, call `mind_more` or `change_mind` based on currently observable facts to update the Taskdoc with the latest progress; do not redundantly include information already present in the Taskdoc in the FBR body.',
     });
   }
   return pickLocalized(language, {

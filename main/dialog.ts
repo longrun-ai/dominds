@@ -1446,7 +1446,7 @@ export abstract class Dialog {
   /**
    * Start a new course - clears conversational noise, Q4H, and increments course counter.
    * Queues a new-course prompt for the driver to consume on the next drive cycle.
-   * This is the single entry point for mental clarity operations (clear_mind, change_mind).
+   * This is the single entry point for mental clarity operations that start a new course.
    */
   public async startNewCourse(
     newCoursePrompt: string,

@@ -80,7 +80,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 
 - **personal_memory**: Personal memory, only current agent visible
 - **reminder**: Temporary reminder, session-level
-- **change_mind**: Update taskdoc (goals/constraints/progress)
+- **mind_more / change_mind**: Append to or replace Taskdoc (goals/constraints/progress)
 
 > Note: `team_memory` carries long-lived team consensus; Taskdoc `progress` carries quasi-real-time team-wide task announcements during execution. Do not mix them.
 

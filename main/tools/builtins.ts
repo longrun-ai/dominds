@@ -11,6 +11,7 @@ import {
   changeMindTool,
   clearMindTool,
   deleteReminderTool,
+  mindMoreTool,
   recallTaskdocTool,
   updateReminderTool,
 } from './ctrl';
@@ -143,6 +144,7 @@ registerTool(deleteReminderTool);
 registerTool(updateReminderTool);
 registerTool(clearMindTool);
 registerTool(changeMindTool);
+registerTool(mindMoreTool);
 registerTool(recallTaskdocTool);
 
 // Team management tools (scoped to `.minds/**`)
@@ -187,13 +189,14 @@ registerToolset('control', [
   updateReminderTool,
   clearMindTool,
   changeMindTool,
+  mindMoreTool,
   recallTaskdocTool,
 ]);
 setToolsetMeta('control', {
   source: 'dominds',
   descriptionI18n: {
-    en: 'Dialog control: manage reminders, Taskdoc sections, and course resets via clear_mind/change_mind.',
-    zh: '对话控制：维护提醒项、差遣牒分段，并通过 clear_mind/change_mind 管理对话进程。',
+    en: 'Dialog control: manage reminders, Taskdoc sections, and course resets.',
+    zh: '对话控制：维护提醒项、差遣牒分段，并管理对话进程重置。',
   },
   promptFilesI18n: promptFilesFor('control'),
   manualSpec: manualSpecFor('control'),

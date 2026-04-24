@@ -93,9 +93,9 @@ A: `dialog` 提醒只用于当前对话的工作集。`personal` 提醒会在所
 
 A: 只有当这条提醒与你的持续职责相关，且在所有由你主理的后续对话里也应该继续被看到时，才用 `personal`。其它情况默认都用 `dialog`。
 
-### Q: change_mind 会重置对话轮次吗？
+### Q: mind_more / change_mind 会重置对话轮次吗？
 
-A: 不会。`change_mind` 仅更新差遣牒内容，不重置对话轮次。
+A: 不会。`mind_more` / `change_mind` 仅更新差遣牒内容，不重置对话轮次。
 
 ### Q: 差遣牒更新后立即对所有队友可见吗？
 

@@ -93,9 +93,9 @@ A: `dialog` reminders are only for the current dialog's working set. `personal` 
 
 A: Use `personal` only for responsibility-related reminders that you should keep seeing in all later dialogs you lead. Everything else should default to `dialog`.
 
-### Q: Does change_mind reset dialog rounds?
+### Q: Do mind_more / change_mind reset dialog rounds?
 
-A: No. `change_mind` only updates taskdoc content, it doesn't reset dialog rounds.
+A: No. `mind_more` / `change_mind` only update Taskdoc content; they do not reset dialog rounds.
 
 ### Q: Are taskdoc updates immediately visible to all teammates?
 

@@ -3,7 +3,9 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { loadAgentMinds } from '../../main/minds/load';
+import { taskdocCanonicalCopy } from '../../main/minds/minds-i18n';
 import { setWorkLanguage } from '../../main/runtime/work-language';
+import '../../main/tools/builtins';
 
 async function writeText(filePath: string, value: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -41,6 +43,34 @@ async function main(): Promise<void> {
       assert.ok(systemPrompt.includes('persona-en'));
       assert.ok(!systemPrompt.includes('persona-default'));
     }
+
+    {
+      const { agentTools } = await loadAgentMinds('alice');
+      const toolNames = new Set(agentTools.map((tool) => tool.name));
+      assert.ok(toolNames.has('mind_more'), 'main dialog should expose mind_more');
+      assert.ok(toolNames.has('change_mind'), 'main dialog should expose change_mind');
+    }
+
+    {
+      const fakeSideDialog = {
+        askerDialog: {},
+        getLastContextHealth: () => undefined,
+      };
+      const { agentTools } = await loadAgentMinds('alice', fakeSideDialog as never);
+      const toolNames = new Set(agentTools.map((tool) => tool.name));
+      assert.ok(!toolNames.has('mind_more'), 'side dialog should not expose mind_more');
+      assert.ok(!toolNames.has('change_mind'), 'side dialog should not expose change_mind');
+      assert.ok(toolNames.has('recall_taskdoc'), 'side dialog should still expose recall_taskdoc');
+    }
+
+    assert.ok(
+      taskdocCanonicalCopy('en').includes('mind_more'),
+      'canonical Taskdoc copy should mention mind_more in English',
+    );
+    assert.ok(
+      taskdocCanonicalCopy('zh').includes('mind_more'),
+      'canonical Taskdoc copy should mention mind_more in Chinese',
+    );
 
     // Fall back to persona.md when persona.<lang>.md is absent.
     await fs.rm(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.en.md'));

@@ -18,6 +18,11 @@ import {
   type TaskPackageSectionsState,
 } from './task-package';
 
+function isPathWithinDirectory(childPath: string, parentDir: string): boolean {
+  const relative = path.relative(parentDir, childPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 /**
  * Format Taskdoc content for display in the LLM context.
  * Taskdocs are encapsulated `*.tsk/` directories.
@@ -44,7 +49,7 @@ export async function formatTaskDocContent(dlg: Dialog): Promise<ChatMessage> {
   const fullPath = path.resolve(workspaceRoot, taskDocPath);
 
   // Security check - ensure path is within rtws (runtime workspace)
-  if (!fullPath.startsWith(workspaceRoot)) {
+  if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
     const head =
       language === 'zh' ? `**差遣牒：** \`${taskDocPath}\`` : `**Taskdoc:** \`${taskDocPath}\``;
     const err =
@@ -191,7 +196,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           for (const cat of extra.categories) {
             for (const selector of cat.selectors) {
               entries.push(
-                `- \`${cat.category}/${selector}.md\`（读：\`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`；写：\`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`）`,
+                `- \`${cat.category}/${selector}.md\`（读：\`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`；追加：\`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`；替换：\`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`）`,
               );
             }
           }
@@ -216,7 +221,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         for (const cat of extra.categories) {
           for (const selector of cat.selectors) {
             entries.push(
-              `- \`${cat.category}/${selector}.md\` (read: \`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`; update: \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`)`,
+              `- \`${cat.category}/${selector}.md\` (read: \`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`; append: \`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`; replace: \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`)`,
             );
           }
         }
@@ -242,14 +247,14 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
                 .join(', ')}`
             : '';
         const maintenanceLine = isSideDialog
-          ? `- 支线对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
-          : `- 维护方式：用函数工具 \`change_mind\` 指定分段（顶层 selector: \`goals\` / \`constraints\` / \`progress\`；或 category+selector 指定额外章节）。每次调用会替换该章节全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一程中多次调用来一次更新多个章节（禁止覆盖/抹掉他人条目）。`;
+          ? `- 支线对话中不允许 \`mind_more\` / \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+          : `- 维护方式：少量新增条目优先用 \`mind_more({\"items\":[\"...\"]})\` 追加到 \`progress\`（也可指定 selector/category）；需要删除陈旧项、重排或压缩时，用 \`change_mind\` 指定分段做整章替换。`;
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录：顶层 3 个分段（\`goals\` / \`constraints\` / \`progress\`）一定会自动注入；\`bearinmind/\`（固定白名单）可选自动注入；其他章节不会自动注入，仅以“目录索引”形式提示并需用 \`recall_taskdoc\` 显式读取。`,
           `- 全队共享：三个分段对所有队友与支线对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
           `- 章节语义约定：\`goals\` / \`constraints\` 是任务契约；\`progress\` 是全队共享、准实时、可扫读的任务公告牌，用于当前有效状态、关键决策、下一步与仍成立阻塞，不是“我当前在做什么”的个人笔记。`,
-          `- 差遣牒维护人（负责执行 \`change_mind\`）：@${taskdocMaintainerId}`,
+          `- 差遣牒维护人（负责执行 \`mind_more\` / \`change_mind\`）：@${taskdocMaintainerId}`,
           `- 重要：差遣牒内容已被系统以内联形式注入到上下文中（本程生成视角下即为最新）。请直接基于上下文里的差遣牒回顾与决策，不要试图用通用文件工具读取 \`*.tsk/\` 下的文件（会被拒绝）。`,
           maintenanceLine,
           ``,
@@ -271,8 +276,8 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       }
 
       const maintenanceLine = isSideDialog
-        ? `- Side Dialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
-        : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (top-level selector: \`goals\` / \`constraints\` / \`progress\`, or category+selector for extra sections). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
+        ? `- Side Dialogs cannot call \`mind_more\` / \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide entries to append or a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+        : `- Maintenance: for small additions, prefer \`mind_more({\"items\":[\"...\"]})\` to append to \`progress\` (selector/category may be specified); when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement.`;
       const bearEn =
         bearInMindStatus === 'absent'
           ? 'absent'
@@ -290,7 +295,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         `- Our Taskdoc is a \`*.tsk/\` directory: it always auto-injects the 3 top-level sections (\`goals\` / \`constraints\` / \`progress\`); it may auto-inject \`bearinmind/\` (fixed whitelist); any other sections are NOT auto-injected and must be read via \`recall_taskdoc\` (only an index is shown).`,
         `- Team-shared: all 3 sections are visible to teammates and sideDialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
         `- Section semantics: \`goals\` / \`constraints\` are the task contract; \`progress\` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers, not a personal “what I'm doing now” notebook.`,
-        `- Taskdoc maintainer (runs \`change_mind\`): @${taskdocMaintainerId}`,
+        `- Taskdoc maintainer (runs \`mind_more\` / \`change_mind\`): @${taskdocMaintainerId}`,
         `- Important: Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc; do not try to read files under \`*.tsk/\` via general file tools (they will be rejected).`,
         maintenanceLine,
         ``,
@@ -317,8 +322,8 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     if (bytes > maxSize) {
       if (language === 'zh') {
         const howToUpdate = isSideDialog
-          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
-          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`change_mind\` 来更新（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量更新；禁止覆盖/抹掉他人条目）。`;
+          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`mind_more\` / \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`mind_more\` 追加少量条目，或用 \`change_mind\` 做整章替换；禁止覆盖/抹掉他人条目。`;
         return {
           type: 'environment_msg',
           role: 'user',
@@ -333,8 +338,8 @@ ${howToUpdate}`,
       }
 
       const howToUpdate = isSideDialog
-        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSide Dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
-        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use the function tool \`change_mind\` to update (each call replaces one section; you may call it multiple times in a single turn to batch updates; do not overwrite/delete other contributors).`;
+        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSide Dialogs cannot call \`mind_more\` / \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with entries to append or a merged full-section replacement draft (do not overwrite/delete other contributors).`
+        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; do not overwrite/delete other contributors.`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -350,8 +355,8 @@ ${howToUpdate}`,
 
     if (language === 'zh') {
       const footerLine = isSideDialog
-        ? `*支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
-        : `*在当前对话中用函数工具 \`change_mind\` 来替换分段（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量替换；更新时禁止覆盖他人条目）。*`;
+        ? `*支线对话中不允许 \`mind_more\` / \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
+        : `*在当前对话中用 \`mind_more\` 追加少量条目，或用 \`change_mind\` 替换整段；更新时禁止覆盖他人条目。*`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -374,8 +379,8 @@ ${footerLine}
     }
 
     const footerLine = isSideDialog
-      ? `*Side Dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).*`
-      : `*In this dialog, use the function tool \`change_mind\` to replace sections (each call replaces one entire section; you may call it multiple times in a single turn to batch replacements; do not overwrite other contributors).*`;
+      ? `*Side Dialogs cannot call \`mind_more\` / \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with entries to append or a merged full-section replacement draft (do not overwrite/delete other contributors).*`
+      : `*In this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; do not overwrite other contributors.*`;
     return {
       type: 'environment_msg',
       role: 'user',

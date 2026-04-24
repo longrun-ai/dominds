@@ -160,7 +160,32 @@ updated_at: <更新时间戳>
 - 变更对所有队友可见
 - 约束规则：`constraints` 只写任务特有硬要求，不得重复系统提示/工具文档中的全局规则；一经发现重复，必须删除并告知用户
 
-### 6. recall_taskdoc
+### 6. mind_more
+
+向差遣牒章节追加条目；默认追加到 `progress`，用于降低整章替换压力。
+
+**参数：**
+
+- `items`（必需）：要追加的条目数组，每项必须是非空字符串
+- `sep`（可选）：条目之间以及原内容与新增内容之间的分隔符，默认 `\n`
+- `selector`（可选）：章节选择器，默认 `progress`；可用 `goals` / `constraints` / `progress`
+- `category`（可选）：额外章节目录；与 `selector` 组合定位 `<category>/<selector>.md`
+
+**示例：**
+
+```typescript
+mind_more({
+  items: ['- 下一步：复核验证结果', '- 阻塞：无'],
+});
+```
+
+**特点：**
+
+- 只追加，不会自动去重、改写或压缩旧内容
+- 适合给 `progress` 补一两条当前仍有效的状态、决策、下一步或阻塞
+- 若需要删除陈旧项、重排结构或压缩公告牌，仍使用 `change_mind` 做整章替换
+
+### 7. recall_taskdoc
 
 读取差遣牒章节。
 
@@ -227,6 +252,14 @@ update_reminder({
 ```
 
 ### 更新差遣牒进度
+
+```typescript
+mind_more({
+  items: ['- 下一步：补齐 Taskdoc `progress` 的公告牌属性说明'],
+});
+```
+
+### 整章替换差遣牒进度
 
 ```typescript
 change_mind({

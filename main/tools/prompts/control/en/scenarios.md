@@ -122,6 +122,12 @@ Announce the current effective state, key decisions, next step, and still-active
 ### Example
 
 ```typescript
+// Small additions that are still effective now
+mind_more({
+  items: ['- Next: verify control / team_mgmt manuals and tests are aligned'],
+});
+
+// Full-section replacement when cleanup, reordering, or compression is needed
 change_mind({
   selector: 'progress',
   content:

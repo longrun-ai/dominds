@@ -121,6 +121,12 @@ replyTellaskBack({
 ### 示例
 
 ```typescript
+// 少量新增当前仍有效的公告条目
+mind_more({
+  items: ['- 下一步：复核 control / team_mgmt 手册与测试是否对齐'],
+});
+
+// 需要清理旧项、重排或压缩时，整章替换
 change_mind({
   selector: 'progress',
   content:

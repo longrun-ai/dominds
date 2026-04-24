@@ -73,20 +73,21 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 **Update Rules:**
 
-- Each `change_mind` call replaces entire chapter
+- `mind_more` appends small entries; `change_mind` replaces a full section
 - Does not reset dialog rounds
 - Changes visible to all teammates
 - When writing `progress`, assume teammates will skim it to synchronize on the current task truth rather than read your private process log
 
 ## Tool Overview
 
-| Tool            | Function                                    |
-| --------------- | ------------------------------------------- |
-| add_reminder    | Add reminder                                |
-| delete_reminder | Delete reminder                             |
-| update_reminder | Update reminder content                     |
-| change_mind     | Update taskdoc (goals/constraints/progress) |
-| recall_taskdoc  | Read taskdoc chapter                        |
+| Tool            | Function                                             |
+| --------------- | ---------------------------------------------------- |
+| add_reminder    | Add reminder                                         |
+| delete_reminder | Delete reminder                                      |
+| update_reminder | Update reminder content                              |
+| mind_more       | Append entries to Taskdoc (defaults to progress)     |
+| change_mind     | Replace Taskdoc section (goals/constraints/progress) |
+| recall_taskdoc  | Read taskdoc chapter                                 |
 
 ## Inter-dialog Reply Routing
 
@@ -127,7 +128,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
 - Separate carriers: information that must synchronize the team's current effective state, key decisions, next steps, or still-active blockers belongs in `progress`, the quasi-real-time task bulletin board; reminders keep local resume details
-- Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile
+- Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile. Use `mind_more` for small additions and `change_mind` when cleanup/reordering/compression is needed
 - Collapse before clearing: default to a structured continuation-package reminder; if the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
 
@@ -147,7 +148,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 ## Limitations and Notes
 
 1. `dialog` reminders end with the dialog; `personal` reminders stay visible in all later dialogs you lead
-2. Taskdoc updates use full section replacement, ensure to merge existing content
-3. `change_mind` does not reset dialog rounds
+2. Use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement and merge existing content first
+3. `mind_more` / `change_mind` do not reset dialog rounds
 4. A continuation-package reminder should keep only details not already covered by Taskdoc but easy to lose during resume
 5. Do not turn `personal` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

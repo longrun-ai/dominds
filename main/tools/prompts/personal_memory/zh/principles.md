@@ -90,7 +90,7 @@ personal_memory 工具集采用**路径键值存储**模型：
 
 - **team_memory**：团队共享记忆，所有成员可见
 - **reminder**：临时提醒，会话级别
-- **change_mind**：更新差遣牒（goals/constraints/progress）
+- **mind_more / change_mind**：追加或替换差遣牒（goals/constraints/progress）
 
 ## 限制与注意事项
 

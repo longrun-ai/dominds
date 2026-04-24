@@ -22,6 +22,7 @@ import {
   changeMindTool,
   clearMindTool,
   deleteReminderTool,
+  mindMoreTool,
   recallTaskdocTool,
   updateReminderTool,
 } from '../tools/ctrl';
@@ -297,8 +298,9 @@ export async function loadAgentMinds(
     clearMindTool,
     recallTaskdocTool,
   ];
-  // change_mind is only available in main dialogs (not sideDialogs).
+  // Taskdoc mutation tools are only available in main dialogs (not sideDialogs).
   if (dialog === undefined || dialog.askerDialog === undefined) {
+    intrinsicFuncTools.push(mindMoreTool);
     intrinsicFuncTools.push(changeMindTool);
   }
 

@@ -14,6 +14,7 @@
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new course, optionally add a reminder
  * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
+ * - mind_more: Append entries to a `.tsk/` Taskdoc section without starting a new course
  * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:
@@ -52,6 +53,7 @@ import {
   type ToolCallOutput,
 } from '../tool';
 import {
+  appendTaskPackageByChangeMindTarget,
   bearInMindFilenameForSection,
   isTaskPackagePath,
   parseTaskPackageChangeMindTarget,
@@ -69,6 +71,8 @@ type CtrlMessages = Readonly<{
   invalidFormatUpdate: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
+  invalidFormatMindMore: string;
+  mindMoreItemsRequired: string;
   invalidFormatRecallTaskdoc: string;
   taskDocContentRequired: string;
   noTaskDocPathConfigured: string;
@@ -120,6 +124,11 @@ function isJsonValue(value: unknown): value is JsonValue {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return isRecord(value) && Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isPathWithinDirectory(childPath: string, parentDir: string): boolean {
+  const relative = path.relative(parentDir, childPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function getManagerTool(meta: unknown): string | undefined {
@@ -464,6 +473,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       tooManyArgsChangeMind:
         '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
+      invalidFormatMindMore:
+        '参数格式不对。用法：mind_more({ items: string[], sep?: string, selector?: string, category?: string })（selector 默认 progress）',
+      mindMoreItemsRequired:
+        '需要提供要追加的条目（items），且每一项都必须是非空字符串。\n' +
+        '示例：mind_more({"items":["- 下一步：复核验证结果","- 阻塞：无"]})',
       invalidFormatRecallTaskdoc:
         '参数格式不对。用法：recall_taskdoc({ category: string, selector: string })',
       taskDocContentRequired:
@@ -491,7 +505,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
         `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
       taskDocSectionMissing: (relativePath) =>
-        `未找到：${relativePath}。\n\n用 change_mind 创建或更新：\n- change_mind({"category":string,"selector":string,"content":string})`,
+        `未找到：${relativePath}。\n\n少量追加/创建可用 mind_more；整章创建/替换用 change_mind：\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"..."})`,
       clearedCoursePrompt: (nextCourse) =>
         formatNewCourseStartPrompt('zh', { nextCourse, source: 'clear_mind' }),
     };
@@ -515,6 +529,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
     tooManyArgsChangeMind:
       'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
+    invalidFormatMindMore:
+      'Error: Invalid args. Use: mind_more({ items: string[], sep?: string, selector?: string, category?: string }) (selector defaults to progress).',
+    mindMoreItemsRequired:
+      'Error: items are required, and every item must be a non-empty string.\n' +
+      'Example: mind_more({"items":["- Next: review verification results","- Blocker: none"]})',
     invalidFormatRecallTaskdoc:
       'Error: Invalid args. Use: recall_taskdoc({ category: string, selector: string })',
     taskDocContentRequired:
@@ -543,7 +562,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
     taskDocSectionMissing: (relativePath) =>
-      `Not found: \`${relativePath}\`.\n\nUse \`change_mind\` to create/update it (whole-section replace):\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
+      `Not found: \`${relativePath}\`.\n\nUse \`mind_more\` for small append/create updates, or \`change_mind\` for full-section create/replace:\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
     clearedCoursePrompt: (nextCourse) =>
       formatNewCourseStartPrompt('en', { nextCourse, source: 'clear_mind' }),
   };
@@ -880,12 +899,12 @@ export const changeMindTool: FuncTool = {
       if (language === 'zh') {
         return toolFailure(
           `错误：\`change_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
-            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`change_mind\`，并提供你已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`,
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`mind_more\` 或 \`change_mind\`，并提供要追加的条目或已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`,
         );
       }
       return toolFailure(
         `Error: \`change_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
-          `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`mind_more\` or \`change_mind\` with entries to append or a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
       );
     }
 
@@ -906,7 +925,9 @@ export const changeMindTool: FuncTool = {
 
     const workspaceRoot = path.resolve(process.cwd());
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
-    if (!fullPath.startsWith(workspaceRoot)) return toolFailure(t.pathMustBeWithinWorkspace);
+    if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
+      return toolFailure(t.pathMustBeWithinWorkspace);
+    }
 
     if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
 
@@ -941,6 +962,138 @@ export const changeMindTool: FuncTool = {
       taskPackageDirFullPath: fullPath,
       target: parsed.target,
       content: newTaskDocContent,
+      updatedBy: caller.id,
+    });
+    return formatToolActionResult(language, 'mindChanged');
+  },
+};
+
+export const mindMoreTool: FuncTool = {
+  type: 'func',
+  name: 'mind_more',
+  description: 'Append entries to one shared Taskdoc section in the Main Dialog.',
+  descriptionI18n: {
+    en: 'Append entries to one shared Taskdoc section in the Main Dialog.',
+    zh: '在主线对话中向一段共享差遣牒章节追加条目。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items'],
+    properties: {
+      items: {
+        type: 'array',
+        description: 'Entries to append. Each entry must be a non-empty string.',
+        items: { type: 'string' },
+      },
+      sep: {
+        type: 'string',
+        description:
+          'Separator inserted between existing content and new entries, and between entries. Defaults to "\\n".',
+      },
+      selector: {
+        type: 'string',
+        description:
+          'Target section selector. Defaults to progress. Top-level: goals|constraints|progress. Under category="bearinmind": contracts|acceptance|grants|runbook|decisions|risks. For other categories: any identifier.',
+      },
+      category: {
+        type: 'string',
+        description:
+          'Optional category directory within the Taskdoc package. When present, selector targets <category>/<selector>.md.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+
+    if (dlg.askerDialog !== undefined) {
+      const maintainerId = dlg instanceof SideDialog ? dlg.mainDialog.agentId : dlg.agentId;
+      if (language === 'zh') {
+        return toolFailure(
+          `错误：\`mind_more\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`mind_more\` 或 \`change_mind\`，并提供要追加或已合并好的内容（禁止覆盖/抹掉他人条目）。`,
+        );
+      }
+      return toolFailure(
+        `Error: \`mind_more\` is only available in the Main Dialog (not in Side Dialogs).\n` +
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`mind_more\` or \`change_mind\` with the entries to append or a merged draft (do not overwrite/delete other contributors).`,
+      );
+    }
+
+    const rawItems = args['items'];
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return toolFailure(t.mindMoreItemsRequired);
+    }
+    const items: string[] = [];
+    for (const item of rawItems) {
+      if (typeof item !== 'string') return toolFailure(t.mindMoreItemsRequired);
+      const normalized = item.trim();
+      if (!normalized) return toolFailure(t.mindMoreItemsRequired);
+      items.push(normalized);
+    }
+
+    const sepValue = args['sep'];
+    const sep = sepValue === undefined ? '\n' : typeof sepValue === 'string' ? sepValue : null;
+    if (sep === null) return toolFailure(t.invalidFormatMindMore);
+
+    const selectorValue = args['selector'];
+    const selector =
+      selectorValue === undefined
+        ? 'progress'
+        : typeof selectorValue === 'string'
+          ? selectorValue.trim()
+          : '';
+    if (!selector) return toolFailure(t.selectorRequired);
+
+    const categoryValue = args['category'];
+    const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
+
+    // Taskdoc path is immutable for the dialog lifecycle.
+    const taskDocPath = dlg.taskDocPath;
+    if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
+
+    const workspaceRoot = path.resolve(process.cwd());
+    const fullPath = path.resolve(workspaceRoot, taskDocPath);
+    if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
+      return toolFailure(t.pathMustBeWithinWorkspace);
+    }
+
+    if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
+
+    const parsed = parseTaskPackageChangeMindTarget({ selector, category });
+    if (parsed.kind !== 'ok') {
+      const e = parsed.error;
+      switch (e.kind) {
+        case 'selector_required':
+          return toolFailure(t.selectorRequired);
+        case 'invalid_category_name':
+          return toolFailure(t.invalidCategory(e.category));
+        case 'invalid_category_selector':
+          return toolFailure(t.invalidCategorySelector(e.selector));
+        case 'invalid_top_level_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'invalid_bearinmind_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'top_level_selector_requires_no_category':
+          return toolFailure(t.topLevelSelectorRequiresNoCategory(e.category, e.selector));
+        case 'bearinmind_selector_requires_bearinmind_category':
+          return toolFailure(
+            t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector),
+          );
+        default: {
+          const _exhaustive: never = e;
+          return toolFailure(String(_exhaustive));
+        }
+      }
+    }
+
+    await appendTaskPackageByChangeMindTarget({
+      taskPackageDirFullPath: fullPath,
+      target: parsed.target,
+      content: items.join(sep),
+      sep,
       updatedBy: caller.id,
     });
     return formatToolActionResult(language, 'mindChanged');
@@ -983,7 +1136,9 @@ export const recallTaskdocTool: FuncTool = {
 
     const workspaceRoot = path.resolve(process.cwd());
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
-    if (!fullPath.startsWith(workspaceRoot)) return toolFailure(t.pathMustBeWithinWorkspace);
+    if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
+      return toolFailure(t.pathMustBeWithinWorkspace);
+    }
 
     if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
 
@@ -1035,7 +1190,7 @@ export const recallTaskdocTool: FuncTool = {
     }
 
     const sectionPath = path.resolve(fullPath, relPath);
-    if (!sectionPath.startsWith(fullPath)) {
+    if (!isPathWithinDirectory(sectionPath, fullPath)) {
       return toolFailure(t.pathMustBeWithinWorkspace);
     }
 
