@@ -653,20 +653,34 @@ providers:
           type: boolean
           description: Supported via thinking field (budget_tokens is ignored by DeepSeek).
     models:
+      deepseek-v4-flash:
+        name: DeepSeek-V4-Flash
+        supports_image_input: false
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 384000
+        context_window: '1M'
+      deepseek-v4-pro:
+        name: DeepSeek-V4-Pro
+        supports_image_input: false
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 384000
+        context_window: '1M'
       deepseek-chat:
-        name: DeepSeek-V3.2
+        name: DeepSeek-V4-Flash (non-thinking alias)
         supports_image_input: false
-        context_length: 128000
-        input_length: 128000
-        output_length: 8192
-        context_window: '128K'
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 384000
+        context_window: '1M'
       deepseek-reasoner:
-        name: DeepSeek-R1 (reasoner, V3.2 thinking mode)
+        name: DeepSeek-V4-Flash (thinking alias)
         supports_image_input: false
-        context_length: 128000
-        input_length: 128000
-        output_length: 65536
-        context_window: '128K'
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 384000
+        context_window: '1M'
   aliyun-bailian:
     name: Aliyun Bailian Coding Plan
     apiType: anthropic
