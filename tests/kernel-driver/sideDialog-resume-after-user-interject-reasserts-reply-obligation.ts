@@ -246,6 +246,16 @@ async function main(): Promise<void> {
       1,
       'Continue while still blocked should immediately surface the reply reassertion guide exactly once',
     );
+    assert.equal(
+      surfacedRuntimeGuides[0]?.rootCourse,
+      1,
+      'surfaced sideDialog runtime guide must keep a root course anchor',
+    );
+    assert.equal(
+      typeof surfacedRuntimeGuides[0]?.rootGenseq,
+      'number',
+      'surfaced sideDialog runtime guide must keep a root generation anchor',
+    );
     assert.deepEqual(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       {
@@ -312,6 +322,12 @@ async function main(): Promise<void> {
       surfacedRuntimeGuidesAfterSecondContinue.length,
       2,
       'each blocked Continue after a fresh interjection should surface a fresh reply reassertion guide',
+    );
+    assert.ok(
+      surfacedRuntimeGuidesAfterSecondContinue.every(
+        (event) => event.rootCourse === 1 && typeof event.rootGenseq === 'number',
+      ),
+      'every surfaced sideDialog runtime guide must keep root anchors',
     );
     assert.deepEqual(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),

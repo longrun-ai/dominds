@@ -5930,7 +5930,7 @@ export class DialogPersistence {
       genseq,
       content,
     };
-    await this.appendEvent(dialog.id, course, ev, dialog.status);
+    await this.appendEvent(dialog.id, course, attachRootGenerationRef(dialog, ev), dialog.status);
   }
 
   /**
