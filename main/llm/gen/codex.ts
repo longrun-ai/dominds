@@ -852,6 +852,25 @@ export class CodexGen implements LlmGenerator {
     // compiled as CommonJS, so Node.js requires a dynamic `import()` for runtime access here.
     const codexAuth: typeof import('@longrun-ai/codex-auth') =
       await import('@longrun-ai/codex-auth');
+    const authPreparation = codexAuth.prepareCodexFileAuth({
+      codexHome,
+      codexHomeEnvVar: providerConfig.apiKeyEnvVar,
+      providerName: `Dominds codex provider '${providerConfig.name}'`,
+    });
+    if (authPreparation.kind === 'action_required') {
+      throw new Error(codexAuth.formatCodexFileAuthActionRequired(authPreparation));
+    }
+    if (authPreparation.changedConfigToFile) {
+      log.info(
+        'Codex CLI auth storage switched to file mode for Dominds codex provider',
+        undefined,
+        {
+          codexHome: authPreparation.codexHome,
+          configPath: authPreparation.configPath,
+          previousStoreMode: authPreparation.previousStoreMode,
+        },
+      );
+    }
     const manager = new codexAuth.AuthManager({ codexHome });
     const client = await codexAuth.createChatGptClientFromManager(manager, {
       baseUrl: providerConfig.baseUrl,

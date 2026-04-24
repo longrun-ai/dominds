@@ -5,6 +5,7 @@ import {
   AuthState,
   TOKEN_REFRESH_INTERVAL_DAYS,
   TokenData,
+  resolveAuthDotJsonMode,
 } from './schema.js';
 import { readAuthFile, resolveCodexHome, updateStoredTokens } from './storage.js';
 
@@ -143,13 +144,30 @@ export class AuthManager {
       return null;
     }
 
-    if (auth.OPENAI_API_KEY) {
+    const authMode = resolveAuthDotJsonMode(auth);
+
+    if (authMode === 'apikey') {
+      if (!auth.OPENAI_API_KEY) {
+        throw new Error('auth.json declares API key auth but OPENAI_API_KEY is missing.');
+      }
       return {
         mode: 'api_key',
         apiKey: auth.OPENAI_API_KEY,
         lastRefresh: parseLastRefresh(auth.last_refresh),
         raw: auth,
       };
+    }
+
+    if (authMode === 'agentIdentity') {
+      throw new Error(
+        'auth.json uses agentIdentity auth, which @longrun-ai/codex-auth does not support.',
+      );
+    }
+
+    if (authMode === 'chatgptAuthTokens') {
+      throw new Error(
+        'auth.json uses externally managed chatgptAuthTokens, which @longrun-ai/codex-auth does not support.',
+      );
     }
 
     if (auth.tokens) {

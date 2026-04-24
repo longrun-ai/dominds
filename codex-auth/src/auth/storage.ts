@@ -82,6 +82,7 @@ export function persistTokens(
     account_id: idTokenInfo.chatgpt_account_id,
   };
   const auth: AuthDotJson = {
+    auth_mode: 'chatgpt',
     OPENAI_API_KEY: apiKey,
     tokens,
     last_refresh: new Date().toISOString(),
@@ -113,7 +114,9 @@ export function updateStoredTokens(
   if (update.idToken !== undefined && update.idToken !== null) {
     tokens.id_token = update.idToken;
     const idInfo = parseIdToken(update.idToken);
-    tokens.account_id = idInfo.chatgpt_account_id;
+    if (idInfo.chatgpt_account_id !== undefined) {
+      tokens.account_id = idInfo.chatgpt_account_id;
+    }
   }
   if (update.accessToken !== undefined && update.accessToken !== null) {
     tokens.access_token = update.accessToken;

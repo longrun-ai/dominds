@@ -9,6 +9,8 @@ export const TOKEN_REFRESH_INTERVAL_DAYS = 8;
 
 export type AuthCredentialsStoreMode = 'file';
 
+export type CodexStoredAuthMode = 'apikey' | 'chatgpt' | 'chatgptAuthTokens' | 'agentIdentity';
+
 export interface TokenDataFile {
   id_token: string;
   access_token: string;
@@ -17,15 +19,29 @@ export interface TokenDataFile {
 }
 
 export interface AuthDotJson {
+  auth_mode?: CodexStoredAuthMode;
   OPENAI_API_KEY?: string;
   tokens?: TokenDataFile;
   last_refresh?: string;
+  agent_identity?: AgentIdentityAuthRecord;
+}
+
+export interface AgentIdentityAuthRecord {
+  agent_runtime_id: string;
+  agent_private_key: string;
+  account_id: string;
+  chatgpt_user_id: string;
+  email: string;
+  plan_type: unknown;
+  chatgpt_account_is_fedramp: boolean;
 }
 
 export interface IdTokenInfo {
   email?: string;
   chatgpt_plan_type?: string;
+  chatgpt_user_id?: string;
   chatgpt_account_id?: string;
+  chatgpt_account_is_fedramp: boolean;
   raw_jwt: string;
 }
 
@@ -44,4 +60,30 @@ export interface AuthState {
   tokens?: TokenData;
   lastRefresh?: Date;
   raw: AuthDotJson;
+}
+
+export function resolveAuthDotJsonMode(auth: AuthDotJson): CodexStoredAuthMode {
+  const explicitMode: unknown = auth.auth_mode;
+  if (explicitMode !== undefined && explicitMode !== null) {
+    if (!isCodexStoredAuthMode(explicitMode)) {
+      throw new Error(`Unsupported auth.json auth_mode: ${String(explicitMode)}`);
+    }
+    return explicitMode;
+  }
+  if (auth.OPENAI_API_KEY) {
+    return 'apikey';
+  }
+  if (auth.agent_identity) {
+    return 'agentIdentity';
+  }
+  return 'chatgpt';
+}
+
+export function isCodexStoredAuthMode(value: unknown): value is CodexStoredAuthMode {
+  return (
+    value === 'apikey' ||
+    value === 'chatgpt' ||
+    value === 'chatgptAuthTokens' ||
+    value === 'agentIdentity'
+  );
 }

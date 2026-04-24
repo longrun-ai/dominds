@@ -1,4 +1,9 @@
-import { CLIENT_ID, CODEX_REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR } from '../auth/schema.js';
+import {
+  CLIENT_ID,
+  CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR,
+  CODEX_REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
+  DEFAULT_ORIGINATOR,
+} from '../auth/schema.js';
 
 export type RefreshTokenFailedReason = 'expired' | 'exhausted' | 'revoked' | 'other';
 
@@ -35,13 +40,14 @@ export async function tryRefreshToken(refreshToken: string): Promise<RefreshResp
     client_id: CLIENT_ID,
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
-    scope: 'openid profile email',
   });
+  const originator = process.env[CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR] ?? DEFAULT_ORIGINATOR;
 
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      originator,
     },
     body,
   });

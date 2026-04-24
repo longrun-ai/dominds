@@ -1,4 +1,5 @@
 export * from './auth/manager.js';
+export * from './auth/preflight.js';
 export * from './auth/schema.js';
 export * from './auth/storage.js';
 

@@ -7,6 +7,7 @@ import {
   AuthDotJson,
   DEFAULT_CHATGPT_BASE_URL,
   TOKEN_REFRESH_INTERVAL_DAYS,
+  resolveAuthDotJsonMode,
 } from '../auth/schema.js';
 import {
   authFilePath,
@@ -317,7 +318,11 @@ function buildReport(codexHome: string, auth: AuthDotJson | null) {
     return report;
   }
 
-  report.auth_mode = auth.OPENAI_API_KEY ? 'api_key' : 'chatgpt';
+  try {
+    report.auth_mode = resolveAuthDotJsonMode(auth);
+  } catch (error) {
+    report.auth_mode_error = error instanceof Error ? error.message : String(error);
+  }
   report.has_api_key = Boolean(auth.OPENAI_API_KEY);
 
   if (auth.tokens) {
@@ -330,7 +335,9 @@ function buildReport(codexHome: string, auth: AuthDotJson | null) {
       const info = parseIdToken(auth.tokens.id_token);
       report.id_token_email = info.email;
       report.id_token_plan = info.chatgpt_plan_type;
+      report.id_token_user_id = info.chatgpt_user_id;
       report.id_token_account_id = info.chatgpt_account_id;
+      report.id_token_account_is_fedramp = info.chatgpt_account_is_fedramp;
     } catch (error) {
       report.id_token_error = error instanceof Error ? error.message : String(error);
     }
@@ -1765,7 +1772,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`- auth mode: ${report.auth_mode}`);
+  if (report.auth_mode_error) {
+    console.log(`- auth mode error: ${report.auth_mode_error}`);
+  } else {
+    console.log(`- auth mode: ${report.auth_mode}`);
+  }
   console.log(`- api key present: ${report.has_api_key ? 'yes' : 'no'}`);
 
   if (report.has_tokens) {
