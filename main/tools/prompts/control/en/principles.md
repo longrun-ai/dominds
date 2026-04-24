@@ -77,6 +77,8 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - Does not reset dialog rounds
 - Changes visible to all teammates
 - When writing `progress`, assume teammates will skim it to synchronize on the current task truth rather than read your private process log
+- Do not keep blindly calling `mind_more` until `progress` becomes a chronology; when the bulletin board starts accumulating duplicates, stale entries, or noisy history, use `change_mind` to condense it around facts that are still effective now
+- Detailed investigations, long logs, full plans, acceptance records, and expanded rationale belong in formal rtws documentation; Taskdoc should keep only the key point, current conclusion, next step, and a location pointer such as path/section/command
 
 ## Tool Overview
 
@@ -129,8 +131,10 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
 - Separate carriers: information that must synchronize the team's current effective state, key decisions, next steps, or still-active blockers belongs in `progress`, the quasi-real-time task bulletin board; reminders keep local resume details
 - Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile. Use `mind_more` for small additions and `change_mind` when cleanup/reordering/compression is needed
+- Condense when needed: `mind_more` is not the default bookkeeping move. If one topic already has several phase notes, prefer `change_mind` to merge them into the current summary; put the detailed expansion in formal rtws documentation and keep a document pointer in Taskdoc
 - Collapse before clearing: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then creates a structured continuation-package reminder; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders. If the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
+- Documentation layering: Taskdoc says “what the team should sync on / do next now”; formal rtws documentation carries “why, how, detailed evidence, and the full process”. When Taskdoc references formal rtws documentation, use a stable path/section name/relevant command instead of copying the full content
 
 ### 4. What Belongs in `progress`
 
@@ -139,16 +143,18 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
   - blockers that are confirmed and still active
   - the next step the team should currently align on
   - completed stage closures and remaining gaps
+  - a short summary of content already written to formal rtws documentation, plus a pointer to that document
 - Poor fits for `progress`:
   - “I just read file X”
   - “I might try a small idea next”
   - scratch notes only useful to the current speaker
   - historical traces whose current validity is unclear
+  - detailed expansions, long logs, full plans, or acceptance-record text that belongs in formal rtws documentation
 
 ## Limitations and Notes
 
 1. `dialog` reminders end with the dialog; `personal` reminders stay visible in all later dialogs you lead
-2. Use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement and merge existing content first
+2. Use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement and merge existing content first. Do not treat `mind_more` as a chronology tool; when cleanup, stale-entry removal, or same-topic consolidation is needed, use `change_mind`
 3. `mind_more` / `change_mind` do not reset dialog rounds
 4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog under caution/critical remediation, maintain sufficiently detailed continuation-package reminders only
 5. Do not turn `personal` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

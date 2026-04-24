@@ -225,7 +225,7 @@ export async function updateTaskPackageByChangeMindTarget(params: {
 
   const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, content, 'utf8');
+  await writeMarkdownFileWithCanonicalEnding(filePath, content);
 }
 
 export async function appendTaskPackageByChangeMindTarget(params: {
@@ -243,7 +243,20 @@ export async function appendTaskPackageByChangeMindTarget(params: {
   const current = await readTextFileIfPresent(filePath);
   const next =
     current === null || current.trim() === '' ? content : joinForAppend(current, content, sep);
-  await fs.promises.writeFile(filePath, next, 'utf8');
+  await writeMarkdownFileWithCanonicalEnding(filePath, next);
+}
+
+async function writeMarkdownFileWithCanonicalEnding(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  await fs.promises.writeFile(filePath, withCanonicalMarkdownFileEnding(content), 'utf8');
+}
+
+function withCanonicalMarkdownFileEnding(content: string): string {
+  const stripped = stripTrailingMarkdownFileNewlines(content);
+  if (stripped === '') return '';
+  return `${stripped}\n`;
 }
 
 function taskPackageFilePathForChangeMindTarget(
@@ -343,16 +356,22 @@ export async function readTaskPackageSections(
 }
 
 function formatSectionBodyI18n(state: TaskPackageSectionState): string {
-  // Injection must be deterministic and treat section bodies as opaque markdown.
+  // Injection must be deterministic and treat section bodies as opaque markdown,
+  // except for file-final newlines that only encode on-disk formatting.
   // If a required file is missing, inject an empty body (status should be shown elsewhere).
-  if (state.kind === 'present') return state.content;
+  if (state.kind === 'present') return stripTrailingMarkdownFileNewlines(state.content);
   return '';
 }
 
 function formatBearInMindBody(state: TaskPackageSectionState): string | null {
   if (state.kind !== 'present') return null;
-  if (state.content.trim() === '') return null;
-  return state.content;
+  const content = stripTrailingMarkdownFileNewlines(state.content);
+  if (content.trim() === '') return null;
+  return content;
+}
+
+function stripTrailingMarkdownFileNewlines(content: string): string {
+  return content.replace(/(?:\r\n?|\n)+$/u, '');
 }
 
 export function formatEffectiveTaskDocFromSections(
@@ -581,7 +600,7 @@ export async function updateTaskPackageSection(params: {
   await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
 
   const filePath = path.join(taskPackageDirFullPath, taskPackageFilenameForSection(section));
-  await fs.promises.writeFile(filePath, content, 'utf8');
+  await writeMarkdownFileWithCanonicalEnding(filePath, content);
 }
 
 async function readTaskPackageExtraSectionsIndex(

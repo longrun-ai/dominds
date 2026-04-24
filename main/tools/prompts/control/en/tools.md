@@ -175,7 +175,10 @@ Append entries to a Taskdoc section; defaults to `progress`, reducing full-secti
 
 ```typescript
 mind_more({
-  items: ['- Next: review verification results', '- Blocker: none'],
+  items: [
+    '- Next: review verification results (details: <doc-path>#<section>)',
+    '- Blocker: API acceptance criteria pending',
+  ],
 });
 ```
 
@@ -183,7 +186,9 @@ mind_more({
 
 - Append-only: it does not deduplicate, rewrite, or compress old content
 - Good for adding one or two still-effective states, decisions, next steps, or blockers to `progress`
+- Not for appending every investigation step, long log, full plan, or acceptance record as a chronology; those details belong in formal rtws documentation, while Taskdoc keeps the summary and document pointer
 - If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement
+- When one topic already has several phase notes, prefer `change_mind` to merge them into a concise current announcement instead of continuing to call `mind_more`
 
 ### 7. recall_taskdoc
 
@@ -257,7 +262,9 @@ update_reminder({
 
 ```typescript
 mind_more({
-  items: ['- Next: strengthen the bulletin-board semantics of Taskdoc `progress`'],
+  items: [
+    '- Next: strengthen the bulletin-board semantics of Taskdoc `progress` (details: <doc-path>#<section>)',
+  ],
 });
 ```
 
@@ -267,7 +274,7 @@ mind_more({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Current Effective State\n- The handbook boundary split is now agreed: role assets / personal long-lived experience / Taskdoc-progress / reminders\n\n### Decisions In Effect\n- `persona / knowhow / pitfalls` no longer absorb daily member experience\n- `personal_memory` is reserved for one member\\'s reusable long-lived experience\n\n### Next Step\n- Strengthen the bulletin-board semantics of Taskdoc `progress`\n\n### Still-Active Blockers\n- None',
+    '## Progress\n\n### Current Effective State\n- The handbook boundary split is now agreed: role assets / personal long-lived experience / Taskdoc-progress / reminders; details: <doc-path>#<section>\n\n### Decisions In Effect\n- `persona / knowhow / pitfalls` no longer absorb daily member experience\n- `personal_memory` is reserved for one member\\'s reusable long-lived experience\n\n### Next Step\n- Strengthen the bulletin-board semantics of Taskdoc `progress`\n\n### Still-Active Blockers\n- None',
 });
 ```
 

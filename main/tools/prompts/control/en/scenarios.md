@@ -117,21 +117,23 @@ replyTellaskBack({
 
 ### Scenario Description
 
-Announce the current effective state, key decisions, next step, and still-active blockers to the whole team rather than writing a private chronology.
+Announce the current effective state, key decisions, next step, and still-active blockers to the whole team rather than writing a private chronology. If details have been organized into formal rtws documentation, `progress` should keep only the summary and document pointer.
 
 ### Example
 
 ```typescript
 // Small additions that are still effective now
 mind_more({
-  items: ['- Next: verify control / team_mgmt manuals and tests are aligned'],
+  items: [
+    '- Next: verify control / team_mgmt manuals and tests are aligned (details: <doc-path>#<section>)',
+  ],
 });
 
-// Full-section replacement when cleanup, reordering, or compression is needed
+// Full-section replacement when cleanup, reordering, same-topic consolidation, or chronology compression is needed
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Current Effective State\n- The memory-carrier boundary cleanup is complete; next we strengthen the Taskdoc bulletin-board semantics\n\n### Decisions In Effect\n- `personal_memory` is no longer treated as a short-term junk drawer\n- `team_memory` now carries only long-lived team conventions and invariants\n\n### Next Step\n- Add stronger `progress` bulletin-board guidance in control / team_mgmt manuals\n\n### Still-Active Blockers\n- None',
+    '## Progress\n\n### Current Effective State\n- The memory-carrier boundary cleanup is complete; next we strengthen the Taskdoc bulletin-board semantics; details: <doc-path>#<section>\n\n### Decisions In Effect\n- `personal_memory` is no longer treated as a short-term junk drawer\n- `team_memory` now carries only long-lived team conventions and invariants\n\n### Next Step\n- Add stronger `progress` bulletin-board guidance in control / team_mgmt manuals\n\n### Still-Active Blockers\n- None',
 });
 ```
 
@@ -193,7 +195,7 @@ recall_taskdoc({
 
 ### Scenario Description
 
-Maintain taskdoc integrity and consistency, and keep `progress` as a team-scannable current-truth snapshot.
+Maintain taskdoc integrity and consistency, and keep `progress` as a team-scannable current-truth snapshot; put detailed expansion in formal rtws documentation and keep only the summary plus location pointer in Taskdoc.
 
 ### Example
 
@@ -202,6 +204,6 @@ Maintain taskdoc integrity and consistency, and keep `progress` as a team-scanna
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Current Effective State\n- The boundary wording has been propagated into handbook sources and tests\n\n### Decisions In Effect\n- role assets / personal_memory / team_memory / Taskdoc-progress / reminders now have separated responsibilities\n\n### Next Step\n- Re-verify control manual wording, Taskdoc display text, and boundary tests\n\n### Still-Active Blockers\n- None',
+    '## Progress\n\n### Current Effective State\n- The boundary wording has been propagated into handbook sources and tests; details: <doc-path>#<section>\n\n### Decisions In Effect\n- role assets / personal_memory / team_memory / Taskdoc-progress / reminders now have separated responsibilities\n\n### Next Step\n- Re-verify control manual wording, Taskdoc display text, and boundary tests\n\n### Still-Active Blockers\n- None',
 });
 ```

@@ -175,7 +175,7 @@ updated_at: <更新时间戳>
 
 ```typescript
 mind_more({
-  items: ['- 下一步：复核验证结果', '- 阻塞：无'],
+  items: ['- 下一步：复核验证结果（详见 <文档路径>#<章节>）', '- 阻塞：等待 API 验收口径确认'],
 });
 ```
 
@@ -183,7 +183,9 @@ mind_more({
 
 - 只追加，不会自动去重、改写或压缩旧内容
 - 适合给 `progress` 补一两条当前仍有效的状态、决策、下一步或阻塞
+- 不适合把每一步调查过程、长日志、完整方案或验收记录当流水账追加进去；这些细节应写入 rtws 正式文档，差遣牒只写摘要和文档定位 pointer
 - 若需要删除陈旧项、重排结构或压缩公告牌，仍使用 `change_mind` 做整章替换
+- 当同一主题已经有多条阶段记录时，优先 `change_mind` 合并成当前仍有效的简明公告，而不是继续 `mind_more`
 
 ### 7. recall_taskdoc
 
@@ -255,7 +257,7 @@ update_reminder({
 
 ```typescript
 mind_more({
-  items: ['- 下一步：补齐 Taskdoc `progress` 的公告牌属性说明'],
+  items: ['- 下一步：补齐 Taskdoc `progress` 的公告牌属性说明（详见 <文档路径>#<章节>）'],
 });
 ```
 
@@ -265,7 +267,7 @@ mind_more({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 当前有效状态\n- 手册边界方案已确定：角色级资产 / 个人长期经验 / Taskdoc-progress / reminders 分流\n\n### 已生效决策\n- `persona / knowhow / pitfalls` 不承接成员日常经验\n- `personal_memory` 只承接成员自己的长期可复用经验\n\n### 下一步\n- 补齐 Taskdoc `progress` 的公告牌属性说明\n\n### 仍成立阻塞\n- 无',
+    '## Progress\n\n### 当前有效状态\n- 手册边界方案已确定：角色级资产 / 个人长期经验 / Taskdoc-progress / reminders 分流；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- `persona / knowhow / pitfalls` 不承接成员日常经验\n- `personal_memory` 只承接成员自己的长期可复用经验\n\n### 下一步\n- 补齐 Taskdoc `progress` 的公告牌属性说明\n\n### 仍成立阻塞\n- 无',
 });
 ```
 

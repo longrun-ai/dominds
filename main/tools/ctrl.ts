@@ -477,7 +477,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '参数格式不对。用法：mind_more({ items: string[], sep?: string, selector?: string, category?: string })（selector 默认 progress）',
       mindMoreItemsRequired:
         '需要提供要追加的条目（items），且每一项都必须是非空字符串。\n' +
-        '示例：mind_more({"items":["- 下一步：复核验证结果","- 阻塞：无"]})',
+        '示例：mind_more({"items":["- 下一步：复核验证结果（详见 <文档路径>#<章节>）","- 阻塞：等待 API 验收口径确认"]})',
       invalidFormatRecallTaskdoc:
         '参数格式不对。用法：recall_taskdoc({ category: string, selector: string })',
       taskDocContentRequired:
@@ -533,7 +533,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid args. Use: mind_more({ items: string[], sep?: string, selector?: string, category?: string }) (selector defaults to progress).',
     mindMoreItemsRequired:
       'Error: items are required, and every item must be a non-empty string.\n' +
-      'Example: mind_more({"items":["- Next: review verification results","- Blocker: none"]})',
+      'Example: mind_more({"items":["- Next: review verification results (details: <doc-path>#<section>)","- Blocker: API acceptance criteria pending"]})',
     invalidFormatRecallTaskdoc:
       'Error: Invalid args. Use: recall_taskdoc({ category: string, selector: string })',
     taskDocContentRequired:
@@ -1222,6 +1222,9 @@ export const recallTaskdocTool: FuncTool = {
           : `\n\n⚠️ Truncated: content is too large (${bytes} bytes); showing first ${maxSize} bytes.`
         : '';
 
-    return toolSuccess(`**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}\n---${note}`);
+    const closingSeparatorPrefix = clipped.endsWith('\n') ? '' : '\n';
+    return toolSuccess(
+      `**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}${closingSeparatorPrefix}---${note}`,
+    );
   },
 };

@@ -116,21 +116,21 @@ replyTellaskBack({
 
 ### 场景描述
 
-把当前有效状态、关键决策、下一步与仍成立阻塞公告给全队，而不是写个人流水账。
+把当前有效状态、关键决策、下一步与仍成立阻塞公告给全队，而不是写个人流水账。若细节已整理到 rtws 正式文档，`progress` 只写摘要和文档定位 pointer。
 
 ### 示例
 
 ```typescript
 // 少量新增当前仍有效的公告条目
 mind_more({
-  items: ['- 下一步：复核 control / team_mgmt 手册与测试是否对齐'],
+  items: ['- 下一步：复核 control / team_mgmt 手册与测试是否对齐（详见 <文档路径>#<章节>）'],
 });
 
-// 需要清理旧项、重排或压缩时，整章替换
+// 需要清理旧项、重排、同主题合并或压缩流水账时，整章替换
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 当前有效状态\n- 已完成三类记忆载体边界收口，准备补 Taskdoc 公告牌属性\n\n### 已生效决策\n- `personal_memory` 不再作为短期杂物柜\n- `team_memory` 只承接团队长期共识与不变量\n\n### 下一步\n- 在 control / team_mgmt 手册中补强 `progress` 的公告牌语义\n\n### 仍成立阻塞\n- 无',
+    '## Progress\n\n### 当前有效状态\n- 已完成三类记忆载体边界收口，准备补 Taskdoc 公告牌属性；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- `personal_memory` 不再作为短期杂物柜\n- `team_memory` 只承接团队长期共识与不变量\n\n### 下一步\n- 在 control / team_mgmt 手册中补强 `progress` 的公告牌语义\n\n### 仍成立阻塞\n- 无',
 });
 ```
 
@@ -192,7 +192,7 @@ recall_taskdoc({
 
 ### 场景描述
 
-维护差遣牒的完整性和一致性，并确保 `progress` 始终是可供全队扫读的当前真相快照。
+维护差遣牒的完整性和一致性，并确保 `progress` 始终是可供全队扫读的当前真相快照；细节展开放入 rtws 正式文档，差遣牒只保留摘要和定位 pointer。
 
 ### 示例
 
@@ -201,6 +201,6 @@ recall_taskdoc({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 当前有效状态\n- 边界口径已统一到手册源头与测试\n\n### 已生效决策\n- 角色级资产 / personal_memory / team_memory / Taskdoc-progress / reminders 的职责已经切开\n\n### 下一步\n- 复验 control 手册、Taskdoc 展示文案与边界测试\n\n### 仍成立阻塞\n- 无',
+    '## Progress\n\n### 当前有效状态\n- 边界口径已统一到手册源头与测试；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- 角色级资产 / personal_memory / team_memory / Taskdoc-progress / reminders 的职责已经切开\n\n### 下一步\n- 复验 control 手册、Taskdoc 展示文案与边界测试\n\n### 仍成立阻塞\n- 无',
 });
 ```

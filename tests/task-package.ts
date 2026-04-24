@@ -6,7 +6,7 @@ import type { DialogStore } from '../main/dialog';
 import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
-import { mindMoreTool, recallTaskdocTool } from '../main/tools/ctrl';
+import { changeMindTool, mindMoreTool, recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
@@ -33,6 +33,12 @@ async function pathExists(p: string): Promise<boolean> {
     }
     throw err;
   }
+}
+
+function assertSingleTrailingLf(content: string, label: string): void {
+  assert.ok(content.endsWith('\n'), `${label} should end with LF`);
+  assert.ok(!content.endsWith('\r\n'), `${label} should not end with CRLF`);
+  assert.ok(!content.endsWith('\n\n'), `${label} should not grow extra trailing blank lines`);
 }
 
 async function main(): Promise<void> {
@@ -123,14 +129,16 @@ async function main(): Promise<void> {
     assert.equal(sections.goals.kind, 'present');
     assert.equal(sections.constraints.kind, 'present');
     assert.equal(sections.progress.kind, 'present');
-    assert.equal(sections.goals.content, newGoals);
-    assert.equal(sections.constraints.content, newConstraints);
-    assert.equal(sections.progress.content, newProgress);
+    assert.equal(sections.goals.content, `${newGoals}\n`);
+    assert.equal(sections.constraints.content, `${newConstraints}\n`);
+    assert.equal(sections.progress.content, `${newProgress}\n`);
 
     const msg2 = await formatTaskDocContent(dlg);
     const msg2Content = requireMessageContent(msg2);
     assert.ok(msg2Content.includes('## Goals'));
     assert.ok(msg2Content.includes(newGoals));
+    assert.ok(msg2Content.includes('- Zero regressions\n\n## Constraints'));
+    assert.ok(!msg2Content.includes('- Zero regressions\n\n\n## Constraints'));
     assert.ok(msg2Content.includes('## Constraints'));
     assert.ok(msg2Content.includes(newConstraints));
     assert.ok(!msg2Content.includes('## Bear In Mind'));
@@ -148,6 +156,8 @@ async function main(): Promise<void> {
     assert.ok(msg3Content.includes('## Bear In Mind'));
     assert.ok(msg3Content.includes('### contracts.md'));
     assert.ok(msg3Content.includes('C\n'));
+    assert.ok(msg3Content.includes('C\n### risks.md'));
+    assert.ok(!msg3Content.includes('C\n\n### risks.md'));
     assert.ok(msg3Content.includes('### risks.md'));
     assert.ok(msg3Content.includes('R\n'));
     assert.ok(!msg3Content.includes('NO\n'));
@@ -172,6 +182,8 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(recall.includes('`ux/checklist.md`'));
     assert.ok(recall.includes('UX\n'));
+    assert.ok(recall.includes('UX\n---'));
+    assert.ok(!recall.includes('UX\n\n---'));
 
     const missingRecall = (
       await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
@@ -181,6 +193,23 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(missingRecall.includes('mind_more'));
     assert.ok(missingRecall.includes('change_mind'));
+
+    const changeMindResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'UX replaced\r\n\r\n',
+      },
+    );
+    assert.equal(changeMindResult.outcome, 'success');
+    const changedChecklistContent = await fs.readFile(
+      path.join(taskDir, 'ux', 'checklist.md'),
+      'utf-8',
+    );
+    assert.equal(changedChecklistContent, 'UX replaced\n');
+    assertSingleTrailingLf(changedChecklistContent, 'ux/checklist.md');
 
     // 5) mind_more should append entries without requiring a full-section replacement.
     const appendResult = await mindMoreTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
@@ -196,8 +225,9 @@ async function main(): Promise<void> {
         '- Updated Taskdoc selector vocabulary',
         '- Worker A finished backend wiring',
         '- Next: verify UI contract',
-      ].join('\n'),
+      ].join('\n') + '\n',
     );
+    assertSingleTrailingLf(appended.progress.content, 'progress.md');
 
     const goalsAppend = await mindMoreTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
       selector: 'goals',
@@ -211,13 +241,14 @@ async function main(): Promise<void> {
       appendedGoals.goals.content,
       ['- Ship v1', '- Zero regressions'].join('\n') +
         '\n\n' +
-        '- Keep Taskdoc updates low-friction',
+        '- Keep Taskdoc updates low-friction\n',
     );
+    assertSingleTrailingLf(appendedGoals.goals.content, 'goals.md');
 
     await updateTaskPackageSection({
       taskPackageDirFullPath: taskDir,
       section: 'constraints',
-      content: '- Existing constraint\n',
+      content: '- Existing constraint\r\r',
       updatedBy: 'tester',
     });
     const constraintsAppend = await mindMoreTool.call(
@@ -234,8 +265,24 @@ async function main(): Promise<void> {
     assert.equal(appendedConstraints.constraints.kind, 'present');
     assert.equal(
       appendedConstraints.constraints.content,
-      '- Existing constraint\n\n- Added constraint',
+      '- Existing constraint\n\n- Added constraint\n',
     );
+    assertSingleTrailingLf(appendedConstraints.constraints.content, 'constraints.md');
+
+    const constraintsFileContent = await fs.readFile(path.join(taskDir, 'constraints.md'), 'utf-8');
+    assertSingleTrailingLf(constraintsFileContent, 'constraints.md on disk');
+
+    await updateTaskPackageSection({
+      taskPackageDirFullPath: taskDir,
+      section: 'constraints',
+      content: '',
+      updatedBy: 'tester',
+    });
+    const emptyConstraintsFileContent = await fs.readFile(
+      path.join(taskDir, 'constraints.md'),
+      'utf-8',
+    );
+    assert.equal(emptyConstraintsFileContent, '');
 
     console.log('✅ task-package tests passed');
   } finally {
