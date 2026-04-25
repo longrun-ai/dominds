@@ -178,35 +178,6 @@ type DeepLinkIntent =
   | { kind: 'callsite'; rootId: string; selfId: string; course: number; callId: string }
   | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
 
-type DialogDeepLinkParams = {
-  rootId: string;
-  selfId: string;
-  course?: number;
-};
-
-type CallsiteDeepLinkParams = {
-  rootId: string;
-  selfId: string;
-  course: number;
-  callId: string;
-};
-
-type GenseqDeepLinkParams = {
-  rootId: string;
-  selfId: string;
-  course: number;
-  genseq: number;
-};
-
-type Q4HDeepLinkParams = {
-  questionId: string;
-  rootId: string;
-  selfId: string;
-  course?: number;
-  messageIndex?: number;
-  callId?: string;
-};
-
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -6776,14 +6747,39 @@ export class DomindsApp extends HTMLElement {
     });
 
     this.shadowRoot.addEventListener('dialog-open-external', (event) => {
-      const url = this.buildDialogDeepLinkUrl(event.detail);
+      // Dialog-list external link: open the selected dialog timeline. rootId is the root dialog,
+      // and selfId is the selected main/side dialog; this list action does not target a course.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = '/dl/dialog';
+      url.searchParams.set('rootId', event.detail.rootId);
+      url.searchParams.set('selfId', event.detail.selfId);
       const urlStr = url.toString();
       const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
       if (w) w.opener = null;
     });
 
     this.shadowRoot.addEventListener('dialog-share-link', (event) => {
-      const url = this.buildDialogDeepLinkUrl(event.detail);
+      // Dialog-list share link uses exactly the same timeline-dialog target as open-external.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = '/dl/dialog';
+      url.searchParams.set('rootId', event.detail.rootId);
+      url.searchParams.set('selfId', event.detail.selfId);
       void this.copyLinkToClipboardWithToast(url.toString());
     });
 
@@ -6796,14 +6792,30 @@ export class DomindsApp extends HTMLElement {
     // Q4H external deep link (open in new tab/window + copy URL)
     this.shadowRoot.addEventListener('q4h-open-external', (event) => {
       const detail = event.detail;
-      const url = this.buildQ4HDeepLinkUrl({
-        questionId: detail.questionId,
-        rootId: detail.rootId,
-        selfId: detail.dialogId,
-        course: detail.course,
-        messageIndex: detail.messageIndex,
-        callId: detail.callId,
-      });
+      // Q4H external link: qid identifies the question; rootId/dialogId/course/messageIndex/callId
+      // identify the requester-side context where the question was raised.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = '/dl/q4h';
+      url.searchParams.set('rootId', detail.rootId);
+      url.searchParams.set('selfId', detail.dialogId);
+      url.searchParams.set('qid', detail.questionId);
+      if (typeof detail.course === 'number' && Number.isFinite(detail.course)) {
+        url.searchParams.set('course', String(Math.floor(detail.course)));
+      }
+      if (typeof detail.messageIndex === 'number' && Number.isFinite(detail.messageIndex)) {
+        url.searchParams.set('msg', String(Math.floor(detail.messageIndex)));
+      }
+      if (typeof detail.callId === 'string' && detail.callId.trim() !== '') {
+        url.searchParams.set('callId', detail.callId.trim());
+      }
 
       const urlStr = url.toString();
       const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
@@ -6813,14 +6825,29 @@ export class DomindsApp extends HTMLElement {
     // Q4H share link (copy URL only)
     this.shadowRoot.addEventListener('q4h-share-link', (event) => {
       const detail = event.detail;
-      const url = this.buildQ4HDeepLinkUrl({
-        questionId: detail.questionId,
-        rootId: detail.rootId,
-        selfId: detail.dialogId,
-        course: detail.course,
-        messageIndex: detail.messageIndex,
-        callId: detail.callId,
-      });
+      // Q4H share link uses exactly the same Q4H question target as open-external.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = '/dl/q4h';
+      url.searchParams.set('rootId', detail.rootId);
+      url.searchParams.set('selfId', detail.dialogId);
+      url.searchParams.set('qid', detail.questionId);
+      if (typeof detail.course === 'number' && Number.isFinite(detail.course)) {
+        url.searchParams.set('course', String(Math.floor(detail.course)));
+      }
+      if (typeof detail.messageIndex === 'number' && Number.isFinite(detail.messageIndex)) {
+        url.searchParams.set('msg', String(Math.floor(detail.messageIndex)));
+      }
+      if (typeof detail.callId === 'string' && detail.callId.trim() !== '') {
+        url.searchParams.set('callId', detail.callId.trim());
+      }
 
       void this.copyLinkToClipboardWithToast(url.toString());
     });
@@ -7899,66 +7926,6 @@ export class DomindsApp extends HTMLElement {
     };
   }
 
-  private buildDialogDeepLinkUrl(params: DialogDeepLinkParams): URL {
-    const url = new URL(window.location.href);
-    url.searchParams.delete('rootId');
-    url.searchParams.delete('selfId');
-    url.searchParams.delete('course');
-    url.searchParams.delete('msg');
-    url.searchParams.delete('callId');
-    url.searchParams.delete('genseq');
-    url.searchParams.delete('qid');
-    url.hash = '';
-    url.pathname = '/dl/dialog';
-    url.searchParams.set('rootId', params.rootId);
-    url.searchParams.set('selfId', params.selfId);
-    if (typeof params.course === 'number') {
-      url.searchParams.set('course', String(Math.floor(params.course)));
-    }
-    return url;
-  }
-
-  private buildCallsiteDeepLinkUrl(params: CallsiteDeepLinkParams): URL {
-    const url = this.buildDialogDeepLinkUrl({
-      rootId: params.rootId,
-      selfId: params.selfId,
-    });
-    url.pathname = '/dl/callsite';
-    url.searchParams.set('course', String(Math.floor(params.course)));
-    url.searchParams.set('callId', params.callId);
-    return url;
-  }
-
-  private buildGenseqDeepLinkUrl(params: GenseqDeepLinkParams): URL {
-    const url = this.buildDialogDeepLinkUrl({
-      rootId: params.rootId,
-      selfId: params.selfId,
-    });
-    url.pathname = '/dl/genseq';
-    url.searchParams.set('course', String(Math.floor(params.course)));
-    url.searchParams.set('genseq', String(Math.floor(params.genseq)));
-    return url;
-  }
-
-  private buildQ4HDeepLinkUrl(params: Q4HDeepLinkParams): URL {
-    const url = this.buildDialogDeepLinkUrl({
-      rootId: params.rootId,
-      selfId: params.selfId,
-    });
-    url.pathname = '/dl/q4h';
-    url.searchParams.set('qid', params.questionId);
-    if (typeof params.course === 'number') {
-      url.searchParams.set('course', String(Math.floor(params.course)));
-    }
-    if (typeof params.messageIndex === 'number') {
-      url.searchParams.set('msg', String(Math.floor(params.messageIndex)));
-    }
-    if (typeof params.callId === 'string' && params.callId.trim() !== '') {
-      url.searchParams.set('callId', params.callId.trim());
-    }
-    return url;
-  }
-
   private stripUrlAuthParamAfterSuccessfulOpen(): void {
     if (!(this.authState.kind === 'active' && this.authState.source === 'url')) return;
     removeAuthKeyFromUrl();
@@ -7970,7 +7937,21 @@ export class DomindsApp extends HTMLElement {
     const selfId = dialog.selfId.trim();
     if (!rootId || !selfId) return;
 
-    const target = this.buildDialogDeepLinkUrl({ rootId, selfId });
+    const target = new URL(window.location.href);
+    target.searchParams.delete('rootId');
+    target.searchParams.delete('selfId');
+    target.searchParams.delete('course');
+    target.searchParams.delete('msg');
+    target.searchParams.delete('callId');
+    target.searchParams.delete('genseq');
+    target.searchParams.delete('qid');
+    target.hash = '';
+    target.pathname = '/dl/dialog';
+    // Address-bar dialog sync: rootId is the root dialog and selfId is the currently selected dialog
+    // timeline. No course is stored here because this sync represents dialog selection, not a
+    // specific generation or call-site.
+    target.searchParams.set('rootId', rootId);
+    target.searchParams.set('selfId', selfId);
     const current = new URL(window.location.href);
     if (
       current.pathname === target.pathname &&
@@ -8000,37 +7981,86 @@ export class DomindsApp extends HTMLElement {
   private syncAddressBarToDeepLink(intent: DeepLinkIntent): void {
     let target: URL | null = null;
     if (intent.kind === 'dialog') {
-      target = this.buildDialogDeepLinkUrl({
-        rootId: intent.rootId,
-        selfId: intent.selfId,
-        course: intent.course,
-      });
+      target = new URL(window.location.href);
+      target.searchParams.delete('rootId');
+      target.searchParams.delete('selfId');
+      target.searchParams.delete('course');
+      target.searchParams.delete('msg');
+      target.searchParams.delete('callId');
+      target.searchParams.delete('genseq');
+      target.searchParams.delete('qid');
+      target.hash = '';
+      target.pathname = '/dl/dialog';
+      // Deep-link navigation sync for a dialog timeline. rootId is the root dialog, selfId is the
+      // dialog timeline being opened, and optional course belongs to that same timeline.
+      target.searchParams.set('rootId', intent.rootId);
+      target.searchParams.set('selfId', intent.selfId);
+      if (typeof intent.course === 'number' && Number.isFinite(intent.course)) {
+        target.searchParams.set('course', String(Math.floor(intent.course)));
+      }
     } else if (intent.kind === 'callsite') {
-      target = this.buildCallsiteDeepLinkUrl({
-        rootId: intent.rootId,
-        selfId: intent.selfId,
-        course: intent.course,
-        callId: intent.callId,
-      });
+      target = new URL(window.location.href);
+      target.searchParams.delete('rootId');
+      target.searchParams.delete('selfId');
+      target.searchParams.delete('course');
+      target.searchParams.delete('msg');
+      target.searchParams.delete('callId');
+      target.searchParams.delete('genseq');
+      target.searchParams.delete('qid');
+      target.hash = '';
+      target.pathname = '/dl/callsite';
+      // Deep-link navigation sync for a requester/tellasker call-site. selfId/course identify the
+      // dialog and course containing the original function-call bubble; callId is that call's id.
+      // These fields must never be substituted with callee assignment coordinates.
+      target.searchParams.set('rootId', intent.rootId);
+      target.searchParams.set('selfId', intent.selfId);
+      target.searchParams.set('course', String(Math.floor(intent.course)));
+      target.searchParams.set('callId', intent.callId);
     } else if (intent.kind === 'genseq') {
-      target = this.buildGenseqDeepLinkUrl({
-        rootId: intent.rootId,
-        selfId: intent.selfId,
-        course: intent.course,
-        genseq: intent.genseq,
-      });
+      target = new URL(window.location.href);
+      target.searchParams.delete('rootId');
+      target.searchParams.delete('selfId');
+      target.searchParams.delete('course');
+      target.searchParams.delete('msg');
+      target.searchParams.delete('callId');
+      target.searchParams.delete('genseq');
+      target.searchParams.delete('qid');
+      target.hash = '';
+      target.pathname = '/dl/genseq';
+      // Deep-link navigation sync for one generation bubble. selfId/course/genseq all refer to the
+      // same dialog timeline.
+      target.searchParams.set('rootId', intent.rootId);
+      target.searchParams.set('selfId', intent.selfId);
+      target.searchParams.set('course', String(Math.floor(intent.course)));
+      target.searchParams.set('genseq', String(Math.floor(intent.genseq)));
     } else if (intent.kind === 'q4h') {
       const rootId = intent.rootId?.trim() ?? '';
       const selfId = intent.selfId?.trim() ?? '';
       if (rootId !== '' && selfId !== '') {
-        target = this.buildQ4HDeepLinkUrl({
-          questionId: intent.questionId,
-          rootId,
-          selfId,
-          course: intent.course,
-          messageIndex: intent.messageIndex,
-          callId: intent.callId,
-        });
+        target = new URL(window.location.href);
+        target.searchParams.delete('rootId');
+        target.searchParams.delete('selfId');
+        target.searchParams.delete('course');
+        target.searchParams.delete('msg');
+        target.searchParams.delete('callId');
+        target.searchParams.delete('genseq');
+        target.searchParams.delete('qid');
+        target.hash = '';
+        target.pathname = '/dl/q4h';
+        // Deep-link navigation sync for a Q4H question. qid identifies the question; rootId/selfId
+        // identify the dialog context; optional course/msg/callId identify where it was asked.
+        target.searchParams.set('rootId', rootId);
+        target.searchParams.set('selfId', selfId);
+        target.searchParams.set('qid', intent.questionId);
+        if (typeof intent.course === 'number' && Number.isFinite(intent.course)) {
+          target.searchParams.set('course', String(Math.floor(intent.course)));
+        }
+        if (typeof intent.messageIndex === 'number' && Number.isFinite(intent.messageIndex)) {
+          target.searchParams.set('msg', String(Math.floor(intent.messageIndex)));
+        }
+        if (typeof intent.callId === 'string' && intent.callId.trim() !== '') {
+          target.searchParams.set('callId', intent.callId.trim());
+        }
       }
     } else {
       const _exhaustive: never = intent;

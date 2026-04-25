@@ -1310,6 +1310,16 @@ same-`callId` historical correspondence point in the tellasker's dialog. A norma
 cross-course carryover, or registered-session replacement notice can close the call; silently removing
 or overwriting a pending round cannot.
 
+WebUI external-link invariant: every `/dl/*` URL must be generated at the business call site with the
+target semantics written out there; avoid generic deep-link helpers. `/dl/callsite` only means the
+originating bubble in the tellasker's dialog: `selfId/course` are tellasker-dialog coordinates, and
+`callId` is that dialog's function-call id. SideDialog assignment/update targets are not call sites;
+they use `/dl/dialog` for the sideDialog, or `/dl/genseq` once the delivered assignment `genseq` is
+known.
+When an existing registered sideDialog is reused, the WebUI first links the new call-site bubble to
+the sideDialog via `tellask_call_callee_evt`; the later `tellask_call_anchor_evt` upgrades that target
+to the delivered sideDialog `genseq`.
+
 #### TYPE C: Transient SideDialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `freshBootsReasoning({ tellaskContent: "..." })` is FBR tool-less)
 
 ```mermaid

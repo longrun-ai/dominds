@@ -367,6 +367,12 @@ export type TellaskCallAnchorEvent =
       askerCourse: AskerCourseNumber;
     });
 
+export type TellaskCallCalleeEvent = LlmGenDlgEvent & {
+  type: 'tellask_call_callee_evt';
+  callId: string;
+  calleeDialogId: string;
+};
+
 export interface ReminderContent {
   content: string;
   meta?: Record<string, unknown>;
@@ -589,6 +595,7 @@ export type DialogEvent =
   | TellaskCallStartEvent
   | TellaskResultEvent
   | TellaskCallAnchorEvent
+  | TellaskCallCalleeEvent
   | TellaskCarryoverEvent
   | SideDialogEvent
   | QueueUserMsgEvent

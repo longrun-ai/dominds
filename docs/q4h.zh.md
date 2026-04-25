@@ -69,15 +69,15 @@ Q4H 是 Dominds 的运行时机制：在任何对话中通过向 `askHuman({ tel
 
 ## Deep Link 契约（WebUI）
 
-### Query 参数约定
+### URL 约定
 
-WebUI 通过 `window.location.search` 识别 deep link 参数。
+WebUI 通过 `/dl/<kind>` 路径和 `window.location.search` 参数识别 deep link。
 
-通用参数：
+实现规则：生成外链的代码必须在生成现场直接写出 `/dl/*` URL 和每个字段的业务含义，避免泛化
+deep-link helper。`/dl/callsite` 的 `selfId/course/callId` 只表示诉请者对话里的发起气泡；支线投递
+或更新目标应使用 `/dl/dialog` 或已知投递 `genseq` 后的 `/dl/genseq`。
 
-- `dl`：deep link 类型（`q4h` | `callsite`）
-
-#### `dl=q4h`（Q4H 提问点 deep link）
+#### `/dl/q4h`（Q4H 提问点 deep link）
 
 必需：
 
@@ -97,7 +97,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 - 若该 Q4H 仍待处理：输入框选中 `qid`（回答模式）并聚焦。
 - 若该 Q4H 已不再待处理（已回答/已清理）：仍定位/高亮提问点，但**不进入回答模式**（不选中问题）；可提示“已不再待处理”。
 
-#### `dl=callsite`（通用 tellask call site deep link）
+#### `/dl/callsite`（通用 tellask call site deep link）
 
 必需：
 
@@ -111,7 +111,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 - WebUI 切换到目标对话 + course，并滚动到 `data-call-id=callId` 对应的 calling section。
 - 输入框聚焦（普通消息模式）。
 
-#### `dl=genseq`（生成气泡 deep link）
+#### `/dl/genseq`（生成气泡 deep link）
 
 必需：
 
@@ -128,9 +128,11 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 ### URL 示例
 
 ```text
-/?dl=q4h&qid=q4h-abc123&rootId=R1&selfId=S2&course=3&callId=call-xyz&msg=12
+/dl/q4h?qid=q4h-abc123&rootId=R1&selfId=S2&course=3&callId=call-xyz&msg=12
 
-/?dl=callsite&rootId=R1&selfId=R1&course=1&callId=call-xyz
+/dl/callsite?rootId=R1&selfId=R1&course=1&callId=call-xyz
+
+/dl/genseq?rootId=R1&selfId=S2&course=3&genseq=42
 ```
 
 说明：
@@ -161,7 +163,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 
 - `dominds-q4h-panel`：
   - 保留内链“去提问点”。
-  - 增加外链图标按钮：打开 `dl=q4h` deep link（新 tab/窗口）。
+  - 增加外链图标按钮：打开 `/dl/q4h` deep link（新 tab/窗口）。
 - `dominds-app`：
   - 启动时解析 deep link，并保存“待执行导航意图”。
   - 在 dialogs / Q4H state 到齐后尝试执行意图。

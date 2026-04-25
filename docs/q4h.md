@@ -68,13 +68,15 @@ When a message bubble has a meaningful call site reference (e.g. “response ↔
 
 ### Query parameter schema
 
-The WebUI recognizes `window.location.search` deep link parameters.
+The WebUI recognizes deep links by `/dl/<kind>` paths plus `window.location.search` parameters.
 
-Common parameters:
+Implementation rule: external-link generation must write the `/dl/*` URL and every field's business
+meaning directly at the generating call site; avoid generic deep-link helpers. For `/dl/callsite`,
+`selfId/course/callId` only identify the originating bubble in the tellasker's dialog. SideDialog
+assignment/update targets must use `/dl/dialog`, or `/dl/genseq` once the delivered assignment
+`genseq` is known.
 
-- `dl`: deep link kind (`q4h` | `callsite`)
-
-#### `dl=q4h` (Q4H question deep link)
+#### `/dl/q4h` (Q4H question deep link)
 
 Required:
 
@@ -95,7 +97,7 @@ Behavior:
 - If the Q4H is not pending (already answered/cleared), the WebUI still scrolls to the call site but does **not**
   enter answer mode (no selection); it may show a toast indicating the question is no longer pending.
 
-#### `dl=callsite` (generic tellask call site deep link)
+#### `/dl/callsite` (generic tellask call site deep link)
 
 Required:
 
@@ -109,7 +111,7 @@ Behavior:
 - The WebUI navigates to the dialog + course and scrolls to the calling section with `data-call-id=callId`.
 - The input is focused (normal message mode).
 
-#### `dl=genseq` (generation bubble deep link)
+#### `/dl/genseq` (generation bubble deep link)
 
 Required:
 
@@ -126,9 +128,11 @@ Behavior:
 ### URL examples
 
 ```text
-/?dl=q4h&qid=q4h-abc123&rootId=R1&selfId=S2&course=3&callId=call-xyz&msg=12
+/dl/q4h?qid=q4h-abc123&rootId=R1&selfId=S2&course=3&callId=call-xyz&msg=12
 
-/?dl=callsite&rootId=R1&selfId=R1&course=1&callId=call-xyz
+/dl/callsite?rootId=R1&selfId=R1&course=1&callId=call-xyz
+
+/dl/genseq?rootId=R1&selfId=S2&course=3&genseq=42
 ```
 
 Notes:
@@ -159,7 +163,7 @@ Back-compat:
 
 - `dominds-q4h-panel`:
   - Keeps internal navigation (same tab).
-  - Adds an external icon action that opens a deep link (`dl=q4h`) in a new tab/window.
+  - Adds an external icon action that opens a deep link (`/dl/q4h`) in a new tab/window.
 - `dominds-app`:
   - Parses deep link parameters once at startup and stores a pending deep link intent.
   - Applies the intent after dialogs and (when needed) Q4H state are available.

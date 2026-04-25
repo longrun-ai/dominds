@@ -24,12 +24,13 @@ import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
   toCallSiteCourseNo,
   type AskerCourseNumber,
   type AssignmentCourseNumber,
   type AssignmentGenerationSeqNumber,
   type CalleeCourseNumber,
-  type CallSiteCourseNo,
+  type CalleeGenerationSeqNumber,
   type CallSiteGenseqNo,
 } from '@longrun-ai/kernel/types/storage';
 import type {
@@ -90,12 +91,10 @@ type TellaskAssignmentTarget = {
   genseq: AssignmentGenerationSeqNumber;
 };
 
-type TellaskCallSiteTarget = {
-  selfId?: string;
-  course?: AskerCourseNumber | CalleeCourseNumber | CallSiteCourseNo;
-};
-
-type DialogDeepLinkTarget = {
+type CalleeAssignmentLinkTarget = {
+  // Callee assignment target for a concrete dialog timeline. `selfId` is
+  // the dialog to open; `course/genseq`, when present together, identify a generation
+  // in that same dialog. Use this shape for callee/tellaskee assignment links.
   rootId: string;
   selfId: string;
   course?: number;
@@ -391,6 +390,8 @@ export class DomindsDialogContainer extends HTMLElement {
         if (assignmentBtn) {
           e.preventDefault();
           e.stopPropagation();
+          // Response-anchor header button: navigate inside the current callee/tellaskee dialog
+          // to the assignment/update generation that this response is answering.
           const bubble = assignmentBtn.closest('.generation-bubble') as HTMLElement | null;
           if (!bubble) return;
           const assignmentCourseRaw = Number.parseInt(
@@ -415,6 +416,8 @@ export class DomindsDialogContainer extends HTMLElement {
         if (askerCallsiteBtn) {
           e.preventDefault();
           e.stopPropagation();
+          // Response-anchor header button: open the requester/tellasker dialog at the original
+          // call-site. `askerDialogId` and `askerCourse` are requester-side coordinates.
           const bubble = askerCallsiteBtn.closest('.generation-bubble') as HTMLElement | null;
           if (!bubble) return;
           const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
@@ -425,10 +428,29 @@ export class DomindsDialogContainer extends HTMLElement {
           );
           if (callId === '' || askerDialogId === '') return;
           if (!Number.isFinite(askerCourseRaw) || askerCourseRaw <= 0) return;
-          this.openCallSiteDeepLinkInNewTab(callId, {
-            selfId: askerDialogId,
-            course: toAskerCourseNumber(askerCourseRaw),
-          });
+          const dialog = this.currentDialog;
+          if (!dialog) return;
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          url.pathname = '/dl/callsite';
+          // Response-anchor external link: open the requester/tellasker dialog at the original
+          // call-site. rootId is the shared root dialog; selfId/course are requester-side
+          // coordinates from the response anchor; callId is the function-call id in that requester
+          // dialog. No callee dialog fields are allowed in `/dl/callsite`.
+          url.searchParams.set('rootId', dialog.rootId);
+          url.searchParams.set('selfId', askerDialogId);
+          url.searchParams.set('course', String(Math.floor(toAskerCourseNumber(askerCourseRaw))));
+          url.searchParams.set('callId', callId);
+          const urlStr = url.toString();
+          const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+          if (w) w.opener = null;
           return;
         }
         const callingExternalBtn = target.closest(
@@ -437,11 +459,49 @@ export class DomindsDialogContainer extends HTMLElement {
         if (callingExternalBtn) {
           e.preventDefault();
           e.stopPropagation();
+          // Tellask call-site button: open the callee/tellaskee assignment target recorded on this
+          // calling section. Before assignment delivery this can only be the callee dialog; after
+          // `tellask_call_anchor_evt` it becomes the concrete assignment genseq.
           const section = callingExternalBtn.closest('.calling-section') as HTMLElement | null;
           if (!section) return;
-          const target = this.readCallingSectionCalleeDeepLinkTarget(section);
+          const target = this.readCallingSectionCalleeAssignmentTarget(section);
           if (!target) return;
-          this.openCalleeDeepLinkInNewTab(target);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Tellask call-site external link: open the callee/tellaskee assignment target. Before
+          // assignment delivery we only know the callee dialog, so `/dl/dialog` carries rootId/selfId
+          // plus optional callee course. After `tellask_call_anchor_evt`, `/dl/genseq` carries the
+          // callee dialog, callee course, and assignment/update delivery genseq. This target is
+          // intentionally not `/dl/callsite`, because no requester callId is involved here.
+          if (
+            typeof target.course === 'number' &&
+            Number.isFinite(target.course) &&
+            target.course > 0 &&
+            typeof target.genseq === 'number' &&
+            Number.isFinite(target.genseq) &&
+            target.genseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(target.course)));
+            url.searchParams.set('genseq', String(Math.floor(target.genseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (typeof target.course === 'number' && Number.isFinite(target.course)) {
+              url.searchParams.set('course', String(Math.floor(target.course)));
+            }
+          }
+          url.searchParams.set('rootId', target.rootId);
+          url.searchParams.set('selfId', target.selfId);
+          const urlStr = url.toString();
+          const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+          if (w) w.opener = null;
           return;
         }
         const callingShareBtn = target.closest(
@@ -450,11 +510,42 @@ export class DomindsDialogContainer extends HTMLElement {
         if (callingShareBtn) {
           e.preventDefault();
           e.stopPropagation();
+          // Copy the same callee/tellaskee assignment target used by the external button above.
           const section = callingShareBtn.closest('.calling-section') as HTMLElement | null;
           if (!section) return;
-          const target = this.readCallingSectionCalleeDeepLinkTarget(section);
+          const target = this.readCallingSectionCalleeAssignmentTarget(section);
           if (!target) return;
-          await this.copyCalleeDeepLinkToClipboard(target);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Tellask call-site share link copies the same callee/tellaskee assignment target as the
+          // external button above: `/dl/dialog` until the delivery genseq is known, then `/dl/genseq`.
+          if (
+            typeof target.course === 'number' &&
+            Number.isFinite(target.course) &&
+            target.course > 0 &&
+            typeof target.genseq === 'number' &&
+            Number.isFinite(target.genseq) &&
+            target.genseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(target.course)));
+            url.searchParams.set('genseq', String(Math.floor(target.genseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (typeof target.course === 'number' && Number.isFinite(target.course)) {
+              url.searchParams.set('course', String(Math.floor(target.course)));
+            }
+          }
+          url.searchParams.set('rootId', target.rootId);
+          url.searchParams.set('selfId', target.selfId);
+          await this.copyLinkToClipboardWithToast(url.toString());
           return;
         }
         const userAnswerCallsiteBtn = target.closest(
@@ -476,7 +567,28 @@ export class DomindsDialogContainer extends HTMLElement {
           const raw = bubble ? bubble.getAttribute('data-seq') : null;
           const seq = raw ? Number.parseInt(raw, 10) : Number.NaN;
           if (!Number.isFinite(seq)) return;
-          await this.copyGenerationBubbleDeepLinkToClipboard(seq);
+          const dialog = this.currentDialog;
+          const course = this.currentCourse;
+          if (!dialog || typeof course !== 'number') return;
+          if (!Number.isFinite(seq) || seq <= 0) return;
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          url.pathname = '/dl/genseq';
+          // Generation-bubble share link: rootId/current selfId/current course identify this dialog
+          // timeline, and genseq is the visible generation sequence. This is unrelated to tellask
+          // callId routing.
+          url.searchParams.set('rootId', dialog.rootId);
+          url.searchParams.set('selfId', dialog.selfId);
+          url.searchParams.set('course', String(Math.floor(course)));
+          url.searchParams.set('genseq', String(Math.floor(seq)));
+          await this.copyLinkToClipboardWithToast(url.toString());
           return;
         }
         const forkBtn = target.closest('.bubble-fork-btn') as HTMLButtonElement | null;
@@ -1605,6 +1717,9 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
       case 'tellask_call_anchor_evt':
         this.handleTellaskCallAnchor(event);
+        break;
+      case 'tellask_call_callee_evt':
+        this.handleTellaskCallCallee(event);
         break;
 
       // Teammate responses (separate bubble)
@@ -3093,6 +3208,9 @@ export class DomindsDialogContainer extends HTMLElement {
     callingSection.setAttribute('data-call-id', event.callId);
     switch (event.callName) {
       case 'tellask':
+        if (event.sessionSlug.trim() !== '') {
+          callingSection.setAttribute('data-session-slug', event.sessionSlug.trim());
+        }
         this.renderMentionList(callingSection, mentionList, event.sessionSlug);
         break;
       case 'tellaskSessionless':
@@ -3483,6 +3601,34 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingTellaskCallAnchorByGenseq.set(genseq, anchorMeta);
   }
 
+  private handleTellaskCallCallee(
+    event: Extract<TypedDialogEvent, { type: 'tellask_call_callee_evt' }>,
+  ): void {
+    const callId = typeof event.callId === 'string' ? event.callId.trim() : '';
+    const calleeDialogId =
+      typeof event.calleeDialogId === 'string' ? event.calleeDialogId.trim() : '';
+    if (callId === '' || calleeDialogId === '') {
+      this.handleProtocolError(
+        `tellask_call_callee_evt invalid callee dialog link ${JSON.stringify({
+          callId: event.callId,
+          calleeDialogId: event.calleeDialogId,
+          rootId: event.dialog.rootId,
+          selfId: event.dialog.selfId,
+        })}`,
+      );
+      return;
+    }
+
+    // Existing registered tellask sessions reuse a side dialog, so no sideDialog_created_evt is
+    // emitted for the new call-site. This event makes the new requester/tellasker bubble clickable
+    // to the callee dialog immediately; the later assignment anchor upgrades it to `/dl/genseq`.
+    this.upsertCallingSectionCalleeDialogLink({
+      callId,
+      rootId: event.dialog.rootId,
+      selfId: calleeDialogId,
+    });
+  }
+
   private tryHandleCrossDialogAssignmentAnchor(event: TypedDialogEvent): boolean {
     if (event.type !== 'tellask_call_anchor_evt' || event.anchorRole !== 'assignment') {
       return false;
@@ -3651,9 +3797,8 @@ export class DomindsDialogContainer extends HTMLElement {
       event.callName,
       event.timestamp,
       sessionSlug,
-      typeof event.route?.calleeCourse === 'number' && Number.isFinite(event.route.calleeCourse)
-        ? toCalleeCourseNumber(event.route.calleeCourse)
-        : undefined,
+      routeCalleeCourse !== undefined ? toCalleeCourseNumber(routeCalleeCourse) : undefined,
+      routeCalleeGenseq !== undefined ? toCalleeGenerationSeqNumber(routeCalleeGenseq) : undefined,
       isSupersededNotice ? 'superseded_notice' : 'standard',
     );
 
@@ -3767,6 +3912,7 @@ export class DomindsDialogContainer extends HTMLElement {
     timestamp?: string,
     sessionSlug?: string,
     calleeCourse?: CalleeCourseNumber,
+    calleeGenseq?: CalleeGenerationSeqNumber,
     visualKind: 'standard' | 'superseded_notice' = 'standard',
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
@@ -3875,9 +4021,23 @@ export class DomindsDialogContainer extends HTMLElement {
       internalBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Teammate-result bubble internal target: the requester/tellasker call-site for this
+        // historical result. For superseded notices, this is the old callId being closed.
         this.navigateToCallSiteInApp(callId);
       });
     }
+
+    const supersededReplacementCallId =
+      visualKind === 'superseded_notice'
+        ? (() => {
+            // Bind this notice to the replacement call-site that precedes it in history. The
+            // call-site's callee target may later upgrade from dialog to genseq, but the notice
+            // must not drift to a future same-sessionSlug update.
+            const section = this.findLatestCallingSectionBySessionSlug(sessionSlug ?? '', callId);
+            const replacementCallId = (section?.getAttribute('data-call-id') ?? '').trim();
+            return replacementCallId !== '' ? replacementCallId : null;
+          })()
+        : null;
 
     const externalBtn = el.querySelector(
       'button.callsite-icon-btn.external',
@@ -3886,10 +4046,116 @@ export class DomindsDialogContainer extends HTMLElement {
       externalBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.openCallSiteDeepLinkInNewTab(callId, {
-          selfId: calleeDialogId,
-          course: calleeCourse,
-        });
+        const replacementSection =
+          supersededReplacementCallId !== null
+            ? this.findCallingSectionByCallId(supersededReplacementCallId)
+            : null;
+        const replacementTarget = replacementSection
+          ? this.readCallingSectionCalleeAssignmentTarget(replacementSection)
+          : null;
+        if (replacementTarget) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Superseded notice external link: follow the replacement request's callee/tellaskee
+          // assignment target from the fixed preceding same-sessionSlug tellask call-site. If that
+          // call-site has since received its delivery anchor, use `/dl/genseq` with callee
+          // course/genseq; otherwise use `/dl/dialog` for the callee dialog. The old callId remains
+          // only the internal correspondence point.
+          if (
+            typeof replacementTarget.course === 'number' &&
+            Number.isFinite(replacementTarget.course) &&
+            replacementTarget.course > 0 &&
+            typeof replacementTarget.genseq === 'number' &&
+            Number.isFinite(replacementTarget.genseq) &&
+            replacementTarget.genseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+            url.searchParams.set('genseq', String(Math.floor(replacementTarget.genseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (
+              typeof replacementTarget.course === 'number' &&
+              Number.isFinite(replacementTarget.course)
+            ) {
+              url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+            }
+          }
+          url.searchParams.set('rootId', replacementTarget.rootId);
+          url.searchParams.set('selfId', replacementTarget.selfId);
+          const urlStr = url.toString();
+          const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+          if (w) w.opener = null;
+          return;
+        }
+        const dialog = this.currentDialog;
+        if (dialog && calleeDialogId) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Standard teammate-result external link: open the callee/tellaskee assignment target
+          // that produced this result. rootId is the shared root dialog; selfId is the callee dialog;
+          // course/genseq are callee-side assignment coordinates when known. No requester callId
+          // belongs in this URL.
+          if (
+            typeof calleeCourse === 'number' &&
+            Number.isFinite(calleeCourse) &&
+            calleeCourse > 0 &&
+            typeof calleeGenseq === 'number' &&
+            Number.isFinite(calleeGenseq) &&
+            calleeGenseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            url.searchParams.set('genseq', String(Math.floor(calleeGenseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (typeof calleeCourse === 'number' && Number.isFinite(calleeCourse)) {
+              url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            }
+          }
+          url.searchParams.set('rootId', dialog.rootId);
+          url.searchParams.set('selfId', calleeDialogId);
+          const urlStr = url.toString();
+          const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+          if (w) w.opener = null;
+          return;
+        }
+        if (!dialog) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('rootId');
+        url.searchParams.delete('selfId');
+        url.searchParams.delete('course');
+        url.searchParams.delete('msg');
+        url.searchParams.delete('callId');
+        url.searchParams.delete('genseq');
+        url.searchParams.delete('qid');
+        url.hash = '';
+        url.pathname = '/dl/callsite';
+        // Last-resort teammate-result external link: go back to the requester/tellasker call-site
+        // in the current dialog/course. This preserves a same-callId historical anchor even when no
+        // callee route was recorded.
+        url.searchParams.set('rootId', dialog.rootId);
+        url.searchParams.set('selfId', dialog.selfId);
+        if (typeof this.currentCourse !== 'number' || !Number.isFinite(this.currentCourse)) return;
+        url.searchParams.set('course', String(Math.floor(this.currentCourse)));
+        url.searchParams.set('callId', callId);
+        const urlStr = url.toString();
+        const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+        if (w) w.opener = null;
       });
     }
 
@@ -3898,10 +4164,104 @@ export class DomindsDialogContainer extends HTMLElement {
       shareBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        void this.copyCallSiteDeepLinkToClipboard(callId, {
-          selfId: calleeDialogId,
-          course: calleeCourse,
-        });
+        const replacementSection =
+          supersededReplacementCallId !== null
+            ? this.findCallingSectionByCallId(supersededReplacementCallId)
+            : null;
+        const replacementTarget = replacementSection
+          ? this.readCallingSectionCalleeAssignmentTarget(replacementSection)
+          : null;
+        if (replacementTarget) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Superseded notice share link copies the same fixed replacement call-site target as the
+          // external button: `/dl/genseq` after delivery anchor, otherwise `/dl/dialog`.
+          if (
+            typeof replacementTarget.course === 'number' &&
+            Number.isFinite(replacementTarget.course) &&
+            replacementTarget.course > 0 &&
+            typeof replacementTarget.genseq === 'number' &&
+            Number.isFinite(replacementTarget.genseq) &&
+            replacementTarget.genseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+            url.searchParams.set('genseq', String(Math.floor(replacementTarget.genseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (
+              typeof replacementTarget.course === 'number' &&
+              Number.isFinite(replacementTarget.course)
+            ) {
+              url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+            }
+          }
+          url.searchParams.set('rootId', replacementTarget.rootId);
+          url.searchParams.set('selfId', replacementTarget.selfId);
+          void this.copyLinkToClipboardWithToast(url.toString());
+          return;
+        }
+        const dialog = this.currentDialog;
+        if (dialog && calleeDialogId) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('rootId');
+          url.searchParams.delete('selfId');
+          url.searchParams.delete('course');
+          url.searchParams.delete('msg');
+          url.searchParams.delete('callId');
+          url.searchParams.delete('genseq');
+          url.searchParams.delete('qid');
+          url.hash = '';
+          // Standard teammate-result share link copies the callee/tellaskee assignment target used
+          // by the external button. `callId` is intentionally absent from this callee URL.
+          if (
+            typeof calleeCourse === 'number' &&
+            Number.isFinite(calleeCourse) &&
+            calleeCourse > 0 &&
+            typeof calleeGenseq === 'number' &&
+            Number.isFinite(calleeGenseq) &&
+            calleeGenseq > 0
+          ) {
+            url.pathname = '/dl/genseq';
+            url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            url.searchParams.set('genseq', String(Math.floor(calleeGenseq)));
+          } else {
+            url.pathname = '/dl/dialog';
+            if (typeof calleeCourse === 'number' && Number.isFinite(calleeCourse)) {
+              url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            }
+          }
+          url.searchParams.set('rootId', dialog.rootId);
+          url.searchParams.set('selfId', calleeDialogId);
+          void this.copyLinkToClipboardWithToast(url.toString());
+          return;
+        }
+        if (!dialog) return;
+        if (typeof this.currentCourse !== 'number' || !Number.isFinite(this.currentCourse)) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('rootId');
+        url.searchParams.delete('selfId');
+        url.searchParams.delete('course');
+        url.searchParams.delete('msg');
+        url.searchParams.delete('callId');
+        url.searchParams.delete('genseq');
+        url.searchParams.delete('qid');
+        url.hash = '';
+        url.pathname = '/dl/callsite';
+        // Last-resort teammate-result share link copies the requester/tellasker call-site anchor in
+        // the current dialog/course so the callId still has a historical correspondence link.
+        url.searchParams.set('rootId', dialog.rootId);
+        url.searchParams.set('selfId', dialog.selfId);
+        url.searchParams.set('course', String(Math.floor(this.currentCourse)));
+        url.searchParams.set('callId', callId);
+        void this.copyLinkToClipboardWithToast(url.toString());
       });
     }
     return el;
@@ -4010,9 +4370,30 @@ export class DomindsDialogContainer extends HTMLElement {
       externalBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.openCallSiteDeepLinkInNewTab(event.callId, {
-          course: toCallSiteCourseNo(callSiteCourse),
-        });
+        // Carryover bubbles are requester-side historical facts. Their external link goes back to
+        // the original requester/tellasker call-site course, not to any callee assignment.
+        const dialog = this.currentDialog;
+        if (!dialog) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('rootId');
+        url.searchParams.delete('selfId');
+        url.searchParams.delete('course');
+        url.searchParams.delete('msg');
+        url.searchParams.delete('callId');
+        url.searchParams.delete('genseq');
+        url.searchParams.delete('qid');
+        url.hash = '';
+        url.pathname = '/dl/callsite';
+        // Carryover external link: rootId/selfId identify the requester/tellasker dialog; course is
+        // the original call-site course recorded on the carryover event; callId is the old
+        // function-call id being answered late.
+        url.searchParams.set('rootId', dialog.rootId);
+        url.searchParams.set('selfId', dialog.selfId);
+        url.searchParams.set('course', String(Math.floor(toCallSiteCourseNo(callSiteCourse))));
+        url.searchParams.set('callId', event.callId);
+        const urlStr = url.toString();
+        const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+        if (w) w.opener = null;
       });
     }
 
@@ -4021,9 +4402,26 @@ export class DomindsDialogContainer extends HTMLElement {
       shareBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        void this.copyCallSiteDeepLinkToClipboard(event.callId, {
-          course: toCallSiteCourseNo(callSiteCourse),
-        });
+        // Copy the same requester/tellasker call-site target used by the carryover external button.
+        const dialog = this.currentDialog;
+        if (!dialog) return;
+        const url = new URL(window.location.href);
+        url.searchParams.delete('rootId');
+        url.searchParams.delete('selfId');
+        url.searchParams.delete('course');
+        url.searchParams.delete('msg');
+        url.searchParams.delete('callId');
+        url.searchParams.delete('genseq');
+        url.searchParams.delete('qid');
+        url.hash = '';
+        url.pathname = '/dl/callsite';
+        // Carryover share link copies the requester/tellasker call-site URL above. It must not point
+        // at the callee dialog because this bubble is the historical response for the old callId.
+        url.searchParams.set('rootId', dialog.rootId);
+        url.searchParams.set('selfId', dialog.selfId);
+        url.searchParams.set('course', String(Math.floor(toCallSiteCourseNo(callSiteCourse))));
+        url.searchParams.set('callId', event.callId);
+        void this.copyLinkToClipboardWithToast(url.toString());
       });
     }
 
@@ -4132,141 +4530,6 @@ export class DomindsDialogContainer extends HTMLElement {
       },
       { bubbles: true, composed: true },
     );
-  }
-
-  private openCallSiteDeepLinkInNewTab(callId: string, target?: TellaskCallSiteTarget): void {
-    const dialog = this.currentDialog;
-    if (!dialog) return;
-    const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
-    const resolvedSelfId = selfId !== '' ? selfId : dialog.selfId;
-    const course = target?.course;
-    const resolvedCourse =
-      typeof course === 'number' && Number.isFinite(course) ? course : this.currentCourse;
-    if (typeof resolvedCourse !== 'number' || !Number.isFinite(resolvedCourse)) return;
-
-    const url = new URL(window.location.href);
-    // Preserve auth and other non-deeplink params; override only deeplink keys.
-    this.clearDeepLinkSearchParams(url);
-    url.hash = '';
-    url.pathname = `/dl/callsite`;
-    url.searchParams.set('rootId', dialog.rootId);
-    url.searchParams.set('selfId', resolvedSelfId);
-    url.searchParams.set('course', String(Math.floor(resolvedCourse)));
-    url.searchParams.set('callId', callId);
-    const urlStr = url.toString();
-    const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
-    if (w) w.opener = null;
-  }
-
-  private buildDialogDeepLinkUrl(params: { rootId: string; selfId: string; course?: number }): URL {
-    const url = new URL(window.location.href);
-    this.clearDeepLinkSearchParams(url);
-    url.hash = '';
-    url.pathname = `/dl/dialog`;
-    url.searchParams.set('rootId', params.rootId);
-    url.searchParams.set('selfId', params.selfId);
-    if (typeof params.course === 'number' && Number.isFinite(params.course)) {
-      url.searchParams.set('course', String(Math.floor(params.course)));
-    }
-    return url;
-  }
-
-  private buildGenseqDeepLinkUrl(params: {
-    rootId: string;
-    selfId: string;
-    course: number;
-    genseq: number;
-  }): URL {
-    const url = new URL(window.location.href);
-    this.clearDeepLinkSearchParams(url);
-    url.hash = '';
-    url.pathname = `/dl/genseq`;
-    url.searchParams.set('rootId', params.rootId);
-    url.searchParams.set('selfId', params.selfId);
-    url.searchParams.set('course', String(Math.floor(params.course)));
-    url.searchParams.set('genseq', String(Math.floor(params.genseq)));
-    return url;
-  }
-
-  private buildCalleeDeepLinkUrl(params: DialogDeepLinkTarget): URL {
-    if (
-      typeof params.course === 'number' &&
-      Number.isFinite(params.course) &&
-      params.course > 0 &&
-      typeof params.genseq === 'number' &&
-      Number.isFinite(params.genseq) &&
-      params.genseq > 0
-    ) {
-      return this.buildGenseqDeepLinkUrl({
-        rootId: params.rootId,
-        selfId: params.selfId,
-        course: params.course,
-        genseq: params.genseq,
-      });
-    }
-    return this.buildDialogDeepLinkUrl(params);
-  }
-
-  private openCalleeDeepLinkInNewTab(params: DialogDeepLinkTarget): void {
-    const url = this.buildCalleeDeepLinkUrl(params);
-    const w = window.open(url.toString(), '_blank', 'noopener,noreferrer');
-    if (w) w.opener = null;
-  }
-
-  private async copyCalleeDeepLinkToClipboard(params: DialogDeepLinkTarget): Promise<void> {
-    const url = this.buildCalleeDeepLinkUrl(params);
-    await this.copyLinkToClipboardWithToast(url.toString());
-  }
-
-  private async copyCallSiteDeepLinkToClipboard(
-    callId: string,
-    target?: TellaskCallSiteTarget,
-  ): Promise<void> {
-    const dialog = this.currentDialog;
-    if (!dialog) return;
-    const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
-    const resolvedSelfId = selfId !== '' ? selfId : dialog.selfId;
-    const course = target?.course;
-    const resolvedCourse =
-      typeof course === 'number' && Number.isFinite(course) ? course : this.currentCourse;
-    if (typeof resolvedCourse !== 'number' || !Number.isFinite(resolvedCourse)) return;
-
-    const url = new URL(window.location.href);
-    this.clearDeepLinkSearchParams(url);
-    url.hash = '';
-    url.pathname = `/dl/callsite`;
-    url.searchParams.set('rootId', dialog.rootId);
-    url.searchParams.set('selfId', resolvedSelfId);
-    url.searchParams.set('course', String(Math.floor(resolvedCourse)));
-    url.searchParams.set('callId', callId);
-    await this.copyLinkToClipboardWithToast(url.toString());
-  }
-
-  private async copyGenerationBubbleDeepLinkToClipboard(genseq: number): Promise<void> {
-    const dialog = this.currentDialog;
-    const course = this.currentCourse;
-    if (!dialog || typeof course !== 'number') return;
-    if (!Number.isFinite(genseq) || genseq <= 0) return;
-
-    const url = new URL(window.location.href);
-    this.clearDeepLinkSearchParams(url);
-    url.hash = '';
-    url.pathname = `/dl/genseq`;
-    url.searchParams.set('rootId', dialog.rootId);
-    url.searchParams.set('selfId', dialog.selfId);
-    url.searchParams.set('course', String(Math.floor(course)));
-    url.searchParams.set('genseq', String(Math.floor(genseq)));
-    await this.copyLinkToClipboardWithToast(url.toString());
-  }
-
-  private clearDeepLinkSearchParams(url: URL): void {
-    url.searchParams.delete('rootId');
-    url.searchParams.delete('selfId');
-    url.searchParams.delete('course');
-    url.searchParams.delete('msg');
-    url.searchParams.delete('callId');
-    url.searchParams.delete('genseq');
-    url.searchParams.delete('qid');
   }
 
   private emitToast(message: string, kind: UiToastKind = 'info'): void {
@@ -4430,6 +4693,28 @@ export class DomindsDialogContainer extends HTMLElement {
     return fromCache ?? fromDom;
   }
 
+  private findLatestCallingSectionBySessionSlug(
+    sessionSlug: string,
+    excludingCallId?: string,
+  ): HTMLElement | null {
+    const normalizedSlug = sessionSlug.trim();
+    if (normalizedSlug === '' || !this.shadowRoot) {
+      return null;
+    }
+    const excluded = excludingCallId?.trim() ?? '';
+    const nodes = this.shadowRoot.querySelectorAll(
+      `.calling-section[data-session-slug="${CSS.escape(normalizedSlug)}"]`,
+    );
+    for (let index = nodes.length - 1; index >= 0; index -= 1) {
+      const node = nodes.item(index);
+      if (!(node instanceof HTMLElement)) continue;
+      const callId = (node.getAttribute('data-call-id') ?? '').trim();
+      if (excluded !== '' && callId === excluded) continue;
+      return node;
+    }
+    return null;
+  }
+
   private applyPendingCalleeAssignmentLink(callId: string): void {
     const normalizedCallId = callId.trim();
     if (normalizedCallId === '') {
@@ -4449,9 +4734,9 @@ export class DomindsDialogContainer extends HTMLElement {
     });
   }
 
-  private readCallingSectionCalleeDeepLinkTarget(
+  private readCallingSectionCalleeAssignmentTarget(
     section: HTMLElement,
-  ): DialogDeepLinkTarget | null {
+  ): CalleeAssignmentLinkTarget | null {
     const rootId = (section.getAttribute('data-callee-root-id') ?? '').trim();
     const selfId = (section.getAttribute('data-callee-dialog-id') ?? '').trim();
     if (rootId === '' || selfId === '') {

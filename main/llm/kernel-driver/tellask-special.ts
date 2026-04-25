@@ -2,8 +2,6 @@ import { inspect } from 'util';
 
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
-  toCalleeCourseNumber,
-  toCalleeGenerationSeqNumber,
   toCallSiteCourseNo,
   toCallSiteGenseqNo,
   toRootGenerationAnchor,
@@ -47,10 +45,7 @@ import type {
   TellaskResultMsg,
 } from '../client';
 import { buildFbrPromptForState, createInitialFbrState } from './fbr';
-import {
-  resolveLatestAssignmentAnchorRef,
-  supplySideDialogResponseToAssignedAskerIfPendingV2,
-} from './sideDialog';
+import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from './sideDialog';
 import { withSideDialogTxnLock, withSideDialogTxnLocks } from './sideDialog-txn';
 import type {
   KernelDriverDriveCallbacks,
@@ -1324,12 +1319,6 @@ async function finishRegisteredTellaskReplacement(args: {
           language,
         })
       : undefined;
-  const assignmentRef = await resolveLatestAssignmentAnchorRef({
-    calleeDialogId: sideDialog.id,
-    callId: pendingRecord.callId,
-    status: ownerDialog.status,
-  });
-
   const result = await ownerDialog.receiveTellaskResponse(
     sideDialog.agentId,
     pendingRecord.callName,
@@ -1346,12 +1335,6 @@ async function finishRegisteredTellaskReplacement(args: {
       callSiteGenseq: pendingRecord.callSiteGenseq,
       carryoverContent,
       sessionSlug: pendingRecord.sessionSlug,
-      ...(assignmentRef !== undefined
-        ? {
-            calleeCourse: toCalleeCourseNumber(assignmentRef.course),
-            calleeGenseq: toCalleeGenerationSeqNumber(assignmentRef.genseq),
-          }
-        : {}),
     },
   );
   await ownerDialog.addChatMessages(result);
@@ -2269,6 +2252,15 @@ async function executeTellaskCall(
           pendingOwner,
           'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
         );
+        if (result.kind === 'existing') {
+          postDialogEvent(pendingOwner, {
+            type: 'tellask_call_callee_evt',
+            course: callSiteCourse,
+            genseq: callSiteGenseq,
+            callId,
+            calleeDialogId: result.sideDialog.id.selfId,
+          });
+        }
         if (result.kind === 'existing' && result.replacedPending !== undefined) {
           const previousPendingOwner = await resolveDialogWithinRoot(
             mainDialog,
