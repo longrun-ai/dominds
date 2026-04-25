@@ -670,6 +670,19 @@ export type TellaskCallAnchorRecord =
       askerCourse: AskerCourseNumber;
     });
 
+// Requester-course UI navigation metadata for a registered tellask call-site whose callee
+// sideDialog already exists. `genseq`/`callId` identify the requester call-site bubble; the
+// callee fields identify only the target sideDialog until a later assignment anchor upgrades the
+// call-site to a concrete callee `course/genseq`.
+export interface TellaskCallCalleeRecord extends RootGenerationRef {
+  ts: string;
+  type: 'tellask_call_callee_record';
+  genseq: number;
+  callId: string;
+  calleeDialogId: string;
+  sourceTag?: 'priming_script';
+}
+
 export type TellaskCarryoverRecord =
   | (RootGenerationRef & {
       ts: string;
@@ -916,6 +929,7 @@ export type PersistedDialogRecord =
   | SideDialogRequestRecord
   | TellaskReplyResolutionRecord
   | TellaskCallAnchorRecord
+  | TellaskCallCalleeRecord
   | TellaskCarryoverRecord
   | GenStartRecord
   | GenFinishRecord

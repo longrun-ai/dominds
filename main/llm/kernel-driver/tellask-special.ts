@@ -7,6 +7,7 @@ import {
   toRootGenerationAnchor,
   type HumanQuestion,
   type PendingSideDialogStateRecord,
+  type TellaskCallCalleeRecord,
   type TellaskCallRecord,
   type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
@@ -2253,6 +2254,28 @@ async function executeTellaskCall(
           'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
         );
         if (result.kind === 'existing') {
+          // Existing registered tellask sessions reuse the callee sideDialog, so there is no fresh
+          // sideDialog-created record for this requester call-site. Persist the callId -> callee
+          // sideDialog relation on the requester course; replay sends it back to the UI so the
+          // call-site links to `/dl/dialog` until the later assignment anchor upgrades it to
+          // `/dl/genseq`.
+          const calleeRecord: TellaskCallCalleeRecord = {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'tellask_call_callee_record',
+            genseq: callSiteGenseq,
+            callId,
+            calleeDialogId: result.sideDialog.id.selfId,
+            ...toRootGenerationAnchor({
+              rootCourse: mainDialog.currentCourse,
+              rootGenseq: mainDialog.activeGenSeqOrUndefined ?? 0,
+            }),
+          };
+          await DialogPersistence.appendEvent(
+            pendingOwner.id,
+            callSiteCourse,
+            calleeRecord,
+            pendingOwner.status,
+          );
           postDialogEvent(pendingOwner, {
             type: 'tellask_call_callee_evt',
             course: callSiteCourse,

@@ -4614,6 +4614,25 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
+      case 'tellask_call_callee_record': {
+        const calleeEvent = {
+          type: 'tellask_call_callee_evt',
+          course,
+          genseq: event.genseq,
+          callId: event.callId,
+          calleeDialogId: event.calleeDialogId,
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(calleeEvent));
+        }
+        break;
+      }
+
       case 'sideDialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
@@ -8913,6 +8932,10 @@ export class DialogPersistence {
           break;
         case 'tellask_call_anchor_record':
           // This record is UI navigation metadata for deep links in tellaskee dialogs.
+          // It does not contribute to model context or chat transcript reconstruction.
+          break;
+        case 'tellask_call_callee_record':
+          // This record is UI navigation metadata for reused registered sideDialog links.
           // It does not contribute to model context or chat transcript reconstruction.
           break;
         case 'ui_only_markdown_record':

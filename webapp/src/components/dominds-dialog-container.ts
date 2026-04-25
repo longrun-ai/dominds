@@ -4782,7 +4782,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const selfId = args.selfId.trim();
     if (callId === '' || rootId === '' || selfId === '') {
       this.handleProtocolError(
-        `sideDialog_created_evt invalid callee dialog link ${JSON.stringify(args)}`,
+        `callee dialog link event has invalid requester call-site target ${JSON.stringify(args)}`,
       );
       return;
     }
@@ -4790,7 +4790,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const section = this.findCallingSectionByCallId(callId);
     if (!section) {
       this.handleProtocolError(
-        `sideDialog_created_evt has no matching call site bubble ${JSON.stringify(args)}`,
+        `callee dialog link event has no matching requester call-site bubble ${JSON.stringify(args)}`,
       );
       return;
     }

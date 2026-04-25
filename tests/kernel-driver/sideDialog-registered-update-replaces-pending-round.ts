@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
+import { EndOfStream, type SubChan } from '@longrun-ai/kernel/evt';
+import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
+import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
@@ -19,6 +22,31 @@ import {
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
+
+async function waitForCalleeLinkEvent(args: {
+  subChan: SubChan<TypedDialogEvent>;
+  callId: string;
+  calleeDialogId: string;
+  timeoutMs: number;
+}): Promise<boolean> {
+  const deadline = Date.now() + args.timeoutMs;
+  for (;;) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return false;
+    const event = await Promise.race([
+      args.subChan.read(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), remainingMs)),
+    ]);
+    if (event === null || event === EndOfStream) return false;
+    if (
+      event.type === 'tellask_call_callee_evt' &&
+      event.callId === args.callId &&
+      event.calleeDialogId === args.calleeDialogId
+    ) {
+      return true;
+    }
+  }
+}
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
@@ -111,16 +139,31 @@ async function main(): Promise<void> {
     const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
     assert.ok(sideDialog, 'expected registered sideDialog after the first tellask');
 
-    await driveDialogStream(
-      root,
-      {
-        content: updatedTrigger,
-        msgId: 'kernel-driver-registered-update-second',
-        grammar: 'markdown',
-        origin: 'user',
-      },
-      true,
-    );
+    const rootSubChan = dialogEventRegistry.createSubChan(root.id);
+    try {
+      await driveDialogStream(
+        root,
+        {
+          content: updatedTrigger,
+          msgId: 'kernel-driver-registered-update-second',
+          grammar: 'markdown',
+          origin: 'user',
+        },
+        true,
+      );
+      assert.equal(
+        await waitForCalleeLinkEvent({
+          subChan: rootSubChan,
+          callId: 'call-updated-round',
+          calleeDialogId: sideDialog.id.selfId,
+          timeoutMs: 1_000,
+        }),
+        true,
+        'registered update should immediately link the new requester call-site to the reused callee dialog',
+      );
+    } finally {
+      rootSubChan.cancel();
+    }
     await waitForAllDialogsUnlocked(root, 3_000);
 
     const expectedUpdatedPrompt = wrapPromptWithExpectedReplyTool({
@@ -194,6 +237,15 @@ async function main(): Promise<void> {
       root.id,
       root.currentCourse,
       root.status,
+    );
+    assert.ok(
+      rootEventsAfterUpdate.some(
+        (event) =>
+          event.type === 'tellask_call_callee_record' &&
+          event.callId === 'call-updated-round' &&
+          event.calleeDialogId === sideDialog.id.selfId,
+      ),
+      'registered update should persist requester call-site callee dialog link for replay',
     );
     const replacedRoundNotice = rootEventsAfterUpdate.find(
       (event): event is TellaskResultRecord =>

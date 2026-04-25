@@ -18,6 +18,7 @@ import type {
   RuntimeGuideRecord,
   SideDialogRequestRecord,
   TellaskCallAnchorRecord,
+  TellaskCallCalleeRecord,
   TellaskCallRecord,
   TellaskCarryoverRecord,
   TellaskReplyDirective,
@@ -363,6 +364,7 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'sideDialog_request_record' ||
     raw === 'tellask_reply_resolution_record' ||
     raw === 'tellask_call_anchor_record' ||
+    raw === 'tellask_call_callee_record' ||
     raw === 'tellask_carryover_record' ||
     raw === 'gen_start_record' ||
     raw === 'gen_finish_record'
@@ -392,6 +394,7 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return null;
@@ -1414,6 +1417,22 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
+    case 'tellask_call_callee_record': {
+      const record: TellaskCallCalleeRecord = {
+        ts: '',
+        type,
+        ...toRootGenerationAnchor({
+          rootCourse: expectIntegerField(raw, 'rootCourse', context),
+          rootGenseq: expectIntegerField(raw, 'rootGenseq', context),
+        }),
+        genseq: expectIntegerField(raw, 'genseq', context),
+        callId: expectStringField(raw, 'callId', context),
+        calleeDialogId: expectStringField(raw, 'calleeDialogId', context),
+      };
+      if (sourceTag) record.sourceTag = sourceTag;
+      const { ts: _unusedTs, ...withoutTs } = record;
+      return withoutTs;
+    }
     case 'tellask_carryover_record': {
       const callName = raw['callName'];
       if (
@@ -2090,6 +2109,7 @@ function remapRecordGenseq(
     case 'func_result_record':
     case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ...record, genseq: mapGenseq(record.genseq) };
@@ -2159,6 +2179,7 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -2187,6 +2208,7 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'tellask_carryover_record':
     case 'native_tool_call_record':
     case 'gen_start_record':
@@ -2332,6 +2354,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
     case 'native_tool_call_record':
     case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'tellask_reply_resolution_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -2566,12 +2589,23 @@ function formatScriptMarkdown(args: {
         blockMeta['anchorRole'] = record.anchorRole;
         blockMeta['callId'] = record.callId;
         blockMeta['genseq'] = record.genseq;
+        blockMeta['rootCourse'] = record.rootCourse;
+        blockMeta['rootGenseq'] = record.rootGenseq;
         if (record.assignmentCourse !== undefined)
           blockMeta['assignmentCourse'] = record.assignmentCourse;
         if (record.assignmentGenseq !== undefined)
           blockMeta['assignmentGenseq'] = record.assignmentGenseq;
         if (record.askerDialogId !== undefined) blockMeta['askerDialogId'] = record.askerDialogId;
         if (record.askerCourse !== undefined) blockMeta['askerCourse'] = record.askerCourse;
+        if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
+        break;
+      }
+      case 'tellask_call_callee_record': {
+        blockMeta['genseq'] = record.genseq;
+        blockMeta['rootCourse'] = record.rootCourse;
+        blockMeta['rootGenseq'] = record.rootGenseq;
+        blockMeta['callId'] = record.callId;
+        blockMeta['calleeDialogId'] = record.calleeDialogId;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
@@ -2687,6 +2721,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'tellask_result_record':
     case 'sideDialog_request_record':
     case 'tellask_call_anchor_record':
+    case 'tellask_call_callee_record':
     case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record': {
