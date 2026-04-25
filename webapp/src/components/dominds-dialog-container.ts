@@ -416,6 +416,40 @@ export class DomindsDialogContainer extends HTMLElement {
           });
           return;
         }
+        const callingExternalBtn = target.closest(
+          '.calling-open-external-btn',
+        ) as HTMLButtonElement | null;
+        if (callingExternalBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const section = callingExternalBtn.closest('.calling-section') as HTMLElement | null;
+          if (!section) return;
+          const rootId = (section.getAttribute('data-callee-root-id') ?? '').trim();
+          const selfId = (section.getAttribute('data-callee-dialog-id') ?? '').trim();
+          if (rootId === '' || selfId === '') return;
+          this.openDialogDeepLinkInNewTab({
+            rootId,
+            selfId,
+          });
+          return;
+        }
+        const callingShareBtn = target.closest(
+          '.calling-share-link-btn',
+        ) as HTMLButtonElement | null;
+        if (callingShareBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const section = callingShareBtn.closest('.calling-section') as HTMLElement | null;
+          if (!section) return;
+          const rootId = (section.getAttribute('data-callee-root-id') ?? '').trim();
+          const selfId = (section.getAttribute('data-callee-dialog-id') ?? '').trim();
+          if (rootId === '' || selfId === '') return;
+          await this.copyDialogDeepLinkToClipboard({
+            rootId,
+            selfId,
+          });
+          return;
+        }
         const userAnswerCallsiteBtn = target.closest(
           '.user-answer-callsite-link-btn',
         ) as HTMLButtonElement | null;
@@ -1308,14 +1342,16 @@ export class DomindsDialogContainer extends HTMLElement {
     // Security check: only process events for the current active dialog
     // Also allow events for the previous dialog during navigation race conditions
     if (event.dialog) {
+      const eventDialog =
+        event.type === 'sideDialog_created_evt' ? event.parentDialog : event.dialog;
       const isCurrentDialog =
         this.currentDialog &&
-        event.dialog.selfId === this.currentDialog.selfId &&
-        event.dialog.rootId === this.currentDialog.rootId;
+        eventDialog.selfId === this.currentDialog.selfId &&
+        eventDialog.rootId === this.currentDialog.rootId;
       const isPreviousDialog =
         this.previousDialog &&
-        event.dialog.selfId === this.previousDialog.selfId &&
-        event.dialog.rootId === this.previousDialog.rootId;
+        eventDialog.selfId === this.previousDialog.selfId &&
+        eventDialog.rootId === this.previousDialog.rootId;
 
       if (!isCurrentDialog && !isPreviousDialog) {
         return;
@@ -3584,6 +3620,22 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const calleeDialogId = sideDialog.selfId;
+    const assignment = sideDialogEvent.sideDialogNode.assignmentFromAsker;
+    if (!assignment) {
+      this.handleProtocolError(
+        `sideDialog_created_evt missing assignmentFromAsker ${JSON.stringify({
+          rootId: sideDialog.rootId,
+          selfId: sideDialog.selfId,
+          callName: sideDialogEvent.callName,
+        })}`,
+      );
+      return;
+    }
+    this.upsertCallingSectionCalleeDialogLink({
+      callId: assignment.callId,
+      rootId: sideDialog.rootId,
+      selfId: calleeDialogId,
+    });
 
     // Dispatch event for dialog list to update tellaskee dialog count
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
@@ -3997,12 +4049,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const url = new URL(window.location.href);
     // Preserve auth and other non-deeplink params; override only deeplink keys.
-    url.searchParams.delete('rootId');
-    url.searchParams.delete('selfId');
-    url.searchParams.delete('course');
-    url.searchParams.delete('msg');
-    url.searchParams.delete('callId');
-    url.searchParams.delete('genseq');
+    this.clearDeepLinkSearchParams(url);
     url.hash = '';
     url.pathname = `/dl/callsite`;
     url.searchParams.set('rootId', dialog.rootId);
@@ -4012,6 +4059,38 @@ export class DomindsDialogContainer extends HTMLElement {
     const urlStr = url.toString();
     const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
     if (w) w.opener = null;
+  }
+
+  private buildDialogDeepLinkUrl(params: { rootId: string; selfId: string; course?: number }): URL {
+    const url = new URL(window.location.href);
+    this.clearDeepLinkSearchParams(url);
+    url.hash = '';
+    url.pathname = `/dl/dialog`;
+    url.searchParams.set('rootId', params.rootId);
+    url.searchParams.set('selfId', params.selfId);
+    if (typeof params.course === 'number' && Number.isFinite(params.course)) {
+      url.searchParams.set('course', String(Math.floor(params.course)));
+    }
+    return url;
+  }
+
+  private openDialogDeepLinkInNewTab(params: {
+    rootId: string;
+    selfId: string;
+    course?: number;
+  }): void {
+    const url = this.buildDialogDeepLinkUrl(params);
+    const w = window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    if (w) w.opener = null;
+  }
+
+  private async copyDialogDeepLinkToClipboard(params: {
+    rootId: string;
+    selfId: string;
+    course?: number;
+  }): Promise<void> {
+    const url = this.buildDialogDeepLinkUrl(params);
+    await this.copyLinkToClipboardWithToast(url.toString());
   }
 
   private async copyCallSiteDeepLinkToClipboard(
@@ -4028,12 +4107,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (typeof resolvedCourse !== 'number' || !Number.isFinite(resolvedCourse)) return;
 
     const url = new URL(window.location.href);
-    url.searchParams.delete('rootId');
-    url.searchParams.delete('selfId');
-    url.searchParams.delete('course');
-    url.searchParams.delete('msg');
-    url.searchParams.delete('callId');
-    url.searchParams.delete('genseq');
+    this.clearDeepLinkSearchParams(url);
     url.hash = '';
     url.pathname = `/dl/callsite`;
     url.searchParams.set('rootId', dialog.rootId);
@@ -4050,12 +4124,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!Number.isFinite(genseq) || genseq <= 0) return;
 
     const url = new URL(window.location.href);
-    url.searchParams.delete('rootId');
-    url.searchParams.delete('selfId');
-    url.searchParams.delete('course');
-    url.searchParams.delete('msg');
-    url.searchParams.delete('callId');
-    url.searchParams.delete('genseq');
+    this.clearDeepLinkSearchParams(url);
     url.hash = '';
     url.pathname = `/dl/genseq`;
     url.searchParams.set('rootId', dialog.rootId);
@@ -4063,6 +4132,16 @@ export class DomindsDialogContainer extends HTMLElement {
     url.searchParams.set('course', String(Math.floor(course)));
     url.searchParams.set('genseq', String(Math.floor(genseq)));
     await this.copyLinkToClipboardWithToast(url.toString());
+  }
+
+  private clearDeepLinkSearchParams(url: URL): void {
+    url.searchParams.delete('rootId');
+    url.searchParams.delete('selfId');
+    url.searchParams.delete('course');
+    url.searchParams.delete('msg');
+    url.searchParams.delete('callId');
+    url.searchParams.delete('genseq');
+    url.searchParams.delete('qid');
   }
 
   private emitToast(message: string, kind: UiToastKind = 'info'): void {
@@ -4210,6 +4289,42 @@ export class DomindsDialogContainer extends HTMLElement {
     } else {
       headerRight.appendChild(actions);
     }
+  }
+
+  private upsertCallingSectionCalleeDialogLink(args: {
+    callId: string;
+    rootId: string;
+    selfId: string;
+  }): void {
+    const callId = args.callId.trim();
+    const rootId = args.rootId.trim();
+    const selfId = args.selfId.trim();
+    if (callId === '' || rootId === '' || selfId === '') {
+      this.handleProtocolError(
+        `sideDialog_created_evt invalid callee dialog link ${JSON.stringify(args)}`,
+      );
+      return;
+    }
+
+    const fromCache = this.callingSectionByCallId.get(callId);
+    const fromDom = this.shadowRoot
+      ? (this.shadowRoot.querySelector(
+          `.calling-section[data-call-id="${CSS.escape(callId)}"]`,
+        ) as HTMLElement | null)
+      : null;
+    const section = fromCache ?? fromDom;
+    if (!section) {
+      this.handleProtocolError(
+        `sideDialog_created_evt has no matching call site bubble ${JSON.stringify(args)}`,
+      );
+      return;
+    }
+
+    section.setAttribute('data-callee-root-id', rootId);
+    section.setAttribute('data-callee-dialog-id', selfId);
+    section.querySelectorAll<HTMLButtonElement>('.calling-actions button').forEach((button) => {
+      button.disabled = false;
+    });
   }
 
   private buildGenerationBubbleHeaderHtml(timestamp: string): string {
@@ -4615,7 +4730,12 @@ export class DomindsDialogContainer extends HTMLElement {
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
     firstMention: string,
   ): HTMLElement {
+    const t = getUiStrings(this.uiLanguage);
     const isFbr = callName === 'freshBootsReasoning';
+    const isSideDialogCall =
+      callName === 'tellask' ||
+      callName === 'tellaskSessionless' ||
+      callName === 'freshBootsReasoning';
     const el = document.createElement('div');
     el.className = isFbr ? 'calling-section fbr' : 'calling-section';
     el.setAttribute('data-first-mention', firstMention);
@@ -4633,6 +4753,18 @@ export class DomindsDialogContainer extends HTMLElement {
           <span class="calling-headline"></span>
           <span class="calling-timing"></span>
         </div>
+        ${
+          isSideDialogCall
+            ? `<div class="calling-actions">
+                <button type="button" class="callsite-icon-btn calling-open-external-btn" aria-label="${this.escapeHtml(t.q4hOpenInNewTabTitle)}" title="${this.escapeHtml(t.q4hOpenInNewTabTitle)}" disabled>
+                  <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="callsite-icon-btn calling-share-link-btn" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}" disabled>
+                  <span class="icon-mask dc-icon-link" aria-hidden="true"></span>
+                </button>
+              </div>`
+            : ''
+        }
       </div>
       <div class="calling-content">
         <div class="calling-body"></div>
@@ -5400,6 +5532,17 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-fg, var(--color-fg-primary, #333));
       }
 
+      .callsite-icon-btn:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+
+      .callsite-icon-btn:disabled:hover {
+        background: transparent;
+        border-color: transparent;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+      }
+
       .callsite-icon-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         outline-offset: 2px;
@@ -5741,6 +5884,15 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-direction: column;
         gap: 2px;
         min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .calling-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-left: auto;
+        flex-shrink: 0;
       }
 
       .calling-icon {

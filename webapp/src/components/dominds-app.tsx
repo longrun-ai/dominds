@@ -11562,6 +11562,13 @@ export class DomindsApp extends HTMLElement {
             node.lastModified || (message as TypedDialogEvent).timestamp,
             node.status === 'running' ? { suppressRender: true } : undefined,
           );
+
+          const dialogContainer = this.shadowRoot?.querySelector(
+            '#dialog-container',
+          ) as DomindsDialogContainer | null;
+          if (dialogContainer) {
+            await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
           break;
         }
 
