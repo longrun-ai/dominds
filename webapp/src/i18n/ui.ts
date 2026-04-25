@@ -67,6 +67,7 @@ export type UiStrings = {
   taskDocumentPlaceholder: string;
   taskDocumentHelp: string;
   taskDocumentNoMatches: string;
+  taskDocumentSuggestionLoadFailedPrefix: string;
   teammateLabel: string;
   shadowMembersOption: string;
   shadowMembersLabel: string;
@@ -457,6 +458,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       taskDocumentHelp:
         '从已有文档中选择，或输入自定义路径。留空则默认 socializing.tsk。Tab 补全公共前缀；Enter 选择高亮项。',
       taskDocumentNoMatches: '没有匹配的差遣牒',
+      taskDocumentSuggestionLoadFailedPrefix: '加载差遣牒候选失败：',
       teammateLabel: '队友：',
       shadowMembersOption: '影子成员…',
       shadowMembersLabel: '影子成员：',
@@ -863,6 +865,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     taskDocumentHelp:
       'Select from existing Taskdocs or enter a custom path. Leave blank to use socializing.tsk. Tab completes common prefix; Enter selects highlighted item.',
     taskDocumentNoMatches: 'No matching Taskdocs found',
+    taskDocumentSuggestionLoadFailedPrefix: 'Failed to load Taskdoc suggestions: ',
     teammateLabel: 'Teammate:',
     shadowMembersOption: 'Shadow Members…',
     shadowMembersLabel: 'Shadow Members:',

@@ -17,6 +17,7 @@ export * from './types/q4h';
 export * from './types/setup';
 export * from './types/snippets';
 export * from './types/storage';
+export * from './types/taskdoc';
 export * from './types/tools-registry';
 export * from './types/wire';
 

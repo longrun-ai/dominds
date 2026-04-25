@@ -13,25 +13,27 @@
  * - Patterns are interpreted as paths relative to the `.taskdoc-ignore` directory (unless they
  *   start with `/`, in which case they are rtws-root-relative).
  */
+import type { TaskDocumentSuggestion, TaskDocumentSummary } from '@longrun-ai/kernel/types/taskdoc';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import * as path from 'path';
 
-export interface TaskDocumentSummary {
-  path: string;
-  relativePath: string;
-  name: string;
-  size: number;
-  lastModified: string;
-}
-
 export type ListTaskDocumentsResult =
   | { kind: 'ok'; taskDocuments: TaskDocumentSummary[] }
   | { kind: 'error'; errorText: string };
 
+export type SearchTaskDocumentSuggestionsResult =
+  | { kind: 'ok'; suggestions: TaskDocumentSuggestion[] }
+  | { kind: 'error'; errorText: string };
+
 interface ListTaskDocumentsParams {
   rootDir?: string;
+}
+
+interface SearchTaskDocumentSuggestionsParams extends ListTaskDocumentsParams {
+  query: string;
+  limit?: number;
 }
 
 const DEFAULT_IGNORE_PATTERNS: string[] = [
@@ -45,6 +47,25 @@ type CompiledIgnorePattern = { kind: 'prefix'; prefix: string } | { kind: 'glob'
 
 function normalizePosixPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function stripTaskdocSuffixForMatch(value: string): string {
+  return value.endsWith('.tsk') ? value.slice(0, -4) : value;
+}
+
+function calculateTaskDocumentSuggestionScore(params: {
+  nameMatch: boolean;
+  pathMatch: boolean;
+  nameStartsWith: boolean;
+  pathStartsWith: boolean;
+  nameExactMatch: boolean;
+}): number {
+  if (params.nameExactMatch) return 100;
+  if (params.nameStartsWith) return 90;
+  if (params.pathStartsWith) return 80;
+  if (params.nameMatch) return 70;
+  if (params.pathMatch) return 60;
+  return 0;
 }
 
 function escapeRegexLiteralChar(ch: string): string {
@@ -295,4 +316,61 @@ export async function listTaskDocumentsInRtws(
   } catch {
     return { kind: 'error', errorText: 'Failed to list Taskdocs' };
   }
+}
+
+export async function searchTaskDocumentSuggestionsInRtws(
+  params: SearchTaskDocumentSuggestionsParams,
+): Promise<SearchTaskDocumentSuggestionsResult> {
+  const normalizedQuery = stripTaskdocSuffixForMatch(params.query.trim().toLowerCase());
+  if (normalizedQuery === '') return { kind: 'ok', suggestions: [] };
+
+  const listed = await listTaskDocumentsInRtws({ rootDir: params.rootDir });
+  if (listed.kind === 'error') return listed;
+
+  const limit =
+    typeof params.limit === 'number' && Number.isFinite(params.limit) && params.limit > 0
+      ? Math.floor(params.limit)
+      : 50;
+
+  const suggestions = listed.taskDocuments
+    .map((doc) => {
+      const normalizedRelativePathForMatch = stripTaskdocSuffixForMatch(
+        doc.relativePath.toLowerCase(),
+      );
+      const normalizedNameForMatch = stripTaskdocSuffixForMatch(doc.name.toLowerCase());
+      const nameMatch = normalizedNameForMatch.includes(normalizedQuery);
+      const pathMatch = normalizedRelativePathForMatch.includes(normalizedQuery);
+      if (!nameMatch && !pathMatch) return null;
+      return {
+        doc,
+        score: calculateTaskDocumentSuggestionScore({
+          nameMatch,
+          pathMatch,
+          nameStartsWith: normalizedNameForMatch.startsWith(normalizedQuery),
+          pathStartsWith: normalizedRelativePathForMatch.startsWith(normalizedQuery),
+          nameExactMatch: normalizedNameForMatch === normalizedQuery,
+        }),
+      };
+    })
+    .filter(
+      (
+        entry,
+      ): entry is {
+        doc: TaskDocumentSummary;
+        score: number;
+      } => entry !== null,
+    )
+    .sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      if (a.doc.name.length !== b.doc.name.length) return a.doc.name.length - b.doc.name.length;
+      return a.doc.name.localeCompare(b.doc.name);
+    })
+    .slice(0, limit)
+    .map(({ doc }) => ({
+      path: doc.path,
+      relativePath: doc.relativePath,
+      name: doc.name,
+    }));
+
+  return { kind: 'ok', suggestions };
 }

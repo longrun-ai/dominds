@@ -19,7 +19,12 @@ import type {
   MainDialogMetadataFile,
   SideDialogAssignmentFromAsker,
 } from '@longrun-ai/kernel/types/storage';
+import type {
+  SearchTaskDocumentSuggestionsResponse,
+  TaskDocumentSuggestion,
+} from '@longrun-ai/kernel/types/taskdoc';
 import type { DialogIdent, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
+import { escapeHtml } from '@longrun-ai/kernel/utils/html';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
@@ -46,6 +51,10 @@ import { Team } from '../team';
 import { createToolAvailabilitySnapshot } from '../tool-availability';
 import { generateDialogID } from '../utils/id';
 import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
+import {
+  buildTaskDocumentSuggestionRequestKey,
+  searchTaskDocumentSuggestionsInWorker,
+} from '../utils/taskdoc-search-worker-client';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
 import { installLatestDominds, restartDomindsIntoLatest } from './dominds-self-update';
 import { isTextLikeMimeType, sniffMimeType } from './mime-types';
@@ -1415,6 +1424,10 @@ export async function handleApiRoute(
     }
 
     // Taskdocs endpoint
+    if (pathname === '/api/task-documents/suggestions' && req.method === 'GET') {
+      return await handleGetTaskDocumentSuggestions(req, res);
+    }
+
     if (pathname === '/api/task-documents' && req.method === 'GET') {
       return await handleGetTaskDocuments(res);
     }
@@ -3314,6 +3327,71 @@ async function handleGetTaskDocuments(res: ServerResponse): Promise<boolean> {
   } catch (error) {
     log.error('Error getting Taskdocs:', error);
     respondJson(res, 500, { success: false, error: 'Failed to get Taskdocs' });
+    return true;
+  }
+}
+
+function renderTaskDocumentSuggestionHtml(suggestions: TaskDocumentSuggestion[]): string {
+  return suggestions
+    .map((doc, index) => {
+      const showName = doc.name.trim() !== '' && doc.name !== doc.relativePath;
+      const nameHtml = showName ? `<div class="suggestion-name">${escapeHtml(doc.name)}</div>` : '';
+      return `<div class="suggestion" data-index="${String(index)}"><div class="suggestion-path">${escapeHtml(
+        doc.relativePath,
+      )}</div>${nameHtml}</div>`;
+    })
+    .join('');
+}
+
+async function handleGetTaskDocumentSuggestions(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  try {
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const query = (urlObj.searchParams.get('q') ?? '').trim();
+    const workerPayload = {
+      rootDir: '.',
+      query,
+      limit: 50,
+    };
+    const requestKey = buildTaskDocumentSuggestionRequestKey(workerPayload);
+    const abortController = new AbortController();
+    res.once('close', () => {
+      if (!res.writableEnded) abortController.abort();
+    });
+    const result = await searchTaskDocumentSuggestionsInWorker(workerPayload, {
+      signal: abortController.signal,
+    });
+    if (abortController.signal.aborted || res.writableEnded) return true;
+    if (result.kind === 'error') {
+      log.error('Failed to search taskdoc suggestions', new Error(result.errorText), {
+        query,
+      });
+      const payload: SearchTaskDocumentSuggestionsResponse = {
+        success: false,
+        error: result.errorText,
+      };
+      respondJson(res, 500, payload);
+      return true;
+    }
+
+    const payload: SearchTaskDocumentSuggestionsResponse = {
+      success: true,
+      query,
+      requestKey,
+      suggestions: result.suggestions,
+      html: renderTaskDocumentSuggestionHtml(result.suggestions),
+    };
+    respondJson(res, 200, payload);
+    return true;
+  } catch (error: unknown) {
+    log.error('Failed to search taskdoc suggestions', error);
+    const payload: SearchTaskDocumentSuggestionsResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to search taskdoc suggestions',
+    };
+    respondJson(res, 500, payload);
     return true;
   }
 }

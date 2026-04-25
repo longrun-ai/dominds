@@ -51,6 +51,7 @@ Available API endpoints:
 • GET /api/dialogs/:root/sideDialogs/:self/list-node - Get one dialog-list sideDialog node
 • GET /api/dialogs/:root/hierarchy - Get dialog hierarchy
 • GET /api/task-documents - Taskdoc listing
+• GET /api/task-documents/suggestions?q=... - Worker-backed Taskdoc suggestions
 
 WebSocket endpoint: /ws
 Backend API endpoint: /api

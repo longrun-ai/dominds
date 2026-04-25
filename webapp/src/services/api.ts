@@ -18,6 +18,7 @@ import {
   SaveCurrentCoursePrimingRequest,
   SaveCurrentCoursePrimingResponse,
   SearchPrimingScriptsResponse,
+  SearchTaskDocumentSuggestionsResponse,
   SetupFileResponse,
   SetupStatusResponse,
   SetupWriteRtwsLlmYamlRequest,
@@ -122,7 +123,29 @@ type RequestOptions = {
   headers?: Record<string, string>;
   body?: unknown;
   timeout?: number;
+  signal?: AbortSignal;
 };
+
+function mergeAbortSignals(signals: AbortSignal[]): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any(signals);
+  if (signals.some((signal) => signal.aborted)) {
+    const controller = new AbortController();
+    controller.abort();
+    return controller.signal;
+  }
+  if (signals.length === 1) return signals[0];
+  const controller = new AbortController();
+  for (const signal of signals) {
+    signal.addEventListener(
+      'abort',
+      () => {
+        if (!controller.signal.aborted) controller.abort();
+      },
+      { once: true },
+    );
+  }
+  return controller.signal;
+}
 
 function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
   if (typeof value !== 'object' || value === null) return false;
@@ -200,7 +223,7 @@ export class ApiClient {
     endpoint: string,
     options: RequestOptions = {},
   ): Promise<ApiResponse<T>> {
-    const { method = 'GET', headers = {}, body, timeout = this.timeout } = options;
+    const { method = 'GET', headers = {}, body, timeout = this.timeout, signal } = options;
 
     const url = `${this.baseURL}${endpoint}`;
 
@@ -222,7 +245,9 @@ export class ApiClient {
       // The WebUI relies on backend-pushed events and fresh API reads for multi-tab convergence.
       // Avoid browser caching (can break run-control count freshness and other UX gates).
       cache: 'no-store',
-      signal: AbortSignal.timeout(timeout),
+      signal: mergeAbortSignals(
+        signal ? [signal, AbortSignal.timeout(timeout)] : [AbortSignal.timeout(timeout)],
+      ),
     };
 
     if (body && method !== 'GET') {
@@ -265,6 +290,13 @@ export class ApiClient {
         const timeoutError = new Error('Request timeout') as ApiError;
         timeoutError.code = 'TIMEOUT';
         throw timeoutError;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'Request aborted',
+          timestamp: formatUnifiedTimestamp(new Date()),
+        };
       }
 
       const apiError: ApiError =
@@ -720,6 +752,16 @@ export class ApiClient {
     }>
   > {
     return this.request('/api/task-documents');
+  }
+
+  async searchTaskDocumentSuggestions(
+    query: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<ApiResponse<SearchTaskDocumentSuggestionsResponse>> {
+    const params = new URLSearchParams({ q: query });
+    return this.request(`/api/task-documents/suggestions?${params.toString()}`, {
+      signal: options?.signal,
+    });
   }
 
   async getToolAvailability(options?: {

@@ -13,6 +13,7 @@ import type {
   DialogStatusKind,
   PrimingScriptSummary,
   PrimingScriptWarningSummary,
+  TaskDocumentSuggestion,
   ToolAvailabilitySnapshot,
   ToolInfo,
   ToolsetInfo,
@@ -280,7 +281,6 @@ export class DomindsApp extends HTMLElement {
   private retryCountdownTimer: number | null = null;
   private teamMembers: FrontendTeamMember[] = [];
   private defaultResponder: string | null = null;
-  private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
   private backendRtws: string = '';
   private backendVersion: string = '';
@@ -310,7 +310,31 @@ export class DomindsApp extends HTMLElement {
     getLanguage: () => this.uiLanguage,
     getTeamMembers: () => this.teamMembers,
     getDefaultResponder: () => this.defaultResponder,
-    getTaskDocuments: () => this.taskDocuments,
+    searchTaskDocumentSuggestions: async (
+      query: string,
+      options?: { signal?: AbortSignal },
+    ): Promise<{ requestKey: string; suggestions: TaskDocumentSuggestion[]; html: string }> => {
+      const api = getApiClient();
+      const resp = await api.searchTaskDocumentSuggestions(query, { signal: options?.signal });
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          throw new Error('Authentication required');
+        }
+        throw new Error(resp.error || 'Failed to load Taskdoc suggestions');
+      }
+      const payload = resp.data;
+      if (!payload || !payload.success) {
+        throw new Error(
+          payload && !payload.success ? payload.error : 'Invalid Taskdoc suggestion payload',
+        );
+      }
+      return {
+        requestKey: payload.requestKey,
+        suggestions: payload.suggestions,
+        html: payload.html,
+      };
+    },
     listPrimingScripts: async (
       agentId: string,
     ): Promise<{
@@ -7739,7 +7763,7 @@ export class DomindsApp extends HTMLElement {
     // See handleConnectionStateChange() for Q4H request on connect
 
     // Welcome/runtime status arrives via WebSocket.
-    await Promise.all([this.loadDialogs(), this.loadTeamMembers(), this.loadTaskDocuments()]);
+    await Promise.all([this.loadDialogs(), this.loadTeamMembers()]);
 
     // If a deep link was provided, attempt to apply it once the essential lists are loaded.
     this.continuePendingDeepLink();
@@ -9202,30 +9226,6 @@ export class DomindsApp extends HTMLElement {
     } finally {
       if (!silent && teamMembersComponent) teamMembersComponent.setLoading(false);
       this.updateNewDialogButtonState();
-    }
-  }
-
-  private async loadTaskDocuments(): Promise<void> {
-    try {
-      const api = getApiClient();
-      const resp = await api.getTaskDocuments();
-      if (!resp.success) {
-        if (resp.status === 401) {
-          this.onAuthRejected('api');
-          return;
-        }
-        return;
-      }
-      const data = resp.data;
-      if (data && data.success && data.taskDocuments) {
-        this.taskDocuments = data.taskDocuments.map((doc) => ({
-          path: doc.path,
-          relativePath: doc.relativePath,
-          name: doc.name,
-        }));
-      }
-    } catch (error) {
-      console.error('Failed to load Taskdocs:', error);
     }
   }
 
