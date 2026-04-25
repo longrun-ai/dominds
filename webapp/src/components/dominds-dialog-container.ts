@@ -3593,7 +3593,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
 
-    if (event.status === 'failed') {
+    if (event.status === 'failed' && !isSupersededNotice) {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       const t = getUiStrings(this.uiLanguage);
       if (host) {

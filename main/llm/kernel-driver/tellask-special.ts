@@ -2,6 +2,8 @@ import { inspect } from 'util';
 
 import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
+  toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
   toCallSiteCourseNo,
   toCallSiteGenseqNo,
   toRootGenerationAnchor,
@@ -24,10 +26,13 @@ import {
   formatDomindsNoteFbrToollessViolation,
   formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskForTeammatesOnly,
+  formatRegisteredTellaskTellaskerUpdateNotice,
 } from '../../runtime/driver-messages';
 import {
   formatAskerDialogCallPrompt,
   formatAssignmentFromAskerDialog,
+  formatTellaskCarryoverResultContent,
+  formatTellaskReplacementNoticeContent,
   formatTellaskResponseContent,
   formatUpdatedAssignmentFromAskerDialog,
 } from '../../runtime/inter-dialog-format';
@@ -42,7 +47,10 @@ import type {
   TellaskResultMsg,
 } from '../client';
 import { buildFbrPromptForState, createInitialFbrState } from './fbr';
-import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from './sideDialog';
+import {
+  resolveLatestAssignmentAnchorRef,
+  supplySideDialogResponseToAssignedAskerIfPendingV2,
+} from './sideDialog';
 import { withSideDialogTxnLock, withSideDialogTxnLocks } from './sideDialog-txn';
 import type {
   KernelDriverDriveCallbacks,
@@ -1225,10 +1233,134 @@ async function resolveDialogWithinRoot(
   return restored;
 }
 
+// Call-site correspondence invariant: a pending registered tellask round removed by
+// a same-slug update must later leave a same-callId historical fact for its caller.
+// A mismatched callId means we are about to strand the original call-site, so fail loud.
+function findReplacedRegisteredTellaskPendingRound(args: {
+  records: readonly PendingSideDialogStateRecord[];
+  expectedSideDialogId: string;
+  targetAgentId: string;
+  sessionSlug: string;
+  expectedCallId: string;
+  ownerDialogId: string;
+}): PendingSideDialogStateRecord | undefined {
+  const matches = args.records.filter(
+    (record) =>
+      record.callType === 'B' &&
+      record.callName === 'tellask' &&
+      record.targetAgentId === args.targetAgentId &&
+      record.sessionSlug === args.sessionSlug,
+  );
+  if (matches.length > 1) {
+    throw new Error(
+      `registered tellask pending invariant violation: duplicate pending rounds ` +
+        `(ownerDialogId=${args.ownerDialogId}, targetAgentId=${args.targetAgentId}, ` +
+        `sessionSlug=${args.sessionSlug})`,
+    );
+  }
+  const match = matches[0];
+  if (match !== undefined) {
+    if (match.sideDialogId !== args.expectedSideDialogId) {
+      throw new Error(
+        `registered tellask pending invariant violation: pending sideDialogId does not match ` +
+          `current registry sideDialogId (ownerDialogId=${args.ownerDialogId}, ` +
+          `targetAgentId=${args.targetAgentId}, sessionSlug=${args.sessionSlug}, ` +
+          `pendingSideDialogId=${match.sideDialogId}, registrySideDialogId=${args.expectedSideDialogId})`,
+      );
+    }
+    if (match.callId !== args.expectedCallId) {
+      throw new Error(
+        `registered tellask pending invariant violation: pending callId does not match ` +
+          `current assignment callId (ownerDialogId=${args.ownerDialogId}, ` +
+          `targetAgentId=${args.targetAgentId}, sessionSlug=${args.sessionSlug}, ` +
+          `pendingCallId=${match.callId}, assignmentCallId=${args.expectedCallId})`,
+      );
+    }
+  }
+  return match;
+}
+
+// Materialize the superseded round as the caller-visible same-callId terminal fact.
+// This is part of the tellask contract, not merely a UI notification.
+async function finishRegisteredTellaskReplacement(args: {
+  ownerDialog: Dialog;
+  sideDialog: SideDialog;
+  pendingRecord: PendingSideDialogStateRecord;
+  responseBody: string;
+}): Promise<void> {
+  const { ownerDialog, sideDialog, pendingRecord, responseBody } = args;
+  if (pendingRecord.callName !== 'tellask') {
+    throw new Error(
+      `registered tellask replacement invariant violation: unexpected callName ` +
+        `${pendingRecord.callName} (ownerDialogId=${ownerDialog.id.selfId}, ` +
+        `sideDialogId=${sideDialog.id.selfId}, callId=${pendingRecord.callId})`,
+    );
+  }
+
+  const language = getWorkLanguage();
+  const tellaskerId = ownerDialog.agentId;
+  const response = formatTellaskReplacementNoticeContent({
+    responderId: sideDialog.agentId,
+    tellaskerId,
+    mentionList: pendingRecord.mentionList,
+    sessionSlug: pendingRecord.sessionSlug,
+    tellaskContent: pendingRecord.tellaskContent,
+    responseBody,
+    language,
+  });
+  const carryoverCallSiteCourse = pendingRecord.callSiteCourse;
+  const carryoverContent =
+    carryoverCallSiteCourse !== undefined && carryoverCallSiteCourse !== ownerDialog.currentCourse
+      ? formatTellaskCarryoverResultContent({
+          callSiteCourse: carryoverCallSiteCourse,
+          callName: pendingRecord.callName,
+          callId: pendingRecord.callId,
+          responderId: sideDialog.agentId,
+          mentionList: pendingRecord.mentionList,
+          sessionSlug: pendingRecord.sessionSlug,
+          tellaskContent: pendingRecord.tellaskContent,
+          responseBody,
+          status: 'failed',
+          language,
+        })
+      : undefined;
+  const assignmentRef = await resolveLatestAssignmentAnchorRef({
+    calleeDialogId: sideDialog.id,
+    callId: pendingRecord.callId,
+    status: ownerDialog.status,
+  });
+
+  const result = await ownerDialog.receiveTellaskResponse(
+    sideDialog.agentId,
+    pendingRecord.callName,
+    pendingRecord.mentionList,
+    pendingRecord.tellaskContent,
+    'failed',
+    sideDialog.id,
+    {
+      response,
+      agentId: sideDialog.agentId,
+      callId: pendingRecord.callId,
+      originMemberId: tellaskerId,
+      callSiteCourse: pendingRecord.callSiteCourse,
+      callSiteGenseq: pendingRecord.callSiteGenseq,
+      carryoverContent,
+      sessionSlug: pendingRecord.sessionSlug,
+      ...(assignmentRef !== undefined
+        ? {
+            calleeCourse: toCalleeCourseNumber(assignmentRef.course),
+            calleeGenseq: toCalleeGenerationSeqNumber(assignmentRef.genseq),
+          }
+        : {}),
+    },
+  );
+  await ownerDialog.addChatMessages(result);
+}
+
 async function reviveDialogIfUnblocked(
   dialog: Dialog,
   callbacks: KernelDriverDriveCallbacks,
-  reason: 'reply_tellask_back_delivered',
+  reason: 'reply_tellask_back_delivered' | 'replaced_pending_sideDialog_reply',
 ): Promise<void> {
   const suspension = await dialog.getSuspensionStatus({
     allowPendingSideDialogs: true,
@@ -1249,7 +1381,7 @@ async function reviveDialogIfUnblocked(
         dialog instanceof SideDialog
           ? {
               ownerDialogId: dialog.id.selfId,
-              reason: 'reply_tellask_back_delivered',
+              reason,
             }
           : undefined,
     },
@@ -1966,6 +2098,7 @@ async function executeTellaskCall(
               kind: 'existing';
               sideDialog: SideDialog;
               previousPendingOwnerId: string;
+              replacedPending: PendingSideDialogStateRecord | undefined;
             }
         > => {
           for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -2007,16 +2140,27 @@ async function executeTellaskCall(
                   callType: 'B',
                   sessionSlug: parseResult.sessionSlug,
                 };
+                let replacedPending: PendingSideDialogStateRecord | undefined;
                 try {
                   if (previousAssignment.askerDialogId !== pendingOwner.id.selfId) {
                     await DialogPersistence.mutatePendingSideDialogs(
                       new DialogID(previousAssignment.askerDialogId, mainDialog.id.rootId),
-                      (previousPending) => ({
-                        kind: 'replace',
-                        records: previousPending.filter(
-                          (record) => !isSameRegisteredSessionPending(record),
-                        ),
-                      }),
+                      (previousPending) => {
+                        replacedPending = findReplacedRegisteredTellaskPendingRound({
+                          records: previousPending,
+                          expectedSideDialogId: existing.id.selfId,
+                          targetAgentId: parseResult.agentId,
+                          sessionSlug: parseResult.sessionSlug,
+                          expectedCallId: previousAssignment.callId,
+                          ownerDialogId: previousAssignment.askerDialogId,
+                        });
+                        return {
+                          kind: 'replace',
+                          records: previousPending.filter(
+                            (record) => !isSameRegisteredSessionPending(record),
+                          ),
+                        };
+                      },
                       undefined,
                       pendingOwner.status,
                     );
@@ -2024,15 +2168,27 @@ async function executeTellaskCall(
 
                   await DialogPersistence.mutatePendingSideDialogs(
                     pendingOwner.id,
-                    (previousPending) => ({
-                      kind: 'replace',
-                      records: [
-                        ...previousPending.filter(
-                          (record) => !isSameRegisteredSessionPending(record),
-                        ),
-                        pendingRecord,
-                      ],
-                    }),
+                    (previousPending) => {
+                      if (previousAssignment.askerDialogId === pendingOwner.id.selfId) {
+                        replacedPending = findReplacedRegisteredTellaskPendingRound({
+                          records: previousPending,
+                          expectedSideDialogId: existing.id.selfId,
+                          targetAgentId: parseResult.agentId,
+                          sessionSlug: parseResult.sessionSlug,
+                          expectedCallId: previousAssignment.callId,
+                          ownerDialogId: pendingOwner.id.selfId,
+                        });
+                      }
+                      return {
+                        kind: 'replace',
+                        records: [
+                          ...previousPending.filter(
+                            (record) => !isSameRegisteredSessionPending(record),
+                          ),
+                          pendingRecord,
+                        ],
+                      };
+                    },
                     undefined,
                     pendingOwner.status,
                   );
@@ -2045,6 +2201,7 @@ async function executeTellaskCall(
                     kind: 'existing' as const,
                     sideDialog: existing,
                     previousPendingOwnerId: previousAssignment.askerDialogId,
+                    replacedPending,
                   };
                 } catch (err) {
                   log.error('Failed to update registered sideDialog assignment', err, {
@@ -2112,15 +2269,26 @@ async function executeTellaskCall(
           pendingOwner,
           'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
         );
-        if (
-          result.kind === 'existing' &&
-          result.previousPendingOwnerId !== pendingOwner.id.selfId
-        ) {
-          const previousPendingOwner = mainDialog.lookupDialog(result.previousPendingOwnerId);
-          if (previousPendingOwner) {
+        if (result.kind === 'existing' && result.replacedPending !== undefined) {
+          const previousPendingOwner = await resolveDialogWithinRoot(
+            mainDialog,
+            result.previousPendingOwnerId,
+          );
+          await finishRegisteredTellaskReplacement({
+            ownerDialog: previousPendingOwner,
+            sideDialog: result.sideDialog,
+            pendingRecord: result.replacedPending,
+            responseBody: formatRegisteredTellaskTellaskerUpdateNotice(getWorkLanguage()),
+          });
+          if (previousPendingOwner.id.selfId !== pendingOwner.id.selfId) {
             await syncPendingTellaskReminderBestEffort(
               previousPendingOwner,
               'kernel-driver:executeTellaskCall:TypeB:replacePreviousPendingAssignment',
+            );
+            await reviveDialogIfUnblocked(
+              previousPendingOwner,
+              callbacks,
+              'replaced_pending_sideDialog_reply',
             );
           }
         }

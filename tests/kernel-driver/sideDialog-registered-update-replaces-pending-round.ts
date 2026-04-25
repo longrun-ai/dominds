@@ -4,6 +4,7 @@ import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
+import { formatRegisteredTellaskTellaskerUpdateNotice } from '../../main/runtime/driver-messages';
 import {
   formatAssignmentFromAskerDialog,
   formatUpdatedAssignmentFromAskerDialog,
@@ -188,6 +189,31 @@ async function main(): Promise<void> {
       true,
       'pending tellask reminder should show the latest assignment',
     );
+
+    const rootEventsAfterUpdate = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    const replacedRoundNotice = rootEventsAfterUpdate.find(
+      (event): event is TellaskResultRecord =>
+        event.type === 'tellask_result_record' && event.callId === 'call-initial-round',
+    );
+    assert.ok(
+      replacedRoundNotice,
+      'replaced registered tellask must leave a same-callId notice in tellasker history',
+    );
+    assert.equal(replacedRoundNotice.status, 'failed');
+    assert.equal(
+      replacedRoundNotice.content.includes(formatRegisteredTellaskTellaskerUpdateNotice(language)),
+      true,
+      'replacement notice should explain that the earlier tellask no longer needs waiting',
+    );
+    const replacementRoute = replacedRoundNotice.route;
+    assert.ok(replacementRoute, 'replacement notice should keep the old assignment route');
+    assert.equal(replacementRoute.calleeDialogId, sideDialog.id.selfId);
+    assert.equal(typeof replacementRoute.calleeCourse, 'number');
+    assert.equal(typeof replacementRoute.calleeGenseq, 'number');
 
     const supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
       sideDialog,

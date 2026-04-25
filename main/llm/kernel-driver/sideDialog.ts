@@ -155,7 +155,7 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
   return false;
 }
 
-async function resolveLatestAssignmentAnchorRef(args: {
+export async function resolveLatestAssignmentAnchorRef(args: {
   calleeDialogId: DialogID;
   callId: string;
   status: DialogPersistenceStatus;
@@ -531,6 +531,13 @@ export async function supplyResponseToAskerDialog(args: {
       'kernel-driver:supplyResponseToAskerDialog',
     );
 
+    // The requester call-site links to the assignment/update delivery bubble, not the
+    // eventual reply bubble. The reply is a separate historical fact for the same callId.
+    const calleeRouteRef =
+      assignmentRef !== undefined
+        ? { course: assignmentRef.course, genseq: assignmentRef.genseq }
+        : calleeResponseRef;
+
     await parentDialog.receiveTellaskResponse(
       result.responderId,
       result.callName,
@@ -553,12 +560,10 @@ export async function supplyResponseToAskerDialog(args: {
         carryoverContent,
         sessionSlug: result.sessionSlug,
         calleeCourse:
-          calleeResponseRef !== undefined
-            ? toCalleeCourseNumber(calleeResponseRef.course)
-            : undefined,
+          calleeRouteRef !== undefined ? toCalleeCourseNumber(calleeRouteRef.course) : undefined,
         calleeGenseq:
-          calleeResponseRef !== undefined
-            ? toCalleeGenerationSeqNumber(calleeResponseRef.genseq)
+          calleeRouteRef !== undefined
+            ? toCalleeGenerationSeqNumber(calleeRouteRef.genseq)
             : undefined,
       },
     );
@@ -590,11 +595,11 @@ export async function supplyResponseToAskerDialog(args: {
                     mentionList: result.mentionList ?? [],
                   }
                 : {}),
-            ...(calleeResponseRef !== undefined
+            ...(calleeRouteRef !== undefined
               ? {
                   calleeDialogId: sideDialogId.selfId,
-                  calleeCourse: calleeResponseRef.course,
-                  calleeGenseq: calleeResponseRef.genseq,
+                  calleeCourse: calleeRouteRef.course,
+                  calleeGenseq: calleeRouteRef.genseq,
                 }
               : {
                   calleeDialogId: sideDialogId.selfId,
@@ -637,10 +642,10 @@ export async function supplyResponseToAskerDialog(args: {
             },
             route: {
               calleeDialogId: sideDialogId.selfId,
-              ...(calleeResponseRef !== undefined
+              ...(calleeRouteRef !== undefined
                 ? {
-                    calleeCourse: calleeResponseRef.course,
-                    calleeGenseq: calleeResponseRef.genseq,
+                    calleeCourse: calleeRouteRef.course,
+                    calleeGenseq: calleeRouteRef.genseq,
                   }
                 : {}),
             },

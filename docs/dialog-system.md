@@ -1305,6 +1305,11 @@ sequenceDiagram
   end
 ```
 
+Call-site correspondence invariant: every `tellask` call-site `callId` must later have a
+same-`callId` historical correspondence point in the tellasker's dialog. A normal sideDialog reply,
+cross-course carryover, or registered-session replacement notice can close the call; silently removing
+or overwriting a pending round cannot.
+
 #### TYPE C: Transient SideDialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `freshBootsReasoning({ tellaskContent: "..." })` is FBR tool-less)
 
 ```mermaid

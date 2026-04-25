@@ -406,6 +406,7 @@ auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owne
 replace pending 不是 silent overwrite，也不是 failed-result fallback。它是显式栈操作：
 
 - 定位旧 frame 的匹配键必须稳定，倾向使用 `askerDialogId + targetCallId` / `ownerDialogId + callId`，具体以 pending record 与 reply directive 对齐后的字段为准；
+- 每个 `tellask` call-site 的 `callId` 最终都必须在诉请者对话历史里有同 `callId` 的呼应点；被替换时，这个呼应点就是替代通知 / carryover result，而不是等支线对话后续回复时才补；
 - 如果 replace 找不到旧 frame，必须 loud fail，不允许降级成普通 push；
 - 因为持久文件采用 append/truncate-only JSONL，replace 的落盘算法是：
   1. 读取 stack frames 与每行 byte offset；

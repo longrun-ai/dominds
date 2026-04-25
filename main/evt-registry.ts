@@ -68,6 +68,9 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
       case 'new_q4h_asked':
       case 'q4h_answered':
       case 'sideDialog_created_evt':
+      // Tellask assignment anchors are emitted from the tellaskee dialog, but the
+      // tellasker dialog needs them immediately to keep call-site links stable.
+      case 'tellask_call_anchor_evt':
       case 'dlg_touched_evt':
         break;
       default:

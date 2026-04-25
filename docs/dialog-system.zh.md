@@ -1287,6 +1287,10 @@ sequenceDiagram
   end
 ```
 
+call-site 呼应不变量：每个 `tellask` 发起点的 `callId`，后续都必须在诉请者对话历史里留下同
+`callId` 的呼应点。正常支线回复、跨程 carryover、已注册会话被更新后的替代通知都可以结束这次
+call；不能静默删除或覆盖 pending 轮次。
+
 #### TYPE C：瞬态支线对话诉请（一次性诉请）（`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`，或 `freshBootsReasoning({ tellaskContent: "..." })`）
 
 ```mermaid
