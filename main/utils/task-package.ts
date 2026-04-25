@@ -246,6 +246,35 @@ export async function appendTaskPackageByChangeMindTarget(params: {
   await writeMarkdownFileWithCanonicalEnding(filePath, next);
 }
 
+export async function deleteTaskPackageByChangeMindTarget(params: {
+  taskPackageDirFullPath: string;
+  target: TaskPackageChangeMindTarget;
+}): Promise<{ kind: 'deleted' } | { kind: 'missing' }> {
+  const filePath = taskPackageFilePathForChangeMindTarget(
+    params.taskPackageDirFullPath,
+    params.target,
+  );
+
+  try {
+    const st = await fs.promises.stat(filePath);
+    if (!st.isFile()) {
+      throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+    }
+    await fs.promises.unlink(filePath);
+    return { kind: 'deleted' };
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return { kind: 'missing' };
+    }
+    throw err;
+  }
+}
+
 async function writeMarkdownFileWithCanonicalEnding(
   filePath: string,
   content: string,
@@ -259,26 +288,28 @@ function withCanonicalMarkdownFileEnding(content: string): string {
   return `${stripped}\n`;
 }
 
-function taskPackageFilePathForChangeMindTarget(
-  taskPackageDirFullPath: string,
+export function taskPackageRelativePathForChangeMindTarget(
   target: TaskPackageChangeMindTarget,
 ): string {
   switch (target.kind) {
     case 'top_level':
-      return path.join(taskPackageDirFullPath, taskPackageFilenameForSection(target.section));
+      return taskPackageFilenameForSection(target.section);
     case 'bearinmind':
-      return path.join(
-        taskPackageDirFullPath,
-        'bearinmind',
-        bearInMindFilenameForSection(target.section),
-      );
+      return path.join('bearinmind', bearInMindFilenameForSection(target.section));
     case 'category':
-      return path.join(taskPackageDirFullPath, target.category, `${target.selector}.md`);
+      return path.join(target.category, `${target.selector}.md`);
     default: {
       const _exhaustive: never = target;
       return _exhaustive;
     }
   }
+}
+
+function taskPackageFilePathForChangeMindTarget(
+  taskPackageDirFullPath: string,
+  target: TaskPackageChangeMindTarget,
+): string {
+  return path.join(taskPackageDirFullPath, taskPackageRelativePathForChangeMindTarget(target));
 }
 
 async function readTextFileIfPresent(filePath: string): Promise<string | null> {

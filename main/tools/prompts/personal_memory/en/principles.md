@@ -90,7 +90,7 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 
 - **team_memory**: Team shared memory, visible to all members
 - **reminder**: Temporary reminder, session-level
-- **mind_more / change_mind**: Append to or replace Taskdoc (goals/constraints/progress)
+- **mind_more / change_mind / never_mind**: Append to, replace, or delete Taskdoc sections (goals/constraints/progress)
 
 ## Limitations and Notes
 

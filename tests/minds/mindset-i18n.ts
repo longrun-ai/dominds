@@ -49,6 +49,7 @@ async function main(): Promise<void> {
       const toolNames = new Set(agentTools.map((tool) => tool.name));
       assert.ok(toolNames.has('mind_more'), 'main dialog should expose mind_more');
       assert.ok(toolNames.has('change_mind'), 'main dialog should expose change_mind');
+      assert.ok(toolNames.has('never_mind'), 'main dialog should expose never_mind');
     }
 
     {
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
       const toolNames = new Set(agentTools.map((tool) => tool.name));
       assert.ok(!toolNames.has('mind_more'), 'side dialog should not expose mind_more');
       assert.ok(!toolNames.has('change_mind'), 'side dialog should not expose change_mind');
+      assert.ok(!toolNames.has('never_mind'), 'side dialog should not expose never_mind');
       assert.ok(toolNames.has('recall_taskdoc'), 'side dialog should still expose recall_taskdoc');
     }
 

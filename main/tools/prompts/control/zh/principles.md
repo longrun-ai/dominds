@@ -73,8 +73,8 @@
 
 **更新规则：**
 
-- `mind_more` 用于少量追加条目；`change_mind` 用于整章替换
-- 不重置对话轮次
+- `mind_more` 用于少量追加条目；`change_mind` 用于整章替换；`never_mind` 用于删除整章文件
+- 不开启新 course
 - 变更对所有队友可见
 - 写入 `progress` 时，应默认假设全队成员会用它快速同步“当前任务真相”，而不是阅读你的个人过程记录
 - 不要无脑连续使用 `mind_more` 把 `progress` 写成流水账；当公告牌开始堆积、重复或含过期信息时，用 `change_mind` 按当前仍有效的事实压缩整理
@@ -89,6 +89,7 @@
 | update_reminder | 更新提醒内容                                 |
 | mind_more       | 向差遣牒追加条目（默认 progress）            |
 | change_mind     | 整章替换差遣牒（goals/constraints/progress） |
+| never_mind      | 删除差遣牒章节文件                           |
 | recall_taskdoc  | 读取差遣牒章节                               |
 
 ## 跨对话回复路由
@@ -154,7 +155,7 @@
 ## 限制与注意事项
 
 1. `dialog` 提醒会随对话结束而结束；`personal` 提醒会在所有由你主理的后续对话里继续可见
-2. 差遣牒少量新增可用 `mind_more` 追加；整段替换用 `change_mind`，请确保合并已有内容。不要把 `mind_more` 当流水账工具；需要整理、去旧、合并同主题记录时直接 `change_mind`
-3. `mind_more` / `change_mind` 不重置对话轮次
+2. 差遣牒少量新增可用 `mind_more` 追加；整段替换用 `change_mind`，请确保合并已有内容；确需删除整章文件时用 `never_mind`。不要把 `mind_more` 当流水账工具；需要整理、去旧、合并同主题记录时直接 `change_mind`
+3. `mind_more` / `change_mind` / `never_mind` 不开启新 course
 4. 接续包提醒项只保留差遣牒仍未覆盖、但恢复工作容易丢的细节；主线对话应先把当前对话历史中应由下一程知会的未落文档讨论细节写入差遣牒合适章节；支线对话在吃紧/告急时只维护足够详尽的接续包提醒项
 5. 不要把 `personal` 提醒堆成长期事实仓库；耐久知识应迁到 `personal_memory`

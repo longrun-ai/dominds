@@ -15,6 +15,7 @@
  * - clear_mind: Start a new course, optionally add a reminder
  * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
  * - mind_more: Append entries to a `.tsk/` Taskdoc section without starting a new course
+ * - never_mind: Delete a `.tsk/` Taskdoc section file without starting a new course
  * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:
@@ -54,9 +55,10 @@ import {
 } from '../tool';
 import {
   appendTaskPackageByChangeMindTarget,
-  bearInMindFilenameForSection,
+  deleteTaskPackageByChangeMindTarget,
   isTaskPackagePath,
   parseTaskPackageChangeMindTarget,
+  taskPackageRelativePathForChangeMindTarget,
   updateTaskPackageByChangeMindTarget,
 } from '../utils/task-package';
 
@@ -72,6 +74,7 @@ type CtrlMessages = Readonly<{
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
   invalidFormatMindMore: string;
+  invalidFormatNeverMind: string;
   mindMoreItemsRequired: string;
   invalidFormatRecallTaskdoc: string;
   taskDocContentRequired: string;
@@ -86,6 +89,7 @@ type CtrlMessages = Readonly<{
   topLevelSelectorRequiresNoCategory: (category: string, selector: string) => string;
   bearInMindSelectorRequiresBearInMindCategory: (category: string, selector: string) => string;
   taskDocSectionMissing: (relativePath: string) => string;
+  taskDocSectionDeleteMissing: (relativePath: string) => string;
   clearedCoursePrompt: (nextCourse: number) => string;
 }>;
 
@@ -475,6 +479,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       invalidFormatMindMore:
         '参数格式不对。用法：mind_more({ items: string[], sep?: string, selector?: string, category?: string })（selector 默认 progress）',
+      invalidFormatNeverMind:
+        '参数格式不对。用法：never_mind({ selector: string, category?: string })',
       mindMoreItemsRequired:
         '需要提供要追加的条目（items），且每一项都必须是非空字符串。\n' +
         '示例：mind_more({"items":["- 下一步：复核验证结果（详见 <文档路径>#<章节>）","- 阻塞：等待 API 验收口径确认"]})',
@@ -506,6 +512,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
       taskDocSectionMissing: (relativePath) =>
         `未找到：${relativePath}。\n\n少量追加/创建可用 mind_more；整章创建/替换用 change_mind：\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"..."})`,
+      taskDocSectionDeleteMissing: (relativePath) =>
+        `无法删除：${relativePath} 不存在。请先确认要删除的差遣牒章节。`,
       clearedCoursePrompt: (nextCourse) =>
         formatNewCourseStartPrompt('zh', { nextCourse, source: 'clear_mind' }),
     };
@@ -531,6 +539,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
     invalidFormatMindMore:
       'Error: Invalid args. Use: mind_more({ items: string[], sep?: string, selector?: string, category?: string }) (selector defaults to progress).',
+    invalidFormatNeverMind:
+      'Error: Invalid args. Use: never_mind({ selector: string, category?: string })',
     mindMoreItemsRequired:
       'Error: items are required, and every item must be a non-empty string.\n' +
       'Example: mind_more({"items":["- Next: review verification results (details: <doc-path>#<section>)","- Blocker: API acceptance criteria pending"]})',
@@ -563,6 +573,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
     taskDocSectionMissing: (relativePath) =>
       `Not found: \`${relativePath}\`.\n\nUse \`mind_more\` for small append/create updates, or \`change_mind\` for full-section create/replace:\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
+    taskDocSectionDeleteMissing: (relativePath) =>
+      `Cannot delete: \`${relativePath}\` does not exist. Check the Taskdoc section target first.`,
     clearedCoursePrompt: (nextCourse) =>
       formatNewCourseStartPrompt('en', { nextCourse, source: 'clear_mind' }),
   };
@@ -913,6 +925,9 @@ export const changeMindTool: FuncTool = {
     if (!selector) return toolFailure(t.selectorRequired);
 
     const categoryValue = args['category'];
+    if (categoryValue !== undefined && typeof categoryValue !== 'string') {
+      return toolFailure(t.invalidFormatChangeMind);
+    }
     const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
 
     const contentValue = args['content'];
@@ -965,6 +980,119 @@ export const changeMindTool: FuncTool = {
       updatedBy: caller.id,
     });
     return formatToolActionResult(language, 'mindChanged');
+  },
+};
+
+export const neverMindTool: FuncTool = {
+  type: 'func',
+  name: 'never_mind',
+  description: 'Delete one shared Taskdoc section file in the Main Dialog.',
+  descriptionI18n: {
+    en: 'Delete one shared Taskdoc section file in the Main Dialog.',
+    zh: '在主线对话中删除一段共享差遣牒章节文件。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['selector'],
+    properties: {
+      selector: {
+        type: 'string',
+        description:
+          'Target section selector. Top-level: goals|constraints|progress. Under category="bearinmind": contracts|acceptance|grants|runbook|decisions|risks. For other categories: any identifier.',
+      },
+      category: {
+        type: 'string',
+        description:
+          'Optional category directory within the Taskdoc package. When present, selector targets <category>/<selector>.md.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+
+    if (dlg.askerDialog !== undefined) {
+      const maintainerId = dlg instanceof SideDialog ? dlg.mainDialog.agentId : dlg.agentId;
+      if (language === 'zh') {
+        return toolFailure(
+          `错误：\`never_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`never_mind\`，并提供要删除的章节选择器。`,
+        );
+      }
+      return toolFailure(
+        `Error: \`never_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`never_mind\` with the section selector to delete.`,
+      );
+    }
+
+    const selectorValue = args['selector'];
+    const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
+    if (!selector) return toolFailure(t.selectorRequired);
+
+    const categoryValue = args['category'];
+    if (categoryValue !== undefined && typeof categoryValue !== 'string') {
+      return toolFailure(t.invalidFormatNeverMind);
+    }
+    const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
+
+    // Taskdoc path is immutable for the dialog lifecycle.
+    const taskDocPath = dlg.taskDocPath;
+    if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
+
+    const workspaceRoot = path.resolve(process.cwd());
+    const fullPath = path.resolve(workspaceRoot, taskDocPath);
+    if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
+      return toolFailure(t.pathMustBeWithinWorkspace);
+    }
+
+    if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
+
+    const parsed = parseTaskPackageChangeMindTarget({ selector, category });
+    if (parsed.kind !== 'ok') {
+      const e = parsed.error;
+      switch (e.kind) {
+        case 'selector_required':
+          return toolFailure(t.selectorRequired);
+        case 'invalid_category_name':
+          return toolFailure(t.invalidCategory(e.category));
+        case 'invalid_category_selector':
+          return toolFailure(t.invalidCategorySelector(e.selector));
+        case 'invalid_top_level_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'invalid_bearinmind_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'top_level_selector_requires_no_category':
+          return toolFailure(t.topLevelSelectorRequiresNoCategory(e.category, e.selector));
+        case 'bearinmind_selector_requires_bearinmind_category':
+          return toolFailure(
+            t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector),
+          );
+        default: {
+          const _exhaustive: never = e;
+          return toolFailure(String(_exhaustive));
+        }
+      }
+    }
+
+    const result = await deleteTaskPackageByChangeMindTarget({
+      taskPackageDirFullPath: fullPath,
+      target: parsed.target,
+    });
+    switch (result.kind) {
+      case 'deleted':
+        return formatToolActionResult(language, 'deleted');
+      case 'missing': {
+        return toolFailure(
+          t.taskDocSectionDeleteMissing(taskPackageRelativePathForChangeMindTarget(parsed.target)),
+        );
+      }
+      default: {
+        const _exhaustive: never = result;
+        return _exhaustive;
+      }
+    }
   },
 };
 
@@ -1048,6 +1176,9 @@ export const mindMoreTool: FuncTool = {
     if (!selector) return toolFailure(t.selectorRequired);
 
     const categoryValue = args['category'];
+    if (categoryValue !== undefined && typeof categoryValue !== 'string') {
+      return toolFailure(t.invalidFormatMindMore);
+    }
     const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
 
     // Taskdoc path is immutable for the dialog lifecycle.
@@ -1170,24 +1301,10 @@ export const recallTaskdocTool: FuncTool = {
     }
 
     const target = parsed.target;
-    const relPath = (() => {
-      switch (target.kind) {
-        case 'bearinmind':
-          return path.join('bearinmind', bearInMindFilenameForSection(target.section));
-        case 'category':
-          return path.join(target.category, `${target.selector}.md`);
-        case 'top_level':
-          return null;
-        default: {
-          const _exhaustive: never = target;
-          return _exhaustive;
-        }
-      }
-    })();
-
-    if (relPath === null) {
+    if (target.kind === 'top_level') {
       return toolFailure(t.invalidFormatRecallTaskdoc);
     }
+    const relPath = taskPackageRelativePathForChangeMindTarget(target);
 
     const sectionPath = path.resolve(fullPath, relPath);
     if (!isPathWithinDirectory(sectionPath, fullPath)) {

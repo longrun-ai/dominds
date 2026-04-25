@@ -89,6 +89,7 @@ async function main(): Promise<void> {
     assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
     assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
     assertTrue(!!getTool('mind_more'), 'mind_more tool should exist');
+    assertTrue(!!getTool('never_mind'), 'never_mind tool should exist');
     assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
 
     console.log('Tool lookup verification passed');
@@ -101,6 +102,10 @@ async function main(): Promise<void> {
     assertTrue(
       controlToolset.some((tool) => tool.name === 'mind_more'),
       'control should expose mind_more',
+    );
+    assertTrue(
+      controlToolset.some((tool) => tool.name === 'never_mind'),
+      'control should expose never_mind',
     );
   });
 

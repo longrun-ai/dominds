@@ -292,7 +292,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       taskdocSectionReplaceLine:
         ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
           ? '- 当前处于支线对话的上下文健康处置态：本程不要维护差遣牒，也不要整理差遣牒更新提案；把下一程需要恢复的细节写入足够详尽的接续包提醒项。'
-          : `- 更新差遣牒时：少量新增条目可用 \`mind_more\` 追加（默认 progress）；需要删除陈旧项、重排结构或压缩时，用 \`change_mind\` 整章替换并先对照“上下文中注入的当前内容”做合并；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
+          : `- 更新差遣牒时：少量新增条目可用 \`mind_more\` 追加（默认 progress）；需要删除陈旧项、重排结构或压缩时，用 \`change_mind\` 整章替换并先对照“上下文中注入的当前内容”做合并；需要删除整章文件时用 \`never_mind\`；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
       progressLine:
         ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
           ? '- 当前处于支线对话的上下文健康处置态：本程不更新 `progress`；只把下一程接续所需信息写入提醒项。'
@@ -309,7 +309,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
       sideDialogDutyLine:
         ctx.contextHealthPromptMode === 'normal'
-          ? `你当前处于支线对话：此处不允许 \`mind_more\` / \`change_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出要追加的条目或已合并好的“新全文/替换稿”。不要声称已更新，除非看到回执。`
+          ? `你当前处于支线对话：此处不允许 \`mind_more\` / \`change_mind\` / \`never_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出要追加的条目、已合并好的“新全文/替换稿”，或要删除的章节。不要声称已更新，除非看到回执。`
           : '你当前处于支线对话，且上下文已进入吃紧/告急处置态：本程不要维护差遣牒，也不要整理差遣牒更新提案。请把下一程需要恢复的讨论细节、定位、验证方式和临时信息写入足够详尽的接续包提醒项。',
       mainDialogDutyLine:
         '你当前处于主线对话：你负责综合维护全队共享差遣牒（尤其是 progress 公告牌）。当队友/支线对话提出更新建议时，及时合并、压缩并保持清晰。',
@@ -322,7 +322,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
           ? `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒追加条目/更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`
           : '工作流：停止扩张上下文 → 维护足够详尽的接续包提醒项（`add_reminder` 或 `update_reminder`，长度没有技术限制）→ 然后 `clear_mind` 开启新一程。',
       mainDialogWorkflowLine:
-        '工作流：先做事 → 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时用 `change_mind(progress)`）→ 然后 `clear_mind` 清空噪音。',
+        '工作流：先做事 → 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时用 `change_mind(progress)`；要删除整章文件时用 `never_mind`）→ 然后 `clear_mind` 清空噪音。',
       contextHealthLine: contextHealthLineZh,
       taskdocLogLine: taskdocLogLineZh,
     };
@@ -341,7 +341,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     taskdocSectionReplaceLine:
       ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
         ? '- Current mode is context-health remediation in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course; put resume-critical details into sufficiently detailed continuation-package reminders.'
-        : `- When updating Taskdoc: use \`mind_more\` for small append-only additions (defaults to progress); when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement based on the current injected content; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
+        : `- When updating Taskdoc: use \`mind_more\` for small append-only additions (defaults to progress); when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement based on the current injected content; when a whole section file should be removed, use \`never_mind\`; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
     progressLine:
       ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
         ? '- Current mode is context-health remediation in a Side Dialog: do not update `progress` in this course; put resume-critical information into reminders only.'
@@ -358,7 +358,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
     sideDialogDutyLine:
       ctx.contextHealthPromptMode === 'normal'
-        ? `You are currently in a Side Dialog: \`mind_more\` / \`change_mind\` are not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with entries to append or a fully merged replacement draft. Do not claim it is updated until you see a receipt.`
+        ? `You are currently in a Side Dialog: \`mind_more\` / \`change_mind\` / \`never_mind\` are not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with entries to append, a fully merged replacement draft, or the section to delete. Do not claim it is updated until you see a receipt.`
         : 'You are currently in a Side Dialog under caution/critical context-health remediation: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course. Put discussion details, pointers, verification method, and volatile resume information into sufficiently detailed continuation-package reminders.',
     mainDialogDutyLine:
       'You are currently in the Main Dialog: you are responsible for keeping the team-shared Taskdoc coherent and up to date (especially the progress bulletin board). Merge proposals from teammates/Side Dialogs promptly and keep it concise.',
@@ -368,10 +368,10 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     personalMemoryHintLine: `Hint: you have personal-memory tools (\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`). Personal memory is private to the current agent and is automatically isolated under \`.minds/memory/individual/<member-id>/...\`; therefore \`path\` MUST NOT include your member id (do not write \`${ctx.agentId}/...\`). For first-time setup, just call \`add_personal_memory\`—the directory will be created automatically. Memory is automatically injected into context on each generation: keep it small, keep it accurate, and group facts that are updated together. Store stable facts (exact key paths + minimal contracts), not daily state/progress. If you changed those files or detect staleness/conflicts, immediately \`replace_personal_memory\` to keep it accurate.`,
     sideDialogWorkflowLine:
       ctx.contextHealthPromptMode === 'normal'
-        ? `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft append entries or a merged replacement and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`
+        ? `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft append entries, a merged replacement, or a section deletion and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`
         : 'Workflow: stop expanding context → maintain sufficiently detailed continuation-package reminders (`add_reminder` or `update_reminder`, with no technical length limit) → then `clear_mind` to start a new course.',
     mainDialogWorkflowLine:
-      'Workflow: do work → distill (`update_reminder` + `mind_more(progress)`; use `change_mind(progress)` when compression/deletion is needed) → then `clear_mind` to drop noise.',
+      'Workflow: do work → distill (`update_reminder` + `mind_more(progress)`; use `change_mind(progress)` when compression/deletion is needed; use `never_mind` when removing a whole section file) → then `clear_mind` to drop noise.',
     contextHealthLine: contextHealthLineEn,
     taskdocLogLine: taskdocLogLineEn,
   };

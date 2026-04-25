@@ -6,7 +6,7 @@ import type { DialogStore } from '../main/dialog';
 import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
-import { changeMindTool, mindMoreTool, recallTaskdocTool } from '../main/tools/ctrl';
+import { changeMindTool, mindMoreTool, neverMindTool, recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
@@ -211,6 +211,42 @@ async function main(): Promise<void> {
     assert.equal(changedChecklistContent, 'UX replaced\n');
     assertSingleTrailingLf(changedChecklistContent, 'ux/checklist.md');
 
+    const neverMindInvalidCategory = await neverMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 123,
+        selector: 'checklist',
+      },
+    );
+    assert.equal(neverMindInvalidCategory.outcome, 'failure');
+    assert.ok(neverMindInvalidCategory.content.includes('never_mind'));
+    assert.ok(await pathExists(path.join(taskDir, 'ux', 'checklist.md')));
+
+    const neverMindResult = await neverMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+      },
+    );
+    assert.equal(neverMindResult.outcome, 'success');
+    assert.ok(!(await pathExists(path.join(taskDir, 'ux', 'checklist.md'))));
+
+    const neverMindMissingResult = await neverMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+      },
+    );
+    assert.equal(neverMindMissingResult.outcome, 'failure');
+    assert.ok(neverMindMissingResult.content.includes('ux/checklist.md'));
+    assert.ok(!neverMindMissingResult.content.includes('mind_more'));
+    assert.ok(!neverMindMissingResult.content.includes('change_mind'));
+
     // 5) mind_more should append entries without requiring a full-section replacement.
     const appendResult = await mindMoreTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
       items: ['- Worker A finished backend wiring', '- Next: verify UI contract'],
@@ -283,6 +319,17 @@ async function main(): Promise<void> {
       'utf-8',
     );
     assert.equal(emptyConstraintsFileContent, '');
+
+    const deleteTopLevelResult = await neverMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        selector: 'constraints',
+      },
+    );
+    assert.equal(deleteTopLevelResult.outcome, 'success');
+    const afterTopLevelDelete = await readTaskPackageSections(taskDir);
+    assert.equal(afterTopLevelDelete.constraints.kind, 'missing');
 
     console.log('✅ task-package tests passed');
   } finally {

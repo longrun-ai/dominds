@@ -143,6 +143,7 @@ Update taskdoc chapter.
 **Parameters:**
 
 - `selector` (required): Chapter selector (goals/constraints/progress)
+- `category` (optional): Extra section directory; with `selector`, targets `<category>/<selector>.md`
 - `content` (required): New content (full section replacement)
 
 **Returns:**
@@ -156,7 +157,7 @@ updated_at: <update timestamp>
 **Characteristics:**
 
 - Each call replaces entire chapter
-- Does not reset dialog rounds
+- Does not start a new course
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
@@ -187,10 +188,25 @@ mind_more({
 - Append-only: it does not deduplicate, rewrite, or compress old content
 - Good for adding one or two still-effective states, decisions, next steps, or blockers to `progress`
 - Not for appending every investigation step, long log, full plan, or acceptance record as a chronology; those details belong in formal rtws documentation, while Taskdoc keeps the summary and document pointer
-- If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement
+- If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement; if a whole section file should be deleted, use `never_mind`
 - When one topic already has several phase notes, prefer `change_mind` to merge them into a concise current announcement instead of continuing to call `mind_more`
 
-### 7. recall_taskdoc
+### 7. never_mind
+
+Delete a Taskdoc section file.
+
+**Parameters:**
+
+- `selector` (required): Chapter selector. Top-level sections use `goals` / `constraints` / `progress`
+- `category` (optional): Extra section directory; with `selector`, targets `<category>/<selector>.md`
+
+**Characteristics:**
+
+- Deletes only the whole section file; it does not edit content
+- Use it only when the whole section is no longer valid. If you only need to remove stale entries or compress structure, prefer `change_mind` with the cleaned full section
+- Does not start a new course
+
+### 8. recall_taskdoc
 
 Read taskdoc chapter.
 

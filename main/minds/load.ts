@@ -23,6 +23,7 @@ import {
   clearMindTool,
   deleteReminderTool,
   mindMoreTool,
+  neverMindTool,
   recallTaskdocTool,
   updateReminderTool,
 } from '../tools/ctrl';
@@ -302,6 +303,7 @@ export async function loadAgentMinds(
   if (dialog === undefined || dialog.askerDialog === undefined) {
     intrinsicFuncTools.push(mindMoreTool);
     intrinsicFuncTools.push(changeMindTool);
+    intrinsicFuncTools.push(neverMindTool);
   }
 
   const agentTools: Tool[] = (() => {

@@ -143,6 +143,7 @@ status: ok|error
 **参数：**
 
 - `selector`（必需）：章节选择器（goals/constraints/progress）
+- `category`（可选）：额外章节目录；与 `selector` 组合定位 `<category>/<selector>.md`
 - `content`（必需）：新内容（整段替换）
 
 **返回：**
@@ -156,7 +157,7 @@ updated_at: <更新时间戳>
 **特点：**
 
 - 每次调用替换整个章节
-- 不重置对话轮次
+- 不开启新 course
 - 变更对所有队友可见
 - 约束规则：`constraints` 只写任务特有硬要求，不得重复系统提示/工具文档中的全局规则；一经发现重复，必须删除并告知用户
 
@@ -184,10 +185,25 @@ mind_more({
 - 只追加，不会自动去重、改写或压缩旧内容
 - 适合给 `progress` 补一两条当前仍有效的状态、决策、下一步或阻塞
 - 不适合把每一步调查过程、长日志、完整方案或验收记录当流水账追加进去；这些细节应写入 rtws 正式文档，差遣牒只写摘要和文档定位 pointer
-- 若需要删除陈旧项、重排结构或压缩公告牌，仍使用 `change_mind` 做整章替换
+- 若需要删除陈旧项、重排结构或压缩公告牌，仍使用 `change_mind` 做整章替换；若要删除整个章节文件，使用 `never_mind`
 - 当同一主题已经有多条阶段记录时，优先 `change_mind` 合并成当前仍有效的简明公告，而不是继续 `mind_more`
 
-### 7. recall_taskdoc
+### 7. never_mind
+
+删除差遣牒章节文件。
+
+**参数：**
+
+- `selector`（必需）：章节选择器；顶层章节可用 `goals` / `constraints` / `progress`
+- `category`（可选）：额外章节目录；与 `selector` 组合定位 `<category>/<selector>.md`
+
+**特点：**
+
+- 只删除整章文件，不做内容编辑
+- 仅用于章节整体不再成立；如果只是删除几条陈旧项或压缩结构，优先用 `change_mind` 写回整理后的全文
+- 不开启新 course
+
+### 8. recall_taskdoc
 
 读取差遣牒章节。
 

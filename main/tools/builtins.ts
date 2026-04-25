@@ -12,6 +12,7 @@ import {
   clearMindTool,
   deleteReminderTool,
   mindMoreTool,
+  neverMindTool,
   recallTaskdocTool,
   updateReminderTool,
 } from './ctrl';
@@ -145,6 +146,7 @@ registerTool(updateReminderTool);
 registerTool(clearMindTool);
 registerTool(changeMindTool);
 registerTool(mindMoreTool);
+registerTool(neverMindTool);
 registerTool(recallTaskdocTool);
 
 // Team management tools (scoped to `.minds/**`)
@@ -190,6 +192,7 @@ registerToolset('control', [
   clearMindTool,
   changeMindTool,
   mindMoreTool,
+  neverMindTool,
   recallTaskdocTool,
 ]);
 setToolsetMeta('control', {
