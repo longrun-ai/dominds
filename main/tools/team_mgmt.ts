@@ -4205,14 +4205,14 @@ function renderToolsetCapabilitySummary(
 export async function renderToolsets(language: LanguageCode): Promise<string> {
   const windowsHost = isWindowsRuntimeHost();
   const toolsetsById = listToolsets();
-  const ids = Object.keys(toolsetsById).filter((id) => id !== 'control');
+  const ids = Object.keys(toolsetsById).filter((id) => getToolsetMeta(id)?.assignable !== false);
   const header =
     language === 'zh' ? fmtHeader('已注册 toolsets') : fmtHeader('Registered toolsets');
 
   const intro =
     language === 'zh'
       ? fmtList([
-          '`control`：对话控制类工具属于“内建必备能力”，运行时会自动包含给所有成员；因此不需要（也不建议）在 `members.<id>.toolsets` 里显式列出，本页也默认不展示它。',
+          '`control`：对话控制类工具属于内建运行时能力，会按对话范围自动注入；不能在 `members.<id>.toolsets` 里显式列出，本页也默认不展示它。',
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
           windowsHost
@@ -4226,7 +4226,7 @@ export async function renderToolsets(language: LanguageCode): Promise<string> {
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
       : fmtList([
-          '`control`: dialog-control tools are intrinsic and automatically included for all members at runtime; you do not need (and should not) list it under `members.<id>.toolsets`. It is omitted from the list below.',
+          '`control`: dialog-control tools are intrinsic runtime capabilities injected according to dialog scope; it cannot be listed under `members.<id>.toolsets`. It is omitted from the list below.',
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
           windowsHost

@@ -848,7 +848,7 @@ Invoke `do_mind` to create a missing section, or `change_mind` to replace an exi
 
 **Implementation Notes**:
 
-- Taskdoc mutation tools are only available in main dialogs (not sideDialogs); sideDialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
+- Taskdoc mutation tools are only available in main dialogs (not sideDialogs); sideDialogs must ask the Taskdoc maintainer to update the shared Taskdoc and provide the new section, append entries, merged replacement draft, or section deletion request.
 - For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ---

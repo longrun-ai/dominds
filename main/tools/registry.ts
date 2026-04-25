@@ -18,6 +18,12 @@ export const toolsetsRegistry: Map<string, Tool[]> = new Map<string, Tool[]>();
 
 export type ToolsetMeta = {
   source?: ToolsetSource;
+  /**
+   * Whether `.minds/team.yaml` may assign this toolset to members. Defaults to
+   * true. Set false for intrinsic runtime toolsets that must be injected by the
+   * system according to dialog scope rather than granted by team config.
+   */
+  assignable?: boolean;
   descriptionI18n?: I18nText;
   /**
    * Toolset-level prompt injected into the agent system prompt when the member

@@ -727,6 +727,34 @@ async function main(): Promise<void> {
       'soft-invalid optional fields should not escalate into a member-dropping error',
     );
 
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: stub',
+        '  model: fake_model',
+        'default_responder: helper',
+        'members:',
+        '  helper:',
+        '    name: Helper',
+        '    toolsets: [control]',
+        '',
+      ].join('\n'),
+    );
+    await Team.load();
+    const intrinsicToolsetSnapshot = getProblemsSnapshot();
+    const intrinsicToolsetProblem = intrinsicToolsetSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/helper/toolsets/control/not_assignable',
+    );
+    assert.ok(intrinsicToolsetProblem, 'control toolset assignment should surface a problem');
+    assert.equal(intrinsicToolsetProblem?.severity, 'error');
+    assert.ok(
+      intrinsicToolsetProblem?.detail.errorText.includes(
+        "but 'control' is injected by Dominds at runtime according to dialog scope",
+      ),
+    );
+
     console.log('✅ team-yaml-parsing tests passed');
 
     // Provider/model bindings:

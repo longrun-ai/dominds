@@ -200,6 +200,7 @@ registerToolset('control', [
 ]);
 setToolsetMeta('control', {
   source: 'dominds',
+  assignable: false,
   descriptionI18n: {
     en: 'Dialog control: manage reminders, Taskdoc sections, and course resets.',
     zh: '对话控制：维护提醒项、差遣牒分段，并管理对话进程重置。',

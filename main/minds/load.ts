@@ -59,6 +59,13 @@ import {
   type ContextHealthPromptMode,
 } from './system-prompt-parts';
 
+const TASKDOC_MUTATION_TOOL_NAMES = new Set([
+  doMindTool.name,
+  mindMoreTool.name,
+  changeMindTool.name,
+  neverMindTool.name,
+]);
+
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
 type ReadMindsTextResult = { kind: 'found'; text: string } | { kind: 'missing' };
 
@@ -269,8 +276,8 @@ export async function loadAgentMinds(
   // Introduction of all team members (mark "(self)" for the current agent)
   const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
 
-  // Compose tool list from member's resolved toolsets and tools + built-in human tool
-  // Get base tools from agent (excluding intrinsic dialog control tools which are always injected)
+  // Compose tool list from member's resolved toolsets and tools + built-in human tool.
+  // Get base tools from agent; runtime injects allowed intrinsic dialog-control tools afterward.
   // shell_specialists is intended for visible teammates only. Hidden members are exempt from this
   // policy and may carry shell tools.
   const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
@@ -292,7 +299,7 @@ export async function loadAgentMinds(
     );
   })();
 
-  // Inject intrinsic dialog control tools as function tools (available to all agents).
+  // Inject intrinsic dialog-control tools as function tools according to dialog scope.
   const intrinsicFuncTools: FuncTool[] = [
     addReminderTool,
     deleteReminderTool,
@@ -308,6 +315,7 @@ export async function loadAgentMinds(
     intrinsicFuncTools.push(neverMindTool);
   }
 
+  const shouldHideTaskdocMutationTools = dialog !== undefined && dialog.askerDialog !== undefined;
   const agentTools: Tool[] = (() => {
     const out: Tool[] = [...baseAgentTools];
     const seenNames = new Set(out.map((t) => t.name));
@@ -317,7 +325,8 @@ export async function loadAgentMinds(
         seenNames.add(t.name);
       }
     }
-    return out;
+    if (!shouldHideTaskdocMutationTools) return out;
+    return out.filter((t) => !TASKDOC_MUTATION_TOOL_NAMES.has(t.name));
   })();
 
   const toolsetNames = agent

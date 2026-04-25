@@ -1,22 +1,22 @@
 /**
  * Module: tools/ctrl
  *
- * Intrinsic dialog control tools - ALWAYS AVAILABLE TO ALL AGENTS
+ * Intrinsic dialog control tools.
  *
- * These tools are automatically included for every agent without needing to be
- * explicitly listed in team.yaml toolsets or tools configuration. They provide
- * core functionality for reminder management and mind control that should be
- * universally accessible.
+ * These tools are injected by runtime according to dialog scope without needing
+ * to be explicitly listed in team.yaml toolsets or tools configuration. Reminder
+ * and course-control tools are available in all dialog scopes; Taskdoc mutation
+ * tools are only exposed in Main Dialogs.
  *
  * INTRINSIC TOOLS:
  * - add_reminder: Add a reminder
  * - delete_reminder: Delete a reminder by id
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new course, optionally add a reminder
- * - do_mind: Create a new `.tsk/` Taskdoc section without starting a new course
- * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
- * - mind_more: Append entries to a `.tsk/` Taskdoc section without starting a new course
- * - never_mind: Delete a `.tsk/` Taskdoc section file without starting a new course
+ * - do_mind: Main Dialog only; create a new `.tsk/` Taskdoc section without starting a new course
+ * - change_mind: Main Dialog only; update a `.tsk/` Taskdoc section without starting a new course
+ * - mind_more: Main Dialog only; append entries to a `.tsk/` Taskdoc section without starting a new course
+ * - never_mind: Main Dialog only; delete a `.tsk/` Taskdoc section file without starting a new course
  * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:

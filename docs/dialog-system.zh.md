@@ -825,7 +825,7 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 
 **实现说明**：
 
-- 差遣牒变更工具仅在主线对话中可用（不在支线对话中）；支线对话必须通过回问诉请（`tellaskBack({ tellaskContent: "..." })`）询问诉请者以更新共享差遣牒。
+- 差遣牒变更工具仅在主线对话中可用（不在支线对话中）；支线对话必须诉请差遣牒维护人更新共享差遣牒，并提供要新增的章节、要追加的条目、已合并好的替换稿或要删除的章节。
 - 对于 `*.tsk/` 差遣牒任务包，差遣牒是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 [`encapsulated-taskdoc.zh.md`](./encapsulated-taskdoc.zh.md)。
 
 ---

@@ -708,9 +708,8 @@ export namespace Team {
     }
 
     /**
-     * Returns a flat list of Tool objects by resolving toolsets and merging with individual tools.
-     * Honors declaration order of toolsets and tools. Logs warnings for duplicate tool names
-     * that resolve to different Tool objects. Returns no duplicate tools per name.
+     * Returns a flat list of assignable toolset names after expanding wildcards and exclusions.
+     * Honors declaration order and returns each toolset at most once.
      */
     listResolvedToolsetNames(options?: {
       onMissing?: 'warn' | 'silent';
@@ -734,13 +733,17 @@ export namespace Team {
 
       const resolved: string[] = [];
       const seen = new Set<string>();
+      const isAssignableToolset = (name: string): boolean =>
+        getToolsetMeta(name)?.assignable !== false;
 
       for (const toolsetName of [...staticToolsets, ...dynamicToolsetNames]) {
         if (toolsetName.startsWith('!')) continue;
 
         const toolsetNames =
           toolsetName === '*'
-            ? Object.keys(listToolsets()).filter((n) => !excludedToolsets.has(n))
+            ? Object.keys(listToolsets()).filter(
+                (n) => !excludedToolsets.has(n) && isAssignableToolset(n),
+              )
             : excludedToolsets.has(toolsetName)
               ? []
               : [toolsetName];
@@ -763,6 +766,14 @@ export namespace Team {
                   `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
                 );
               }
+            }
+            continue;
+          }
+          if (!isAssignableToolset(resolvedToolsetName)) {
+            if (onMissing === 'warn') {
+              log.warn(
+                `Toolset '${resolvedToolsetName}' is intrinsic and cannot be assigned in team config for member '${this.id}'`,
+              );
             }
             continue;
           }
@@ -1048,6 +1059,17 @@ export namespace Team {
         for (const toolsetName of args.toolsets) {
           const registeredMeta = getToolsetMeta(toolsetName);
           if (registeredToolsets.has(toolsetName)) {
+            if (registeredMeta?.assignable === false) {
+              addIssue(
+                `${args.idPrefix}/toolsets/${sanitizeProblemIdSegment(toolsetName)}/not_assignable`,
+                `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an intrinsic toolset that cannot be assigned.`,
+                [
+                  `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but '${toolsetName}' is injected by Dominds at runtime according to dialog scope.`,
+                  `Remove '${toolsetName}' from ${args.atPrefix}.toolsets; do not grant intrinsic tools through team config.`,
+                ].join('\n'),
+              );
+              continue;
+            }
             if (registeredMeta?.source === 'app') {
               continue;
             }

@@ -109,8 +109,49 @@ async function main(): Promise<void> {
       'control should expose mind_more',
     );
     assertTrue(
+      controlToolset.some((tool) => tool.name === 'change_mind'),
+      'control should expose change_mind',
+    );
+    assertTrue(
       controlToolset.some((tool) => tool.name === 'never_mind'),
       'control should expose never_mind',
+    );
+  });
+
+  await runTest('Control toolset cannot be assigned through team config', () => {
+    const testMember = new Team.Member({
+      id: 'control-test',
+      name: 'Control Test Member',
+      provider: 'openai',
+      model: 'gpt-4',
+      toolsets: ['control'],
+    });
+    assertEqual(
+      testMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
+      false,
+      'control should not resolve as an assignable member toolset',
+    );
+    const toolNames = testMember.listTools({ onMissingToolset: 'silent' }).map((tool) => tool.name);
+    assertEqual(
+      toolNames.includes('do_mind') ||
+        toolNames.includes('mind_more') ||
+        toolNames.includes('change_mind') ||
+        toolNames.includes('never_mind'),
+      false,
+      'control assignment should not grant Taskdoc mutation tools',
+    );
+
+    const wildcardMember = new Team.Member({
+      id: 'wildcard-control-test',
+      name: 'Wildcard Control Test Member',
+      provider: 'openai',
+      model: 'gpt-4',
+      toolsets: ['*'],
+    });
+    assertEqual(
+      wildcardMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
+      false,
+      'wildcard toolsets should not resolve non-assignable control',
     );
   });
 
