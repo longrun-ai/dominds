@@ -5,6 +5,7 @@
  */
 import * as http from 'http';
 import { IncomingMessage, ServerResponse } from 'http';
+import type { AddressInfo } from 'node:net';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
 import type { WebSocket } from 'ws';
@@ -191,18 +192,34 @@ export class HttpServerCore {
   }
 
   /**
-   * Start the server - NO PORT FALLBACK, enforce specific port
+   * Start the server on the configured port.
    */
-  start(): Promise<void> {
+  start(): Promise<number> {
     return new Promise((resolve, reject) => {
-      this.server.on('error', (error) => {
+      const cleanup = (): void => {
+        this.server.off('error', onError);
+        this.server.off('listening', onListening);
+      };
+      const onError = (error: Error): void => {
+        cleanup();
         reject(error);
-      });
+      };
+      const onListening = (): void => {
+        cleanup();
+        const address = this.server.address();
+        const actualPort =
+          typeof address === 'object' && address !== null
+            ? (address as AddressInfo).port
+            : this.config.port;
+        this.config = { ...this.config, port: actualPort };
+        log.debug(`Server listening on http://${this.config.host}:${actualPort}`);
+        resolve(actualPort);
+      };
 
-      this.server.listen(this.config.port, this.config.host, () => {
-        log.debug(`Server listening on http://${this.config.host}:${this.config.port}`);
-        resolve();
-      });
+      this.server.once('error', onError);
+      this.server.once('listening', onListening);
+
+      this.server.listen(this.config.port, this.config.host);
     });
   }
 

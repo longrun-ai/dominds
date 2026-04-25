@@ -130,11 +130,11 @@ pnpm run lint:types
 dominds create web-scaffold my-project
 cd my-project
 
-# 2) 启动 WebUI（默认自动打开浏览器，默认端口 5666）
+# 2) 启动 WebUI（默认自动打开浏览器；未指定端口时等价于 5666-）
 dominds
 ```
 
-首次启动后，通常会自动跳转至 `http://localhost:5666/setup` 配置页面，按以下步骤操作：
+首次启动后，通常会自动跳转至本机 WebUI 的 `/setup` 配置页面（优先使用 `http://localhost:5666/setup`，如果端口被占用则自动尝试更小端口），按以下步骤操作：
 
 1. 选择提供商（provider）及模型（model），创建或覆盖 `.minds/team.yaml`（最小化可运行配置文件）。
 2. 根据提示设置提供商所需的环境变量（配置页可将变量写入 `.env.local`，并在 Linux/macOS 上额外支持写入 `~/.zshrc` 或 `~/.bashrc` 的托管区块）。

@@ -81,7 +81,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 
 **Options:**
 
-- `-p, --port <port>` - Port to listen on (default: 5666)
+- `-p, --port <port>` - Port to listen on; a bare port binds strictly, suffix `+` tries higher ports, and suffix `-` tries lower ports (omitting `--port` is equivalent to `5666-`)
 - `-h, --host <host>` - Host to bind to (default: localhost)
 - `-C, --cwd <dir>` - Change to rtws directory before starting
 - `--help` - Show help message
@@ -91,6 +91,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 ```bash
 dominds
 dominds webui -p 8080
+dominds webui -p 8080+
 dominds webui -C ./my-rtws
 ```
 

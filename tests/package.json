@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,md,json}\"",
     "rtws": "tsx cli.ts",
     "auth": "tsx auth.ts",
+    "webui-port-selection": "tsx webui-port-selection.ts",
     "websocket-user-msg-generation-boundary": "tsx websocket-user-msg-generation-boundary.ts",
     "provider-tool-result-image-size-fallback": "tsx provider/tool-result-image-size-fallback.ts",
     "provider-user-image-model-support": "tsx provider/user-image-model-support.ts",

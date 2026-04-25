@@ -81,7 +81,7 @@ dominds webui [options]
 
 **选项：**
 
-- `-p, --port <port>` - 监听的端口（默认：5666）
+- `-p, --port <port>` - 监听端口；裸端口严格绑定，后缀 `+` 向更大端口自动尝试，后缀 `-` 向更小端口自动尝试（未指定时等价于 `5666-`）
 - `-h, --host <host>` - 绑定的主机（默认：localhost）
 - `-C, --cwd <dir>` - 启动前更改 rtws 目录
 - `--help` - 显示帮助消息
@@ -89,11 +89,14 @@ dominds webui [options]
 **示例：**
 
 ```bash
-# 在默认端口启动 Web UI
+# 从 5666 开始，向更小端口尝试可用端口
 dominds
 
-# 在特定端口启动 Web UI
+# 严格绑定 8080；占用时启动失败
 dominds webui -p 8080
+
+# 从 8080 开始，向更大端口尝试可用端口
+dominds webui -p 8080+
 
 # 在特定 rtws 启动 Web UI
 dominds webui -C ./my-rtws

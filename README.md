@@ -156,7 +156,7 @@ There are two common ways to create an rtws:
 - **Recommended**: start from a scaffold/template (see [Quick Start](#quick-start)).
 - **Minimal**: start from an empty folder (see [Start from scratch](#start-from-scratch)).
 
-Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI will automatically redirect you to `http://localhost:5666/setup` if the rtws is missing required configuration (for example `.minds/team.yaml` or provider env vars).
+Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI listens on `5666` or the next available lower port, then automatically redirects to `/setup` if the rtws is missing required configuration (for example `.minds/team.yaml` or provider env vars).
 
 Note: In production mode, Dominds enables a local shared-secret auth key by default, so the browser may open with a URL containing `?auth=...`. Treat that token as sensitive.
 
@@ -195,7 +195,7 @@ dominds
 
 Then:
 
-1. Your browser should land on `http://localhost:5666/setup` (either directly, or via an automatic redirect).
+1. Your browser should land on the local WebUI `/setup` page (usually `http://localhost:5666/setup`, unless that port was already occupied).
 2. In **Setup**, pick a provider + model. If your template didn’t create `.minds/team.yaml`, use Setup to create/overwrite it (this writes a minimal `member_defaults` config).
 3. Still in **Setup**, set the required provider env var (the name comes from the provider catalog, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CODEX_HOME`, etc.).
    - The setup UI can write it to `.env.local` (all platforms), and on Linux/macOS it can also write into `~/.zshrc` / `~/.bashrc` in managed blocks. It also applies the value to the running server process immediately.
@@ -213,11 +213,11 @@ Starting from scratch means: create an empty folder, run `dominds`, let Setup ge
 mkdir my-rtws
 cd my-rtws
 
-# Starts the WebUI server and opens a browser (default port: 5666)
+# Starts the WebUI server and opens a browser (default port behavior: 5666-)
 dominds
 ```
 
-1. The WebUI should redirect you to `http://localhost:5666/setup` because the rtws has no `.minds/team.yaml` yet.
+1. The WebUI should redirect you to the local `/setup` page because the rtws has no `.minds/team.yaml` yet.
 2. In **Setup**:
    - Select a provider + model and click **Create `.minds/team.yaml`**.
    - Provide the required provider env var and write it to your shell rc (or set it manually). Setup applies it immediately to the running server.

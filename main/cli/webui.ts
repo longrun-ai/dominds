@@ -7,7 +7,7 @@
  *   dominds webui [options]
  *
  * Options:
- *   -p, --port <port>    Port to listen on (default: 5666)
+ *   -p, --port <port>    Port to listen on. Bare port is strict; suffix + tries higher ports; suffix - tries lower ports.
  *   -h, --host <host>    Host to bind to (default: localhost)
  *   --nobrowser          Do not open a browser (opt-out)
  *   -h, --help           Show help
@@ -18,6 +18,7 @@ import { createLogger } from '../log';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from '../runtime/work-language';
 import { startServer } from '../server';
 import { formatAutoAuthUrl } from '../server/auth';
+import { parseWebuiPortSpec, type WebuiPortAutoDirection } from '../server/port-selection';
 
 const log = createLogger('webui');
 
@@ -32,15 +33,18 @@ Note:
   rtws (runtime workspace) directory is \`process.cwd()\`. Use 'dominds -C <dir> webui' to run in another rtws.
 
 Options:
-  -p, --port <port>    Port to listen on (default: 5666)
+  -p, --port <port>    Port to listen on. Bare port is strict; suffix + tries higher ports; suffix - tries lower ports.
+                       Default without --port: auto from 5666 downward.
   -h, --host <host>    Host to bind to (default: localhost)
   --mode <dev|prod>    Server mode (default: prod; dev if NODE_ENV=dev)
   --nobrowser          Do not open a browser (opt-out)
   --help               Show this help message
 
 Examples:
-  dominds webui                   # Start on default port 5666
-  dominds webui -p 8888           # Start on port 8888
+  dominds webui                   # Start on 5666, or the next available lower port
+  dominds webui -p 8888           # Start strictly on port 8888
+  dominds webui -p 8888+          # Start on 8888, or the next available higher port
+  dominds webui -p 8888-          # Start on 8888, or the next available lower port
   dominds webui --mode dev        # Start in dev mode
   dominds webui --nobrowser       # Start without opening a browser
 `);
@@ -63,22 +67,41 @@ function openInBrowser(url: string): void {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  let port = 5666;
+  let port: number | undefined;
   let host = 'localhost';
   let mode: 'dev' | 'prod' = process.env.NODE_ENV === 'dev' ? 'dev' : 'prod';
   let shouldOpen = true;
+  let strictPort = false;
+  let portAutoDirection: WebuiPortAutoDirection = 'down';
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '-p' || arg === '--port') {
       const next = args[i + 1];
-      if (!next || isNaN(parseInt(next))) {
-        console.error('Error: --port requires a valid port number');
+      const parsedPort = next ? parseWebuiPortSpec(next) : null;
+      if (parsedPort === null) {
+        console.error(
+          'Error: --port requires a valid port number, optionally suffixed with + or -',
+        );
         printHelp();
         process.exit(1);
       }
-      port = parseInt(next);
+      port = parsedPort.port;
+      strictPort = parsedPort.strictPort;
+      portAutoDirection = parsedPort.portAutoDirection;
       i++;
+    } else if (arg.startsWith('--port=')) {
+      const parsedPort = parseWebuiPortSpec(arg.slice('--port='.length));
+      if (parsedPort === null) {
+        console.error(
+          'Error: --port requires a valid port number, optionally suffixed with + or -',
+        );
+        printHelp();
+        process.exit(1);
+      }
+      port = parsedPort.port;
+      strictPort = parsedPort.strictPort;
+      portAutoDirection = parsedPort.portAutoDirection;
     } else if (arg === '-h' || arg === '--host') {
       const next = args[i + 1];
       if (!next) {
@@ -116,7 +139,7 @@ async function main(): Promise<void> {
     setWorkLanguage(resolvedLanguage);
     log.info(`working language: ${getWorkLanguage()} (source: ${source})`);
 
-    const started = await startServer({ port, host, mode });
+    const started = await startServer({ port, host, mode, strictPort, portAutoDirection });
     const httpServer = started.httpServer;
     const auth = started.auth;
 
