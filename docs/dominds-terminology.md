@@ -248,16 +248,16 @@ Example / 示例（概念）:
 - EN: **Taskdoc package** (ZH: **任务包**) is the on-disk directory ending in `.tsk/` that contains those three section files.
 - ZH: **任务包（Taskdoc package）**是落地到磁盘上的目录形态：以 `.tsk/` 结尾的目录，包含上述三个分段文件。
 
-- EN: Taskdocs are the "single source of truth" for team-shared task contracts. They MUST be edited via the explicit control tool `change_mind`; generic file tools are **banned** from reading/writing anything under `**/*.tsk/`.
-- ZH: 差遣牒是全队共享任务契约的"单一事实来源"。必须通过显式控制工具 `change_mind` 进行修改；通用文件工具**禁止**读/写 `**/*.tsk/` 下的任何内容。
+- EN: Taskdocs are the "single source of truth" for team-shared task contracts. They MUST be edited via explicit Taskdoc control tools (`do_mind`, `mind_more`, `change_mind`, `never_mind`); generic file tools are **banned** from reading/writing anything under `**/*.tsk/`.
+- ZH: 差遣牒是全队共享任务契约的"单一事实来源"。必须通过显式差遣牒控制工具（`do_mind`、`mind_more`、`change_mind`、`never_mind`）进行修改；通用文件工具**禁止**读/写 `**/*.tsk/` 下的任何内容。
 
 - EN: Practically: treat the Taskdoc as the task’s **live coordination bulletin board**. If a decision/status/next-step affects others, write it back to `progress` (or `constraints`) — don’t leave it only in chat or reminders.
 - ZH: 实践上：把差遣牒当作任务的**实时协调公告板**。任何会影响他人的关键决策/当前状态/下一步，都要写回 `progress`（或 `constraints`），不要只留在对话或提醒项里。
 
 #### Section selector / 分段选择器
 
-- EN: The selector passed to `change_mind`: `goals` / `constraints` / `progress`.
-- ZH: `change_mind` 的分段选择器：`goals` / `constraints` / `progress`。
+- EN: The selector passed to Taskdoc mutation tools: `goals` / `constraints` / `progress`.
+- ZH: 差遣牒变更工具的分段选择器：`goals` / `constraints` / `progress`。
 
 ### rtws（运行时工作区）
 

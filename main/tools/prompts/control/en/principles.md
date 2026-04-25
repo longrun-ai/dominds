@@ -73,7 +73,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 **Update Rules:**
 
-- `mind_more` appends small entries; `change_mind` replaces a full section; `never_mind` deletes a whole section file
+- `do_mind` creates a new section; `mind_more` appends small entries; `change_mind` replaces an existing full section; `never_mind` deletes a whole section file
 - Does not start a new course
 - Changes visible to all teammates
 - When writing `progress`, assume teammates will skim it to synchronize on the current task truth rather than read your private process log
@@ -82,15 +82,16 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 ## Tool Overview
 
-| Tool            | Function                                             |
-| --------------- | ---------------------------------------------------- |
-| add_reminder    | Add reminder                                         |
-| delete_reminder | Delete reminder                                      |
-| update_reminder | Update reminder content                              |
-| mind_more       | Append entries to Taskdoc (defaults to progress)     |
-| change_mind     | Replace Taskdoc section (goals/constraints/progress) |
-| never_mind      | Delete Taskdoc section file                          |
-| recall_taskdoc  | Read taskdoc chapter                                 |
+| Tool            | Function                                         |
+| --------------- | ------------------------------------------------ |
+| add_reminder    | Add reminder                                     |
+| delete_reminder | Delete reminder                                  |
+| update_reminder | Update reminder content                          |
+| do_mind         | Create new Taskdoc section                       |
+| mind_more       | Append entries to Taskdoc (defaults to progress) |
+| change_mind     | Replace existing Taskdoc section                 |
+| never_mind      | Delete Taskdoc section file                      |
+| recall_taskdoc  | Read taskdoc chapter                             |
 
 ## Inter-dialog Reply Routing
 
@@ -155,7 +156,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 ## Limitations and Notes
 
 1. `dialog` reminders end with the dialog; `personal` reminders stay visible in all later dialogs you lead
-2. Use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement and merge existing content first; use `never_mind` when a whole section file should be deleted. Do not treat `mind_more` as a chronology tool; when cleanup, stale-entry removal, or same-topic consolidation is needed, use `change_mind`
-3. `mind_more` / `change_mind` / `never_mind` do not start a new course
+2. Use `do_mind` to create missing Taskdoc sections; use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement of existing sections and merge existing content first; use `never_mind` when a whole section file should be deleted. Do not treat `mind_more` as a chronology tool; when cleanup, stale-entry removal, or same-topic consolidation is needed, use `change_mind`
+3. `do_mind` / `mind_more` / `change_mind` / `never_mind` do not start a new course
 4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog under caution/critical remediation, maintain sufficiently detailed continuation-package reminders only
 5. Do not turn `personal` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

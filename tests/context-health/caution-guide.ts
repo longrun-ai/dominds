@@ -26,10 +26,14 @@ async function main(): Promise<void> {
   assert.ok(zhSoft.includes('clear_mind'), 'zh guide should mention clear_mind');
   assert.ok(zhSoft.includes('update_reminder'), 'zh guide should mention update_reminder');
   assert.ok(zhSoft.includes('add_reminder'), 'zh guide should mention add_reminder');
-  assert.ok(zhSoft.includes('mind_more'), 'zh guide should mention mind_more for Taskdoc updates');
+  assert.ok(zhSoft.includes('do_mind'), 'zh guide should mention do_mind for Taskdoc creation');
   assert.ok(
     zhSoft.includes('change_mind'),
     'zh guide should mention change_mind for Taskdoc updates',
+  );
+  assert.ok(
+    !zhSoft.includes('mind_more'),
+    'zh remediation guide should not recommend mind_more for preserving discussion details',
   );
   assert.ok(
     zhSoft.includes('不是新的用户诉求'),
@@ -84,10 +88,14 @@ async function main(): Promise<void> {
   assert.ok(enSoft.includes('Context state: 🟡 caution'), 'en guide should include caution');
   assert.ok(enSoft.includes('update_reminder'), 'en guide should mention update_reminder');
   assert.ok(enSoft.includes('add_reminder'), 'en guide should mention add_reminder');
-  assert.ok(enSoft.includes('mind_more'), 'en guide should mention mind_more for Taskdoc updates');
+  assert.ok(enSoft.includes('do_mind'), 'en guide should mention do_mind for Taskdoc creation');
   assert.ok(
     enSoft.includes('change_mind'),
     'en guide should mention change_mind for Taskdoc updates',
+  );
+  assert.ok(
+    !enSoft.includes('mind_more'),
+    'en remediation guide should not recommend mind_more for preserving discussion details',
   );
   assert.ok(enSoft.includes('clear_mind'), 'en guide should mention clear_mind');
   assert.ok(
@@ -158,6 +166,7 @@ async function main(): Promise<void> {
     zhSide.includes('提醒项长度没有技术限制'),
     'zh side guide should permit detailed reminders without technical length pressure',
   );
+  assert.ok(!zhSide.includes('do_mind'), 'zh side guide should not mention do_mind');
   assert.ok(!zhSide.includes('mind_more'), 'zh side guide should not mention mind_more');
   assert.ok(!zhSide.includes('change_mind'), 'zh side guide should not mention change_mind');
 
@@ -180,6 +189,7 @@ async function main(): Promise<void> {
     enSide.includes('Reminder length has no technical limit'),
     'en side guide should permit detailed reminders without technical length pressure',
   );
+  assert.ok(!enSide.includes('do_mind'), 'en side guide should not mention do_mind');
   assert.ok(!enSide.includes('mind_more'), 'en side guide should not mention mind_more');
   assert.ok(!enSide.includes('change_mind'), 'en side guide should not mention change_mind');
 

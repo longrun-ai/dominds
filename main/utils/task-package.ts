@@ -219,13 +219,54 @@ export async function updateTaskPackageByChangeMindTarget(params: {
   target: TaskPackageChangeMindTarget;
   content: string;
   updatedBy?: string;
-}): Promise<void> {
+}): Promise<{ kind: 'updated' } | { kind: 'missing' }> {
+  const { taskPackageDirFullPath, target, content } = params;
+  const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
+  try {
+    const st = await fs.promises.stat(filePath);
+    if (!st.isFile()) {
+      throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+    }
+    await writeExistingMarkdownFileWithCanonicalEnding(filePath, content);
+    return { kind: 'updated' };
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return { kind: 'missing' };
+    }
+    throw err;
+  }
+}
+
+export async function createTaskPackageByChangeMindTarget(params: {
+  taskPackageDirFullPath: string;
+  target: TaskPackageChangeMindTarget;
+  content: string;
+  updatedBy?: string;
+}): Promise<{ kind: 'created' } | { kind: 'exists' }> {
   const { taskPackageDirFullPath, target, content, updatedBy } = params;
   await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
 
   const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await writeMarkdownFileWithCanonicalEnding(filePath, content);
+  try {
+    await writeNewMarkdownFileWithCanonicalEnding(filePath, content);
+    return { kind: 'created' };
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'EEXIST'
+    ) {
+      return { kind: 'exists' };
+    }
+    throw err;
+  }
 }
 
 export async function appendTaskPackageByChangeMindTarget(params: {
@@ -280,6 +321,29 @@ async function writeMarkdownFileWithCanonicalEnding(
   content: string,
 ): Promise<void> {
   await fs.promises.writeFile(filePath, withCanonicalMarkdownFileEnding(content), 'utf8');
+}
+
+async function writeExistingMarkdownFileWithCanonicalEnding(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  const handle = await fs.promises.open(filePath, 'r+');
+  try {
+    await handle.truncate(0);
+    await handle.writeFile(withCanonicalMarkdownFileEnding(content), 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function writeNewMarkdownFileWithCanonicalEnding(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  await fs.promises.writeFile(filePath, withCanonicalMarkdownFileEnding(content), {
+    encoding: 'utf8',
+    flag: 'wx',
+  });
 }
 
 function withCanonicalMarkdownFileEnding(content: string): string {

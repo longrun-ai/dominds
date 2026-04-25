@@ -790,24 +790,32 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 - 差遣牒保持不变且可访问
 - 提醒在清晰操作中提供连续性
 
-### `change_mind`
+### 差遣牒变更工具
 
-**目的**：更新对话树中所有对话引用的共享差遣牒内容（不开启新一程对话）。把差遣牒当作任务的**实时协调公告板**。
+**目的**：变更对话树中所有对话引用的共享差遣牒内容（不开启新一程对话）。把差遣牒当作任务的**实时协调公告板**。
 
-**函数工具参数**：
+**工具**：
 
-- `selector: "goals" | "constraints" | "progress"`
-- `content: string`
+- `do_mind`：创建一个新章节；若目标已存在则失败。
+- `mind_more`：向已有章节追加少量条目；默认追加到 `progress`。
+- `change_mind`：替换一个已有章节；若目标不存在则失败。
+- `never_mind`：删除一个已有章节。
+
+**通用章节参数**：
+
+- 顶层章节使用 `selector: "goals" | "constraints" | "progress"`；额外章节使用有效 `selector` 加 `category`
+- `category?: string`
+- `do_mind` / `change_mind` 使用 `content: string`
 
 示例：
 
 ```text
-调用函数工具 `change_mind`：
+调用 `do_mind` 创建缺失章节，或调用 `change_mind` 替换已有章节。
 ```
 
 **行为**：
 
-- 更新 rtws（运行时工作区）差遣牒内容（`*.tsk/` 任务包中恰好一个章节文件）
+- 更新 rtws（运行时工作区）差遣牒内容（每次调用变更 `*.tsk/` 任务包中恰好一个章节文件）
 - **不更改差遣牒路径。** `dlg.taskDocPath` 在对话的整个生命周期中是不可变的。
 - 更新的文件立即对引用它的所有对话可用
 - **不开启新一程对话。** 如需开启新一程对话，请单独使用 `clear_mind`。
@@ -817,7 +825,7 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 
 **实现说明**：
 
-- `change_mind` 仅在主线对话中可用（不在支线对话中）；支线对话必须通过回问诉请（`tellaskBack({ tellaskContent: "..." })`）询问诉请者以更新共享差遣牒。
+- 差遣牒变更工具仅在主线对话中可用（不在支线对话中）；支线对话必须通过回问诉请（`tellaskBack({ tellaskContent: "..." })`）询问诉请者以更新共享差遣牒。
 - 对于 `*.tsk/` 差遣牒任务包，差遣牒是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 [`encapsulated-taskdoc.zh.md`](./encapsulated-taskdoc.zh.md)。
 
 ---
@@ -832,7 +840,7 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 
 - 作用域为单个对话
 - **在 clear_mind 操作中存活**
-- **在 change_mind 操作中存活**
+- **在差遣牒变更操作中存活**
 - 为刷新后的精神焦点提供指导
 - 支持结构化捕获见解、决策和下一步
 
@@ -1432,7 +1440,7 @@ sequenceDiagram
 | 提醒项   | 保留                            |
 | 注册表   | 保留                            |
 
-`change_mind` 不是清晰度操作；它就地更新差遣牒内容，不会清除消息/Q4H/提醒项/注册表。
+差遣牒变更工具不是清晰度操作；它们就地更新差遣牒内容，不会清除消息/Q4H/提醒项/注册表。
 
 ---
 

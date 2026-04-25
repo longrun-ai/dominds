@@ -22,6 +22,7 @@ import {
   changeMindTool,
   clearMindTool,
   deleteReminderTool,
+  doMindTool,
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
@@ -301,6 +302,7 @@ export async function loadAgentMinds(
   ];
   // Taskdoc mutation tools are only available in main dialogs (not sideDialogs).
   if (dialog === undefined || dialog.askerDialog === undefined) {
+    intrinsicFuncTools.push(doMindTool);
     intrinsicFuncTools.push(mindMoreTool);
     intrinsicFuncTools.push(changeMindTool);
     intrinsicFuncTools.push(neverMindTool);

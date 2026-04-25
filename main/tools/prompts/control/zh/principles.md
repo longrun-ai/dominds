@@ -73,7 +73,7 @@
 
 **更新规则：**
 
-- `mind_more` 用于少量追加条目；`change_mind` 用于整章替换；`never_mind` 用于删除整章文件
+- `do_mind` 用于创建新章节；`mind_more` 用于少量追加条目；`change_mind` 用于替换已有整章；`never_mind` 用于删除整章文件
 - 不开启新 course
 - 变更对所有队友可见
 - 写入 `progress` 时，应默认假设全队成员会用它快速同步“当前任务真相”，而不是阅读你的个人过程记录
@@ -82,15 +82,16 @@
 
 ## 工具概览
 
-| 工具            | 功能                                         |
-| --------------- | -------------------------------------------- |
-| add_reminder    | 添加提醒                                     |
-| delete_reminder | 删除提醒                                     |
-| update_reminder | 更新提醒内容                                 |
-| mind_more       | 向差遣牒追加条目（默认 progress）            |
-| change_mind     | 整章替换差遣牒（goals/constraints/progress） |
-| never_mind      | 删除差遣牒章节文件                           |
-| recall_taskdoc  | 读取差遣牒章节                               |
+| 工具            | 功能                              |
+| --------------- | --------------------------------- |
+| add_reminder    | 添加提醒                          |
+| delete_reminder | 删除提醒                          |
+| update_reminder | 更新提醒内容                      |
+| do_mind         | 创建新差遣牒章节                  |
+| mind_more       | 向差遣牒追加条目（默认 progress） |
+| change_mind     | 整章替换已有差遣牒章节            |
+| never_mind      | 删除差遣牒章节文件                |
+| recall_taskdoc  | 读取差遣牒章节                    |
 
 ## 跨对话回复路由
 
@@ -155,7 +156,7 @@
 ## 限制与注意事项
 
 1. `dialog` 提醒会随对话结束而结束；`personal` 提醒会在所有由你主理的后续对话里继续可见
-2. 差遣牒少量新增可用 `mind_more` 追加；整段替换用 `change_mind`，请确保合并已有内容；确需删除整章文件时用 `never_mind`。不要把 `mind_more` 当流水账工具；需要整理、去旧、合并同主题记录时直接 `change_mind`
-3. `mind_more` / `change_mind` / `never_mind` 不开启新 course
+2. 缺失差遣牒章节用 `do_mind` 创建；差遣牒少量新增可用 `mind_more` 追加；已有章节整段替换用 `change_mind`，请确保合并已有内容；确需删除整章文件时用 `never_mind`。不要把 `mind_more` 当流水账工具；需要整理、去旧、合并同主题记录时直接 `change_mind`
+3. `do_mind` / `mind_more` / `change_mind` / `never_mind` 不开启新 course
 4. 接续包提醒项只保留差遣牒仍未覆盖、但恢复工作容易丢的细节；主线对话应先把当前对话历史中应由下一程知会的未落文档讨论细节写入差遣牒合适章节；支线对话在吃紧/告急时只维护足够详尽的接续包提醒项
 5. 不要把 `personal` 提醒堆成长期事实仓库；耐久知识应迁到 `personal_memory`

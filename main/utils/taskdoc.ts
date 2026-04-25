@@ -246,17 +246,44 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
                 .map((n) => `\`${n}\``)
                 .join(', ')}`
             : '';
+        const missingSectionsZh = [
+          goalsStatus === 'missing' ? 'goals' : null,
+          constraintsStatus === 'missing' ? 'constraints' : null,
+          progressStatus === 'missing' ? 'progress' : null,
+        ].filter((section): section is string => section !== null);
+        const presentSectionsZh = [
+          goalsStatus === 'present' ? 'goals' : null,
+          constraintsStatus === 'present' ? 'constraints' : null,
+          progressStatus === 'present' ? 'progress' : null,
+        ].filter((section): section is string => section !== null);
+        const missingSectionLines =
+          missingSectionsZh.length === 0
+            ? []
+            : [
+                ``,
+                `缺失的常驻分段请用函数工具 \`do_mind\` 创建（不要用通用文件工具）：`,
+                ...missingSectionsZh.map(
+                  (section) => `- \`do_mind({"selector":"${section}","content":"..."})\``,
+                ),
+              ];
+        const presentSectionLine =
+          presentSectionsZh.length === 0
+            ? []
+            : [
+                `- 已存在常驻分段（${presentSectionsZh.map((s) => `\`${s}\``).join(' / ')}）需要追加少量条目时，使用 \`mind_more\`；需要整体改写/合并时，使用 \`change_mind\`。没有把握时不要覆盖，优先新增额外章节或追加小条目。`,
+              ];
         const maintenanceLine = isSideDialog
-          ? `- 支线对话中不允许 \`mind_more\` / \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+          ? `- 支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`
           : `- 维护方式：少量新增条目优先用 \`mind_more({\"items\":[\"...\"]})\` 追加到 \`progress\`（也可指定 selector/category）；需要删除陈旧项、重排或压缩时，用 \`change_mind\` 指定分段做整章替换。`;
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录：顶层 3 个分段（\`goals\` / \`constraints\` / \`progress\`）一定会自动注入；\`bearinmind/\`（固定白名单）可选自动注入；其他章节不会自动注入，仅以“目录索引”形式提示并需用 \`recall_taskdoc\` 显式读取。`,
           `- 全队共享：三个分段对所有队友与支线对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
           `- 章节语义约定：\`goals\` / \`constraints\` 是任务契约；\`progress\` 是全队共享、准实时、可扫读的任务公告牌，用于当前有效状态、关键决策、下一步与仍成立阻塞，不是“我当前在做什么”的个人笔记。`,
-          `- 差遣牒维护人（负责执行 \`mind_more\` / \`change_mind\`）：@${taskdocMaintainerId}`,
+          `- 差遣牒维护人（负责执行 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`）：@${taskdocMaintainerId}`,
           `- 重要：差遣牒内容已被系统以内联形式注入到上下文中（本程生成视角下即为最新）。请直接基于上下文里的差遣牒回顾与决策，不要试图用通用文件工具读取 \`*.tsk/\` 下的文件（会被拒绝）。`,
           maintenanceLine,
+          ...presentSectionLine,
           ``,
           `**分段状态：**`,
           `- \`goals.md\`：${goalsZh}`,
@@ -266,17 +293,39 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           ...(bearExtrasLine ? [bearExtrasLine] : []),
           ``,
           extraSectionsBlock,
-          ``,
-          `若某个分段缺失，请用函数工具 \`change_mind\` 创建（不要用通用文件工具）：`,
-          `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
-          `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
-          `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
+          ...missingSectionLines,
           ...(violationsBlock ? ['', violationsBlock] : []),
         ].join('\n');
       }
 
+      const missingSectionsEn = [
+        goalsStatus === 'missing' ? 'goals' : null,
+        constraintsStatus === 'missing' ? 'constraints' : null,
+        progressStatus === 'missing' ? 'progress' : null,
+      ].filter((section): section is string => section !== null);
+      const presentSectionsEn = [
+        goalsStatus === 'present' ? 'goals' : null,
+        constraintsStatus === 'present' ? 'constraints' : null,
+        progressStatus === 'present' ? 'progress' : null,
+      ].filter((section): section is string => section !== null);
+      const missingSectionLines =
+        missingSectionsEn.length === 0
+          ? []
+          : [
+              ``,
+              `Create missing resident sections with the function tool \`do_mind\` (never via general file tools):`,
+              ...missingSectionsEn.map(
+                (section) => `- \`do_mind({"selector":"${section}","content":"..."})\``,
+              ),
+            ];
+      const presentSectionLine =
+        presentSectionsEn.length === 0
+          ? []
+          : [
+              `- For existing resident sections (${presentSectionsEn.map((s) => `\`${s}\``).join(' / ')}), use \`mind_more\` to append small notes, and use \`change_mind\` for full-section rewrite/merge. If unsure, do not overwrite; prefer creating an extra section or appending small notes.`,
+            ];
       const maintenanceLine = isSideDialog
-        ? `- Side Dialogs cannot call \`mind_more\` / \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide entries to append or a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+        ? `- Side Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide the new section to create, entries to append, a fully merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`
         : `- Maintenance: for small additions, prefer \`mind_more({\"items\":[\"...\"]})\` to append to \`progress\` (selector/category may be specified); when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement.`;
       const bearEn =
         bearInMindStatus === 'absent'
@@ -295,9 +344,10 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         `- Our Taskdoc is a \`*.tsk/\` directory: it always auto-injects the 3 top-level sections (\`goals\` / \`constraints\` / \`progress\`); it may auto-inject \`bearinmind/\` (fixed whitelist); any other sections are NOT auto-injected and must be read via \`recall_taskdoc\` (only an index is shown).`,
         `- Team-shared: all 3 sections are visible to teammates and sideDialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
         `- Section semantics: \`goals\` / \`constraints\` are the task contract; \`progress\` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers, not a personal “what I'm doing now” notebook.`,
-        `- Taskdoc maintainer (runs \`mind_more\` / \`change_mind\`): @${taskdocMaintainerId}`,
+        `- Taskdoc maintainer (runs \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`): @${taskdocMaintainerId}`,
         `- Important: Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc; do not try to read files under \`*.tsk/\` via general file tools (they will be rejected).`,
         maintenanceLine,
+        ...presentSectionLine,
         ``,
         `**Sections:**`,
         `- \`goals.md\`: ${goalsStatus}`,
@@ -307,11 +357,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         ...(bearExtrasLine ? [bearExtrasLine] : []),
         ``,
         extraSectionsBlock,
-        ``,
-        `If any section is missing, create it with the function tool \`change_mind\` (never via general file tools):`,
-        `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
-        `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
-        `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
+        ...missingSectionLines,
         ...(violationsBlock ? ['', violationsBlock] : []),
       ].join('\n');
     })();
@@ -322,8 +368,8 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     if (bytes > maxSize) {
       if (language === 'zh') {
         const howToUpdate = isSideDialog
-          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`mind_more\` / \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
-          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`mind_more\` 追加少量条目，或用 \`change_mind\` 做整章替换；禁止覆盖/抹掉他人条目。`;
+          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`
+          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`mind_more\` 追加少量条目，或用 \`change_mind\` 做整章替换；缺失章节用 \`do_mind\` 创建；禁止覆盖/抹掉他人条目。`;
         return {
           type: 'environment_msg',
           role: 'user',
@@ -338,8 +384,8 @@ ${howToUpdate}`,
       }
 
       const howToUpdate = isSideDialog
-        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSide Dialogs cannot call \`mind_more\` / \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with entries to append or a merged full-section replacement draft (do not overwrite/delete other contributors).`
-        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; do not overwrite/delete other contributors.`;
+        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSide Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with the new section to create, entries to append, a merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`
+        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; create missing sections with \`do_mind\`; do not overwrite/delete other contributors.`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -355,8 +401,8 @@ ${howToUpdate}`,
 
     if (language === 'zh') {
       const footerLine = isSideDialog
-        ? `*支线对话中不允许 \`mind_more\` / \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要追加的条目或合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
-        : `*在当前对话中用 \`mind_more\` 追加少量条目，或用 \`change_mind\` 替换整段；更新时禁止覆盖他人条目。*`;
+        ? `*支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。*`
+        : `*在当前对话中用 \`mind_more\` 追加少量条目，或用 \`change_mind\` 替换整段；缺失章节用 \`do_mind\` 创建；更新时禁止覆盖他人条目。*`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -379,8 +425,8 @@ ${footerLine}
     }
 
     const footerLine = isSideDialog
-      ? `*Side Dialogs cannot call \`mind_more\` / \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with entries to append or a merged full-section replacement draft (do not overwrite/delete other contributors).*`
-      : `*In this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; do not overwrite other contributors.*`;
+      ? `*Side Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with the new section to create, entries to append, a merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).*`
+      : `*In this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` for full-section replacements; create missing sections with \`do_mind\`; do not overwrite other contributors.*`;
     return {
       type: 'environment_msg',
       role: 'user',

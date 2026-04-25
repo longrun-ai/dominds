@@ -148,7 +148,7 @@ Below is the canonical copy. If you need to rephrase it for UI layout, you MUST 
 **Taskdoc encapsulation & access restrictions**
 
 - Any `.tsk/` directory and its subpaths (`**/*.tsk/**`) are encapsulated state: general file tools MUST NOT read/write/list them (e.g. `read_file` / `write_file` / `list_dir`).
-- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace; use top-level `selector`, or `category + selector` for extra sections).
+- Taskdoc updates MUST go through explicit Taskdoc function tools: `do_mind` creates a new section, `mind_more` appends small entries to an existing section, `change_mind` replaces an existing section, and `never_mind` deletes a section.
 - To read extra sections that are NOT auto-injected, use the function tool `recall_taskdoc({ category, selector })`.
 
 **Taskdoc auto-injection rules (system prompt)**
@@ -168,21 +168,26 @@ Notes:
 - The effective Taskdoc MUST be deterministic (no hidden reformatting beyond the above framing).
 - Empty sections are allowed but the files still exist.
 
-## `change_mind` Semantics (No Course Reset)
+## Taskdoc Mutation Semantics (No Course Reset)
 
-The function tool `change_mind` updates **exactly one** section file of the Taskdoc package by **replacing its entire contents**.
+Taskdoc mutation function tools each affect **exactly one** section file of the Taskdoc package:
+
+- `do_mind` creates a new section file and MUST fail if the target already exists.
+- `mind_more` appends entries without deduplicating or rewriting old content.
+- `change_mind` replaces an existing section file and MUST fail if the target does not exist.
+- `never_mind` deletes an existing section file.
 
 Critically:
 
-- `change_mind` **MUST NOT** start a new dialog course.
+- Taskdoc mutation tools **MUST NOT** start a new dialog course.
 - If a course reset is desired, call the function tool `clear_mind({ "reminder_content": "<continuation package>" })` (or other course-control mechanisms) separately.
   - Recommendation: include a short, scannable continuation package so the agent can resume after the new course.
 
 ### Arguments (current)
 
-`change_mind` updates **exactly one** Taskdoc section by **replacing its entire contents**.
+`do_mind` and `change_mind` both address **exactly one** Taskdoc section.
 
-It takes:
+They take:
 
 - `selector` (required)
 - `content` (required)
@@ -229,7 +234,7 @@ Behavior:
 Example (bearinmind):
 
 ```text
-Call the function tool `change_mind` with:
+Call the function tool `do_mind` with:
 { "selector": "grants", "category": "bearinmind", "content": "- Allowed: ...\n- Disallowed: ...\n" }
 ```
 
@@ -251,18 +256,20 @@ Call the function tool `change_mind` with:
 
 - The `(category, selector)` pair MUST be valid per the reserved selector rules above; anything else is an error.
 - The body is treated as opaque markdown text; no partial patching/diff semantics are implied.
-- A successful `change_mind` updates the Taskdoc package immediately and becomes visible to:
+- A successful Taskdoc mutation updates the Taskdoc package immediately and becomes visible to:
   - the current dialog
   - all sideDialogs/teammates in the dialog tree
   - any observing WebUI clients
 
 ### Failure cases (non-exhaustive)
 
-`change_mind` MUST be rejected if:
+Taskdoc mutations MUST be rejected if:
 
 - The selector is missing or invalid.
 - The body is missing (empty body is allowed only if explicitly supported; v1 SHOULD reject empty body to prevent mistakes).
 - The call attempts to target files outside the defined set.
+- `do_mind` targets a section that already exists.
+- `change_mind` targets a section that does not exist.
 
 ## File Tool Encapsulation Policy (`**/*.tsk/`)
 
@@ -275,7 +282,7 @@ All general filesystem tools (read/write/list/move/delete) MUST treat any path u
 Rationale:
 
 - Prevents accidental edits via generic file operations.
-- Forces Taskdoc mutations through explicit, semantically meaningful actions (`change_mind`).
+- Forces Taskdoc mutations through explicit, semantically meaningful actions (`do_mind`, `mind_more`, `change_mind`, `never_mind`).
 - Avoids prompt/control-flow footguns where an agent “helpfully” rewrites task constraints without clear intent.
 
 The system prompt (and any tool documentation shown to agents) MUST explicitly state this restriction.

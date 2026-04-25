@@ -88,6 +88,7 @@ async function main(): Promise<void> {
     assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
     assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
     assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
+    assertTrue(!!getTool('do_mind'), 'do_mind tool should exist');
     assertTrue(!!getTool('mind_more'), 'mind_more tool should exist');
     assertTrue(!!getTool('never_mind'), 'never_mind tool should exist');
     assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
@@ -95,10 +96,14 @@ async function main(): Promise<void> {
     console.log('Tool lookup verification passed');
   });
 
-  await runTest('Control toolset exposes mind_more', () => {
+  await runTest('Control toolset exposes Taskdoc mutation tools', () => {
     const controlToolset = getToolset('control');
     assertTrue(Array.isArray(controlToolset), 'control toolset should be an array');
     if (!controlToolset) throw new Error('unreachable');
+    assertTrue(
+      controlToolset.some((tool) => tool.name === 'do_mind'),
+      'control should expose do_mind',
+    );
     assertTrue(
       controlToolset.some((tool) => tool.name === 'mind_more'),
       'control should expose mind_more',

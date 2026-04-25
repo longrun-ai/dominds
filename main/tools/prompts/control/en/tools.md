@@ -136,7 +136,25 @@ status: ok|error
 - If you just finished writing the same continuation info via `add_reminder` / `update_reminder`, prefer `clear_mind({})`
 - If you are not sure whether it duplicates something, a small amount of redundancy is acceptable; do not risk losing information just to force perfect dedupe
 
-### 5. change_mind
+### 5. do_mind
+
+Create a new Taskdoc section. It fails if the target section already exists.
+
+**Parameters:**
+
+- `selector` (required): Chapter selector (goals/constraints/progress)
+- `category` (optional): Extra section directory; with `selector`, targets `<category>/<selector>.md`
+- `content` (required): New section content
+
+**Characteristics:**
+
+- Create-only: it does not overwrite existing content
+- Use this for missing resident sections or new extra sections that preserve details without touching existing Taskdoc text
+- If the target already exists and only needs small additions, use `mind_more`; if it needs a full rewrite/merge, use `change_mind`
+- Does not start a new course
+- Changes visible to all teammates
+
+### 6. change_mind
 
 Update taskdoc chapter.
 
@@ -156,12 +174,12 @@ updated_at: <update timestamp>
 
 **Characteristics:**
 
-- Each call replaces entire chapter
+- Each call replaces an existing entire chapter; it does not create missing sections
 - Does not start a new course
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
-### 6. mind_more
+### 7. mind_more
 
 Append entries to a Taskdoc section; defaults to `progress`, reducing full-section replacement pressure.
 
@@ -191,7 +209,7 @@ mind_more({
 - If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement; if a whole section file should be deleted, use `never_mind`
 - When one topic already has several phase notes, prefer `change_mind` to merge them into a concise current announcement instead of continuing to call `mind_more`
 
-### 7. never_mind
+### 8. never_mind
 
 Delete a Taskdoc section file.
 
@@ -206,7 +224,7 @@ Delete a Taskdoc section file.
 - Use it only when the whole section is no longer valid. If you only need to remove stale entries or compress structure, prefer `change_mind` with the cleaned full section
 - Does not start a new course
 
-### 8. recall_taskdoc
+### 9. recall_taskdoc
 
 Read taskdoc chapter.
 

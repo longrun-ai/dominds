@@ -412,7 +412,7 @@ For detailed implementation specifications, including core tools, technical arch
 **Key Implementation Components**:
 
 - **`clear_mind`**: Function tool for clearing conversational noise and starting a new course
-- **`change_mind`**: Function tool for updating authoritative Taskdocs across dialog hierarchies (no course reset)
+- **Taskdoc mutation tools**: `do_mind`, `mind_more`, `change_mind`, and `never_mind` update authoritative Taskdocs across dialog hierarchies (no course reset)
 - **Reminder Management**: Dialog-scoped working memory that persists across clarity operations
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
 - **Memory Layers**: Dialog-scoped and rtws-persistent memory with autonomous evolution
@@ -549,9 +549,9 @@ dominds dialog start --taskdoc-path tasks/auth-system.tsk
 **Development Phase**:
 
 - Multiple dialog trees can reference the same Taskdoc
-- Team members collaborate by updating the same Taskdoc (via `change_mind` operations)
+- Team members collaborate by updating the same Taskdoc (via explicit Taskdoc mutation tools)
 - Progress tracking persists across conversations
-- Requirements evolve through `change_mind` operations
+- Requirements evolve through Taskdoc mutation operations
 - rtws hard rules:
   - `*.tsk/**` is encapsulated Taskdoc state and is hard-denied for all general file tools.
   - `.minds/**` is reserved rtws state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team_mgmt`.

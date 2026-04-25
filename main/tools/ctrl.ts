@@ -13,6 +13,7 @@
  * - delete_reminder: Delete a reminder by id
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new course, optionally add a reminder
+ * - do_mind: Create a new `.tsk/` Taskdoc section without starting a new course
  * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
  * - mind_more: Append entries to a `.tsk/` Taskdoc section without starting a new course
  * - never_mind: Delete a `.tsk/` Taskdoc section file without starting a new course
@@ -55,6 +56,7 @@ import {
 } from '../tool';
 import {
   appendTaskPackageByChangeMindTarget,
+  createTaskPackageByChangeMindTarget,
   deleteTaskPackageByChangeMindTarget,
   isTaskPackagePath,
   parseTaskPackageChangeMindTarget,
@@ -71,6 +73,7 @@ type CtrlMessages = Readonly<{
   reminderContentEmpty: string;
   invalidReminderPosition: (positionHuman: string, totalPlusOne: number) => string;
   invalidFormatUpdate: string;
+  invalidFormatDoMind: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
   invalidFormatMindMore: string;
@@ -88,6 +91,8 @@ type CtrlMessages = Readonly<{
   invalidCategorySelector: (selector: string) => string;
   topLevelSelectorRequiresNoCategory: (category: string, selector: string) => string;
   bearInMindSelectorRequiresBearInMindCategory: (category: string, selector: string) => string;
+  taskDocSectionAlreadyExists: (relativePath: string) => string;
+  taskDocSectionChangeMissing: (relativePath: string) => string;
   taskDocSectionMissing: (relativePath: string) => string;
   taskDocSectionDeleteMissing: (relativePath: string) => string;
   clearedCoursePrompt: (nextCourse: number) => string;
@@ -473,6 +478,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         `位置 ${positionHuman} 无效。有效范围：1-${totalPlusOne}`,
       invalidFormatUpdate:
         '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
+      invalidFormatDoMind:
+        '参数格式不对。用法：do_mind({ selector: string, category?: string, content: string })',
       invalidFormatChangeMind:
         '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       tooManyArgsChangeMind:
@@ -510,8 +517,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         `选择器 '${selector}' 是顶层保留分段（goals/constraints/progress），不能与 category='${category}' 一起用。`,
       bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
         `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
+      taskDocSectionAlreadyExists: (relativePath) =>
+        `无法新增：${relativePath} 已存在。若确有把握要改写已有章节，请使用 change_mind({ ... })。`,
+      taskDocSectionChangeMissing: (relativePath) =>
+        `无法修改：${relativePath} 不存在。若要新增章节，请使用 do_mind({ ... })。`,
       taskDocSectionMissing: (relativePath) =>
-        `未找到：${relativePath}。\n\n少量追加/创建可用 mind_more；整章创建/替换用 change_mind：\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"..."})`,
+        `未找到：${relativePath}。\n\n新增章节请使用 do_mind；已有章节追加小条目用 mind_more；改写已有章节用 change_mind：\n- do_mind({"category":"<category>","selector":"<selector>","content":"..."})\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"..."})`,
       taskDocSectionDeleteMissing: (relativePath) =>
         `无法删除：${relativePath} 不存在。请先确认要删除的差遣牒章节。`,
       clearedCoursePrompt: (nextCourse) =>
@@ -533,6 +544,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       `Error: Invalid reminder position ${positionHuman}. Valid range: 1-${totalPlusOne}`,
     invalidFormatUpdate:
       'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
+    invalidFormatDoMind:
+      'Error: Invalid args. Use: do_mind({ selector: string, category?: string, content: string })',
     invalidFormatChangeMind:
       'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
     tooManyArgsChangeMind:
@@ -571,8 +584,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       `Error: Selector '${selector}' is reserved for top-level sections (goals/constraints/progress) and must not be used with category='${category}'.`,
     bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
+    taskDocSectionAlreadyExists: (relativePath) =>
+      `Cannot add: \`${relativePath}\` already exists. If you are sure you need to rewrite an existing section, use \`change_mind({ ... })\`.`,
+    taskDocSectionChangeMissing: (relativePath) =>
+      `Cannot change: \`${relativePath}\` does not exist. To create a new section, use \`do_mind({ ... })\`.`,
     taskDocSectionMissing: (relativePath) =>
-      `Not found: \`${relativePath}\`.\n\nUse \`mind_more\` for small append/create updates, or \`change_mind\` for full-section create/replace:\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
+      `Not found: \`${relativePath}\`.\n\nUse \`do_mind\` to create a section, \`mind_more\` for small append-only updates to existing sections, and \`change_mind\` to rewrite existing sections:\n- \`do_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
     taskDocSectionDeleteMissing: (relativePath) =>
       `Cannot delete: \`${relativePath}\` does not exist. Check the Taskdoc section target first.`,
     clearedCoursePrompt: (nextCourse) =>
@@ -878,10 +895,10 @@ export const clearMindTool: FuncTool = {
 export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
-  description: 'Replace one shared Taskdoc section in the Main Dialog.',
+  description: 'Replace one existing shared Taskdoc section in the Main Dialog.',
   descriptionI18n: {
-    en: 'Replace one shared Taskdoc section in the Main Dialog.',
-    zh: '在主线对话中替换一段共享差遣牒章节。',
+    en: 'Replace one existing shared Taskdoc section in the Main Dialog.',
+    zh: '在主线对话中替换一段已存在的共享差遣牒章节。',
   },
   parameters: {
     type: 'object',
@@ -911,12 +928,12 @@ export const changeMindTool: FuncTool = {
       if (language === 'zh') {
         return toolFailure(
           `错误：\`change_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
-            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`mind_more\` 或 \`change_mind\`，并提供要追加的条目或已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`,
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`,
         );
       }
       return toolFailure(
         `Error: \`change_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
-          `Ask the Taskdoc maintainer @${maintainerId} to run \`mind_more\` or \`change_mind\` with entries to append or a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` with the new section to create, entries to append, a fully merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`,
       );
     }
 
@@ -973,13 +990,143 @@ export const changeMindTool: FuncTool = {
       }
     }
 
-    await updateTaskPackageByChangeMindTarget({
+    const result = await updateTaskPackageByChangeMindTarget({
       taskPackageDirFullPath: fullPath,
       target: parsed.target,
       content: newTaskDocContent,
       updatedBy: caller.id,
     });
-    return formatToolActionResult(language, 'mindChanged');
+    switch (result.kind) {
+      case 'updated':
+        return formatToolActionResult(language, 'mindChanged');
+      case 'missing':
+        return toolFailure(
+          t.taskDocSectionChangeMissing(taskPackageRelativePathForChangeMindTarget(parsed.target)),
+        );
+      default: {
+        const _exhaustive: never = result;
+        return _exhaustive;
+      }
+    }
+  },
+};
+
+export const doMindTool: FuncTool = {
+  type: 'func',
+  name: 'do_mind',
+  description: 'Create one new shared Taskdoc section in the Main Dialog.',
+  descriptionI18n: {
+    en: 'Create one new shared Taskdoc section in the Main Dialog.',
+    zh: '在主线对话中新增一段共享差遣牒章节。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['selector', 'content'],
+    properties: {
+      selector: {
+        type: 'string',
+        description:
+          'Target section selector. Top-level: goals|constraints|progress. Under category="bearinmind": contracts|acceptance|grants|runbook|decisions|risks. For other categories: any identifier.',
+      },
+      category: {
+        type: 'string',
+        description:
+          'Optional category directory within the Taskdoc package. When present, selector targets <category>/<selector>.md.',
+      },
+      content: { type: 'string', description: 'New section content.' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+
+    if (dlg.askerDialog !== undefined) {
+      const maintainerId = dlg instanceof SideDialog ? dlg.mainDialog.agentId : dlg.agentId;
+      if (language === 'zh') {
+        return toolFailure(
+          `错误：\`do_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`,
+        );
+      }
+      return toolFailure(
+        `Error: \`do_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` with the new section to create, entries to append, a fully merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`,
+      );
+    }
+
+    const selectorValue = args['selector'];
+    const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
+    if (!selector) return toolFailure(t.selectorRequired);
+
+    const categoryValue = args['category'];
+    if (categoryValue !== undefined && typeof categoryValue !== 'string') {
+      return toolFailure(t.invalidFormatDoMind);
+    }
+    const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
+
+    const contentValue = args['content'];
+    const newTaskDocContent = typeof contentValue === 'string' ? contentValue.trim() : '';
+    if (!newTaskDocContent) return toolFailure(t.taskDocContentRequired);
+
+    // Taskdoc path is immutable for the dialog lifecycle.
+    const taskDocPath = dlg.taskDocPath;
+    if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
+
+    const workspaceRoot = path.resolve(process.cwd());
+    const fullPath = path.resolve(workspaceRoot, taskDocPath);
+    if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
+      return toolFailure(t.pathMustBeWithinWorkspace);
+    }
+
+    if (!isTaskPackagePath(taskDocPath)) return toolFailure(t.invalidTaskDocPath(taskDocPath));
+
+    const parsed = parseTaskPackageChangeMindTarget({ selector, category });
+    if (parsed.kind !== 'ok') {
+      const e = parsed.error;
+      switch (e.kind) {
+        case 'selector_required':
+          return toolFailure(t.selectorRequired);
+        case 'invalid_category_name':
+          return toolFailure(t.invalidCategory(e.category));
+        case 'invalid_category_selector':
+          return toolFailure(t.invalidCategorySelector(e.selector));
+        case 'invalid_top_level_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'invalid_bearinmind_selector':
+          return toolFailure(t.invalidSelector(e.selector));
+        case 'top_level_selector_requires_no_category':
+          return toolFailure(t.topLevelSelectorRequiresNoCategory(e.category, e.selector));
+        case 'bearinmind_selector_requires_bearinmind_category':
+          return toolFailure(
+            t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector),
+          );
+        default: {
+          const _exhaustive: never = e;
+          return toolFailure(String(_exhaustive));
+        }
+      }
+    }
+
+    const result = await createTaskPackageByChangeMindTarget({
+      taskPackageDirFullPath: fullPath,
+      target: parsed.target,
+      content: newTaskDocContent,
+      updatedBy: caller.id,
+    });
+    switch (result.kind) {
+      case 'created':
+        return formatToolActionResult(language, 'mindChanged');
+      case 'exists':
+        return toolFailure(
+          t.taskDocSectionAlreadyExists(taskPackageRelativePathForChangeMindTarget(parsed.target)),
+        );
+      default: {
+        const _exhaustive: never = result;
+        return _exhaustive;
+      }
+    }
   },
 };
 
@@ -1018,12 +1165,12 @@ export const neverMindTool: FuncTool = {
       if (language === 'zh') {
         return toolFailure(
           `错误：\`never_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
-            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`never_mind\`，并提供要删除的章节选择器。`,
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`,
         );
       }
       return toolFailure(
         `Error: \`never_mind\` is only available in the Main Dialog (not in Side Dialogs).\n` +
-          `Ask the Taskdoc maintainer @${maintainerId} to run \`never_mind\` with the section selector to delete.`,
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` with the new section to create, entries to append, a fully merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`,
       );
     }
 
@@ -1141,12 +1288,12 @@ export const mindMoreTool: FuncTool = {
       if (language === 'zh') {
         return toolFailure(
           `错误：\`mind_more\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
-            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`mind_more\` 或 \`change_mind\`，并提供要追加或已合并好的内容（禁止覆盖/抹掉他人条目）。`,
+            `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`,
         );
       }
       return toolFailure(
         `Error: \`mind_more\` is only available in the Main Dialog (not in Side Dialogs).\n` +
-          `Ask the Taskdoc maintainer @${maintainerId} to run \`mind_more\` or \`change_mind\` with the entries to append or a merged draft (do not overwrite/delete other contributors).`,
+          `Ask the Taskdoc maintainer @${maintainerId} to run \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` with the new section to create, entries to append, a merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`,
       );
     }
 

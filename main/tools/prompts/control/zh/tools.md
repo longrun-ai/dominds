@@ -136,7 +136,25 @@ status: ok|error
 - 若你刚刚已经 `add_reminder` / `update_reminder` 完同一份接续信息，优先直接 `clear_mind({})`
 - 若不确定是否重复，少量重复可以接受；不要为了“绝不重复”而冒信息丢失风险
 
-### 5. change_mind
+### 5. do_mind
+
+创建新的差遣牒章节。若目标章节已存在，会失败。
+
+**参数：**
+
+- `selector`（必需）：章节选择器（goals/constraints/progress）
+- `category`（可选）：额外章节目录；与 `selector` 组合定位 `<category>/<selector>.md`
+- `content`（必需）：新章节内容
+
+**特点：**
+
+- 只创建，不覆盖已有内容
+- 适合创建缺失的常驻章节，或新增额外章节来保留细节，同时不触碰已有差遣牒正文
+- 若目标已存在且只需少量补充，用 `mind_more`；若需要整章改写/合并，用 `change_mind`
+- 不开启新 course
+- 变更对所有队友可见
+
+### 6. change_mind
 
 更新差遣牒章节。
 
@@ -156,12 +174,12 @@ updated_at: <更新时间戳>
 
 **特点：**
 
-- 每次调用替换整个章节
+- 每次调用替换已有的整个章节；不会创建缺失章节
 - 不开启新 course
 - 变更对所有队友可见
 - 约束规则：`constraints` 只写任务特有硬要求，不得重复系统提示/工具文档中的全局规则；一经发现重复，必须删除并告知用户
 
-### 6. mind_more
+### 7. mind_more
 
 向差遣牒章节追加条目；默认追加到 `progress`，用于降低整章替换压力。
 
@@ -188,7 +206,7 @@ mind_more({
 - 若需要删除陈旧项、重排结构或压缩公告牌，仍使用 `change_mind` 做整章替换；若要删除整个章节文件，使用 `never_mind`
 - 当同一主题已经有多条阶段记录时，优先 `change_mind` 合并成当前仍有效的简明公告，而不是继续 `mind_more`
 
-### 7. never_mind
+### 8. never_mind
 
 删除差遣牒章节文件。
 
@@ -203,7 +221,7 @@ mind_more({
 - 仅用于章节整体不再成立；如果只是删除几条陈旧项或压缩结构，优先用 `change_mind` 写回整理后的全文
 - 不开启新 course
 
-### 8. recall_taskdoc
+### 9. recall_taskdoc
 
 读取差遣牒章节。
 

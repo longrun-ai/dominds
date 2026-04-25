@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { DialogStore } from '../main/dialog';
-import { MainDialog } from '../main/dialog';
+import { DialogStore, MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import type { Team } from '../main/team';
-import { changeMindTool, mindMoreTool, neverMindTool, recallTaskdocTool } from '../main/tools/ctrl';
+import {
+  changeMindTool,
+  doMindTool,
+  mindMoreTool,
+  neverMindTool,
+  recallTaskdocTool,
+} from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
@@ -41,6 +46,8 @@ function assertSingleTrailingLf(content: string, label: string): void {
   assert.ok(!content.endsWith('\n\n'), `${label} should not grow extra trailing blank lines`);
 }
 
+class TestDialogStore extends DialogStore {}
+
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-taskpkg-'));
@@ -50,7 +57,7 @@ async function main(): Promise<void> {
 
     const taskDocPath = 'my-task.tsk';
     const taskDir = path.resolve(tmpRoot, taskDocPath);
-    const store = {} as unknown as DialogStore;
+    const store = new TestDialogStore();
 
     // 0) Legacy single-file Taskdocs are rejected.
     const legacyDlg = new MainDialog(store, 'legacy.md', undefined, 'tester');
@@ -88,6 +95,10 @@ async function main(): Promise<void> {
         '`progress` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers',
       ),
     );
+    assert.ok(
+      msg1Content.includes('Create missing resident sections with the function tool `do_mind`'),
+    );
+    assert.ok(msg1Content.includes('`do_mind({"selector":"goals","content":"..."})`'));
 
     setWorkLanguage('zh');
     const msg1Zh = await formatTaskDocContent(dlg);
@@ -97,6 +108,8 @@ async function main(): Promise<void> {
         '`progress` 是全队共享、准实时、可扫读的任务公告牌，用于当前有效状态、关键决策、下一步与仍成立阻塞，不是“我当前在做什么”的个人笔记',
       ),
     );
+    assert.ok(msg1ZhContent.includes('缺失的常驻分段请用函数工具 `do_mind` 创建'));
+    assert.ok(msg1ZhContent.includes('`do_mind({"selector":"goals","content":"..."})`'));
     setWorkLanguage('en');
 
     // Note: formatting does not auto-create files; Taskdoc package updates should be explicit.
@@ -135,6 +148,8 @@ async function main(): Promise<void> {
 
     const msg2 = await formatTaskDocContent(dlg);
     const msg2Content = requireMessageContent(msg2);
+    assert.ok(msg2Content.includes('use `mind_more` to append small notes'));
+    assert.ok(msg2Content.includes('use `change_mind` for full-section rewrite/merge'));
     assert.ok(msg2Content.includes('## Goals'));
     assert.ok(msg2Content.includes(newGoals));
     assert.ok(msg2Content.includes('- Zero regressions\n\n## Constraints'));
@@ -144,6 +159,52 @@ async function main(): Promise<void> {
     assert.ok(!msg2Content.includes('## Bear In Mind'));
     assert.ok(msg2Content.includes('## Progress'));
     assert.ok(msg2Content.includes(newProgress));
+
+    const sideDlg = await dlg.createSideDialog('sidekick', ['@sidekick'], 'Check Taskdoc copy.', {
+      callName: 'tellask',
+      originMemberId: 'tester',
+      askerDialogId: dlg.id.selfId,
+      callId: 'call-side-taskdoc-copy',
+    });
+    const sideMsg = await formatTaskDocContent(sideDlg);
+    const sideMsgContent = requireMessageContent(sideMsg);
+    assert.ok(
+      sideMsgContent.includes(
+        'Side Dialogs cannot call `do_mind` / `mind_more` / `change_mind` / `never_mind`',
+      ),
+    );
+    const sideMutationFailures = [
+      await doMindTool.call(sideDlg, { id: 'tester' } as unknown as Team.Member, {
+        selector: 'ux',
+        content: 'new section',
+      }),
+      await changeMindTool.call(sideDlg, { id: 'tester' } as unknown as Team.Member, {
+        selector: 'progress',
+        content: 'replacement',
+      }),
+      await mindMoreTool.call(sideDlg, { id: 'tester' } as unknown as Team.Member, {
+        items: ['- appended'],
+      }),
+      await neverMindTool.call(sideDlg, { id: 'tester' } as unknown as Team.Member, {
+        selector: 'progress',
+      }),
+    ];
+    for (const failure of sideMutationFailures) {
+      assert.equal(failure.outcome, 'failure');
+      assert.ok(failure.content.includes('do_mind'));
+      assert.ok(failure.content.includes('mind_more'));
+      assert.ok(failure.content.includes('change_mind'));
+      assert.ok(failure.content.includes('never_mind'));
+    }
+    setWorkLanguage('zh');
+    const sideMsgZh = await formatTaskDocContent(sideDlg);
+    const sideMsgZhContent = requireMessageContent(sideMsgZh);
+    assert.ok(
+      sideMsgZhContent.includes(
+        '支线对话中不允许 `do_mind` / `mind_more` / `change_mind` / `never_mind`',
+      ),
+    );
+    setWorkLanguage('en');
 
     // 3) Optional injected bearinmind/ should be included (fixed order) and bounded.
     await fs.mkdir(path.join(taskDir, 'bearinmind'), { recursive: true });
@@ -191,8 +252,49 @@ async function main(): Promise<void> {
         selector: 'missing',
       })
     ).content;
+    assert.ok(missingRecall.includes('do_mind'));
     assert.ok(missingRecall.includes('mind_more'));
     assert.ok(missingRecall.includes('change_mind'));
+
+    const createExtraResult = await doMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'notes',
+        content: 'UX notes\r\n\r\n',
+      },
+    );
+    assert.equal(createExtraResult.outcome, 'success');
+    const createdNotesContent = await fs.readFile(path.join(taskDir, 'ux', 'notes.md'), 'utf-8');
+    assert.equal(createdNotesContent, 'UX notes\n');
+    assertSingleTrailingLf(createdNotesContent, 'ux/notes.md');
+
+    const duplicateCreateResult = await doMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'notes',
+        content: 'should not overwrite',
+      },
+    );
+    assert.equal(duplicateCreateResult.outcome, 'failure');
+    assert.ok(duplicateCreateResult.content.includes('already exists'));
+    assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'notes.md'), 'utf-8'), 'UX notes\n');
+
+    const changeMissingResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'missing',
+        content: 'should not create',
+      },
+    );
+    assert.equal(changeMissingResult.outcome, 'failure');
+    assert.ok(changeMissingResult.content.includes('does not exist'));
+    assert.ok(!(await pathExists(path.join(taskDir, 'ux', 'missing.md'))));
 
     const changeMindResult = await changeMindTool.call(
       dlg,
@@ -330,6 +432,37 @@ async function main(): Promise<void> {
     assert.equal(deleteTopLevelResult.outcome, 'success');
     const afterTopLevelDelete = await readTaskPackageSections(taskDir);
     assert.equal(afterTopLevelDelete.constraints.kind, 'missing');
+
+    const recreateTopLevelResult = await doMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        selector: 'constraints',
+        content: '- Recreated constraint\r\n\r\n',
+      },
+    );
+    assert.equal(recreateTopLevelResult.outcome, 'success');
+    const recreatedConstraintsFileContent = await fs.readFile(
+      path.join(taskDir, 'constraints.md'),
+      'utf-8',
+    );
+    assert.equal(recreatedConstraintsFileContent, '- Recreated constraint\n');
+    assertSingleTrailingLf(recreatedConstraintsFileContent, 'recreated constraints.md');
+
+    const duplicateTopLevelCreateResult = await doMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        selector: 'constraints',
+        content: 'should not overwrite',
+      },
+    );
+    assert.equal(duplicateTopLevelCreateResult.outcome, 'failure');
+    assert.ok(duplicateTopLevelCreateResult.content.includes('already exists'));
+    assert.equal(
+      await fs.readFile(path.join(taskDir, 'constraints.md'), 'utf-8'),
+      '- Recreated constraint\n',
+    );
 
     console.log('✅ task-package tests passed');
   } finally {

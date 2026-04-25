@@ -169,7 +169,7 @@ Current behavior:
   generations; configurable per model).
 - Each inserted prompt is split by the program according to dialog scope, so the agent does not decide
   whether it is in the Main Dialog or a Side Dialog:
-  - Main Dialog: update Taskdoc first with `mind_more` / `change_mind`, then curate reminders (at least one call)
+  - Main Dialog: create or update Taskdoc first with `do_mind` / `change_mind`, then curate reminders (at least one call)
   - Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; directly curate sufficiently detailed reminders (at least one call)
   - `update_reminder` (preferred) / `add_reminder`
   - Default to one structured continuation-package reminder; if the current course is already under remediation and one structured reminder cannot be produced directly from already observed facts, rough multi-reminder carry-over is acceptable
@@ -182,7 +182,7 @@ When `level === 'critical'`, the driver enters a **countdown remediation** (max 
 - On each turn, the driver records a **role=user prompt** (persisted as a user message) that is
   visible in the UI as a user prompt. The prompt is scope-specific:
   - Main Dialog prompt: first write undocumented discussion details that the next course needs to know
-    into the appropriate Taskdoc sections with `mind_more` / `change_mind`, then curate reminders via
+    into the appropriate Taskdoc sections with `do_mind` / `change_mind`, then curate reminders via
     `update_reminder` / `add_reminder`, and call `clear_mind`.
   - Side Dialog prompt: do not maintain Taskdoc and do not draft Taskdoc update proposals; directly
     maintain sufficiently detailed continuation-package reminders with no technical length limit, then

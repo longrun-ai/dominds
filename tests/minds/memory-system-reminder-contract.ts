@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     'en critical prompt should require reviewing undocumented discussion details before continuation reminders',
   );
   assert.ok(
-    en.includes('`mind_more`/`change_mind`'),
+    en.includes('prefer creating a new section with `do_mind`'),
     'en critical prompt should name Taskdoc update tools for main-dialog remediation',
   );
   assert.ok(
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
     'en side critical prompt should permit detailed reminders without technical length pressure',
   );
   assert.ok(
-    !enSide.includes('mind_more') && !enSide.includes('change_mind'),
+    !enSide.includes('do_mind') && !enSide.includes('mind_more') && !enSide.includes('change_mind'),
     'en side critical prompt should not mention Taskdoc update tools',
   );
   assert.ok(

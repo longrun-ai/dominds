@@ -813,24 +813,32 @@ Invoke the function tool `clear_mind` with:
 - Taskdoc remains unchanged and accessible
 - Reminders provide continuity across the clarity operation
 
-### `change_mind`
+### Taskdoc Mutation Tools
 
-**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (without starting a new dialog course). Treat the Taskdoc as the task’s **live coordination bulletin board**.
+**Purpose**: Mutate the shared Taskdoc content that all dialogs in the dialog tree reference (without starting a new dialog course). Treat the Taskdoc as the task’s **live coordination bulletin board**.
 
-**Function tool arguments**:
+**Tools**:
 
-- `selector: "goals" | "constraints" | "progress"`
-- `content: string`
+- `do_mind`: create one new section; fails if the target already exists.
+- `mind_more`: append small entries to an existing section; defaults to `progress`.
+- `change_mind`: replace one existing section; fails if the target does not exist.
+- `never_mind`: delete one existing section.
+
+**Common section arguments**:
+
+- `selector: "goals" | "constraints" | "progress"` for top-level sections; or a valid selector with `category`
+- `category?: string`
+- `content: string` for `do_mind` / `change_mind`
 
 Example:
 
 ```text
-Invoke the function tool `change_mind` with:
+Invoke `do_mind` to create a missing section, or `change_mind` to replace an existing section.
 ```
 
 **Behavior**:
 
-- Updates the rtws (runtime workspace) Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
+- Updates the rtws (runtime workspace) Taskdoc content (exactly one section file per call in a `*.tsk/` Taskdoc package)
 - **Does not change the Taskdoc path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
 - **Does not start a new dialog course.** If starting a new dialog course is desired, use `clear_mind` separately.
@@ -840,7 +848,7 @@ Invoke the function tool `change_mind` with:
 
 **Implementation Notes**:
 
-- `change_mind` is only available in main dialogs (not sideDialogs); sideDialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
+- Taskdoc mutation tools are only available in main dialogs (not sideDialogs); sideDialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
 - For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ---
@@ -855,7 +863,7 @@ Invoke the function tool `change_mind` with:
 
 - Scoped to individual dialogs
 - **Survive clear_mind operations**
-- **Survive change_mind operations**
+- **Survive Taskdoc mutation operations**
 - Provide guidance for refreshed mental focus
 - Support structured capture of insights, decisions, and next steps
 
@@ -1437,7 +1445,7 @@ sequenceDiagram
 | Reminders     | Preserved                                    |
 | Registry      | Preserved                                    |
 
-`change_mind` is not a clarity operation; it updates Taskdoc content in-place and does not clear messages/Q4H/reminders/registry.
+Taskdoc mutation tools are not clarity operations; they update Taskdoc content in-place and do not clear messages/Q4H/reminders/registry.
 
 ---
 
