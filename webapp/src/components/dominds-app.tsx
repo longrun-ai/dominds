@@ -11620,6 +11620,29 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
+        case 'tellask_call_anchor_evt': {
+          const activeDialogContainer = this.shadowRoot?.querySelector(
+            '#dialog-container',
+          ) as DomindsDialogContainer | null;
+          if (activeDialogContainer) {
+            await activeDialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
+
+          const routedDialogContainer = this.getDialogContainerForEvent(message);
+          if (routedDialogContainer && routedDialogContainer !== activeDialogContainer) {
+            await routedDialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
+
+          const ts = (message as TypedDialogEvent).timestamp;
+          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+            status === 'running' ? { suppressRender: true } : undefined,
+          );
+          break;
+        }
+
         case 'tellask_result_evt':
         case 'tellask_carryover_evt': {
           const dialogContainer = this.shadowRoot?.querySelector(
