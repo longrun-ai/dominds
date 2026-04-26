@@ -3482,10 +3482,10 @@ export function renderTeamManual(language: LanguageCode): string {
 
         windowsHost
           ? '默认策略（可被用户覆盖）：\n' +
-            '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
+            '1) 新增成员时，`diligence-push-max` 默认设为 `99`（除非用户明确要求其他值）。\n' +
             '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；在 Windows 环境下不要配置 `codex_inspect_and_patch_tools`。如需读/探测 rtws，再按需授权 `os` 给少数专员成员。'
           : '默认策略（可被用户覆盖）：\n' +
-            '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
+            '1) 新增成员时，`diligence-push-max` 默认设为 `99`（除非用户明确要求其他值）。\n' +
             '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标模型属于 `gpt-5.x` 家族时，在基线上追加 `codex_inspect_and_patch_tools`（而不是替代），除非用户明确要求其他组合。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
@@ -3553,8 +3553,8 @@ export function renderTeamManual(language: LanguageCode): string {
         'If you want a visible teammate that behaves close to stock Codex, a practical pattern is to add a member such as `members.codex`, keep `provider: codex`, grant the normal coding toolsets (`ws_read` / `ws_mod` / `codex_inspect_and_patch_tools` unless the human explicitly asks otherwise), and write that teammate persona as clear Dominds-native role boundaries, delivery rules, and team guidance. Even when the teammate does not use `provider: codex`, you should still recommend `codex_inspect_and_patch_tools` for `gpt-5.x` models as an extra inspect-and-patch layer on top of `ws_read` / `ws_mod`.',
         'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
         windowsHost
-          ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_inspect_and_patch_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
-          : 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target model is in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
+          ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `99` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_inspect_and_patch_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
+          : 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `99` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target model is in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.',
         'Role ownership is not write permission: even if `.minds/team/<id>/*` belongs to a member role, editing it still depends on whether the current actor holds `team_mgmt` or equivalent team-asset maintenance authority. “This is your own persona/knowhow/pitfalls” does not mean “you may rewrite it yourself”.',

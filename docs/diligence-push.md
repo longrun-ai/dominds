@@ -126,7 +126,7 @@ members:
 
 Rules:
 
-- If missing, `diligence-push-max` defaults to **3** for that member.
+- If missing, `diligence-push-max` defaults to **99** for that member.
 - If `diligence-push-max < 1`, diligence-push is disabled for that member (no injection), even if the diligence file exists.
 - Built-in shadow members `fuxi` and `pangu` default to `diligence-push-max: 0` unless explicitly overridden in team.yaml.
 

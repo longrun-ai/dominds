@@ -1,6 +1,6 @@
 import type { LanguageCode } from './types/language';
 
-export const DEFAULT_DILIGENCE_PUSH_MAX = 3;
+export const DEFAULT_DILIGENCE_PUSH_MAX = 99;
 
 export const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
   zh: [
