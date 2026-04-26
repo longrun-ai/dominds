@@ -6,13 +6,16 @@ import type {
   DialogLlmRetryExhaustedReason,
 } from '@longrun-ai/kernel/types/display-state';
 import {
+  toCalleeCourseNumber,
+  toCalleeGenerationSeqNumber,
   toRootGenerationAnchor,
   type DialogFbrState,
-  type TellaskCallAnchorRecord,
+  type TellaskAnchorRecord,
+  type TellaskCalleeRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
-import { Dialog, MainDialog, SideDialog } from '../../dialog';
+import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
   clearDialogInterruptedExecutionMarker,
@@ -25,7 +28,7 @@ import {
   setDialogExecutionMarker,
 } from '../../dialog-display-state';
 import { isInterruptionReasonManualResumeEligible } from '../../dialog-interruption';
-import { postDialogEvent } from '../../evt-registry';
+import { postDialogEvent, postDialogEventById } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
@@ -2100,9 +2103,9 @@ export async function driveDialogStreamCore(
                   `kernel-driver assignment anchor invariant violation: empty callId (dialog=${dlg.id.valueOf()})`,
                 );
               }
-              const record: TellaskCallAnchorRecord = {
+              const record: TellaskAnchorRecord = {
                 ts: formatUnifiedTimestamp(new Date()),
-                type: 'tellask_call_anchor_record',
+                type: 'tellask_anchor_record',
                 anchorRole: 'assignment',
                 callId: normalizedCallId,
                 genseq: dlg.activeGenSeq,
@@ -2114,6 +2117,43 @@ export async function driveDialogStreamCore(
               };
               const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
               await DialogPersistence.appendEvent(dlg.id, course, record, dlg.status);
+              if (dlg instanceof SideDialog) {
+                const ownerDialogId = new DialogID(replyTarget.ownerDialogId, dlg.id.rootId);
+                const ownerDialogStatus =
+                  ownerDialogId.selfId === dlg.mainDialog.id.selfId
+                    ? dlg.mainDialog.status
+                    : dlg.status;
+                const calleeCourse = toCalleeCourseNumber(course);
+                const calleeGenseq = toCalleeGenerationSeqNumber(dlg.activeGenSeq);
+                const calleeRecord: TellaskCalleeRecord = {
+                  ts: formatUnifiedTimestamp(new Date()),
+                  type: 'tellask_callee_record',
+                  ...toRootGenerationAnchor({
+                    rootCourse: dlg.mainDialog.currentCourse,
+                    rootGenseq: dlg.mainDialog.activeGenSeqOrUndefined ?? 0,
+                  }),
+                  genseq: replyTarget.callSiteGenseq,
+                  callId: normalizedCallId,
+                  calleeDialogId: dlg.id.selfId,
+                  calleeCourse,
+                  calleeGenseq,
+                };
+                await DialogPersistence.appendEvent(
+                  ownerDialogId,
+                  replyTarget.callSiteCourse,
+                  calleeRecord,
+                  ownerDialogStatus,
+                );
+                postDialogEventById(ownerDialogId, {
+                  type: 'tellask_callee_evt',
+                  course: replyTarget.callSiteCourse,
+                  genseq: replyTarget.callSiteGenseq,
+                  callId: normalizedCallId,
+                  calleeDialogId: dlg.id.selfId,
+                  calleeCourse,
+                  calleeGenseq,
+                });
+              }
             }
           }
 

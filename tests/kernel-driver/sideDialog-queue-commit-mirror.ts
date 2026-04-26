@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 
+import { DialogID } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 import {
   formatAssignmentFromAskerDialog,
   formatTeammateResponseContent,
@@ -112,6 +114,42 @@ async function main(): Promise<void> {
     assert.ok(
       tellaskResultMsgs.some(isCanonicalMirroredResult),
       'expected mirrored tellask_result_msg with canonical transfer payload and structured tellask fields',
+    );
+    const mirroredResult = tellaskResultMsgs.find(isCanonicalMirroredResult);
+    assert.ok(mirroredResult, 'expected canonical mirrored teammate-response message');
+    const responseRoute = mirroredResult.route;
+    assert.ok(responseRoute, 'mirrored teammate-response should carry callee response route');
+    assert.equal(responseRoute.calleeDialogId !== undefined, true);
+    assert.equal(responseRoute.calleeCourse !== undefined, true);
+    assert.equal(responseRoute.calleeGenseq !== undefined, true);
+    const calleeDialogId = new DialogID(responseRoute.calleeDialogId!, dlg.id.rootId);
+    const calleeEvents = await DialogPersistence.loadCourseEvents(
+      calleeDialogId,
+      responseRoute.calleeCourse!,
+    );
+    const assignmentAnchor = calleeEvents.find(
+      (event) =>
+        event.type === 'tellask_anchor_record' &&
+        event.anchorRole === 'assignment' &&
+        event.callId === 'root-call-pangu',
+    );
+    const responseAnchor = calleeEvents.find(
+      (event) =>
+        event.type === 'tellask_anchor_record' &&
+        event.anchorRole === 'response' &&
+        event.callId === 'root-call-pangu',
+    );
+    assert.ok(assignmentAnchor, 'expected callee assignment anchor');
+    assert.ok(responseAnchor, 'expected callee response anchor');
+    assert.equal(
+      responseRoute.calleeGenseq,
+      responseAnchor.genseq,
+      'teammate-response route should deep-link to the callee reply bubble',
+    );
+    assert.notEqual(
+      responseRoute.calleeGenseq,
+      assignmentAnchor.genseq,
+      'teammate-response route must not reuse the original callee assignment anchor',
     );
 
     const mirrorIndex = dlg.msgs.findIndex(

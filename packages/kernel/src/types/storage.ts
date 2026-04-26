@@ -93,6 +93,8 @@ export interface SideDialogAssignmentFromAsker {
   originMemberId: string;
   askerDialogId: string;
   callId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;
 }
@@ -118,6 +120,8 @@ export type DialogSideDialogReplyTarget = Readonly<{
   ownerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
 }>;
 
 export type DialogPendingCourseStartPrompt = DialogRuntimePrompt;
@@ -646,9 +650,9 @@ export interface TellaskReplyResolutionRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-type TellaskCallAnchorRecordBase = {
+type TellaskAnchorRecordBase = {
   ts: string;
-  type: 'tellask_call_anchor_record';
+  type: 'tellask_anchor_record';
   rootCourse: RootCourseNumber;
   rootGenseq: RootGenerationSeqNumber;
   callId: string;
@@ -658,30 +662,39 @@ type TellaskCallAnchorRecordBase = {
   sourceTag?: 'priming_script';
 };
 
-export type TellaskCallAnchorRecord =
-  | (TellaskCallAnchorRecordBase & {
+export type TellaskAnchorRecord =
+  | (TellaskAnchorRecordBase & {
       anchorRole: 'assignment';
       askerDialogId?: undefined;
       askerCourse?: undefined;
     })
-  | (TellaskCallAnchorRecordBase & {
+  | (TellaskAnchorRecordBase & {
       anchorRole: 'response';
       askerDialogId: string;
       askerCourse: AskerCourseNumber;
     });
 
-// Requester-course UI navigation metadata for a registered tellask call-site whose callee
-// sideDialog already exists. `genseq`/`callId` identify the requester call-site bubble; the
-// callee fields identify only the target sideDialog until a later assignment anchor upgrades the
-// call-site to a concrete callee `course/genseq`.
-export interface TellaskCallCalleeRecord extends RootGenerationRef {
+// Requester-course UI navigation metadata for a tellask call-site. `genseq`/`callId` identify
+// the requester call-site bubble; the callee fields identify either the target sideDialog only or,
+// once assignment delivery is known, the concrete callee `course/genseq`.
+type TellaskCalleeRecordBase = RootGenerationRef & {
   ts: string;
-  type: 'tellask_call_callee_record';
+  type: 'tellask_callee_record';
   genseq: number;
   callId: string;
   calleeDialogId: string;
   sourceTag?: 'priming_script';
-}
+};
+
+export type TellaskCalleeRecord =
+  | (TellaskCalleeRecordBase & {
+      calleeCourse?: undefined;
+      calleeGenseq?: undefined;
+    })
+  | (TellaskCalleeRecordBase & {
+      calleeCourse: CalleeCourseNumber;
+      calleeGenseq: CalleeGenerationSeqNumber;
+    });
 
 export type TellaskCarryoverRecord =
   | (RootGenerationRef & {
@@ -928,8 +941,8 @@ export type PersistedDialogRecord =
   | UserImageIngestRecord
   | SideDialogRequestRecord
   | TellaskReplyResolutionRecord
-  | TellaskCallAnchorRecord
-  | TellaskCallCalleeRecord
+  | TellaskAnchorRecord
+  | TellaskCalleeRecord
   | TellaskCarryoverRecord
   | GenStartRecord
   | GenFinishRecord

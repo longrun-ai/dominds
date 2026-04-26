@@ -38,6 +38,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: 'root-call-pangu-main',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       sessionSlug: 'main-longline',
       collectiveTargets: ['pangu'],
     });
@@ -78,6 +80,8 @@ async function main(): Promise<void> {
       originMemberId: 'pangu',
       askerDialogId: pangu.id.selfId,
       callId: 'pangu-call-nuwa-registered',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       sessionSlug: 'nested-live-dom',
       collectiveTargets: ['nuwa'],
     });

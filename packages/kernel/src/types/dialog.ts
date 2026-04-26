@@ -14,9 +14,6 @@ import type {
 } from './display-state';
 import type { LanguageCode } from './language';
 import type {
-  AskerCourseNumber,
-  AssignmentCourseNumber,
-  AssignmentGenerationSeqNumber,
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallSiteCourseNo,
@@ -346,32 +343,21 @@ export type TellaskResultEvent =
       };
     });
 
-type TellaskCallAnchorEventBase = {
-  type: 'tellask_call_anchor_evt';
-  course: number;
-  genseq: number;
-  callId: string;
-  assignmentCourse?: AssignmentCourseNumber;
-  assignmentGenseq?: AssignmentGenerationSeqNumber;
-};
-
-export type TellaskCallAnchorEvent =
-  | (TellaskCallAnchorEventBase & {
-      anchorRole: 'assignment';
-      askerDialogId?: undefined;
-      askerCourse?: undefined;
-    })
-  | (TellaskCallAnchorEventBase & {
-      anchorRole: 'response';
-      askerDialogId: string;
-      askerCourse: AskerCourseNumber;
-    });
-
-export type TellaskCallCalleeEvent = LlmGenDlgEvent & {
-  type: 'tellask_call_callee_evt';
+type TellaskCalleeEventBase = LlmGenDlgEvent & {
+  type: 'tellask_callee_evt';
   callId: string;
   calleeDialogId: string;
 };
+
+export type TellaskCalleeEvent =
+  | (TellaskCalleeEventBase & {
+      calleeCourse?: undefined;
+      calleeGenseq?: undefined;
+    })
+  | (TellaskCalleeEventBase & {
+      calleeCourse: CalleeCourseNumber;
+      calleeGenseq: CalleeGenerationSeqNumber;
+    });
 
 export interface ReminderContent {
   content: string;
@@ -594,8 +580,7 @@ export type DialogEvent =
   | GenerationDiscardEvent
   | TellaskCallStartEvent
   | TellaskResultEvent
-  | TellaskCallAnchorEvent
-  | TellaskCallCalleeEvent
+  | TellaskCalleeEvent
   | TellaskCarryoverEvent
   | SideDialogEvent
   | QueueUserMsgEvent

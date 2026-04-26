@@ -12,6 +12,7 @@ import type {
   DialogRuntimeSideDialogPrompt,
   DialogUserPrompt,
 } from '@longrun-ai/kernel/types/drive-intent';
+import type { CallSiteCourseNo, CallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import type { Dialog, DialogID } from '../../dialog';
 
 export type KernelDriverRunControl = DialogRunControlSpec;
@@ -70,6 +71,8 @@ export type KernelDriverSideDialogReplyTarget = {
   ownerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
 };
 
 type KernelDriverPromptWithRunControl<TPrompt extends DialogPrompt> = TPrompt & {

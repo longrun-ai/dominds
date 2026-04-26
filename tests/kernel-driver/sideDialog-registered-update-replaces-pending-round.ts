@@ -27,23 +27,29 @@ async function waitForCalleeLinkEvent(args: {
   subChan: SubChan<TypedDialogEvent>;
   callId: string;
   calleeDialogId: string;
+  requireAssignmentTarget?: boolean;
   timeoutMs: number;
-}): Promise<boolean> {
+}): Promise<TypedDialogEvent | null> {
   const deadline = Date.now() + args.timeoutMs;
   for (;;) {
     const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) return false;
+    if (remainingMs <= 0) return null;
     const event = await Promise.race([
       args.subChan.read(),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), remainingMs)),
     ]);
-    if (event === null || event === EndOfStream) return false;
+    if (event === null || event === EndOfStream) return null;
     if (
-      event.type === 'tellask_call_callee_evt' &&
+      event.type === 'tellask_callee_evt' &&
       event.callId === args.callId &&
-      event.calleeDialogId === args.calleeDialogId
+      event.calleeDialogId === args.calleeDialogId &&
+      (!args.requireAssignmentTarget ||
+        (typeof event.calleeCourse === 'number' &&
+          event.calleeCourse > 0 &&
+          typeof event.calleeGenseq === 'number' &&
+          event.calleeGenseq > 0))
     ) {
-      return true;
+      return event;
     }
   }
 }
@@ -151,20 +157,29 @@ async function main(): Promise<void> {
         },
         true,
       );
-      assert.equal(
+      assert.ok(
         await waitForCalleeLinkEvent({
           subChan: rootSubChan,
           callId: 'call-updated-round',
           calleeDialogId: sideDialog.id.selfId,
           timeoutMs: 1_000,
         }),
-        true,
         'registered update should immediately link the new requester call-site to the reused callee dialog',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
+      assert.ok(
+        await waitForCalleeLinkEvent({
+          subChan: rootSubChan,
+          callId: 'call-updated-round',
+          calleeDialogId: sideDialog.id.selfId,
+          requireAssignmentTarget: true,
+          timeoutMs: 1_000,
+        }),
+        'registered update should notify the requester call-site with the reused callee assignment genseq before reply completion',
       );
     } finally {
       rootSubChan.cancel();
     }
-    await waitForAllDialogsUnlocked(root, 3_000);
 
     const expectedUpdatedPrompt = wrapPromptWithExpectedReplyTool({
       prompt: formatUpdatedAssignmentFromAskerDialog({
@@ -196,7 +211,7 @@ async function main(): Promise<void> {
     assert.ok(
       sideDialogEventsAfterUpdate.some(
         (event) =>
-          event.type === 'tellask_call_anchor_record' &&
+          event.type === 'tellask_anchor_record' &&
           event.anchorRole === 'assignment' &&
           event.callId === 'call-updated-round',
       ),
@@ -238,14 +253,26 @@ async function main(): Promise<void> {
       root.currentCourse,
       root.status,
     );
-    assert.ok(
-      rootEventsAfterUpdate.some(
-        (event) =>
-          event.type === 'tellask_call_callee_record' &&
-          event.callId === 'call-updated-round' &&
-          event.calleeDialogId === sideDialog.id.selfId,
-      ),
+    const updatedRoundCalleeRecords = rootEventsAfterUpdate.filter(
+      (event) =>
+        event.type === 'tellask_callee_record' &&
+        event.callId === 'call-updated-round' &&
+        event.calleeDialogId === sideDialog.id.selfId,
+    );
+    assert.equal(
+      updatedRoundCalleeRecords.length >= 2,
+      true,
       'registered update should persist requester call-site callee dialog link for replay',
+    );
+    assert.ok(
+      updatedRoundCalleeRecords.some(
+        (event) =>
+          typeof event.calleeCourse === 'number' &&
+          event.calleeCourse > 0 &&
+          typeof event.calleeGenseq === 'number' &&
+          event.calleeGenseq > 0,
+      ),
+      'registered update should persist requester-side callee assignment genseq for replay',
     );
     const replacedRoundNotice = rootEventsAfterUpdate.find(
       (event): event is TellaskResultRecord =>

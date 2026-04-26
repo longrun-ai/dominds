@@ -17,8 +17,8 @@ import type {
   ReasoningSummaryItem,
   RuntimeGuideRecord,
   SideDialogRequestRecord,
-  TellaskCallAnchorRecord,
-  TellaskCallCalleeRecord,
+  TellaskAnchorRecord,
+  TellaskCalleeRecord,
   TellaskCallRecord,
   TellaskCarryoverRecord,
   TellaskReplyDirective,
@@ -363,8 +363,8 @@ function isPrimingRecordType(raw: string): raw is PrimingRecordType {
     raw === 'tellask_result_record' ||
     raw === 'sideDialog_request_record' ||
     raw === 'tellask_reply_resolution_record' ||
-    raw === 'tellask_call_anchor_record' ||
-    raw === 'tellask_call_callee_record' ||
+    raw === 'tellask_anchor_record' ||
+    raw === 'tellask_callee_record' ||
     raw === 'tellask_carryover_record' ||
     raw === 'gen_start_record' ||
     raw === 'gen_finish_record'
@@ -393,8 +393,8 @@ function getRecordMarkdownTextField(type: PrimingRecordType): PrimingMarkdownTex
     case 'tool_result_image_ingest_record':
     case 'user_image_ingest_record':
     case 'native_tool_call_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return null;
@@ -1357,7 +1357,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'tellask_call_anchor_record': {
+    case 'tellask_anchor_record': {
       const anchorRole = raw['anchorRole'];
       if (anchorRole !== 'assignment' && anchorRole !== 'response') {
         throw new Error(`${context}.anchorRole must be assignment | response`);
@@ -1385,7 +1385,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
           ? { assignmentGenseq: toAssignmentGenerationSeqNumber(assignmentGenseq) }
           : {}),
       } as const;
-      let record: TellaskCallAnchorRecord;
+      let record: TellaskAnchorRecord;
       switch (anchorRole) {
         case 'assignment':
           if (askerDialogId !== undefined || askerCourse !== undefined) {
@@ -1417,8 +1417,13 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
     }
-    case 'tellask_call_callee_record': {
-      const record: TellaskCallCalleeRecord = {
+    case 'tellask_callee_record': {
+      const calleeCourse = parseOptionalIntegerField(raw, 'calleeCourse', context);
+      const calleeGenseq = parseOptionalIntegerField(raw, 'calleeGenseq', context);
+      if ((calleeCourse === undefined) !== (calleeGenseq === undefined)) {
+        throw new Error(`${context}.calleeCourse and calleeGenseq must be provided together`);
+      }
+      const base = {
         ts: '',
         type,
         ...toRootGenerationAnchor({
@@ -1429,6 +1434,19 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         callId: expectStringField(raw, 'callId', context),
         calleeDialogId: expectStringField(raw, 'calleeDialogId', context),
       };
+      let record: TellaskCalleeRecord;
+      if (calleeCourse === undefined) {
+        record = base;
+      } else {
+        if (calleeGenseq === undefined) {
+          throw new Error(`${context}.calleeCourse and calleeGenseq must be provided together`);
+        }
+        record = {
+          ...base,
+          calleeCourse: toCalleeCourseNumber(calleeCourse),
+          calleeGenseq: toCalleeGenerationSeqNumber(calleeGenseq),
+        };
+      }
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -2108,8 +2126,8 @@ function remapRecordGenseq(
     case 'human_text_record':
     case 'func_result_record':
     case 'sideDialog_request_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return { ...record, genseq: mapGenseq(record.genseq) };
@@ -2178,8 +2196,8 @@ function addPrimingSourceTag(record: PrimingReplayRecord): PrimingReplayRecord {
     case 'tellask_result_record':
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -2207,8 +2225,8 @@ function withTimestamp(record: PrimingReplayRecord, ts: string): PersistedDialog
     case 'tellask_result_record':
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'tellask_carryover_record':
     case 'native_tool_call_record':
     case 'gen_start_record':
@@ -2353,8 +2371,8 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
     case 'user_image_ingest_record':
     case 'native_tool_call_record':
     case 'sideDialog_request_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'tellask_reply_resolution_record':
     case 'gen_start_record':
     case 'gen_finish_record':
@@ -2585,7 +2603,7 @@ function formatScriptMarkdown(args: {
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
-      case 'tellask_call_anchor_record': {
+      case 'tellask_anchor_record': {
         blockMeta['anchorRole'] = record.anchorRole;
         blockMeta['callId'] = record.callId;
         blockMeta['genseq'] = record.genseq;
@@ -2600,12 +2618,14 @@ function formatScriptMarkdown(args: {
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
-      case 'tellask_call_callee_record': {
+      case 'tellask_callee_record': {
         blockMeta['genseq'] = record.genseq;
         blockMeta['rootCourse'] = record.rootCourse;
         blockMeta['rootGenseq'] = record.rootGenseq;
         blockMeta['callId'] = record.callId;
         blockMeta['calleeDialogId'] = record.calleeDialogId;
+        if (record.calleeCourse !== undefined) blockMeta['calleeCourse'] = record.calleeCourse;
+        if (record.calleeGenseq !== undefined) blockMeta['calleeGenseq'] = record.calleeGenseq;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }
@@ -2720,8 +2740,8 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'func_result_record':
     case 'tellask_result_record':
     case 'sideDialog_request_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'tellask_carryover_record':
     case 'gen_start_record':
     case 'gen_finish_record': {

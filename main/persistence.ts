@@ -22,7 +22,6 @@ import type {
   RuntimeGuideEvent,
   SideDialogEvent,
   StreamErrorEvent,
-  TellaskCallAnchorEvent,
   TellaskCallStartEvent,
   TellaskCarryoverEvent,
   TellaskResultEvent,
@@ -47,6 +46,8 @@ import type {
   AgentThoughtRecord,
   AgentWordsRecord,
   AskerDialogStackFrame,
+  CallSiteCourseNo,
+  CallSiteGenseqNo,
   DialogAskerStackState,
   DialogDeferredReplyReassertion,
   DialogFbrState,
@@ -1246,6 +1247,10 @@ function isSideDialogAssignmentFromAsker(value: unknown): value is SideDialogAss
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.askerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
+  if (typeof value.callSiteCourse !== 'number') return false;
+  if (!Number.isInteger(value.callSiteCourse) || value.callSiteCourse <= 0) return false;
+  if (typeof value.callSiteGenseq !== 'number') return false;
+  if (!Number.isInteger(value.callSiteGenseq) || value.callSiteGenseq <= 0) return false;
   if (value.collectiveTargets !== undefined) {
     if (!Array.isArray(value.collectiveTargets)) return false;
     if (!value.collectiveTargets.every((item) => typeof item === 'string')) return false;
@@ -1444,10 +1449,18 @@ function parseDialogSideDialogReplyTarget(value: unknown): DialogSideDialogReply
   if (callType !== 'A' && callType !== 'B' && callType !== 'C') {
     return null;
   }
+  const callSiteCourse = value.callSiteCourse;
+  const callSiteGenseq = value.callSiteGenseq;
+  if (typeof callSiteCourse !== 'number' || !Number.isInteger(callSiteCourse)) return null;
+  if (callSiteCourse <= 0) return null;
+  if (typeof callSiteGenseq !== 'number' || !Number.isInteger(callSiteGenseq)) return null;
+  if (callSiteGenseq <= 0) return null;
   return {
     ownerDialogId,
     callType,
     callId,
+    callSiteCourse: toCallSiteCourseNo(callSiteCourse),
+    callSiteGenseq: toCallSiteGenseqNo(callSiteGenseq),
   };
 }
 
@@ -2029,6 +2042,8 @@ export class DiskFileDialogStore extends DialogStore {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
@@ -2071,6 +2086,8 @@ export class DiskFileDialogStore extends DialogStore {
           originMemberId: options.originMemberId,
           askerDialogId: options.askerDialogId,
           callId: options.callId,
+          callSiteCourse: options.callSiteCourse,
+          callSiteGenseq: options.callSiteGenseq,
           collectiveTargets: options.collectiveTargets,
           effectiveFbrEffort: options.effectiveFbrEffort,
         },
@@ -2111,6 +2128,8 @@ export class DiskFileDialogStore extends DialogStore {
         originMemberId: options.originMemberId,
         askerDialogId: options.askerDialogId,
         callId: options.callId,
+        callSiteCourse: options.callSiteCourse,
+        callSiteGenseq: options.callSiteGenseq,
         collectiveTargets: options.collectiveTargets,
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
@@ -2178,6 +2197,8 @@ export class DiskFileDialogStore extends DialogStore {
           originMemberId: options.originMemberId,
           askerDialogId: options.askerDialogId,
           callId: options.callId,
+          callSiteCourse: options.callSiteCourse,
+          callSiteGenseq: options.callSiteGenseq,
           effectiveFbrEffort: options.effectiveFbrEffort,
         },
       },
@@ -4569,58 +4590,15 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'tellask_call_anchor_record': {
-        const anchorEvent: TellaskCallAnchorEvent & {
-          dialog: {
-            selfId: string;
-            rootId: string;
-          };
-          timestamp: string;
-        } =
-          event.anchorRole === 'assignment'
-            ? {
-                type: 'tellask_call_anchor_evt',
-                course,
-                genseq: event.genseq,
-                anchorRole: 'assignment',
-                callId: event.callId,
-                assignmentCourse: event.assignmentCourse,
-                assignmentGenseq: event.assignmentGenseq,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              }
-            : {
-                type: 'tellask_call_anchor_evt',
-                course,
-                genseq: event.genseq,
-                anchorRole: 'response',
-                callId: event.callId,
-                assignmentCourse: event.assignmentCourse,
-                assignmentGenseq: event.assignmentGenseq,
-                askerDialogId: event.askerDialogId,
-                askerCourse: event.askerCourse,
-                dialog: {
-                  selfId: dialog.id.selfId,
-                  rootId: dialog.id.rootId,
-                },
-                timestamp: event.ts,
-              };
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify(anchorEvent));
-        }
-        break;
-      }
-
-      case 'tellask_call_callee_record': {
+      case 'tellask_callee_record': {
         const calleeEvent = {
-          type: 'tellask_call_callee_evt',
+          type: 'tellask_callee_evt',
           course,
           genseq: event.genseq,
           callId: event.callId,
           calleeDialogId: event.calleeDialogId,
+          ...(event.calleeCourse !== undefined ? { calleeCourse: event.calleeCourse } : {}),
+          ...(event.calleeGenseq !== undefined ? { calleeGenseq: event.calleeGenseq } : {}),
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
@@ -8930,12 +8908,12 @@ export class DialogPersistence {
           // These events are handled separately in dialog restoration
           // Skip them for message reconstruction
           break;
-        case 'tellask_call_anchor_record':
+        case 'tellask_anchor_record':
           // This record is UI navigation metadata for deep links in tellaskee dialogs.
           // It does not contribute to model context or chat transcript reconstruction.
           break;
-        case 'tellask_call_callee_record':
-          // This record is UI navigation metadata for reused registered sideDialog links.
+        case 'tellask_callee_record':
+          // This record is UI navigation metadata for requester-side tellask call-site links.
           // It does not contribute to model context or chat transcript reconstruction.
           break;
         case 'ui_only_markdown_record':

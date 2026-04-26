@@ -56,6 +56,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'root-cross-trigger-pending-sideDialog',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
         collectiveTargets: ['pangu'],
       },
     );

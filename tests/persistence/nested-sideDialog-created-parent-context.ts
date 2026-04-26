@@ -44,6 +44,8 @@ async function main(): Promise<void> {
           originMemberId: 'tester',
           askerDialogId: root.id.selfId,
           callId: 'root-to-mentor',
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
         },
       );
 
@@ -58,6 +60,8 @@ async function main(): Promise<void> {
           originMemberId: 'mentor',
           askerDialogId: parentSideDialog.id.selfId,
           callId: 'mentor-fbr-1',
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
           effectiveFbrEffort: 1,
         },
       );

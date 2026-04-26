@@ -70,6 +70,8 @@ async function runMainDialogScenario(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: 'root-pending-sideDialog-call',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       collectiveTargets: ['pangu'],
     },
   );
@@ -155,6 +157,8 @@ async function runSideDialogScenario(): Promise<void> {
     originMemberId: 'tester',
     askerDialogId: root.id.selfId,
     callId: 'root-to-pangu-call',
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
     sessionSlug: 'parent-session',
     collectiveTargets: ['pangu'],
   });
@@ -169,6 +173,8 @@ async function runSideDialogScenario(): Promise<void> {
       originMemberId: 'pangu',
       askerDialogId: sideDialog.id.selfId,
       callId: 'pangu-to-nuwa-call',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       collectiveTargets: ['nuwa'],
     },
   );
@@ -274,6 +280,8 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: 'root-pending-sideDialog-call-repeated',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       collectiveTargets: ['pangu'],
     },
   );

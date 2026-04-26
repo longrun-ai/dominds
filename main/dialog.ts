@@ -242,6 +242,8 @@ export interface AssignmentFromAsker {
   originMemberId: string;
   askerDialogId: string;
   callId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;
 }
@@ -306,6 +308,8 @@ function buildSideDialogAssignmentPromptMeta(
           ownerDialogId: assignment.askerDialogId,
           callType: 'B',
           callId: assignment.callId,
+          callSiteCourse: assignment.callSiteCourse,
+          callSiteGenseq: assignment.callSiteGenseq,
         },
       };
     case 'tellaskSessionless':
@@ -321,6 +325,8 @@ function buildSideDialogAssignmentPromptMeta(
           ownerDialogId: assignment.askerDialogId,
           callType: 'C',
           callId: assignment.callId,
+          callSiteCourse: assignment.callSiteCourse,
+          callSiteGenseq: assignment.callSiteGenseq,
         },
       };
   }
@@ -679,8 +685,11 @@ export abstract class Dialog {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
+      effectiveFbrEffort?: number;
     },
   ): Promise<SideDialog>;
 
@@ -2270,6 +2279,8 @@ export class SideDialog extends Dialog {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
@@ -2403,6 +2414,8 @@ export class MainDialog extends Dialog {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
@@ -2463,6 +2476,8 @@ export abstract class DialogStore {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
@@ -2487,6 +2502,8 @@ export abstract class DialogStore {
       originMemberId: options.originMemberId,
       askerDialogId: options.askerDialogId,
       callId: options.callId,
+      callSiteCourse: options.callSiteCourse,
+      callSiteGenseq: options.callSiteGenseq,
       collectiveTargets: options.collectiveTargets,
       effectiveFbrEffort: options.effectiveFbrEffort,
     };

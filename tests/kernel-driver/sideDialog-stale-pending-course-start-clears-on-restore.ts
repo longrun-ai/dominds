@@ -30,6 +30,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       sessionSlug: 'stale-pending-course-start',
       collectiveTargets: ['pangu'],
     });

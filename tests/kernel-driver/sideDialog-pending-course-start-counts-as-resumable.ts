@@ -25,6 +25,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'call-pending-course-start-resume-all',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
         sessionSlug: 'pending-course-start-resume-all',
         collectiveTargets: ['pangu'],
       },

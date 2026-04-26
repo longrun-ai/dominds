@@ -275,8 +275,8 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'user_image_ingest_record':
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
     case 'sideDialog_created_record':
@@ -364,8 +364,8 @@ function rewriteRecordForFork(
     case 'native_tool_call_record':
     case 'sideDialog_request_record':
     case 'tellask_reply_resolution_record':
-    case 'tellask_call_anchor_record':
-    case 'tellask_call_callee_record':
+    case 'tellask_anchor_record':
+    case 'tellask_callee_record':
     case 'gen_start_record':
     case 'gen_finish_record':
       return record;

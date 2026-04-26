@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     );
     assert.ok(
       events.some(
-        (event) => event.type === 'tellask_call_anchor_record' && event.anchorRole === 'response',
+        (event) => event.type === 'tellask_anchor_record' && event.anchorRole === 'response',
       ),
       'expected registered sideDialog to emit a response anchor after auto-drive',
     );

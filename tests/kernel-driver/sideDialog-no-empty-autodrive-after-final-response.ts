@@ -137,7 +137,7 @@ async function main(): Promise<void> {
     ).length;
     const lastEventBefore = findLastMeaningfulTailEvent(eventsBefore);
     assert.ok(
-      lastEventBefore?.type === 'tellask_call_anchor_record' &&
+      lastEventBefore?.type === 'tellask_anchor_record' &&
         lastEventBefore.anchorRole === 'response',
       'expected sideDialog to end its finalized round at a response anchor',
     );

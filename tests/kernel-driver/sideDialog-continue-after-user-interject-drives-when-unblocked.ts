@@ -47,6 +47,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: assignmentDirective.targetCallId,
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
         collectiveTargets: ['pangu'],
       },
     );
@@ -106,6 +108,8 @@ async function main(): Promise<void> {
         originMemberId: 'pangu',
         askerDialogId: sideDialog.id.selfId,
         callId: 'pangu-to-nuwa-call',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
         collectiveTargets: ['nuwa'],
       },
     );

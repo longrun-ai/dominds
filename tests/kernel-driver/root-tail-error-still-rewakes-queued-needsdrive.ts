@@ -54,6 +54,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'root-pending-sideDialog-call',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
         collectiveTargets: ['pangu'],
       },
     );

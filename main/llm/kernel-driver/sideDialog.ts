@@ -8,7 +8,7 @@ import {
   toRootGenerationAnchor,
   type AskerCourseNumber,
   type PendingSideDialogStateRecord,
-  type TellaskCallAnchorRecord,
+  type TellaskAnchorRecord,
   type TellaskReplyResolutionRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -179,7 +179,7 @@ export async function resolveLatestAssignmentAnchorRef(args: {
     );
     for (let i = courseEvents.length - 1; i >= 0; i -= 1) {
       const event = courseEvents[i];
-      if (event.type !== 'tellask_call_anchor_record') {
+      if (event.type !== 'tellask_anchor_record') {
         continue;
       }
       if (event.anchorRole !== 'assignment') {
@@ -493,9 +493,9 @@ export async function supplyResponseToAskerDialog(args: {
           }
         }
       }
-      const anchorRecord: TellaskCallAnchorRecord = {
+      const anchorRecord: TellaskAnchorRecord = {
         ts: formatUnifiedTimestamp(new Date()),
-        type: 'tellask_call_anchor_record',
+        type: 'tellask_anchor_record',
         anchorRole: 'response',
         callId: resolvedCallId,
         genseq: calleeResponseRef.genseq,
@@ -531,12 +531,7 @@ export async function supplyResponseToAskerDialog(args: {
       'kernel-driver:supplyResponseToAskerDialog',
     );
 
-    // The requester call-site links to the assignment/update delivery bubble, not the
-    // eventual reply bubble. The reply is a separate historical fact for the same callId.
-    const calleeRouteRef =
-      assignmentRef !== undefined
-        ? { course: assignmentRef.course, genseq: assignmentRef.genseq }
-        : calleeResponseRef;
+    const responseRouteRef = calleeResponseRef;
 
     await parentDialog.receiveTellaskResponse(
       result.responderId,
@@ -560,10 +555,12 @@ export async function supplyResponseToAskerDialog(args: {
         carryoverContent,
         sessionSlug: result.sessionSlug,
         calleeCourse:
-          calleeRouteRef !== undefined ? toCalleeCourseNumber(calleeRouteRef.course) : undefined,
+          responseRouteRef !== undefined
+            ? toCalleeCourseNumber(responseRouteRef.course)
+            : undefined,
         calleeGenseq:
-          calleeRouteRef !== undefined
-            ? toCalleeGenerationSeqNumber(calleeRouteRef.genseq)
+          responseRouteRef !== undefined
+            ? toCalleeGenerationSeqNumber(responseRouteRef.genseq)
             : undefined,
       },
     );
@@ -595,11 +592,11 @@ export async function supplyResponseToAskerDialog(args: {
                     mentionList: result.mentionList ?? [],
                   }
                 : {}),
-            ...(calleeRouteRef !== undefined
+            ...(responseRouteRef !== undefined
               ? {
                   calleeDialogId: sideDialogId.selfId,
-                  calleeCourse: calleeRouteRef.course,
-                  calleeGenseq: calleeRouteRef.genseq,
+                  calleeCourse: responseRouteRef.course,
+                  calleeGenseq: responseRouteRef.genseq,
                 }
               : {
                   calleeDialogId: sideDialogId.selfId,
@@ -642,10 +639,10 @@ export async function supplyResponseToAskerDialog(args: {
             },
             route: {
               calleeDialogId: sideDialogId.selfId,
-              ...(calleeRouteRef !== undefined
+              ...(responseRouteRef !== undefined
                 ? {
-                    calleeCourse: calleeRouteRef.course,
-                    calleeGenseq: calleeRouteRef.genseq,
+                    calleeCourse: responseRouteRef.course,
+                    calleeGenseq: responseRouteRef.genseq,
                   }
                 : {}),
             },

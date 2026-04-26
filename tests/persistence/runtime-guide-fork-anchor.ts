@@ -51,6 +51,8 @@ async function main(): Promise<void> {
           originMemberId: 'tester',
           askerDialogId: root.id.selfId,
           callId: 'call-runtime-guide-anchor',
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
         },
       );
       await markProceeding(sideDialog.id);

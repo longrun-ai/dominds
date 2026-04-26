@@ -40,6 +40,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: oldCallId,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       sessionSlug,
       collectiveTargets: ['pangu'],
     });
@@ -178,7 +180,7 @@ async function main(): Promise<void> {
     assert.ok(
       courseTwoEvents.some(
         (event) =>
-          event.type === 'tellask_call_anchor_record' &&
+          event.type === 'tellask_anchor_record' &&
           event.anchorRole === 'assignment' &&
           event.callId === newCallId,
       ),

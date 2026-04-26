@@ -485,7 +485,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     return courseEvents[courseEvents.length - 1];
   })();
   const lastEvent =
-    rawLastEvent?.type === 'tellask_call_anchor_record'
+    rawLastEvent?.type === 'tellask_anchor_record'
       ? { type: rawLastEvent.type, anchorRole: rawLastEvent.anchorRole }
       : rawLastEvent
         ? { type: rawLastEvent.type }
@@ -497,7 +497,7 @@ async function inspectNoPromptSideDialogDrive(args: {
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
-  if (lastEvent?.type === 'tellask_call_anchor_record' && lastEvent.anchorRole === 'response') {
+  if (lastEvent?.type === 'tellask_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
       source,

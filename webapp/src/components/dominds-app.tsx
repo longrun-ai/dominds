@@ -11650,7 +11650,7 @@ export class DomindsApp extends HTMLElement {
           break;
         }
 
-        case 'tellask_call_anchor_evt': {
+        case 'tellask_callee_evt': {
           const activeDialogContainer = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;

@@ -167,7 +167,7 @@ async function main(): Promise<void> {
     assert.ok(
       events.some(
         (event) =>
-          event.type === 'tellask_call_anchor_record' &&
+          event.type === 'tellask_anchor_record' &&
           event.anchorRole === 'response' &&
           event.callId === 'root-call-pangu-askback',
       ),

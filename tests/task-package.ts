@@ -165,6 +165,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: dlg.id.selfId,
       callId: 'call-side-taskdoc-copy',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
     });
     const sideMsg = await formatTaskDocContent(sideDlg);
     const sideMsgContent = requireMessageContent(sideMsg);

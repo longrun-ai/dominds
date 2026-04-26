@@ -4,6 +4,7 @@
  * Factory for creating Dialog instances with proper type hierarchy.
  * Provides a single point of dialog creation to ensure consistent initialization.
  */
+import type { CallSiteCourseNo, CallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import {
   buildSideDialogAskerStack,
   Dialog,
@@ -50,6 +51,8 @@ export class DialogFactory {
       originMemberId: string;
       askerDialogId: string;
       callId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
       sessionSlug?: string;
       collectiveTargets?: string[];
       effectiveFbrEffort?: number;
@@ -84,6 +87,8 @@ export class DialogFactory {
           originMemberId: options.originMemberId,
           askerDialogId: options.askerDialogId,
           callId: options.callId,
+          callSiteCourse: options.callSiteCourse,
+          callSiteGenseq: options.callSiteGenseq,
           collectiveTargets: options.collectiveTargets,
           effectiveFbrEffort: options.effectiveFbrEffort,
         },

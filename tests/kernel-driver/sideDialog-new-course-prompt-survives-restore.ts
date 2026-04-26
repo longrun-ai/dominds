@@ -35,6 +35,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId,
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       sessionSlug: 'restore-safe-session',
       collectiveTargets: ['pangu'],
     });

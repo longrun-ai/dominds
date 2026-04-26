@@ -36,6 +36,8 @@ export interface AssignmentFromAsker {
   originMemberId: string;
   askerDialogId: string;
   callId: string;
+  callSiteCourse?: number;
+  callSiteGenseq?: number;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;
 }

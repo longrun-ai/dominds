@@ -20,15 +20,9 @@ import type {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
 import {
-  toAskerCourseNumber,
-  toAssignmentCourseNumber,
-  toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toCallSiteCourseNo,
-  type AskerCourseNumber,
-  type AssignmentCourseNumber,
-  type AssignmentGenerationSeqNumber,
   type CalleeCourseNumber,
   type CalleeGenerationSeqNumber,
   type CallSiteGenseqNo,
@@ -70,27 +64,6 @@ type PendingScrollRequest =
   | { kind: 'by_message_index'; course: number; messageIndex: number }
   | { kind: 'by_genseq'; course: number; genseq: number };
 
-type TellaskCallAnchorMeta =
-  | {
-      callId: string;
-      anchorRole: 'assignment';
-      assignmentCourse?: AssignmentCourseNumber;
-      assignmentGenseq?: AssignmentGenerationSeqNumber;
-    }
-  | {
-      callId: string;
-      anchorRole: 'response';
-      assignmentCourse?: AssignmentCourseNumber;
-      assignmentGenseq?: AssignmentGenerationSeqNumber;
-      askerDialogId: string;
-      askerCourse: AskerCourseNumber;
-    };
-
-type TellaskAssignmentTarget = {
-  course: AssignmentCourseNumber;
-  genseq: AssignmentGenerationSeqNumber;
-};
-
 type CalleeAssignmentLinkTarget = {
   // Callee assignment target for a concrete dialog timeline. `selfId` is
   // the dialog to open; `course/genseq`, when present together, identify a generation
@@ -99,13 +72,6 @@ type CalleeAssignmentLinkTarget = {
   selfId: string;
   course?: number;
   genseq?: number;
-};
-
-type PendingCalleeAssignmentLink = {
-  rootId: string;
-  selfId: string;
-  course: number;
-  genseq: number;
 };
 
 type AutoScrollMode = 'following' | 'paused';
@@ -235,8 +201,6 @@ export class DomindsDialogContainer extends HTMLElement {
     { message: string; disposition: string; genseq: number }
   >();
   private userImageStatusElByKey = new Map<string, HTMLElement>();
-  private pendingTellaskCallAnchorByGenseq = new Map<number, TellaskCallAnchorMeta>();
-  private pendingCalleeAssignmentLinkByCallId = new Map<string, PendingCalleeAssignmentLink>();
   private progressiveExpandCleanupByTarget = new Map<HTMLElement, () => void>();
   private viewportPanelState: ViewportPanelState = { kind: 'hidden' };
 
@@ -384,75 +348,6 @@ export class DomindsDialogContainer extends HTMLElement {
       sr.addEventListener('click', async (e: Event) => {
         const target = e.target;
         if (!(target instanceof Element)) return;
-        const assignmentBtn = target.closest(
-          '.bubble-anchor-assignment-btn',
-        ) as HTMLButtonElement | null;
-        if (assignmentBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          // Response-anchor header button: navigate inside the current callee/tellaskee dialog
-          // to the assignment/update generation that this response is answering.
-          const bubble = assignmentBtn.closest('.generation-bubble') as HTMLElement | null;
-          if (!bubble) return;
-          const assignmentCourseRaw = Number.parseInt(
-            bubble.getAttribute('data-assignment-course') ?? '',
-            10,
-          );
-          const assignmentGenseqRaw = Number.parseInt(
-            bubble.getAttribute('data-assignment-genseq') ?? '',
-            10,
-          );
-          if (!Number.isFinite(assignmentCourseRaw) || assignmentCourseRaw <= 0) return;
-          if (!Number.isFinite(assignmentGenseqRaw) || assignmentGenseqRaw <= 0) return;
-          this.navigateToGenerationBubbleInApp({
-            course: toAssignmentCourseNumber(assignmentCourseRaw),
-            genseq: toAssignmentGenerationSeqNumber(assignmentGenseqRaw),
-          });
-          return;
-        }
-        const askerCallsiteBtn = target.closest(
-          '.bubble-anchor-asker-callsite-btn',
-        ) as HTMLButtonElement | null;
-        if (askerCallsiteBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          // Response-anchor header button: open the requester/tellasker dialog at the original
-          // call-site. `askerDialogId` and `askerCourse` are requester-side coordinates.
-          const bubble = askerCallsiteBtn.closest('.generation-bubble') as HTMLElement | null;
-          if (!bubble) return;
-          const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
-          const askerDialogId = (bubble.getAttribute('data-asker-dialog-id') ?? '').trim();
-          const askerCourseRaw = Number.parseInt(
-            bubble.getAttribute('data-asker-course') ?? '',
-            10,
-          );
-          if (callId === '' || askerDialogId === '') return;
-          if (!Number.isFinite(askerCourseRaw) || askerCourseRaw <= 0) return;
-          const dialog = this.currentDialog;
-          if (!dialog) return;
-          const url = new URL(window.location.href);
-          url.searchParams.delete('rootId');
-          url.searchParams.delete('selfId');
-          url.searchParams.delete('course');
-          url.searchParams.delete('msg');
-          url.searchParams.delete('callId');
-          url.searchParams.delete('genseq');
-          url.searchParams.delete('qid');
-          url.hash = '';
-          url.pathname = '/dl/callsite';
-          // Response-anchor external link: open the requester/tellasker dialog at the original
-          // call-site. rootId is the shared root dialog; selfId/course are requester-side
-          // coordinates from the response anchor; callId is the function-call id in that requester
-          // dialog. No callee dialog fields are allowed in `/dl/callsite`.
-          url.searchParams.set('rootId', dialog.rootId);
-          url.searchParams.set('selfId', askerDialogId);
-          url.searchParams.set('course', String(Math.floor(toAskerCourseNumber(askerCourseRaw))));
-          url.searchParams.set('callId', callId);
-          const urlStr = url.toString();
-          const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
-          if (w) w.opener = null;
-          return;
-        }
         const callingExternalBtn = target.closest(
           '.calling-open-external-btn',
         ) as HTMLButtonElement | null;
@@ -461,7 +356,7 @@ export class DomindsDialogContainer extends HTMLElement {
           e.stopPropagation();
           // Tellask call-site button: open the callee/tellaskee assignment target recorded on this
           // calling section. Before assignment delivery this can only be the callee dialog; after
-          // `tellask_call_anchor_evt` it becomes the concrete assignment genseq.
+          // `tellask_callee_evt` carries callee coordinates it becomes the concrete assignment genseq.
           const section = callingExternalBtn.closest('.calling-section') as HTMLElement | null;
           if (!section) return;
           const target = this.readCallingSectionCalleeAssignmentTarget(section);
@@ -477,24 +372,24 @@ export class DomindsDialogContainer extends HTMLElement {
           url.hash = '';
           // Tellask call-site external link: open the callee/tellaskee assignment target. Before
           // assignment delivery we only know the callee dialog, so `/dl/dialog` carries rootId/selfId
-          // plus optional callee course. After `tellask_call_anchor_evt`, `/dl/genseq` carries the
-          // callee dialog, callee course, and assignment/update delivery genseq. This target is
+          // plus optional callee course. After `tellask_callee_evt`, `/dl/genseq` carries the
+          // callee dialog, callee course, and assignment/update genseq. This target is
           // intentionally not `/dl/callsite`, because no requester callId is involved here.
           if (
             typeof target.course === 'number' &&
-            Number.isFinite(target.course) &&
+            Number.isInteger(target.course) &&
             target.course > 0 &&
             typeof target.genseq === 'number' &&
-            Number.isFinite(target.genseq) &&
+            Number.isInteger(target.genseq) &&
             target.genseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(target.course)));
-            url.searchParams.set('genseq', String(Math.floor(target.genseq)));
+            url.searchParams.set('course', String(target.course));
+            url.searchParams.set('genseq', String(target.genseq));
           } else {
             url.pathname = '/dl/dialog';
-            if (typeof target.course === 'number' && Number.isFinite(target.course)) {
-              url.searchParams.set('course', String(Math.floor(target.course)));
+            if (typeof target.course === 'number' && Number.isInteger(target.course)) {
+              url.searchParams.set('course', String(target.course));
             }
           }
           url.searchParams.set('rootId', target.rootId);
@@ -525,22 +420,23 @@ export class DomindsDialogContainer extends HTMLElement {
           url.searchParams.delete('qid');
           url.hash = '';
           // Tellask call-site share link copies the same callee/tellaskee assignment target as the
-          // external button above: `/dl/dialog` until the delivery genseq is known, then `/dl/genseq`.
+          // external button above: `/dl/dialog` until the assignment/update genseq is known, then
+          // `/dl/genseq`.
           if (
             typeof target.course === 'number' &&
-            Number.isFinite(target.course) &&
+            Number.isInteger(target.course) &&
             target.course > 0 &&
             typeof target.genseq === 'number' &&
-            Number.isFinite(target.genseq) &&
+            Number.isInteger(target.genseq) &&
             target.genseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(target.course)));
-            url.searchParams.set('genseq', String(Math.floor(target.genseq)));
+            url.searchParams.set('course', String(target.course));
+            url.searchParams.set('genseq', String(target.genseq));
           } else {
             url.pathname = '/dl/dialog';
-            if (typeof target.course === 'number' && Number.isFinite(target.course)) {
-              url.searchParams.set('course', String(Math.floor(target.course)));
+            if (typeof target.course === 'number' && Number.isInteger(target.course)) {
+              url.searchParams.set('course', String(target.course));
             }
           }
           url.searchParams.set('rootId', target.rootId);
@@ -1239,8 +1135,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.queuedUserContentItemsByMsgId.clear();
     this.userImageStatusByKey.clear();
     this.userImageStatusElByKey.clear();
-    this.pendingTellaskCallAnchorByGenseq.clear();
-    this.pendingCalleeAssignmentLinkByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -1279,8 +1173,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.queuedUserContentItemsByMsgId.clear();
     this.userImageStatusByKey.clear();
     this.userImageStatusElByKey.clear();
-    this.pendingTellaskCallAnchorByGenseq.clear();
-    this.pendingCalleeAssignmentLinkByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -1475,9 +1367,6 @@ export class DomindsDialogContainer extends HTMLElement {
         eventDialog.rootId === this.previousDialog.rootId;
 
       if (!isCurrentDialog && !isPreviousDialog) {
-        if (this.tryHandleCrossDialogAssignmentAnchor(event)) {
-          return;
-        }
         return;
       }
     }
@@ -1715,11 +1604,8 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'tellask_result_evt':
         this.handleTellaskResult(event);
         break;
-      case 'tellask_call_anchor_evt':
-        this.handleTellaskCallAnchor(event);
-        break;
-      case 'tellask_call_callee_evt':
-        this.handleTellaskCallCallee(event);
+      case 'tellask_callee_evt':
+        this.handleTellaskCallee(event);
         break;
 
       // Teammate responses (separate bubble)
@@ -1797,13 +1683,6 @@ export class DomindsDialogContainer extends HTMLElement {
       this.clearViewportPanel();
     }
 
-    const applyPendingCallAnchor = (bubble: HTMLElement): void => {
-      const pendingAnchor = this.pendingTellaskCallAnchorByGenseq.get(seq);
-      if (!pendingAnchor) return;
-      this.applyTellaskCallAnchorToBubble(bubble, pendingAnchor);
-      this.pendingTellaskCallAnchorByGenseq.delete(seq);
-    };
-
     const finalizeExistingBubble = (existingBubble: HTMLElement): void => {
       existingBubble.classList.remove('generating');
       existingBubble.classList.add('completed');
@@ -1835,7 +1714,6 @@ export class DomindsDialogContainer extends HTMLElement {
       if (typeof this.currentCourse === 'number') {
         bubble.setAttribute('data-course', String(this.currentCourse));
       }
-      applyPendingCallAnchor(bubble);
       this.generationBubble = bubble;
       this.startAutoScrollObservation(bubble);
       this.scrollToBottom();
@@ -1854,7 +1732,6 @@ export class DomindsDialogContainer extends HTMLElement {
           existingBubble.setAttribute('data-course', String(this.currentCourse));
         }
         this.activeGenSeq = seq;
-        applyPendingCallAnchor(existingBubble);
         this.startAutoScrollObservation(existingBubble);
         this.scrollToBottom();
         return;
@@ -1874,7 +1751,6 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.setAttribute('data-course', String(this.currentCourse));
     }
     bubble.setAttribute('data-seq', String(seq));
-    applyPendingCallAnchor(bubble);
     bubble.classList.add('generating'); // Start breathing glow animation
     if (container) {
       container.appendChild(bubble);
@@ -1885,16 +1761,8 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private ensureGenerationBubbleForSeq(seq: number, timestamp: string): HTMLElement | null {
-    const applyPendingCallAnchor = (bubble: HTMLElement): void => {
-      const pendingAnchor = this.pendingTellaskCallAnchorByGenseq.get(seq);
-      if (!pendingAnchor) return;
-      this.applyTellaskCallAnchorToBubble(bubble, pendingAnchor);
-      this.pendingTellaskCallAnchorByGenseq.delete(seq);
-    };
-
     const currentBubble = this.generationBubble;
     if (currentBubble && currentBubble.getAttribute('data-seq') === String(seq)) {
-      applyPendingCallAnchor(currentBubble);
       this.startAutoScrollObservation(currentBubble);
       return currentBubble;
     }
@@ -1906,7 +1774,6 @@ export class DomindsDialogContainer extends HTMLElement {
     if (existing) {
       this.generationBubble = existing;
       this.activeGenSeq = seq;
-      applyPendingCallAnchor(existing);
       this.startAutoScrollObservation(existing);
       return existing;
     }
@@ -2222,8 +2089,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.tellaskCallingSectionBySeq.delete(seq);
     this.webSearchSectionBySeq.delete(seq);
     this.nativeToolSectionBySeq.delete(seq);
-    this.pendingTellaskCallAnchorByGenseq.delete(seq);
-
     for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
       const sectionSeq = section.getAttribute('data-genseq');
       if (sectionSeq === String(seq) || !section.isConnected) {
@@ -3241,8 +3106,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.tellaskCallingSectionBySeq.set(genseq, callingSection);
     this.callingSectionByCallId.set(event.callId, callingSection);
     this.markCallSitePending(event.callId, callingSection, startedAtMs);
-    this.applyPendingCalleeAssignmentLink(event.callId);
-
     this.scrollToBottom();
   }
 
@@ -3459,157 +3322,21 @@ export class DomindsDialogContainer extends HTMLElement {
     if (typeof value !== 'number') {
       return undefined;
     }
-    if (!Number.isFinite(value) || value <= 0) {
+    if (!Number.isInteger(value) || value <= 0) {
       return undefined;
     }
-    return Math.floor(value);
+    return value;
   }
 
-  private applyTellaskCallAnchorToBubble(bubble: HTMLElement, anchor: TellaskCallAnchorMeta): void {
-    bubble.setAttribute('data-call-id', anchor.callId);
-    bubble.setAttribute('data-teammate-call-anchor-role', anchor.anchorRole);
-
-    const assignmentCourse =
-      typeof anchor.assignmentCourse === 'number' && Number.isFinite(anchor.assignmentCourse)
-        ? Math.floor(anchor.assignmentCourse)
-        : undefined;
-    const assignmentGenseq =
-      typeof anchor.assignmentGenseq === 'number' && Number.isFinite(anchor.assignmentGenseq)
-        ? Math.floor(anchor.assignmentGenseq)
-        : undefined;
-    if (assignmentCourse !== undefined) {
-      bubble.setAttribute('data-assignment-course', String(assignmentCourse));
-    } else {
-      bubble.removeAttribute('data-assignment-course');
-    }
-    if (assignmentGenseq !== undefined) {
-      bubble.setAttribute('data-assignment-genseq', String(assignmentGenseq));
-    } else {
-      bubble.removeAttribute('data-assignment-genseq');
-    }
-
-    if (anchor.anchorRole === 'response') {
-      bubble.setAttribute('data-asker-dialog-id', anchor.askerDialogId);
-      bubble.setAttribute('data-asker-course', String(Math.floor(anchor.askerCourse)));
-    } else {
-      bubble.removeAttribute('data-asker-dialog-id');
-      bubble.removeAttribute('data-asker-course');
-    }
-
-    this.upsertGenerationBubbleAnchorActions(bubble);
-  }
-
-  private handleTellaskCallAnchor(
-    event: Extract<TypedDialogEvent, { type: 'tellask_call_anchor_evt' }>,
-  ): void {
-    const rawCallId = typeof event.callId === 'string' ? event.callId.trim() : '';
-    if (rawCallId === '') {
-      this.handleProtocolError('tellask_call_anchor_evt missing callId');
-      return;
-    }
-    if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
-      this.handleProtocolError(
-        `tellask_call_anchor_evt invalid genseq ${JSON.stringify({
-          genseq: event.genseq,
-          callId: rawCallId,
-        })}`,
-      );
-      return;
-    }
-    const rawAnchorRole =
-      typeof (event as { anchorRole?: unknown }).anchorRole === 'string'
-        ? (event as { anchorRole: string }).anchorRole.trim()
-        : '';
-    if (rawAnchorRole !== 'assignment' && rawAnchorRole !== 'response') {
-      this.handleProtocolError(
-        `tellask_call_anchor_evt invalid anchorRole ${JSON.stringify({
-          anchorRole: rawAnchorRole,
-          callId: rawCallId,
-          genseq: event.genseq,
-        })}`,
-      );
-      return;
-    }
-
-    const assignmentCourse = this.parseOptionalPositiveInt(event.assignmentCourse);
-    const assignmentGenseq = this.parseOptionalPositiveInt(event.assignmentGenseq);
-    const askerCourse = this.parseOptionalPositiveInt(event.askerCourse);
-    const askerDialogId =
-      typeof event.askerDialogId === 'string' ? event.askerDialogId.trim() : undefined;
-
-    let anchorMeta: TellaskCallAnchorMeta;
-    switch (rawAnchorRole) {
-      case 'assignment':
-        anchorMeta = {
-          callId: rawCallId,
-          anchorRole: 'assignment',
-          assignmentCourse:
-            assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
-          assignmentGenseq:
-            assignmentGenseq !== undefined
-              ? toAssignmentGenerationSeqNumber(assignmentGenseq)
-              : undefined,
-        };
-        break;
-      case 'response':
-        if (askerDialogId === undefined || askerDialogId === '') {
-          this.handleProtocolError(
-            `tellask_call_anchor_evt missing askerDialogId for response ${JSON.stringify({
-              callId: rawCallId,
-              genseq: event.genseq,
-            })}`,
-          );
-          return;
-        }
-        if (askerCourse === undefined) {
-          this.handleProtocolError(
-            `tellask_call_anchor_evt missing askerCourse for response ${JSON.stringify({
-              callId: rawCallId,
-              genseq: event.genseq,
-              askerDialogId,
-            })}`,
-          );
-          return;
-        }
-        anchorMeta = {
-          callId: rawCallId,
-          anchorRole: 'response',
-          assignmentCourse:
-            assignmentCourse !== undefined ? toAssignmentCourseNumber(assignmentCourse) : undefined,
-          assignmentGenseq:
-            assignmentGenseq !== undefined
-              ? toAssignmentGenerationSeqNumber(assignmentGenseq)
-              : undefined,
-          askerDialogId,
-          askerCourse: toAskerCourseNumber(askerCourse),
-        };
-        break;
-    }
-
-    const genseq = Math.floor(event.genseq);
-    const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
-    const bubble = messages
-      ? (messages.querySelector(
-          `.generation-bubble[data-seq="${String(genseq)}"]`,
-        ) as HTMLElement | null)
-      : null;
-    if (bubble) {
-      this.applyTellaskCallAnchorToBubble(bubble, anchorMeta);
-      this.pendingTellaskCallAnchorByGenseq.delete(genseq);
-      return;
-    }
-    this.pendingTellaskCallAnchorByGenseq.set(genseq, anchorMeta);
-  }
-
-  private handleTellaskCallCallee(
-    event: Extract<TypedDialogEvent, { type: 'tellask_call_callee_evt' }>,
+  private handleTellaskCallee(
+    event: Extract<TypedDialogEvent, { type: 'tellask_callee_evt' }>,
   ): void {
     const callId = typeof event.callId === 'string' ? event.callId.trim() : '';
     const calleeDialogId =
       typeof event.calleeDialogId === 'string' ? event.calleeDialogId.trim() : '';
     if (callId === '' || calleeDialogId === '') {
       this.handleProtocolError(
-        `tellask_call_callee_evt invalid callee dialog link ${JSON.stringify({
+        `tellask_callee_evt invalid callee dialog link ${JSON.stringify({
           callId: event.callId,
           calleeDialogId: event.calleeDialogId,
           rootId: event.dialog.rootId,
@@ -3619,71 +3346,43 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
+    const hasCalleeCourse = event.calleeCourse !== undefined;
+    const hasCalleeGenseq = event.calleeGenseq !== undefined;
+    const calleeCourse = this.parseOptionalPositiveInt(event.calleeCourse);
+    const calleeGenseq = this.parseOptionalPositiveInt(event.calleeGenseq);
+    if (hasCalleeCourse || hasCalleeGenseq) {
+      if (calleeCourse === undefined || calleeGenseq === undefined) {
+        this.handleProtocolError(
+          `tellask_callee_evt invalid callee assignment link ${JSON.stringify({
+            callId,
+            calleeDialogId,
+            calleeCourse: event.calleeCourse,
+            calleeGenseq: event.calleeGenseq,
+            rootId: event.dialog.rootId,
+            selfId: event.dialog.selfId,
+          })}`,
+        );
+        return;
+      }
+      this.upsertCallingSectionCalleeAssignmentLink({
+        callId,
+        rootId: event.dialog.rootId,
+        selfId: calleeDialogId,
+        course: calleeCourse,
+        genseq: calleeGenseq,
+      });
+      return;
+    }
+
     // Existing registered tellask sessions reuse a side dialog, so no sideDialog_created_evt is
     // emitted for the new call-site. This event makes the new requester/tellasker bubble clickable
-    // to the callee dialog immediately; the later assignment anchor upgrades it to `/dl/genseq`.
+    // to the callee dialog immediately; the later callee event upgrades it to `/dl/genseq`.
     this.upsertCallingSectionCalleeDialogLink({
       callId,
       rootId: event.dialog.rootId,
       selfId: calleeDialogId,
     });
   }
-
-  private tryHandleCrossDialogAssignmentAnchor(event: TypedDialogEvent): boolean {
-    if (event.type !== 'tellask_call_anchor_evt' || event.anchorRole !== 'assignment') {
-      return false;
-    }
-
-    const currentDialog = this.currentDialog;
-    if (!currentDialog) {
-      return false;
-    }
-    if (
-      event.dialog.rootId !== currentDialog.rootId ||
-      event.dialog.selfId === currentDialog.selfId
-    ) {
-      return false;
-    }
-
-    const callId = typeof event.callId === 'string' ? event.callId.trim() : '';
-    if (callId === '') {
-      return false;
-    }
-    if (!Number.isFinite(event.course) || event.course <= 0) {
-      this.handleProtocolError(
-        `tellask_call_anchor_evt invalid cross-dialog assignment course ${JSON.stringify({
-          course: event.course,
-          genseq: event.genseq,
-          callId,
-          rootId: event.dialog.rootId,
-          selfId: event.dialog.selfId,
-        })}`,
-      );
-      return true;
-    }
-    if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
-      this.handleProtocolError(
-        `tellask_call_anchor_evt invalid cross-dialog assignment genseq ${JSON.stringify({
-          course: event.course,
-          genseq: event.genseq,
-          callId,
-          rootId: event.dialog.rootId,
-          selfId: event.dialog.selfId,
-        })}`,
-      );
-      return true;
-    }
-
-    const link: PendingCalleeAssignmentLink = {
-      rootId: event.dialog.rootId,
-      selfId: event.dialog.selfId,
-      course: event.course,
-      genseq: event.genseq,
-    };
-    this.upsertOrPendCallingSectionCalleeAssignmentLink({ callId, ...link });
-    return true;
-  }
-
   // === TELLASK CALL RESULT HANDLER ===
   // Final response body is shown in a separate teammate bubble.
   // Call site only tracks lifecycle status/timing.
@@ -3758,34 +3457,23 @@ export class DomindsDialogContainer extends HTMLElement {
     const tellaskerId = event.responder.originMemberId;
     const sessionSlug = event.callName === 'tellask' ? event.call.sessionSlug : undefined;
     const calleeDialogId = event.route?.calleeDialogId;
-    const dialog = this.currentDialog;
+    const hasRouteCalleeCourse = event.route?.calleeCourse !== undefined;
+    const hasRouteCalleeGenseq = event.route?.calleeGenseq !== undefined;
     const routeCalleeCourse = this.parseOptionalPositiveInt(event.route?.calleeCourse);
     const routeCalleeGenseq = this.parseOptionalPositiveInt(event.route?.calleeGenseq);
-    if (calleeDialogId && dialog) {
-      if (routeCalleeCourse !== undefined && routeCalleeGenseq !== undefined) {
-        this.upsertOrPendCallingSectionCalleeAssignmentLink({
+    if (
+      (hasRouteCalleeCourse || hasRouteCalleeGenseq) &&
+      (routeCalleeCourse === undefined || routeCalleeGenseq === undefined)
+    ) {
+      this.handleProtocolError(
+        `tellask_result_evt has invalid callee response route ${JSON.stringify({
           callId,
-          rootId: dialog.rootId,
-          selfId: calleeDialogId,
-          course: routeCalleeCourse,
-          genseq: routeCalleeGenseq,
-        });
-      } else if (routeCalleeGenseq !== undefined) {
-        this.handleProtocolError(
-          `tellask_result_evt has incomplete callee generation route ${JSON.stringify({
-            callId,
-            calleeDialogId,
-            calleeCourse: event.route?.calleeCourse,
-            calleeGenseq: event.route?.calleeGenseq,
-          })}`,
-        );
-      } else if (!isSupersededNotice) {
-        this.upsertCallingSectionCalleeDialogLink({
-          callId,
-          rootId: dialog.rootId,
-          selfId: calleeDialogId,
-        });
-      }
+          calleeDialogId,
+          calleeCourse: event.route?.calleeCourse,
+          calleeGenseq: event.route?.calleeGenseq,
+        })}`,
+      );
+      return;
     }
     const messageEl = this.createTellaskResponseBubble(
       calleeDialogId,
@@ -3855,9 +3543,14 @@ export class DomindsDialogContainer extends HTMLElement {
     const sideDialogEvent = event as SideDialogEvent;
     const { sideDialog } = sideDialogEvent;
 
-    // Validate sideDialog exists
     if (!sideDialog?.selfId) {
-      console.error('handleSideDialogCreated: Missing sideDialog or selfId', sideDialogEvent);
+      this.handleProtocolError(
+        `sideDialog_created_evt missing sideDialog selfId ${JSON.stringify({
+          rootId: sideDialog?.rootId,
+          selfId: sideDialog?.selfId,
+          callName: sideDialogEvent.callName,
+        })}`,
+      );
       return;
     }
 
@@ -4065,27 +3758,27 @@ export class DomindsDialogContainer extends HTMLElement {
           url.hash = '';
           // Superseded notice external link: follow the replacement request's callee/tellaskee
           // assignment target from the fixed preceding same-sessionSlug tellask call-site. If that
-          // call-site has since received its delivery anchor, use `/dl/genseq` with callee
-          // course/genseq; otherwise use `/dl/dialog` for the callee dialog. The old callId remains
-          // only the internal correspondence point.
+          // call-site has since received callee assignment coordinates, use `/dl/genseq`; otherwise
+          // use `/dl/dialog` for the callee dialog. The old callId remains only the internal
+          // correspondence point.
           if (
             typeof replacementTarget.course === 'number' &&
-            Number.isFinite(replacementTarget.course) &&
+            Number.isInteger(replacementTarget.course) &&
             replacementTarget.course > 0 &&
             typeof replacementTarget.genseq === 'number' &&
-            Number.isFinite(replacementTarget.genseq) &&
+            Number.isInteger(replacementTarget.genseq) &&
             replacementTarget.genseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
-            url.searchParams.set('genseq', String(Math.floor(replacementTarget.genseq)));
+            url.searchParams.set('course', String(replacementTarget.course));
+            url.searchParams.set('genseq', String(replacementTarget.genseq));
           } else {
             url.pathname = '/dl/dialog';
             if (
               typeof replacementTarget.course === 'number' &&
-              Number.isFinite(replacementTarget.course)
+              Number.isInteger(replacementTarget.course)
             ) {
-              url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+              url.searchParams.set('course', String(replacementTarget.course));
             }
           }
           url.searchParams.set('rootId', replacementTarget.rootId);
@@ -4106,25 +3799,24 @@ export class DomindsDialogContainer extends HTMLElement {
           url.searchParams.delete('genseq');
           url.searchParams.delete('qid');
           url.hash = '';
-          // Standard teammate-result external link: open the callee/tellaskee assignment target
-          // that produced this result. rootId is the shared root dialog; selfId is the callee dialog;
-          // course/genseq are callee-side assignment coordinates when known. No requester callId
-          // belongs in this URL.
+          // Standard teammate-result external link: open the callee/tellaskee response bubble that
+          // produced this result. The original requester call-site keeps its own assignment link.
+          // No requester callId belongs in this URL.
           if (
             typeof calleeCourse === 'number' &&
-            Number.isFinite(calleeCourse) &&
+            Number.isInteger(calleeCourse) &&
             calleeCourse > 0 &&
             typeof calleeGenseq === 'number' &&
-            Number.isFinite(calleeGenseq) &&
+            Number.isInteger(calleeGenseq) &&
             calleeGenseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(calleeCourse)));
-            url.searchParams.set('genseq', String(Math.floor(calleeGenseq)));
+            url.searchParams.set('course', String(calleeCourse));
+            url.searchParams.set('genseq', String(calleeGenseq));
           } else {
             url.pathname = '/dl/dialog';
-            if (typeof calleeCourse === 'number' && Number.isFinite(calleeCourse)) {
-              url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            if (typeof calleeCourse === 'number' && Number.isInteger(calleeCourse)) {
+              url.searchParams.set('course', String(calleeCourse));
             }
           }
           url.searchParams.set('rootId', dialog.rootId);
@@ -4182,25 +3874,26 @@ export class DomindsDialogContainer extends HTMLElement {
           url.searchParams.delete('qid');
           url.hash = '';
           // Superseded notice share link copies the same fixed replacement call-site target as the
-          // external button: `/dl/genseq` after delivery anchor, otherwise `/dl/dialog`.
+          // external button: `/dl/genseq` after callee assignment coordinates, otherwise
+          // `/dl/dialog`.
           if (
             typeof replacementTarget.course === 'number' &&
-            Number.isFinite(replacementTarget.course) &&
+            Number.isInteger(replacementTarget.course) &&
             replacementTarget.course > 0 &&
             typeof replacementTarget.genseq === 'number' &&
-            Number.isFinite(replacementTarget.genseq) &&
+            Number.isInteger(replacementTarget.genseq) &&
             replacementTarget.genseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
-            url.searchParams.set('genseq', String(Math.floor(replacementTarget.genseq)));
+            url.searchParams.set('course', String(replacementTarget.course));
+            url.searchParams.set('genseq', String(replacementTarget.genseq));
           } else {
             url.pathname = '/dl/dialog';
             if (
               typeof replacementTarget.course === 'number' &&
-              Number.isFinite(replacementTarget.course)
+              Number.isInteger(replacementTarget.course)
             ) {
-              url.searchParams.set('course', String(Math.floor(replacementTarget.course)));
+              url.searchParams.set('course', String(replacementTarget.course));
             }
           }
           url.searchParams.set('rootId', replacementTarget.rootId);
@@ -4219,23 +3912,23 @@ export class DomindsDialogContainer extends HTMLElement {
           url.searchParams.delete('genseq');
           url.searchParams.delete('qid');
           url.hash = '';
-          // Standard teammate-result share link copies the callee/tellaskee assignment target used
-          // by the external button. `callId` is intentionally absent from this callee URL.
+          // Standard teammate-result share link copies the callee/tellaskee response target used by
+          // the external button. `callId` is intentionally absent from this callee URL.
           if (
             typeof calleeCourse === 'number' &&
-            Number.isFinite(calleeCourse) &&
+            Number.isInteger(calleeCourse) &&
             calleeCourse > 0 &&
             typeof calleeGenseq === 'number' &&
-            Number.isFinite(calleeGenseq) &&
+            Number.isInteger(calleeGenseq) &&
             calleeGenseq > 0
           ) {
             url.pathname = '/dl/genseq';
-            url.searchParams.set('course', String(Math.floor(calleeCourse)));
-            url.searchParams.set('genseq', String(Math.floor(calleeGenseq)));
+            url.searchParams.set('course', String(calleeCourse));
+            url.searchParams.set('genseq', String(calleeGenseq));
           } else {
             url.pathname = '/dl/dialog';
-            if (typeof calleeCourse === 'number' && Number.isFinite(calleeCourse)) {
-              url.searchParams.set('course', String(Math.floor(calleeCourse)));
+            if (typeof calleeCourse === 'number' && Number.isInteger(calleeCourse)) {
+              url.searchParams.set('course', String(calleeCourse));
             }
           }
           url.searchParams.set('rootId', dialog.rootId);
@@ -4503,35 +4196,6 @@ export class DomindsDialogContainer extends HTMLElement {
     // navigation that requires dialog/course resolution.
   }
 
-  private navigateToGenerationBubbleInApp(target: TellaskAssignmentTarget): void {
-    const normalizedCourse = Math.floor(target.course);
-    const normalizedGenseq = Math.floor(target.genseq);
-    const dialog = this.currentDialog;
-    if (!dialog) return;
-
-    if (this.currentCourse === normalizedCourse) {
-      this.pendingScrollRequest = {
-        kind: 'by_genseq',
-        course: normalizedCourse,
-        genseq: normalizedGenseq,
-      };
-      this.maybeApplyPendingScrollRequest();
-      return;
-    }
-
-    dispatchDomindsEvent(
-      this,
-      'navigate-genseq',
-      {
-        rootId: dialog.rootId,
-        selfId: dialog.selfId,
-        course: normalizedCourse,
-        genseq: normalizedGenseq,
-      },
-      { bubbles: true, composed: true },
-    );
-  }
-
   private emitToast(message: string, kind: UiToastKind = 'info'): void {
     dispatchDomindsEvent(this, 'ui-toast', { message, kind }, { bubbles: true, composed: true });
   }
@@ -4603,82 +4267,6 @@ export class DomindsDialogContainer extends HTMLElement {
     return dialog.selfId === dialog.rootId;
   }
 
-  private upsertGenerationBubbleAnchorActions(bubble: HTMLElement): void {
-    const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
-    if (!headerRight) {
-      return;
-    }
-    const existingActions = headerRight.querySelector(
-      '.bubble-anchor-actions',
-    ) as HTMLElement | null;
-    const anchorRole = bubble.getAttribute('data-teammate-call-anchor-role');
-    if (anchorRole !== 'response') {
-      existingActions?.remove();
-      return;
-    }
-
-    const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
-    const assignmentCourseRaw = Number.parseInt(
-      bubble.getAttribute('data-assignment-course') ?? '',
-      10,
-    );
-    const assignmentGenseqRaw = Number.parseInt(
-      bubble.getAttribute('data-assignment-genseq') ?? '',
-      10,
-    );
-    const askerDialogId = (bubble.getAttribute('data-asker-dialog-id') ?? '').trim();
-    const askerCourseRaw = Number.parseInt(bubble.getAttribute('data-asker-course') ?? '', 10);
-    const hasAssignmentRef =
-      Number.isFinite(assignmentCourseRaw) &&
-      assignmentCourseRaw > 0 &&
-      Number.isFinite(assignmentGenseqRaw) &&
-      assignmentGenseqRaw > 0;
-    const hasAskerRef =
-      callId !== '' &&
-      askerDialogId !== '' &&
-      Number.isFinite(askerCourseRaw) &&
-      askerCourseRaw > 0;
-    if (!hasAskerRef) {
-      this.handleProtocolError(
-        `response anchor bubble missing asker link refs ${JSON.stringify({
-          callId,
-          assignmentCourse: bubble.getAttribute('data-assignment-course'),
-          assignmentGenseq: bubble.getAttribute('data-assignment-genseq'),
-          askerDialogId,
-          askerCourse: bubble.getAttribute('data-asker-course'),
-        })}`,
-      );
-      existingActions?.remove();
-      return;
-    }
-
-    const t = getUiStrings(this.uiLanguage);
-    const actions = existingActions ?? document.createElement('div');
-    actions.className = 'bubble-anchor-actions';
-    // A pending tellask can be satisfied before its queued assignment prompt is rendered inside
-    // the tellaskee dialog. In that case we still have a valid asker deep-link, but no local
-    // assignment bubble to navigate to yet.
-    actions.innerHTML = `
-      ${
-        hasAssignmentRef
-          ? `<button type="button" class="bubble-anchor-assignment-btn" aria-label="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}" title="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}">
-        <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
-      </button>`
-          : ''
-      }
-      <button type="button" class="bubble-anchor-asker-callsite-btn" aria-label="${this.escapeHtml(t.teammateTellaskerCallSiteTitle)}" title="${this.escapeHtml(t.teammateTellaskerCallSiteTitle)}">
-        <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
-      </button>
-    `;
-
-    const shareBtn = headerRight.querySelector('.bubble-share-link-btn');
-    if (shareBtn) {
-      headerRight.insertBefore(actions, shareBtn);
-    } else {
-      headerRight.appendChild(actions);
-    }
-  }
-
   private findCallingSectionByCallId(callId: string): HTMLElement | null {
     const normalizedCallId = callId.trim();
     if (normalizedCallId === '') {
@@ -4715,25 +4303,6 @@ export class DomindsDialogContainer extends HTMLElement {
     return null;
   }
 
-  private applyPendingCalleeAssignmentLink(callId: string): void {
-    const normalizedCallId = callId.trim();
-    if (normalizedCallId === '') {
-      return;
-    }
-    const link = this.pendingCalleeAssignmentLinkByCallId.get(normalizedCallId);
-    if (!link) {
-      return;
-    }
-    if (!this.findCallingSectionByCallId(normalizedCallId)) {
-      return;
-    }
-    this.pendingCalleeAssignmentLinkByCallId.delete(normalizedCallId);
-    this.upsertCallingSectionCalleeAssignmentLink({
-      callId: normalizedCallId,
-      ...link,
-    });
-  }
-
   private readCallingSectionCalleeAssignmentTarget(
     section: HTMLElement,
   ): CalleeAssignmentLinkTarget | null {
@@ -4743,18 +4312,34 @@ export class DomindsDialogContainer extends HTMLElement {
       return null;
     }
 
-    const courseRaw = Number.parseInt(section.getAttribute('data-callee-course') ?? '', 10);
-    const genseqRaw = Number.parseInt(section.getAttribute('data-callee-genseq') ?? '', 10);
-    const hasCourse = Number.isFinite(courseRaw) && courseRaw > 0;
-    const hasGenseq = Number.isFinite(genseqRaw) && genseqRaw > 0;
+    const courseAttr = section.getAttribute('data-callee-course');
+    const genseqAttr = section.getAttribute('data-callee-genseq');
+    const hasCourseAttr = courseAttr !== null && courseAttr.trim() !== '';
+    const hasGenseqAttr = genseqAttr !== null && genseqAttr.trim() !== '';
+    const courseRaw = Number(courseAttr ?? '');
+    const genseqRaw = Number(genseqAttr ?? '');
+    const hasCourse = Number.isInteger(courseRaw) && courseRaw > 0;
+    const hasGenseq = Number.isInteger(genseqRaw) && genseqRaw > 0;
+    if ((hasCourseAttr && !hasCourse) || (hasGenseqAttr && !hasGenseq)) {
+      this.handleProtocolError(
+        `calling-section has invalid callee generation link ${JSON.stringify({
+          callId: section.getAttribute('data-call-id'),
+          rootId,
+          selfId,
+          course: courseAttr,
+          genseq: genseqAttr,
+        })}`,
+      );
+      return null;
+    }
     if (hasCourse !== hasGenseq) {
       this.handleProtocolError(
         `calling-section has incomplete callee generation link ${JSON.stringify({
           callId: section.getAttribute('data-call-id'),
           rootId,
           selfId,
-          course: section.getAttribute('data-callee-course'),
-          genseq: section.getAttribute('data-callee-genseq'),
+          course: courseAttr,
+          genseq: genseqAttr,
         })}`,
       );
       return null;
@@ -4802,40 +4387,6 @@ export class DomindsDialogContainer extends HTMLElement {
     });
   }
 
-  private upsertOrPendCallingSectionCalleeAssignmentLink(args: {
-    callId: string;
-    rootId: string;
-    selfId: string;
-    course: number;
-    genseq: number;
-  }): void {
-    const callId = args.callId.trim();
-    const rootId = args.rootId.trim();
-    const selfId = args.selfId.trim();
-    const course = Math.floor(args.course);
-    const genseq = Math.floor(args.genseq);
-    if (
-      callId !== '' &&
-      rootId !== '' &&
-      selfId !== '' &&
-      Number.isFinite(course) &&
-      course > 0 &&
-      Number.isFinite(genseq) &&
-      genseq > 0 &&
-      !this.findCallingSectionByCallId(callId)
-    ) {
-      this.pendingCalleeAssignmentLinkByCallId.set(callId, {
-        rootId,
-        selfId,
-        course,
-        genseq,
-      });
-      return;
-    }
-
-    this.upsertCallingSectionCalleeAssignmentLink(args);
-  }
-
   private upsertCallingSectionCalleeAssignmentLink(args: {
     callId: string;
     rootId: string;
@@ -4846,19 +4397,17 @@ export class DomindsDialogContainer extends HTMLElement {
     const callId = args.callId.trim();
     const rootId = args.rootId.trim();
     const selfId = args.selfId.trim();
-    const course = Math.floor(args.course);
-    const genseq = Math.floor(args.genseq);
     if (
       callId === '' ||
       rootId === '' ||
       selfId === '' ||
-      !Number.isFinite(course) ||
-      course <= 0 ||
-      !Number.isFinite(genseq) ||
-      genseq <= 0
+      !Number.isInteger(args.course) ||
+      args.course <= 0 ||
+      !Number.isInteger(args.genseq) ||
+      args.genseq <= 0
     ) {
       this.handleProtocolError(
-        `tellask_call_anchor_evt invalid callee assignment link ${JSON.stringify(args)}`,
+        `tellask_callee_evt invalid callee assignment link ${JSON.stringify(args)}`,
       );
       return;
     }
@@ -4866,15 +4415,15 @@ export class DomindsDialogContainer extends HTMLElement {
     const section = this.findCallingSectionByCallId(callId);
     if (!section) {
       this.handleProtocolError(
-        `tellask_call_anchor_evt has no matching call site bubble ${JSON.stringify(args)}`,
+        `tellask_callee_evt has no matching call site bubble ${JSON.stringify(args)}`,
       );
       return;
     }
 
     section.setAttribute('data-callee-root-id', rootId);
     section.setAttribute('data-callee-dialog-id', selfId);
-    section.setAttribute('data-callee-course', String(course));
-    section.setAttribute('data-callee-genseq', String(genseq));
+    section.setAttribute('data-callee-course', String(args.course));
+    section.setAttribute('data-callee-genseq', String(args.genseq));
     section.querySelectorAll<HTMLButtonElement>('.calling-actions button').forEach((button) => {
       button.disabled = false;
     });
@@ -5977,35 +5526,6 @@ export class DomindsDialogContainer extends HTMLElement {
         outline-offset: 2px;
       }
 
-      .bubble-anchor-assignment-btn,
-      .bubble-anchor-asker-callsite-btn {
-        width: 22px;
-        height: 22px;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        cursor: pointer;
-        transition: all 0.15s ease;
-      }
-
-      .bubble-anchor-assignment-btn:hover,
-      .bubble-anchor-asker-callsite-btn:hover {
-        background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
-        border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        color: var(--dominds-fg, var(--color-fg-primary, #333));
-      }
-
-      .bubble-anchor-assignment-btn:focus-visible,
-      .bubble-anchor-asker-callsite-btn:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
-        outline-offset: 2px;
-      }
-      
       .bubble-author { 
         font-weight: 600; 
         color: var(--dominds-fg, var(--color-fg-primary, #333)); 
@@ -6103,8 +5623,6 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .bubble-share-link-btn .icon-mask,
       .bubble-fork-btn .icon-mask,
-      .bubble-anchor-assignment-btn .icon-mask,
-      .bubble-anchor-asker-callsite-btn .icon-mask,
       .callsite-icon-btn .icon-mask {
         width: 14px;
         height: 14px;

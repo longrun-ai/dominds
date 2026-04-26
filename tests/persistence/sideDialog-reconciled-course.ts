@@ -37,6 +37,8 @@ async function main(): Promise<void> {
           originMemberId: 'tester',
           askerDialogId: root.id.selfId,
           callId: 'call-sideDialog-course-regression',
+          callSiteCourse: 1,
+          callSiteGenseq: 1,
         },
       );
 

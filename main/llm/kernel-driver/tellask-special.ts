@@ -5,9 +5,11 @@ import {
   toCallSiteCourseNo,
   toCallSiteGenseqNo,
   toRootGenerationAnchor,
+  type CallSiteCourseNo,
+  type CallSiteGenseqNo,
   type HumanQuestion,
   type PendingSideDialogStateRecord,
-  type TellaskCallCalleeRecord,
+  type TellaskCalleeRecord,
   type TellaskCallRecord,
   type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
@@ -1130,6 +1132,8 @@ type SideDialogCreateOptions = {
   originMemberId: string;
   askerDialogId: string;
   callId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
   sessionSlug?: string;
   collectiveTargets?: string[];
   effectiveFbrEffort?: number;
@@ -1739,6 +1743,8 @@ async function executeTellaskCall(
         originMemberId,
         askerDialogId: askerDialog.id.selfId,
         callId,
+        callSiteCourse,
+        callSiteGenseq,
         collectiveTargets,
         effectiveFbrEffort: fbrEffort,
       });
@@ -2065,6 +2071,8 @@ async function executeTellaskCall(
           originMemberId,
           askerDialogId: askerDialog.id.selfId,
           callId,
+          callSiteCourse,
+          callSiteGenseq,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
         const pendingOwner = askerDialog;
@@ -2213,6 +2221,8 @@ async function executeTellaskCall(
                   originMemberId,
                   askerDialogId: askerDialog.id.selfId,
                   callId,
+                  callSiteCourse,
+                  callSiteGenseq,
                   sessionSlug: parseResult.sessionSlug,
                   collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
                 },
@@ -2257,11 +2267,11 @@ async function executeTellaskCall(
           // Existing registered tellask sessions reuse the callee sideDialog, so there is no fresh
           // sideDialog-created record for this requester call-site. Persist the callId -> callee
           // sideDialog relation on the requester course; replay sends it back to the UI so the
-          // call-site links to `/dl/dialog` until the later assignment anchor upgrades it to
-          // `/dl/genseq`.
-          const calleeRecord: TellaskCallCalleeRecord = {
+          // call-site links to `/dl/dialog` until the later callee assignment coordinates upgrade
+          // it to `/dl/genseq`.
+          const calleeRecord: TellaskCalleeRecord = {
             ts: formatUnifiedTimestamp(new Date()),
-            type: 'tellask_call_callee_record',
+            type: 'tellask_callee_record',
             genseq: callSiteGenseq,
             callId,
             calleeDialogId: result.sideDialog.id.selfId,
@@ -2277,7 +2287,7 @@ async function executeTellaskCall(
             pendingOwner.status,
           );
           postDialogEvent(pendingOwner, {
-            type: 'tellask_call_callee_evt',
+            type: 'tellask_callee_evt',
             course: callSiteCourse,
             genseq: callSiteGenseq,
             callId,
@@ -2333,6 +2343,8 @@ async function executeTellaskCall(
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
+              callSiteCourse,
+              callSiteGenseq,
             },
           };
           let queuedIntoActiveLoop = false;
@@ -2399,6 +2411,8 @@ async function executeTellaskCall(
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
+              callSiteCourse,
+              callSiteGenseq,
             },
           };
           callbacks.scheduleDrive(result.sideDialog, {
@@ -2420,6 +2434,8 @@ async function executeTellaskCall(
           originMemberId: dlg.agentId,
           askerDialogId: dlg.id.selfId,
           callId,
+          callSiteCourse,
+          callSiteGenseq,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         });
         const pendingRecord: PendingSideDialogStateRecord = {
@@ -2476,6 +2492,8 @@ async function executeTellaskCall(
             ownerDialogId: dlg.id.selfId,
             callType: 'C',
             callId,
+            callSiteCourse,
+            callSiteGenseq,
           },
         };
         callbacks.scheduleDrive(sub, {
