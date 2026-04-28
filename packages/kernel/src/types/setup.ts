@@ -48,7 +48,7 @@ export type SetupProviderModelSummary = {
   verified: boolean;
 };
 
-export type SetupProminentModelParamNamespace = 'general' | 'codex' | 'openai' | 'anthropic';
+export type SetupProminentModelParamNamespace = 'codex' | 'openai' | 'anthropic';
 
 export type SetupProminentEnumModelParam = {
   namespace: SetupProminentModelParamNamespace;

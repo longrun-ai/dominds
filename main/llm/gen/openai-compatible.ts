@@ -922,11 +922,6 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     });
 
     const openAiParams = agent.model_params?.openai || {};
-    const maxTokens = agent.model_params?.max_tokens;
-
-    const modelInfo = providerConfig.models[agent.model];
-    const outputLength = modelInfo?.output_length;
-    const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 
@@ -946,7 +941,6 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
         : { tool_choice: 'none' as const }),
       parallel_tool_calls: parallelToolCalls,
-      max_tokens: maxOutputTokens,
     };
 
     let sayingStarted = false;
@@ -1166,11 +1160,6 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     });
 
     const openAiParams = agent.model_params?.openai || {};
-    const maxTokens = agent.model_params?.max_tokens;
-
-    const modelInfo = providerConfig.models[agent.model];
-    const outputLength = modelInfo?.output_length;
-    const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 
@@ -1186,7 +1175,6 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
       tool_choice: 'auto',
       parallel_tool_calls: parallelToolCalls,
-      max_tokens: maxOutputTokens,
     };
 
     try {

@@ -1031,9 +1031,8 @@ export const teamMgmtCheckProviderTool: FuncTool = {
             provider: providerKey,
             model: modelKey,
             model_params: {
-              max_tokens: 16,
               openai: { temperature: 0 },
-              anthropic: { temperature: 0 },
+              anthropic: { max_tokens: 16, temperature: 0 },
             },
           });
 
@@ -1535,7 +1534,6 @@ export const teamMgmtListModelsTool: FuncTool = {
 
         if (includeParamOptions) {
           const mpo = providerCfg.model_param_options;
-          const general = mpo ? mpo.general : undefined;
           let specific: Record<string, ModelParamOption> | undefined;
           if (mpo) {
             if (providerCfg.apiType === 'codex') specific = mpo.codex;
@@ -1553,45 +1551,26 @@ export const teamMgmtListModelsTool: FuncTool = {
               language === 'zh' ? 'model_param_options（模型参数说明）' : 'model_param_options',
             ),
           );
-          if (!general && !specific) {
+          if (!specific) {
             lines.push(language === 'zh' ? '(未配置)\n' : '(not configured)\n');
           } else {
-            if (general) {
-              const keys = Object.keys(general).sort((a, b) => a.localeCompare(b));
-              const limited = maxParams > 0 ? keys.slice(0, maxParams) : keys;
-              const items = limited.map((k) => formatModelParamOptionLine(k, general[k], language));
-              lines.push(fmtSubHeader(language === 'zh' ? 'general（通用）' : 'general'));
-              lines.push(items.join('\n') + '\n');
-              if (limited.length < keys.length) {
-                lines.push(
-                  language === 'zh'
-                    ? `（general 省略 ${keys.length - limited.length} 个参数；可调大 max_params）\n`
-                    : `(general skipped ${keys.length - limited.length} params; raise max_params)\n`,
-                );
-              }
-            }
-
-            if (specific) {
-              const keys = Object.keys(specific).sort((a, b) => a.localeCompare(b));
-              const limited = maxParams > 0 ? keys.slice(0, maxParams) : keys;
-              const items = limited.map((k) =>
-                formatModelParamOptionLine(k, specific[k], language),
-              );
+            const keys = Object.keys(specific).sort((a, b) => a.localeCompare(b));
+            const limited = maxParams > 0 ? keys.slice(0, maxParams) : keys;
+            const items = limited.map((k) => formatModelParamOptionLine(k, specific[k], language));
+            lines.push(
+              fmtSubHeader(
+                language === 'zh'
+                  ? `${providerCfg.apiType}（provider 专有）`
+                  : `${providerCfg.apiType}`,
+              ),
+            );
+            lines.push(items.join('\n') + '\n');
+            if (limited.length < keys.length) {
               lines.push(
-                fmtSubHeader(
-                  language === 'zh'
-                    ? `${providerCfg.apiType}（provider 专有）`
-                    : `${providerCfg.apiType}`,
-                ),
+                language === 'zh'
+                  ? `（${providerCfg.apiType} 省略 ${keys.length - limited.length} 个参数；可调大 max_params）\n`
+                  : `(${providerCfg.apiType} skipped ${keys.length - limited.length} params; raise max_params)\n`,
               );
-              lines.push(items.join('\n') + '\n');
-              if (limited.length < keys.length) {
-                lines.push(
-                  language === 'zh'
-                    ? `（${providerCfg.apiType} 省略 ${keys.length - limited.length} 个参数；可调大 max_params）\n`
-                    : `(${providerCfg.apiType} skipped ${keys.length - limited.length} params; raise max_params)\n`,
-                );
-              }
             }
           }
         }
@@ -4096,13 +4075,13 @@ export async function renderModelParamsManual(language: LanguageCode): Promise<s
       fmtList([
         '`model_params` 写在 `.minds/team.yaml` 的 `member_defaults` 或 `members.<id>` 下，用来控制采样/推理/输出风格。',
         '`model_params` 是运行时参数；`model_param_options`（在 `.minds/llm.yaml` 或内置 defaults 中）是文档/说明用途，用来描述可用参数范围（不保证强制校验）。',
-        '想查看某个 provider 的“有效配置” `model_param_options`：优先用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })`（会把 general + provider 专有参数一起列出）。',
-        '常见参数示例（不同 provider 支持不同）：例如 `reasoning_effort`、`verbosity`、`temperature`、`max_tokens` 等。对内置 `codex` provider，这些参数应写在 `model_params.codex.*` 下。',
+        '想查看某个 provider 的“有效配置” `model_param_options`：优先用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })`（会列出该 provider 可用的参数说明）。',
+        '常见参数示例（不同 provider 支持不同）：例如 `reasoning_effort`、`verbosity`、`temperature` 等。对内置 `codex` provider，这些参数应写在 `model_params.codex.*` 下。',
         '常见坑：不要把 `reasoning_effort` / `verbosity` 直接写在 `member_defaults` 或 `members.<id>` 根上（会被忽略，并会被 team.yaml 校验提示）；应写在 `model_params.codex.*` 下。',
         '`model_param_options.<ns>.<param>.prominent: true`：表示“初始化/团队管理时应显式讨论并选定”的参数。不要依赖 provider/model 的隐含默认值。',
         '`model_param_options.<ns>.<param>.default`：为该参数提供建议默认值；`/setup` 会将其作为预选值展示（仍建议与用户确认是否需要调整）。',
         '最低要求：当 `member_defaults.provider` 选中某 provider 时，至少确保其 prominent=true 的参数在 `member_defaults.model_params.<ns>.*` 下都有明确取值；再进一步讨论是否需要对不同成员（`members.<id>.model_params...`）做差异化。',
-        '风险提示：部分参数可能影响成本/延迟/输出稳定性（例如 temperature、max tokens 等）。参数是否透传/是否会被校验或裁剪，以当前实现为准。',
+        '风险提示：部分参数可能影响成本/延迟/输出稳定性（例如 temperature、reasoning effort 等）。参数是否透传/是否会被校验或裁剪，以当前实现为准。',
       ]) +
       '\n' +
       '示例：\n' +
@@ -4128,13 +4107,13 @@ export async function renderModelParamsManual(language: LanguageCode): Promise<s
     fmtList([
       '`model_params` lives in `.minds/team.yaml` under `member_defaults` or `members.<id>` to control sampling/reasoning/output style.',
       '`model_params` is runtime config; `model_param_options` (in `.minds/llm.yaml` or built-in defaults) is documentation-only to describe supported knobs (not guaranteed to be strictly validated).',
-      'To inspect a provider’s effective `model_param_options`, prefer `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })` (lists both general and provider-specific options).',
-      'Common examples (provider-dependent): e.g. `reasoning_effort`, `verbosity`, `temperature`, `max_tokens`, etc. For the built-in `codex` provider, these go under `model_params.codex.*`.',
+      'To inspect a provider’s effective `model_param_options`, prefer `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })` (lists the parameters documented for that provider).',
+      'Common examples (provider-dependent): e.g. `reasoning_effort`, `verbosity`, `temperature`, etc. For the built-in `codex` provider, these go under `model_params.codex.*`.',
       'Common pitfall: do not put `reasoning_effort` / `verbosity` directly under `member_defaults` or `members.<id>` (they are ignored and will be flagged by team.yaml validation); put them under `model_params.codex.*`.',
       '`model_param_options.<ns>.<param>.prominent: true` means “discuss and pick explicitly during bootstrap/team management”. Do not rely on implicit provider/model defaults.',
       '`model_param_options.<ns>.<param>.default` provides a recommended default; `/setup` may preselect it (still discuss with the user if it needs to change).',
       'Minimum: when `member_defaults.provider` selects a provider, ensure all `prominent: true` params are explicitly set under `member_defaults.model_params.<ns>.*`. Then decide if you need per-member overrides (`members.<id>.model_params...`).',
-      'Risk note: some knobs may affect cost/latency/output stability (e.g. temperature, max tokens). Whether params are passed through / validated / clamped follows current implementation.',
+      'Risk note: some knobs may affect cost/latency/output stability (e.g. temperature, reasoning effort). Whether params are passed through / validated / clamped follows current implementation.',
     ]) +
     '\n' +
     'Example:\n' +

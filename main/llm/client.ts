@@ -80,7 +80,6 @@ export type ModelParamOption =
     });
 
 export type ProviderModelParamOptions = {
-  general?: Record<string, ModelParamOption>;
   codex?: Record<string, ModelParamOption>;
   openai?: Record<string, ModelParamOption>;
   anthropic?: Record<string, ModelParamOption>;

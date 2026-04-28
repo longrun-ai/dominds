@@ -28,12 +28,6 @@ providers:
     #
     # These are documentation hints for humans/agents; they are not auto-applied.
     model_param_options:
-      general:
-        max_tokens:
-          # Provider-agnostic cap on generated tokens.
-          type: integer
-          min: 1
-          description: Maximum tokens to generate (provider-agnostic override).
       codex:
         # Isolation principle:
         # - These hints describe the Codex wrapper only.
@@ -95,10 +89,6 @@ providers:
         json_response:
           type: boolean
           description: Force JSON object output mode.
-        max_tokens:
-          type: integer
-          min: 1
-          description: Provider-specific max tokens override.
     models:
       gpt-5.5:
         name: GPT-5.5
@@ -185,11 +175,6 @@ providers:
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Fully supported. Maximum number of tokens to generate.
       anthropic:
         temperature:
           type: number
@@ -242,11 +227,6 @@ providers:
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Fully supported. Maximum number of tokens to generate.
       anthropic:
         temperature:
           type: number
@@ -299,11 +279,6 @@ providers:
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Fully supported. Maximum number of tokens to generate.
       anthropic:
         temperature:
           type: number
@@ -356,11 +331,6 @@ providers:
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Fully supported. Maximum number of tokens to generate.
       anthropic:
         temperature:
           type: number
@@ -578,11 +548,6 @@ providers:
     tech_spec_url: https://docs.anthropic.com/en/docs
     api_mgmt_url: https://console.anthropic.com/
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Maximum tokens to generate (provider-agnostic override).
       anthropic:
         temperature:
           type: number
@@ -639,11 +604,6 @@ providers:
     tech_spec_url: https://api-docs.deepseek.com/zh-cn/guides/anthropic_api
     api_mgmt_url: https://platform.deepseek.com/api_keys
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Fully supported. Maximum number of tokens to generate.
       anthropic:
         temperature:
           type: number
@@ -698,11 +658,6 @@ providers:
     tech_spec_url: https://help.aliyun.com/zh/model-studio/other-tools-coding-plan
     api_mgmt_url: https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan
     model_param_options:
-      general:
-        max_tokens:
-          type: integer
-          min: 1
-          description: Maximum tokens to generate (provider-agnostic override).
       anthropic:
         temperature:
           type: number
@@ -780,12 +735,6 @@ providers:
     api_mgmt_url: https://platform.openai.com/api-keys
     # These are documentation hints for humans/agents; they are not auto-applied.
     model_param_options:
-      general:
-        max_tokens:
-          # Provider-agnostic cap on generated tokens.
-          type: integer
-          min: 1
-          description: Maximum tokens to generate (provider-agnostic override).
       openai:
         # Isolation principle:
         # - These hints describe the OpenAI Responses wrapper only.
@@ -864,10 +813,6 @@ providers:
         web_search_include_sources:
           type: boolean
           description: Include `web_search_call.action.sources` in the response payload.
-        max_tokens:
-          type: integer
-          min: 1
-          description: Provider-specific max tokens override.
     models:
       gpt-5.5:
         name: GPT-5.5

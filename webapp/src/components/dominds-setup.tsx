@@ -1103,8 +1103,6 @@ export class DomindsSetup extends HTMLElement {
   ): string {
     const language = this.uiLanguage;
     switch (namespace) {
-      case 'general':
-        return language === 'zh' ? '通用' : 'General';
       case 'codex':
         return 'Codex';
       case 'openai':
@@ -1131,7 +1129,6 @@ export class DomindsSetup extends HTMLElement {
       SetupProminentEnumModelParam['namespace'],
       SetupProminentEnumModelParam[]
     > = {
-      general: [],
       codex: [],
       openai: [],
       anthropic: [],
@@ -1141,7 +1138,6 @@ export class DomindsSetup extends HTMLElement {
     }
 
     const groupOrder: Array<SetupProminentEnumModelParam['namespace']> = [
-      'general',
       'codex',
       'openai',
       'anthropic',

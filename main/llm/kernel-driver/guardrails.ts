@@ -39,7 +39,6 @@ function mergeModelParams(
   if (!base) return overlay;
   if (!overlay) return base;
   return {
-    max_tokens: overlay.max_tokens ?? base.max_tokens,
     codex: { ...(base.codex ?? {}), ...(overlay.codex ?? {}) },
     openai: { ...(base.openai ?? {}), ...(overlay.openai ?? {}) },
     anthropic: { ...(base.anthropic ?? {}), ...(overlay.anthropic ?? {}) },

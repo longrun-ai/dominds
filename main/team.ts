@@ -347,7 +347,6 @@ export namespace Team {
   // shared semantics, shared defaults, or wrapper-level fallback.
   type CodexModelParams = {
     temperature?: number; // 0-2, controls randomness
-    max_tokens?: number; // Maximum tokens to generate
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
@@ -360,7 +359,6 @@ export namespace Team {
 
   type OpenAiModelParams = {
     temperature?: number; // 0-2, controls randomness
-    max_tokens?: number; // Maximum tokens to generate
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
@@ -379,8 +377,6 @@ export namespace Team {
   };
 
   export interface ModelParams {
-    // General parameters that can be used by any provider
-    max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
     json_response?: boolean; // Force JSON response mode (provider-agnostic, provider-specific overrides when set).
 
     // Codex-only parameters for the `codex` wrapper.
@@ -1605,17 +1601,13 @@ export namespace Team {
   ] as const;
 
   export const TEAM_YAML_MODEL_PARAMS_ROOT_KEYS = [
-    'max_tokens',
     'json_response',
-    'general',
     'codex',
     'openai',
     'anthropic',
   ] as const;
-  export const TEAM_YAML_MODEL_PARAMS_GENERAL_KEYS = ['max_tokens'] as const;
   export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
-    'max_tokens',
     'service_tier',
     'top_p',
     'reasoning_effort',
@@ -1634,7 +1626,6 @@ export namespace Team {
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = [
     'temperature',
-    'max_tokens',
     'service_tier',
     'top_p',
     'reasoning_effort',
@@ -1692,6 +1683,7 @@ export namespace Team {
       web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\`? (not supported at ${atPrefix} root)`,
       json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\`?`,
       text_format: `Did you mean \`${atPrefix}.model_params.openai.text_format\`? (not supported at ${atPrefix} root)`,
+      max_tokens: `Did you mean \`${atPrefix}.model_params.anthropic.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
@@ -1726,7 +1718,8 @@ export namespace Team {
         service_tier: `Did you mean \`${modelParamsAt}.codex.service_tier\` (preferred for provider: codex) or \`${modelParamsAt}.openai.service_tier\`?`,
         temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
         top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
-        max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` / \`${modelParamsAt}.general.max_tokens\` (provider-agnostic), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
+        max_tokens: `Did you mean \`${modelParamsAt}.anthropic.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
+        general: `\`${modelParamsAt}.general\` is no longer supported; use provider-specific namespaces such as \`${modelParamsAt}.anthropic\` when needed.`,
       };
 
       const unknownAtModelParams = listUnknownKeys(
@@ -1748,19 +1741,9 @@ export namespace Team {
           pushIssue(
             `${idPrefix}/${issuePrefix}/codex/unknown_fields`,
             `Invalid .minds/team.yaml: ${modelParamsAt}.codex contains unknown fields.`,
-            buildUnknownFieldErrorText(`${modelParamsAt}.codex`, unknownAtCodex, {}),
-          );
-        }
-      }
-
-      const rawGeneral = rawModelParams.general;
-      if (rawGeneral !== undefined && isRecordValue(rawGeneral)) {
-        const unknownAtGeneral = listUnknownKeys(rawGeneral, TEAM_YAML_MODEL_PARAMS_GENERAL_KEYS);
-        if (unknownAtGeneral.length > 0) {
-          pushIssue(
-            `${idPrefix}/${issuePrefix}/general/unknown_fields`,
-            `Invalid .minds/team.yaml: ${modelParamsAt}.general contains unknown fields.`,
-            buildUnknownFieldErrorText(`${modelParamsAt}.general`, unknownAtGeneral, {}),
+            buildUnknownFieldErrorText(`${modelParamsAt}.codex`, unknownAtCodex, {
+              max_tokens: 'Codex output-token overrides are not supported; remove this field.',
+            }),
           );
         }
       }
@@ -1772,7 +1755,9 @@ export namespace Team {
           pushIssue(
             `${idPrefix}/${issuePrefix}/openai/unknown_fields`,
             `Invalid .minds/team.yaml: ${modelParamsAt}.openai contains unknown fields.`,
-            buildUnknownFieldErrorText(`${modelParamsAt}.openai`, unknownAtOpenai, {}),
+            buildUnknownFieldErrorText(`${modelParamsAt}.openai`, unknownAtOpenai, {
+              max_tokens: 'OpenAI output-token overrides are not supported; remove this field.',
+            }),
           );
         }
       }
@@ -2771,13 +2756,25 @@ export namespace Team {
     return obj as Record<string, number>;
   }
 
+  function pickKnownModelParams(
+    params: Record<string, unknown>,
+    allowedKeys: readonly string[],
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const key of allowedKeys) {
+      if (Object.prototype.hasOwnProperty.call(params, key)) {
+        out[key] = params[key];
+      }
+    }
+    return out;
+  }
+
   function asOptionalModelParams(value: unknown, at: string): ModelParams | undefined {
     if (value === undefined) return undefined;
     const obj = asRecord(value, at);
 
     const validateCodexParams = (params: Record<string, unknown>, at2: string): void => {
       asOptionalNumber(params.temperature, `${at2}.temperature`);
-      asOptionalNumber(params.max_tokens, `${at2}.max_tokens`);
       asOptionalNumber(params.top_p, `${at2}.top_p`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
       asOptionalBoolean(params.json_response, `${at2}.json_response`);
@@ -2860,7 +2857,6 @@ export namespace Team {
 
     const validateOpenAiParams = (params: Record<string, unknown>, at2: string): void => {
       asOptionalNumber(params.temperature, `${at2}.temperature`);
-      asOptionalNumber(params.max_tokens, `${at2}.max_tokens`);
       asOptionalNumber(params.top_p, `${at2}.top_p`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
       asOptionalString(params.safety_identifier, `${at2}.safety_identifier`);
@@ -2990,7 +2986,6 @@ export namespace Team {
     const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
     const anthropic =
       obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
-    const general = obj.general === undefined ? undefined : asRecord(obj.general, `${at}.general`);
 
     if (codex) validateCodexParams(codex, `${at}.codex`);
     if (openai) validateOpenAiParams(openai, `${at}.openai`);
@@ -3005,27 +3000,24 @@ export namespace Team {
       asOptionalBoolean(anthropic.json_response, `${at}.anthropic.json_response`);
     }
 
-    asOptionalNumber(obj.max_tokens, `${at}.max_tokens`);
     asOptionalBoolean(obj.json_response, `${at}.json_response`);
-    if (general) {
-      asOptionalNumber(general.max_tokens, `${at}.general.max_tokens`);
-    }
-
-    const topLevelMaxTokens = obj.max_tokens;
-    const generalMaxTokens = general ? general.max_tokens : undefined;
-    if (topLevelMaxTokens !== undefined && generalMaxTokens !== undefined) {
-      throw new Error(
-        `Invalid ${at}: do not set both ${at}.max_tokens and ${at}.general.max_tokens.`,
-      );
-    }
 
     const out: ModelParams = {};
-    const effectiveMaxTokens = (topLevelMaxTokens ?? generalMaxTokens) as number | undefined;
-    if (effectiveMaxTokens !== undefined) out.max_tokens = effectiveMaxTokens;
     if (obj.json_response !== undefined) out.json_response = obj.json_response as boolean;
-    if (codex) out.codex = codex as CodexModelParams;
-    if (openai) out.openai = openai as OpenAiModelParams;
-    if (anthropic) out.anthropic = anthropic as ModelParams['anthropic'];
-    return out;
+    if (codex) {
+      const knownCodex = pickKnownModelParams(codex, TEAM_YAML_MODEL_PARAMS_CODEX_KEYS);
+      if (Object.keys(knownCodex).length > 0) out.codex = knownCodex as CodexModelParams;
+    }
+    if (openai) {
+      const knownOpenAi = pickKnownModelParams(openai, TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS);
+      if (Object.keys(knownOpenAi).length > 0) out.openai = knownOpenAi as OpenAiModelParams;
+    }
+    if (anthropic) {
+      const knownAnthropic = pickKnownModelParams(anthropic, TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS);
+      if (Object.keys(knownAnthropic).length > 0) {
+        out.anthropic = knownAnthropic as ModelParams['anthropic'];
+      }
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
   }
 }

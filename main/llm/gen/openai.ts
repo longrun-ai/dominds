@@ -1548,10 +1548,6 @@ export class OpenAiGen implements LlmGenerator {
     );
 
     const openAiParams = agent.model_params?.openai || {};
-    const maxTokens = agent.model_params?.max_tokens;
-    const modelInfo = providerConfig.models[agent.model];
-    const outputLength = modelInfo?.output_length;
-    const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const textConfig = buildOpenAiTextConfig(openAiParams);
     const reasoning = buildOpenAiReasoning(openAiParams);
@@ -1564,7 +1560,6 @@ export class OpenAiGen implements LlmGenerator {
       model: agent.model,
       input: requestInput,
       instructions: systemPrompt.trim().length > 0 ? systemPrompt : undefined,
-      max_output_tokens: maxOutputTokens,
       parallel_tool_calls: parallelToolCalls,
       store: false,
       stream: true,
@@ -2488,10 +2483,6 @@ export class OpenAiGen implements LlmGenerator {
       },
     );
     const openAiParams = agent.model_params?.openai || {};
-    const maxTokens = agent.model_params?.max_tokens;
-    const modelInfo = providerConfig.models[agent.model];
-    const outputLength = modelInfo?.output_length;
-    const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const textConfig = buildOpenAiTextConfig(openAiParams);
     const reasoning = buildOpenAiReasoning(openAiParams);
@@ -2503,7 +2494,6 @@ export class OpenAiGen implements LlmGenerator {
       model: agent.model,
       input: requestInput,
       instructions: systemPrompt.trim().length > 0 ? systemPrompt : undefined,
-      max_output_tokens: maxOutputTokens,
       parallel_tool_calls: parallelToolCalls,
       store: false,
       stream: false,

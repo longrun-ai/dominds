@@ -1394,7 +1394,6 @@ export class AnthropicGen implements LlmGenerator {
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
-    const maxTokens = agent.model_params?.max_tokens;
 
     // Safety check: model should never be undefined at this point due to validation in driver
     if (!agent.model) {
@@ -1412,7 +1411,7 @@ export class AnthropicGen implements LlmGenerator {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
-      max_tokens: maxTokens ?? anthropicParams.max_tokens ?? outputLength ?? 1024,
+      max_tokens: anthropicParams.max_tokens ?? outputLength ?? 1024,
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(forceJsonResponse && {
         tool_choice: {
@@ -1481,7 +1480,6 @@ export class AnthropicGen implements LlmGenerator {
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
-    const maxTokens = agent.model_params?.max_tokens;
 
     // Safety check: model should never be undefined at this point due to validation in driver
     if (!agent.model) {
@@ -1499,7 +1497,7 @@ export class AnthropicGen implements LlmGenerator {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
-      max_tokens: maxTokens ?? anthropicParams.max_tokens ?? outputLength ?? 1024,
+      max_tokens: anthropicParams.max_tokens ?? outputLength ?? 1024,
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(forceJsonResponse && {
         tool_choice: {

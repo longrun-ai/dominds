@@ -432,7 +432,6 @@ function extractProminentEnumModelParams(
     }
   };
 
-  addSection('general', modelParamOptions.general);
   addSection('codex', modelParamOptions.codex);
   addSection('openai', modelParamOptions.openai);
   addSection('anthropic', modelParamOptions.anthropic);
@@ -766,13 +765,7 @@ function parseOptionalTeamModelParams(
   const out: Partial<Record<SetupProminentModelParamNamespace, Record<string, string>>> = {};
 
   for (const [namespace, nsUnknown] of Object.entries(value)) {
-    if (
-      namespace !== 'general' &&
-      namespace !== 'codex' &&
-      namespace !== 'openai' &&
-      namespace !== 'anthropic'
-    )
-      return null;
+    if (namespace !== 'codex' && namespace !== 'openai' && namespace !== 'anthropic') return null;
     if (!isRecord(nsUnknown)) return null;
     const nsOut: Record<string, string> = {};
     for (const [k, v] of Object.entries(nsUnknown)) {

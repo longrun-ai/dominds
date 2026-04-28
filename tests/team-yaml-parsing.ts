@@ -164,6 +164,167 @@ async function main(): Promise<void> {
       mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
     );
 
+    // OpenAI/Codex output-token overrides are intentionally unsupported. Unknown fields should be
+    // reported loudly and stripped from the parsed runtime model_params object.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      max_tokens: 123',
+        '      general:',
+        '        max_tokens: 456',
+        '      codex:',
+        '        max_tokens: 789',
+        '        verbosity: low',
+        '      openai:',
+        '        max_tokens: 321',
+        '        temperature: 0',
+        '      anthropic:',
+        '        max_tokens: 16',
+        '',
+      ].join('\n'),
+    );
+
+    const teamUnsupportedMaxTokens = await Team.load();
+    const unsupportedMember = teamUnsupportedMaxTokens.getMember('alice');
+    assert.ok(unsupportedMember, 'alice should still be loaded with unsupported fields stripped');
+    const unsupportedModelParams = unsupportedMember.model_params as
+      | Record<string, unknown>
+      | undefined;
+    assert.ok(unsupportedModelParams, 'model_params should still exist');
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(unsupportedModelParams, 'max_tokens'),
+      false,
+      'root model_params.max_tokens should be stripped',
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(unsupportedModelParams, 'general'),
+      false,
+      'model_params.general should be stripped',
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        unsupportedMember.model_params?.codex ?? {},
+        'max_tokens',
+      ),
+      false,
+      'model_params.codex.max_tokens should be stripped',
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        unsupportedMember.model_params?.openai ?? {},
+        'max_tokens',
+      ),
+      false,
+      'model_params.openai.max_tokens should be stripped',
+    );
+    assert.equal(
+      unsupportedMember.model_params?.codex?.verbosity,
+      'low',
+      'valid codex params should be preserved while stripping unknown max_tokens',
+    );
+    assert.equal(
+      unsupportedMember.model_params?.openai?.temperature,
+      0,
+      'valid openai params should be preserved while stripping unknown max_tokens',
+    );
+    assert.equal(
+      unsupportedMember.model_params?.anthropic?.max_tokens,
+      16,
+      'anthropic.max_tokens should remain supported',
+    );
+
+    const unsupportedSnapshot = getProblemsSnapshot();
+    const unsupportedIds = unsupportedSnapshot.problems.map((p) => p.id).sort();
+    assert.ok(
+      unsupportedIds.includes('team/team_yaml_error/members/alice/model_params/unknown_fields'),
+      'root model_params max_tokens/general should be reported as unknown',
+    );
+    assert.ok(
+      unsupportedIds.includes(
+        'team/team_yaml_error/members/alice/model_params/codex/unknown_fields',
+      ),
+      'codex.max_tokens should be reported as unknown',
+    );
+    assert.ok(
+      unsupportedIds.includes(
+        'team/team_yaml_error/members/alice/model_params/openai/unknown_fields',
+      ),
+      'openai.max_tokens should be reported as unknown',
+    );
+    const unsupportedRootProblem = unsupportedSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/alice/model_params/unknown_fields',
+    );
+    assert.ok(
+      unsupportedRootProblem && unsupportedRootProblem.kind === 'team_workspace_config_error',
+    );
+    assert.ok(
+      unsupportedRootProblem.detail.errorText.includes('model_params.anthropic.max_tokens'),
+      'root max_tokens hint should point to the only supported max_tokens namespace',
+    );
+    assert.ok(
+      unsupportedRootProblem.detail.errorText.includes('model_params.general'),
+      'general namespace should be called out as unsupported',
+    );
+    const unsupportedCodexProblem = unsupportedSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/alice/model_params/codex/unknown_fields',
+    );
+    assert.ok(
+      unsupportedCodexProblem && unsupportedCodexProblem.kind === 'team_workspace_config_error',
+    );
+    assert.ok(
+      unsupportedCodexProblem.detail.errorText.includes(
+        'Codex output-token overrides are not supported',
+      ),
+      'codex max_tokens hint should be explicit',
+    );
+    const unsupportedOpenAiProblem = unsupportedSnapshot.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/alice/model_params/openai/unknown_fields',
+    );
+    assert.ok(
+      unsupportedOpenAiProblem && unsupportedOpenAiProblem.kind === 'team_workspace_config_error',
+    );
+    assert.ok(
+      unsupportedOpenAiProblem.detail.errorText.includes(
+        'OpenAI output-token overrides are not supported',
+      ),
+      'openai max_tokens hint should be explicit',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      max_tokens: 123',
+        '      codex:',
+        '        max_tokens: 789',
+        '',
+      ].join('\n'),
+    );
+
+    const teamOnlyUnsupportedMaxTokens = await Team.load();
+    assert.equal(
+      teamOnlyUnsupportedMaxTokens.getMember('alice')?.model_params,
+      undefined,
+      'model_params with only unsupported max_tokens fields should be stripped completely',
+    );
+
     // model_params.codex.web_search should accept disabled|cached|live and reject others.
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
