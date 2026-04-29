@@ -1433,7 +1433,8 @@ async function executeFunctionRound(args: {
   }
 
   return {
-    hasImmediateFollowupToolCalls,
+    hasImmediateFollowupToolCalls:
+      hasImmediateFollowupToolCalls || tellaskRound.hasInvalidTellaskCalls,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],

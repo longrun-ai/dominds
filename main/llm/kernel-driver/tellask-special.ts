@@ -149,6 +149,8 @@ type ReplyTellaskCallName = 'replyTellask' | 'replyTellaskSessionless' | 'replyT
 type NonReplyTellaskCallName = Exclude<TellaskCall['callName'], ReplyTellaskCallName>;
 const MULTIPLE_ASKHUMAN_CALLS_ERROR =
   '不允许一轮多次调用 askHuman，必须单次调用问所有问题。 Do not call askHuman multiple times in one round; ask all questions in a single askHuman call.';
+const MULTIPLE_REPLY_TELLASK_CALLS_ERROR =
+  '不允许一轮多次调用 replyTellask*，必须只用当前诉请要求的唯一 reply special 完成交付。 Do not call multiple replyTellask* functions in one round; deliver with exactly one reply special required by the current tellask.';
 
 export function isTellaskCallFunctionName(name: string): name is TellaskCallFunctionName {
   return (TELLASK_SPECIAL_FUNCTION_NAMES as readonly string[]).includes(name);
@@ -819,7 +821,10 @@ export function formatTellaskInvalidCallResult(args: {
     content:
       args.call.name === 'askHuman' && args.error === MULTIPLE_ASKHUMAN_CALLS_ERROR
         ? args.error
-        : `Invalid arguments for tellask special function '${args.call.name}': ${args.error}`,
+        : isReplyTellaskCallName(args.call.name) &&
+            args.error === MULTIPLE_REPLY_TELLASK_CALLS_ERROR
+          ? args.error
+          : `Invalid arguments for tellask special function '${args.call.name}': ${args.error}`,
     role: 'tool',
     genseq: args.call.genseq,
   };
@@ -2991,6 +2996,7 @@ export type TellaskFunctionRoundResult = Readonly<{
   tellaskResults: readonly FuncResultMsg[];
   toolOutputs: readonly ChatMessage[];
   handledCallIds: readonly string[];
+  hasInvalidTellaskCalls: boolean;
   shouldStopAfterReplyTool: boolean;
 }>;
 
@@ -3011,9 +3017,16 @@ export async function processTellaskFunctionRound(args: {
   const multiAskHumanCalls = args.funcCalls.filter(
     (call) => call.name === 'askHuman' && args.allowedSpecials.has('askHuman'),
   );
+  const multiReplyTellaskCalls = args.funcCalls.filter(
+    (call) => isReplyTellaskCallName(call.name) && args.allowedSpecials.has(call.name),
+  );
   const funcCallsForResolution =
-    multiAskHumanCalls.length > 1
-      ? args.funcCalls.filter((call) => call.name !== 'askHuman')
+    multiAskHumanCalls.length > 1 || multiReplyTellaskCalls.length > 1
+      ? args.funcCalls.filter(
+          (call) =>
+            !(multiAskHumanCalls.length > 1 && call.name === 'askHuman') &&
+            !(multiReplyTellaskCalls.length > 1 && isReplyTellaskCallName(call.name)),
+        )
       : args.funcCalls;
   const resolvedTellask = resolveTellaskFunctionCalls(funcCallsForResolution, {
     allowedSpecials: args.allowedSpecials,
@@ -3039,6 +3052,18 @@ export async function processTellaskFunctionRound(args: {
         issue: {
           originalCall,
           error: MULTIPLE_ASKHUMAN_CALLS_ERROR,
+          rawArgumentsText: getRawArgumentsText(originalCall),
+        },
+      });
+      continue;
+    }
+    if (multiReplyTellaskCalls.length > 1 && isReplyTellaskCallName(originalCall.name)) {
+      orderedSpecialDispositions.push({
+        kind: 'invalid',
+        callName: originalCall.name,
+        issue: {
+          originalCall,
+          error: MULTIPLE_REPLY_TELLASK_CALLS_ERROR,
           rawArgumentsText: getRawArgumentsText(originalCall),
         },
       });
@@ -3107,6 +3132,33 @@ export async function processTellaskFunctionRound(args: {
       call: issue.originalCall,
       error: issue.error,
     });
+    log.error(
+      'Invalid tellask special function call',
+      new Error('invalid_tellask_special_function_call'),
+      {
+        rootId: args.dlg.id.rootId,
+        selfId: args.dlg.id.selfId,
+        course: args.dlg.currentCourse,
+        genseq: issue.originalCall.genseq,
+        callId: issue.originalCall.id,
+        toolName: issue.originalCall.name,
+        error: issue.error,
+      },
+    );
+    try {
+      await args.dlg.streamError(
+        `Invalid tellask special function call '${issue.originalCall.name}' (callId=${issue.originalCall.id}): ${issue.error}`,
+      );
+    } catch (streamErr) {
+      log.warn('Failed to emit stream_error_evt for invalid tellask special call', streamErr, {
+        rootId: args.dlg.id.rootId,
+        selfId: args.dlg.id.selfId,
+        course: args.dlg.currentCourse,
+        genseq: issue.originalCall.genseq,
+        callId: issue.originalCall.id,
+        toolName: issue.originalCall.name,
+      });
+    }
     await persistTellaskFuncResult(args.dlg, result);
     tellaskCallMessages.push({
       type: 'func_call_msg',
@@ -3215,6 +3267,8 @@ export async function processTellaskFunctionRound(args: {
     tellaskResults: [...issueResults, ...tellaskFuncResults],
     toolOutputs: tellaskToolOutputs,
     handledCallIds: orderedValidCalls.map(({ call }) => call.callId),
-    shouldStopAfterReplyTool: tellaskExecution.successfulReplyCallIds.length > 0,
+    hasInvalidTellaskCalls: orderedInvalidCalls.length > 0,
+    shouldStopAfterReplyTool:
+      orderedInvalidCalls.length === 0 && tellaskExecution.successfulReplyCallIds.length > 0,
   };
 }
