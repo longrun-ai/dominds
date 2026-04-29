@@ -15,6 +15,9 @@
 #   `apiQuirks: glm-via-volcano` enables a narrow Anthropic-compatible stream quirk for
 #   Volcano Engine Coding Plan tool calls where an empty-object tool input may arrive as
 #   content_block_start.input={} followed by a lone `partial_json: "}"`.
+#   `apiQuirks: volcano-tool-use` enables a narrow Anthropic-compatible stream quirk for
+#   Volcano Engine Coding Plan text blocks that render a tool call as textual
+#   "Function call emitted by the assistant." metadata instead of protocol tool_use blocks.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -453,7 +456,7 @@ providers:
   volcano-engine-coding-plan:
     name: Volcano Engine Coding Plan
     apiType: anthropic-compatible
-    apiQuirks: glm-via-volcano
+    apiQuirks: [glm-via-volcano, volcano-tool-use]
     baseUrl: https://ark.cn-beijing.volces.com/api/coding
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261

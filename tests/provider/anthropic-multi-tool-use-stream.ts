@@ -155,7 +155,10 @@ async function main() {
     },
     undefined,
     undefined,
-    { normalizeLoneClosingBraceEmptyToolInputDelta: true },
+    {
+      normalizeLoneClosingBraceEmptyToolInputDelta: true,
+      convertVolcanoTextToolUseBlocks: false,
+    },
   );
   assert(
     quirkEmptyToolCalls.length === 1,
@@ -164,6 +167,232 @@ async function main() {
   assert(
     quirkEmptyToolCalls[0]?.args === '{}',
     `Expected glm-via-volcano quirk to normalize lone } to {}, got ${quirkEmptyToolCalls[0]?.args ?? ''}`,
+  );
+
+  const textToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  const textToolUseWords: string[] = [];
+  async function* textRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: '我们看到有一个候选 conversation id。Function call emitted by the assistant.\nTool name: read_current_open_conversation_latest_result\n',
+      },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: 'Call ID: call_94335603-9c44-44b4-a09e-4a4870da27d7\nRaw arguments, verbatim:\n<raw_arguments>\n{"expectedConversationId":"69e093e8-76b8-839a-9378-b65b801038b9","evidenceMaxItems":10}\n</raw_arguments>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    textRenderedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingChunk: async (chunk: string) => {
+        textToolUseWords.push(chunk);
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        textToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    undefined,
+    undefined,
+    {
+      normalizeLoneClosingBraceEmptyToolInputDelta: false,
+      convertVolcanoTextToolUseBlocks: true,
+    },
+  );
+  assert(
+    textToolUseCalls.length === 1,
+    `Expected 1 text-rendered tool call, got ${textToolUseCalls.length}`,
+  );
+  assert(
+    textToolUseCalls[0]?.id === 'call_94335603-9c44-44b4-a09e-4a4870da27d7',
+    `Expected converted call id, got ${textToolUseCalls[0]?.id ?? ''}`,
+  );
+  assert(
+    textToolUseCalls[0]?.name === 'read_current_open_conversation_latest_result',
+    `Expected converted tool name, got ${textToolUseCalls[0]?.name ?? ''}`,
+  );
+  assert(
+    textToolUseCalls[0]?.args ===
+      '{"expectedConversationId":"69e093e8-76b8-839a-9378-b65b801038b9","evidenceMaxItems":10}',
+    `Expected converted raw args, got ${textToolUseCalls[0]?.args ?? ''}`,
+  );
+  assert(
+    textToolUseWords.join('') === '我们看到有一个候选 conversation id。',
+    `Expected only prose before text-rendered tool call to be emitted as saying, got ${JSON.stringify(textToolUseWords.join(''))}`,
+  );
+
+  const malformedTextToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  const malformedTextToolUseWords: string[] = [];
+  async function* malformedTextRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: 'Function call emitted by the assistant.\nTool name: read_current_open_conversation_latest_result\nCall ID: call_malformed_text_tool\nRaw arguments, verbatim:\n<raw_arguments>not-json</raw_arguments>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    malformedTextRenderedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingChunk: async (chunk: string) => {
+        malformedTextToolUseWords.push(chunk);
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        malformedTextToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    undefined,
+    undefined,
+    {
+      normalizeLoneClosingBraceEmptyToolInputDelta: false,
+      convertVolcanoTextToolUseBlocks: true,
+    },
+  );
+  assert(
+    malformedTextToolUseCalls.length === 1,
+    `Expected paired raw_arguments metadata to become a tool call even with malformed args, got ${malformedTextToolUseCalls.length} calls`,
+  );
+  assert(
+    malformedTextToolUseCalls[0]?.args === 'not-json',
+    `Expected malformed raw arguments to flow to normal tool-argument validation, got ${malformedTextToolUseCalls[0]?.args ?? ''}`,
+  );
+  assert(
+    malformedTextToolUseWords.join('') === '',
+    `Expected malformed text-rendered tool metadata itself not to be emitted as saying, got ${JSON.stringify(malformedTextToolUseWords.join(''))}`,
+  );
+
+  const messageStopFlushToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  async function* textRenderedToolUseWithoutBlockStopEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: 'Function call emitted by the assistant.\nTool name: read_current_open_conversation_latest_result\nCall ID: call_message_stop_flush\nRaw arguments, verbatim:\n<raw_arguments>{}</raw_arguments>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    textRenderedToolUseWithoutBlockStopEvents(),
+    {
+      ...emptyToolReceiver,
+      funcCall: async (callId: string, name: string, args: string) => {
+        messageStopFlushToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    undefined,
+    undefined,
+    {
+      normalizeLoneClosingBraceEmptyToolInputDelta: false,
+      convertVolcanoTextToolUseBlocks: true,
+    },
+  );
+  assert(
+    messageStopFlushToolUseCalls.length === 1,
+    `Expected message_stop to flush pending text-rendered tool call, got ${messageStopFlushToolUseCalls.length}`,
+  );
+  assert(
+    messageStopFlushToolUseCalls[0]?.id === 'call_message_stop_flush',
+    `Expected message_stop flushed call id, got ${messageStopFlushToolUseCalls[0]?.id ?? ''}`,
+  );
+
+  const textAroundToolUseEventsSeen: string[] = [];
+  async function* textAroundToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: 'before Function call emitted by the assistant.\nTool name: read_current_open_conversation_latest_result\nCall ID: call_text_around\nRaw arguments, verbatim:\n<raw_arguments>{}</raw_arguments> after',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    textAroundToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingStart: async () => {
+        textAroundToolUseEventsSeen.push('sayingStart');
+      },
+      sayingChunk: async (chunk: string) => {
+        textAroundToolUseEventsSeen.push(`saying:${chunk}`);
+      },
+      sayingFinish: async () => {
+        textAroundToolUseEventsSeen.push('sayingFinish');
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        textAroundToolUseEventsSeen.push(`func:${callId}:${name}:${args}`);
+      },
+    },
+    undefined,
+    undefined,
+    {
+      normalizeLoneClosingBraceEmptyToolInputDelta: false,
+      convertVolcanoTextToolUseBlocks: true,
+    },
+  );
+  assert(
+    textAroundToolUseEventsSeen.join('|') ===
+      'sayingStart|saying:before |sayingFinish|func:call_text_around:read_current_open_conversation_latest_result:{}|sayingStart|saying: after|sayingFinish',
+    `Expected text/tool/text order to be preserved, got ${JSON.stringify(textAroundToolUseEventsSeen)}`,
   );
 
   const defaultsRaw = await readBuiltinDefaultsYamlRaw();
@@ -176,6 +405,7 @@ async function main() {
 
   async function collectMockedProviderFuncCalls(
     provider: ProviderConfig,
+    responseText: string,
   ): Promise<Array<{ id: string; name: string; args: string }>> {
     const originalFetch = globalThis.fetch;
     const originalArkKey = process.env.ARK_API_KEY;
@@ -183,26 +413,10 @@ async function main() {
     try {
       process.env.ARK_API_KEY = 'test-key';
       globalThis.fetch = async (): Promise<Response> =>
-        new Response(
-          [
-            'event: message_start',
-            'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0},"content":[]}}',
-            '',
-            'event: content_block_start',
-            'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-provider-quirk","name":"tool_empty","input":{}}}',
-            '',
-            'event: content_block_delta',
-            'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"}"}}',
-            '',
-            'event: content_block_stop',
-            'data: {"type":"content_block_stop","index":0}',
-            '',
-            'event: message_stop',
-            'data: {"type":"message_stop"}',
-            '',
-          ].join('\n'),
-          { status: 200, headers: { 'content-type': 'text/event-stream' } },
-        );
+        new Response(responseText, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
 
       await new AnthropicGen('anthropic-compatible').genToReceiver(
         provider,
@@ -244,7 +458,28 @@ async function main() {
     return providerFuncCalls;
   }
 
-  const providerFuncCalls = await collectMockedProviderFuncCalls(volcanoProvider);
+  const malformedEmptyToolInputSse = [
+    'event: message_start',
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0},"content":[]}}',
+    '',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-provider-quirk","name":"tool_empty","input":{}}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"}"}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":0}',
+    '',
+    'event: message_stop',
+    'data: {"type":"message_stop"}',
+    '',
+  ].join('\n');
+
+  const providerFuncCalls = await collectMockedProviderFuncCalls(
+    volcanoProvider,
+    malformedEmptyToolInputSse,
+  );
   assert(
     providerFuncCalls.length === 1,
     `Expected 1 provider-config quirk call, got ${providerFuncCalls.length}`,
@@ -254,10 +489,13 @@ async function main() {
     `Expected built-in volcano provider to enable glm-via-volcano quirk, got ${providerFuncCalls[0]?.args ?? ''}`,
   );
 
-  const multiQuirkProviderFuncCalls = await collectMockedProviderFuncCalls({
-    ...volcanoProvider,
-    apiQuirks: ['xcode.best', 'glm-via-volcano'],
-  });
+  const multiQuirkProviderFuncCalls = await collectMockedProviderFuncCalls(
+    {
+      ...volcanoProvider,
+      apiQuirks: ['xcode.best', 'glm-via-volcano', 'volcano-tool-use'],
+    },
+    malformedEmptyToolInputSse,
+  );
   assert(
     multiQuirkProviderFuncCalls.length === 1,
     `Expected 1 multi-quirk provider call, got ${multiQuirkProviderFuncCalls.length}`,
@@ -265,6 +503,44 @@ async function main() {
   assert(
     multiQuirkProviderFuncCalls[0]?.args === '{}',
     `Expected apiQuirks array to enable glm-via-volcano alongside other quirks, got ${multiQuirkProviderFuncCalls[0]?.args ?? ''}`,
+  );
+
+  const textRenderedToolUseSse = [
+    'event: message_start',
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0},"content":[]}}',
+    '',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"前置说明。Function call emitted by the assistant.\\nTool name: read_current_open_conversation_latest_result\\n"}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Call ID: call_text_provider_quirk\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\"expectedConversationId\\":\\"69e093e8-76b8-839a-9378-b65b801038b9\\"}\\n</raw_arguments>"}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":0}',
+    '',
+    'event: message_stop',
+    'data: {"type":"message_stop"}',
+    '',
+  ].join('\n');
+  const providerTextToolUseCalls = await collectMockedProviderFuncCalls(
+    volcanoProvider,
+    textRenderedToolUseSse,
+  );
+  assert(
+    providerTextToolUseCalls.length === 1,
+    `Expected 1 provider-config text-rendered tool call, got ${providerTextToolUseCalls.length}`,
+  );
+  assert(
+    providerTextToolUseCalls[0]?.id === 'call_text_provider_quirk',
+    `Expected built-in volcano provider to enable volcano-tool-use quirk, got call id ${providerTextToolUseCalls[0]?.id ?? ''}`,
+  );
+  assert(
+    providerTextToolUseCalls[0]?.args ===
+      '{"expectedConversationId":"69e093e8-76b8-839a-9378-b65b801038b9"}',
+    `Expected built-in volcano provider to convert text-rendered tool args, got ${providerTextToolUseCalls[0]?.args ?? ''}`,
   );
 
   console.log('✓ Anthropic multi tool_use streaming test passed');
