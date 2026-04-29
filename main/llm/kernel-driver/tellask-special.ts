@@ -250,6 +250,15 @@ type ReplyTellaskExecutionResult = Readonly<{
 
 type ReplyTellaskCallRecord = TellaskCallRecord & { name: ReplyTellaskCallName };
 
+type TellaskBackReplyDeliveryResult = Readonly<
+  | {
+      kind: 'delivered';
+    }
+  | {
+      kind: 'already_resolved';
+    }
+>;
+
 function buildAssignmentReplyDirective(args: {
   callName: 'tellask' | 'tellaskSessionless';
   targetDialogId: string;
@@ -283,7 +292,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   replyContent: string;
   callbacks: KernelDriverDriveCallbacks;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
-}): Promise<void> {
+}): Promise<TellaskBackReplyDeliveryResult> {
   // Type-A ask-back is the one place where the local tellasker/tellaskee intuition flips:
   // the dialog running `replyTellaskBack` is the ask-back tellaskee, while
   // directive.targetDialogId points to the ask-back asker that must receive the canonical
@@ -307,6 +316,18 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     throw new Error(
       `replyTellaskBack invariant violation: target dialog ${askBackAskerDialogId.selfId} not found`,
     );
+  }
+  if (
+    await hasPersistedTellaskResultRecord(askBackAskerDialog, args.directive.targetCallId.trim())
+  ) {
+    log.warn('replyTellaskBack target tellaskBack result is already resolved', undefined, {
+      rootId: askBackAskerDialog.id.rootId,
+      selfId: askBackAskerDialog.id.selfId,
+      replyingSelfId: args.replyingDialog.id.selfId,
+      callId: args.directive.targetCallId,
+      deliveryMode: args.deliveryMode ?? 'reply_tool',
+    });
+    return { kind: 'already_resolved' };
   }
   const response = formatTellaskResponseContent({
     callName: 'tellaskBack',
@@ -355,6 +376,24 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // claiming "resumed" while the business fact never landed.
   askBackAskerDialog.setSuspensionState('resumed');
   await reviveDialogIfUnblocked(askBackAskerDialog, args.callbacks, 'reply_tellask_back_delivered');
+  return { kind: 'delivered' };
+}
+
+async function hasPersistedTellaskResultRecord(dialog: Dialog, callId: string): Promise<boolean> {
+  if (callId === '') {
+    return false;
+  }
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
+  for (let course = 1; course <= maxCourse; course += 1) {
+    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+    for (const event of events) {
+      if (event.type === 'tellask_result_record' && event.callId.trim() === callId) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function isReplyTellaskCallRecord(record: TellaskCallRecord): record is ReplyTellaskCallRecord {
@@ -2703,13 +2742,36 @@ async function executeReplyTellaskCall(args: {
       if (activeDirective.expectedReplyCallName !== 'replyTellaskBack') {
         throw new Error('replyTellaskBack invariant violation: unexpected active reply directive');
       }
-      await deliverTellaskBackReplyFromDirective({
+      const delivery = await deliverTellaskBackReplyFromDirective({
         replyingDialog: args.dlg,
         directive: activeDirective,
         replyContent: args.call.replyContent,
         callbacks: args.callbacks,
         deliveryMode: 'reply_tool',
       });
+      if (delivery.kind === 'already_resolved') {
+        await args.dlg.appendTellaskReplyResolution({
+          callId: args.call.callId,
+          replyCallName: 'replyTellaskBack',
+          targetCallId: activeDirective.targetCallId,
+        });
+        return {
+          delivered: false,
+          messages: [
+            {
+              type: 'func_result_msg',
+              role: 'tool',
+              genseq,
+              id: args.call.callId,
+              name: args.call.callName,
+              content: formatReplyFuncErrorResult({
+                attemptedCallName: args.call.callName,
+                reason: 'no_pending',
+              }),
+            },
+          ],
+        };
+      }
       await args.dlg.appendTellaskReplyResolution({
         callId: args.call.callId,
         replyCallName: 'replyTellaskBack',

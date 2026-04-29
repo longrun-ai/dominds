@@ -1173,6 +1173,105 @@ type PreparedFuncCall = Readonly<{
   preparedInvocationArgs: FuncToolInvocationResolution | null;
 }>;
 
+type PreRejectedFuncCall = Readonly<{
+  callIndex: number;
+  result: FuncResultMsg;
+}>;
+
+async function loadKnownFunctionCallIds(dialog: Dialog): Promise<ReadonlySet<string>> {
+  const known = new Set<string>();
+  for (const msg of dialog.msgs) {
+    if (msg.type === 'func_call_msg') {
+      const callId = msg.id.trim();
+      if (callId !== '') {
+        known.add(callId);
+      }
+    }
+  }
+
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
+  for (let course = 1; course <= maxCourse; course += 1) {
+    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+    for (const event of events) {
+      if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
+        const callId = event.id.trim();
+        if (callId !== '') {
+          known.add(callId);
+        }
+      }
+    }
+  }
+  return known;
+}
+
+function formatDuplicateFunctionCallResult(args: { callId: string; callName: string }): string {
+  const language = getWorkLanguage();
+  if (language === 'zh') {
+    return [
+      `错误：本次函数调用被拒绝，因为 callId \`${args.callId}\` 已经被使用过。`,
+      '',
+      `不要复用已有 callId 调用 \`${args.callName}\`。如果仍需要调用工具，请重新发起一次带全新 callId 的函数调用。`,
+    ].join('\n');
+  }
+  return [
+    `Error: this function call was rejected because callId \`${args.callId}\` has already been used.`,
+    '',
+    `Do not reuse an existing callId for \`${args.callName}\`. If you still need the tool, issue a new function call with a fresh callId.`,
+  ].join('\n');
+}
+
+async function splitPreRejectedFunctionCalls(args: {
+  dlg: Dialog;
+  funcCalls: readonly FuncCallMsg[];
+}): Promise<Readonly<{ executableCalls: FuncCallMsg[]; preRejectedCalls: PreRejectedFuncCall[] }>> {
+  const knownCallIds = await loadKnownFunctionCallIds(args.dlg);
+  const seenThisRound = new Set<string>();
+  const executableCalls: FuncCallMsg[] = [];
+  const preRejectedCalls: PreRejectedFuncCall[] = [];
+  for (let callIndex = 0; callIndex < args.funcCalls.length; callIndex += 1) {
+    const call = args.funcCalls[callIndex];
+    if (!call) {
+      throw new Error(`kernel-driver function call invariant violation: missing call ${callIndex}`);
+    }
+    const callId = call.id.trim();
+    const isDuplicate = callId !== '' && (knownCallIds.has(callId) || seenThisRound.has(callId));
+    if (!isDuplicate) {
+      if (callId !== '') {
+        seenThisRound.add(callId);
+      }
+      executableCalls.push(call);
+      continue;
+    }
+
+    const genseq =
+      Number.isFinite(call.genseq) && call.genseq > 0
+        ? Math.floor(call.genseq)
+        : (args.dlg.activeGenSeqOrUndefined ?? 1);
+    const result: FuncResultMsg = {
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq,
+      id: call.id,
+      name: call.name,
+      content: formatDuplicateFunctionCallResult({
+        callId: call.id,
+        callName: call.name,
+      }),
+    };
+    log.warn('Rejected duplicate function call id from LLM output', undefined, {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      course: args.dlg.currentCourse,
+      genseq,
+      callId: call.id,
+      callName: call.name,
+    });
+    preRejectedCalls.push({ callIndex, result });
+  }
+  return { executableCalls, preRejectedCalls };
+}
+
 async function executeFunctionCalls(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -1330,6 +1429,14 @@ async function executeFunctionRound(args: {
   }
   throwIfAborted(args.abortSignal, args.dlg);
 
+  const { executableCalls, preRejectedCalls } = await splitPreRejectedFunctionCalls({
+    dlg: args.dlg,
+    funcCalls: args.funcCalls,
+  });
+  const preRejectedResultByCall = new Map(
+    preRejectedCalls.map((entry) => [entry.callIndex, entry.result] as const),
+  );
+
   const allowTellaskBack = args.allowTellaskFunctions && args.dlg.id.rootId !== args.dlg.id.selfId;
   const allowedSpecials = args.allowTellaskFunctions
     ? new Set<TellaskCallFunctionName>([
@@ -1346,7 +1453,7 @@ async function executeFunctionRound(args: {
   throwIfAborted(args.abortSignal, args.dlg);
   const tellaskRound = await processTellaskFunctionRound({
     dlg: args.dlg,
-    funcCalls: args.funcCalls,
+    funcCalls: executableCalls,
     allowedSpecials,
     callbacks: args.callbacks,
     activePromptReplyDirective: args.activePromptReplyDirective,
@@ -1401,8 +1508,13 @@ async function executeFunctionRound(args: {
     tellaskRound.tellaskCallMessages.map((msg) => [msg.id, msg] as const),
   );
   const specialCallIds = new Set(tellaskRound.handledCallIds);
-  for (const call of args.funcCalls) {
-    const tellaskCallMsg = tellaskCallMsgById.get(call.id);
+  for (let callIndex = 0; callIndex < args.funcCalls.length; callIndex += 1) {
+    const call = args.funcCalls[callIndex];
+    if (!call) {
+      throw new Error(`kernel-driver function call invariant violation: missing call ${callIndex}`);
+    }
+    const preRejectedResult = preRejectedResultByCall.get(callIndex);
+    const tellaskCallMsg = preRejectedResult ? undefined : tellaskCallMsgById.get(call.id);
     if (tellaskCallMsg) {
       pairedMessages.push(tellaskCallMsg);
     } else {
@@ -1416,6 +1528,10 @@ async function executeFunctionRound(args: {
         name: call.name,
         arguments: originalArgsStr,
       });
+    }
+    if (preRejectedResult) {
+      pairedMessages.push(preRejectedResult);
+      continue;
     }
     const result = resultByCallId.get(call.id);
     if (result) {
@@ -1434,7 +1550,9 @@ async function executeFunctionRound(args: {
 
   return {
     hasImmediateFollowupToolCalls:
-      hasImmediateFollowupToolCalls || tellaskRound.hasInvalidTellaskCalls,
+      hasImmediateFollowupToolCalls ||
+      tellaskRound.hasInvalidTellaskCalls ||
+      preRejectedCalls.length > 0,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],

@@ -173,6 +173,79 @@ async function main(): Promise<void> {
       /there is no active inter-dialog reply obligation right now/u,
     );
 
+    const deliveredAskBackCallId = 'already-delivered-askback-call';
+    await root.receiveTellaskResult({
+      type: 'tellask_result_msg',
+      role: 'tool',
+      callId: deliveredAskBackCallId,
+      callName: 'tellaskBack',
+      status: 'completed',
+      content: 'Already delivered ask-back reply.',
+      call: {
+        tellaskContent: 'Need one ask-back answer.',
+      },
+      responder: {
+        responderId: 'tester',
+        agentId: 'tester',
+        originMemberId: 'pangu',
+      },
+    });
+    await DialogPersistence.setActiveTellaskReplyObligation(root.id, {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetDialogId: root.id.selfId,
+      targetCallId: deliveredAskBackCallId,
+      tellaskContent: 'Need one ask-back answer.',
+    });
+    const duplicateAskBackCh = dialogEventRegistry.createSubChan(root.id);
+    const duplicateAskBackReply = await executeTellaskCalls({
+      dlg: root,
+      calls: [
+        {
+          callId: 'duplicate-askback-reply-tool-call',
+          callName: 'replyTellaskBack',
+          replyContent: 'Done again.',
+        },
+      ],
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+    });
+    assert.deepEqual(
+      duplicateAskBackReply.successfulReplyCallIds,
+      [],
+      'already resolved replyTellaskBack target must not count as delivered',
+    );
+    assert.equal(
+      duplicateAskBackReply.toolOutputs.length,
+      1,
+      'expected one tool result for already resolved replyTellaskBack target',
+    );
+    assert.equal(duplicateAskBackReply.toolOutputs[0]?.type, 'func_result_msg');
+    assert.match(
+      duplicateAskBackReply.toolOutputs[0]?.content ?? '',
+      /there is no longer a pending inter-dialog reply obligation/u,
+    );
+    const duplicateAskBackEvents = await collectEvents(duplicateAskBackCh, 300);
+    assert.equal(
+      duplicateAskBackEvents.some((event) => event.type === 'stream_error_evt'),
+      false,
+      'already resolved replyTellaskBack target should not emit stream_error_evt',
+    );
+    assert.equal(
+      (await DialogPersistence.loadCourseEvents(root.id, 1, root.status)).filter(
+        (event) =>
+          event.type === 'tellask_result_record' && event.callId === deliveredAskBackCallId,
+      ).length,
+      1,
+      'already resolved replyTellaskBack target must keep exactly one canonical result',
+    );
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
+      undefined,
+      'already resolved replyTellaskBack target should clear stale reply obligation',
+    );
+
     const deferredTargetCallId = 'deferred-reply-call';
     const deferredTellaskContent = 'Please finish this deferred reply once and only once.';
     const deferredSideDialog = await root.createSideDialog(
