@@ -80,6 +80,32 @@ type ActiveToolUse = {
   initialInput: unknown;
 };
 
+type OfficialAnthropicThinkingConfig =
+  | { type: 'adaptive' }
+  | { type: 'disabled' }
+  | { type: 'enabled'; budget_tokens: number };
+
+type AnthropicCompatibleThinkingConfig = { type: 'enabled' } | { type: 'disabled' };
+
+type AnthropicProviderThinkingConfig =
+  | OfficialAnthropicThinkingConfig
+  | AnthropicCompatibleThinkingConfig;
+
+type AnthropicRequestBaseParams = Omit<MessageCreateParamsNonStreaming, 'stream' | 'thinking'> & {
+  thinking?: AnthropicProviderThinkingConfig;
+  reasoning_split?: boolean;
+};
+
+type AnthropicStreamingRequestParams = AnthropicRequestBaseParams & {
+  stream: true;
+  signal?: AbortSignal;
+};
+
+type AnthropicNonStreamingRequestParams = AnthropicRequestBaseParams & {
+  stream: false;
+  signal?: AbortSignal;
+};
+
 function limitAnthropicToolOutputText(
   text: string,
   msg: FuncResultMsg,
@@ -212,8 +238,24 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
   };
 }
 
-function resolveAnthropicJsonResponseEnabled(agent: Team.Member): boolean {
-  const providerSpecific = agent.model_params?.anthropic?.json_response;
+function resolveAnthropicParams(
+  providerConfig: ProviderConfig,
+  agent: Team.Member,
+):
+  | NonNullable<Team.ModelParams['anthropic']>
+  | NonNullable<Team.ModelParams['anthropic-compatible']> {
+  if (providerConfig.apiType === 'anthropic-compatible') {
+    return agent.model_params?.['anthropic-compatible'] || {};
+  }
+  return agent.model_params?.anthropic || {};
+}
+
+function resolveAnthropicJsonResponseEnabled(
+  providerConfig: ProviderConfig,
+  agent: Team.Member,
+): boolean {
+  const anthropicParams = resolveAnthropicParams(providerConfig, agent);
+  const providerSpecific = anthropicParams.json_response;
   if (providerSpecific !== undefined) return providerSpecific;
   return agent.model_params?.json_response === true;
 }
@@ -236,6 +278,31 @@ function buildAnthropicToolList(funcTools: FuncTool[], forceJsonResponse: boolea
   }
   tools.push(buildAnthropicForcedJsonTool());
   return tools;
+}
+
+function buildAnthropicThinkingConfig(
+  anthropicParams:
+    | NonNullable<Team.ModelParams['anthropic']>
+    | NonNullable<Team.ModelParams['anthropic-compatible']>,
+  providerConfig: ProviderConfig,
+): AnthropicProviderThinkingConfig | undefined {
+  const configured = anthropicParams.thinking;
+  if (configured === undefined) return undefined;
+
+  if (providerConfig.apiType === 'anthropic-compatible') {
+    if (configured === true) return { type: 'enabled' };
+    if (configured === false) return { type: 'disabled' };
+    throw new Error(
+      `Invalid model_params.anthropic-compatible.thinking for provider '${providerConfig.name}' (apiType=anthropic-compatible): expected boolean.`,
+    );
+  }
+
+  if (typeof configured === 'boolean') {
+    throw new Error(
+      `Invalid model_params.anthropic.thinking for provider '${providerConfig.name}' (apiType=anthropic): expected Anthropic thinking object.`,
+    );
+  }
+  return configured;
 }
 
 function serializeAnthropicForcedJsonObject(input: unknown, at: string): string {
@@ -1553,8 +1620,12 @@ export async function reconstructAnthropicContextWrapperAsync(
  * and providing both streaming and non-streaming generation.
  */
 export class AnthropicGen implements LlmGenerator {
+  constructor(
+    private readonly generatorApiType: 'anthropic' | 'anthropic-compatible' = 'anthropic',
+  ) {}
+
   get apiType() {
-    return 'anthropic';
+    return this.generatorApiType;
   }
 
   classifyFailure(error: unknown): LlmFailureDisposition | undefined {
@@ -1585,8 +1656,8 @@ export class AnthropicGen implements LlmGenerator {
       receiver.userImageIngest,
     );
 
-    const anthropicParams = agent.model_params?.anthropic || {};
-    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
+    const anthropicParams = resolveAnthropicParams(providerConfig, agent);
+    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(providerConfig, agent);
 
     // Safety check: model should never be undefined at this point due to validation in driver
     if (!agent.model) {
@@ -1598,13 +1669,16 @@ export class AnthropicGen implements LlmGenerator {
     // Get model info from provider config for output_length
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
+    const maxTokens = anthropicParams.max_tokens ?? outputLength ?? 1024;
+    const thinking = buildAnthropicThinkingConfig(anthropicParams, providerConfig);
 
     const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
-      max_tokens: anthropicParams.max_tokens ?? outputLength ?? 1024,
+      max_tokens: maxTokens,
+      ...(thinking !== undefined && { thinking }),
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(forceJsonResponse && {
         tool_choice: {
@@ -1626,7 +1700,7 @@ export class AnthropicGen implements LlmGenerator {
       }),
     };
 
-    const streamParams: MessageCreateParamsStreaming & { signal?: AbortSignal } = {
+    const streamParams: AnthropicStreamingRequestParams = {
       ...baseParams,
       stream: true,
       ...(abortSignal ? { signal: abortSignal } : {}),
@@ -1671,8 +1745,8 @@ export class AnthropicGen implements LlmGenerator {
       },
     );
 
-    const anthropicParams = agent.model_params?.anthropic || {};
-    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
+    const anthropicParams = resolveAnthropicParams(providerConfig, agent);
+    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(providerConfig, agent);
 
     // Safety check: model should never be undefined at this point due to validation in driver
     if (!agent.model) {
@@ -1684,13 +1758,16 @@ export class AnthropicGen implements LlmGenerator {
     // Get model info from provider config for output_length
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
+    const maxTokens = anthropicParams.max_tokens ?? outputLength ?? 1024;
+    const thinking = buildAnthropicThinkingConfig(anthropicParams, providerConfig);
 
     const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
-      max_tokens: anthropicParams.max_tokens ?? outputLength ?? 1024,
+      max_tokens: maxTokens,
+      ...(thinking !== undefined && { thinking }),
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
       ...(forceJsonResponse && {
         tool_choice: {
@@ -1709,13 +1786,15 @@ export class AnthropicGen implements LlmGenerator {
       }),
     };
 
-    const createParams: MessageCreateParamsNonStreaming & { signal?: AbortSignal } = {
+    const createParams: AnthropicNonStreamingRequestParams = {
       ...baseParams,
       stream: false,
       ...(abortSignal ? { signal: abortSignal } : {}),
     };
 
-    const response = await client.messages.create(createParams);
+    const response = await client.messages.create(
+      createParams as unknown as MessageCreateParamsNonStreaming,
+    );
 
     if (!response) {
       throw new Error('No response from Anthropic API');

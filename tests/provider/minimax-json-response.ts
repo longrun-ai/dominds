@@ -56,8 +56,8 @@ function pickModel(provider: ProviderConfig, preferred: string | null): string {
   if (preferred && Object.prototype.hasOwnProperty.call(provider.models, preferred)) {
     return preferred;
   }
-  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.5')) {
-    return 'MiniMax-M2.5';
+  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.7')) {
+    return 'MiniMax-M2.7';
   }
   const fallback = Object.keys(provider.models)[0];
   if (!fallback) {

@@ -2,7 +2,8 @@ import type {
   DomindsRuntimeStatus,
   SetupFileKind,
   SetupFileResponse,
-  SetupProminentEnumModelParam,
+  SetupModelParamScalar,
+  SetupProminentModelParam,
   SetupProviderSummary,
   SetupRequirement,
   SetupStatusResponse,
@@ -407,7 +408,11 @@ export class DomindsSetup extends HTMLElement {
       const k = `${providerKey}/${p.namespace}/${p.key}`;
       if (this.prominentParamTouched[k] === true) continue;
       const def = p.defaultValue;
-      if (typeof def === 'string' && def !== '' && p.values.includes(def)) {
+      if (p.kind === 'boolean' && typeof def === 'boolean') {
+        this.prominentParamSelections[k] = String(def);
+        continue;
+      }
+      if (p.kind === 'enum' && typeof def === 'string' && def !== '' && p.values.includes(def)) {
         this.prominentParamSelections[k] = def;
         continue;
       }
@@ -843,15 +848,22 @@ export class DomindsSetup extends HTMLElement {
 
   private collectSelectedProminentParams(
     providerKey: string,
-    prominent: SetupProminentEnumModelParam[],
-  ): Record<string, Record<string, string>> {
-    const out: Record<string, Record<string, string>> = {};
+    prominent: SetupProminentModelParam[],
+  ): Record<string, Record<string, SetupModelParamScalar>> {
+    const out: Record<string, Record<string, SetupModelParamScalar>> = {};
     for (const p of prominent) {
       const val = this.prominentParamSelections[`${providerKey}/${p.namespace}/${p.key}`];
       if (typeof val !== 'string' || val === '') continue;
-      if (!p.values.includes(val)) continue;
+      let parsed: SetupModelParamScalar;
+      if (p.kind === 'boolean') {
+        if (val !== 'true' && val !== 'false') continue;
+        parsed = val === 'true';
+      } else {
+        if (!p.values.includes(val)) continue;
+        parsed = val;
+      }
       const bucket = out[p.namespace] ?? {};
-      bucket[p.key] = val;
+      bucket[p.key] = parsed;
       out[p.namespace] = bucket;
     }
     return out;
@@ -1098,17 +1110,19 @@ export class DomindsSetup extends HTMLElement {
     return `After writing/updating ${filePill}, click ${refreshPill}. When setup is valid, ${goToAppPill} enables.`;
   }
 
-  private formatModelParamNamespaceTitle(
-    namespace: SetupProminentEnumModelParam['namespace'],
-  ): string {
+  private formatModelParamNamespaceTitle(namespace: SetupProminentModelParam['namespace']): string {
     const language = this.uiLanguage;
     switch (namespace) {
       case 'codex':
         return 'Codex';
       case 'openai':
         return 'OpenAI';
+      case 'openai-compatible':
+        return 'OpenAI-compatible';
       case 'anthropic':
         return 'Anthropic';
+      case 'anthropic-compatible':
+        return 'Anthropic-compatible';
       default: {
         const _exhaustive: never = namespace;
         return String(_exhaustive);
@@ -1125,22 +1139,23 @@ export class DomindsSetup extends HTMLElement {
 
     const t = getUiStrings(this.uiLanguage);
 
-    const groups: Record<
-      SetupProminentEnumModelParam['namespace'],
-      SetupProminentEnumModelParam[]
-    > = {
+    const groups: Record<SetupProminentModelParam['namespace'], SetupProminentModelParam[]> = {
       codex: [],
       openai: [],
+      'openai-compatible': [],
       anthropic: [],
+      'anthropic-compatible': [],
     };
     for (const p of prominent) {
       groups[p.namespace].push(p);
     }
 
-    const groupOrder: Array<SetupProminentEnumModelParam['namespace']> = [
+    const groupOrder: Array<SetupProminentModelParam['namespace']> = [
       'codex',
       'openai',
+      'openai-compatible',
       'anthropic',
+      'anthropic-compatible',
     ];
 
     const sections = groupOrder
@@ -1150,9 +1165,44 @@ export class DomindsSetup extends HTMLElement {
 
         const rows = items
           .map((p) => {
-            if (p.values.length === 0) return '';
             const compoundKey = `${providerKey}/${p.namespace}/${p.key}`;
             const stored = this.prominentParamSelections[compoundKey];
+            if (p.kind === 'boolean') {
+              const selected =
+                typeof stored === 'string'
+                  ? stored
+                  : typeof p.defaultValue === 'boolean'
+                    ? String(p.defaultValue)
+                    : '';
+              const options = [
+                `<option value="" ${selected === '' ? 'selected' : ''}>${escapeHtml(
+                  getUiStrings(this.uiLanguage).setupProminentModelParamUnset,
+                )}</option>`,
+                `<option value="true" ${selected === 'true' ? 'selected' : ''}>true</option>`,
+                `<option value="false" ${selected === 'false' ? 'selected' : ''}>false</option>`,
+              ].join('');
+
+              return `
+                <div class="param-row">
+                  <div class="param-label-wrap">
+                    <div class="param-label">${escapeHtml(p.description)}</div>
+                    <div class="param-key"><code>${escapeHtml(p.key)}</code></div>
+                  </div>
+                  <select
+                    class="select select-compact"
+                    data-prominent-param="true"
+                    data-prominent-provider="${escapeHtmlAttr(providerKey)}"
+                    data-prominent-namespace="${escapeHtmlAttr(p.namespace)}"
+                    data-prominent-key="${escapeHtmlAttr(p.key)}"
+                    title="${escapeHtmlAttr(p.description)}"
+                  >
+                    ${options}
+                  </select>
+                </div>
+              `;
+            }
+
+            if (p.values.length === 0) return '';
             const selected =
               typeof stored === 'string'
                 ? stored

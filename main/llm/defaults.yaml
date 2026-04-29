@@ -169,13 +169,17 @@ providers:
         context_window: '272K'
   minimaxi.com-coding-plan:
     name: MiniMax CN Coding Plan
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.minimaxi.com/anthropic
     apiKeyEnvVar: MINIMAX_CN_CP_API_KEY
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -193,13 +197,6 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
-        supports_image_input: false
-        context_length: 204800
-        input_length: 204800
-        output_length: 8192
-        context_window: '204K'
-      MiniMax-M2.5:
-        name: MiniMax M2.5
         supports_image_input: false
         context_length: 204800
         input_length: 204800
@@ -221,13 +218,17 @@ providers:
         context_window: '204K'
   minimaxi.com:
     name: MiniMax CN
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.minimaxi.com/anthropic
     apiKeyEnvVar: MINIMAX_CN_API_KEY
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -245,13 +246,6 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
-        supports_image_input: false
-        context_length: 204800
-        input_length: 204800
-        output_length: 8192
-        context_window: '204K'
-      MiniMax-M2.5:
-        name: MiniMax M2.5
         supports_image_input: false
         context_length: 204800
         input_length: 204800
@@ -273,13 +267,17 @@ providers:
         context_window: '204K'
   minimax.io-coding-plan:
     name: MiniMax International Coding Plan
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.minimax.io/anthropic
     apiKeyEnvVar: MINIMAX_CP_API_KEY
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -297,13 +295,6 @@ providers:
     models:
       MiniMax-M2.7:
         name: MiniMax M2.7
-        supports_image_input: false
-        context_length: 204800
-        input_length: 204800
-        output_length: 8192
-        context_window: '204K'
-      MiniMax-M2.5:
-        name: MiniMax M2.5
         supports_image_input: false
         context_length: 204800
         input_length: 204800
@@ -325,13 +316,17 @@ providers:
         context_window: '204K'
   minimax.io:
     name: MiniMax International
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.minimax.io/anthropic
     apiKeyEnvVar: MINIMAX_API_KEY
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -354,13 +349,6 @@ providers:
         input_length: 204800
         output_length: 8192
         context_window: '204K'
-      MiniMax-M2.5:
-        name: MiniMax M2.5
-        supports_image_input: false
-        context_length: 204800
-        input_length: 204800
-        output_length: 8192
-        context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
         supports_image_input: false
@@ -377,11 +365,17 @@ providers:
         context_window: '204K'
   bigmodel:
     name: BigModel
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://open.bigmodel.cn/api/anthropic
     apiKeyEnvVar: ZHIPUAI_API_KEY
     tech_spec_url: https://docs.bigmodel.cn/
     api_mgmt_url: https://open.bigmodel.cn/usercenter/apikeys
+    model_param_options:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
     models:
       glm-4.7:
         name: GLM-4.7
@@ -413,11 +407,17 @@ providers:
         context_window: '128K'
   z.ai:
     name: Z.AI
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.z.ai/api/anthropic
     apiKeyEnvVar: ZAI_API_KEY
     tech_spec_url: https://docs.z.ai/api-reference
     api_mgmt_url: https://z.ai/manage-apikey/apikey-list
+    model_param_options:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
     models:
       glm-4.7:
         name: GLM-4.7
@@ -449,14 +449,39 @@ providers:
         context_window: '128K'
   volcano-engine-coding-plan:
     name: Volcano Engine Coding Plan
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://ark.cn-beijing.volces.com/api/coding
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261
     api_mgmt_url: https://console.volcengine.com/ark
+    model_param_options:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the model default_thinking metadata/provider default.
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          description: Sampling temperature.
+        max_tokens:
+          type: integer
+          min: 1
+          description: Maximum output tokens.
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Nucleus sampling parameter.
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
     models:
       doubao-seed-2.0-code:
         name: Doubao-Seed-2.0-Code
+        supports_thinking: true
+        default_thinking: false
         supports_image_input: true
         context_length: 256000
         input_length: 256000
@@ -464,6 +489,8 @@ providers:
         context_window: '256K'
       doubao-seed-2.0-pro:
         name: Doubao-Seed-2.0-pro
+        supports_thinking: true
+        default_thinking: true
         supports_image_input: true
         context_length: 256000
         input_length: 256000
@@ -471,6 +498,8 @@ providers:
         context_window: '256K'
       doubao-seed-2.0-lite:
         name: Doubao-Seed-2.0-lite
+        supports_thinking: true
+        default_thinking: true
         supports_image_input: false
         context_length: 256000
         input_length: 256000
@@ -478,6 +507,8 @@ providers:
         context_window: '256K'
       doubao-seed-code:
         name: Doubao-Seed-Code
+        supports_thinking: true
+        default_thinking: false
         supports_image_input: true
         context_length: 256000
         input_length: 256000
@@ -486,6 +517,8 @@ providers:
       minimax-m2.7:
         name: MiniMax-M2.7
         upstream_model: minimax-m2.7
+        supports_thinking: true
+        default_thinking: true
         supports_image_input: false
         context_length: 204800
         input_length: 204800
@@ -493,6 +526,8 @@ providers:
         context_window: '204K'
       glm-5.1:
         name: GLM-5.1
+        supports_thinking: true
+        default_thinking: true
         supports_image_input: false
         context_length: 256000
         input_length: 256000
@@ -500,6 +535,8 @@ providers:
         context_window: '256K'
       glm-4.7:
         name: GLM-4.7
+        supports_thinking: true
+        default_thinking: false
         supports_image_input: false
         context_length: 256000
         input_length: 256000
@@ -507,6 +544,8 @@ providers:
         context_window: '256K'
       deepseek-v3.2:
         name: DeepSeek-V3.2
+        supports_thinking: true
+        default_thinking: false
         supports_image_input: false
         context_length: 128000
         input_length: 96000
@@ -514,6 +553,8 @@ providers:
         context_window: '128K'
       kimi-k2.6:
         name: Kimi-K2.6
+        supports_thinking: true
+        default_thinking: true
         supports_image_input: true
         context_length: 200000
         input_length: 200000
@@ -521,6 +562,8 @@ providers:
         context_window: '200K'
       kimi-k2.5:
         name: Kimi-K2.5
+        supports_thinking: true
+        default_thinking: false
         supports_image_input: true
         context_length: 200000
         input_length: 200000
@@ -535,6 +578,9 @@ providers:
     api_mgmt_url: https://console.anthropic.com/
     model_param_options:
       anthropic:
+        thinking:
+          type: object
+          description: 'Official Anthropic thinking config object, for example {type: adaptive}, {type: enabled, budget_tokens: 1024}, or {type: disabled}. Leave unset to use the provider/model default.'
         temperature:
           type: number
           min: 0
@@ -584,13 +630,17 @@ providers:
         context_window: '200K'
   deepseek:
     name: DeepSeek
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://api.deepseek.com/anthropic
     apiKeyEnvVar: DEEPSEEK_API_KEY
     tech_spec_url: https://api-docs.deepseek.com/zh-cn/guides/anthropic_api
     api_mgmt_url: https://platform.deepseek.com/api_keys
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -606,7 +656,7 @@ providers:
           description: Fully supported. Stop sequences (array of strings).
         reasoning_split:
           type: boolean
-          description: Supported via thinking field (budget_tokens is ignored by DeepSeek).
+          description: Enable separated reasoning stream when supported by the provider/model.
     models:
       deepseek-v4-flash:
         name: DeepSeek-V4-Flash
@@ -638,13 +688,17 @@ providers:
         context_window: '1M'
   aliyun-bailian:
     name: Aliyun Bailian Coding Plan
-    apiType: anthropic
+    apiType: anthropic-compatible
     baseUrl: https://coding.dashscope.aliyuncs.com/apps/anthropic
     apiKeyEnvVar: ALIYUN_BAILIAN_API_KEY
     tech_spec_url: https://help.aliyun.com/zh/model-studio/other-tools-coding-plan
     api_mgmt_url: https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan
     model_param_options:
-      anthropic:
+      anthropic-compatible:
+        thinking:
+          prominent: true
+          type: boolean
+          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
         temperature:
           type: number
           min: 0
@@ -684,13 +738,6 @@ providers:
         input_length: 202752
         output_length: 16384
         context_window: '202K'
-      MiniMax-M2.5:
-        name: MiniMax M2.5
-        supports_image_input: false
-        context_length: 204800
-        input_length: 196608
-        output_length: 131072
-        context_window: '204K'
       qwen3-coder-next:
         name: Qwen3 Coder Next
         supports_image_input: false

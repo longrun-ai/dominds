@@ -12,9 +12,9 @@ async function main() {
     process.exit(2);
   }
   const model = 'MiniMax-M2';
-  const gen = generatorsRegistry.get('anthropic');
+  const gen = generatorsRegistry.get(provider.apiType);
   if (!gen) {
-    console.error('anthropic generator not registered');
+    console.error(`generator '${provider.apiType}' not registered`);
     process.exit(2);
   }
 

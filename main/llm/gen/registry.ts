@@ -26,6 +26,7 @@ export function getLlmGenerator(apiType: string): LlmGenerator | undefined {
 
 (function initializeBuiltins() {
   registerLlmGenerator(new AnthropicGen());
+  registerLlmGenerator(new AnthropicGen('anthropic-compatible'));
   registerLlmGenerator(new CodexGen());
   registerLlmGenerator(new MockGen());
   registerLlmGenerator(new OpenAiGen());

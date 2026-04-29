@@ -166,6 +166,14 @@ function verifyProviderDefaultToolResultLimits(): void {
     'Expected Anthropic default tool-result limit to be 4 MiB',
   );
   assert(
+    resolveProviderToolResultMaxChars({ apiType: 'anthropic-compatible' } as Pick<
+      ProviderConfig,
+      'apiType' | 'tool_result_max_chars'
+    >) ===
+      4 * 1024 * 1024,
+    'Expected Anthropic-compatible default tool-result limit to be 4 MiB',
+  );
+  assert(
     resolveProviderToolResultMaxChars({ apiType: 'mock' } as Pick<
       ProviderConfig,
       'apiType' | 'tool_result_max_chars'

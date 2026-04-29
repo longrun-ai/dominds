@@ -48,28 +48,44 @@ export type SetupProviderModelSummary = {
   verified: boolean;
 };
 
-export type SetupProminentModelParamNamespace = 'codex' | 'openai' | 'anthropic';
+export type SetupProminentModelParamNamespace =
+  | 'codex'
+  | 'openai'
+  | 'openai-compatible'
+  | 'anthropic'
+  | 'anthropic-compatible';
 
-export type SetupProminentEnumModelParam = {
-  namespace: SetupProminentModelParamNamespace;
-  key: string;
-  description: string;
-  values: string[];
-  valueLabels?: Record<string, string>;
-  defaultValue?: string;
-};
+export type SetupProminentModelParam =
+  | {
+      kind: 'enum';
+      namespace: SetupProminentModelParamNamespace;
+      key: string;
+      description: string;
+      values: string[];
+      valueLabels?: Record<string, string>;
+      defaultValue?: string;
+    }
+  | {
+      kind: 'boolean';
+      namespace: SetupProminentModelParamNamespace;
+      key: string;
+      description: string;
+      defaultValue?: boolean;
+    };
+
+export type SetupModelParamScalar = string | boolean;
 
 export type SetupProviderSummary = {
   providerKey: string;
   name: string;
-  apiType: 'codex' | 'anthropic' | 'mock' | 'openai' | 'openai-compatible';
+  apiType: 'codex' | 'anthropic' | 'anthropic-compatible' | 'mock' | 'openai' | 'openai-compatible';
   baseUrl: string;
   apiKeyEnvVar: string;
   techSpecUrl?: string;
   apiMgmtUrl?: string;
   envVar: { isSet: boolean; envLocalHas: boolean; bashrcHas: boolean; zshrcHas: boolean };
   models: SetupProviderModelSummary[];
-  prominentModelParams?: SetupProminentEnumModelParam[];
+  prominentModelParams?: SetupProminentModelParam[];
 };
 
 export type SetupStatusResponse =
@@ -123,7 +139,9 @@ export type SetupWriteTeamYamlRequest = {
   provider: string;
   model: string;
   overwrite: boolean;
-  modelParams?: Partial<Record<SetupProminentModelParamNamespace, Record<string, string>>>;
+  modelParams?: Partial<
+    Record<SetupProminentModelParamNamespace, Record<string, SetupModelParamScalar>>
+  >;
 };
 
 export type SetupWriteTeamYamlResponse =

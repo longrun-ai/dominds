@@ -376,6 +376,26 @@ export namespace Team {
     web_search_include_sources?: boolean; // Include web_search_call.action.sources in Responses output.
   };
 
+  type AnthropicThinkingConfig =
+    | { type: 'adaptive' }
+    | { type: 'disabled' }
+    | { type: 'enabled'; budget_tokens: number };
+
+  type AnthropicModelParams = {
+    temperature?: number; // 0-1, controls randomness
+    max_tokens?: number; // Maximum tokens to generate
+    top_p?: number; // 0-1, nucleus sampling
+    top_k?: number; // Top-k sampling
+    stop_sequences?: string[]; // Stop sequences
+    reasoning_split?: boolean; // Enable separated reasoning stream if supported
+    thinking?: AnthropicThinkingConfig; // Official Anthropic thinking object.
+    json_response?: boolean; // Force JSON response mode (provider-dependent behavior).
+  };
+
+  type AnthropicCompatibleModelParams = Omit<AnthropicModelParams, 'thinking'> & {
+    thinking?: boolean; // true sends thinking.type=enabled; false sends thinking.type=disabled.
+  };
+
   export interface ModelParams {
     json_response?: boolean; // Force JSON response mode (provider-agnostic, provider-specific overrides when set).
 
@@ -383,19 +403,19 @@ export namespace Team {
     // Do not expect `openai.*` to fallback here even when fields have similar names.
     codex?: CodexModelParams;
 
-    // OpenAI-only parameters for the OpenAI/OpenAI-compatible wrappers.
-    // Do not expect `codex.*` to fallback here even when fields have similar names.
+    // OpenAI Responses-only parameters for the `openai` wrapper.
+    // Do not expect `codex.*` or `openai-compatible.*` to fallback here even when fields have
+    // similar names.
     openai?: OpenAiModelParams;
-    // Anthropic specific parameters
-    anthropic?: {
-      temperature?: number; // 0-1, controls randomness
-      max_tokens?: number; // Maximum tokens to generate
-      top_p?: number; // 0-1, nucleus sampling
-      top_k?: number; // Top-k sampling
-      stop_sequences?: string[]; // Stop sequences
-      reasoning_split?: boolean; // Enable separated reasoning stream if supported
-      json_response?: boolean; // Force JSON response mode (provider-dependent behavior).
-    };
+
+    // OpenAI Chat Completions-compatible wrapper parameters.
+    'openai-compatible'?: OpenAiModelParams;
+
+    // Official Anthropic Messages wrapper parameters.
+    anthropic?: AnthropicModelParams;
+
+    // Anthropic-compatible gateway parameters.
+    'anthropic-compatible'?: AnthropicCompatibleModelParams;
   }
 
   /**
@@ -1243,7 +1263,9 @@ export namespace Team {
         const hasProviderOverride = Object.prototype.hasOwnProperty.call(member, 'provider');
         const hasModelOverride = Object.prototype.hasOwnProperty.call(member, 'model');
         const hasStreamingOverride = Object.prototype.hasOwnProperty.call(member, 'streaming');
-        if (!hasProviderOverride && !hasModelOverride && !hasStreamingOverride) continue;
+        if (!hasProviderOverride && !hasModelOverride && !hasStreamingOverride) {
+          continue;
+        }
 
         const provider = member.provider ?? md.provider;
         const model = member.model ?? md.model;
@@ -1604,7 +1626,9 @@ export namespace Team {
     'json_response',
     'codex',
     'openai',
+    'openai-compatible',
     'anthropic',
+    'anthropic-compatible',
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
@@ -1642,6 +1666,7 @@ export namespace Team {
     'top_k',
     'stop_sequences',
     'reasoning_split',
+    'thinking',
     'json_response',
   ] as const;
 
@@ -1675,15 +1700,15 @@ export namespace Team {
     memberObj: Record<string, unknown>,
   ): void {
     const hintsAtMember: Record<string, string> = {
-      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_effort\`? (not supported at ${atPrefix} root)`,
-      reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_summary\`? (not supported at ${atPrefix} root)`,
-      verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
-      parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
+      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\`, \`${atPrefix}.model_params.openai.reasoning_effort\`, or \`${atPrefix}.model_params.openai-compatible.reasoning_effort\`? (not supported at ${atPrefix} root)`,
+      reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\`, \`${atPrefix}.model_params.openai.reasoning_summary\`, or \`${atPrefix}.model_params.openai-compatible.reasoning_summary\`? (not supported at ${atPrefix} root)`,
+      verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\`, \`${atPrefix}.model_params.openai.verbosity\`, or \`${atPrefix}.model_params.openai-compatible.verbosity\`? (not supported at ${atPrefix} root)`,
+      parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\`, \`${atPrefix}.model_params.openai.parallel_tool_calls\`, or \`${atPrefix}.model_params.openai-compatible.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
       web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\`? (not supported at ${atPrefix} root)`,
-      web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\`? (not supported at ${atPrefix} root)`,
-      json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\`?`,
-      text_format: `Did you mean \`${atPrefix}.model_params.openai.text_format\`? (not supported at ${atPrefix} root)`,
-      max_tokens: `Did you mean \`${atPrefix}.model_params.anthropic.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
+      web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\` or \`${atPrefix}.model_params.openai-compatible.web_search_tool\`? (not supported at ${atPrefix} root)`,
+      json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\` / \`${atPrefix}.model_params.anthropic-compatible.json_response\`?`,
+      text_format: `Did you mean \`${atPrefix}.model_params.openai.text_format\` or \`${atPrefix}.model_params.openai-compatible.text_format\`? (not supported at ${atPrefix} root)`,
+      max_tokens: `Did you mean \`${atPrefix}.model_params.anthropic.max_tokens\` or \`${atPrefix}.model_params.anthropic-compatible.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
@@ -1709,17 +1734,17 @@ export namespace Team {
 
       const modelParamsAt = `${atPrefix}.${field}`;
       const hintsAtModelParams: Record<string, string> = {
-        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
-        reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_summary\`?`,
-        verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
-        parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
+        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or \`${modelParamsAt}.openai-compatible.reasoning_effort\`?`,
+        reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\`, \`${modelParamsAt}.openai.reasoning_summary\`, or \`${modelParamsAt}.openai-compatible.reasoning_summary\`?`,
+        verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\`, \`${modelParamsAt}.openai.verbosity\`, or \`${modelParamsAt}.openai-compatible.verbosity\`?`,
+        parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\`, \`${modelParamsAt}.openai.parallel_tool_calls\`, or \`${modelParamsAt}.openai-compatible.parallel_tool_calls\`?`,
         web_search: `Did you mean \`${modelParamsAt}.codex.web_search\`?`,
         web_search_tool: `Did you mean \`${modelParamsAt}.openai.web_search_tool\`?`,
-        service_tier: `Did you mean \`${modelParamsAt}.codex.service_tier\` (preferred for provider: codex) or \`${modelParamsAt}.openai.service_tier\`?`,
-        temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
-        top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
-        max_tokens: `Did you mean \`${modelParamsAt}.anthropic.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
-        general: `\`${modelParamsAt}.general\` is no longer supported; use provider-specific namespaces such as \`${modelParamsAt}.anthropic\` when needed.`,
+        service_tier: `Did you mean \`${modelParamsAt}.codex.service_tier\`, \`${modelParamsAt}.openai.service_tier\`, or \`${modelParamsAt}.openai-compatible.service_tier\`?`,
+        temperature: `Did you mean a provider-specific namespace such as \`${modelParamsAt}.codex.temperature\`, \`${modelParamsAt}.openai.temperature\`, \`${modelParamsAt}.openai-compatible.temperature\`, \`${modelParamsAt}.anthropic.temperature\`, or \`${modelParamsAt}.anthropic-compatible.temperature\`?`,
+        top_p: `Did you mean a provider-specific namespace such as \`${modelParamsAt}.codex.top_p\`, \`${modelParamsAt}.openai.top_p\`, \`${modelParamsAt}.openai-compatible.top_p\`, \`${modelParamsAt}.anthropic.top_p\`, or \`${modelParamsAt}.anthropic-compatible.top_p\`?`,
+        max_tokens: `Did you mean \`${modelParamsAt}.anthropic.max_tokens\` or \`${modelParamsAt}.anthropic-compatible.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
+        general: `\`${modelParamsAt}.general\` is no longer supported; use provider-specific namespaces such as \`${modelParamsAt}.anthropic-compatible\` when needed.`,
       };
 
       const unknownAtModelParams = listUnknownKeys(
@@ -1762,6 +1787,28 @@ export namespace Team {
         }
       }
 
+      const rawOpenaiCompatible = rawModelParams['openai-compatible'];
+      if (rawOpenaiCompatible !== undefined && isRecordValue(rawOpenaiCompatible)) {
+        const unknownAtOpenaiCompatible = listUnknownKeys(
+          rawOpenaiCompatible,
+          TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS,
+        );
+        if (unknownAtOpenaiCompatible.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/openai-compatible/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.openai-compatible contains unknown fields.`,
+            buildUnknownFieldErrorText(
+              `${modelParamsAt}.openai-compatible`,
+              unknownAtOpenaiCompatible,
+              {
+                max_tokens:
+                  'OpenAI-compatible output-token overrides are not supported; remove this field.',
+              },
+            ),
+          );
+        }
+      }
+
       const rawAnthropic = rawModelParams.anthropic;
       if (rawAnthropic !== undefined && isRecordValue(rawAnthropic)) {
         const unknownAtAnthropic = listUnknownKeys(
@@ -1773,6 +1820,25 @@ export namespace Team {
             `${idPrefix}/${issuePrefix}/anthropic/unknown_fields`,
             `Invalid .minds/team.yaml: ${modelParamsAt}.anthropic contains unknown fields.`,
             buildUnknownFieldErrorText(`${modelParamsAt}.anthropic`, unknownAtAnthropic, {}),
+          );
+        }
+      }
+
+      const rawAnthropicCompatible = rawModelParams['anthropic-compatible'];
+      if (rawAnthropicCompatible !== undefined && isRecordValue(rawAnthropicCompatible)) {
+        const unknownAtAnthropicCompatible = listUnknownKeys(
+          rawAnthropicCompatible,
+          TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS,
+        );
+        if (unknownAtAnthropicCompatible.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/anthropic-compatible/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.anthropic-compatible contains unknown fields.`,
+            buildUnknownFieldErrorText(
+              `${modelParamsAt}.anthropic-compatible`,
+              unknownAtAnthropicCompatible,
+              {},
+            ),
           );
         }
       }
@@ -1967,12 +2033,12 @@ export namespace Team {
       requireDefined(asOptionalStringArray(value, at), at);
     });
     validateOptionalField('model_params', (value, at) => {
-      requireDefined(asOptionalModelParams(value, at), at);
+      asOptionalModelParams(value, at);
     });
     validateOptionalField('fbr-effort', validateFbrEffort);
     validateOptionalField('fbr_effort', validateFbrEffort);
     validateOptionalField('fbr_model_params', (value, at) => {
-      requireDefined(asOptionalModelParams(value, at), at);
+      asOptionalModelParams(value, at);
     });
     validateOptionalField('diligence-push-max', (value, at) => {
       requireDefined(asOptionalNumber(value, at), at);
@@ -2066,10 +2132,8 @@ export namespace Team {
     }
     if (hasOwnKey(rv, 'model_params')) {
       try {
-        overrides.model_params = requireDefined(
-          asOptionalModelParams(rv['model_params'], `${at}.model_params`),
-          `${at}.model_params`,
-        );
+        const modelParams = asOptionalModelParams(rv['model_params'], `${at}.model_params`);
+        if (modelParams !== undefined) overrides.model_params = modelParams;
       } catch (err: unknown) {
         errors.push(asErrorText(err));
       }
@@ -2121,10 +2185,8 @@ export namespace Team {
     }
     if (hasOwnKey(rv, 'fbr_model_params')) {
       try {
-        overrides.fbr_model_params = requireDefined(
-          asOptionalModelParams(rv['fbr_model_params'], `${at}.fbr_model_params`),
-          `${at}.fbr_model_params`,
-        );
+        const modelParams = asOptionalModelParams(rv['fbr_model_params'], `${at}.fbr_model_params`);
+        if (modelParams !== undefined) overrides.fbr_model_params = modelParams;
       } catch (err: unknown) {
         errors.push(asErrorText(err));
       }
@@ -2982,13 +3044,61 @@ export namespace Team {
       }
     };
 
+    const validateOfficialAnthropicThinkingConfig = (value: unknown, at2: string): void => {
+      if (value === undefined) return;
+      const thinking = asRecord(value, at2);
+      const unknownAtThinking = listUnknownKeys(thinking, ['type', 'budget_tokens']);
+      if (unknownAtThinking.length > 0) {
+        throw new Error(
+          `Invalid ${at2}: unknown fields ${unknownAtThinking.map((k) => `${at2}.${k}`).join(', ')}`,
+        );
+      }
+
+      const thinkingType = thinking.type;
+      if (
+        thinkingType !== 'adaptive' &&
+        thinkingType !== 'disabled' &&
+        thinkingType !== 'enabled'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.type: expected adaptive|disabled|enabled (got ${describeValueType(
+            thinkingType,
+          )})`,
+        );
+      }
+
+      const budgetTokens = thinking.budget_tokens;
+      if (thinkingType === 'enabled') {
+        const parsedBudgetTokens = asOptionalNumber(budgetTokens, `${at2}.budget_tokens`);
+        if (parsedBudgetTokens === undefined || !Number.isInteger(parsedBudgetTokens)) {
+          throw new Error(`Invalid ${at2}.budget_tokens: expected integer for type=enabled.`);
+        }
+        if (parsedBudgetTokens < 1024) {
+          throw new Error(`Invalid ${at2}.budget_tokens: expected integer >= 1024.`);
+        }
+      } else if (budgetTokens !== undefined) {
+        throw new Error(`Invalid ${at2}: budget_tokens requires ${at2}.type=enabled.`);
+      }
+    };
+
     const codex = obj.codex === undefined ? undefined : asRecord(obj.codex, `${at}.codex`);
     const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
+    const openaiCompatible =
+      obj['openai-compatible'] === undefined
+        ? undefined
+        : asRecord(obj['openai-compatible'], `${at}.openai-compatible`);
     const anthropic =
       obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
+    const anthropicCompatible =
+      obj['anthropic-compatible'] === undefined
+        ? undefined
+        : asRecord(obj['anthropic-compatible'], `${at}.anthropic-compatible`);
 
     if (codex) validateCodexParams(codex, `${at}.codex`);
     if (openai) validateOpenAiParams(openai, `${at}.openai`);
+    if (openaiCompatible) {
+      validateOpenAiParams(openaiCompatible, `${at}.openai-compatible`);
+    }
 
     if (anthropic) {
       asOptionalNumber(anthropic.temperature, `${at}.anthropic.temperature`);
@@ -2997,7 +3107,27 @@ export namespace Team {
       asOptionalNumber(anthropic.top_k, `${at}.anthropic.top_k`);
       asOptionalStringArray(anthropic.stop_sequences, `${at}.anthropic.stop_sequences`);
       asOptionalBoolean(anthropic.reasoning_split, `${at}.anthropic.reasoning_split`);
+      validateOfficialAnthropicThinkingConfig(anthropic.thinking, `${at}.anthropic.thinking`);
       asOptionalBoolean(anthropic.json_response, `${at}.anthropic.json_response`);
+    }
+    if (anthropicCompatible) {
+      asOptionalNumber(anthropicCompatible.temperature, `${at}.anthropic-compatible.temperature`);
+      asOptionalNumber(anthropicCompatible.max_tokens, `${at}.anthropic-compatible.max_tokens`);
+      asOptionalNumber(anthropicCompatible.top_p, `${at}.anthropic-compatible.top_p`);
+      asOptionalNumber(anthropicCompatible.top_k, `${at}.anthropic-compatible.top_k`);
+      asOptionalStringArray(
+        anthropicCompatible.stop_sequences,
+        `${at}.anthropic-compatible.stop_sequences`,
+      );
+      asOptionalBoolean(
+        anthropicCompatible.reasoning_split,
+        `${at}.anthropic-compatible.reasoning_split`,
+      );
+      asOptionalBoolean(anthropicCompatible.thinking, `${at}.anthropic-compatible.thinking`);
+      asOptionalBoolean(
+        anthropicCompatible.json_response,
+        `${at}.anthropic-compatible.json_response`,
+      );
     }
 
     asOptionalBoolean(obj.json_response, `${at}.json_response`);
@@ -3012,10 +3142,29 @@ export namespace Team {
       const knownOpenAi = pickKnownModelParams(openai, TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS);
       if (Object.keys(knownOpenAi).length > 0) out.openai = knownOpenAi as OpenAiModelParams;
     }
+    if (openaiCompatible) {
+      const knownOpenAiCompatible = pickKnownModelParams(
+        openaiCompatible,
+        TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS,
+      );
+      if (Object.keys(knownOpenAiCompatible).length > 0) {
+        out['openai-compatible'] = knownOpenAiCompatible as OpenAiModelParams;
+      }
+    }
     if (anthropic) {
       const knownAnthropic = pickKnownModelParams(anthropic, TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS);
       if (Object.keys(knownAnthropic).length > 0) {
         out.anthropic = knownAnthropic as ModelParams['anthropic'];
+      }
+    }
+    if (anthropicCompatible) {
+      const knownAnthropicCompatible = pickKnownModelParams(
+        anthropicCompatible,
+        TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS,
+      );
+      if (Object.keys(knownAnthropicCompatible).length > 0) {
+        out['anthropic-compatible'] =
+          knownAnthropicCompatible as ModelParams['anthropic-compatible'];
       }
     }
     return Object.keys(out).length > 0 ? out : undefined;

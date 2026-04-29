@@ -816,6 +816,14 @@ function formatModelInfoSummary(info: unknown): string {
   if (typeof inputLengthUnknown === 'number') parts.push(`in=${inputLengthUnknown}`);
   const outputLengthUnknown = rec['output_length'];
   if (typeof outputLengthUnknown === 'number') parts.push(`out=${outputLengthUnknown}`);
+  const supportsThinkingUnknown = rec['supports_thinking'];
+  if (typeof supportsThinkingUnknown === 'boolean') {
+    parts.push(`supports_thinking=${String(supportsThinkingUnknown)}`);
+  }
+  const defaultThinkingUnknown = rec['default_thinking'];
+  if (typeof defaultThinkingUnknown === 'boolean') {
+    parts.push(`default_thinking=${String(defaultThinkingUnknown)}`);
+  }
   const optimalMaxTokensUnknown = rec['optimal_max_tokens'];
   if (typeof optimalMaxTokensUnknown === 'number')
     parts.push(`optimal_max_tokens=${optimalMaxTokensUnknown}`);
@@ -874,6 +882,9 @@ function formatModelParamOptionLine(
           );
         }
       }
+      break;
+    }
+    case 'object': {
       break;
     }
     case 'enum': {
@@ -1032,7 +1043,9 @@ export const teamMgmtCheckProviderTool: FuncTool = {
             model: modelKey,
             model_params: {
               openai: { temperature: 0 },
+              'openai-compatible': { temperature: 0 },
               anthropic: { max_tokens: 16, temperature: 0 },
+              'anthropic-compatible': { max_tokens: 16, temperature: 0 },
             },
           });
 
@@ -1537,12 +1550,12 @@ export const teamMgmtListModelsTool: FuncTool = {
           let specific: Record<string, ModelParamOption> | undefined;
           if (mpo) {
             if (providerCfg.apiType === 'codex') specific = mpo.codex;
-            else if (
-              providerCfg.apiType === 'openai' ||
-              providerCfg.apiType === 'openai-compatible'
-            )
-              specific = mpo.openai;
+            else if (providerCfg.apiType === 'openai') specific = mpo.openai;
+            else if (providerCfg.apiType === 'openai-compatible')
+              specific = mpo['openai-compatible'];
             else if (providerCfg.apiType === 'anthropic') specific = mpo.anthropic;
+            else if (providerCfg.apiType === 'anthropic-compatible')
+              specific = mpo['anthropic-compatible'];
             else specific = undefined;
           }
 
@@ -3482,7 +3495,9 @@ export function renderTeamManual(language: LanguageCode): string {
         `model_params 顶层字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ROOT_KEYS)}`,
         `model_params.codex 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_CODEX_KEYS)}`,
         `model_params.openai 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
+        `model_params.openai-compatible 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
         `model_params.anthropic 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
+        `model_params.anthropic-compatible 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
       ]) +
       '\n' +
       '最小模板：\n' +
@@ -3547,7 +3562,9 @@ export function renderTeamManual(language: LanguageCode): string {
       `model_params keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ROOT_KEYS)}`,
       `model_params.codex keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_CODEX_KEYS)}`,
       `model_params.openai keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
+      `model_params.openai-compatible keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
       `model_params.anthropic keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
+      `model_params.anthropic-compatible keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
     ]) +
     '\n' +
     'Minimal template:\n' +
@@ -4077,6 +4094,8 @@ export async function renderModelParamsManual(language: LanguageCode): Promise<s
         '`model_params` 是运行时参数；`model_param_options`（在 `.minds/llm.yaml` 或内置 defaults 中）是文档/说明用途，用来描述可用参数范围（不保证强制校验）。',
         '想查看某个 provider 的“有效配置” `model_param_options`：优先用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })`（会列出该 provider 可用的参数说明）。',
         '常见参数示例（不同 provider 支持不同）：例如 `reasoning_effort`、`verbosity`、`temperature` 等。对内置 `codex` provider，这些参数应写在 `model_params.codex.*` 下。',
+        '`model_params` 命名空间按 `apiType` 精确区分：官方 OpenAI 用 `openai`，OpenAI 兼容 Chat Completions 用 `openai-compatible`；官方 Anthropic 用 `anthropic`，Anthropic 兼容网关用 `anthropic-compatible`。同一个成员可以同时配置多套 namespace，运行时只读取当前 provider 对应的一套。',
+        '`model_params.anthropic.thinking` 使用 Anthropic 官方 object（例如 `{ type: adaptive }`、`{ type: enabled, budget_tokens: 1024 }` 或 `{ type: disabled }`）；`model_params.anthropic-compatible.thinking` 使用 boolean（`true` 发送 `thinking.type=enabled`，`false` 发送 `thinking.type=disabled`）。',
         '常见坑：不要把 `reasoning_effort` / `verbosity` 直接写在 `member_defaults` 或 `members.<id>` 根上（会被忽略，并会被 team.yaml 校验提示）；应写在 `model_params.codex.*` 下。',
         '`model_param_options.<ns>.<param>.prominent: true`：表示“初始化/团队管理时应显式讨论并选定”的参数。不要依赖 provider/model 的隐含默认值。',
         '`model_param_options.<ns>.<param>.default`：为该参数提供建议默认值；`/setup` 会将其作为预选值展示（仍建议与用户确认是否需要调整）。',
@@ -4109,6 +4128,8 @@ export async function renderModelParamsManual(language: LanguageCode): Promise<s
       '`model_params` is runtime config; `model_param_options` (in `.minds/llm.yaml` or built-in defaults) is documentation-only to describe supported knobs (not guaranteed to be strictly validated).',
       'To inspect a provider’s effective `model_param_options`, prefer `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })` (lists the parameters documented for that provider).',
       'Common examples (provider-dependent): e.g. `reasoning_effort`, `verbosity`, `temperature`, etc. For the built-in `codex` provider, these go under `model_params.codex.*`.',
+      '`model_params` namespaces are split by exact `apiType`: official OpenAI uses `openai`, OpenAI-compatible Chat Completions uses `openai-compatible`; official Anthropic uses `anthropic`, Anthropic-compatible gateways use `anthropic-compatible`. A member can configure multiple namespaces at once; runtime reads only the namespace matching the selected provider.',
+      '`model_params.anthropic.thinking` uses the official Anthropic object shape (for example `{ type: adaptive }`, `{ type: enabled, budget_tokens: 1024 }`, or `{ type: disabled }`); `model_params.anthropic-compatible.thinking` uses a boolean (`true` sends `thinking.type=enabled`, `false` sends `thinking.type=disabled`).',
       'Common pitfall: do not put `reasoning_effort` / `verbosity` directly under `member_defaults` or `members.<id>` (they are ignored and will be flagged by team.yaml validation); put them under `model_params.codex.*`.',
       '`model_param_options.<ns>.<param>.prominent: true` means “discuss and pick explicitly during bootstrap/team management”. Do not rely on implicit provider/model defaults.',
       '`model_param_options.<ns>.<param>.default` provides a recommended default; `/setup` may preselect it (still discuss with the user if it needs to change).',

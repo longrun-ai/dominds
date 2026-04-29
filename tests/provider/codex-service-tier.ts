@@ -62,8 +62,22 @@ async function main(): Promise<void> {
       (param) => param.namespace === 'codex' && param.key === 'service_tier',
     );
     assert.ok(setupServiceTier, 'setup status should expose codex.service_tier');
+    assert.equal(setupServiceTier.kind, 'enum');
     assert.equal(setupServiceTier.defaultValue, undefined);
+    if (setupServiceTier.kind !== 'enum') {
+      throw new Error('codex.service_tier should be an enum prominent setup param');
+    }
     assert.deepEqual(setupServiceTier.values, ['auto', 'priority']);
+
+    const volcanoProvider = setupStatus.providers.find(
+      (provider) => provider.providerKey === 'volcano-engine-coding-plan',
+    );
+    assert.ok(volcanoProvider, 'volcano coding-plan provider should be present in setup status');
+    const setupThinking = volcanoProvider.prominentModelParams?.find(
+      (param) => param.namespace === 'anthropic-compatible' && param.key === 'thinking',
+    );
+    assert.ok(setupThinking, 'setup status should expose anthropic-compatible.thinking');
+    assert.equal(setupThinking.kind, 'boolean');
 
     const writeResult = await handleWriteTeamYaml(
       JSON.stringify({
@@ -96,6 +110,38 @@ async function main(): Promise<void> {
     );
     assert.equal(writtenCodex['service_tier'], undefined);
     assert.equal(writtenCodex['reasoning_effort'], 'high');
+
+    const writeThinkingResult = await handleWriteTeamYaml(
+      JSON.stringify({
+        provider: 'volcano-engine-coding-plan',
+        model: 'doubao-seed-2.0-code',
+        overwrite: true,
+        modelParams: {
+          'anthropic-compatible': {
+            thinking: true,
+          },
+        },
+      }),
+    );
+    assert.equal(writeThinkingResult.kind, 'ok');
+    const writtenThinkingRaw = await fs.readFile(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      'utf-8',
+    );
+    const writtenThinking = asRecord(YAML.parse(writtenThinkingRaw), 'thinking team.yaml');
+    const thinkingMemberDefaults = asRecord(
+      writtenThinking['member_defaults'],
+      'thinking team.yaml.member_defaults',
+    );
+    const thinkingModelParams = asRecord(
+      thinkingMemberDefaults['model_params'],
+      'thinking team.yaml.member_defaults.model_params',
+    );
+    const writtenAnthropicCompatible = asRecord(
+      thinkingModelParams['anthropic-compatible'],
+      'thinking team.yaml.member_defaults.model_params.anthropic-compatible',
+    );
+    assert.equal(writtenAnthropicCompatible['thinking'], true);
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

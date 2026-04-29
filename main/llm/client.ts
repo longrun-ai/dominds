@@ -26,6 +26,10 @@ export type {
 
 export interface ModelInfo {
   name?: string; // Optional, defaults to model key if not specified
+  // Provider-reported default thinking mode. Runtime overrides live in team.yaml model_params.
+  default_thinking?: boolean;
+  // Whether the provider advertises a request-level thinking on/off switch for this model.
+  supports_thinking?: boolean;
   context_length?: number;
   input_length?: number;
   output_length?: number;
@@ -73,6 +77,9 @@ export type ModelParamOption =
       default?: Record<string, number>;
     })
   | (ModelParamOptionBase & {
+      type: 'object';
+    })
+  | (ModelParamOptionBase & {
       type: 'enum';
       values: string[];
       value_labels?: Record<string, string>;
@@ -82,10 +89,18 @@ export type ModelParamOption =
 export type ProviderModelParamOptions = {
   codex?: Record<string, ModelParamOption>;
   openai?: Record<string, ModelParamOption>;
+  'openai-compatible'?: Record<string, ModelParamOption>;
   anthropic?: Record<string, ModelParamOption>;
+  'anthropic-compatible'?: Record<string, ModelParamOption>;
 };
 
-export type ProviderApiType = 'codex' | 'anthropic' | 'mock' | 'openai' | 'openai-compatible';
+export type ProviderApiType =
+  | 'codex'
+  | 'anthropic'
+  | 'anthropic-compatible'
+  | 'mock'
+  | 'openai'
+  | 'openai-compatible';
 
 export type ProviderConfig = {
   name: string;

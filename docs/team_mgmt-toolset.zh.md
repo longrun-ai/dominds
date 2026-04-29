@@ -266,7 +266,8 @@
 `apiType` 说明（常见值）：
 
 - `openai`：使用 OpenAI **Responses API**（适用于 OpenAI 官方；需要 `/v1` 语义的 `responses` 端点）
-- `anthropic`：使用 Anthropic **Messages API**（也用于 Anthropic 兼容的 Coding Plan 端点；例如 Volcano Engine Coding Plan `.../api/coding`）
+- `anthropic`：使用 Anthropic 官方 **Messages API**。`model_params.anthropic.thinking` 使用 Anthropic 官方 object 形态。
+- `anthropic-compatible`：使用 Anthropic 兼容的 **Messages API** / Coding Plan 端点（例如 Volcano Engine Coding Plan `.../api/coding`）。`model_params.anthropic-compatible.thinking` 使用 Dominds boolean 开关：`true` 发送 `thinking.type=enabled`，`false` 发送 `thinking.type=disabled`。
 - `openai-compatible`：使用 OpenAI **Chat Completions API**（适用于多数“OpenAI 兼容”第三方/代理；例如手动配置的 Ark `.../api/v3` 端点）
   - **识图支持**：如果该 provider/model 支持 Chat Completions 的多模态输入，Dominds 会把工具输出里的图片（`func_result_msg.contentItems[].type=input_image`，来自 MCP 等工具）读取 artifact 后作为 `image_url` 形式喂给模型；不支持的 mimeType 会降级成文本提示。
 

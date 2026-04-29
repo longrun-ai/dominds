@@ -299,6 +299,208 @@ async function main(): Promise<void> {
       'openai max_tokens hint should be explicit',
     );
 
+    // Anthropic-compatible providers support a boolean thinking switch under their own namespace.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: volcano-engine-coding-plan',
+        '  model: doubao-seed-2.0-code',
+        '  model_params:',
+        '    anthropic-compatible:',
+        '      thinking: true',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    const teamAnthropicThinking = await Team.load();
+    const anthropicThinkingMember = teamAnthropicThinking.getMember('alice');
+    assert.ok(anthropicThinkingMember, 'alice should load with anthropic thinking params');
+    assert.equal(anthropicThinkingMember.model_params?.['anthropic-compatible']?.thinking, true);
+    assert.equal(
+      getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
+      false,
+      'valid anthropic thinking flag should not produce problems',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: anthropic',
+        '  model: claude-sonnet-4.5',
+        '  model_params:',
+        '    anthropic:',
+        '      thinking:',
+        '        type: enabled',
+        '        budget_tokens: 1024',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    const teamAnthropicThinkingObject = await Team.load();
+    const anthropicThinkingObjectMember = teamAnthropicThinkingObject.getMember('alice');
+    assert.ok(anthropicThinkingObjectMember, 'alice should load with anthropic thinking object');
+    assert.deepEqual(anthropicThinkingObjectMember.model_params?.anthropic?.thinking, {
+      type: 'enabled',
+      budget_tokens: 1024,
+    });
+    assert.equal(
+      getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
+      false,
+      'valid official anthropic thinking object should not produce problems',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: anthropic',
+        '  model: claude-sonnet-4.5',
+        '  model_params:',
+        '    anthropic:',
+        '      thinking:',
+        '        type: adaptive',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    const teamAnthropicAdaptiveThinking = await Team.load();
+    const anthropicAdaptiveMember = teamAnthropicAdaptiveThinking.getMember('alice');
+    assert.ok(anthropicAdaptiveMember, 'alice should load with official adaptive thinking object');
+    assert.deepEqual(anthropicAdaptiveMember.model_params?.anthropic?.thinking, {
+      type: 'adaptive',
+    });
+    assert.equal(
+      getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
+      false,
+      'valid official anthropic adaptive thinking object should not produce problems',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: anthropic',
+        '  model: claude-sonnet-4.5',
+        '  model_params:',
+        '    anthropic:',
+        '      thinking: true',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    await Team.load();
+    const officialAnthropicBooleanProblem = getProblemsSnapshot().problems.find(
+      (p) => p.id === 'team/team_yaml_error/member_defaults/model_params/invalid_ignored',
+    );
+    assert.ok(
+      officialAnthropicBooleanProblem &&
+        officialAnthropicBooleanProblem.kind === 'team_workspace_config_error',
+      'official anthropic namespace should reject boolean thinking while parsing',
+    );
+    assert.ok(
+      officialAnthropicBooleanProblem.detail.errorText.includes(
+        'member_defaults.model_params.anthropic.thinking',
+      ),
+      'official anthropic thinking problem should point at the thinking field',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: volcano-engine-coding-plan',
+        '  model: doubao-seed-2.0-code',
+        '  model_params:',
+        '    anthropic-compatible:',
+        '      thinking:',
+        '        type: enabled',
+        '        budget_tokens: 1024',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    await Team.load();
+    const compatibleAnthropicObjectProblem = getProblemsSnapshot().problems.find(
+      (p) => p.id === 'team/team_yaml_error/member_defaults/model_params/invalid_ignored',
+    );
+    assert.ok(
+      compatibleAnthropicObjectProblem &&
+        compatibleAnthropicObjectProblem.kind === 'team_workspace_config_error',
+      'anthropic-compatible namespace should reject object thinking while parsing',
+    );
+    assert.ok(
+      compatibleAnthropicObjectProblem.detail.errorText.includes(
+        'member_defaults.model_params.anthropic-compatible.thinking',
+      ),
+      'compatible anthropic thinking problem should point at the thinking field',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: volcano-engine-coding-plan',
+        '  model: doubao-seed-2.0-code',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      anthropic-compatible:',
+        '        thinking_budget_tokens: 512',
+        '',
+      ].join('\n'),
+    );
+
+    const teamUnsupportedAnthropicThinkingBudget = await Team.load();
+    assert.equal(
+      teamUnsupportedAnthropicThinkingBudget.getMember('alice')?.model_params,
+      undefined,
+      'unsupported anthropic thinking budget field should cause model_params to be ignored',
+    );
+    const unsupportedThinkingBudgetProblem = getProblemsSnapshot().problems.find(
+      (p) =>
+        p.id ===
+        'team/team_yaml_error/members/alice/model_params/anthropic-compatible/unknown_fields',
+    );
+    assert.ok(
+      unsupportedThinkingBudgetProblem &&
+        unsupportedThinkingBudgetProblem.kind === 'team_workspace_config_error',
+    );
+    assert.ok(
+      unsupportedThinkingBudgetProblem.detail.errorText.includes(
+        'members.alice.model_params.anthropic-compatible.thinking_budget_tokens',
+      ),
+    );
+
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),

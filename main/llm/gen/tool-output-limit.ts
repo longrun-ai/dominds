@@ -5,6 +5,7 @@ const DEFAULT_PROVIDER_TOOL_OUTPUT_CHAR_LIMITS: Readonly<Record<ProviderApiType,
   openai: 8 * 1024 * 1024,
   'openai-compatible': 4 * 1024 * 1024,
   anthropic: 4 * 1024 * 1024,
+  'anthropic-compatible': 4 * 1024 * 1024,
   mock: 8 * 1024 * 1024,
 };
 

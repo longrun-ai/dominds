@@ -32,7 +32,7 @@ function parseArgs(argv: ReadonlyArray<string>): Args {
     }
     if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: pnpm -C tests exec tsx --tsconfig tsconfig.json provider/minimax-m25-multi-tool-probe.ts -- [--provider <provider>] [--model <model>]',
+        'Usage: pnpm -C tests exec tsx --tsconfig tsconfig.json provider/minimax-m27-multi-tool-probe.ts -- [--provider <provider>] [--model <model>]',
       );
       process.exit(0);
     }
@@ -46,8 +46,8 @@ function pickModel(provider: ProviderConfig, preferred: string | null): string {
   if (preferred && Object.prototype.hasOwnProperty.call(provider.models, preferred)) {
     return preferred;
   }
-  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.5')) {
-    return 'MiniMax-M2.5';
+  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.7')) {
+    return 'MiniMax-M2.7';
   }
   const fallback = Object.keys(provider.models)[0];
   if (!fallback) {
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     name: 'Multi Tool Probe',
     provider: args.provider,
     model,
-    model_params: { anthropic: { temperature: 0 } },
+    model_params: { 'anthropic-compatible': { temperature: 0 } },
   });
 
   const funcTools: FuncTool[] = [
@@ -148,8 +148,8 @@ async function main(): Promise<void> {
     systemPrompt,
     funcTools,
     {
-      dialogSelfId: 'tests/provider/minimax-m25-multi-tool-probe',
-      dialogRootId: 'tests/provider/minimax-m25-multi-tool-probe',
+      dialogSelfId: 'tests/provider/minimax-m27-multi-tool-probe',
+      dialogRootId: 'tests/provider/minimax-m27-multi-tool-probe',
     },
     context,
     receiver,

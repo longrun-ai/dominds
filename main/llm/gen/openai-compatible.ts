@@ -7,8 +7,8 @@
  * - Many "OpenAI-compatible" providers implement the Chat Completions API but not the newer
  *   Responses API. Dominds' `apiType: openai` uses the Responses API; this generator targets
  *   chat-completions-only providers (e.g. Volcano Engine Ark `.../api/v3`).
- * - Isolation principle: this wrapper may reuse the `model_params.openai.*` namespace, but it
- *   still owns Chat Completions semantics and must not inherit Codex-specific request meanings.
+ * - Isolation principle: this wrapper owns the `model_params.openai-compatible.*` namespace and
+ *   must not inherit OpenAI Responses or Codex-specific request meanings.
  */
 
 import OpenAI from 'openai';
@@ -921,7 +921,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       onUserImageIngest: receiver.userImageIngest,
     });
 
-    const openAiParams = agent.model_params?.openai || {};
+    const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 
@@ -1159,7 +1159,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       },
     });
 
-    const openAiParams = agent.model_params?.openai || {};
+    const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
 

@@ -325,7 +325,8 @@ used in `.minds/team.yaml` member configurations.
 `apiType` notes (common values):
 
 - `openai`: uses the OpenAI **Responses API** (best for OpenAI official endpoints; requires a `/v1`-style `responses` endpoint)
-- `anthropic`: uses the Anthropic **Messages API** (also used by Anthropic-compatible coding-plan endpoints; e.g. Volcano Engine Coding Plan `.../api/coding`)
+- `anthropic`: uses the official Anthropic **Messages API**. `model_params.anthropic.thinking` uses the official Anthropic object shape.
+- `anthropic-compatible`: uses Anthropic-compatible **Messages API** / coding-plan endpoints, e.g. Volcano Engine Coding Plan `.../api/coding`. `model_params.anthropic-compatible.thinking` uses the Dominds boolean switch: `true` sends `thinking.type=enabled`; `false` sends `thinking.type=disabled`.
 - `openai-compatible`: uses the OpenAI **Chat Completions API** (best for most “OpenAI-compatible” third-party/proxy endpoints; e.g. a manually configured Ark `.../api/v3` endpoint)
   - **Vision support**: if the provider/model supports multimodal Chat Completions, Dominds will pass tool-output images (`func_result_msg.contentItems[].type=input_image`, e.g. from MCP tools) to the model as `image_url` inputs after reading the persisted artifact; unsupported mime types are downgraded to text.
 

@@ -7,7 +7,8 @@ import YAML from 'yaml';
 import {
   type SetupFileKind,
   type SetupFileResponse,
-  type SetupProminentEnumModelParam,
+  type SetupModelParamScalar,
+  type SetupProminentModelParam,
   type SetupProminentModelParamNamespace,
   type SetupStatusResponse,
   type SetupWriteRtwsLlmYamlRequest,
@@ -390,7 +391,7 @@ async function buildProviderSummaries(
       };
     });
 
-    const prominent = extractProminentEnumModelParams(cfg.model_param_options);
+    const prominent = extractProminentModelParams(cfg.model_param_options);
     const summary: SetupStatusResponse['providers'][number] = {
       providerKey,
       name: cfg.name,
@@ -415,18 +416,15 @@ async function buildProviderSummaries(
   return [...envSet, ...envMissing];
 }
 
-function extractProminentEnumModelParams(
+function extractProminentModelParams(
   modelParamOptions: ProviderConfig['model_param_options'],
-): SetupProminentEnumModelParam[] {
+): SetupProminentModelParam[] {
   if (!modelParamOptions) return [];
 
-  const out: SetupProminentEnumModelParam[] = [];
-  const sections: Array<[SetupProminentEnumModelParam['namespace'], Record<string, unknown>]> = [];
+  const out: SetupProminentModelParam[] = [];
+  const sections: Array<[SetupProminentModelParam['namespace'], Record<string, unknown>]> = [];
 
-  const addSection = (
-    namespace: SetupProminentEnumModelParam['namespace'],
-    section: unknown,
-  ): void => {
+  const addSection = (namespace: SetupProminentModelParam['namespace'], section: unknown): void => {
     if (section && typeof section === 'object') {
       sections.push([namespace, section as Record<string, unknown>]);
     }
@@ -434,7 +432,9 @@ function extractProminentEnumModelParams(
 
   addSection('codex', modelParamOptions.codex);
   addSection('openai', modelParamOptions.openai);
+  addSection('openai-compatible', modelParamOptions['openai-compatible']);
   addSection('anthropic', modelParamOptions.anthropic);
+  addSection('anthropic-compatible', modelParamOptions['anthropic-compatible']);
 
   for (const [namespace, section] of sections) {
     for (const [key, optUnknown] of Object.entries(section)) {
@@ -447,9 +447,21 @@ function extractProminentEnumModelParams(
         value_labels?: unknown;
         default?: unknown;
       };
-      if (opt.type !== 'enum') continue;
       if (opt.prominent !== true) continue;
       if (typeof opt.description !== 'string') continue;
+
+      if (opt.type === 'boolean') {
+        out.push({
+          kind: 'boolean',
+          namespace,
+          key,
+          description: opt.description,
+          ...(typeof opt.default === 'boolean' ? { defaultValue: opt.default } : {}),
+        });
+        continue;
+      }
+
+      if (opt.type !== 'enum') continue;
       if (!Array.isArray(opt.values) || !opt.values.every((v) => typeof v === 'string')) continue;
 
       const defaultValue =
@@ -469,6 +481,7 @@ function extractProminentEnumModelParams(
       }
 
       out.push({
+        kind: 'enum',
         namespace,
         key,
         description: opt.description,
@@ -762,14 +775,23 @@ function parseOptionalTeamModelParams(
   if (value === undefined) return null;
   if (!isRecord(value)) return null;
 
-  const out: Partial<Record<SetupProminentModelParamNamespace, Record<string, string>>> = {};
+  const out: Partial<
+    Record<SetupProminentModelParamNamespace, Record<string, SetupModelParamScalar>>
+  > = {};
 
   for (const [namespace, nsUnknown] of Object.entries(value)) {
-    if (namespace !== 'codex' && namespace !== 'openai' && namespace !== 'anthropic') return null;
+    if (
+      namespace !== 'codex' &&
+      namespace !== 'openai' &&
+      namespace !== 'openai-compatible' &&
+      namespace !== 'anthropic' &&
+      namespace !== 'anthropic-compatible'
+    )
+      return null;
     if (!isRecord(nsUnknown)) return null;
-    const nsOut: Record<string, string> = {};
+    const nsOut: Record<string, SetupModelParamScalar> = {};
     for (const [k, v] of Object.entries(nsUnknown)) {
-      if (typeof v !== 'string') return null;
+      if (typeof v !== 'string' && typeof v !== 'boolean') return null;
       if (v === '') continue;
       nsOut[k] = v;
     }

@@ -31,7 +31,7 @@ function isToollessFbrSelfSideDialog(dlg: Dialog): dlg is SideDialog {
   return dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
 }
 
-function mergeModelParams(
+export function mergeModelParams(
   base: Team.ModelParams | undefined,
   overlay: Team.ModelParams | undefined,
 ): Team.ModelParams | undefined {
@@ -39,9 +39,19 @@ function mergeModelParams(
   if (!base) return overlay;
   if (!overlay) return base;
   return {
+    ...(base.json_response !== undefined ? { json_response: base.json_response } : {}),
+    ...(overlay.json_response !== undefined ? { json_response: overlay.json_response } : {}),
     codex: { ...(base.codex ?? {}), ...(overlay.codex ?? {}) },
     openai: { ...(base.openai ?? {}), ...(overlay.openai ?? {}) },
+    'openai-compatible': {
+      ...(base['openai-compatible'] ?? {}),
+      ...(overlay['openai-compatible'] ?? {}),
+    },
     anthropic: { ...(base.anthropic ?? {}), ...(overlay.anthropic ?? {}) },
+    'anthropic-compatible': {
+      ...(base['anthropic-compatible'] ?? {}),
+      ...(overlay['anthropic-compatible'] ?? {}),
+    },
   };
 }
 

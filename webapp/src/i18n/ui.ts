@@ -307,6 +307,9 @@ export type UiStrings = {
   toolsGroupApps: string;
   toolsGroupMcp: string;
   toolsSectionFunction: string;
+  toolsParametersLabel: string;
+  toolsNoParameters: string;
+  toolsSchemaLabel: string;
 
   daemonLabel: string;
   commandLabel: string;
@@ -712,6 +715,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toolsGroupApps: 'Apps 工具',
       toolsGroupMcp: 'MCP 工具',
       toolsSectionFunction: '函数工具',
+      toolsParametersLabel: '参数',
+      toolsNoParameters: '无参数',
+      toolsSchemaLabel: 'Schema',
 
       daemonLabel: '守护进程',
       commandLabel: '命令',
@@ -781,7 +787,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupWriteWorkspaceLlmYaml: '写入 llm.yaml',
       setupOverwriteWorkspaceLlmYaml: '覆盖 llm.yaml',
       setupWorkspaceLlmTextareaPlaceholder:
-        "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
+        "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic-compatible\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
       setupWorkspaceLlmWriteSuccessPrefix: '已写入：',
       setupWorkspaceLlmContentRequired: '请先在文本框中填写 llm.yaml 内容。',
       setupWorkspaceLlmWriteFailed: '写入 .minds/llm.yaml 失败。',
@@ -1132,6 +1138,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toolsGroupApps: 'App Tools',
     toolsGroupMcp: 'MCP Tools',
     toolsSectionFunction: 'Function Tools',
+    toolsParametersLabel: 'Parameters',
+    toolsNoParameters: 'No parameters',
+    toolsSchemaLabel: 'Schema',
 
     daemonLabel: 'Daemon',
     commandLabel: 'Command',
@@ -1203,7 +1212,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupWriteWorkspaceLlmYaml: 'Write llm.yaml',
     setupOverwriteWorkspaceLlmYaml: 'Overwrite llm.yaml',
     setupWorkspaceLlmTextareaPlaceholder:
-      "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
+      "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic-compatible\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
     setupWorkspaceLlmWriteSuccessPrefix: 'Wrote: ',
     setupWorkspaceLlmContentRequired: 'Please fill in the llm.yaml content first.',
     setupWorkspaceLlmWriteFailed: 'Failed to write .minds/llm.yaml.',

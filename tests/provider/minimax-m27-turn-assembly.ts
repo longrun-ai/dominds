@@ -32,7 +32,7 @@ function parseArgs(argv: ReadonlyArray<string>): Args {
     }
     if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: pnpm -C tests run minimax-m25-turn-assembly -- [--provider <provider>] [--model <model>]',
+        'Usage: pnpm -C tests run minimax-m27-turn-assembly -- [--provider <provider>] [--model <model>]',
       );
       process.exit(0);
     }
@@ -45,8 +45,8 @@ function pickModel(provider: ProviderConfig, preferred: string | null): string {
   if (preferred && Object.prototype.hasOwnProperty.call(provider.models, preferred)) {
     return preferred;
   }
-  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.5')) {
-    return 'MiniMax-M2.5';
+  if (Object.prototype.hasOwnProperty.call(provider.models, 'MiniMax-M2.7')) {
+    return 'MiniMax-M2.7';
   }
   const fallback = Object.keys(provider.models)[0];
   if (!fallback) {
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       type: 'prompting_msg',
       role: 'user',
       genseq: 1,
-      msgId: 'minimax-m25-turn-assembly',
+      msgId: 'minimax-m27-turn-assembly',
       grammar: 'markdown',
       content:
         'Call env_get(key="DOMINDS_TEST_TURN_ASSEMBLY") and then say the value you got (or "(unset)").',
@@ -175,8 +175,8 @@ async function main(): Promise<void> {
     systemPrompt,
     funcTools,
     {
-      dialogSelfId: 'tests/provider/minimax-m25-turn-assembly',
-      dialogRootId: 'tests/provider/minimax-m25-turn-assembly',
+      dialogSelfId: 'tests/provider/minimax-m27-turn-assembly',
+      dialogRootId: 'tests/provider/minimax-m27-turn-assembly',
     },
     context,
     receiver,
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
       funcCallCount,
     }),
   );
-  console.log('✓ MiniMax M2.5 turn assembly probe passed');
+  console.log('✓ MiniMax turn assembly probe passed');
 }
 
 main().catch((error: unknown) => {
