@@ -22,7 +22,6 @@ export type ManualSpec = Readonly<{
   topicTitlesI18n?: Partial<Record<ManualTopic, ManualTopicTitle>>;
   topicFilesI18n?: Partial<Record<LanguageCode, Partial<Record<ManualTopic, string>>>>;
   warnOnMissing?: boolean;
-  includeSchemaToolsSection?: boolean;
 }>;
 
 export function getManualSpecTopics(spec?: ManualSpec): readonly ManualTopic[] {
@@ -47,10 +46,6 @@ export function getManualTopicTitle(
 
 export function shouldWarnMissingSection(spec?: ManualSpec): boolean {
   return spec?.warnOnMissing ?? true;
-}
-
-export function shouldIncludeSchemaToolsSection(spec?: ManualSpec): boolean {
-  return spec?.includeSchemaToolsSection ?? true;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +107,6 @@ export function buildBuiltinManualSpec(
   options?: {
     topics?: readonly ManualTopic[];
     warnOnMissing?: boolean;
-    includeSchemaToolsSection?: boolean;
   } & ({ toolsetId: string } | Record<string, never>),
 ): ManualSpec {
   const topics =
@@ -120,7 +114,6 @@ export function buildBuiltinManualSpec(
   return {
     topics,
     warnOnMissing: options?.warnOnMissing ?? true,
-    includeSchemaToolsSection: options?.includeSchemaToolsSection ?? true,
     topicFilesI18n: {
       en: builtinManualTopicPaths(options?.toolsetId ?? '', 'en'),
       zh: builtinManualTopicPaths(options?.toolsetId ?? '', 'zh'),
@@ -138,7 +131,6 @@ export function buildMcpManualSpec(
   options?: {
     topics?: readonly ManualTopic[];
     warnOnMissing?: boolean;
-    includeSchemaToolsSection?: boolean;
   },
 ): ManualSpec {
   const topics =
@@ -146,11 +138,17 @@ export function buildMcpManualSpec(
   return {
     topics,
     warnOnMissing: options?.warnOnMissing ?? true,
-    includeSchemaToolsSection: options?.includeSchemaToolsSection ?? true,
     topicFilesI18n: {
       en: mcpManualTopicPaths(contentFilePrefix, 'en'),
       zh: mcpManualTopicPaths(contentFilePrefix, 'zh'),
     },
+  };
+}
+
+export function buildRawMcpManualSpec(): ManualSpec {
+  return {
+    topics: ['tools'],
+    warnOnMissing: false,
   };
 }
 

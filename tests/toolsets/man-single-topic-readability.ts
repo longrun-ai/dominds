@@ -10,7 +10,6 @@ async function main(): Promise<void> {
     toolsetId: 'team_mgmt',
     language: 'zh',
     topic: 'team',
-    availableToolNames: new Set<string>(),
   });
 
   assert.doesNotMatch(output, /手册内容过长|too large/);

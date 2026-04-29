@@ -8,7 +8,7 @@
 
 ### Tool List
 
-- <Enumerate core tools or point to Tools/Schema section>
+- <Enumerate core tools or point to the Tools section>
 
 ### 30-Second Quickstart
 
@@ -36,7 +36,7 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 | Topic                         | Description                                                               |
 | ----------------------------- | ------------------------------------------------------------------------- |
 | [principles](./principles.md) | Core concepts, reminder lifecycle, taskdoc structure, reply-routing model |
-| [tools](./tools.md)           | Complete tool list, minimal interface contracts, reply quick reference    |
+| [tools](./tools.md)           | Usage guidance, boundaries, and reply quick reference                     |
 | [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                                 |
 | [errors](./errors.md)         | Error codes and solutions                                                 |
 

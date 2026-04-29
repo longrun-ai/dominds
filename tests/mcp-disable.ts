@@ -118,7 +118,6 @@ async function main(): Promise<void> {
       toolsetId: 'local_http',
       language: 'en',
       request: {},
-      availableToolNames: new Set(),
     });
     assert.equal(manual.foundToolset, true);
     assert.match(manual.content, /enabled: false/);

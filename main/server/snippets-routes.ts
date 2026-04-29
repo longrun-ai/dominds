@@ -698,40 +698,11 @@ export async function handleToolsetManual(rawBody: string): Promise<ToolsetManua
 
   try {
     const { renderToolsetManualContent } = await import('../tools/toolset-manual');
-    const { Team } = await import('../team');
-    const caller = new Team.Member({
-      id: 'webui',
-      name: 'WebUI',
-      read_dirs: ['.minds/**'],
-      write_dirs: ['.minds/**'],
-      toolsets: [req.toolsetId],
-    });
-    const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-      member: caller,
-    });
-    const declaredMcpToolsets = await Team.readMcpDeclaredToolsets();
-    const declaredMcpToolsetNames =
-      declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.declaredServerIds : undefined;
-    const invalidMcpToolsetNames =
-      declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.invalidServerIds : undefined;
-    const availableToolNames = new Set(
-      caller
-        .listTools({
-          onMissingToolset: 'silent',
-          onMissingTool: 'silent',
-          dynamicToolsetNames,
-          declaredMcpToolsetNames,
-          invalidMcpToolsetNames,
-        })
-        .map((tool) => tool.name),
-    );
-
     const markdown = await renderToolsetManualContent({
       toolsetId: req.toolsetId,
       language: req.uiLanguage,
       ...(req.topic ? { topic: req.topic } : {}),
       ...(req.topics ? { topics: req.topics } : {}),
-      availableToolNames,
     });
     return { success: true, markdown: String(markdown) };
   } catch (error: unknown) {

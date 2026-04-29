@@ -4314,6 +4314,69 @@ export class DomindsApp extends HTMLElement {
         word-break: break-word;
       }
 
+      .tool-params {
+        margin-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        color: var(--dominds-muted, #666666);
+        font-size: var(--dominds-font-size-xs, 11px);
+      }
+
+      .tool-params-label {
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .tool-param {
+        display: grid;
+        grid-template-columns: minmax(72px, max-content) max-content minmax(0, 1fr);
+        gap: 6px;
+        align-items: start;
+        min-width: 0;
+      }
+
+      .tool-param-name,
+      .tool-param-type {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        word-break: break-word;
+      }
+
+      .tool-param-type {
+        color: var(--dominds-accent, #4f46e5);
+      }
+
+      .tool-param-desc,
+      .tool-param-empty {
+        min-width: 0;
+        line-height: 1.35;
+        word-break: break-word;
+      }
+
+      .tool-schema {
+        margin-top: 2px;
+      }
+
+      .tool-schema summary {
+        cursor: pointer;
+        color: var(--dominds-accent, #4f46e5);
+        font-weight: 600;
+      }
+
+      .tool-schema pre {
+        margin: 4px 0 0;
+        max-height: 180px;
+        overflow: auto;
+        padding: 6px;
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+        background: color-mix(in srgb, var(--dominds-fg, #333333) 3%, transparent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: var(--dominds-font-size-xs, 11px);
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       .tools-empty {
         padding: 6px 8px;
         color: var(--dominds-muted, #666666);
@@ -10779,6 +10842,64 @@ export class DomindsApp extends HTMLElement {
     const directTools = this.toolsWidgetDirectTools;
     const toolsets = this.toolsWidgetToolsets;
 
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === 'object' && value !== null && !Array.isArray(value);
+    const renderParameterSummaryHtml = (tool: ToolInfo): string => {
+      const schema = tool.parameters;
+      if (!schema) return '';
+      const schemaJson = JSON.stringify(schema, null, 2);
+      const schemaDetails = `<details class="tool-schema"><summary>${this.escapeHtml(t.toolsSchemaLabel)}</summary><pre>${this.escapeHtml(schemaJson)}</pre></details>`;
+      const requiredValue = schema.required;
+      const required =
+        Array.isArray(requiredValue) && requiredValue.every((entry) => typeof entry === 'string')
+          ? new Set(requiredValue)
+          : new Set<string>();
+      const properties = isRecord(schema.properties) ? schema.properties : {};
+      const entries = Object.entries(properties);
+      if (entries.length === 0) {
+        return `<div class="tool-params"><span class="tool-params-label">${this.escapeHtml(t.toolsParametersLabel)}</span><span class="tool-param-empty">${this.escapeHtml(t.toolsNoParameters)}</span>${schemaDetails}</div>`;
+      }
+      const paramsHtml = entries
+        .map(([name, raw]) => {
+          const prop = isRecord(raw) ? raw : {};
+          const typeValue = prop.type;
+          const typeText =
+            typeof typeValue === 'string'
+              ? typeValue
+              : Array.isArray(typeValue) && typeValue.every((entry) => typeof entry === 'string')
+                ? typeValue.join('|')
+                : 'unknown';
+          const desc = typeof prop.description === 'string' ? prop.description : '';
+          const req = required.has(name) ? '*' : '';
+          return `<div class="tool-param">
+            <span class="tool-param-name">${this.escapeHtml(name)}${req}</span>
+            <span class="tool-param-type">${this.escapeHtml(typeText)}</span>
+            ${desc ? `<span class="tool-param-desc">${this.escapeHtml(desc)}</span>` : ''}
+          </div>`;
+        })
+        .join('');
+      return `<div class="tool-params"><div class="tool-params-label">${this.escapeHtml(t.toolsParametersLabel)}</div>${paramsHtml}${schemaDetails}</div>`;
+    };
+
+    const renderToolItemHtml = (
+      tool: ToolInfo,
+      kindLabel: string,
+      showParameters: boolean,
+    ): string => {
+      const toolDesc = tool.descriptionI18n
+        ? tool.descriptionI18n[this.uiLanguage]
+        : (tool.description ?? '');
+      const desc = toolDesc ? this.escapeHtml(toolDesc) : '';
+      return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
+        <div class="tool-main">
+          <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
+          <span class="tool-name">${this.escapeHtml(tool.name)}</span>
+        </div>
+        ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
+        ${showParameters ? renderParameterSummaryHtml(tool) : ''}
+      </div>`;
+    };
+
     const renderDirectToolSectionHtml = (
       sectionTitle: string,
       tools: readonly ToolInfo[],
@@ -10787,21 +10908,7 @@ export class DomindsApp extends HTMLElement {
       const toolsHtml =
         tools.length === 0
           ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
-          : tools
-              .map((tool) => {
-                const toolDesc = tool.descriptionI18n
-                  ? tool.descriptionI18n[this.uiLanguage]
-                  : (tool.description ?? '');
-                const desc = toolDesc ? this.escapeHtml(toolDesc) : '';
-                return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
-                  <div class="tool-main">
-                    <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
-                    <span class="tool-name">${this.escapeHtml(tool.name)}</span>
-                  </div>
-                  ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
-                </div>`;
-              })
-              .join('');
+          : tools.map((tool) => renderToolItemHtml(tool, kindLabel, false)).join('');
       return `<details class="tools-section" open>
         <summary class="tools-section-title">${this.escapeHtml(sectionTitle)}</summary>
         <div class="tools-section-toolsets">${toolsHtml}</div>
@@ -10818,21 +10925,7 @@ export class DomindsApp extends HTMLElement {
       const toolsHtml =
         tools.length === 0
           ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
-          : tools
-              .map((tool) => {
-                const toolDesc = tool.descriptionI18n
-                  ? tool.descriptionI18n[this.uiLanguage]
-                  : (tool.description ?? '');
-                const desc = toolDesc ? this.escapeHtml(toolDesc) : '';
-                return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
-                  <div class="tool-main">
-                    <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
-                    <span class="tool-name">${this.escapeHtml(tool.name)}</span>
-                  </div>
-                  ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
-                </div>`;
-              })
-              .join('');
+          : tools.map((tool) => renderToolItemHtml(tool, kindLabel, ts.source === 'mcp')).join('');
 
       const toolsetDescAttr = toolsetDesc ? ` data-desc="${this.escapeHtml(toolsetDesc)}"` : '';
       return `<details class="toolset">

@@ -79,6 +79,110 @@ async function main(): Promise<void> {
       'version: 1',
       'servers:',
       '  sdk_stdio:',
+      '    transport: not_a_transport',
+      '    command: node',
+      "    args: ['-e', 'setInterval(()=>{},1000)']",
+      '    tools: { whitelist: [], blacklist: [] }',
+      '    transform: []',
+      '',
+    ].join('\n'),
+    async () => {
+      const dlg = {
+        getLastUserLanguageCode: () => 'en' as const,
+      } as unknown as Dialog;
+      const caller = new Team.Member({ id: 'tester', name: 'Tester' });
+      await teamMgmtValidateMcpCfgTool.call(dlg, caller, {});
+
+      const activeProblemIds = listProblems({ source: 'mcp', resolved: false }).map(
+        (problem) => problem.id,
+      );
+      assert.ok(
+        activeProblemIds.includes('mcp/server/sdk_stdio/server_error'),
+        'invalid server config should still be reported in Problems',
+      );
+      assert.ok(
+        !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_missing'),
+        'invalid server config should not persist missing manual warning',
+      );
+    },
+  );
+
+  clearProblems({ source: 'mcp' });
+
+  await withTempRtws(
+    [
+      'version: 1',
+      'servers:',
+      '  sdk_stdio:',
+      '    enabled: false',
+      '    transport: stdio',
+      '    command: node',
+      "    args: ['-e', 'setInterval(()=>{},1000)']",
+      '    tools: { whitelist: [], blacklist: [] }',
+      '    transform: []',
+      '',
+    ].join('\n'),
+    async () => {
+      const dlg = {
+        getLastUserLanguageCode: () => 'zh' as const,
+      } as unknown as Dialog;
+      const caller = new Team.Member({ id: 'tester', name: 'Tester' });
+      const out = (await teamMgmtValidateMcpCfgTool.call(dlg, caller, {})).content;
+
+      assert.ok(
+        out.includes('toolset_manual_missing'),
+        'validate tool should report toolset_manual_missing when manual is omitted',
+      );
+      assert.ok(
+        out.includes('[warning]'),
+        'missing manual should be surfaced as a warning-level problem',
+      );
+      const warningProblem = listProblems({ source: 'mcp', resolved: false }).find(
+        (problem) => problem.id === 'mcp/server/sdk_stdio/toolset_manual_missing',
+      );
+      assert.ok(warningProblem !== undefined, 'missing manual warning should persist in Problems');
+      assert.equal(
+        warningProblem?.severity,
+        'warning',
+        'missing manual should persist as warning severity',
+      );
+
+      await fs.writeFile(
+        path.join(process.cwd(), '.minds', 'mcp.yaml'),
+        [
+          'version: 1',
+          'servers:',
+          '  sdk_stdio:',
+          '    enabled: false',
+          '    transport: stdio',
+          '    command: node',
+          "    args: ['-e', 'setInterval(()=>{},1000)']",
+          '    tools: { whitelist: [], blacklist: [] }',
+          '    transform: []',
+          '    manual:',
+          '      content: "SDK helper MCP for integration tasks"',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      await teamMgmtValidateMcpCfgTool.call(dlg, caller, {});
+      const activeProblemIds = listProblems({ source: 'mcp', resolved: false }).map(
+        (problem) => problem.id,
+      );
+      assert.ok(
+        !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_missing'),
+        'missing manual warning should be removed from active Problems after manual is added',
+      );
+    },
+  );
+
+  clearProblems({ source: 'mcp' });
+
+  await withTempRtws(
+    [
+      'version: 1',
+      'servers:',
+      '  sdk_stdio:',
       '    transport: stdio',
       '    command: node',
       "    args: ['-e', 'setInterval(()=>{},1000)']",
@@ -126,7 +230,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_error'),
-        'manual declaration problem should leave active Problems after the config is fixed',
+        'manual declaration problem should be removed from active Problems after the config is fixed',
       );
       const resolvedProblem = listProblems({
         source: 'mcp',
@@ -213,7 +317,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_unknown_fields'),
-        'manual unknown-fields warning should leave active Problems after the config is fixed',
+        'manual unknown-fields warning should be removed from active Problems after the config is fixed',
       );
       const resolvedProblem = listProblems({
         source: 'mcp',
@@ -282,7 +386,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeProblemIds.includes('mcp/workspace_manual_team_mgmt_mcp_too_large'),
-        'oversized manual problem should leave active Problems after the config is fixed',
+        'oversized manual problem should be removed from active Problems after the config is fixed',
       );
       const resolvedProblem = listProblems({
         source: 'mcp',
@@ -360,7 +464,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_too_large'),
-        'oversized final MCP toolset manual problem should leave active Problems after the config is fixed',
+        'oversized final MCP toolset manual problem should be removed from active Problems after the config is fixed',
       );
       const resolvedProblem = listProblems({
         source: 'mcp',

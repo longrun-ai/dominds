@@ -8,7 +8,7 @@
 
 ### Tool List
 
-- <Enumerate core tools or point to Tools/Schema section>
+- <Enumerate core tools or point to the Tools section>
 
 ### 30-Second Quickstart
 
@@ -47,7 +47,7 @@ Tool list:
 | Topic                         | Description                                     |
 | ----------------------------- | ----------------------------------------------- |
 | [principles](./principles.md) | Core concepts, memory lifecycle, best practices |
-| [tools](./tools.md)           | Complete tool list and interface contracts      |
+| [tools](./tools.md)           | Usage guidance, boundaries, and examples        |
 | [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)       |
 | [errors](./errors.md)         | Error codes and solutions                       |
 

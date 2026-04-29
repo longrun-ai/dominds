@@ -8,7 +8,7 @@
 
 ### Tool List
 
-- <Enumerate core tools or point to Tools/Schema section>
+- <Enumerate core tools or point to the Tools section>
 
 ### 30-Second Quickstart
 
@@ -36,7 +36,7 @@ ws_mod is Dominds' text editing toolset, using **prepare-first + single apply** 
 | Topic                         | Description                                                      |
 | ----------------------------- | ---------------------------------------------------------------- |
 | [principles](./principles.md) | Core concepts, workflow, concurrency constraints, hunk lifecycle |
-| [tools](./tools.md)           | Complete tool list and interface contracts                       |
+| [tools](./tools.md)           | Usage guidance, editing boundaries, and workflow notes           |
 | [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                        |
 | [errors](./errors.md)         | Error codes and solutions                                        |
 

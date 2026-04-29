@@ -15,7 +15,7 @@ import {
   notifyToolAvailabilityRegistryMaybeChanged,
   notifyToolAvailabilityRuntimeLeaseChanged,
 } from '../tool-availability-updates';
-import { buildMcpManualSpec, type ManualSpec } from '../tools/manual/spec';
+import { buildMcpManualSpec, buildRawMcpManualSpec, type ManualSpec } from '../tools/manual/spec';
 import {
   getReminderOwner,
   registerTool,
@@ -704,7 +704,7 @@ async function reloadNow(reason: string): Promise<void> {
     rawText,
     reason,
   );
-  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+  await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), rawText);
 }
 
 async function restartServerNow(
@@ -752,7 +752,7 @@ async function restartServerNow(
   if (disabledServer) {
     const enableRes = setServerEnabledInMcpYaml(rawText, serverId, true);
     if (!enableRes.ok) {
-      await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, rawText);
+      await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), rawText);
       return { ok: false, errorText: enableRes.errorText };
     }
     if (enableRes.changed) {
@@ -780,7 +780,7 @@ async function restartServerNow(
       parsed.serverIdsInYamlOrder,
       parsed.disabledServerIdsInYamlOrder,
     );
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
+    await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), activeRawText);
     upsertMcpServerConfigInvalidProblem(serverId, invalid.errorText);
     notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:config-invalid`);
     return { ok: false, errorText: invalid.errorText };
@@ -788,7 +788,7 @@ async function restartServerNow(
 
   const serverCfg = parsed.config.servers[serverId];
   if (!serverCfg) {
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
+    await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), activeRawText);
     notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:not-configured`);
     return {
       ok: false,
@@ -812,7 +812,7 @@ async function restartServerNow(
 
   const res = await tryBuildServerState(serverCfg, desiredToolsetName, fingerprint);
   if (!res.ok) {
-    await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
+    await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), activeRawText);
     upsertDeclaredServerRuntimeError(serverId, res.errorText);
     upsertMcpServerRuntimeUnavailableProblem(serverId, res.errorText, res.detailTextI18n);
     notifyPlaceholderRemovalOnFailure(`mcp:restart:${serverId}:runtime-unavailable`);
@@ -830,7 +830,7 @@ async function restartServerNow(
   serverStateById.set(serverId, res.state);
   reconcileProblemsByPrefix(problemPrefixForServer(serverId), res.state.problems);
   reorderMcpToolsetsInRegistry(parsed.serverIdsInYamlOrder);
-  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, activeRawText);
+  await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), activeRawText);
   notifyToolAvailabilityRegistryMaybeChanged({
     reason: 'registry_changed',
     trigger: `mcp:restart:${serverId}`,
@@ -906,7 +906,7 @@ async function disableServerNow(
     disableRes.rawText,
     `mcp_disable:${serverId}`,
   );
-  await reconcileMcpManualProblemsForRuntime(parsed.serverIdsInYamlOrder, disableRes.rawText);
+  await reconcileMcpManualProblemsForRuntime(mcpManualProblemServerIds(parsed), disableRes.rawText);
   if (stoppedExisting) {
     notifyToolAvailabilityRuntimeLeaseChanged(`mcp:disable:${serverId}`);
   }
@@ -992,6 +992,13 @@ async function reconcileMcpManualProblemsForRuntime(
     measureRenderedWorkspaceMcpTopicRawChars: measureRenderedTeamMgmtMcpTopicRawChars,
     workspaceManualPath: MCP_YAML_PATH,
   });
+}
+
+function mcpManualProblemServerIds(parsed: {
+  validServerIdsInYamlOrder: ReadonlyArray<string>;
+  disabledServerIdsInYamlOrder: ReadonlyArray<string>;
+}): string[] {
+  return [...parsed.validServerIdsInYamlOrder, ...parsed.disabledServerIdsInYamlOrder];
 }
 
 function upsertWorkspaceConfigProblem(errorText: string): void {
@@ -1200,7 +1207,7 @@ async function applyWorkspaceConfig(
       serverId,
       toolsetName: desiredToolsetName,
       configFingerprint: fingerprint,
-      cfg: existing.cfg,
+      cfg: serverCfg,
       listedTools: existing.listedTools,
       dispatch: existing.dispatch,
       tools: rebuilt.tools,
@@ -1212,6 +1219,9 @@ async function applyWorkspaceConfig(
     if (!sameTools) {
       unregisterServer(existing);
       registerServer(next);
+      serverStateById.set(serverId, next);
+    } else if (!manualConfigEqual(existing.cfg.manual, serverCfg.manual)) {
+      setLoadedMcpToolsetMeta(next.toolsetName, serverCfg);
       serverStateById.set(serverId, next);
     }
 
@@ -1248,6 +1258,10 @@ function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     if (!b.has(v)) return false;
   }
   return true;
+}
+
+function manualConfigEqual(a: McpServerConfig['manual'], b: McpServerConfig['manual']): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 function clearDeclaredServerRuntimeCatalog(): void {
@@ -1333,7 +1347,7 @@ function reconcileCollisionDependentRegistrations(
       serverId,
       toolsetName: existing.toolsetName,
       configFingerprint: fingerprint,
-      cfg: existing.cfg,
+      cfg: serverCfg,
       listedTools: existing.listedTools,
       dispatch: existing.dispatch,
       tools: rebuilt.tools,
@@ -1360,18 +1374,23 @@ function registerServer(state: ServerState): void {
     toolOwnerByName.set(t.name, { kind: 'mcp', serverId: state.serverId });
   }
   registerToolset(state.toolsetName, state.tools);
-  const manualSpec = state.cfg.manual?.contentFile
-    ? buildMcpManualSpec(state.cfg.manual.contentFile)
-    : undefined;
-  setToolsetMeta(state.toolsetName, {
+  setLoadedMcpToolsetMeta(state.toolsetName, state.cfg);
+  toolsetOwnerByName.set(state.toolsetName, { kind: 'mcp', serverId: state.serverId });
+}
+
+function setLoadedMcpToolsetMeta(toolsetName: string, cfg: McpServerConfig): void {
+  const manualSpec = cfg.manual?.contentFile
+    ? buildMcpManualSpec(cfg.manual.contentFile)
+    : buildRawMcpManualSpec();
+  setToolsetMeta(toolsetName, {
     source: 'mcp',
     descriptionI18n: {
-      en: `MCP server: ${state.serverId}`,
-      zh: `MCP 服务器：${state.serverId}`,
+      en: `MCP server: ${cfg.serverId}`,
+      zh: `MCP 服务器：${cfg.serverId}`,
     },
-    ...(manualSpec !== undefined ? { manualSpec } : {}),
+    manualNoticeI18n: buildMcpToolsetManualNotice(cfg),
+    manualSpec,
   });
-  toolsetOwnerByName.set(state.toolsetName, { kind: 'mcp', serverId: state.serverId });
 }
 
 function registerDisabledServerToolset(
@@ -1389,11 +1408,7 @@ function registerDisabledServerToolset(
   const manual = manualInfo.manualByServerId.get(serverId);
   const manualSpec: ManualSpec = manual?.contentFile
     ? buildMcpManualSpec(manual.contentFile)
-    : {
-        topics: ['index'],
-        warnOnMissing: false,
-        includeSchemaToolsSection: false,
-      };
+    : buildRawMcpManualSpec();
   const inlineManual = manual ? renderInlineMcpToolsetManual(manual) : '';
   const disabledNoticeEn = [
     `This MCP server is configured but disabled in \`.minds/mcp.yaml\` (\`enabled: false\`).`,
@@ -1422,6 +1437,47 @@ function registerDisabledServerToolset(
     ...(manualSpec !== undefined ? { manualSpec } : {}),
   });
   toolsetOwnerByName.set(serverId, { kind: 'mcp', serverId });
+}
+
+function buildMcpToolsetManualNotice(cfg: McpServerConfig): { en: string; zh: string } {
+  const endpoint = formatMcpEndpointForManual(cfg);
+  const inlineManual = cfg.manual ? renderInlineMcpToolsetManual(cfg.manual) : '';
+  return {
+    zh: [
+      `该工具集来自标准 MCP 协议接入：serverId=\`${cfg.serverId}\`，transport=\`${cfg.transport}\`，${endpoint}。`,
+      'MCP Server 通过 `tools/list` 提供的工具名称、说明与参数 schema 已自动注入给智能体；工具契约详见各工具函数说明，不在手册正文中重复罗列。',
+      '`.minds/mcp.yaml` 中的 `manual` 是可选增强说明，适合补充使用场景、安全边界、故障处置和团队约定，不需要重复罗列工具清单或参数定义。',
+      inlineManual,
+    ]
+      .filter((part) => part.trim() !== '')
+      .join('\n\n'),
+    en: [
+      `This toolset is a standard Raw MCP protocol integration: serverId=\`${cfg.serverId}\`, transport=\`${cfg.transport}\`, ${endpoint}.`,
+      'Tool names, descriptions, and parameter schemas returned by the MCP Server through `tools/list` are already provided to the agent; see the individual function-tool descriptions for the tool contract instead of duplicating it in this manual.',
+      'The `.minds/mcp.yaml` `manual` field is optional enhancement guidance for use cases, guardrails, failure handling, and team norms; do not duplicate tool lists or parameter definitions there.',
+      inlineManual,
+    ]
+      .filter((part) => part.trim() !== '')
+      .join('\n\n'),
+  };
+}
+
+function formatMcpEndpointForManual(cfg: McpServerConfig): string {
+  if (cfg.transport === 'stdio') {
+    return [
+      `command=${JSON.stringify(cfg.command)}`,
+      `args_count=${cfg.args.length}`,
+      cfg.cwd ? `cwd=${JSON.stringify(cfg.cwd)}` : '',
+    ]
+      .filter((part) => part !== '')
+      .join(', ');
+  }
+  const url = new URL(cfg.url);
+  url.username = '';
+  url.password = '';
+  url.search = '';
+  url.hash = '';
+  return `url=${url.toString()}`;
 }
 
 function renderInlineMcpToolsetManual(manual: McpToolsetManual): string {

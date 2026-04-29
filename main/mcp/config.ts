@@ -12,6 +12,17 @@ export type McpHeaderValue =
 
 export type McpTransport = 'stdio' | 'streamable_http';
 
+export type McpManualSectionConfig = {
+  title: string;
+  content: string;
+};
+
+export type McpManualConfig = {
+  content?: string;
+  contentFile?: string;
+  sections: readonly McpManualSectionConfig[];
+};
+
 type McpServerConfigBase = {
   serverId: string;
   truelyStateless: boolean;
@@ -22,15 +33,17 @@ type McpServerConfigBase = {
   transform: ToolNameTransform[];
   /**
    * Optional manual metadata for this MCP server.
+   * Missing manual is valid for standard Raw MCP toolsets: tool names,
+   * descriptions, and parameter schemas come from MCP `tools/list`.
    * When `manual.contentFile` is set, the runtime builds a ManualSpec from the
    * i18n files alongside the entry point:
    *   - zh:  <baseDir>/index.md        (semantic baseline)
    *   - en:  <baseDir>/index.en.md
    * The `contentFile` value is a rtws-relative path.
+   * Inline `content` / `sections` are enhancement guidance only (use cases,
+   * guardrails, failure handling, team norms) and must not determine server availability.
    */
-  manual?: {
-    contentFile?: string;
-  };
+  manual?: McpManualConfig;
 };
 
 export type McpStdioServerConfig = McpServerConfigBase & {
@@ -188,24 +201,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
   const transform = transformVal === undefined ? [] : parseTransformArray(transformVal, serverId);
 
   const manualVal = obj.manual;
-  const manual: McpServerConfigBase['manual'] =
-    manualVal === undefined
-      ? undefined
-      : (() => {
-          const m = asRecord(manualVal, `servers.${serverId}.manual`);
-          const contentFileVal = m.contentFile;
-          const contentFile =
-            contentFileVal === undefined
-              ? undefined
-              : typeof contentFileVal === 'string' && contentFileVal.trim().length > 0
-                ? contentFileVal.trim()
-                : (() => {
-                    throw new Error(
-                      `Invalid mcp.yaml: servers.${serverId}.manual.contentFile must be a non-empty string`,
-                    );
-                  })();
-          return contentFile !== undefined ? { contentFile } : undefined;
-        })();
+  const manual = manualVal === undefined ? undefined : parseManualConfigLenient(manualVal);
 
   if (transport === 'stdio') {
     const command = obj.command;
@@ -320,6 +316,64 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     tools: { whitelist, blacklist },
     transform,
     manual,
+  };
+}
+
+function parseManualConfigLenient(value: unknown): McpManualConfig | undefined {
+  if (typeof value === 'string') {
+    const content = value.trim();
+    if (content === '') return undefined;
+    return { content, sections: [] };
+  }
+  if (!isRecord(value)) return undefined;
+
+  const m = value;
+  const contentVal = m.content;
+  const content =
+    typeof contentVal === 'string' && contentVal.trim().length > 0 ? contentVal.trim() : undefined;
+
+  const contentFileVal = m.contentFile;
+  const contentFile =
+    typeof contentFileVal === 'string' && contentFileVal.trim().length > 0
+      ? contentFileVal.trim()
+      : undefined;
+
+  const sectionsVal = m.sections;
+  const sections: McpManualSectionConfig[] = [];
+  if (sectionsVal !== undefined) {
+    if (Array.isArray(sectionsVal)) {
+      for (let i = 0; i < sectionsVal.length; i++) {
+        const sectionVal = sectionsVal[i];
+        if (!isRecord(sectionVal)) return undefined;
+        const section = sectionVal;
+        const title = section.title;
+        const sectionContent = section.content;
+        if (typeof title !== 'string' || title.trim() === '') return undefined;
+        if (typeof sectionContent !== 'string' || sectionContent.trim() === '') return undefined;
+        sections.push({ title: title.trim(), content: sectionContent.trim() });
+      }
+    } else {
+      if (!isRecord(sectionsVal)) return undefined;
+      const sectionsObj = sectionsVal;
+      for (const [title, sectionContent] of Object.entries(sectionsObj)) {
+        if (
+          title.trim() === '' ||
+          typeof sectionContent !== 'string' ||
+          sectionContent.trim() === ''
+        ) {
+          return undefined;
+        }
+        sections.push({ title: title.trim(), content: sectionContent.trim() });
+      }
+    }
+  }
+
+  if (content === undefined && contentFile === undefined && sections.length === 0) return undefined;
+
+  return {
+    ...(content !== undefined ? { content } : {}),
+    ...(contentFile !== undefined ? { contentFile } : {}),
+    sections,
   };
 }
 

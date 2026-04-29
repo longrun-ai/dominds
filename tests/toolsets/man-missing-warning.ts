@@ -24,7 +24,6 @@ async function main(): Promise<void> {
     manualSpec: {
       topics: ['index', 'tools', 'errors'],
       warnOnMissing: true,
-      includeSchemaToolsSection: true,
       topicFilesI18n: {
         en: {
           index: 'prompts/ws_read/en/index.md',

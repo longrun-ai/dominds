@@ -326,12 +326,12 @@ members:
 - `mcp_admin` 是 MCP 运维内置工具集：`mcp_restart` 启用/重启 server，`mcp_disable` 禁用
   server 并保留 0 工具 toolset/手册可见性，`mcp_release` 释放当前对话 lease
 - 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 提供手册相关信息：
-  - `contentFile`：正式 runtime 手册的 topic 文件目录前缀；`man({ "toolsetId": "<serverId>" })` 最终给 LLM 看的正文从这里加载
+  - `contentFile`：正式 runtime 手册的 topic 文件目录前缀；`man({ "toolsetId": "<serverId>" })` 最终给 LLM 看的正文从这里加载，包括 `scenarios`、`errors` 等手写章节
   - `content` / `sections`：补充给 `team_mgmt` MCP 章节看的 inline 团队管理说明（`sections` 支持 `[{ title, content }]` 或 `{ "<title>": "<content>" }`）
-- 没有手册 **不代表** 该 toolset 不可用；这只表示团队管理文档覆盖不足。智能体应继续依据每个工具自身的 description/参数来使用。
-- 建议团队管理者在 MCP 配置验证通过后：先精读该 server 暴露的每个工具说明，再与人类用户讨论本 rtws 的使用意图，然后把正式手册沉淀到 `manual.contentFile`；如仍需额外写团队管理层解释，再补 inline `content + sections`。
-- 章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。应从真实业务目标出发，决定哪些章节需要展开、哪些只需一句话、哪些可以合并或改名成更贴切的标题。
-- 对每个 MCP toolset，建议刻意写明“不可用时业务处置规约”，至少回答：
+- 没有手册 **不代表** 该 toolset 不可用；标准工具元数据来自 MCP `tools/list`。智能体应继续依据每个工具自身的 description/参数来使用。Dominds 仍会发出 warning，提醒团队至少补充简短整体定位说明。
+- 建议团队管理者在 MCP 配置验证通过后，优先依赖 MCP server 暴露的工具 description/参数；同时给每个 MCP server 写一段简短定位。若需要更完整的综合示例、避坑指南、安全边界、故障处置或协作规范，再写 `manual.contentFile` 或 inline `content + sections`。
+- 可选增强的章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。
+- 对高风险 MCP toolset，建议明确“不可用时业务处置规约”，至少回答：
   - 当前 toolset 暂不可达时，是否必须找协调者/专员接手
   - 是否允许采用人工流程或其他工具链作为临时降级路径
   - 哪些业务动作在该 toolset 恢复前必须暂停，不能擅自继续

@@ -13,10 +13,9 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import type { FuncTool } from '../tool';
 import '../tools/builtins';
 import { MANUAL_TOPICS } from '../tools/manual/spec';
-import { getToolset, getToolsetMeta, listToolsets } from '../tools/registry';
+import { getToolsetMeta, listToolsets } from '../tools/registry';
 import { renderToolsetManualContent } from '../tools/toolset-manual';
 
 type ParsedArgs = Readonly<{
@@ -168,22 +167,6 @@ function listAvailableToolsets(): void {
   console.log(`Available toolsets: ${names.map((name) => `\`${name}\``).join(', ')}`);
 }
 
-function toAvailableToolNames(toolsetId: string): Set<string> {
-  const toolset = getToolset(toolsetId) ?? [];
-  const names = new Set<string>();
-  for (const tool of toolset) {
-    if (
-      tool &&
-      typeof tool === 'object' &&
-      'type' in tool &&
-      (tool as { type: string }).type === 'func'
-    ) {
-      names.add((tool as FuncTool).name);
-    }
-  }
-  return names;
-}
-
 export async function main(): Promise<void> {
   try {
     const parsed = parseArgs(process.argv.slice(2));
@@ -200,13 +183,11 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
-    const availableToolNames = toAvailableToolNames(toolsetId);
     const content = await renderToolsetManualContent({
       toolsetId,
       language: parsed.language,
       topic: parsed.topic,
       topics: parsed.topics,
-      availableToolNames,
     });
     console.log(content);
   } catch (err) {

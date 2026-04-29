@@ -5,7 +5,7 @@ import YAML from 'yaml';
 import { listProblems, reconcileProblemsByPrefix } from '../problems';
 import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from '../tools/manual/output-limit';
 import { renderToolsetManual } from '../tools/manual/render';
-import { getToolset, getToolsetMeta } from '../tools/registry';
+import { getToolsetMeta } from '../tools/registry';
 
 const MCP_SERVER_PROBLEM_PREFIX = 'mcp/server/';
 
@@ -263,6 +263,33 @@ function buildMcpToolsetManualUnknownFieldsProblem(
   };
 }
 
+function buildMcpToolsetManualMissingProblem(serverId: string): WorkspaceProblem {
+  const errorText = `servers.${serverId}.manual is not configured`;
+  return {
+    kind: 'mcp_server_error',
+    source: 'mcp',
+    id: `${mcpToolsetManualProblemPrefix(serverId)}missing`,
+    severity: 'warning',
+    timestamp: formatUnifiedTimestamp(new Date()),
+    message: `MCP server '${serverId}' manual is not configured`,
+    messageI18n: {
+      en: `MCP server '${serverId}' manual is not configured`,
+      zh: `MCP server '${serverId}' 未配置 manual`,
+    },
+    detailTextI18n: {
+      en: [
+        `${errorText}. This does not block MCP startup or tool use.`,
+        'Dominds can use the standard MCP tool metadata directly, but recommends adding a short overall positioning note under `manual` so the team has shared expectations about use cases, guardrails, and failure handling.',
+      ].join('\n'),
+      zh: [
+        `${errorText}。这不会阻止 MCP 启动或工具使用。`,
+        'Dominds 可以直接使用标准 MCP 工具元数据，但仍建议在 `manual` 下补充简短的整体定位说明，让团队对使用场景、安全边界和故障处置有共同预期。',
+      ].join('\n'),
+    },
+    detail: { serverId, errorText },
+  };
+}
+
 function buildMcpToolsetManualTooLargeProblem(args: {
   serverId: string;
   renderedChars: number;
@@ -314,21 +341,17 @@ function buildMcpWorkspaceManualTooLargeProblem(args: {
 }
 
 function measureRenderedToolsetManualRawChars(serverId: string): number | null {
-  const tools = getToolset(serverId);
   const meta = getToolsetMeta(serverId);
-  if (!tools || meta?.source !== 'mcp') return null;
-  const availableToolNames = new Set(tools.map((tool) => tool.name));
+  if (meta?.source !== 'mcp') return null;
   const zh = renderToolsetManual({
     toolsetId: serverId,
     language: 'zh',
     request: {},
-    availableToolNames,
   });
   const en = renderToolsetManual({
     toolsetId: serverId,
     language: 'en',
     request: {},
-    availableToolNames,
   });
   if (!zh.foundToolset || !en.foundToolset) return null;
   return Math.max(zh.content.length, en.content.length);
@@ -371,6 +394,8 @@ export async function reconcileMcpToolsetManualProblems(params: {
     const invalid = params.manualInfo.invalidByServerId.get(serverId);
     if (invalid !== undefined) {
       desired.push(buildMcpToolsetManualInvalidProblem(serverId, invalid));
+    } else if (!params.manualInfo.manualByServerId.has(serverId)) {
+      desired.push(buildMcpToolsetManualMissingProblem(serverId));
     }
     const warningText = params.manualInfo.warningTextByServerId.get(serverId);
     if (warningText !== undefined) {

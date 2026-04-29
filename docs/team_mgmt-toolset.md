@@ -390,22 +390,21 @@ Notes:
   `mcp_disable` disables a server while keeping its zero-tool toolset/manual visible, and
   `mcp_release` releases the current dialog lease.
 - Optional manual information can live in `.minds/mcp.yaml` at `servers.<serverId>.manual`:
-  - `contentFile`: the topic-file directory prefix for the formal runtime manual; the final `man({ "toolsetId": "<serverId>" })` content shown to the LLM is loaded from here
+  - `contentFile`: the topic-file directory prefix for the formal runtime manual; the final `man({ "toolsetId": "<serverId>" })` content shown to the LLM is loaded from here, including handwritten chapters such as `scenarios` and `errors`
   - `content` / `sections`: inline team-management guidance shown in the `team_mgmt` MCP chapter (`sections` supports `[{ title, content }]` or `{ "<title>": "<content>" }`)
-- Missing manual does **not** mean the toolset is unavailable; it means team-manager documentation
-  is incomplete. Agents should continue by reading each tool’s own description/arguments.
-- Team-manager recommendation: after MCP config validation passes, carefully read each exposed tool
-  description, discuss intended rtws usage with the human user, then write the formal manual into
-  `manual.contentFile`; if extra team-management interpretation is still useful, add inline
-  `content + sections` alongside it.
-- Use a semi-structured chapter shape: high-value sections often include `When To Use`,
-  `Guardrails`, and `Business Handling When Unavailable`, but do not force every toolset into one
-  fixed template. Start from the real business goal, then decide which sections deserve depth,
-  which can stay brief, and which should be merged or renamed to fit the scenario.
-- For each MCP toolset, deliberately document unavailable-case business handling rules. At minimum,
-  answer:
+- Missing manual does **not** mean the toolset is unavailable. Standard tool metadata comes from MCP
+  `tools/list`; agents should continue by reading each tool’s own description/arguments. Dominds
+  still reports a warning so the team can add at least a short overall positioning note.
+- Team-manager recommendation: after MCP config validation passes, rely on MCP-provided tool
+  descriptions/arguments first, and still write a short positioning note for each MCP server. Use
+  `manual.contentFile` or inline `content + sections` for richer handwritten guidance such as
+  examples, pitfalls, safety boundaries, failure handling, and coordination norms.
+- Use a semi-structured chapter shape for optional enhancements: high-value sections often include
+  `When To Use`, `Guardrails`, and `Business Handling When Unavailable`, but do not force every
+  toolset into one fixed template.
+- For high-risk MCP toolsets, document unavailable-case business handling rules. At minimum, answer:
   - whether a temporarily unavailable toolset must be escalated to a coordinator or specialist
-  - whether a manual or alternate-tool fallback path is allowed
+  - whether a human-operated or alternate-tool fallback path is allowed
   - which business actions must pause until the toolset recovers
 
 ### File format (template)

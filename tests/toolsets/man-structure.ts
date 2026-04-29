@@ -81,10 +81,10 @@ async function main(): Promise<void> {
   assert.ok(output.includes('### Tools'));
   assert.ok(output.includes('### Scenarios'));
   assert.ok(output.includes('### Error Handling'));
-  assert.ok(output.includes('#### Tool Contract (Schema)'));
   assert.ok(!output.includes('Missing manual sections'));
-  assert.ok(output.includes('##### `list_dir`'));
-  assert.ok(output.includes('Call the function tool `list_dir` with:'));
+  assert.ok(!output.includes('Tool Contract (Schema)'));
+  assert.ok(output.includes('#### 1. list_dir'));
+  assert.ok(output.includes('List directory contents.'));
 
   const headingIssues = findHeadingIssues(output);
   if (headingIssues.length > 0) {

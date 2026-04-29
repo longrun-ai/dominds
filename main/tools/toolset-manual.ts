@@ -20,7 +20,6 @@ export type RenderToolsetManualContentInput = Readonly<{
   language: LanguageCode;
   topic?: string;
   topics?: readonly string[];
-  availableToolNames: Set<string>;
 }>;
 
 export function buildToolsetManualTools(_options: {
@@ -54,7 +53,6 @@ export async function renderToolsetManualContent(
       requestedTopic: input.topic,
       requestedTopics: input.topics,
     },
-    availableToolNames: input.availableToolNames,
   });
 
   if (!rendered.foundToolset) {
@@ -156,14 +154,14 @@ export function formatToolsetManualIntro(
       `手册工具：${names}`,
       '可用工具集：',
       formatToolsetEntries(language, toolsetIds, true),
-      '何时查阅手册：当某个工具集的功能边界、参数写法、典型场景或报错处理不确定时，调用 `man` 查看详情。',
+      '何时查阅手册：当某个工具集的整体定位、使用边界、典型场景、安全规范或错误处理不确定时，调用 `man` 查看详情。',
     ].join('\n');
   }
   return [
     `Manual tool: ${names}`,
     'Available toolsets:',
     formatToolsetEntries(language, toolsetIds, true),
-    'When to read the manual: call `man` when a toolset’s boundaries, argument shape, typical scenarios, or error handling are unclear.',
+    'When to read the manual: call `man` when a toolset’s positioning, usage boundaries, typical scenarios, guardrails, or error handling are unclear.',
   ].join('\n');
 }
 
@@ -232,7 +230,7 @@ function buildManTool(): FuncTool {
               '',
               formatToolsetIdList(language, availableToolsetNames),
               '',
-              '提示：当某个工具集的功能边界、参数写法、场景示例或错误处理不确定时，继续调用 `man({ "toolsetId": "<toolset>" })` 查看详情。',
+              '提示：当某个工具集的整体定位、使用边界、场景示例、安全规范或错误处理不确定时，继续调用 `man({ "toolsetId": "<toolset>" })` 查看详情。',
             ].join('\n'),
           );
         }
@@ -242,7 +240,7 @@ function buildManTool(): FuncTool {
             '',
             formatToolsetIdList(language, availableToolsetNames),
             '',
-            'Hint: when a toolset’s boundaries, argument shape, scenarios, or error handling are unclear, call `man({ "toolsetId": "<toolset>" })` for details.',
+            'Hint: when a toolset’s positioning, usage boundaries, scenarios, guardrails, or error handling are unclear, call `man({ "toolsetId": "<toolset>" })` for details.',
           ].join('\n'),
         );
       }
@@ -284,18 +282,6 @@ function buildManTool(): FuncTool {
         );
       }
 
-      const availableToolNames = new Set(
-        _caller
-          .listTools({
-            onMissingToolset: 'silent',
-            onMissingTool: 'silent',
-            dynamicToolsetNames,
-            declaredMcpToolsetNames,
-            invalidMcpToolsetNames,
-          })
-          .map((tool) => tool.name),
-      );
-
       return toolSuccess(
         await renderToolsetManualContent({
           toolsetId,
@@ -306,7 +292,6 @@ function buildManTool(): FuncTool {
                 (entry): entry is string => typeof entry === 'string',
               )
             : undefined,
-          availableToolNames,
         }),
       );
     },

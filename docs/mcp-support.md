@@ -399,6 +399,14 @@ headers:
 
 This is a Dominds-oriented schema. It is intentionally small and should be easy to validate.
 
+`manual` is optional enhancement configuration, not a requirement for MCP integration. A standard
+MCP server already returns tool names, descriptions, and parameter schemas through `tools/list`;
+Dominds registers that metadata as `FuncTool`s and provides it to the LLM and the WebUI tools list.
+`man({ "toolsetId": "<serverId>" })` does not duplicate that schema; use `manual` for the server's
+overall positioning, use cases, examples, pitfalls, guardrails, failure-handling procedures, and
+team norms. Omitting `manual` is allowed but reported as a warning in Problems because Dominds
+recommends at least a short positioning note.
+
 ```yaml
 version: 1
 servers:
@@ -439,10 +447,11 @@ servers:
     # Tool name transforms (optional)
     transform: []
 
-    # Optional manual information
-    # - contentFile: formal runtime manual for man({ "toolsetId": "<serverId>" })
-    # - content/sections: extra inline team-management guidance
-    # (missing manual does NOT make the toolset unavailable)
+    # Optional enhanced manual information; omitting it is allowed but emits a Problems warning.
+    # - contentFile: formal runtime manual for man({ "toolsetId": "<serverId>" });
+    #   supports topic files such as index/principles/tools/scenarios/errors.
+    # - content/sections: inline guidance (use cases, guardrails, failure handling, team norms)
+    # Do not duplicate tool lists/parameter definitions; those come from MCP tools/list.
     manual:
       contentFile: ".minds/manuals/<serverId>"
       content: "What this MCP toolset is for"

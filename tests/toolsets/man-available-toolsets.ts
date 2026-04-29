@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   assert.ok(output.includes('- `ws_read`'));
   assert.ok(output.includes('- `team_memory`'));
   assert.ok(!output.includes('运行时工作区只读访问'));
-  assert.ok(output.includes('功能边界、参数写法、场景示例或错误处理不确定时'));
+  assert.ok(output.includes('整体定位、使用边界、场景示例、安全规范或错误处理不确定时'));
 
   console.log('man available-toolsets test: ok');
 }

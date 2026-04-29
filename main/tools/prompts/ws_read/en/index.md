@@ -9,7 +9,7 @@ ws_read is Dominds' **runtime workspace read-only toolset** for reading and sear
 | Topic                         | Description                                         |
 | ----------------------------- | --------------------------------------------------- |
 | [principles](./principles.md) | Core concepts, read-only principles, best practices |
-| [tools](./tools.md)           | Complete tool list and interface contracts          |
+| [tools](./tools.md)           | Usage guidance, boundaries, and examples            |
 | [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)           |
 | [errors](./errors.md)         | Error codes and solutions                           |
 

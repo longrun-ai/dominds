@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeAfterInvalidYaml.includes('mcp/server/sdk_stdio/toolset_manual_unknown_fields'),
-        'manual warning should leave active Problems when mcp.yaml becomes invalid',
+        'manual warning should be removed from active Problems when mcp.yaml becomes invalid',
       );
 
       const resolvedAfterInvalidYaml = listProblems({
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
       );
       assert.ok(
         !activeProblemIds.includes('mcp/server/sdk_stdio/toolset_manual_unknown_fields'),
-        'manual unknown-fields warning should leave active Problems after hot-reload fix',
+        'manual unknown-fields warning should be removed from active Problems after hot-reload fix',
       );
 
       const resolvedProblems = listProblems({

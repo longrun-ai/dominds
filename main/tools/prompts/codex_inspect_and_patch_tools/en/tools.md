@@ -44,4 +44,4 @@ apply_patch({
 - `readonly_shell` returns command output or a structured failure message
 - `apply_patch` returns whether the patch was applied or why it failed
 
-The schema-generated tool contract remains the canonical source for parameters and returns.
+Function-tool definitions remain the canonical source for parameters and returns.

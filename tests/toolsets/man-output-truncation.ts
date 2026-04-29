@@ -5,9 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import type { FuncTool } from '../../main/tool';
 import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from '../../main/tools/manual/output-limit';
-import { buildSchemaToolsSection } from '../../main/tools/manual/schema';
 import { registerToolset, setToolsetMeta, unregisterToolset } from '../../main/tools/registry';
 import { renderToolsetManualContent } from '../../main/tools/toolset-manual';
 
@@ -17,7 +15,7 @@ const TOOL_NAME = 'oversized_manual_test_tool';
 async function main(): Promise<void> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dominds-manual-truncation-'));
   const manualPath = path.join(tmpDir, 'index.md');
-  const tool: FuncTool = {
+  const tool = {
     type: 'func',
     name: TOOL_NAME,
     description: 'Synthetic tool for manual truncation test.',
@@ -28,12 +26,9 @@ async function main(): Promise<void> {
   };
 
   try {
-    const schemaSection = buildSchemaToolsSection('en', [tool]);
     const fillerLength = MANUAL_SINGLE_REQUEST_CHAR_LIMIT + 2_000;
     const filler = 'A'.repeat(fillerLength);
-    const body = ['# Oversized Manual', '', filler, '', '## Tool Schema', '', schemaSection].join(
-      '\n',
-    );
+    const body = ['# Oversized Manual', '', filler].join('\n');
     fs.writeFileSync(manualPath, body, 'utf8');
 
     registerToolset(TOOLSET_ID, [tool]);
@@ -46,7 +41,6 @@ async function main(): Promise<void> {
       manualSpec: {
         topics: ['index'],
         warnOnMissing: true,
-        includeSchemaToolsSection: false,
         topicFilesI18n: {
           en: { index: manualPath },
           zh: { index: manualPath },
@@ -58,7 +52,6 @@ async function main(): Promise<void> {
       toolsetId: TOOLSET_ID,
       language: 'en',
       topic: 'index',
-      availableToolNames: new Set<string>(),
     });
 
     assert.match(output, /too large|过长/);

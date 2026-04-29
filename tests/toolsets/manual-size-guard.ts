@@ -10,7 +10,7 @@ import {
 import '../../main/tools/builtins';
 import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from '../../main/tools/manual/output-limit';
 import { MANUAL_TOPICS } from '../../main/tools/manual/spec';
-import { getToolset, listToolsets } from '../../main/tools/registry';
+import { listToolsets } from '../../main/tools/registry';
 import { renderToolsetManualContent } from '../../main/tools/toolset-manual';
 
 type ManualGuardCase = Readonly<{
@@ -19,7 +19,6 @@ type ManualGuardCase = Readonly<{
   language: 'zh' | 'en';
   topic?: string;
   topics?: readonly string[];
-  availableToolNames: ReadonlySet<string>;
 }>;
 
 type ManualGuardResult = Readonly<{
@@ -31,13 +30,11 @@ function buildGenericToolsetCases(): ManualGuardCase[] {
   const out: ManualGuardCase[] = [];
   for (const toolsetId of Object.keys(listToolsets()).sort()) {
     if (toolsetId === 'team_mgmt') continue;
-    const toolNames = new Set((getToolset(toolsetId) ?? []).map((tool) => tool.name));
     for (const language of ['zh', 'en'] as const) {
       out.push({
         label: `${toolsetId}/${language}/default`,
         toolsetId,
         language,
-        availableToolNames: toolNames,
       });
       for (const topic of MANUAL_TOPICS) {
         out.push({
@@ -45,7 +42,6 @@ function buildGenericToolsetCases(): ManualGuardCase[] {
           toolsetId,
           language,
           topic,
-          availableToolNames: toolNames,
         });
       }
     }
@@ -60,7 +56,6 @@ function buildTeamMgmtCases(): ManualGuardCase[] {
       label: `team_mgmt/${language}/default`,
       toolsetId: 'team_mgmt',
       language,
-      availableToolNames: new Set<string>(),
     });
     for (const uiTopic of TEAM_MGMT_GUIDE_UI_TOPIC_ORDER) {
       const topics = TEAM_MGMT_GUIDE_UI_TOOL_TOPICS_BY_KEY[uiTopic];
@@ -73,7 +68,6 @@ function buildTeamMgmtCases(): ManualGuardCase[] {
         toolsetId: 'team_mgmt',
         language,
         topics,
-        availableToolNames: new Set<string>(),
       });
     }
   }
@@ -93,7 +87,6 @@ async function main(): Promise<void> {
       language: manualCase.language,
       ...(manualCase.topic !== undefined ? { topic: manualCase.topic } : {}),
       ...(manualCase.topics !== undefined ? { topics: manualCase.topics } : {}),
-      availableToolNames: new Set(manualCase.availableToolNames),
     });
     results.push({ label: manualCase.label, length: content.length });
   }

@@ -8,7 +8,7 @@
 
 ### 工具清单
 
-- <列出核心工具，或指向 Tools/Schema 章节>
+- <列出核心工具，或指向工具章节>
 
 ### 30 秒上手
 
@@ -36,7 +36,7 @@ ws_mod 是 Dominds 的文本编辑工具集，采用 **prepare-first + single ap
 | 主题                          | 描述                                      |
 | ----------------------------- | ----------------------------------------- |
 | [principles](./principles.md) | 核心概念、工作流、并发约束、hunk 生命周期 |
-| [tools](./tools.md)           | 完整工具列表与接口契约                    |
+| [tools](./tools.md)           | 使用指导、编辑边界与流程注意              |
 | [scenarios](./scenarios.md)   | 常见使用场景与示例（复制即用）            |
 | [errors](./errors.md)         | 错误代码与解决方案                        |
 

@@ -4,13 +4,13 @@
 
 ### How to Read
 
-- The schema-generated "Tool Contract (Schema)" section is canonical for parameters/returns.
+- Function-tool definitions are the canonical source for parameters and returns; this manual only adds usage guidance.
 
 ### Per-Tool Fields (order)
 
 1. Purpose
 2. Call Signature
-3. Parameters (refer to schema)
+3. Parameters (summarize only when usage guidance is needed)
 4. Preconditions
 5. Success Signal
 6. Failure/Errors

@@ -43,7 +43,6 @@ async function renderToolsetTopic(
     toolsetId,
     language: lang,
     topic,
-    availableToolNames: new Set<string>(),
   });
 }
 

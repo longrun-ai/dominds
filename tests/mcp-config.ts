@@ -134,6 +134,42 @@ servers:
     },
   ]);
 
+  const invalidManual = parseMcpYaml(`
+version: 1
+servers:
+  manual_bad:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    manual:
+      sections: 42
+`);
+  assert.equal(invalidManual.ok, true);
+  if (!invalidManual.ok) return;
+  assert.deepEqual(
+    invalidManual.invalidServers,
+    [],
+    'invalid optional manual declarations must not invalidate the MCP server config',
+  );
+  assert.equal(invalidManual.config.servers.manual_bad?.manual, undefined);
+
+  const inlineManual = parseMcpYaml(`
+version: 1
+servers:
+  manual_inline:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    manual:
+      content: Inline guidance
+      sections:
+        UseCases: Use when needed
+`);
+  assert.equal(inlineManual.ok, true);
+  if (!inlineManual.ok) return;
+  assert.deepEqual(inlineManual.config.servers.manual_inline?.manual, {
+    content: 'Inline guidance',
+    sections: [{ title: 'UseCases', content: 'Use when needed' }],
+  });
+
   console.log('mcp config tests: ok');
 }
 

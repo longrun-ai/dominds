@@ -1,3 +1,4 @@
+import type { JsonSchema } from '../app-json';
 import type { I18nText } from './i18n';
 
 export type ToolKind = 'func';
@@ -16,6 +17,7 @@ export type ToolInfo = {
   kind: ToolKind;
   description?: string;
   descriptionI18n?: I18nText;
+  parameters?: JsonSchema;
 };
 
 export type ToolsetInfo = {

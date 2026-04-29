@@ -1,9 +1,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { FuncTool } from '../../tool';
-import { getToolset, getToolsetMeta } from '../registry';
-import { buildSchemaToolsSection } from './schema';
+import { getToolsetMeta } from '../registry';
 import {
   DEFAULT_MANUAL_TOPICS,
   MANUAL_TOPICS,
@@ -11,7 +9,6 @@ import {
   type ManualTopic,
   getManualSpecTopics,
   getManualTopicTitle,
-  shouldIncludeSchemaToolsSection,
   shouldWarnMissingSection,
 } from './spec';
 
@@ -24,7 +21,6 @@ export type RenderManualInput = {
   toolsetId: string;
   language: LanguageCode;
   request: ManualRequest;
-  availableToolNames: Set<string>;
 };
 
 type TopicLoadStatus = 'ok' | 'missing' | 'error';
@@ -88,20 +84,6 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
       title: getManualTopicTitle(topic, input.language, spec),
       body,
     });
-  }
-
-  if (shouldIncludeSchemaToolsSection(spec) && resolvedTopics.includes('tools')) {
-    const schemaSection = buildSchemaSection(
-      input.toolsetId,
-      input.language,
-      input.availableToolNames,
-    );
-    if (schemaSection !== '') {
-      const toolsSection = topicSections.find((section) => section.topic === 'tools');
-      if (toolsSection) {
-        toolsSection.body = appendSchemaSection(toolsSection.body, schemaSection, input.language);
-      }
-    }
   }
 
   const sections: string[] = [];
@@ -228,7 +210,6 @@ function resolveManualSpec(
   const out: ManualSpec = {
     topics: MANUAL_TOPICS,
     warnOnMissing: true,
-    includeSchemaToolsSection: true,
     topicFilesI18n: {
       en: enBase ? topicPathsFromBase(enBase) : undefined,
       zh: zhBase ? topicPathsFromBase(zhBase) : undefined,
@@ -247,39 +228,6 @@ function topicPathsFromBase(baseIndexPath: string): Record<ManualTopic, string> 
     scenarios: path.join(baseDir, 'scenarios.md'),
     errors: path.join(baseDir, 'errors.md'),
   };
-}
-
-function buildSchemaSection(
-  toolsetId: string,
-  language: LanguageCode,
-  availableToolNames: Set<string>,
-): string {
-  const tools = (getToolsetMetaTools(toolsetId) ?? []).filter((tool) =>
-    availableToolNames.has(tool.name),
-  );
-  if (tools.length === 0) {
-    return '';
-  }
-  return buildSchemaToolsSection(language, tools);
-}
-
-function getToolsetMetaTools(toolsetId: string): FuncTool[] | null {
-  const toolset = getToolset(toolsetId);
-  if (!Array.isArray(toolset)) {
-    return null;
-  }
-  const out: FuncTool[] = [];
-  for (const tool of toolset) {
-    if (
-      tool &&
-      typeof tool === 'object' &&
-      'type' in tool &&
-      (tool as { type: string }).type === 'func'
-    ) {
-      out.push(tool as FuncTool);
-    }
-  }
-  return out;
 }
 
 function renderMissingTopicsWarning(
@@ -363,53 +311,6 @@ function sanitizeManualBody(content: string): string {
         out.push(`${leading}${'#'.repeat(normalizedLevel)} ${heading.text}`);
         continue;
       }
-    }
-
-    out.push(line);
-  }
-
-  return out.join('\n').trim();
-}
-
-function appendSchemaSection(body: string, schemaSection: string, language: LanguageCode): string {
-  const heading = language === 'zh' ? '工具契约（Schema）' : 'Tool Contract (Schema)';
-  const normalized = normalizeSchemaSection(schemaSection);
-  if (normalized === '') {
-    return body;
-  }
-  const trimmedBody = body.trim();
-  if (trimmedBody === '') {
-    return `#### ${heading}\n\n${normalized}`;
-  }
-  return `${trimmedBody}\n\n#### ${heading}\n\n${normalized}`;
-}
-
-function normalizeSchemaSection(schemaSection: string): string {
-  const lines = schemaSection.split('\n');
-  const out: string[] = [];
-  let inCodeBlock = false;
-  let droppedTitle = false;
-
-  for (const rawLine of lines) {
-    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-    const trimmedStart = line.trimStart();
-    const isFence = isFenceLine(trimmedStart);
-
-    if (isFence) {
-      inCodeBlock = !inCodeBlock;
-      out.push(line);
-      continue;
-    }
-
-    if (!inCodeBlock && !droppedTitle && trimmedStart.startsWith('## ')) {
-      droppedTitle = true;
-      continue;
-    }
-
-    if (!inCodeBlock && trimmedStart.startsWith('### ')) {
-      const leading = line.slice(0, line.length - trimmedStart.length);
-      out.push(`${leading}##### ${trimmedStart.slice(4)}`);
-      continue;
     }
 
     out.push(line);

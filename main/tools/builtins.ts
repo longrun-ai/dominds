@@ -80,7 +80,6 @@ function manualSpecFor(toolsetId: string) {
     return buildBuiltinManualSpec({
       toolsetId: 'ws_mod',
       warnOnMissing: false,
-      includeSchemaToolsSection: false,
     });
   }
   return buildBuiltinManualSpec({ toolsetId });

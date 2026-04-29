@@ -320,6 +320,13 @@ headers:
 
 这是一个以 Dominds 为中心的模式。它有意设计得很小，应该易于验证。
 
+`manual` 是可选增强配置，不是 MCP 接入的必填项。标准 MCP server 已经通过
+`tools/list` 返回工具名称、描述和参数 schema；Dominds 会把这些元数据注册为
+`FuncTool`，提供给 LLM，并在 WebUI 工具列表中展示。`man({ "toolsetId": "<serverId>" })`
+不再重复罗列这份 schema；`manual` 应用于补充整体定位、使用场景、综合示例、避坑指南、安全边界、
+故障处置流程、团队约定等。省略 `manual` 允许接入和使用，但会在 Problems 中给 warning，因为
+Dominds 建议至少写一段简短整体定位说明。
+
 ```yaml
 version: 1
 servers:
@@ -360,9 +367,13 @@ servers:
     # 工具名称转换（可选）
     transform: []
 
-    # 可选：给智能体看的每个 toolset 手册
-    #（没有手册并不代表 toolset 不可用）
+    # 可选增强手册；省略时仍可接入，但会产生 Problems warning。
+    # - contentFile: 给 man({ "toolsetId": "<serverId>" }) 的正式运行时手册；
+    #   支持 index/principles/tools/scenarios/errors 等 topic 文件。
+    # - content/sections: inline 增强说明（使用场景、安全边界、故障处置、团队约定等）
+    # 不要在 manual 中重复工具列表/参数定义；这些来自 MCP tools/list。
     manual:
+      contentFile: ".minds/manuals/<serverId>"
       content: "该 MCP toolset 的用途说明"
       sections:
         - title: "何时使用"

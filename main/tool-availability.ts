@@ -23,12 +23,13 @@ function computeRevision(payload: unknown): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex')}`;
 }
 
-function toolToInfo(tool: Tool): ToolInfo {
+function toolToInfo(tool: Tool, includeParameters: boolean): ToolInfo {
   return {
     name: tool.name,
     kind: 'func',
     description: tool.description,
     descriptionI18n: tool.descriptionI18n,
+    ...(includeParameters ? { parameters: tool.parameters } : {}),
   };
 }
 
@@ -40,7 +41,7 @@ export function listRegisteredToolsetCatalog(): ToolsetInfo[] {
       name: toolsetName,
       source: meta?.source ?? 'dominds',
       descriptionI18n: meta?.descriptionI18n,
-      tools: tools.map(toolToInfo),
+      tools: tools.map((tool) => toolToInfo(tool, meta?.source === 'mcp')),
     });
   }
   return toolsets;
@@ -212,7 +213,7 @@ function buildVisibleDirectTools(layer: MemberToolBindingLayer): {
   const visibleDirectTools = layer.resolvedDirectToolIds
     .map((toolId) => getTool(toolId))
     .filter((tool): tool is Tool => tool !== undefined)
-    .map(toolToInfo);
+    .map((tool) => toolToInfo(tool, false));
   return {
     visibleDirectToolIds: [...layer.resolvedDirectToolIds],
     visibleDirectTools,
