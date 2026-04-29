@@ -68,13 +68,13 @@
     "pnpm": ">=10.30.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@longrun-ai/codex-auth": "workspace:*",
     "@longrun-ai/kernel": "workspace:*",
     "@longrun-ai/shell": "workspace:*",
-    "@longrun-ai/codex-auth": "workspace:*",
-    "@anthropic-ai/sdk": "^0.78.0",
-    "openai": "^6.27.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "async-mutex": "^0.5.0",
+    "openai": "^6.35.0",
     "ws": "^8.19.0",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"

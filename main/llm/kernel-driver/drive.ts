@@ -2639,12 +2639,14 @@ export async function driveDialogStreamCore(
                   dlg.activeGenSeq,
                   abortSignal,
                 );
-                const hasThinkingContent = currentThinkingContent.trim() !== '';
-                const hasSayingContent = (streamAttemptSayingContent ?? '').trim() !== '';
+                const hasFinishedMessageContent = newMsgs.some(
+                  (msg) =>
+                    (msg.type === 'thinking_msg' || msg.type === 'saying_msg') &&
+                    msg.content.trim() !== '',
+                );
                 const hasFunctionCall = streamedFuncCalls.length > 0;
                 if (
-                  !hasThinkingContent &&
-                  !hasSayingContent &&
+                  !hasFinishedMessageContent &&
                   !hasFunctionCall &&
                   !sawWebSearchSideChannelOutput &&
                   !sawNativeToolSideChannelOutput

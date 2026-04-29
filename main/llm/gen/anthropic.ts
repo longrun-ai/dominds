@@ -3,6 +3,7 @@
  *
  * Anthropic Messages API integration implementing streaming and batch generation.
  */
+import type { ClientOptions } from '@anthropic-ai/sdk';
 import { Anthropic } from '@anthropic-ai/sdk';
 import type {
   ImageBlockParam,
@@ -14,6 +15,10 @@ import type {
   Tool,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
+import { once } from 'events';
+import { createWriteStream } from 'fs';
+import fs from 'fs/promises';
+import path from 'path';
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import { createLogger } from '../../log';
@@ -21,6 +26,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
+import { normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchOutput,
@@ -59,6 +65,9 @@ const log = createLogger('llm/anthropic');
 const ANTHROPIC_JSON_RESPONSE_TOOL_NAME = 'dominds_json_response';
 const ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION =
   'Return the final answer as a JSON object. Do not include any non-JSON text.';
+const ANTHROPIC_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_SSE';
+const ANTHROPIC_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_DIR';
+const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
 const ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA = {
   type: 'object',
   additionalProperties: true,
@@ -78,6 +87,10 @@ type ActiveToolUse = {
   name: string;
   inputJson: string;
   initialInput: unknown;
+};
+
+export type AnthropicStreamConsumeQuirks = {
+  normalizeLoneClosingBraceEmptyToolInputDelta: boolean;
 };
 
 type OfficialAnthropicThinkingConfig =
@@ -105,6 +118,591 @@ type AnthropicNonStreamingRequestParams = AnthropicRequestBaseParams & {
   stream: false;
   signal?: AbortSignal;
 };
+
+type AnthropicCompatibleCaptureContext = {
+  providerKey: string | undefined;
+  providerName: string;
+  model: string;
+  dialogRootId: string;
+  dialogSelfId: string;
+  requestKind: 'stream' | 'batch';
+};
+
+type AnthropicCompatibleCaptureRecord = {
+  id: string;
+  dir: string;
+  metaPath: string;
+  requestBodyPath: string;
+  responseBodyPath: string;
+  framesPath: string;
+  summaryPath: string;
+  context: AnthropicCompatibleCaptureContext;
+};
+
+type SseFrameParseResult =
+  | { kind: 'no_data' }
+  | { kind: 'done' }
+  | { kind: 'json_ok' }
+  | { kind: 'invalid_json'; message: string; data: string };
+
+type SseCaptureState = {
+  buffer: string;
+  frameCount: number;
+  jsonFrameCount: number;
+  invalidJsonFrameCount: number;
+  invalidFrames: Array<{ frameIndex: number; eventName: string; message: string; data: string }>;
+};
+
+class AnthropicCompatibleHttpError extends Error {
+  public readonly status: number;
+  public readonly headers: Record<string, string>;
+  public readonly responseBody: string;
+
+  constructor(args: {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    responseBody: string;
+  }) {
+    const bodyPreview =
+      args.responseBody.length > 500 ? `${args.responseBody.slice(0, 500)}...` : args.responseBody;
+    super(
+      `Anthropic-compatible HTTP request failed: ${args.status} ${args.statusText}; body=${bodyPreview}`,
+    );
+    this.name = 'AnthropicCompatibleHttpError';
+    this.status = args.status;
+    this.headers = args.headers;
+    this.responseBody = args.responseBody;
+  }
+}
+
+function isAnthropicCompatibleSseCaptureEnabled(): boolean {
+  const configured = process.env[ANTHROPIC_COMPAT_CAPTURE_SSE_ENV]?.trim().toLowerCase();
+  return configured === '1' || configured === 'true' || configured === 'yes' || configured === 'on';
+}
+
+function resolveAnthropicCompatibleCaptureDir(): string {
+  const configured = process.env[ANTHROPIC_COMPAT_CAPTURE_DIR_ENV]?.trim();
+  if (configured && configured.length > 0) return path.resolve(configured);
+  return path.resolve(process.cwd(), '.dialogs', 'debug', 'anthropic-compatible-sse');
+}
+
+function sanitizeCapturePathPart(value: string): string {
+  const sanitized = value.replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '');
+  if (sanitized.length === 0) return 'unknown';
+  return sanitized.slice(0, 96);
+}
+
+function buildAnthropicCompatibleCaptureId(context: AnthropicCompatibleCaptureContext): string {
+  const now = new Date().toISOString().replace(/[:.]/g, '-');
+  const suffix = Math.random().toString(36).slice(2, 10);
+  return [
+    now,
+    sanitizeCapturePathPart(context.providerKey ?? context.providerName),
+    sanitizeCapturePathPart(context.model),
+    sanitizeCapturePathPart(context.dialogSelfId),
+    context.requestKind,
+    suffix,
+  ].join('__');
+}
+
+function redactHttpHeader(name: string, value: string): string {
+  const normalized = name.toLowerCase();
+  if (
+    normalized === 'authorization' ||
+    normalized === 'x-api-key' ||
+    normalized === 'api-key' ||
+    normalized === 'anthropic-api-key' ||
+    normalized.includes('token') ||
+    normalized.includes('secret')
+  ) {
+    return '<redacted>';
+  }
+  return value;
+}
+
+function headersToRedactedRecord(headers: Headers): Record<string, string> {
+  const entries: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    entries[name] = redactHttpHeader(name, value);
+  });
+  return entries;
+}
+
+function mergeRequestHeaders(input: string | URL | Request, init?: RequestInit): Headers {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  if (init?.headers !== undefined) {
+    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+  }
+  return headers;
+}
+
+function requestMethod(input: string | URL | Request, init?: RequestInit): string {
+  if (init?.method !== undefined) return init.method;
+  if (input instanceof Request) return input.method;
+  return 'GET';
+}
+
+function requestUrl(input: string | URL | Request): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function decodeArrayBufferView(view: ArrayBufferView): string {
+  return new TextDecoder().decode(view);
+}
+
+async function readCaptureRequestBody(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<string | undefined> {
+  const body = init?.body;
+  if (typeof body === 'string') return body;
+  if (body instanceof URLSearchParams) return body.toString();
+  if (body instanceof Blob) return await body.text();
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
+  if (ArrayBuffer.isView(body)) return decodeArrayBufferView(body);
+  if (body === null) return undefined;
+  if (body !== undefined)
+    return `[unreadable RequestInit body: ${Object.prototype.toString.call(body)}]`;
+  if (input instanceof Request) {
+    try {
+      return await input.clone().text();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return `[failed to clone/read Request body: ${message}]`;
+    }
+  }
+  return undefined;
+}
+
+async function writeCaptureJson(pathname: string, value: unknown): Promise<void> {
+  await fs.writeFile(pathname, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
+}
+
+async function startAnthropicCompatibleCapture(
+  context: AnthropicCompatibleCaptureContext,
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<AnthropicCompatibleCaptureRecord> {
+  const captureRoot = resolveAnthropicCompatibleCaptureDir();
+  const id = buildAnthropicCompatibleCaptureId(context);
+  const dir = path.join(captureRoot, id);
+  await fs.mkdir(dir, { recursive: true });
+
+  const record: AnthropicCompatibleCaptureRecord = {
+    id,
+    dir,
+    metaPath: path.join(dir, 'meta.json'),
+    requestBodyPath: path.join(dir, 'request-body.txt'),
+    responseBodyPath: path.join(dir, 'response-body.raw'),
+    framesPath: path.join(dir, 'sse-frames.jsonl'),
+    summaryPath: path.join(dir, 'summary.json'),
+    context,
+  };
+
+  const bodyText = await readCaptureRequestBody(input, init);
+  if (bodyText !== undefined) {
+    await fs.writeFile(record.requestBodyPath, bodyText, 'utf-8');
+  } else {
+    await fs.writeFile(record.requestBodyPath, '', 'utf-8');
+  }
+
+  await writeCaptureJson(record.metaPath, {
+    id: record.id,
+    capturedAt: new Date().toISOString(),
+    context,
+    env: {
+      enabledBy: ANTHROPIC_COMPAT_CAPTURE_SSE_ENV,
+      captureDirEnv: process.env[ANTHROPIC_COMPAT_CAPTURE_DIR_ENV]
+        ? ANTHROPIC_COMPAT_CAPTURE_DIR_ENV
+        : undefined,
+    },
+    request: {
+      method: requestMethod(input, init),
+      url: requestUrl(input),
+      headers: headersToRedactedRecord(mergeRequestHeaders(input, init)),
+      bodyPath: record.requestBodyPath,
+    },
+    response: {
+      bodyPath: record.responseBodyPath,
+      framesPath: record.framesPath,
+      summaryPath: record.summaryPath,
+    },
+  });
+
+  log.info('ANTH compatible SSE capture started', {
+    captureDir: record.dir,
+    providerKey: context.providerKey,
+    providerName: context.providerName,
+    model: context.model,
+    rootId: context.dialogRootId,
+    selfId: context.dialogSelfId,
+    requestKind: context.requestKind,
+  });
+  return record;
+}
+
+function parseSseFrameData(frame: string): { eventName: string; data: string | undefined } {
+  const lines = frame.split(/\r?\n/);
+  const eventLine = lines.find((line) => line.startsWith('event:'));
+  const eventName = eventLine ? eventLine.slice('event:'.length).trim() : '';
+  const dataLines = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => (line.startsWith('data: ') ? line.slice(6) : line.slice(5)));
+  if (dataLines.length === 0) return { eventName, data: undefined };
+  return { eventName, data: dataLines.join('\n') };
+}
+
+function parseSseFrameJson(frame: string): SseFrameParseResult {
+  const { data } = parseSseFrameData(frame);
+  if (data === undefined) return { kind: 'no_data' };
+  if (data === '[DONE]') return { kind: 'done' };
+  try {
+    JSON.parse(data);
+    return { kind: 'json_ok' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { kind: 'invalid_json', message, data };
+  }
+}
+
+function buildSseFrameLogLine(frame: string, state: SseCaptureState): string {
+  const { eventName, data } = parseSseFrameData(frame);
+  const result = parseSseFrameJson(frame);
+  if (result.kind === 'json_ok') state.jsonFrameCount += 1;
+  if (result.kind === 'invalid_json') {
+    state.invalidJsonFrameCount += 1;
+    state.invalidFrames.push({
+      frameIndex: state.frameCount,
+      eventName,
+      message: result.message,
+      data: result.data,
+    });
+  }
+  return `${JSON.stringify({
+    frameIndex: state.frameCount,
+    eventName,
+    dataBytes: data === undefined ? 0 : Buffer.byteLength(data),
+    parse: result.kind,
+    error: result.kind === 'invalid_json' ? result.message : undefined,
+    data: result.kind === 'invalid_json' ? result.data : undefined,
+  })}\n`;
+}
+
+async function writeAndDrain(
+  stream: ReturnType<typeof createWriteStream>,
+  chunk: string | Uint8Array,
+): Promise<void> {
+  if (!stream.write(chunk)) {
+    await once(stream, 'drain');
+  }
+}
+
+async function endWriteStream(stream: ReturnType<typeof createWriteStream>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.end(resolve);
+  });
+}
+
+async function cancelReadableStreamReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  context: { captureDir?: string; providerKey?: string; model?: string },
+): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch (error: unknown) {
+    log.warn('ANTH response reader cancel failed during cleanup', error, context);
+  }
+}
+
+async function captureAnthropicCompatibleResponseBody(
+  record: AnthropicCompatibleCaptureRecord,
+  response: Response,
+): Promise<void> {
+  const responseClone = response.clone();
+  const rawStream = createWriteStream(record.responseBodyPath);
+  const framesStream = createWriteStream(record.framesPath);
+  const decoder = new TextDecoder();
+  const state: SseCaptureState = {
+    buffer: '',
+    frameCount: 0,
+    jsonFrameCount: 0,
+    invalidJsonFrameCount: 0,
+    invalidFrames: [],
+  };
+
+  try {
+    if (responseClone.body) {
+      const reader = responseClone.body.getReader();
+      let done = false;
+      try {
+        for (;;) {
+          const readResult = await reader.read();
+          if (readResult.done) {
+            done = true;
+            break;
+          }
+          await writeAndDrain(rawStream, readResult.value);
+          state.buffer += decoder.decode(readResult.value, { stream: true });
+          for (;;) {
+            const separator = state.buffer.match(/\r?\n\r?\n/);
+            if (!separator || separator.index === undefined) break;
+            const frame = state.buffer.slice(0, separator.index);
+            state.buffer = state.buffer.slice(separator.index + separator[0].length);
+            if (frame.trim().length === 0) continue;
+            state.frameCount += 1;
+            await writeAndDrain(framesStream, buildSseFrameLogLine(frame, state));
+          }
+        }
+        const rest = decoder.decode();
+        if (rest.length > 0) state.buffer += rest;
+        if (state.buffer.trim().length > 0) {
+          state.frameCount += 1;
+          await writeAndDrain(framesStream, buildSseFrameLogLine(state.buffer, state));
+        }
+      } finally {
+        if (!done) {
+          await cancelReadableStreamReader(reader, {
+            captureDir: record.dir,
+            providerKey: record.context.providerKey,
+            model: record.context.model,
+          });
+        }
+        reader.releaseLock();
+      }
+    }
+  } finally {
+    await Promise.all([endWriteStream(rawStream), endWriteStream(framesStream)]);
+  }
+
+  await writeCaptureJson(record.summaryPath, {
+    id: record.id,
+    completedAt: new Date().toISOString(),
+    status: response.status,
+    ok: response.ok,
+    statusText: response.statusText,
+    headers: headersToRedactedRecord(response.headers),
+    frameCount: state.frameCount,
+    jsonFrameCount: state.jsonFrameCount,
+    invalidJsonFrameCount: state.invalidJsonFrameCount,
+    invalidFrames: state.invalidFrames,
+  });
+
+  if (state.invalidJsonFrameCount > 0) {
+    log.warn('ANTH compatible SSE capture found invalid JSON data frame', undefined, {
+      captureDir: record.dir,
+      invalidJsonFrameCount: state.invalidJsonFrameCount,
+      invalidFrames: state.invalidFrames,
+      providerKey: record.context.providerKey,
+      model: record.context.model,
+      rootId: record.context.dialogRootId,
+      selfId: record.context.dialogSelfId,
+    });
+  } else {
+    log.info('ANTH compatible SSE capture completed', {
+      captureDir: record.dir,
+      frameCount: state.frameCount,
+      providerKey: record.context.providerKey,
+      model: record.context.model,
+      rootId: record.context.dialogRootId,
+      selfId: record.context.dialogSelfId,
+    });
+  }
+}
+
+function buildAnthropicCompatibleCaptureFetch(
+  context: AnthropicCompatibleCaptureContext,
+): typeof fetch {
+  return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const record = await startAnthropicCompatibleCapture(context, input, init);
+    try {
+      const response = await fetch(input, init);
+      void captureAnthropicCompatibleResponseBody(record, response).catch((error: unknown) => {
+        log.error('ANTH compatible SSE capture failed while reading response clone', error, {
+          captureDir: record.dir,
+          providerKey: context.providerKey,
+          model: context.model,
+          rootId: context.dialogRootId,
+          selfId: context.dialogSelfId,
+        });
+      });
+      return response;
+    } catch (error: unknown) {
+      await writeCaptureJson(record.summaryPath, {
+        id: record.id,
+        completedAt: new Date().toISOString(),
+        fetchError: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
+}
+
+function createAnthropicClient(args: {
+  apiKey: string;
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  requestContext: LlmRequestContext;
+  requestKind: 'stream' | 'batch';
+}): Anthropic {
+  const options: ClientOptions = {
+    apiKey: args.apiKey,
+    baseURL: args.providerConfig.baseUrl,
+  };
+  if (
+    args.providerConfig.apiType === 'anthropic-compatible' &&
+    isAnthropicCompatibleSseCaptureEnabled()
+  ) {
+    options.fetch = buildAnthropicCompatibleCaptureFetch({
+      providerKey: args.requestContext.providerKey,
+      providerName: args.providerConfig.name,
+      model: args.agent.model ?? args.requestContext.modelKey ?? 'unknown',
+      dialogRootId: args.requestContext.dialogRootId,
+      dialogSelfId: args.requestContext.dialogSelfId,
+      requestKind: args.requestKind,
+    });
+  }
+  return new Anthropic(options);
+}
+
+function resolveAnthropicStreamConsumeQuirks(
+  providerConfig: ProviderConfig,
+): AnthropicStreamConsumeQuirks {
+  const apiQuirks = normalizeProviderApiQuirks(providerConfig);
+  return {
+    normalizeLoneClosingBraceEmptyToolInputDelta: apiQuirks.has(GLM_VIA_VOLCANO_API_QUIRK),
+  };
+}
+
+function buildAnthropicCompatibleMessagesUrl(providerConfig: ProviderConfig): string {
+  if (!providerConfig.baseUrl) {
+    throw new Error(`Provider '${providerConfig.name}' is missing baseUrl.`);
+  }
+  const baseUrl = providerConfig.baseUrl.endsWith('/')
+    ? providerConfig.baseUrl
+    : `${providerConfig.baseUrl}/`;
+  return new URL('v1/messages', baseUrl).toString();
+}
+
+function stringifySseDataPreview(data: string): string {
+  return data.length > 500 ? `${data.slice(0, 500)}...` : data;
+}
+
+function parseAnthropicCompatibleSseFrame(frame: string): MessageStreamEvent | null {
+  const { eventName, data } = parseSseFrameData(frame);
+  if (data === undefined) return null;
+  if (data === '[DONE]') return null;
+  if (eventName === 'ping') return null;
+  if (eventName === 'error') {
+    throw new Error(`Anthropic-compatible SSE error event: ${stringifySseDataPreview(data)}`);
+  }
+  try {
+    return JSON.parse(data) as MessageStreamEvent;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Anthropic-compatible SSE data is not valid JSON (event=${eventName || '<none>'}): ${message}; data=${JSON.stringify(
+        stringifySseDataPreview(data),
+      )}`,
+    );
+  }
+}
+
+async function* streamAnthropicCompatibleRawSse(args: {
+  apiKey: string;
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  requestContext: LlmRequestContext;
+  params: AnthropicStreamingRequestParams;
+}): AsyncIterable<MessageStreamEvent> {
+  const { signal, ...bodyParams } = args.params;
+  const headers = new Headers({
+    accept: 'application/json, text/event-stream',
+    'anthropic-version': '2023-06-01',
+    'content-type': 'application/json',
+    'x-api-key': args.apiKey,
+  });
+  const fetchImpl =
+    args.providerConfig.apiType === 'anthropic-compatible' &&
+    isAnthropicCompatibleSseCaptureEnabled()
+      ? buildAnthropicCompatibleCaptureFetch({
+          providerKey: args.requestContext.providerKey,
+          providerName: args.providerConfig.name,
+          model: args.agent.model ?? args.requestContext.modelKey ?? 'unknown',
+          dialogRootId: args.requestContext.dialogRootId,
+          dialogSelfId: args.requestContext.dialogSelfId,
+          requestKind: 'stream',
+        })
+      : fetch;
+
+  const response = await fetchImpl(buildAnthropicCompatibleMessagesUrl(args.providerConfig), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(bodyParams),
+    ...(signal ? { signal } : {}),
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.text();
+    throw new AnthropicCompatibleHttpError({
+      status: response.status,
+      statusText: response.statusText,
+      headers: headersToRedactedRecord(response.headers),
+      responseBody,
+    });
+  }
+
+  if (!response.body) {
+    throw new Error('Anthropic-compatible SSE response body is empty.');
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+  let done = false;
+  let sawSseDataFrame = false;
+  try {
+    for (;;) {
+      const readResult = await reader.read();
+      if (readResult.done) {
+        done = true;
+        break;
+      }
+      buffer += decoder.decode(readResult.value, { stream: true });
+      for (;;) {
+        const separator = buffer.match(/\r?\n\r?\n/);
+        if (!separator || separator.index === undefined) break;
+        const frame = buffer.slice(0, separator.index);
+        buffer = buffer.slice(separator.index + separator[0].length);
+        if (frame.trim().length === 0) continue;
+        if (parseSseFrameData(frame).data !== undefined) sawSseDataFrame = true;
+        const event = parseAnthropicCompatibleSseFrame(frame);
+        if (event) yield event;
+      }
+    }
+    const rest = decoder.decode();
+    if (rest.length > 0) buffer += rest;
+    if (buffer.trim().length > 0) {
+      if (parseSseFrameData(buffer).data !== undefined) sawSseDataFrame = true;
+      const event = parseAnthropicCompatibleSseFrame(buffer);
+      if (event) yield event;
+    }
+    if (!sawSseDataFrame) {
+      throw new Error('Anthropic-compatible SSE stream ended without any data frames.');
+    }
+  } finally {
+    if (!done) {
+      await cancelReadableStreamReader(reader, {
+        providerKey: args.requestContext.providerKey,
+        model: args.agent.model ?? args.requestContext.modelKey,
+      });
+    }
+    reader.releaseLock();
+  }
+}
 
 function limitAnthropicToolOutputText(
   text: string,
@@ -1069,6 +1667,60 @@ function applyInputJsonDelta(state: ActiveToolUse, partialJson: string): void {
   state.inputJson += partialJson;
 }
 
+function stringifyToolUseInitialInput(input: unknown): string {
+  const stringified = JSON.stringify(input);
+  return typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
+}
+
+function isEmptyJsonObject(value: unknown): boolean {
+  return isNonArrayRecord(value) && Object.keys(value).length === 0;
+}
+
+function resolveToolUseArgumentsJson(
+  state: ActiveToolUse,
+  quirks: AnthropicStreamConsumeQuirks,
+): string {
+  const trimmed = state.inputJson.trim();
+  if (trimmed.length === 0) {
+    return stringifyToolUseInitialInput(state.initialInput);
+  }
+
+  if (
+    quirks.normalizeLoneClosingBraceEmptyToolInputDelta &&
+    trimmed === '}' &&
+    isEmptyJsonObject(state.initialInput)
+  ) {
+    log.warn(
+      'ANTH quirk normalized lone closing-brace tool input delta to empty object',
+      undefined,
+      {
+        quirk: GLM_VIA_VOLCANO_API_QUIRK,
+        callId: state.id,
+        toolName: state.name,
+      },
+    );
+    return '{}';
+  }
+
+  try {
+    JSON.parse(trimmed);
+    return state.inputJson;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(
+      'ANTH malformed tool_use input_json_delta; preserving raw arguments for tool feedback',
+      error,
+      {
+        callId: state.id,
+        toolName: state.name,
+        rawPreview: trimmed.length > 200 ? `${trimmed.slice(0, 200)}...` : trimmed,
+        parseError: message,
+      },
+    );
+    return state.inputJson;
+  }
+}
+
 /**
  * Convert a single ChatMessage to content blocks for Anthropic SDK.
  * Returns array of content blocks (may contain multiple for complex messages).
@@ -1227,6 +1879,50 @@ function extractTextContent(blocks: unknown[]): string {
     .join('');
 }
 
+async function emitAnthropicStreamReadError(
+  receiver: LlmStreamReceiver,
+  error: unknown,
+): Promise<void> {
+  const errorText = error instanceof Error ? error.message : String(error);
+  const detail = `ANTH stream read failed: ${errorText}`;
+  log.warn(detail, error);
+  if (receiver.streamError) {
+    await receiver.streamError(detail);
+  }
+}
+
+async function* streamWithReadDiagnostics(
+  stream: AsyncIterable<MessageStreamEvent>,
+  receiver: LlmStreamReceiver,
+): AsyncIterable<MessageStreamEvent> {
+  const iterator = stream[Symbol.asyncIterator]();
+  let done = false;
+  try {
+    for (;;) {
+      let next: IteratorResult<MessageStreamEvent>;
+      try {
+        next = await iterator.next();
+      } catch (error: unknown) {
+        await emitAnthropicStreamReadError(receiver, error);
+        throw error;
+      }
+      if (next.done === true) {
+        done = true;
+        return;
+      }
+      yield next.value;
+    }
+  } finally {
+    if (!done && iterator.return) {
+      try {
+        await iterator.return();
+      } catch (error: unknown) {
+        log.warn('ANTH stream iterator return failed during cleanup', error);
+      }
+    }
+  }
+}
+
 /**
  * Validate that reconstructed context produces valid Anthropic SDK MessageParam[].
  * Checks for proper role assignment, content block structure, and tool call/result pairing.
@@ -1284,16 +1980,21 @@ export async function consumeAnthropicStream(
   receiver: LlmStreamReceiver,
   abortSignal?: AbortSignal,
   forcedJsonToolName?: string,
+  quirks: AnthropicStreamConsumeQuirks = {
+    normalizeLoneClosingBraceEmptyToolInputDelta: false,
+  },
 ): Promise<AnthropicStreamConsumeResult> {
   // Stream lifecycle management using SDK start/stop events
   const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
   const activeToolUses = new Map<number, ActiveToolUse>();
   let sayingStarted = false;
   let thinkingStarted = false;
+  let messageStarted = false;
+  let messageStopped = false;
   let usage: LlmUsageStats = { kind: 'unavailable' };
   let returnedModel: string | undefined;
 
-  for await (const event of stream) {
+  for await (const event of streamWithReadDiagnostics(stream, receiver)) {
     if (abortSignal?.aborted) {
       throw new Error('AbortError');
     }
@@ -1457,14 +2158,7 @@ export async function consumeAnthropicStream(
               await receiver.sayingFinish();
               sayingStarted = false;
             } else {
-              let argsJson = '';
-              if (activeToolUse.inputJson.trim().length > 0) {
-                argsJson = activeToolUse.inputJson;
-              } else {
-                const stringified = JSON.stringify(activeToolUse.initialInput);
-                argsJson =
-                  typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
-              }
+              const argsJson = resolveToolUseArgumentsJson(activeToolUse, quirks);
               await receiver.funcCall(activeToolUse.id, activeToolUse.name, argsJson);
             }
           }
@@ -1476,6 +2170,8 @@ export async function consumeAnthropicStream(
       }
 
       case 'message_start': {
+        messageStarted = true;
+        messageStopped = false;
         if (returnedModel === undefined) {
           returnedModel = tryExtractApiReturnedModel(event.message);
         }
@@ -1535,6 +2231,7 @@ export async function consumeAnthropicStream(
       }
 
       case 'message_stop': {
+        messageStopped = true;
         activeContentBlocks.clear();
         activeToolUses.clear();
 
@@ -1563,6 +2260,26 @@ export async function consumeAnthropicStream(
         break;
       }
     }
+  }
+
+  if (
+    (messageStarted && !messageStopped) ||
+    activeContentBlocks.size > 0 ||
+    activeToolUses.size > 0 ||
+    thinkingStarted ||
+    sayingStarted
+  ) {
+    const detail =
+      'ANTH incomplete stream: provider event stream ended before a complete message lifecycle ' +
+      `(messageStarted=${String(messageStarted)}, messageStopped=${String(messageStopped)}, ` +
+      `activeContentBlocks=${String(activeContentBlocks.size)}, activeToolUses=${String(
+        activeToolUses.size,
+      )}, thinkingStarted=${String(thinkingStarted)}, sayingStarted=${String(sayingStarted)})`;
+    log.error(detail, new Error('anthropic_incomplete_stream_state'));
+    if (receiver.streamError) {
+      await receiver.streamError(detail);
+    }
+    throw new Error(detail);
   }
 
   return { usage, llmGenModel: returnedModel };
@@ -1646,8 +2363,6 @@ export class AnthropicGen implements LlmGenerator {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
 
-    const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
-
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(
       context,
       requestContext,
@@ -1706,14 +2421,28 @@ export class AnthropicGen implements LlmGenerator {
       ...(abortSignal ? { signal: abortSignal } : {}),
     };
 
-    const stream: AsyncIterable<MessageStreamEvent> = client.messages.stream(
-      streamParams as unknown as MessageCreateParamsStreaming,
-    );
+    const stream: AsyncIterable<MessageStreamEvent> =
+      providerConfig.apiType === 'anthropic-compatible'
+        ? streamAnthropicCompatibleRawSse({
+            apiKey,
+            providerConfig,
+            agent,
+            requestContext,
+            params: streamParams,
+          })
+        : createAnthropicClient({
+            apiKey,
+            providerConfig,
+            agent,
+            requestContext,
+            requestKind: 'stream',
+          }).messages.stream(streamParams as unknown as MessageCreateParamsStreaming);
     return consumeAnthropicStream(
       stream,
       receiver,
       abortSignal,
       forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+      resolveAnthropicStreamConsumeQuirks(providerConfig),
     );
   }
 
@@ -1730,7 +2459,13 @@ export class AnthropicGen implements LlmGenerator {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
 
-    const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
+    const client = createAnthropicClient({
+      apiKey,
+      providerConfig,
+      agent,
+      requestContext,
+      requestKind: 'batch',
+    });
 
     const outputs: LlmBatchOutput[] = [];
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(

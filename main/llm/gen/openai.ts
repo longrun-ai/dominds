@@ -451,6 +451,13 @@ function thinkingMessageToOpenAiReasoningItem(
 ): ResponseInputItem {
   const reasoning = msg.reasoning ?? buildReasoningPayloadFromText(msg.content);
   if (!reasoning) {
+    if (msg.content.length > 0) {
+      return {
+        type: 'message',
+        role: 'assistant',
+        content: msg.content,
+      };
+    }
     return { type: 'reasoning', summary: [] } as unknown as ResponseReasoningItem;
   }
   // Some Responses-compatible gateways reject client-fabricated reasoning IDs and only accept

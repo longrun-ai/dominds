@@ -12,6 +12,9 @@
 #   repeated empty-response deadlock detection for the same unchanged dialog context, plus conservative retry
 #   classification for gateway-returned HTML 502 Bad Gateway pages and
 #   `500 auth_unavailable: no auth available` infrastructure failures.
+#   `apiQuirks: glm-via-volcano` enables a narrow Anthropic-compatible stream quirk for
+#   Volcano Engine Coding Plan tool calls where an empty-object tool input may arrive as
+#   content_block_start.input={} followed by a lone `partial_json: "}"`.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -450,6 +453,7 @@ providers:
   volcano-engine-coding-plan:
     name: Volcano Engine Coding Plan
     apiType: anthropic-compatible
+    apiQuirks: glm-via-volcano
     baseUrl: https://ark.cn-beijing.volces.com/api/coding
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261
