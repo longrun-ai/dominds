@@ -18,26 +18,48 @@ function readNestedResponse(error: unknown): Record<string, unknown> | undefined
   return error.response;
 }
 
-export function readErrorStatus(error: unknown): number | undefined {
+function readErrorRoots(error: unknown): Record<string, unknown>[] {
+  const roots: Record<string, unknown>[] = [];
   if (isPlainObject(error)) {
-    if ('status' in error && typeof error.status === 'number') {
-      return error.status;
-    }
-    if ('statusCode' in error && typeof error.statusCode === 'number') {
-      return error.statusCode;
-    }
+    roots.push(error);
   }
   const nested = readNestedError(error);
-  if (!nested) {
-    return undefined;
+  if (nested) {
+    roots.push(nested);
   }
-  if ('status' in nested && typeof nested.status === 'number') {
-    return nested.status;
+  const nestedResponse = nested ? readNestedResponse(nested) : undefined;
+  if (nestedResponse) {
+    roots.push(nestedResponse);
   }
-  if ('statusCode' in nested && typeof nested.statusCode === 'number') {
-    return nested.statusCode;
+  const response = readNestedResponse(error);
+  if (response) {
+    roots.push(response);
+  }
+  return roots;
+}
+
+function readStatusFromRoot(root: Record<string, unknown>): number | undefined {
+  if ('status' in root && typeof root.status === 'number') {
+    return root.status;
+  }
+  if ('statusCode' in root && typeof root.statusCode === 'number') {
+    return root.statusCode;
   }
   return undefined;
+}
+
+export function readErrorStatus(error: unknown): number | undefined {
+  for (const root of readErrorRoots(error)) {
+    const status = readStatusFromRoot(root);
+    if (status !== undefined) {
+      return status;
+    }
+  }
+  return undefined;
+}
+
+function errorHasStatus(error: unknown, expectedStatus: number): boolean {
+  return readErrorRoots(error).some((root) => readStatusFromRoot(root) === expectedStatus);
 }
 
 export function readErrorCode(error: unknown): string | undefined {
@@ -90,19 +112,14 @@ export function readErrorMessage(error: unknown): string | undefined {
   return undefined;
 }
 
-function readErrorHeaders(error: unknown): Record<string, unknown> | undefined {
-  if (isPlainObject(error) && 'headers' in error && isPlainObject(error.headers)) {
-    return error.headers;
+function readErrorHeaderRoots(error: unknown): Record<string, unknown>[] {
+  const headerRoots: Record<string, unknown>[] = [];
+  for (const root of readErrorRoots(error)) {
+    if ('headers' in root && isPlainObject(root.headers)) {
+      headerRoots.push(root.headers);
+    }
   }
-  const nested = readNestedError(error);
-  if (nested && 'headers' in nested && isPlainObject(nested.headers)) {
-    return nested.headers;
-  }
-  const response = readNestedResponse(error);
-  if (response && 'headers' in response && isPlainObject(response.headers)) {
-    return response.headers;
-  }
-  return undefined;
+  return headerRoots;
 }
 
 function readHeaderValue(headers: Record<string, unknown>, headerName: string): unknown {
@@ -144,8 +161,7 @@ function parseDelayFieldMs(value: unknown, unit: 'milliseconds' | 'seconds'): nu
 }
 
 export function readProviderSuggestedRetryAfterMs(error: unknown): number | undefined {
-  const headers = readErrorHeaders(error);
-  if (headers) {
+  for (const headers of readErrorHeaderRoots(error)) {
     const retryAfter = parseRetryAfterHeaderMs(readHeaderValue(headers, 'retry-after'));
     if (retryAfter !== undefined) return retryAfter;
     const resetAfter =
@@ -154,14 +170,7 @@ export function readProviderSuggestedRetryAfterMs(error: unknown): number | unde
     if (resetAfter !== undefined) return resetAfter;
   }
 
-  const roots: Record<string, unknown>[] = [];
-  if (isPlainObject(error)) roots.push(error);
-  const nested = readNestedError(error);
-  if (nested) roots.push(nested);
-  const response = readNestedResponse(error);
-  if (response) roots.push(response);
-
-  for (const root of roots) {
+  for (const root of readErrorRoots(error)) {
     const retryAfterMs =
       parseDelayFieldMs(root.retryAfterMs, 'milliseconds') ??
       parseDelayFieldMs(root.retry_after_ms, 'milliseconds') ??
@@ -241,6 +250,9 @@ function isHighConfidenceRejectedStatus(status: number | undefined): boolean {
 
 function isOpenAiLikeRejectedFailure(error: unknown): boolean {
   const status = readErrorStatus(error);
+  if (errorHasStatus(error, 429)) {
+    return false;
+  }
   return isHighConfidenceRejectedStatus(status);
 }
 
@@ -271,10 +283,9 @@ function isOpenAiLikeContextWindowRejectedFailure(args: {
 
 export function isOpenAiLikeRateLimitFailure(error: unknown): boolean {
   const lowerMessage = buildFailureMessage(error).toLowerCase();
-  const status = readErrorStatus(error);
   const code = readErrorCode(error)?.toLowerCase();
 
-  if (status === 429) {
+  if (errorHasStatus(error, 429)) {
     return true;
   }
   if (typeof code === 'string' && code.includes('rate_limit')) {
@@ -326,16 +337,6 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
       message,
       status,
       code,
-    };
-  }
-
-  if (code === 'XCODE_BEST_STREAM_INTERNAL_ERROR') {
-    return {
-      kind: 'retriable',
-      message,
-      status,
-      code,
-      retryStrategy: 'aggressive',
     };
   }
 

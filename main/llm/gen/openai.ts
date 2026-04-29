@@ -27,7 +27,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import { normalizeProviderApiQuirks } from '../api-quirks';
+import { normalizeProviderApiQuirks, XCODE_BEST_STREAM_INTERNAL_ERROR_CODE } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
@@ -187,11 +187,11 @@ function maybeAnnotateOpenAiQuirkFailure(providerConfig: ProviderConfig, error: 
   ) {
     if (error instanceof Error) {
       const out = error as Error & { code?: string };
-      out.code = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
+      out.code = XCODE_BEST_STREAM_INTERNAL_ERROR_CODE;
       return out;
     }
     const out = new Error(message.length > 0 ? message : 'xcode.best stream internal error');
-    (out as Error & { code?: string }).code = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
+    (out as Error & { code?: string }).code = XCODE_BEST_STREAM_INTERNAL_ERROR_CODE;
     return out;
   }
 

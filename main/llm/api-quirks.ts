@@ -69,6 +69,9 @@ const XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE =
   'xcode.best upstream stream ended unexpectedly (unexpected EOF); retrying conservatively.';
 const XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE =
   'xcode.best returned 403 for a transient upstream failure; retrying aggressively.';
+export const XCODE_BEST_STREAM_INTERNAL_ERROR_CODE = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
+const XCODE_BEST_STREAM_INTERNAL_RETRY_MESSAGE =
+  'xcode.best upstream stream reported internal_error from peer; retrying aggressively.';
 const LOCAL_FILE_IO_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM']);
 const LOCAL_FILE_IO_SYSCALLS = new Set([
   'open',
@@ -101,11 +104,6 @@ function isXcodeBestGatewayHtml502Failure(failure: LlmFailureSummary, error: unk
   return lowerMessage.includes('<html') || lowerMessage.includes('cloudflare');
 }
 
-function isXcodeBestMisreported403Failure(failure: LlmFailureSummary, error: unknown): boolean {
-  const status = failure.status ?? readErrorStatus(error);
-  return status === 403;
-}
-
 function isXcodeBestUnexpectedEofFailure(failure: LlmFailureSummary, error: unknown): boolean {
   return (
     (errorChainIncludesMessageFragment(error, 'unexpected eof') ||
@@ -132,6 +130,115 @@ function isXcodeBestAuthUnavailableFailure(failure: LlmFailureSummary, error: un
   return code === 'internal_server_error' && message.includes('no auth available');
 }
 
+function isXcodeBestStreamInternalFailure(failure: LlmFailureSummary, error: unknown): boolean {
+  const code = failure.code ?? readErrorCode(error);
+  return code === XCODE_BEST_STREAM_INTERNAL_ERROR_CODE;
+}
+
+type XcodeBestQuirkStatusPolicy =
+  | { kind: 'only_status'; status: 403 | 500 | 502 }
+  // Broad xcode.best quirks must statically declare that OpenAI-like 429 rate-limit handling wins.
+  | { kind: 'exclude_statuses'; statuses: readonly [429, ...number[]] };
+
+type XcodeBestRetryQuirkRule = {
+  statusPolicy: XcodeBestQuirkStatusPolicy;
+  retryStrategy: LlmRetryStrategy;
+  message: string;
+  matches: (args: { failure: LlmFailureSummary; error: unknown }) => boolean;
+};
+
+const XCODE_BEST_RETRY_QUIRK_RULES = [
+  {
+    statusPolicy: { kind: 'only_status', status: 403 },
+    retryStrategy: 'aggressive',
+    message: XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE,
+    matches: () => true,
+  },
+  {
+    statusPolicy: { kind: 'exclude_statuses', statuses: [429] },
+    retryStrategy: 'aggressive',
+    message: XCODE_BEST_STREAM_INTERNAL_RETRY_MESSAGE,
+    matches: ({ failure, error }) => isXcodeBestStreamInternalFailure(failure, error),
+  },
+  {
+    statusPolicy: { kind: 'exclude_statuses', statuses: [429] },
+    retryStrategy: 'conservative',
+    message: XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE,
+    matches: ({ failure, error }) => isXcodeBestUnexpectedEofFailure(failure, error),
+  },
+  {
+    statusPolicy: { kind: 'only_status', status: 502 },
+    retryStrategy: 'conservative',
+    message: XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE,
+    matches: ({ failure, error }) => isXcodeBestGatewayHtml502Failure(failure, error),
+  },
+  {
+    statusPolicy: { kind: 'only_status', status: 500 },
+    retryStrategy: 'conservative',
+    message: XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE,
+    matches: ({ failure, error }) => isXcodeBestAuthUnavailableFailure(failure, error),
+  },
+] satisfies readonly XcodeBestRetryQuirkRule[];
+
+function isStatusAllowedByXcodeBestQuirkPolicy(
+  statuses: readonly number[],
+  policy: XcodeBestQuirkStatusPolicy,
+): boolean {
+  switch (policy.kind) {
+    case 'only_status':
+      return statuses.includes(policy.status) && !statuses.includes(429);
+    case 'exclude_statuses':
+      return statuses.every((status) => !policy.statuses.includes(status));
+    default: {
+      const _exhaustive: never = policy;
+      return _exhaustive;
+    }
+  }
+}
+
+function readFailureAndErrorStatuses(args: {
+  failure: LlmFailureSummary;
+  error: unknown;
+}): number[] {
+  const statuses: number[] = [];
+  const appendStatus = (status: number | undefined): void => {
+    if (status === undefined || statuses.includes(status)) {
+      return;
+    }
+    statuses.push(status);
+  };
+
+  appendStatus(args.failure.status);
+  for (const current of getErrorChain(args.error)) {
+    if (!isRecord(current)) {
+      continue;
+    }
+    if ('status' in current && typeof current.status === 'number') {
+      appendStatus(current.status);
+    }
+    if ('statusCode' in current && typeof current.statusCode === 'number') {
+      appendStatus(current.statusCode);
+    }
+  }
+  return statuses;
+}
+
+function resolveXcodeBestRetryQuirkRule(args: {
+  failure: LlmFailureSummary;
+  error: unknown;
+}): XcodeBestRetryQuirkRule | undefined {
+  const statuses = readFailureAndErrorStatuses(args);
+  for (const rule of XCODE_BEST_RETRY_QUIRK_RULES) {
+    if (!isStatusAllowedByXcodeBestQuirkPolicy(statuses, rule.statusPolicy)) {
+      continue;
+    }
+    if (rule.matches(args)) {
+      return rule;
+    }
+  }
+  return undefined;
+}
+
 function getErrorChain(error: unknown): unknown[] {
   const queue: unknown[] = [error];
   const visited = new Set<object>();
@@ -153,6 +260,10 @@ function getErrorChain(error: unknown): unknown[] {
     const nestedError = readNestedError(current);
     if (nestedError !== undefined) {
       queue.push(nestedError);
+    }
+    const nestedResponse = readNestedResponse(current);
+    if (nestedResponse !== undefined) {
+      queue.push(nestedResponse);
     }
     const cause = readErrorCause(current);
     if (cause !== undefined) {
@@ -191,6 +302,13 @@ function readErrorCause(error: unknown): unknown {
 function readNestedError(error: unknown): unknown {
   if (isRecord(error) && 'error' in error && isRecord(error.error)) {
     return error.error;
+  }
+  return undefined;
+}
+
+function readNestedResponse(error: unknown): unknown {
+  if (isRecord(error) && 'response' in error && isRecord(error.response)) {
+    return error.response;
   }
   return undefined;
 }
@@ -420,32 +538,15 @@ function createXcodeBestFailureQuirkHandlerSession(
       }
 
       consecutiveEmptyResponseCount = 0;
-      if (isXcodeBestMisreported403Failure(args.failure, args.error)) {
+      const retryQuirkRule = resolveXcodeBestRetryQuirkRule({
+        failure: args.failure,
+        error: args.error,
+      });
+      if (retryQuirkRule) {
         return {
           kind: 'retry_strategy',
-          retryStrategy: 'aggressive',
-          message: XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE,
-        };
-      }
-      if (isXcodeBestUnexpectedEofFailure(args.failure, args.error)) {
-        return {
-          kind: 'retry_strategy',
-          retryStrategy: 'conservative',
-          message: XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE,
-        };
-      }
-      if (isXcodeBestGatewayHtml502Failure(args.failure, args.error)) {
-        return {
-          kind: 'retry_strategy',
-          retryStrategy: 'conservative',
-          message: XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE,
-        };
-      }
-      if (isXcodeBestAuthUnavailableFailure(args.failure, args.error)) {
-        return {
-          kind: 'retry_strategy',
-          retryStrategy: 'conservative',
-          message: XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE,
+          retryStrategy: retryQuirkRule.retryStrategy,
+          message: retryQuirkRule.message,
         };
       }
 

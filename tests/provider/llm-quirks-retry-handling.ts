@@ -8,6 +8,7 @@ import { dialogEventRegistry } from '../../main/evt-registry';
 import {
   createLlmFailureQuirkHandlerSession,
   type LlmFailureSummary,
+  XCODE_BEST_STREAM_INTERNAL_ERROR_CODE,
 } from '../../main/llm/api-quirks';
 import type { ProviderConfig } from '../../main/llm/client';
 import { classifyOpenAiLikeFailure } from '../../main/llm/gen/failure-classifier';
@@ -80,6 +81,101 @@ function makeXcodeBestMisreported403Error(): { status: number; code: string; mes
     status: 403,
     code: 'forbidden',
     message: '403 Forbidden',
+  };
+}
+
+function makeXcodeBestMisreported403WithNested429Error(): {
+  status: number;
+  code: string;
+  message: string;
+  response: {
+    status: number;
+    headers: Record<string, string>;
+  };
+} {
+  return {
+    status: 403,
+    code: 'forbidden',
+    message: '403 Forbidden',
+    response: {
+      status: 429,
+      headers: {
+        'retry-after': '0.01',
+      },
+    },
+  };
+}
+
+function makeXcodeBestStreamInternalError(args: { status?: number; retryAfter?: string }): {
+  status?: number;
+  code: string;
+  message: string;
+  headers?: Record<string, string>;
+} {
+  const error: {
+    status?: number;
+    code: string;
+    message: string;
+    headers?: Record<string, string>;
+  } = {
+    code: XCODE_BEST_STREAM_INTERNAL_ERROR_CODE,
+    message: 'stream error: internal_error received from peer',
+  };
+  if (args.status !== undefined) {
+    error.status = args.status;
+  }
+  if (args.retryAfter !== undefined) {
+    error.headers = {
+      'retry-after': args.retryAfter,
+    };
+  }
+  return error;
+}
+
+function makeXcodeBestStreamInternalResponseStatusError(args: {
+  status: number;
+  retryAfter?: string;
+}): {
+  code: string;
+  message: string;
+  response: {
+    status: number;
+    headers?: Record<string, string>;
+  };
+} {
+  const response: {
+    status: number;
+    headers?: Record<string, string>;
+  } = {
+    status: args.status,
+  };
+  if (args.retryAfter !== undefined) {
+    response.headers = {
+      'retry-after': args.retryAfter,
+    };
+  }
+  return {
+    code: XCODE_BEST_STREAM_INTERNAL_ERROR_CODE,
+    message: 'stream error: internal_error received from peer',
+    response,
+  };
+}
+
+function makeNestedXcodeBestStreamInternalResponseStatusError(args: {
+  status: number;
+  retryAfter?: string;
+}): {
+  error: {
+    code: string;
+    message: string;
+    response: {
+      status: number;
+      headers?: Record<string, string>;
+    };
+  };
+} {
+  return {
+    error: makeXcodeBestStreamInternalResponseStatusError(args),
   };
 }
 
@@ -768,6 +864,72 @@ function verifyPlainOpenAi403StaysRejected(): void {
   assert.equal(failure?.retryStrategy, undefined);
 }
 
+function verifyNested429WinsOverOuter403(): void {
+  const failure = classifyOpenAiLikeFailure(makeXcodeBestMisreported403WithNested429Error());
+  assert.ok(failure, 'Expected nested response.status 429 to classify as a rate-limit failure');
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+  assert.equal(failure?.retryAfterMs, 10);
+}
+
+function verifyXcodeBestStreamInternal429ClassifiesAsSmartRate(): void {
+  const failure = classifyOpenAiLikeFailure(
+    makeXcodeBestStreamInternalError({
+      status: 429,
+      retryAfter: '2',
+    }),
+  );
+  assert.ok(
+    failure,
+    'Expected OpenAI-like classifier to keep 429 stream-internal failures in rate-limit handling',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+  assert.equal(failure?.retryAfterMs, 2000);
+}
+
+function verifyXcodeBestStreamInternalResponse429ClassifiesAsSmartRate(): void {
+  const failure = classifyOpenAiLikeFailure(
+    makeXcodeBestStreamInternalResponseStatusError({
+      status: 429,
+      retryAfter: '2',
+    }),
+  );
+  assert.ok(
+    failure,
+    'Expected response.status 429 stream-internal failures to stay in rate-limit handling',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+  assert.equal(failure?.retryAfterMs, 2000);
+}
+
+function verifyNestedXcodeBestStreamInternalResponse429ClassifiesAsSmartRate(): void {
+  const failure = classifyOpenAiLikeFailure(
+    makeNestedXcodeBestStreamInternalResponseStatusError({
+      status: 429,
+      retryAfter: '2',
+    }),
+  );
+  assert.ok(
+    failure,
+    'Expected nested response.status 429 stream-internal failures to stay in rate-limit handling',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+  assert.equal(failure?.retryAfterMs, 2000);
+}
+
+function verifyXcodeBestStreamInternalIsNotGlobalClassifierAggressive(): void {
+  const failure = classifyOpenAiLikeFailure(makeXcodeBestStreamInternalError({}));
+  assert.ok(
+    failure,
+    'Expected OpenAI-like classifier to treat provider-specific stream-internal code as an ordinary coded provider failure',
+  );
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'conservative');
+}
+
 function verifySmartRateClassificationFromConcurrencyLimitMessage(): void {
   const failure = classifyOpenAiLikeFailure(
     new Error('Concurrency limit exceeded for account, please retry later'),
@@ -1158,6 +1320,130 @@ async function verifyXcodeBestMisreported403UsesAggressiveRetry(): Promise<void>
   assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
 }
 
+async function verifyXcodeBestStreamInternalUsesAggressiveRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    classifyFailure: classifyOpenAiLikeFailure,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeXcodeBestStreamInternalError({});
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+  assert.match(waiting?.error ?? '', /stream error: internal_error received from peer/u);
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+}
+
+async function verifyXcodeBestStreamInternal429KeepsSmartRateRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    classifyFailure: classifyOpenAiLikeFailure,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeXcodeBestStreamInternalResponseStatusError({
+          status: 429,
+          retryAfter: '0.01',
+        });
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=smart_rate'), true);
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=smart_rate'), true);
+}
+
+async function verifyXcodeBestMisreported403Nested429KeepsSmartRateRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    classifyFailure: classifyOpenAiLikeFailure,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeXcodeBestMisreported403WithNested429Error();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=smart_rate'), true);
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=smart_rate'), true);
+}
+
 async function verifyAggressiveRetriesDowngradeToConservative(): Promise<void> {
   const providerConfig = buildPlainProviderConfig();
   const dialog = buildFakeDialog('en');
@@ -1219,6 +1505,11 @@ async function main(): Promise<void> {
   verifyOpenAiContextLengthExceededCodeIsRejected();
   verifyOpenAiTransportFailureWithStatusStaysAggressive();
   verifyPlainOpenAi403StaysRejected();
+  verifyNested429WinsOverOuter403();
+  verifyXcodeBestStreamInternal429ClassifiesAsSmartRate();
+  verifyXcodeBestStreamInternalResponse429ClassifiesAsSmartRate();
+  verifyNestedXcodeBestStreamInternalResponse429ClassifiesAsSmartRate();
+  verifyXcodeBestStreamInternalIsNotGlobalClassifierAggressive();
   await verifyRuntimeDoesNotRetryContextWindowOverflow();
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
   await verifyRuntimeDefaultsUnknownProviderFailuresToConservativeRetry();
@@ -1226,6 +1517,9 @@ async function main(): Promise<void> {
   await verifyXcodeBestGatewayHtml502UsesConservativeRetry();
   await verifyXcodeBestAuthUnavailableUsesConservativeRetry();
   await verifyXcodeBestMisreported403UsesAggressiveRetry();
+  await verifyXcodeBestStreamInternalUsesAggressiveRetry();
+  await verifyXcodeBestStreamInternal429KeepsSmartRateRetry();
+  await verifyXcodeBestMisreported403Nested429KeepsSmartRateRetry();
   await verifyXcodeBestUnexpectedEofUsesConservativeRetry();
   console.log('provider llm-quirks-retry-handling: PASS');
 }
