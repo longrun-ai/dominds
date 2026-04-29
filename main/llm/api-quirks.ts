@@ -67,6 +67,8 @@ const XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE =
   'xcode.best upstream returned 500 auth_unavailable: no auth available; treating it as an infrastructure failure and retrying conservatively.';
 const XCODE_BEST_UNEXPECTED_EOF_RETRY_MESSAGE =
   'xcode.best upstream stream ended unexpectedly (unexpected EOF); retrying conservatively.';
+const XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE =
+  'xcode.best returned 403 for a transient upstream failure; retrying aggressively.';
 const LOCAL_FILE_IO_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM']);
 const LOCAL_FILE_IO_SYSCALLS = new Set([
   'open',
@@ -97,6 +99,11 @@ function isXcodeBestGatewayHtml502Failure(failure: LlmFailureSummary, error: unk
     return true;
   }
   return lowerMessage.includes('<html') || lowerMessage.includes('cloudflare');
+}
+
+function isXcodeBestMisreported403Failure(failure: LlmFailureSummary, error: unknown): boolean {
+  const status = failure.status ?? readErrorStatus(error);
+  return status === 403;
 }
 
 function isXcodeBestUnexpectedEofFailure(failure: LlmFailureSummary, error: unknown): boolean {
@@ -413,6 +420,13 @@ function createXcodeBestFailureQuirkHandlerSession(
       }
 
       consecutiveEmptyResponseCount = 0;
+      if (isXcodeBestMisreported403Failure(args.failure, args.error)) {
+        return {
+          kind: 'retry_strategy',
+          retryStrategy: 'aggressive',
+          message: XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE,
+        };
+      }
       if (isXcodeBestUnexpectedEofFailure(args.failure, args.error)) {
         return {
           kind: 'retry_strategy',

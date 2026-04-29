@@ -75,6 +75,14 @@ function makeAuthUnavailableError(): { status: number; code: string; message: st
   };
 }
 
+function makeXcodeBestMisreported403Error(): { status: number; code: string; message: string } {
+  return {
+    status: 403,
+    code: 'forbidden',
+    message: '403 Forbidden',
+  };
+}
+
 function makeUnexpectedEofError(): Error {
   return new Error('unexpected EOF');
 }
@@ -749,6 +757,17 @@ function verifySmartRateClassification(): void {
   assert.equal(failure?.retryAfterMs, 2000);
 }
 
+function verifyPlainOpenAi403StaysRejected(): void {
+  const failure = classifyOpenAiLikeFailure({
+    status: 403,
+    code: 'forbidden',
+    message: '403 Forbidden',
+  });
+  assert.ok(failure, 'Expected OpenAI-like classifier to classify plain 403');
+  assert.equal(failure?.kind, 'rejected');
+  assert.equal(failure?.retryStrategy, undefined);
+}
+
 function verifySmartRateClassificationFromConcurrencyLimitMessage(): void {
   const failure = classifyOpenAiLikeFailure(
     new Error('Concurrency limit exceeded for account, please retry later'),
@@ -1097,6 +1116,48 @@ async function verifyXcodeBestAuthUnavailableUsesConservativeRetry(): Promise<vo
   assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=conservative'), true);
 }
 
+async function verifyXcodeBestMisreported403UsesAggressiveRetry(): Promise<void> {
+  const providerConfig = buildProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'xcode1',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeXcodeBestMisreported403Error();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  const resolved = retryEvents[2];
+  assert.equal(waiting?.display.titleTextI18n.en, 'Retrying');
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+  assert.match(waiting?.error ?? '', /403 Forbidden/u);
+  assert.equal(resolved?.display.titleTextI18n.en, 'Retry recovered');
+  assert.equal(resolved?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+}
+
 async function verifyAggressiveRetriesDowngradeToConservative(): Promise<void> {
   const providerConfig = buildPlainProviderConfig();
   const dialog = buildFakeDialog('en');
@@ -1157,12 +1218,14 @@ async function main(): Promise<void> {
   verifyOpenAiContextWindowExceededIsRejected();
   verifyOpenAiContextLengthExceededCodeIsRejected();
   verifyOpenAiTransportFailureWithStatusStaysAggressive();
+  verifyPlainOpenAi403StaysRejected();
   await verifyRuntimeDoesNotRetryContextWindowOverflow();
   await verifySmartRateRespectsProviderSuggestedDelayBeyondLocalMax();
   await verifyRuntimeDefaultsUnknownProviderFailuresToConservativeRetry();
   await verifyRuntimeStillRetriesPlainObjectTransportFailures();
   await verifyXcodeBestGatewayHtml502UsesConservativeRetry();
   await verifyXcodeBestAuthUnavailableUsesConservativeRetry();
+  await verifyXcodeBestMisreported403UsesAggressiveRetry();
   await verifyXcodeBestUnexpectedEofUsesConservativeRetry();
   console.log('provider llm-quirks-retry-handling: PASS');
 }
