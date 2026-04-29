@@ -69,20 +69,9 @@ function listAnthropicToolResultTexts(
 ): string[] {
   const userTurn = [...messages].reverse().find((message) => message.role === 'user');
   if (!userTurn || !Array.isArray(userTurn.content)) {
-    throw new Error('Expected Anthropic user tool_result turn');
+    throw new Error('Expected Anthropic user function-result turn');
   }
-  const toolResult = userTurn.content.find(
-    (
-      block,
-    ): block is {
-      type: 'tool_result';
-      content: Array<{ type: 'text'; text: string } | { type: 'image' }>;
-    } => isRecord(block) && block.type === 'tool_result' && Array.isArray(block.content),
-  );
-  if (!toolResult) {
-    throw new Error('Expected Anthropic tool_result block');
-  }
-  return toolResult.content
+  return userTurn.content
     .filter(
       (block): block is { type: 'text'; text: string } =>
         isRecord(block) && block.type === 'text' && typeof block.text === 'string',

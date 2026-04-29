@@ -28,15 +28,6 @@ function imageBlockCount(blocks: unknown[]): number {
   return blocks.filter((block) => isRecord(block) && block.type === 'image').length;
 }
 
-function toolResultBlocks(blocks: unknown[]): unknown[] {
-  return blocks.filter((block) => isRecord(block) && block.type === 'tool_result');
-}
-
-function toolResultContentBlocks(block: unknown): unknown[] {
-  if (!isRecord(block)) return [];
-  return Array.isArray(block.content) ? block.content : [];
-}
-
 function buildImageItem(relPath: string): NonNullable<ChatMessage['contentItems']>[number] {
   return {
     type: 'input_image',
@@ -116,11 +107,9 @@ async function main() {
   const lastUserBlocks = contentBlocks(
     [...messages].reverse().find((message) => message.role === 'user'),
   );
-  const toolResult = toolResultBlocks(lastUserBlocks)[0];
-  const toolResultContent = toolResultContentBlocks(toolResult);
-  assert(imageBlockCount(toolResultContent) === 0, 'Expected tool-result image to be omitted');
+  assert(imageBlockCount(lastUserBlocks) === 0, 'Expected tool-result image to be omitted');
   assert(
-    textBlocks(toolResultContent).some((text) =>
+    textBlocks(lastUserBlocks).some((text) =>
       text.includes('current model does not support image input'),
     ),
     'Expected tool-result image omission text for unsupported model',

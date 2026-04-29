@@ -21,7 +21,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
+import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchOutput,
   LlmBatchResult,
@@ -67,6 +67,11 @@ const ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA = {
 type AnthropicMessageContent = Exclude<MessageParam['content'], string>;
 
 type AnthropicContentBlock = AnthropicMessageContent[number];
+
+type AnthropicContextProjectionMessage =
+  | Readonly<{ kind: 'chat'; msg: ChatMessage }>
+  | Readonly<{ kind: 'function_call_text'; call: FuncCallMsg }>
+  | Readonly<{ kind: 'function_result_text'; result: FuncResultMsg }>;
 
 type ActiveToolUse = {
   id: string;
@@ -137,6 +142,15 @@ function limitAnthropicToolOutputBlocks(
   return limited;
 }
 
+function countAnthropicTextBlockChars(content: readonly AnthropicContentBlock[]): number {
+  return content.reduce((sum, block) => {
+    if (block.type !== 'text') {
+      return sum;
+    }
+    return sum + block.text.length;
+  }, 0);
+}
+
 export type AnthropicStreamConsumeResult = {
   usage: LlmUsageStats;
   llmGenModel?: string;
@@ -177,6 +191,10 @@ function isToolUseBlock(value: unknown): value is ToolUseBlock {
     typeof value.id === 'string' &&
     typeof value.name === 'string'
   );
+}
+
+function isTextOrImageBlockParam(value: unknown): value is TextBlockParam | ImageBlockParam {
+  return isRecord(value) && (value.type === 'text' || value.type === 'image');
 }
 
 function funcToolToAnthropic(funcTool: FuncTool): Tool {
@@ -645,6 +663,96 @@ async function chatMessageToAnthropicAsync(
   };
 }
 
+async function funcResultToAnthropicTextBlocks(
+  result: FuncResultMsg,
+  limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+): Promise<AnthropicContentBlock[]> {
+  const resultText = limitAnthropicToolOutputText(
+    formatFunctionCallResultForAnthropicTextContext(result),
+    result,
+    limitChars,
+  );
+  const contentBlocks: AnthropicContentBlock[] = [
+    {
+      type: 'text',
+      text: resultText,
+    },
+  ];
+  if (!Array.isArray(result.contentItems) || result.contentItems.length === 0) {
+    return contentBlocks;
+  }
+
+  const remainingTextChars = Math.max(0, limitChars - countAnthropicTextBlockChars(contentBlocks));
+  const toolResultBlock = await funcResultToAnthropicToolResultBlock(
+    result,
+    remainingTextChars,
+    requestContext,
+    allowedImageKeys,
+    supportsImageInput,
+    onToolResultImageIngest,
+  );
+  const toolResultContent = toolResultBlock.content;
+  if (typeof toolResultContent === 'string') {
+    if (toolResultContent.length > 0) {
+      contentBlocks.push({ type: 'text', text: toolResultContent });
+    }
+    return contentBlocks;
+  }
+  if (!Array.isArray(toolResultContent)) {
+    return contentBlocks;
+  }
+  contentBlocks.push(...toolResultContent.filter(isTextOrImageBlockParam));
+  return contentBlocks;
+}
+
+async function anthropicProjectionToMessageAsync(
+  projection: AnthropicContextProjectionMessage,
+  limitChars: number,
+  requestContext: LlmRequestContext,
+  allowedImageKeys: ReadonlySet<string>,
+  supportsImageInput: boolean,
+  onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
+  onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
+): Promise<MessageParam> {
+  switch (projection.kind) {
+    case 'chat':
+      return await chatMessageToAnthropicAsync(
+        projection.msg,
+        limitChars,
+        requestContext,
+        allowedImageKeys,
+        supportsImageInput,
+        onToolResultImageIngest,
+        onUserImageIngest,
+      );
+    case 'function_call_text':
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: formatFunctionCallForAnthropicTextContext(projection) }],
+      };
+    case 'function_result_text':
+      return {
+        role: 'user',
+        content: await funcResultToAnthropicTextBlocks(
+          projection.result,
+          limitChars,
+          requestContext,
+          allowedImageKeys,
+          supportsImageInput,
+          onToolResultImageIngest,
+        ),
+      };
+    default: {
+      const _exhaustive: never = projection;
+      return _exhaustive;
+    }
+  }
+}
+
 async function buildAnthropicRequestMessages(
   context: ChatMessage[],
   requestContext: LlmRequestContext,
@@ -652,7 +760,9 @@ async function buildAnthropicRequestMessages(
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
   onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
 ): Promise<MessageParam[]> {
-  // We keep the async path for func_result_msg because it may contain image artifacts.
+  // Anthropic's native tool_use.input requires structured JSON. Historical Dominds function-call
+  // arguments are opaque raw strings, so persisted call/result pairs are projected as text while
+  // preserving the original tool-result image handling path.
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
   if (violation) {
@@ -667,6 +777,7 @@ async function buildAnthropicRequestMessages(
   }
   const messages: MessageParam[] = [];
   const toolResultMaxChars = resolveProviderToolResultMaxChars(providerConfig);
+  const projectedContext = projectFunctionCallPairsForAnthropicTextContext(normalized);
   const allowedImageKeys = selectLatestImagesWithinBudget(
     normalized,
     ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES,
@@ -678,9 +789,9 @@ async function buildAnthropicRequestMessages(
     true,
   );
 
-  for (const msg of normalized) {
+  for (const msg of projectedContext) {
     messages.push(
-      await chatMessageToAnthropicAsync(
+      await anthropicProjectionToMessageAsync(
         msg,
         toolResultMaxChars,
         requestContext,
@@ -761,6 +872,92 @@ function assembleAnthropicTurns(messages: MessageParam[]): MessageParam[] {
   return turns;
 }
 
+function formatFunctionCallForAnthropicTextContext(args: {
+  call: Extract<ChatMessage, { type: 'func_call_msg' }>;
+}): string {
+  return (
+    'Function call emitted by the assistant.\n' +
+    `Tool name: ${args.call.name}\n` +
+    `Call ID: ${args.call.id}\n` +
+    'Raw arguments, verbatim:\n' +
+    '<raw_arguments>\n' +
+    `${args.call.arguments}\n` +
+    '</raw_arguments>'
+  );
+}
+
+function formatFunctionCallResultForAnthropicTextContext(
+  result: Extract<ChatMessage, { type: 'func_result_msg' }>,
+): string {
+  return (
+    'Function call result.\n' +
+    `Tool name: ${result.name}\n` +
+    `Call ID: ${result.id}\n` +
+    'Result content:\n' +
+    result.content
+  );
+}
+
+function projectFunctionCallPairsForAnthropicTextContext(
+  context: readonly ChatMessage[],
+): AnthropicContextProjectionMessage[] {
+  const projected: AnthropicContextProjectionMessage[] = [];
+
+  for (let index = 0; index < context.length; index += 1) {
+    const msg = context[index];
+    if (msg.type !== 'func_call_msg') {
+      projected.push({ kind: 'chat', msg });
+      continue;
+    }
+
+    const result = context[index + 1];
+    if (result === undefined || result.type !== 'func_result_msg' || result.id !== msg.id) {
+      throw new Error(
+        `ANTH function call text projection invariant violation: missing adjacent result for callId=${msg.id}, tool=${msg.name}`,
+      );
+    }
+
+    projected.push({ kind: 'function_call_text', call: msg });
+    projected.push({ kind: 'function_result_text', result });
+    index += 1;
+  }
+
+  return projected;
+}
+
+function anthropicProjectionToMessageSync(
+  projection: AnthropicContextProjectionMessage,
+  toolResultMaxChars: number,
+): MessageParam {
+  switch (projection.kind) {
+    case 'chat':
+      return chatMessageToAnthropic(projection.msg);
+    case 'function_call_text':
+      return {
+        role: 'assistant',
+        content: [{ type: 'text', text: formatFunctionCallForAnthropicTextContext(projection) }],
+      };
+    case 'function_result_text':
+      return {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: limitAnthropicToolOutputText(
+              formatFunctionCallResultForAnthropicTextContext(projection.result),
+              projection.result,
+              toolResultMaxChars,
+            ),
+          },
+        ],
+      };
+    default: {
+      const _exhaustive: never = projection;
+      return _exhaustive;
+    }
+  }
+}
+
 function buildAnthropicRequestMessagesSync(context: ChatMessage[]): MessageParam[] {
   const normalized = normalizeToolCallPairs(context);
   const violation = findFirstToolCallAdjacencyViolation(normalized);
@@ -774,10 +971,12 @@ function buildAnthropicRequestMessagesSync(context: ChatMessage[]): MessageParam
     });
     throw new Error(detail);
   }
+  const toolResultMaxChars = resolveProviderToolResultMaxChars(undefined);
+  const projectedContext = projectFunctionCallPairsForAnthropicTextContext(normalized);
   const messages: MessageParam[] = [];
 
-  for (const msg of normalized) {
-    messages.push(chatMessageToAnthropic(msg));
+  for (const msg of projectedContext) {
+    messages.push(anthropicProjectionToMessageSync(msg, toolResultMaxChars));
   }
 
   return assembleAnthropicTurns(messages);
@@ -806,7 +1005,7 @@ function applyInputJsonDelta(state: ActiveToolUse, partialJson: string): void {
 /**
  * Convert a single ChatMessage to content blocks for Anthropic SDK.
  * Returns array of content blocks (may contain multiple for complex messages).
- * Handles tool call/result pairing via id fields for proper SDK compatibility.
+ * Call/result pairing is handled before this point by Anthropic context projection.
  */
 function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock[] {
   // Handle TransientGuide messages as text content
@@ -829,20 +1028,14 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
 
   // Handle function calls
   if (chatMsg.type === 'func_call_msg') {
-    const parsed: unknown = JSON.parse(chatMsg.arguments || '{}');
-    if (!isRecord(parsed) || Array.isArray(parsed)) {
-      throw new Error('Invalid func_call_msg.arguments: expected JSON object');
-    }
     const block: AnthropicContentBlock = {
-      type: 'tool_use',
-      id: chatMsg.id,
-      name: chatMsg.name,
-      input: parsed,
+      type: 'text',
+      text: formatFunctionCallForAnthropicTextContext({ call: chatMsg }),
     };
     return [block];
   }
 
-  // Handle function results (LLM-native tool calls)
+  // Fallback for direct conversion; normal persisted call/result pairs are projected as text first.
   if (chatMsg.type === 'func_result_msg') {
     const block: AnthropicContentBlock = {
       type: 'tool_result',

@@ -34,6 +34,10 @@ function isAnthropicToolResultBlock(
   return isRecord(value) && value.type === 'tool_result' && typeof value.content === 'string';
 }
 
+function isAnthropicTextBlock(value: unknown): value is { type: 'text'; text: string } {
+  return isRecord(value) && value.type === 'text' && typeof value.text === 'string';
+}
+
 function requireOpenAiToolOutputItem(
   value: ResponseInputItem | undefined,
 ): ResponseInputItem & { type: 'function_call_output'; output: string } {
@@ -59,7 +63,7 @@ function requireAnthropicUserToolTurn(
   value: Awaited<ReturnType<typeof buildAnthropicRequestMessagesWrapper>>[number] | undefined,
 ): { role: 'user'; content: ReadonlyArray<unknown> } {
   if (value === undefined || value.role !== 'user' || !Array.isArray(value.content)) {
-    throw new Error('Expected anthropic user tool_result turn');
+    throw new Error('Expected anthropic user function-result turn');
   }
   return value as { role: 'user'; content: ReadonlyArray<unknown> };
 }
@@ -92,10 +96,14 @@ function getAnthropicToolOutput(
   const toolResult = content.find((block): block is { type: 'tool_result'; content: string } =>
     isAnthropicToolResultBlock(block),
   );
-  if (toolResult === undefined) {
-    throw new Error('Expected tool_result block');
+  if (toolResult !== undefined) {
+    return toolResult.content;
   }
-  return toolResult.content;
+  const textBlock = content.find(isAnthropicTextBlock);
+  if (textBlock === undefined) {
+    throw new Error('Expected Anthropic function result text block');
+  }
+  return textBlock.text;
 }
 
 async function verifyRipgrepYamlTruncationMetadata(): Promise<void> {
