@@ -34,6 +34,12 @@ async function main(): Promise<void> {
     'zh skills manual should recommend app packaging for script-backed public skills',
   );
   assert.ok(
+    zh.includes('.minds/skills/linkable') &&
+      zh.includes('team_mgmt_rm_symlink') &&
+      zh.includes('copy-on-write'),
+    'zh skills manual should document broad symlink distribution and personal COW semantics',
+  );
+  assert.ok(
     zh.includes('Anthropic subagent') && zh.includes('GitHub `copilot-instructions.md`'),
     'zh skills manual should include migration guidance for official public formats',
   );
@@ -50,6 +56,12 @@ async function main(): Promise<void> {
   assert.ok(
     en.includes('Dominds app') && en.includes('scripts / Bash allowlists / MCP'),
     'en skills manual should recommend app packaging for script-backed public skills',
+  );
+  assert.ok(
+    en.includes('.minds/skills/linkable') &&
+      en.includes('team_mgmt_rm_symlink') &&
+      en.includes('copy-on-write'),
+    'en skills manual should document broad symlink distribution and personal COW semantics',
   );
   assert.ok(
     en.includes('Anthropic subagent') && en.includes('GitHub `copilot-instructions.md`'),

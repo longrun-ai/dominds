@@ -98,6 +98,7 @@
     "list-dir-output-truncation": "tsx toolsets/list-dir-output-truncation.ts",
     "team-mgmt-output-truncation": "tsx toolsets/team-mgmt-output-truncation.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
+    "skills-tools": "tsx toolsets/skills-tools.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",
     "reminder-context-health-continuation": "tsx reminders/context-health-continuation.ts",
     "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",

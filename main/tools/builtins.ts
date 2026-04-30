@@ -58,6 +58,12 @@ import {
   ripgrepSearchTool,
   ripgrepSnippetsTool,
 } from './ripgrep';
+import {
+  addPersonalSkillTool,
+  dropPersonalSkillTool,
+  importPersonalSkillFromFileTool,
+  replacePersonalSkillTool,
+} from './skills';
 import { teamMgmtTools } from './team_mgmt';
 import {
   applyFileModificationTool,
@@ -152,6 +158,12 @@ registerTool(dropSharedMemoryTool);
 registerTool(replaceSharedMemoryTool);
 registerTool(clearSharedMemoryTool);
 
+// Skill tools
+registerTool(addPersonalSkillTool);
+registerTool(importPersonalSkillFromFileTool);
+registerTool(replacePersonalSkillTool);
+registerTool(dropPersonalSkillTool);
+
 // Control tools
 registerTool(addReminderTool);
 registerTool(deleteReminderTool);
@@ -198,6 +210,21 @@ setToolsetMeta('team_memory', {
   },
   promptFilesI18n: promptFilesFor('team_memory'),
   manualSpec: manualSpecFor('team_memory'),
+});
+registerToolset('skills', [
+  addPersonalSkillTool,
+  importPersonalSkillFromFileTool,
+  replacePersonalSkillTool,
+  dropPersonalSkillTool,
+]);
+setToolsetMeta('skills', {
+  source: 'dominds',
+  descriptionI18n: {
+    en: 'Personal skills for this agent: create, update, and delete reusable prompt skills under your own skill store.',
+    zh: '当前智能体的个人 skills：在自己的 skill 仓库中创建、更新、删除可复用提示技能。',
+  },
+  promptFilesI18n: promptFilesFor('skills'),
+  manualSpec: manualSpecFor('skills'),
 });
 registerToolset('control', [
   addReminderTool,

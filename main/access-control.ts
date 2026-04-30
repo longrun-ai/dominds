@@ -71,6 +71,16 @@ function hasFileExtAccess(
   return false;
 }
 
+function resolveRtwsRelativePath(targetPath: string): string | null {
+  const cwd = path.resolve(process.cwd());
+  const resolvedPath = path.resolve(cwd, targetPath);
+  const relativePath = path.relative(cwd, resolvedPath);
+  if (relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))) {
+    return relativePath;
+  }
+  return null;
+}
+
 /**
  * Directory-specific pattern matching for access control.
  * This function determines if a target path (file or directory) should be controlled
@@ -201,17 +211,9 @@ export function matchesPattern(targetPath: string, dirPattern: string): boolean 
  * 6. If whitelist patterns exist but none match, deny access
  */
 export function hasReadAccess(member: Team.Member, targetPath: string): boolean {
-  // Get resolved relative path from rtws root
-  const cwd = path.resolve(process.cwd());
-  const resolvedPath = path.resolve(cwd, targetPath);
-
   // Ensure path is within rtws
-  if (!resolvedPath.startsWith(cwd)) {
-    return false;
-  }
-
-  // Get relative path from rtws root
-  const relativePath = path.relative(cwd, resolvedPath);
+  const relativePath = resolveRtwsRelativePath(targetPath);
+  if (relativePath === null) return false;
 
   // Taskdocs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
@@ -279,17 +281,9 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
  * 6. If whitelist patterns exist but none match, deny access
  */
 export function hasWriteAccess(member: Team.Member, targetPath: string): boolean {
-  // Get resolved relative path from rtws root
-  const cwd = path.resolve(process.cwd());
-  const resolvedPath = path.resolve(cwd, targetPath);
-
   // Ensure path is within rtws
-  if (!resolvedPath.startsWith(cwd)) {
-    return false;
-  }
-
-  // Get relative path from rtws root
-  const relativePath = path.relative(cwd, resolvedPath);
+  const relativePath = resolveRtwsRelativePath(targetPath);
+  if (relativePath === null) return false;
 
   // Taskdocs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {

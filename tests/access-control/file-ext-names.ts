@@ -58,6 +58,14 @@ async function run(): Promise<void> {
 
     assert.equal(hasReadAccess(unrestricted, '../outside.md'), false);
     assert.equal(hasWriteAccess(unrestricted, '../outside.md'), false);
+    assert.equal(
+      hasReadAccess(unrestricted, path.join('..', `${path.basename(tmpRoot)}-sibling`, 'x.md')),
+      false,
+    );
+    assert.equal(
+      hasWriteAccess(unrestricted, path.join('..', `${path.basename(tmpRoot)}-sibling`, 'x.md')),
+      false,
+    );
 
     console.log('access-control file ext names tests: ok');
   } finally {
