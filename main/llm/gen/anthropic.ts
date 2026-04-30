@@ -1981,8 +1981,61 @@ async function emitTextWithVolcanoToolUseQuirk(args: {
   return { sayingStarted, thinkingStarted };
 }
 
-async function flushPendingVolcanoTextToolUseBlocks(args: {
-  pendingBlocks: Map<number, string>;
+async function emitThinkingWithVolcanoToolUseQuirk(args: {
+  text: string;
+  receiver: LlmStreamReceiver;
+  quirks: AnthropicStreamConsumeQuirks;
+  sayingStarted: boolean;
+  thinkingStarted: boolean;
+  genseq?: number;
+  blockIndex?: number;
+}): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
+  let sayingStarted = args.sayingStarted;
+  let thinkingStarted = args.thinkingStarted;
+  const parts = args.quirks.convertVolcanoTextToolUseBlocks
+    ? splitVolcanoTextToolUseParts({
+        text: args.text,
+        genseq: args.genseq,
+        blockIndex: args.blockIndex,
+      })
+    : [{ kind: 'text' as const, text: args.text }];
+
+  for (const part of parts) {
+    if (part.kind === 'text') {
+      if (part.text.length === 0) continue;
+      if (sayingStarted) {
+        log.error(
+          'ANTH stream ordering violation: received thinking_delta while saying stream still active',
+          new Error('anthropic_stream_order_violation'),
+        );
+        await args.receiver.sayingFinish();
+        sayingStarted = false;
+      }
+      if (!thinkingStarted) {
+        thinkingStarted = true;
+        await args.receiver.thinkingStart();
+      }
+      await args.receiver.thinkingChunk(part.text);
+      continue;
+    }
+
+    if (thinkingStarted) {
+      await args.receiver.thinkingFinish();
+      thinkingStarted = false;
+    }
+    log.warn('ANTH quirk converted thinking-rendered tool use to function call', undefined, {
+      quirk: VOLCANO_TOOL_USE_API_QUIRK,
+      callId: part.id,
+      toolName: part.name,
+    });
+    await args.receiver.funcCall(part.id, part.name, part.rawArgumentsText);
+  }
+  return { sayingStarted, thinkingStarted };
+}
+
+async function flushPendingVolcanoToolUseBlocks(args: {
+  textBlocks: Map<number, string>;
+  thinkingBlocks: Map<number, string>;
   receiver: LlmStreamReceiver;
   quirks: AnthropicStreamConsumeQuirks;
   sayingStarted: boolean;
@@ -1991,21 +2044,53 @@ async function flushPendingVolcanoTextToolUseBlocks(args: {
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
-  const pendingEntries = [...args.pendingBlocks.entries()];
-  args.pendingBlocks.clear();
-  for (const [blockIndex, pendingText] of pendingEntries) {
-    const updated = await emitTextWithVolcanoToolUseQuirk({
-      text: pendingText,
-      receiver: args.receiver,
-      quirks: args.quirks,
-      sayingStarted,
-      thinkingStarted,
-      genseq: args.genseq,
-      blockIndex,
-    });
+  const blockIndexes = new Set<number>([...args.textBlocks.keys(), ...args.thinkingBlocks.keys()]);
+  for (const blockIndex of [...blockIndexes].sort((a, b) => a - b)) {
+    const pendingText = args.textBlocks.get(blockIndex);
+    const pendingThinking = args.thinkingBlocks.get(blockIndex);
+    if (pendingText !== undefined && pendingThinking !== undefined) {
+      throw new Error(
+        `ANTH invariant violation: block ${String(blockIndex)} has both pending text and thinking`,
+      );
+    }
+    if (pendingText === undefined && pendingThinking === undefined) {
+      throw new Error(
+        `ANTH invariant violation: block ${String(blockIndex)} has no pending text or thinking`,
+      );
+    }
+
+    let updated: { sayingStarted: boolean; thinkingStarted: boolean };
+    if (pendingText !== undefined) {
+      updated = await emitTextWithVolcanoToolUseQuirk({
+        text: pendingText,
+        receiver: args.receiver,
+        quirks: args.quirks,
+        sayingStarted,
+        thinkingStarted,
+        genseq: args.genseq,
+        blockIndex,
+      });
+    } else {
+      if (pendingThinking === undefined) {
+        throw new Error(
+          `ANTH invariant violation: block ${String(blockIndex)} has no pending thinking`,
+        );
+      }
+      updated = await emitThinkingWithVolcanoToolUseQuirk({
+        text: pendingThinking,
+        receiver: args.receiver,
+        quirks: args.quirks,
+        sayingStarted,
+        thinkingStarted,
+        genseq: args.genseq,
+        blockIndex,
+      });
+    }
     sayingStarted = updated.sayingStarted;
     thinkingStarted = updated.thinkingStarted;
   }
+  args.textBlocks.clear();
+  args.thinkingBlocks.clear();
   return { sayingStarted, thinkingStarted };
 }
 
@@ -2279,6 +2364,7 @@ export async function consumeAnthropicStream(
   const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
   const activeToolUses = new Map<number, ActiveToolUse>();
   const pendingVolcanoTextToolUseBlocks = new Map<number, string>();
+  const pendingVolcanoThinkingToolUseBlocks = new Map<number, string>();
   let sayingStarted = false;
   let thinkingStarted = false;
   let messageStarted = false;
@@ -2307,6 +2393,7 @@ export async function consumeAnthropicStream(
           );
           activeToolUses.delete(blockIndex);
           pendingVolcanoTextToolUseBlocks.delete(blockIndex);
+          pendingVolcanoThinkingToolUseBlocks.delete(blockIndex);
         }
         activeContentBlocks.set(blockIndex, contentBlock);
 
@@ -2320,6 +2407,8 @@ export async function consumeAnthropicStream(
           });
         } else if (contentBlock.type === 'text' && quirks.convertVolcanoTextToolUseBlocks) {
           pendingVolcanoTextToolUseBlocks.set(blockIndex, contentBlock.text ?? '');
+        } else if (contentBlock.type === 'thinking' && quirks.convertVolcanoTextToolUseBlocks) {
+          pendingVolcanoThinkingToolUseBlocks.set(blockIndex, contentBlock.thinking ?? '');
         }
 
         break;
@@ -2367,20 +2456,25 @@ export async function consumeAnthropicStream(
         } else if (delta.type === 'thinking_delta') {
           const thinkingDelta = delta.thinking ?? '';
           if (thinkingDelta) {
-            if (sayingStarted) {
-              log.error(
-                'ANTH stream ordering violation: received thinking_delta while saying stream still active',
-                new Error('anthropic_stream_order_violation'),
+            const pendingThinking = pendingVolcanoThinkingToolUseBlocks.get(blockIndex);
+            if (pendingThinking !== undefined) {
+              pendingVolcanoThinkingToolUseBlocks.set(
+                blockIndex,
+                `${pendingThinking}${thinkingDelta}`,
               );
-              await receiver.sayingFinish();
-              sayingStarted = false;
+            } else {
+              const updated = await emitThinkingWithVolcanoToolUseQuirk({
+                text: thinkingDelta,
+                receiver,
+                quirks,
+                sayingStarted,
+                thinkingStarted,
+                genseq,
+                blockIndex,
+              });
+              sayingStarted = updated.sayingStarted;
+              thinkingStarted = updated.thinkingStarted;
             }
-            // Same rationale as text blocks: close thinking only on `message_stop`.
-            if (!thinkingStarted) {
-              thinkingStarted = true;
-              await receiver.thinkingStart();
-            }
-            await receiver.thinkingChunk(thinkingDelta);
           }
         } else if (delta.type === 'citations_delta') {
           // Handle CitationsDelta - typically just logging for now
@@ -2416,11 +2510,6 @@ export async function consumeAnthropicStream(
         // Close thinking as soon as the thinking block ends so downstream UI/persistence reflects
         // strict generation order (thinking first, then saying). This also avoids emitting
         // thinking_finish after the main message has already completed.
-        if (activeContentBlock.type === 'thinking' && thinkingStarted) {
-          await receiver.thinkingFinish();
-          thinkingStarted = false;
-        }
-
         if (activeContentBlock.type === 'tool_use') {
           const activeToolUse = activeToolUses.get(blockIndex);
           if (!activeToolUse) {
@@ -2470,6 +2559,26 @@ export async function consumeAnthropicStream(
             sayingStarted = updated.sayingStarted;
             thinkingStarted = updated.thinkingStarted;
             pendingVolcanoTextToolUseBlocks.delete(blockIndex);
+          }
+        } else if (activeContentBlock.type === 'thinking') {
+          const pendingThinking = pendingVolcanoThinkingToolUseBlocks.get(blockIndex);
+          if (pendingThinking !== undefined) {
+            const updated = await emitThinkingWithVolcanoToolUseQuirk({
+              text: pendingThinking,
+              receiver,
+              quirks,
+              sayingStarted,
+              thinkingStarted,
+              genseq,
+              blockIndex,
+            });
+            sayingStarted = updated.sayingStarted;
+            thinkingStarted = updated.thinkingStarted;
+            pendingVolcanoThinkingToolUseBlocks.delete(blockIndex);
+          }
+          if (thinkingStarted) {
+            await receiver.thinkingFinish();
+            thinkingStarted = false;
           }
         }
 
@@ -2540,8 +2649,9 @@ export async function consumeAnthropicStream(
 
       case 'message_stop': {
         messageStopped = true;
-        const updated = await flushPendingVolcanoTextToolUseBlocks({
-          pendingBlocks: pendingVolcanoTextToolUseBlocks,
+        const updated = await flushPendingVolcanoToolUseBlocks({
+          textBlocks: pendingVolcanoTextToolUseBlocks,
+          thinkingBlocks: pendingVolcanoThinkingToolUseBlocks,
           receiver,
           quirks,
           sayingStarted,
@@ -2585,6 +2695,7 @@ export async function consumeAnthropicStream(
     activeContentBlocks.size > 0 ||
     activeToolUses.size > 0 ||
     pendingVolcanoTextToolUseBlocks.size > 0 ||
+    pendingVolcanoThinkingToolUseBlocks.size > 0 ||
     thinkingStarted ||
     sayingStarted
   ) {

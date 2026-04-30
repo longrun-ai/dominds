@@ -138,8 +138,11 @@ export class DomindsDialogContainer extends HTMLElement {
   // DOM references
   private generationBubble?: HTMLElement;
   private thinkingSection?: HTMLElement;
+  private activeThinkingMarkdownSegment?: DomindsMarkdownSection;
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
+  private lastCompletedThinkingSection?: HTMLElement;
+  private lastCompletedThinkingGenseq?: number;
   private pendingThinkingChunkBuffer = '';
   private pendingThinkingChunkFlushTimer: number | null = null;
   private pendingThinkingChunkFlushRaf: number | null = null;
@@ -1118,8 +1121,11 @@ export class DomindsDialogContainer extends HTMLElement {
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
+    this.activeThinkingMarkdownSegment = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
+    this.lastCompletedThinkingSection = undefined;
+    this.lastCompletedThinkingGenseq = undefined;
     this.currentCourse = course;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
@@ -1156,8 +1162,11 @@ export class DomindsDialogContainer extends HTMLElement {
     this.displayState = null;
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
+    this.activeThinkingMarkdownSegment = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
+    this.lastCompletedThinkingSection = undefined;
+    this.lastCompletedThinkingGenseq = undefined;
     this.currentCourse = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
@@ -1223,12 +1232,10 @@ export class DomindsDialogContainer extends HTMLElement {
       this.pendingThinkingChunkBuffer = '';
       return;
     }
-    const contentEl = section.querySelector('.thinking-content') as HTMLElement | null;
-    if (!contentEl) {
-      this.pendingThinkingChunkBuffer = '';
-      return;
-    }
-    contentEl.textContent += this.pendingThinkingChunkBuffer;
+    const markdownSection =
+      this.activeThinkingMarkdownSegment ?? this.createThinkingMarkdownSegment(section);
+    this.activeThinkingMarkdownSegment = markdownSection;
+    markdownSection.appendChunk(this.pendingThinkingChunkBuffer);
     this.pendingThinkingChunkBuffer = '';
     this.scrollToBottom();
   }
@@ -1283,13 +1290,16 @@ export class DomindsDialogContainer extends HTMLElement {
     }, STREAM_CHUNK_FLUSH_INTERVAL_MS);
   }
 
-  private completeThinkingSection(): void {
+  private completeThinkingSection(genseq: number): void {
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection) {
       console.warn('thinking_finish_evt received without active thinking section, skipping');
       return;
     }
     thinkingSection.classList.add('completed');
+    this.lastCompletedThinkingSection = thinkingSection;
+    this.lastCompletedThinkingGenseq = genseq;
+    this.completeActiveThinkingMarkdownSegment();
     this.thinkingSection = undefined;
   }
 
@@ -1302,13 +1312,70 @@ export class DomindsDialogContainer extends HTMLElement {
     this.markdownSection = undefined;
   }
 
-  private requestImmediateThinkingChunkFlushForFinish(): boolean {
+  private completeActiveThinkingMarkdownSegment(): void {
+    if (!this.activeThinkingMarkdownSegment) return;
+    this.activeThinkingMarkdownSegment.classList.add('completed');
+    this.activeThinkingMarkdownSegment = undefined;
+  }
+
+  private closeActiveThinkingMarkdownSegment(genseq: number): void {
+    const activeThinkingSection = this.thinkingSection;
+    if (
+      !activeThinkingSection ||
+      activeThinkingSection.getAttribute('data-genseq') !== String(genseq)
+    ) {
+      return;
+    }
+    if (this.pendingThinkingChunkBuffer.length > 0) {
+      this.flushPendingThinkingChunks();
+    }
+    this.completeActiveThinkingMarkdownSegment();
+  }
+
+  private requestImmediateThinkingChunkFlushForFinish(genseq: number): boolean {
     this.clearPendingThinkingChunkFlushTimer();
     if (this.pendingThinkingChunkBuffer.length < 1) return false;
     this.clearPendingThinkingChunkFlushRaf();
     this.flushPendingThinkingChunks();
-    this.completeThinkingSection();
+    this.completeThinkingSection(genseq);
     return true;
+  }
+
+  private clearLastCompletedThinkingSection(): void {
+    this.lastCompletedThinkingSection = undefined;
+    this.lastCompletedThinkingGenseq = undefined;
+  }
+
+  private getThinkingContentElement(thinkingSection: HTMLElement): HTMLElement {
+    const contentEl = thinkingSection.querySelector('.thinking-content');
+    if (!(contentEl instanceof HTMLElement)) {
+      throw new Error('thinking-section missing thinking-content');
+    }
+    return contentEl;
+  }
+
+  private getFuncCallAppendTarget(genseq: number, bubble: HTMLElement): HTMLElement {
+    const activeThinkingSection = this.thinkingSection;
+    if (
+      activeThinkingSection &&
+      activeThinkingSection.getAttribute('data-genseq') === String(genseq)
+    ) {
+      this.closeActiveThinkingMarkdownSegment(genseq);
+      return this.getThinkingContentElement(activeThinkingSection);
+    }
+
+    const completedThinkingSection = this.lastCompletedThinkingSection;
+    if (
+      completedThinkingSection &&
+      completedThinkingSection.isConnected &&
+      this.lastCompletedThinkingGenseq === genseq &&
+      completedThinkingSection.closest('.generation-bubble') === bubble
+    ) {
+      return this.getThinkingContentElement(completedThinkingSection);
+    }
+
+    this.clearLastCompletedThinkingSection();
+    return (bubble.querySelector('.bubble-body') as HTMLElement | null) ?? bubble;
   }
 
   private requestImmediateMarkdownChunkFlushForFinish(): boolean {
@@ -1688,8 +1755,10 @@ export class DomindsDialogContainer extends HTMLElement {
       existingBubble.classList.add('completed');
       existingBubble.setAttribute('data-finalized', 'true');
       this.thinkingSection = undefined;
+      this.activeThinkingMarkdownSegment = undefined;
       this.markdownSection = undefined;
       this.callingSection = undefined;
+      this.clearLastCompletedThinkingSection();
       this.generationBubble = undefined;
     };
 
@@ -2044,7 +2113,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.flushPendingThinkingChunks();
       this.flushPendingMarkdownChunks();
       if (this.thinkingSection) {
-        this.completeThinkingSection();
+        this.completeThinkingSection(seq);
       }
       if (this.markdownSection) {
         this.completeMarkdownSection();
@@ -2055,8 +2124,10 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     if (finalizingActiveBubble) {
       this.thinkingSection = undefined;
+      this.activeThinkingMarkdownSegment = undefined;
       this.markdownSection = undefined;
       this.callingSection = undefined;
+      this.clearLastCompletedThinkingSection();
       this.generationBubble = undefined;
       // Clear previousDialog since we've completed the generation for that dialog
       this.previousDialog = undefined;
@@ -2081,8 +2152,10 @@ export class DomindsDialogContainer extends HTMLElement {
       if (discardingActiveBubble) {
         this.generationBubble = targetBubble;
         this.thinkingSection = undefined;
+        this.activeThinkingMarkdownSegment = undefined;
         this.markdownSection = undefined;
         this.callingSection = undefined;
+        this.clearLastCompletedThinkingSection();
       }
     }
 
@@ -2139,15 +2212,29 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     if (this.thinkingSection) {
-      console.error(
+      this.handleProtocolError(
         'Protocol error: thinking_start_evt while a thinking section is already active',
       );
+      return;
     }
 
-    const thinkingSection = this.createThinkingSection();
-    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
-    (body || bubble).appendChild(thinkingSection);
+    const existingSection = this.lastCompletedThinkingSection;
+    const thinkingSection =
+      existingSection &&
+      existingSection.isConnected &&
+      this.lastCompletedThinkingGenseq === genseq &&
+      existingSection.closest('.generation-bubble') === bubble
+        ? existingSection
+        : this.createThinkingSection();
+    if (!thinkingSection.isConnected) {
+      const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
+      (body || bubble).appendChild(thinkingSection);
+    }
+    thinkingSection.classList.remove('completed');
+    thinkingSection.setAttribute('data-genseq', String(genseq));
     this.thinkingSection = thinkingSection;
+    this.activeThinkingMarkdownSegment = this.createThinkingMarkdownSegment(thinkingSection);
+    this.clearLastCompletedThinkingSection();
     this.pendingThinkingChunkBuffer = '';
     this.clearPendingThinkingChunkFlushTimer();
     this.clearPendingThinkingChunkFlushRaf();
@@ -2199,8 +2286,8 @@ export class DomindsDialogContainer extends HTMLElement {
       });
       return;
     }
-    if (this.requestImmediateThinkingChunkFlushForFinish()) return;
-    this.completeThinkingSection();
+    if (this.requestImmediateThinkingChunkFlushForFinish(genseq)) return;
+    this.completeThinkingSection(genseq);
   }
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
@@ -2213,11 +2300,14 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     if (this.markdownSection) {
-      console.error(
+      this.handleProtocolError(
         'Protocol error: markdown_start_evt while a markdown section is already active',
       );
+      return;
     }
     // Create and append markdown section directly
+    this.closeActiveThinkingMarkdownSegment(genseq);
+    this.clearLastCompletedThinkingSection();
     const markdownSection = this.createMarkdownSection();
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(markdownSection);
@@ -2325,8 +2415,8 @@ export class DomindsDialogContainer extends HTMLElement {
     // Create and append func-call section with all data at once (non-streaming mode)
     const funcCallSection = this.createFuncCallSection(funcId, funcName, argumentsStr);
     funcCallSection.setAttribute('data-genseq', String(genseq));
-    const body = bubble.querySelector('.bubble-body');
-    (body || bubble).appendChild(funcCallSection);
+    const appendTarget = this.getFuncCallAppendTarget(genseq, bubble);
+    appendTarget.appendChild(funcCallSection);
     this.setupFuncCallArgsProgressiveExpand(funcCallSection);
     this.scrollToBottom();
   }
@@ -2355,6 +2445,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     if (!section) {
+      this.closeActiveThinkingMarkdownSegment(event.genseq);
       section = this.createWebSearchSection();
       section.setAttribute('data-genseq', String(event.genseq));
       const body = bubble.querySelector('.bubble-body');
@@ -2415,6 +2506,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     if (!section) {
+      this.closeActiveThinkingMarkdownSegment(event.genseq);
       section = this.createNativeToolSection();
       section.setAttribute('data-genseq', String(event.genseq));
       const body = bubble.querySelector('.bubble-body');
@@ -3100,6 +3192,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     this.renderCallTiming(callingSection, 'pending', startedAtMs);
     callingSection.setAttribute('data-genseq', String(genseq));
+    this.closeActiveThinkingMarkdownSegment(genseq);
     (body || bubble).appendChild(callingSection);
     this.setupCallingProgressiveExpand(callingSection);
     this.callingSection = undefined;
@@ -4822,6 +4915,13 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
+  private createThinkingMarkdownSegment(thinkingSection: HTMLElement): DomindsMarkdownSection {
+    const contentEl = this.getThinkingContentElement(thinkingSection);
+    const markdownSection = this.createMarkdownSection();
+    contentEl.appendChild(markdownSection);
+    return markdownSection;
+  }
+
   // Create markdown section (inside generation bubble)
   private createMarkdownSection(): DomindsMarkdownSection {
     return new DomindsMarkdownSection();
@@ -5772,6 +5872,7 @@ export class DomindsDialogContainer extends HTMLElement {
         --markdown-body-font-size: var(--dominds-font-size-md, 11px);
         font-size: var(--markdown-body-font-size);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        white-space: normal;
         word-wrap: break-word;
         line-height: var(--dominds-line-height-dense, 1.4);
       }
@@ -5867,15 +5968,29 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: var(--dominds-font-size-md, 13px); 
       }
       
-      .thinking-content, .markdown-text-block { 
-        color: var(--dominds-fg, var(--color-fg-secondary, #475569)); 
-        white-space: pre-wrap; 
-        word-wrap: break-word;
-        margin-bottom: 3px;
+      .thinking-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
       }
 
-      .thinking-content,
-      .markdown-text-block,
+      .thinking-content > .markdown-section {
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        border-left: 0;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: visible;
+      }
+
+      .thinking-content > .markdown-section .markdown-content > :last-child {
+        margin-bottom: 0;
+      }
+
       .markdown-content,
       .markdown-content h1,
       .markdown-content h2,
@@ -5887,8 +6002,6 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .generation-bubble.generating .section-title,
-      .generation-bubble.generating .thinking-content,
-      .generation-bubble.generating .markdown-text-block,
       .generation-bubble.generating .markdown-content,
       .generation-bubble.generating .markdown-content h1,
       .generation-bubble.generating .markdown-content h2,
@@ -5904,44 +6017,35 @@ export class DomindsDialogContainer extends HTMLElement {
           );
       }
 
-      .generation-bubble.completed .section-title,
-      .generation-bubble.completed .thinking-content,
-      .generation-bubble.completed .markdown-text-block,
-      .generation-bubble.completed .markdown-content {
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .section-title,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h1,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h2,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h3,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h4,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h5,
+      :is(.generation-bubble.completed, .thinking-section.completed, .markdown-section.completed) .markdown-content h6 {
         text-shadow: none;
       }
 
-      .generation-bubble.completed .markdown-content h1,
-      .generation-bubble.completed .markdown-content h2,
-      .generation-bubble.completed .markdown-content h3,
-      .generation-bubble.completed .markdown-content h4,
-      .generation-bubble.completed .markdown-content h5,
-      .generation-bubble.completed .markdown-content h6 {
-        text-shadow: none;
-      }
-      
-      .markdown-text-block:last-child {
-        margin-bottom: 0;
+      /* Calling section styles */
+      .calling-section {
+        margin: 4px 0;
+        padding: 2px 3px 2px 6px;
+        border-radius: 6px;
+        background: var(--color-bg-tertiary, #f1f5f9);
+        border-left: 3px solid var(--color-info, #06b6d4);
+        box-sizing: border-box;
+        max-width: 100%;
       }
 
-      /* Calling section styles (nested inside markdown) */
-	      .calling-section { 
-	        margin: 4px 0; 
-	        padding: 2px 3px 2px 6px;
-	        border-radius: 6px; 
-	        background: var(--color-bg-tertiary, #f1f5f9); 
-	        border-left: 3px solid var(--color-info, #06b6d4);
-	        box-sizing: border-box;
-	        max-width: 100%;
-	      }
-
-        .calling-section.fbr {
-          border-left-color: var(--dominds-primary, var(--color-accent-primary, #007acc));
-          background: var(
-            --dominds-calling-fbr-bg,
-            color-mix(in srgb, var(--dominds-primary, #007acc) 8%, var(--color-bg-tertiary, #f1f5f9))
-          );
-        }
+      .calling-section.fbr {
+        border-left-color: var(--dominds-primary, var(--color-accent-primary, #007acc));
+        background: var(
+          --dominds-calling-fbr-bg,
+          color-mix(in srgb, var(--dominds-primary, #007acc) 8%, var(--color-bg-tertiary, #f1f5f9))
+        );
+      }
       
       .calling-header {
         display: flex;
@@ -6216,7 +6320,7 @@ export class DomindsDialogContainer extends HTMLElement {
         );
       }
 
-      /* Function call section styles (nested inside markdown) - non-streaming mode */
+      /* Function call section styles - non-streaming mode */
       .func-call-section {
         margin: 4px 0;
         padding: 2px 3px 2px 6px;
@@ -6289,6 +6393,11 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .func-call-result-wrap {
         margin-top: 3px;
+      }
+
+      .thinking-content > .func-call-section {
+        margin-top: 0;
+        margin-bottom: 0;
       }
 
       .func-call-result {
@@ -6495,7 +6604,7 @@ export class DomindsDialogContainer extends HTMLElement {
         font-family: inherit;
       }
 
-      /* Code block section styles (nested inside markdown) */
+      /* Code block section styles */
       .codeblock-section { 
         margin: 0; 
         border-radius: 6px; 

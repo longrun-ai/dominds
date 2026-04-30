@@ -342,6 +342,86 @@ async function main() {
     `Expected message_stop flushed call id, got ${messageStopFlushToolUseCalls[0]?.id ?? ''}`,
   );
 
+  const messageStopMixedFlushEventsSeen: string[] = [];
+  async function* mixedTextThinkingWithoutBlockStopEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'thinking_delta',
+        thinking:
+          '思考先行\n<seed:tool_call><function name="mind_more"><parameter name="selector" string="true">progress</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 1,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 1,
+      delta: { type: 'text_delta', text: '正文随后' },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    mixedTextThinkingWithoutBlockStopEvents(),
+    {
+      ...emptyToolReceiver,
+      thinkingStart: async () => {
+        messageStopMixedFlushEventsSeen.push('thinkingStart');
+      },
+      thinkingChunk: async (chunk: string) => {
+        messageStopMixedFlushEventsSeen.push(`thinking:${chunk}`);
+      },
+      thinkingFinish: async () => {
+        messageStopMixedFlushEventsSeen.push('thinkingFinish');
+      },
+      sayingStart: async () => {
+        messageStopMixedFlushEventsSeen.push('sayingStart');
+      },
+      sayingChunk: async (chunk: string) => {
+        messageStopMixedFlushEventsSeen.push(`saying:${chunk}`);
+      },
+      sayingFinish: async () => {
+        messageStopMixedFlushEventsSeen.push('sayingFinish');
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        messageStopMixedFlushEventsSeen.push(`func:${callId}:${name}:${args}`);
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 194,
+    },
+  );
+  assert(
+    messageStopMixedFlushEventsSeen.length === 7 &&
+      messageStopMixedFlushEventsSeen[0] === 'thinkingStart' &&
+      messageStopMixedFlushEventsSeen[1] === 'thinking:思考先行\n' &&
+      messageStopMixedFlushEventsSeen[2] === 'thinkingFinish' &&
+      messageStopMixedFlushEventsSeen[3]?.startsWith('func:call_volcano_seed_g194_') === true &&
+      messageStopMixedFlushEventsSeen[3]?.endsWith(':mind_more:{"selector":"progress"}') === true &&
+      messageStopMixedFlushEventsSeen[4] === 'sayingStart' &&
+      messageStopMixedFlushEventsSeen[5] === 'saying:正文随后' &&
+      messageStopMixedFlushEventsSeen[6] === 'sayingFinish',
+    `Expected message_stop mixed flush to preserve block order, got ${JSON.stringify(messageStopMixedFlushEventsSeen)}`,
+  );
+
   const textAroundToolUseEventsSeen: string[] = [];
   async function* textAroundToolUseEvents(): AsyncIterable<MessageStreamEvent> {
     yield {
@@ -578,6 +658,140 @@ async function main() {
   assert(
     seedMultiBlockToolUseCalls.every((call) => call.id.startsWith('call_volcano_seed_g185_')),
     `Expected all multi-block seed call ids to include genseq 185`,
+  );
+
+  const seedThinkingToolUseEventsSeen: string[] = [];
+  async function* seedThinkingToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'thinking_delta',
+        thinking:
+          '让我先更新差遣牒的 progress 章节。\n' +
+          '<seed:tool_call><function name="mind_more"><parameter name="items" string="false">["- 2026-04-30 新增测试：read_self_monitoring_main_window_console_evidence (成功)"]</parameter><parameter name="sep" string="true">\\n</parameter><parameter name="selector" string="true">progress</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    seedThinkingToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      thinkingStart: async () => {
+        seedThinkingToolUseEventsSeen.push('thinkingStart');
+      },
+      thinkingChunk: async (chunk: string) => {
+        seedThinkingToolUseEventsSeen.push(`thinking:${chunk}`);
+      },
+      thinkingFinish: async () => {
+        seedThinkingToolUseEventsSeen.push('thinkingFinish');
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        seedThinkingToolUseEventsSeen.push(`func:${callId}:${name}:${args}`);
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 192,
+    },
+  );
+  assert(
+    seedThinkingToolUseEventsSeen.length === 4 &&
+      seedThinkingToolUseEventsSeen[0] === 'thinkingStart' &&
+      seedThinkingToolUseEventsSeen[1] === 'thinking:让我先更新差遣牒的 progress 章节。\n' &&
+      seedThinkingToolUseEventsSeen[2] === 'thinkingFinish' &&
+      seedThinkingToolUseEventsSeen[3]?.startsWith('func:call_volcano_seed_g192_') === true &&
+      seedThinkingToolUseEventsSeen[3]?.endsWith(
+        ':mind_more:{"items":["- 2026-04-30 新增测试：read_self_monitoring_main_window_console_evidence (成功)"],"sep":"\\\\n","selector":"progress"}',
+      ) === true,
+    `Expected thinking seed tool use to become function call without leaking metadata, got ${JSON.stringify(seedThinkingToolUseEventsSeen)}`,
+  );
+
+  const splitSeedThinkingToolUseEventsSeen: string[] = [];
+  async function* splitSeedThinkingToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' },
+    } as unknown as MessageStreamEvent;
+    for (const thinking of [
+      '先记录进度。\n<seed:tool_call><function name="mind_more"><parameter name="items" string="false">["split',
+      '-delta"]</parameter><parameter name="selector" string="true">progress</parameter></function></seed:tool_call>',
+      '\n继续思考。',
+    ]) {
+      yield {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'thinking_delta',
+          thinking,
+        },
+      } as unknown as MessageStreamEvent;
+    }
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    splitSeedThinkingToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      thinkingStart: async () => {
+        splitSeedThinkingToolUseEventsSeen.push('thinkingStart');
+      },
+      thinkingChunk: async (chunk: string) => {
+        splitSeedThinkingToolUseEventsSeen.push(`thinking:${chunk}`);
+      },
+      thinkingFinish: async () => {
+        splitSeedThinkingToolUseEventsSeen.push('thinkingFinish');
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        splitSeedThinkingToolUseEventsSeen.push(`func:${callId}:${name}:${args}`);
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 193,
+    },
+  );
+  assert(
+    splitSeedThinkingToolUseEventsSeen[0] === 'thinkingStart' &&
+      splitSeedThinkingToolUseEventsSeen[1] === 'thinking:先记录进度。\n' &&
+      splitSeedThinkingToolUseEventsSeen[2] === 'thinkingFinish' &&
+      splitSeedThinkingToolUseEventsSeen[4] === 'thinkingStart',
+    `Expected split thinking seed tool use to preserve ordered thinking/tool/thinking events, got ${JSON.stringify(splitSeedThinkingToolUseEventsSeen)}`,
+  );
+  assert(
+    splitSeedThinkingToolUseEventsSeen.length === 7 &&
+      splitSeedThinkingToolUseEventsSeen[3]?.startsWith('func:call_volcano_seed_g193_') === true &&
+      splitSeedThinkingToolUseEventsSeen[3]?.endsWith(
+        ':mind_more:{"items":["split-delta"],"selector":"progress"}',
+      ) === true &&
+      splitSeedThinkingToolUseEventsSeen[5] === 'thinking:\n继续思考。' &&
+      splitSeedThinkingToolUseEventsSeen[6] === 'thinkingFinish',
+    `Expected split thinking seed tool use to convert after block buffering, got ${JSON.stringify(splitSeedThinkingToolUseEventsSeen)}`,
   );
 
   const defaultsRaw = await readBuiltinDefaultsYamlRaw();
