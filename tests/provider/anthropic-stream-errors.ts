@@ -165,11 +165,32 @@ async function verifyRawSseWithoutDataFramesFailsLoudly(): Promise<void> {
   assert.match(streamErrors[0] ?? '', /without any data frames/u);
 }
 
+async function verifyInvalidGenseqFailsBeforeStreamRead(): Promise<void> {
+  const streamErrors: string[] = [];
+  let streamRead = false;
+
+  async function* events(): AsyncIterable<MessageStreamEvent> {
+    streamRead = true;
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+  }
+
+  await assert.rejects(
+    async () => consumeAnthropicStream(events(), makeReceiver(streamErrors), { genseq: 0 }),
+    /Invalid Anthropic stream genseq/u,
+  );
+  assert.equal(streamRead, false, 'expected invalid genseq to fail before reading provider stream');
+  assert.equal(streamErrors.length, 0, 'expected invalid caller genseq to avoid stream_error');
+}
+
 async function main(): Promise<void> {
   await verifyReadErrorEmitsStreamError();
   await verifyIncompleteMessageLifecycleFails();
   await verifyRawSseInvalidJsonDataFailsLoudly();
   await verifyRawSseWithoutDataFramesFailsLoudly();
+  await verifyInvalidGenseqFailsBeforeStreamRead();
   console.log('provider anthropic-stream-errors: PASS');
 }
 

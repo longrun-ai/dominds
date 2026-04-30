@@ -153,11 +153,11 @@ async function main() {
         quirkEmptyToolCalls.push({ id: callId, name, args });
       },
     },
-    undefined,
-    undefined,
     {
-      normalizeLoneClosingBraceEmptyToolInputDelta: true,
-      convertVolcanoTextToolUseBlocks: false,
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: true,
+        convertVolcanoTextToolUseBlocks: false,
+      },
     },
   );
   assert(
@@ -212,11 +212,11 @@ async function main() {
         textToolUseCalls.push({ id: callId, name, args });
       },
     },
-    undefined,
-    undefined,
     {
-      normalizeLoneClosingBraceEmptyToolInputDelta: false,
-      convertVolcanoTextToolUseBlocks: true,
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
     },
   );
   assert(
@@ -276,11 +276,11 @@ async function main() {
         malformedTextToolUseCalls.push({ id: callId, name, args });
       },
     },
-    undefined,
-    undefined,
     {
-      normalizeLoneClosingBraceEmptyToolInputDelta: false,
-      convertVolcanoTextToolUseBlocks: true,
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
     },
   );
   assert(
@@ -326,11 +326,11 @@ async function main() {
         messageStopFlushToolUseCalls.push({ id: callId, name, args });
       },
     },
-    undefined,
-    undefined,
     {
-      normalizeLoneClosingBraceEmptyToolInputDelta: false,
-      convertVolcanoTextToolUseBlocks: true,
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
     },
   );
   assert(
@@ -382,17 +382,202 @@ async function main() {
         textAroundToolUseEventsSeen.push(`func:${callId}:${name}:${args}`);
       },
     },
-    undefined,
-    undefined,
     {
-      normalizeLoneClosingBraceEmptyToolInputDelta: false,
-      convertVolcanoTextToolUseBlocks: true,
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
     },
   );
   assert(
     textAroundToolUseEventsSeen.join('|') ===
       'sayingStart|saying:before |sayingFinish|func:call_text_around:read_current_open_conversation_latest_result:{}|sayingStart|saying: after|sayingFinish',
     `Expected text/tool/text order to be preserved, got ${JSON.stringify(textAroundToolUseEventsSeen)}`,
+  );
+
+  const seedToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  const seedToolUseWords: string[] = [];
+  async function* seedRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text:
+          '看起来行号范围有问题。让我直接在文件末尾添加新的测试记录。\n' +
+          '<seed:tool_call><function name="prepare_file_append"><parameter name="path" string="true">chatgpt工具实操测试报告.md</parameter><parameter name="content" string="true">\n\n---\n\n### 测试工具 10: set_instance_window_max_parallel\n\n</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    seedRenderedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingChunk: async (chunk: string) => {
+        seedToolUseWords.push(chunk);
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        seedToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 183,
+    },
+  );
+  assert(
+    seedToolUseCalls.length === 1,
+    `Expected 1 seed-rendered tool call, got ${seedToolUseCalls.length}`,
+  );
+  assert(
+    seedToolUseCalls[0]?.id.startsWith('call_volcano_seed_g183_') === true,
+    `Expected generated volcano seed call id with genseq, got ${seedToolUseCalls[0]?.id ?? ''}`,
+  );
+  assert(
+    seedToolUseCalls[0]?.name === 'prepare_file_append',
+    `Expected seed tool name, got ${seedToolUseCalls[0]?.name ?? ''}`,
+  );
+  assert(
+    seedToolUseCalls[0]?.args ===
+      '{"path":"chatgpt工具实操测试报告.md","content":"\\n\\n---\\n\\n### 测试工具 10: set_instance_window_max_parallel\\n\\n"}',
+    `Expected seed tool args JSON, got ${seedToolUseCalls[0]?.args ?? ''}`,
+  );
+  assert(
+    seedToolUseWords.join('') === '看起来行号范围有问题。让我直接在文件末尾添加新的测试记录。\n',
+    `Expected seed metadata itself not to be emitted as saying, got ${JSON.stringify(seedToolUseWords.join(''))}`,
+  );
+
+  const seedTypedToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  async function* seedTypedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: '<seed:tool_call><function name="read_file"><parameter name="path" string="true">notes.md</parameter><parameter name="show_linenos" string="false">true</parameter><parameter name="max_lines" string="false">271</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    seedTypedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      funcCall: async (callId: string, name: string, args: string) => {
+        seedTypedToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 184,
+    },
+  );
+  assert(
+    seedTypedToolUseCalls.length === 1,
+    `Expected 1 typed seed-rendered tool call, got ${seedTypedToolUseCalls.length}`,
+  );
+  assert(
+    seedTypedToolUseCalls[0]?.args === '{"path":"notes.md","show_linenos":true,"max_lines":271}',
+    `Expected typed seed args JSON, got ${seedTypedToolUseCalls[0]?.args ?? ''}`,
+  );
+  assert(
+    seedTypedToolUseCalls[0]?.id.startsWith('call_volcano_seed_g184_') === true,
+    `Expected generated typed seed call id with genseq, got ${seedTypedToolUseCalls[0]?.id ?? ''}`,
+  );
+
+  const seedMultiBlockToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  async function* seedMultiBlockToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: '<seed:tool_call><function name="read_file"><parameter name="path" string="true">same.md</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 1,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 1,
+      delta: {
+        type: 'text_delta',
+        text: '<seed:tool_call><function name="read_file"><parameter name="path" string="true">same.md</parameter></function></seed:tool_call>',
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 1 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    seedMultiBlockToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      funcCall: async (callId: string, name: string, args: string) => {
+        seedMultiBlockToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      genseq: 185,
+    },
+  );
+  assert(
+    seedMultiBlockToolUseCalls.length === 2,
+    `Expected 2 multi-block seed tool calls, got ${seedMultiBlockToolUseCalls.length}`,
+  );
+  assert(
+    seedMultiBlockToolUseCalls[0]?.id !== seedMultiBlockToolUseCalls[1]?.id,
+    `Expected matching seed calls from distinct content blocks to get distinct call ids`,
+  );
+  assert(
+    seedMultiBlockToolUseCalls.every((call) => call.id.startsWith('call_volcano_seed_g185_')),
+    `Expected all multi-block seed call ids to include genseq 185`,
   );
 
   const defaultsRaw = await readBuiltinDefaultsYamlRaw();

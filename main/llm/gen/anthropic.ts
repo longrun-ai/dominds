@@ -15,6 +15,7 @@ import type {
   Tool,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
+import { createHash } from 'crypto';
 import { once } from 'events';
 import { createWriteStream } from 'fs';
 import fs from 'fs/promises';
@@ -71,6 +72,10 @@ const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
 const VOLCANO_TOOL_USE_API_QUIRK = 'volcano-tool-use';
 const VOLCANO_TEXT_TOOL_USE_PATTERN =
   /Function call emitted by the assistant\.\r?\nTool name:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\r?\nCall ID:\s*(call_[A-Za-z0-9_-]+)\r?\nRaw arguments, verbatim:\r?\n<raw_arguments>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/raw_arguments>/g;
+const VOLCANO_SEED_TOOL_CALL_PATTERN =
+  /<seed:tool_call>\s*<function\s+name="([A-Za-z_][A-Za-z0-9_.:-]*)">\s*([\s\S]*?)<\/function>\s*<\/seed:tool_call>/g;
+const VOLCANO_SEED_TOOL_PARAMETER_PATTERN =
+  /<parameter\s+name="([^"]+)"\s+string="(true|false)">([\s\S]*?)<\/parameter>/g;
 const ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA = {
   type: 'object',
   additionalProperties: true,
@@ -95,6 +100,13 @@ type ActiveToolUse = {
 export type AnthropicStreamConsumeQuirks = {
   normalizeLoneClosingBraceEmptyToolInputDelta: boolean;
   convertVolcanoTextToolUseBlocks: boolean;
+};
+
+export type AnthropicStreamConsumeOptions = {
+  abortSignal?: AbortSignal;
+  forcedJsonToolName?: string;
+  quirks?: AnthropicStreamConsumeQuirks;
+  genseq?: number;
 };
 
 type OfficialAnthropicThinkingConfig =
@@ -1730,29 +1742,189 @@ type VolcanoTextToolUsePart =
   | { kind: 'text'; text: string }
   | { kind: 'tool_use'; id: string; name: string; rawArgumentsText: string };
 
-function splitVolcanoTextToolUseParts(text: string): VolcanoTextToolUsePart[] {
-  const parts: VolcanoTextToolUsePart[] = [];
-  VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex = 0;
+function decodeVolcanoSeedXmlText(text: string): string {
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function createVolcanoSeedToolCallId(args: {
+  name: string;
+  rawParametersText: string;
+  textIndex: number;
+  blockIndex?: number;
+  genseq?: number;
+}): string {
+  const hash = createHash('sha256')
+    .update(args.name)
+    .update('\0')
+    .update(args.rawParametersText)
+    .update('\0')
+    .update(String(args.textIndex))
+    .update('\0')
+    .update(args.blockIndex === undefined ? '' : String(args.blockIndex))
+    .digest('hex')
+    .slice(0, 24);
+  if (args.genseq !== undefined) {
+    return `call_volcano_seed_g${String(args.genseq)}_${hash}`;
+  }
+  return `call_volcano_seed_${hash}`;
+}
+
+function assertValidAnthropicStreamGenseq(genseq: number | undefined): void {
+  if (genseq === undefined) return;
+  if (!Number.isInteger(genseq) || genseq <= 0) {
+    throw new Error(`Invalid Anthropic stream genseq for tool-call correlation: ${String(genseq)}`);
+  }
+}
+
+function parseVolcanoSeedParameterValue(args: {
+  name: string;
+  stringFlag: 'true' | 'false';
+  rawValueText: string;
+}): unknown {
+  const decoded = decodeVolcanoSeedXmlText(args.rawValueText);
+  if (args.stringFlag === 'true') return decoded;
+
+  try {
+    return JSON.parse(decoded) as unknown;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameter JSON for ${args.name}: ${message}`,
+    );
+  }
+}
+
+function parseVolcanoSeedToolArgumentsJson(rawParametersText: string): string {
+  const parameters: Record<string, unknown> = {};
   let cursor = 0;
+  VOLCANO_SEED_TOOL_PARAMETER_PATTERN.lastIndex = 0;
   for (;;) {
-    const match = VOLCANO_TEXT_TOOL_USE_PATTERN.exec(text);
+    const match = VOLCANO_SEED_TOOL_PARAMETER_PATTERN.exec(rawParametersText);
     if (!match) break;
-    const index = match.index;
+    if (rawParametersText.slice(cursor, match.index).trim().length > 0) {
+      throw new Error(
+        `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: unexpected text between parameters`,
+      );
+    }
+
+    const rawName = match[1];
+    const stringFlag = match[2];
+    const rawValueText = match[3];
+    if (rawName === undefined || stringFlag === undefined || rawValueText === undefined) {
+      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameter`);
+    }
+    if (stringFlag !== 'true' && stringFlag !== 'false') {
+      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call string flag`);
+    }
+
+    const name = decodeVolcanoSeedXmlText(rawName);
+    if (Object.prototype.hasOwnProperty.call(parameters, name)) {
+      throw new Error(
+        `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: duplicate parameter ${name}`,
+      );
+    }
+    parameters[name] = parseVolcanoSeedParameterValue({
+      name,
+      stringFlag,
+      rawValueText,
+    });
+    cursor = VOLCANO_SEED_TOOL_PARAMETER_PATTERN.lastIndex;
+  }
+
+  if (cursor === 0 && rawParametersText.trim().length > 0) {
+    throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameters`);
+  }
+  if (rawParametersText.slice(cursor).trim().length > 0) {
+    throw new Error(
+      `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: unexpected trailing parameter text`,
+    );
+  }
+
+  return JSON.stringify(parameters);
+}
+
+function splitVolcanoTextToolUseParts(args: {
+  text: string;
+  genseq?: number;
+  blockIndex?: number;
+}): VolcanoTextToolUsePart[] {
+  const parts: VolcanoTextToolUsePart[] = [];
+  const matches: Array<{
+    index: number;
+    endIndex: number;
+    id: string;
+    name: string;
+    rawArgumentsText: string;
+  }> = [];
+
+  VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex = 0;
+  for (;;) {
+    const match = VOLCANO_TEXT_TOOL_USE_PATTERN.exec(args.text);
+    if (!match) break;
     const name = match[1];
     const id = match[2];
     const rawArguments = match[3];
     if (name === undefined || id === undefined || rawArguments === undefined) {
       continue;
     }
-    if (index > cursor) {
-      parts.push({ kind: 'text', text: text.slice(cursor, index) });
-    }
-    parts.push({ kind: 'tool_use', id, name, rawArgumentsText: rawArguments });
-    cursor = VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex;
+    matches.push({
+      index: match.index,
+      endIndex: VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex,
+      id,
+      name,
+      rawArgumentsText: rawArguments,
+    });
   }
-  if (cursor === 0) return [{ kind: 'text', text }];
-  if (cursor < text.length) {
-    parts.push({ kind: 'text', text: text.slice(cursor) });
+
+  VOLCANO_SEED_TOOL_CALL_PATTERN.lastIndex = 0;
+  for (;;) {
+    const match = VOLCANO_SEED_TOOL_CALL_PATTERN.exec(args.text);
+    if (!match) break;
+    const name = match[1];
+    const rawParametersText = match[2];
+    if (name === undefined || rawParametersText === undefined) {
+      continue;
+    }
+    matches.push({
+      index: match.index,
+      endIndex: VOLCANO_SEED_TOOL_CALL_PATTERN.lastIndex,
+      id: createVolcanoSeedToolCallId({
+        name,
+        rawParametersText,
+        textIndex: match.index,
+        blockIndex: args.blockIndex,
+        genseq: args.genseq,
+      }),
+      name,
+      rawArgumentsText: parseVolcanoSeedToolArgumentsJson(rawParametersText),
+    });
+  }
+
+  matches.sort((a, b) => a.index - b.index);
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.index < cursor) {
+      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} text tool_call: overlapping blocks`);
+    }
+    if (match.index > cursor) {
+      parts.push({ kind: 'text', text: args.text.slice(cursor, match.index) });
+    }
+    parts.push({
+      kind: 'tool_use',
+      id: match.id,
+      name: match.name,
+      rawArgumentsText: match.rawArgumentsText,
+    });
+    cursor = match.endIndex;
+  }
+  if (cursor === 0) return [{ kind: 'text', text: args.text }];
+  if (cursor < args.text.length) {
+    parts.push({ kind: 'text', text: args.text.slice(cursor) });
   }
   return parts;
 }
@@ -1763,11 +1935,17 @@ async function emitTextWithVolcanoToolUseQuirk(args: {
   quirks: AnthropicStreamConsumeQuirks;
   sayingStarted: boolean;
   thinkingStarted: boolean;
+  genseq?: number;
+  blockIndex?: number;
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
   const parts = args.quirks.convertVolcanoTextToolUseBlocks
-    ? splitVolcanoTextToolUseParts(args.text)
+    ? splitVolcanoTextToolUseParts({
+        text: args.text,
+        genseq: args.genseq,
+        blockIndex: args.blockIndex,
+      })
     : [{ kind: 'text' as const, text: args.text }];
 
   for (const part of parts) {
@@ -1809,18 +1987,21 @@ async function flushPendingVolcanoTextToolUseBlocks(args: {
   quirks: AnthropicStreamConsumeQuirks;
   sayingStarted: boolean;
   thinkingStarted: boolean;
+  genseq?: number;
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
   const pendingEntries = [...args.pendingBlocks.entries()];
   args.pendingBlocks.clear();
-  for (const [, pendingText] of pendingEntries) {
+  for (const [blockIndex, pendingText] of pendingEntries) {
     const updated = await emitTextWithVolcanoToolUseQuirk({
       text: pendingText,
       receiver: args.receiver,
       quirks: args.quirks,
       sayingStarted,
       thinkingStarted,
+      genseq: args.genseq,
+      blockIndex,
     });
     sayingStarted = updated.sayingStarted;
     thinkingStarted = updated.thinkingStarted;
@@ -2085,13 +2266,15 @@ function validateReconstructedContext(messages: MessageParam[]): void {
 export async function consumeAnthropicStream(
   stream: AsyncIterable<MessageStreamEvent>,
   receiver: LlmStreamReceiver,
-  abortSignal?: AbortSignal,
-  forcedJsonToolName?: string,
-  quirks: AnthropicStreamConsumeQuirks = {
+  options: AnthropicStreamConsumeOptions = {},
+): Promise<AnthropicStreamConsumeResult> {
+  const quirks = options.quirks ?? {
     normalizeLoneClosingBraceEmptyToolInputDelta: false,
     convertVolcanoTextToolUseBlocks: false,
-  },
-): Promise<AnthropicStreamConsumeResult> {
+  };
+  const { abortSignal, forcedJsonToolName, genseq } = options;
+  assertValidAnthropicStreamGenseq(genseq);
+
   // Stream lifecycle management using SDK start/stop events
   const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
   const activeToolUses = new Map<number, ActiveToolUse>();
@@ -2174,6 +2357,8 @@ export async function consumeAnthropicStream(
                 quirks,
                 sayingStarted,
                 thinkingStarted,
+                genseq,
+                blockIndex,
               });
               sayingStarted = updated.sayingStarted;
               thinkingStarted = updated.thinkingStarted;
@@ -2279,6 +2464,8 @@ export async function consumeAnthropicStream(
               quirks,
               sayingStarted,
               thinkingStarted,
+              genseq,
+              blockIndex,
             });
             sayingStarted = updated.sayingStarted;
             thinkingStarted = updated.thinkingStarted;
@@ -2359,6 +2546,7 @@ export async function consumeAnthropicStream(
           quirks,
           sayingStarted,
           thinkingStarted,
+          genseq,
         });
         sayingStarted = updated.sayingStarted;
         thinkingStarted = updated.thinkingStarted;
@@ -2488,7 +2676,7 @@ export class AnthropicGen implements LlmGenerator {
     requestContext: LlmRequestContext,
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
-    _genseq: number,
+    genseq: number,
     abortSignal?: AbortSignal,
   ): Promise<LlmStreamResult> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
@@ -2568,13 +2756,12 @@ export class AnthropicGen implements LlmGenerator {
             requestContext,
             requestKind: 'stream',
           }).messages.stream(streamParams as unknown as MessageCreateParamsStreaming);
-    return consumeAnthropicStream(
-      stream,
-      receiver,
+    return consumeAnthropicStream(stream, receiver, {
       abortSignal,
-      forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
-      resolveAnthropicStreamConsumeQuirks(providerConfig),
-    );
+      forcedJsonToolName: forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+      quirks: resolveAnthropicStreamConsumeQuirks(providerConfig),
+      genseq,
+    });
   }
 
   async genMoreMessages(
