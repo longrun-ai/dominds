@@ -9,7 +9,10 @@ import { Team } from '../../main/team';
 import '../../main/tools/builtins';
 import { buildMcpManualSpec, buildRawMcpManualSpec } from '../../main/tools/manual/spec';
 import { registerToolset, setToolsetMeta, unregisterToolset } from '../../main/tools/registry';
-import { buildToolsetManualTools } from '../../main/tools/toolset-manual';
+import {
+  buildToolsetManualTools,
+  renderToolsetManualContent,
+} from '../../main/tools/toolset-manual';
 
 async function render(lang: 'en' | 'zh', topics: ReadonlyArray<string>): Promise<string> {
   const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });
@@ -90,11 +93,64 @@ async function main(): Promise<void> {
       'raw MCP toolsets without manual.contentFile should point to function-tool descriptions',
     );
     assert.ok(
-      !rawManual.includes('raw_lookup') && !rawManual.includes('Search query.'),
-      'raw MCP toolsets without manual.contentFile should not duplicate tool names or schema in man output',
+      rawManual.includes('raw_lookup'),
+      'raw MCP toolsets without manual.contentFile should list tool names for toolset attribution',
+    );
+    assert.ok(
+      !rawManual.includes('Search query.'),
+      'raw MCP toolsets without manual.contentFile should not duplicate tool schema in man output',
     );
   } finally {
     unregisterToolset('raw_mcp_test');
+  }
+
+  registerToolset(
+    'raw_mcp_many_tools_test',
+    Array.from({ length: 205 }, (_, index) => ({
+      type: 'func' as const,
+      name: `raw_many_${String(index).padStart(3, '0')}`,
+      description: 'Synthetic raw MCP tool.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          query: { type: 'string', description: 'Search query.' },
+        },
+      },
+      argsValidation: 'passthrough' as const,
+      async call() {
+        return { outcome: 'success' as const, content: 'ok' };
+      },
+    })),
+  );
+  setToolsetMeta('raw_mcp_many_tools_test', {
+    source: 'mcp',
+    descriptionI18n: {
+      en: 'MCP server: raw_mcp_many_tools_test',
+      zh: 'MCP 服务器：raw_mcp_many_tools_test',
+    },
+    manualSpec: buildRawMcpManualSpec(),
+  });
+  try {
+    const rendered = await renderToolsetManualContent({
+      toolsetId: 'raw_mcp_many_tools_test',
+      language: 'en',
+      topic: 'tools',
+    });
+    assert.ok(
+      rendered.includes('205 total') && rendered.includes('5 more tool(s) omitted'),
+      'raw MCP tool-name lists should stay bounded for large toolsets',
+    );
+    assert.ok(
+      rendered.includes('raw_many_000') && !rendered.includes('raw_many_204'),
+      'raw MCP bounded tool-name lists should show the head and omit overflow entries',
+    );
+    assert.ok(
+      !rendered.includes('Search query.'),
+      'raw MCP bounded tool-name lists should still avoid duplicating schemas',
+    );
+  } finally {
+    unregisterToolset('raw_mcp_many_tools_test');
   }
 
   await withTempRtws(
@@ -128,6 +184,18 @@ async function main(): Promise<void> {
         'zh mcp manual should remind team manager to confirm overall positioning with human user',
       );
       assert.ok(
+        zh.includes('工具名清单') && zh.includes('澄清归属关系'),
+        'zh mcp manual should require tool-name lists to clarify toolset attribution',
+      );
+      assert.ok(
+        zh.includes('不要复制参数 schema'),
+        'zh mcp manual should avoid duplicating MCP parameter schemas',
+      );
+      assert.ok(
+        zh.includes('当前工具名预览') && zh.includes('（无）'),
+        'zh raw mcp baseline should surface current tool-name attribution preview',
+      );
+      assert.ok(
         zh.includes('不可用时业务处置规约'),
         'zh mcp manual should require unavailable-case business handling rules',
       );
@@ -150,6 +218,19 @@ async function main(): Promise<void> {
       assert.ok(
         en.includes('confirm the overall positioning and boundaries with the human user'),
         'en mcp manual should remind team manager to confirm overall positioning with human user',
+      );
+      assert.ok(
+        en.includes('list tool names to clarify attribution') ||
+          en.includes('list tool names to make clear which tools belong to this toolset'),
+        'en mcp manual should require tool-name lists to clarify toolset attribution',
+      );
+      assert.ok(
+        en.includes('do not copy parameter schemas'),
+        'en mcp manual should avoid duplicating MCP parameter schemas',
+      );
+      assert.ok(
+        en.includes('Current tool-name preview') && en.includes('(none)'),
+        'en raw mcp baseline should surface current tool-name attribution preview',
       );
       assert.ok(
         en.includes('unavailable-case business handling rules') ||

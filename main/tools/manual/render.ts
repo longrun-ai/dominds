@@ -1,7 +1,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getToolsetMeta } from '../registry';
+import { getToolset, getToolsetMeta } from '../registry';
 import {
   DEFAULT_MANUAL_TOPICS,
   MANUAL_TOPICS,
@@ -43,6 +43,8 @@ type TopicLoadResult = {
   content: string;
 };
 
+const MAX_REGISTERED_TOOL_NAMES_IN_MANUAL = 200;
+
 export type RenderManualResult = {
   foundToolset: boolean;
   content: string;
@@ -60,6 +62,21 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
   const missingTopics: MissingTopic[] = [];
 
   for (const topic of resolvedTopics) {
+    const generatedBody = renderGeneratedTopicBody({
+      toolsetId: input.toolsetId,
+      topic,
+      language: input.language,
+      spec,
+    });
+    if (generatedBody !== null) {
+      topicSections.push({
+        topic,
+        title: getManualTopicTitle(topic, input.language, spec),
+        body: generatedBody,
+      });
+      continue;
+    }
+
     const loaded = loadTopicDoc({
       toolsetId: input.toolsetId,
       topic,
@@ -111,6 +128,60 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
       ? `**工具集手册：${input.toolsetId}**`
       : `**Toolset manual: ${input.toolsetId}**`;
   return { foundToolset: true, content: `${title}\n\n${sections.join('\n\n---\n\n')}` };
+}
+
+function renderGeneratedTopicBody(params: {
+  toolsetId: string;
+  topic: ManualTopic;
+  language: LanguageCode;
+  spec?: ManualSpec;
+}): string | null {
+  if (params.topic !== 'tools') {
+    return null;
+  }
+  const spec = params.spec;
+  if (!spec || spec.toolsTopicMode !== 'registered-tool-name-list') {
+    return null;
+  }
+  return renderRegisteredToolNameList(params.language, params.toolsetId);
+}
+
+function renderRegisteredToolNameList(language: LanguageCode, toolsetId: string): string {
+  const toolset = getToolset(toolsetId);
+  const toolNames = toolset ? toolset.map((tool) => tool.name) : [];
+  if (toolNames.length === 0) {
+    return language === 'zh'
+      ? '当前该工具集没有注册可调用工具。'
+      : 'This toolset currently has no registered callable tools.';
+  }
+
+  const shownToolNames = toolNames.slice(0, MAX_REGISTERED_TOOL_NAMES_IN_MANUAL);
+  const omittedToolCount = toolNames.length - shownToolNames.length;
+  const listParts = shownToolNames.map((name) => `- \`${name}\``);
+  if (omittedToolCount > 0) {
+    listParts.push(
+      language === 'zh'
+        ? `- ...（另有 ${omittedToolCount} 个工具未展示）`
+        : `- ... (${omittedToolCount} more tool(s) omitted)`,
+    );
+  }
+  const list = listParts.join('\n');
+  if (language === 'zh') {
+    return [
+      '该工具集来自标准 MCP 协议接入，工具契约详见系统提示中的各工具函数说明。',
+      '',
+      `当前注册在该工具集下的工具（共 ${toolNames.length} 个）：`,
+      '',
+      list,
+    ].join('\n');
+  }
+  return [
+    'This toolset is a standard Raw MCP protocol integration. See the individual function-tool descriptions in the system prompt for the tool contract.',
+    '',
+    `Tools currently registered under this toolset (${toolNames.length} total):`,
+    '',
+    list,
+  ].join('\n');
 }
 
 function resolveRequestedTopics(request: ManualRequest, spec?: ManualSpec): ManualTopic[] {

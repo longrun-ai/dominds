@@ -328,8 +328,9 @@ members:
 - 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 提供手册相关信息：
   - `contentFile`：正式 runtime 手册的 topic 文件目录前缀；`man({ "toolsetId": "<serverId>" })` 最终给 LLM 看的正文从这里加载，包括 `scenarios`、`errors` 等手写章节
   - `content` / `sections`：补充给 `team_mgmt` MCP 章节看的 inline 团队管理说明（`sections` 支持 `[{ title, content }]` 或 `{ "<title>": "<content>" }`）
-- 没有手册 **不代表** 该 toolset 不可用；标准工具元数据来自 MCP `tools/list`。智能体应继续依据每个工具自身的 description/参数来使用。Dominds 仍会发出 warning，提醒团队至少补充简短整体定位说明。
-- 建议团队管理者在 MCP 配置验证通过后，优先依赖 MCP server 暴露的工具 description/参数；同时给每个 MCP server 写一段简短定位。若需要更完整的综合示例、避坑指南、安全边界、故障处置或协作规范，再写 `manual.contentFile` 或 inline `content + sections`。
+- 没有手册 **不代表** 该 toolset 不可用；标准工具元数据来自 MCP `tools/list`。智能体应继续依据每个工具自身的 description/参数来使用。Dominds 仍会发出 warning，提醒团队至少补充简短整体定位说明，并列出工具名清单以澄清归属关系。
+- 建议团队管理者在 MCP 配置验证通过后，优先依赖 MCP server 暴露的工具 description/参数；同时给每个 MCP server 写一段简短定位，并列出工具名清单，明确“哪些工具属于这个 toolset”。若需要更完整的综合示例、避坑指南、安全边界、故障处置或协作规范，再写 `manual.contentFile` 或 inline `content + sections`。
+- 工具列表只列工具名即可，必要时补一句用途归类；不要复制参数 schema 或长篇工具 description，因为这些契约由系统提示里的函数工具定义提供。
 - 可选增强的章节组织建议采用“半结构化”：可优先考虑 `何时使用`、`安全边界`、`不可用时业务处置` 这类高价值章节，但不要求所有 toolset 都照抄同一模板。
 - 对高风险 MCP toolset，建议明确“不可用时业务处置规约”，至少回答：
   - 当前 toolset 暂不可达时，是否必须找协调者/专员接手

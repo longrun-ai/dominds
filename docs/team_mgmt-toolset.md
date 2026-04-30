@@ -394,11 +394,16 @@ Notes:
   - `content` / `sections`: inline team-management guidance shown in the `team_mgmt` MCP chapter (`sections` supports `[{ title, content }]` or `{ "<title>": "<content>" }`)
 - Missing manual does **not** mean the toolset is unavailable. Standard tool metadata comes from MCP
   `tools/list`; agents should continue by reading each tool’s own description/arguments. Dominds
-  still reports a warning so the team can add at least a short overall positioning note.
+  still reports a warning so the team can add at least a short overall positioning note and list
+  tool names to clarify attribution.
 - Team-manager recommendation: after MCP config validation passes, rely on MCP-provided tool
-  descriptions/arguments first, and still write a short positioning note for each MCP server. Use
-  `manual.contentFile` or inline `content + sections` for richer handwritten guidance such as
-  examples, pitfalls, safety boundaries, failure handling, and coordination norms.
+  descriptions/arguments first, and still write a short positioning note for each MCP server and
+  list tool names to make clear which tools belong to this toolset. Use `manual.contentFile` or
+  inline `content + sections` for richer handwritten guidance such as examples, pitfalls, safety
+  boundaries, failure handling, and coordination norms.
+- Tool-list writing rule: list tool names, with a short purpose group when useful; do not copy
+  parameter schemas or long tool descriptions, because those contracts are provided by
+  function-tool definitions in the system prompt.
 - Use a semi-structured chapter shape for optional enhancements: high-value sections often include
   `When To Use`, `Guardrails`, and `Business Handling When Unavailable`, but do not force every
   toolset into one fixed template.

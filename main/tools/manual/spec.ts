@@ -21,6 +21,7 @@ export type ManualSpec = Readonly<{
   topics?: readonly ManualTopic[];
   topicTitlesI18n?: Partial<Record<ManualTopic, ManualTopicTitle>>;
   topicFilesI18n?: Partial<Record<LanguageCode, Partial<Record<ManualTopic, string>>>>;
+  toolsTopicMode?: 'registered-tool-name-list';
   warnOnMissing?: boolean;
 }>;
 
@@ -148,6 +149,7 @@ export function buildMcpManualSpec(
 export function buildRawMcpManualSpec(): ManualSpec {
   return {
     topics: ['tools'],
+    toolsTopicMode: 'registered-tool-name-list',
     warnOnMissing: false,
   };
 }
