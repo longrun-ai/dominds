@@ -5,7 +5,26 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
-import { mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from '../main/tools/fs';
+import type { FuncTool } from '../main/tool';
+import '../main/tools/builtins';
+import {
+  createSymlinkTool,
+  mkDirTool,
+  moveDirTool,
+  moveFileTool,
+  readSymlinkTool,
+  rmDirTool,
+  rmFileTool,
+  rmSymlinkTool,
+} from '../main/tools/fs';
+import { getTool } from '../main/tools/registry';
+
+function requireFuncTool(name: string): FuncTool {
+  const tool = getTool(name);
+  assert.ok(tool, `${name} should exist`);
+  assert.equal(tool.type, 'func');
+  return tool;
+}
 
 async function exists(absPath: string): Promise<boolean> {
   try {
@@ -68,11 +87,11 @@ async function main(): Promise<void> {
     const moveFileTarget = path.join(tmpRoot, 'move-file-target.txt');
     const moveFileLink = path.join(tmpRoot, 'move-file-link.txt');
     await fs.writeFile(moveFileTarget, 'move me\n', 'utf8');
-    await fs.symlink(moveFileTarget, moveFileLink);
+    await fs.symlink('move-file-target.txt', moveFileLink);
     const moveFileDstParentReal = path.join(tmpRoot, 'move-file-dst-real');
     const moveFileDstParentLink = path.join(tmpRoot, 'move-file-dst-link');
     await fs.mkdir(moveFileDstParentReal, { recursive: true });
-    await fs.symlink(moveFileDstParentReal, moveFileDstParentLink);
+    await fs.symlink('move-file-dst-real', moveFileDstParentLink);
     const moveFileOut = (
       await moveFileTool.call(dlg, alice, {
         from: 'move-file-link.txt',
@@ -93,11 +112,11 @@ async function main(): Promise<void> {
     const moveDirLink = path.join(tmpRoot, 'move-dir-link');
     await fs.mkdir(path.join(moveDirTarget, 'sub'), { recursive: true });
     await fs.writeFile(path.join(moveDirTarget, 'sub', 'a.txt'), 'a\n', 'utf8');
-    await fs.symlink(moveDirTarget, moveDirLink);
+    await fs.symlink('move-dir-target', moveDirLink);
     const moveDirDstParentReal = path.join(tmpRoot, 'move-dir-dst-real');
     const moveDirDstParentLink = path.join(tmpRoot, 'move-dir-dst-link');
     await fs.mkdir(moveDirDstParentReal, { recursive: true });
-    await fs.symlink(moveDirDstParentReal, moveDirDstParentLink);
+    await fs.symlink('move-dir-dst-real', moveDirDstParentLink);
     const moveDirOut = (
       await moveDirTool.call(dlg, alice, {
         from: 'move-dir-link',
@@ -114,10 +133,95 @@ async function main(): Promise<void> {
     assert.equal(await exists(path.join(moveDirDstParentReal, 'moved-dir-link')), true);
     assert.equal(await exists(moveDirTarget), true, 'moving symlink path should keep target dir');
 
+    // explicit symlink tools: create/read/remove the link path itself
+    await fs.writeFile(path.join(tmpRoot, 'explicit-target.txt'), 'explicit\n', 'utf8');
+    const createLinkOut = (
+      await createSymlinkTool.call(dlg, alice, {
+        path: 'explicit-link.txt',
+        target: 'explicit-target.txt',
+        symlink_type: 'file',
+      })
+    ).content;
+    assert.ok(createLinkOut.includes('status: ok'));
+    assert.ok(createLinkOut.includes('mode: create_symlink'));
+    assert.equal((await fs.lstat(path.join(tmpRoot, 'explicit-link.txt'))).isSymbolicLink(), true);
+    const readLinkOut = (await readSymlinkTool.call(dlg, alice, { path: 'explicit-link.txt' }))
+      .content;
+    assert.ok(readLinkOut.includes('status: ok'));
+    assert.ok(readLinkOut.includes('mode: read_symlink'));
+    assert.ok(readLinkOut.includes('target:'));
+    assert.ok(readLinkOut.includes('explicit-target.txt'));
+    const rmLinkOut = (await rmSymlinkTool.call(dlg, alice, { path: 'explicit-link.txt' })).content;
+    assert.ok(rmLinkOut.includes('status: ok'));
+    assert.ok(rmLinkOut.includes('mode: rm_symlink'));
+    assert.equal(await exists(path.join(tmpRoot, 'explicit-link.txt')), false);
+    assert.equal(await exists(path.join(tmpRoot, 'explicit-target.txt')), true);
+
+    // rm_symlink also handles broken links, where rm_file/rm_dir cannot follow a target.
+    await fs.symlink('missing-target.txt', path.join(tmpRoot, 'broken-explicit-link.txt'));
+    const rmBrokenLinkOut = (
+      await rmSymlinkTool.call(dlg, alice, { path: 'broken-explicit-link.txt' })
+    ).content;
+    assert.ok(rmBrokenLinkOut.includes('status: ok'));
+    assert.ok(rmBrokenLinkOut.includes('mode: rm_symlink'));
+    assert.equal(await exists(path.join(tmpRoot, 'broken-explicit-link.txt')), false);
+
+    const outsideRoot = `${tmpRoot}-outside`;
+    await fs.rm(outsideRoot, { recursive: true, force: true });
+    await fs.mkdir(outsideRoot, { recursive: true });
+    const outsideCreateOut = (
+      await createSymlinkTool.call(dlg, alice, {
+        path: path.join('..', path.basename(outsideRoot), 'outside-link.txt'),
+        target: 'elsewhere.txt',
+      })
+    ).content;
+    assert.ok(outsideCreateOut.includes('status: error'));
+    assert.ok(outsideCreateOut.includes('PATH_OUTSIDE_WORKSPACE'));
+
+    await fs.mkdir(path.join(tmpRoot, '.minds', 'links'), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, '.minds', 'links', 'team-target.txt'), 'team\n', 'utf8');
+    const manager = new Team.Member({
+      id: 'manager',
+      name: 'Manager',
+      toolsets: ['team_mgmt'],
+    });
+    const teamCreateLinkOut = (
+      await requireFuncTool('team_mgmt_create_symlink').call(dlg, manager, {
+        path: 'links/team-link.txt',
+        target: 'team-target.txt',
+        symlink_type: 'file',
+      })
+    ).content;
+    assert.ok(teamCreateLinkOut.includes('status: ok'));
+    assert.ok(teamCreateLinkOut.includes('mode: create_symlink'));
+    assert.equal(
+      (await fs.lstat(path.join(tmpRoot, '.minds', 'links', 'team-link.txt'))).isSymbolicLink(),
+      true,
+    );
+    const teamReadLinkOut = (
+      await requireFuncTool('team_mgmt_read_symlink').call(dlg, manager, {
+        path: '.minds/links/team-link.txt',
+      })
+    ).content;
+    assert.ok(teamReadLinkOut.includes('status: ok'));
+    assert.ok(teamReadLinkOut.includes('mode: read_symlink'));
+    assert.ok(teamReadLinkOut.includes('target:'));
+    assert.ok(teamReadLinkOut.includes('team-target.txt'));
+    const teamRmLinkOut = (
+      await requireFuncTool('team_mgmt_rm_symlink').call(dlg, manager, {
+        path: 'links/team-link.txt',
+      })
+    ).content;
+    assert.ok(teamRmLinkOut.includes('status: ok'));
+    assert.ok(teamRmLinkOut.includes('mode: rm_symlink'));
+    assert.equal(await exists(path.join(tmpRoot, '.minds', 'links', 'team-link.txt')), false);
+    assert.equal(await exists(path.join(tmpRoot, '.minds', 'links', 'team-target.txt')), true);
+
     console.log('✅ fs-symlink-follow tests passed');
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.rm(`${tmpRoot}-outside`, { recursive: true, force: true });
   }
 }
 

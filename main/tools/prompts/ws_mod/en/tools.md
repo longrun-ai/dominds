@@ -20,6 +20,7 @@
 ## 1. Supporting Tools (Read/Locate/Review)
 
 - `read_file` (function tool): Read-only view with limit and optional line number decoration (for review and positioning)
+- `read_symlink` (function tool): Inspect a symlink target without following it
 - `ripgrep_*` (function tool): Locate anchors and candidate snippets (`ripgrep_snippets` is usually most useful)
 
 ## 2. Raw Write Tools (Exceptions)
@@ -43,6 +44,15 @@ Full file overwrite (**no prepare/apply**).
 - `content_format`: Optional text hint; any non-empty label is accepted (for example `yaml`, `toml`, `json`, `markdown`)
 - **Guardrail (default reject)**: If content looks like diff/patch and `content_format=diff|patch` is not explicitly declared, default reject and guide to use prepare/apply (avoid mistakenly writing patch text into file)
 - **Limitation**: Does not create files; for creating empty/new files use `create_new_file`; for creating new file with non-empty initial content use `prepare_file_append create=true` → `apply_file_modification`
+
+### 2.3 create_symlink / rm_symlink
+
+Create or remove a symlink path.
+
+- **Design intent**: Make symlink operations explicit instead of overloading file/directory editing semantics
+- **Behavior**: `create_symlink` writes the target string exactly as provided; relative targets are resolved by the filesystem relative to the link parent
+- **Removal**: `rm_symlink` removes the link path itself without touching the target, and can remove broken symlinks
+- **Output**: Success and failure outputs are YAML with `mode: create_symlink` / `mode: rm_symlink`
 
 ## 3. Incremental Edits (prepare-first)
 

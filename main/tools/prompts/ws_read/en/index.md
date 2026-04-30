@@ -2,6 +2,7 @@ ws_read is Dominds' **runtime workspace read-only toolset** for reading and sear
 
 - **Directory listing**: List directory contents
 - **File reading**: Read file contents
+- **Symlink inspection**: Read symlink targets without following them
 - **Content searching**: Use ripgrep to search files and content
 
 ### Quick Navigation
@@ -24,9 +25,10 @@ ws_read is Dominds' **runtime workspace read-only toolset** for reading and sear
 
 ws_read is a read-only subset of ws_mod, providing only read functionality without write functionality.
 
-| Feature | ws_read | ws_mod |
-| ------- | ------- | ------ |
-| Read    | ✓       | ✓      |
-| Write   | ✗       | ✓      |
-| Delete  | ✗       | ✓      |
-| Move    | ✗       | ✓      |
+| Feature         | ws_read | ws_mod |
+| --------------- | ------- | ------ |
+| Read            | ✓       | ✓      |
+| Symlink inspect | ✓       | ✓      |
+| Write           | ✗       | ✓      |
+| Delete          | ✗       | ✓      |
+| Move            | ✗       | ✓      |

@@ -20,7 +20,25 @@ entries:
     modified: <修改时间>
 ```
 
-#### 2. read_file
+#### 2. read_symlink
+
+读取 symlink 目标，不跟随链接。
+
+**参数：**
+
+- `path`（必需）：symlink 路径
+
+**返回：**
+
+```yaml
+status: ok
+mode: read_symlink
+path: <symlink 路径>
+target: <目标字符串>
+summary: <简短摘要>
+```
+
+#### 3. read_file
 
 读取文件内容。
 
@@ -42,7 +60,7 @@ content: |
   <文件内容>
 ```
 
-#### 3. read_picture
+#### 4. read_picture
 
 读取工作区图片，并把它作为图片放入下一轮 LLM 上下文。
 
@@ -62,7 +80,7 @@ artifact_rel_path: <对话 artifact 路径>
 llm_context: image_attached
 ```
 
-#### 4. ripgrep_files
+#### 5. ripgrep_files
 
 搜索包含匹配的文件。
 
@@ -83,7 +101,7 @@ matches:
   - path: <文件路径>
 ```
 
-#### 5. ripgrep_snippets
+#### 6. ripgrep_snippets
 
 搜索并显示匹配片段。
 
@@ -105,7 +123,7 @@ matches:
     content: <匹配内容>
 ```
 
-#### 6. ripgrep_count
+#### 7. ripgrep_count
 
 统计匹配数量。
 
@@ -124,7 +142,7 @@ counts:
     count: <匹配数>
 ```
 
-#### 7. ripgrep_fixed
+#### 8. ripgrep_fixed
 
 固定字符串搜索。
 
@@ -141,7 +159,7 @@ literal: <搜索字符串>
 matches: <匹配列表>
 ```
 
-#### 8. ripgrep_search
+#### 9. ripgrep_search
 
 使用 rg 高级搜索。
 

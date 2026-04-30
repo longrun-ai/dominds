@@ -20,7 +20,25 @@ entries:
     modified: <modification time>
 ```
 
-### 2. read_file
+### 2. read_symlink
+
+Read a symlink target without following it.
+
+**Parameters:**
+
+- `path` (required): Symlink path
+
+**Returns:**
+
+```yaml
+status: ok
+mode: read_symlink
+path: <symlink path>
+target: <target string>
+summary: <short summary>
+```
+
+### 3. read_file
 
 Read file contents.
 
@@ -42,7 +60,7 @@ content: |
   <file content>
 ```
 
-### 3. read_picture
+### 4. read_picture
 
 Read a workspace image and attach it to the next LLM context as an image.
 
@@ -62,7 +80,7 @@ artifact_rel_path: <dialog artifact path>
 llm_context: image_attached
 ```
 
-### 4. ripgrep_files
+### 5. ripgrep_files
 
 Search files containing matches.
 
@@ -83,7 +101,7 @@ matches:
   - path: <file path>
 ```
 
-### 5. ripgrep_snippets
+### 6. ripgrep_snippets
 
 Search and display matching snippets.
 
@@ -105,7 +123,7 @@ matches:
     content: <matching content>
 ```
 
-### 6. ripgrep_count
+### 7. ripgrep_count
 
 Count matches.
 
@@ -124,7 +142,7 @@ counts:
     count: <match count>
 ```
 
-### 7. ripgrep_fixed
+### 8. ripgrep_fixed
 
 Fixed string search.
 
@@ -141,7 +159,7 @@ literal: <search string>
 matches: <match list>
 ```
 
-### 8. ripgrep_search
+### 9. ripgrep_search
 
 Advanced rg search.
 

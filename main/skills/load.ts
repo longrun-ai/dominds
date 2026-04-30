@@ -1,5 +1,5 @@
 import type { Dirent } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
@@ -35,6 +35,8 @@ type SkillCandidateGroup = Readonly<{
   files: ReadonlyArray<SkillCandidateFile>;
 }>;
 
+type SkillEntryKind = 'file' | 'directory' | 'other';
+
 type ParsedSkillFrontmatter = Readonly<{
   name: string;
   description: string;
@@ -62,6 +64,32 @@ function parseSkillPackageFileName(fileName: string): SkillVariant | null {
   if (lowered === 'skill.en.md') return 'en';
   if (lowered === 'skill.cn.md') return 'cn';
   return null;
+}
+
+async function readSkillEntryKind(params: {
+  entry: Dirent<string>;
+  entryPathAbs: string;
+  entryPathRel: string;
+}): Promise<SkillEntryKind> {
+  if (params.entry.isFile()) return 'file';
+  if (params.entry.isDirectory()) return 'directory';
+  if (!params.entry.isSymbolicLink()) return 'other';
+  try {
+    const followStat = await stat(params.entryPathAbs);
+    if (followStat.isFile()) return 'file';
+    if (followStat.isDirectory()) return 'directory';
+    return 'other';
+  } catch (error: unknown) {
+    const isEnoent =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'ENOENT';
+    if (isEnoent) {
+      throw new Error(`Invalid skill symlink '${params.entryPathRel}': target does not exist`);
+    }
+    throw error;
+  }
 }
 
 function getPreferredSkillVariants(language: LanguageCode): readonly SkillVariant[] {
@@ -214,25 +242,31 @@ async function readScopeSkillCandidates(params: {
   };
 
   for (const entry of entries) {
-    if (entry.isFile()) {
+    const entryPathAbs = path.join(params.scopeRootAbs, entry.name);
+    const entryPathRel = path.join(params.scopeRootRel, entry.name);
+    const entryKind = await readSkillEntryKind({
+      entry,
+      entryPathAbs,
+      entryPathRel,
+    });
+
+    if (entryKind === 'file') {
       const parsed = parseSkillDirectFileName(entry.name);
       if (!parsed) continue;
-      const filePathAbs = path.join(params.scopeRootAbs, entry.name);
-      const filePathRel = path.join(params.scopeRootRel, entry.name);
       pushFile(parsed.skillId, {
         fileName: entry.name,
-        filePathAbs,
-        filePathRel,
+        filePathAbs: entryPathAbs,
+        filePathRel: entryPathRel,
         variant: parsed.variant,
       });
       continue;
     }
-    if (!entry.isDirectory()) {
+    if (entryKind !== 'directory') {
       continue;
     }
 
-    const packageRootAbs = path.join(params.scopeRootAbs, entry.name);
-    const packageRootRel = path.join(params.scopeRootRel, entry.name);
+    const packageRootAbs = entryPathAbs;
+    const packageRootRel = entryPathRel;
     let packageEntries: Dirent<string>[];
     try {
       packageEntries = await readdir(packageRootAbs, { withFileTypes: true });
@@ -246,11 +280,16 @@ async function readScopeSkillCandidates(params: {
       throw error;
     }
     for (const packageEntry of packageEntries) {
-      if (!packageEntry.isFile()) continue;
       const variant = parseSkillPackageFileName(packageEntry.name);
       if (variant === null) continue;
       const filePathAbs = path.join(packageRootAbs, packageEntry.name);
       const filePathRel = path.join(packageRootRel, packageEntry.name);
+      const packageEntryKind = await readSkillEntryKind({
+        entry: packageEntry,
+        entryPathAbs: filePathAbs,
+        entryPathRel: filePathRel,
+      });
+      if (packageEntryKind !== 'file') continue;
       pushFile(entry.name, {
         fileName: packageEntry.name,
         filePathAbs,
@@ -276,7 +315,10 @@ async function loadScopeSkills(params: {
       ? path.join('.minds', 'skills', 'team_shared')
       : path.join('.minds', 'skills', 'individual', params.memberId);
   const scopeRootAbs = path.resolve(params.rtwsRootAbs, scopeRootRel);
-  const candidateGroups = await readScopeSkillCandidates({ scopeRootAbs, scopeRootRel });
+  const candidateGroups = await readScopeSkillCandidates({
+    scopeRootAbs,
+    scopeRootRel,
+  });
   const loaded: LoadedWorkspaceSkill[] = [];
 
   for (const group of candidateGroups) {

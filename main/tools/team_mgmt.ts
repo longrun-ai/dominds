@@ -36,7 +36,17 @@ import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
 import { toolFailure, toolSuccess } from '../tool';
-import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
+import {
+  createSymlinkTool,
+  listDirTool,
+  mkDirTool,
+  moveDirTool,
+  moveFileTool,
+  readSymlinkTool,
+  rmDirTool,
+  rmFileTool,
+  rmSymlinkTool,
+} from './fs';
 import { truncateInlineText } from './output-limit';
 import { getToolsetMeta, listToolsets } from './registry';
 import {
@@ -65,6 +75,8 @@ import {
 
 const MINDS_ALLOW = ['.minds/**'] as const;
 const MINDS_DIR = '.minds';
+const SKILLS_LINKABLE_REL = `${MINDS_DIR}/skills/linkable`;
+const SKILLS_INDIVIDUAL_REL = `${MINDS_DIR}/skills/individual`;
 const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
 const RTWS_APP_YAML_REL = `${MINDS_DIR}/app.yaml`;
 const APP_LOCK_YAML_REL = `${MINDS_DIR}/app-lock.yaml`;
@@ -270,6 +282,29 @@ function ensureMindsScopedPath(rel: string): { rel: string; abs: string } {
     throw new Error(`Path must be within ${MINDS_DIR}/`);
   }
   return { rel: path.relative(cwd, abs).replace(/\\/g, '/'), abs };
+}
+
+function requireSkillPathSegment(kind: 'member_id' | 'skill_id', value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`Invalid ${kind}: expected a non-empty string.`);
+  }
+  const trimmed = value.trim();
+  if (
+    path.isAbsolute(trimmed) ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    trimmed.includes('..') ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\')
+  ) {
+    throw new Error(`Invalid ${kind}: expected one path segment.`);
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    throw new Error(
+      `Invalid ${kind}: only letters, numbers, underscores, and hyphens are allowed.`,
+    );
+  }
+  return trimmed;
 }
 
 function getUserLang(dlg: { getLastUserLanguageCode(): LanguageCode }): LanguageCode {
@@ -3238,6 +3273,310 @@ export const teamMgmtRmDirTool: FuncTool = {
   },
 };
 
+export const teamMgmtReadSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_read_symlink',
+  description: `Read a symlink target under ${MINDS_DIR}/ without following it.`,
+  descriptionI18n: {
+    en: `Read a symlink target under ${MINDS_DIR}/ without following it.`,
+    zh: `读取 ${MINDS_DIR}/ 下的符号链接目标（不跟随链接）。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: { path: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) throw new Error('Path required');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await readSymlinkTool.call(dlg, proxyCaller, { path: rel });
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtCreateSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_create_symlink',
+  description: `Create a symlink under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Create a symlink under ${MINDS_DIR}/.`,
+    zh: `在 ${MINDS_DIR}/ 下创建符号链接。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'target'],
+    properties: {
+      path: { type: 'string' },
+      target: { type: 'string' },
+      symlink_type: { type: 'string', enum: ['file', 'dir', 'junction'] },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) throw new Error('Path required');
+      const targetValue = args['target'];
+      if (typeof targetValue !== 'string' || targetValue === '') throw new Error('Target required');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const symlinkTypeValue = args['symlink_type'];
+      if (
+        symlinkTypeValue !== undefined &&
+        symlinkTypeValue !== 'file' &&
+        symlinkTypeValue !== 'dir' &&
+        symlinkTypeValue !== 'junction'
+      ) {
+        throw new Error('Invalid symlink_type (expected file|dir|junction)');
+      }
+
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const toolArgs: ToolArguments =
+        symlinkTypeValue === undefined
+          ? { path: rel, target: targetValue }
+          : { path: rel, target: targetValue, symlink_type: symlinkTypeValue };
+      const output = await createSymlinkTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'create_symlink')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'create_symlink',
+        });
+      }
+      return output;
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRmSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_rm_symlink',
+  description: `Remove a symlink path itself under ${MINDS_DIR}/ without touching its target.`,
+  descriptionI18n: {
+    en: `Remove a symlink path itself under ${MINDS_DIR}/ without touching its target.`,
+    zh: `删除 ${MINDS_DIR}/ 下的符号链接路径本身，不删除其目标。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: { path: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) throw new Error('Path required');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const output = await rmSymlinkTool.call(dlg, proxyCaller, { path: rel });
+      const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'rm_symlink')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'rm_symlink',
+        });
+      }
+      return output;
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtLinkSkillTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_link_skill',
+  description:
+    'Link one package from .minds/skills/linkable into a member personal skills directory.',
+  descriptionI18n: {
+    en: 'Link one package from .minds/skills/linkable into a member personal skills directory.',
+    zh: '把 .minds/skills/linkable 中的一个 skill 包链接到指定成员的个人 skills 目录。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['member_id', 'skill_id'],
+    properties: {
+      member_id: { type: 'string' },
+      skill_id: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      await ensureMindsRootDirExists();
+      const memberId = requireSkillPathSegment('member_id', args['member_id']);
+      const skillId = requireSkillPathSegment('skill_id', args['skill_id']);
+      const linkableRel = `${SKILLS_LINKABLE_REL}/${skillId}`;
+      const targetRel = `${SKILLS_INDIVIDUAL_REL}/${memberId}/${skillId}`;
+      const { abs: linkableAbs } = ensureMindsScopedPath(linkableRel);
+      const { abs: targetAbs } = ensureMindsScopedPath(targetRel);
+
+      const sourceStat = await fs.stat(linkableAbs).catch((error: unknown) => {
+        if (isFsErrWithCode(error) && error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (!sourceStat) {
+        throw new Error(`Linkable skill does not exist: ${linkableRel}`);
+      }
+      if (!sourceStat.isDirectory()) {
+        throw new Error(`Linkable skill is not a directory package: ${linkableRel}`);
+      }
+      const existing = await fs.lstat(targetAbs).catch((error: unknown) => {
+        if (isFsErrWithCode(error) && error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (existing) {
+        throw new Error(`Target personal skill path already exists: ${targetRel}`);
+      }
+
+      await fs.mkdir(path.dirname(targetAbs), { recursive: true });
+      const relativeTarget = path.relative(path.dirname(targetAbs), linkableAbs);
+      await fs.symlink(relativeTarget, targetAbs, 'dir');
+
+      const yaml = [
+        `status: ok`,
+        `mode: link_skill`,
+        `member_id: ${yamlQuote(memberId)}`,
+        `skill_id: ${yamlQuote(skillId)}`,
+        `source: ${yamlQuote(linkableRel)}`,
+        `path: ${yamlQuote(targetRel)}`,
+        `summary: ${yamlQuote(language === 'zh' ? '已链接 skill。' : 'Linked skill.')}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      await refreshDerivedStateAfterTeamMgmtWrite({
+        relPaths: [targetRel],
+        trigger: 'link_skill',
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtUnlinkSkillTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_unlink_skill',
+  description: 'Remove a member personal skill symlink created from .minds/skills/linkable.',
+  descriptionI18n: {
+    en: 'Remove a member personal skill symlink created from .minds/skills/linkable.',
+    zh: '移除从 .minds/skills/linkable 分发给指定成员的个人 skill 链接。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['member_id', 'skill_id'],
+    properties: {
+      member_id: { type: 'string' },
+      skill_id: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const memberId = requireSkillPathSegment('member_id', args['member_id']);
+      const skillId = requireSkillPathSegment('skill_id', args['skill_id']);
+      const targetRel = `${SKILLS_INDIVIDUAL_REL}/${memberId}/${skillId}`;
+      const { abs: targetAbs } = ensureMindsScopedPath(targetRel);
+
+      const existing = await fs.lstat(targetAbs).catch((error: unknown) => {
+        if (isFsErrWithCode(error) && error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (!existing) {
+        throw new Error(`Target personal skill link does not exist: ${targetRel}`);
+      }
+      if (!existing.isSymbolicLink()) {
+        throw new Error(`Target personal skill path is not a symlink: ${targetRel}`);
+      }
+
+      await fs.unlink(targetAbs);
+      const yaml = [
+        `status: ok`,
+        `mode: unlink_skill`,
+        `member_id: ${yamlQuote(memberId)}`,
+        `skill_id: ${yamlQuote(skillId)}`,
+        `path: ${yamlQuote(targetRel)}`,
+        `summary: ${yamlQuote(language === 'zh' ? '已移除 skill 链接。' : 'Unlinked skill.')}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      await refreshDerivedStateAfterTeamMgmtWrite({
+        relPaths: [targetRel],
+        trigger: 'unlink_skill',
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
 function fmtHeader(title: string): string {
   return `# ${title}\n`;
 }
@@ -3607,7 +3946,7 @@ export function renderPermissionsManual(language: LanguageCode): string {
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
         '`*.tsk/` 是封装差遣牒：只能用函数工具 `do_mind` / `mind_more` / `change_mind` / `never_mind` 维护。任何通用文件工具都无法访问该目录树（硬编码无条件拒绝）。',
         '`.minds/**` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team_mgmt`）可访问它。',
-        '在当前内建模型中，`.minds/team/**`、`.minds/team.yaml`、`.minds/skills/**`、`.minds/priming/**` 等团队资产目录，只有持有 `team_mgmt` 的成员才应修改。',
+        '在当前内建模型中，`.minds/team/**`、`.minds/team.yaml`、`.minds/skills/team_shared/**`、`.minds/skills/linkable/**`、`.minds/priming/**` 等团队资产目录，只有持有 `team_mgmt` 的成员才应修改。',
         '`.minds/team/<id>/*` 的“角色归属对象”只表示它描述哪个角色，不构成任何额外写权限。未持有 `team_mgmt` 的成员，即使只是想更新“自己的” persona/knowhow/pitfalls，也应通过回贴建议内容，由具备权限的团队管理者代写。',
         '因此，**不要**为了“重申系统内置限制”而在 `team.yaml` 里机械地添加 `no_read_dirs: [".minds/**"]` / `no_write_dirs: [".minds/**"]`（或出于同类目的添加 `*.tsk/**` deny）。这类条目不增加任何真实约束，只会制造样板噪音，并误导团队管理智能体以为它们是常规必填项。',
         '原则：`team.yaml` 里的权限字段只写**额外**业务约束；系统内置的硬边界由运行时自己保证，不需要也不应重复书写。',
@@ -3637,7 +3976,7 @@ export function renderPermissionsManual(language: LanguageCode): string {
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
       '`*.tsk/` is an encapsulated Taskdoc: it must be maintained via `do_mind` / `mind_more` / `change_mind` / `never_mind` only. It is hard-denied for all general file tools.',
       '`.minds/**` stores rtws (runtime workspace) team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team_mgmt`) may access it.',
-      'In the current built-in model, team asset paths such as `.minds/team/**`, `.minds/team.yaml`, `.minds/skills/**`, and `.minds/priming/**` should only be modified by members who hold `team_mgmt`.',
+      'In the current built-in model, team asset paths such as `.minds/team/**`, `.minds/team.yaml`, `.minds/skills/team_shared/**`, `.minds/skills/linkable/**`, and `.minds/priming/**` should only be modified by members who hold `team_mgmt`.',
       'The “owner role” of `.minds/team/<id>/*` only tells you which role the asset describes; it does not grant extra write permission. Without `team_mgmt`, a member should not rewrite even “their own” persona/knowhow/pitfalls directly, and should instead hand back suggested content for an authorized team manager to apply.',
       'Therefore, do **not** mechanically restate that built-in hard deny in `team.yaml` with `no_read_dirs: [".minds/**"]` / `no_write_dirs: [".minds/**"]` (or similar `*.tsk/**` deny lines). Those entries add no real constraint, only boilerplate noise, and they incorrectly teach team managers that such lines are standard required practice.',
       'Rule of thumb: permission fields in `team.yaml` should describe only **additional** business-specific constraints. Built-in hard boundaries are enforced by the runtime and should not be redundantly copied into member config.',
@@ -3753,7 +4092,7 @@ export function renderSkillsManual(language: LanguageCode): string {
     return (
       fmtHeader('.minds/skills/*（技能）') +
       fmtList([
-        '推荐目录：团队共享技能放在 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`（英文对齐文件用 `SKILL.en.md`）；个人技能放在 `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`。',
+        '推荐目录：团队共享技能放在 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`（英文对齐文件用 `SKILL.en.md`）；个人自管技能放在 `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`；团队管理智能体可把可分发技能包放到 `.minds/skills/linkable/<skill-id>/SKILL.cn.md`，再用 `team_mgmt_link_skill({ member_id, skill_id })` symlink 给指定队友。',
         '语言选择：Dominds 当前工作语言是 `zh|en`，但 skill 文件后缀采用更通行的 `cn|en`。当工作语言为 `zh` 时优先读取 `SKILL.cn.md`，当工作语言为 `en` 时优先读取 `SKILL.en.md`，两者都可回退到无语言标识的 `SKILL.md`；不会跨语言兜底到另一种语言文件。',
         '可移植优先格式：遵循当前主流 Agent Skills 生态公共子集，使用 `SKILL.md + YAML frontmatter`。最小必备字段是 `name` 与 `description`，正文 markdown 即真正的技能提示词/操作指引。',
         'Dominds 当前实现会把匹配到的 skill 内容直接注入 agent system prompt；因此这里的技能更接近“指导知识包”。这与部分平台的“先只加载 name/description、命中后再延迟加载正文”不同，请控制体量，把长参考资料拆到同目录其它文件并在正文里按需引用。',
@@ -3761,6 +4100,8 @@ export function renderSkillsManual(language: LanguageCode): string {
         '标题层级约束：skills 模板已经自动包好 `### Skills（工作技能）` 和每个 skill 的 `#### <name>` 标题。正文通常应从普通 bullet、步骤列表，或至多 `#####` 小节开始；不要在正文里再写 `# <skill-name>` / `## ...` 来重复外层标题结构。',
         '为兼容公开来源，可保留 `allowed-tools` / `user-invocable` / `disable-model-invocation` 字段；但在 Dominds 中：这些字段目前只用于迁移/文档语义，不会自动授予工具权限，也不会改变运行时调度逻辑。',
         '最重要的边界：skill 不是权限系统。真正的工具能力仍由 `.minds/team.yaml` 的 `toolsets` / `tools` 与已安装 Dominds apps 决定。',
+        'linkable 分发：`.minds/skills/linkable/**` 是团队管理池，不会自动注入任何成员。团队管理智能体可以调用 `team_mgmt_link_skill` 把某个 `<skill-id>` 链接到 `.minds/skills/individual/<member-id>/<skill-id>`，也可以用 `team_mgmt_create_symlink` 创建更通用的 `.minds/**` symlink；撤销链接时用 `team_mgmt_rm_symlink`，或对 linkable 分发使用 `team_mgmt_unlink_skill`。',
+        'symlink 语义：skills 运行时会跟随合法的 skill 文件/目录 symlink；broken symlink 会 loud fail。',
         '团队管理职责的智能体可以联网搜索公开 skill 定义（优先官方文档/官方仓库/官方 marketplace 条目），也可以直接基于团队真实操作经验自行总结编写。迁移前必须核对 license、适用场景、是否依赖脚本/外部工具、是否夹带与本团队冲突的人设/权限假设。',
         '对于网络公开来源、并且带脚本/工具调用约束的 skills：默认不要只把文案抄进 `.minds/skills/**` 就上线。推荐路径是把执行能力封装成 Dominds app（专属工具 / toolsets / 工具集手册 / teammates contract），再由 skill 只保留软性指导与对 app/toolset 的引用说明。',
       ]) +
@@ -3802,7 +4143,7 @@ export function renderSkillsManual(language: LanguageCode): string {
         '2. 识别类型：判断来源到底是标准 SKILL、slash command、subagent、仓库级 custom instructions，还是脚本集合。不是所有 prompt 文件都适合落到 Dominds skills。',
         '3. 提取可移植公共子集：至少提炼出 `name`、`description`、正文操作指引；删掉平台专有 shell 注入、命令占位符、隐式工具假设。',
         '4. 判断是否需要 app 化：只要来源 skill 依赖脚本、外部二进制、MCP、专有工具权限、工具集手册、或希望供多个 app/team 复用，优先走 Dominds app 开发与安装流程，再在 skill 里引用该 app/toolset。',
-        '5. 写入 rtws：把纯提示型技能放到 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` 或个人目录；若团队工作语言需要英文对齐，再补 `SKILL.en.md`。',
+        '5. 写入 rtws：团队长期共享技能放到 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`；需要团队管理者定向分发的技能放到 `.minds/skills/linkable/<skill-id>/SKILL.cn.md` 并用 `team_mgmt_link_skill` 发给目标成员。若团队工作语言需要英文对齐，再补 `SKILL.en.md`。',
         '6. 配置权限：根据 skill 真实需要，更新 `.minds/team.yaml` 的成员 `toolsets` / `tools`，必要时安装/启用对应 Dominds app；不要只写 `allowed-tools` 就结束。',
         '7. 本地化：`cn` 文件作为中文语义基准；`en` 追随 `cn`。若公开来源只有英文，先提炼成符合本团队语义的中文基准，再回写英文对齐版。',
         '8. 验收：用 `dominds read <member-id> --only-prompt` 检查 skill 是否已注入 system prompt，并确认没有把不该暴露的工具/脚本假设写进正文。',
@@ -3820,7 +4161,7 @@ export function renderSkillsManual(language: LanguageCode): string {
   return (
     fmtHeader('.minds/skills/* (skills)') +
     fmtList([
-      'Recommended layout: team-shared skills live at `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` (with `SKILL.en.md` as the English counterpart); personal skills live at `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`.',
+      'Recommended layout: team-shared skills live at `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` (with `SKILL.en.md` as the English counterpart); self-managed personal skills live at `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`; team-management agents may place distributable packages under `.minds/skills/linkable/<skill-id>/SKILL.cn.md`, then symlink them to selected teammates with `team_mgmt_link_skill({ member_id, skill_id })`.',
       'Language selection: Dominds work language is currently `zh|en`, but skill filenames use the more portable `cn|en` suffixes. When work language is `zh`, Dominds prefers `SKILL.cn.md`; when it is `en`, Dominds prefers `SKILL.en.md`; both may fall back to `SKILL.md`. There is no cross-language fallback.',
       'Portable-first format: follow the common Agent Skills subset used by GitHub/Codex/Claude/skills.sh style ecosystems: `SKILL.md + YAML frontmatter`. The minimum required fields are `name` and `description`; the Markdown body is the actual skill prompt/operating guidance.',
       'Current Dominds behavior eagerly injects matched skills into the agent system prompt. That makes a Dominds skill closer to a guidance knowledge pack than to a lazily loaded marketplace artifact. Keep bodies tight, and move long references into sibling files that the body points to.',
@@ -3828,6 +4169,8 @@ export function renderSkillsManual(language: LanguageCode): string {
       'Heading rule: the wrapper already provides `### Skills` and `#### <name>` for each skill. Bodies should usually start with plain bullets, numbered steps, or at most `#####` subsections; do not repeat the outer structure with another `# <skill-name>` / `## ...` inside the body.',
       'For compatibility with public skill sources, Dominds accepts `allowed-tools`, `user-invocable`, and `disable-model-invocation`; however, in Dominds these fields are currently informational only. They do not grant tools and do not change runtime dispatch yet.',
       'The hard boundary: a skill is not a permission system. Real tool access still comes from `.minds/team.yaml` (`toolsets` / `tools`) and installed Dominds apps.',
+      'Linkable distribution: `.minds/skills/linkable/**` is a team-managed pool and is not injected into anyone by itself. A team-management agent may call `team_mgmt_link_skill` to link one `<skill-id>` into `.minds/skills/individual/<member-id>/<skill-id>`, or use `team_mgmt_create_symlink` for more general `.minds/**` symlinks. Revoke links with `team_mgmt_rm_symlink`, or use `team_mgmt_unlink_skill` for linkable distribution links.',
+      'Symlink semantics: the skills runtime follows valid skill file/directory symlinks; broken symlinks fail loudly.',
       'A team-management agent may browse the web for public skill definitions (prefer official docs/repos/marketplace listings), or write skills directly by summarizing the team’s own repeatable operating guidance. Before importing, verify license, applicability, script/tool dependencies, and any hidden persona/permission assumptions.',
       'For public-network skills that rely on scripts or explicit tool contracts: do not ship them by copying Markdown alone. Preferred path: wrap execution capability into a Dominds app (dedicated tools / toolsets / toolset manual / teammate contract), then keep the skill focused on soft guidance and app/toolset references.',
     ]) +
@@ -3870,7 +4213,7 @@ export function renderSkillsManual(language: LanguageCode): string {
       '2. Classify the source: is it a standard SKILL, slash command, subagent, repo-wide custom instructions file, or a script bundle? Not every prompt file should become a Dominds skill.',
       '3. Extract the portable core: at minimum keep `name`, `description`, and the operating-guidance body. Remove platform-specific shell injection, command placeholders, and hidden tool assumptions.',
       '4. Decide whether it must become an app: if the source relies on scripts, external binaries, MCP, privileged tools, toolset manuals, or should be reused across multiple apps/teams, prefer the Dominds app path first.',
-      '5. Write into the rtws: store pure prompt skills under `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` or the personal directory; add `SKILL.en.md` when an English counterpart is needed.',
+      '5. Write into the rtws: put long-lived team-shared skills under `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`; put team-managed targeted distributions under `.minds/skills/linkable/<skill-id>/SKILL.cn.md` and assign them with `team_mgmt_link_skill`. Add `SKILL.en.md` when an English counterpart is needed.',
       '6. Configure permissions explicitly: update `.minds/team.yaml` member `toolsets` / `tools`, and install/enable the supporting Dominds app when required. Do not stop at `allowed-tools` metadata.',
       '7. Localize deliberately: use the `cn` file as the Chinese semantic baseline, then align `en` to it. If the public source is English-only, distill it into your team’s Chinese baseline first.',
       '8. Verify with `dominds read <member-id> --only-prompt` to confirm the skill is injected and does not claim tools/scripts the member does not actually have.',
@@ -5114,6 +5457,11 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,
   teamMgmtMoveDirTool,
+  teamMgmtReadSymlinkTool,
+  teamMgmtCreateSymlinkTool,
+  teamMgmtRmSymlinkTool,
+  teamMgmtLinkSkillTool,
+  teamMgmtUnlinkSkillTool,
   teamMgmtRipgrepFilesTool,
   teamMgmtRipgrepSnippetsTool,
   teamMgmtRipgrepCountTool,

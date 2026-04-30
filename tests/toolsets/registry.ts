@@ -175,6 +175,35 @@ async function main(): Promise<void> {
     );
   });
 
+  await runTest('Symlink tools are exposed in workspace and team management toolsets', () => {
+    const wsReadToolset = getToolset('ws_read');
+    const wsModToolset = getToolset('ws_mod');
+    const teamMgmtToolset = getToolset('team_mgmt');
+    if (!wsReadToolset || !wsModToolset || !teamMgmtToolset) {
+      throw new Error('Expected ws_read, ws_mod, and team_mgmt toolsets to be registered');
+    }
+    assertTrue(
+      wsReadToolset.some((tool) => tool.name === 'read_symlink'),
+      'ws_read should expose read_symlink',
+    );
+    for (const toolName of ['read_symlink', 'create_symlink', 'rm_symlink']) {
+      assertTrue(
+        wsModToolset.some((tool) => tool.name === toolName),
+        `ws_mod should expose ${toolName}`,
+      );
+    }
+    for (const toolName of [
+      'team_mgmt_read_symlink',
+      'team_mgmt_create_symlink',
+      'team_mgmt_rm_symlink',
+    ]) {
+      assertTrue(
+        teamMgmtToolset.some((tool) => tool.name === toolName),
+        `team_mgmt should expose ${toolName}`,
+      );
+    }
+  });
+
   await runTest('codex_inspect_and_patch_tools platform behavior', () => {
     const codexTools = getToolset('codex_inspect_and_patch_tools');
     if (process.platform === 'win32') {

@@ -73,6 +73,12 @@ function symlinkTargetText(target?: string): string {
   return target ?? '<unreadable>';
 }
 
+function isPathInsideRtws(absPath: string): boolean {
+  const cwd = path.resolve(process.cwd());
+  const relative = path.relative(cwd, absPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 function symlinkFollowNotice(
   workLanguage: string,
   relPath: string,
@@ -244,8 +250,7 @@ export const listDirTool: FuncTool = {
     const dir = path.resolve(process.cwd(), rel);
 
     // Basic security check - ensure path is within rtws
-    const cwd = path.resolve(process.cwd());
-    if (!dir.startsWith(cwd)) {
+    if (!isPathInsideRtws(dir)) {
       return fail(labels.accessDenied);
     }
 
@@ -352,7 +357,7 @@ export const listDirTool: FuncTool = {
         data.push(dirEntry);
       }
 
-      const relativeDir = path.relative(cwd, dir) || '.';
+      const relativeDir = path.relative(process.cwd(), dir) || '.';
 
       // Create markdown table for directory entries
       let markdown = `${labels.dirHeader} \`${relativeDir}\`\n\n`;
@@ -491,8 +496,7 @@ export const rmDirTool: FuncTool = {
     const targetPath = path.resolve(process.cwd(), rel);
 
     // Basic security check - ensure path is within rtws
-    const cwd = path.resolve(process.cwd());
-    if (!targetPath.startsWith(cwd)) {
+    if (!isPathInsideRtws(targetPath)) {
       return fail(labels.pathMustBeWithinWorkspace);
     }
 
@@ -595,8 +599,7 @@ export const rmFileTool: FuncTool = {
     const targetPath = path.resolve(process.cwd(), rel);
 
     // Basic security check - ensure path is within rtws
-    const cwd = path.resolve(process.cwd());
-    if (!targetPath.startsWith(cwd)) {
+    if (!isPathInsideRtws(targetPath)) {
       return fail(labels.pathMustBeWithinWorkspace);
     }
 
@@ -722,8 +725,7 @@ export const mkDirTool: FuncTool = {
     }
 
     const targetPath = path.resolve(process.cwd(), rel);
-    const cwd = path.resolve(process.cwd());
-    if (!targetPath.startsWith(cwd)) {
+    if (!isPathInsideRtws(targetPath)) {
       const yaml = [
         `status: error`,
         `path: ${yamlQuote(rel)}`,
@@ -840,8 +842,7 @@ export const moveFileTool: FuncTool = {
 
     const absFrom = path.resolve(process.cwd(), from);
     const absTo = path.resolve(process.cwd(), to);
-    const cwd = path.resolve(process.cwd());
-    if (!absFrom.startsWith(cwd) || !absTo.startsWith(cwd)) {
+    if (!isPathInsideRtws(absFrom) || !isPathInsideRtws(absTo)) {
       const yaml = [
         `status: error`,
         `from: ${yamlQuote(from)}`,
@@ -885,7 +886,7 @@ export const moveFileTool: FuncTool = {
       const toParentInfo = await statWithSymlinkInfo(toParent).catch(() => undefined);
       const toParentSymlinkSummary =
         toParentInfo && toParentInfo.isSymlink
-          ? ` ${symlinkFollowNotice(workLanguage, path.relative(cwd, toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
+          ? ` ${symlinkFollowNotice(workLanguage, path.relative(process.cwd(), toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
           : '';
       if (!toParentInfo || !toParentInfo.followStat.isDirectory()) {
         const yamlLines = [
@@ -996,8 +997,7 @@ export const moveDirTool: FuncTool = {
 
     const absFrom = path.resolve(process.cwd(), from);
     const absTo = path.resolve(process.cwd(), to);
-    const cwd = path.resolve(process.cwd());
-    if (!absFrom.startsWith(cwd) || !absTo.startsWith(cwd)) {
+    if (!isPathInsideRtws(absFrom) || !isPathInsideRtws(absTo)) {
       const yaml = [
         `status: error`,
         `from: ${yamlQuote(from)}`,
@@ -1041,7 +1041,7 @@ export const moveDirTool: FuncTool = {
       const toParentInfo = await statWithSymlinkInfo(toParent).catch(() => undefined);
       const toParentSymlinkSummary =
         toParentInfo && toParentInfo.isSymlink
-          ? ` ${symlinkFollowNotice(workLanguage, path.relative(cwd, toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
+          ? ` ${symlinkFollowNotice(workLanguage, path.relative(process.cwd(), toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
           : '';
       if (!toParentInfo || !toParentInfo.followStat.isDirectory()) {
         const yamlLines = [
@@ -1110,6 +1110,326 @@ export const moveDirTool: FuncTool = {
         `status: error`,
         `from: ${yamlQuote(from)}`,
         `to: ${yamlQuote(to)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      return failYaml(yaml);
+    }
+  },
+};
+
+function normalizeSymlinkType(raw: unknown): 'file' | 'dir' | 'junction' | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === 'file' || raw === 'dir' || raw === 'junction') return raw;
+  throw new Error('Invalid symlink_type (expected file|dir|junction).');
+}
+
+export const readSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'read_symlink',
+  description: 'Read a symlink target without following it.',
+  descriptionI18n: {
+    en: 'Read a symlink target without following it.',
+    zh: '读取符号链接目标（不跟随链接）。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', description: 'rtws-relative symlink path.' },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const workLanguage = getWorkLanguage();
+    const pathValue = args['path'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
+    if (!rel) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: read_symlink`,
+          `error: PATH_REQUIRED`,
+          `summary: ${yamlQuote('Read-symlink failed: path required.')}`,
+        ].join('\n'),
+      );
+    }
+
+    const absPath = path.resolve(process.cwd(), rel);
+    if (!isPathInsideRtws(absPath)) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: read_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `error: PATH_OUTSIDE_WORKSPACE`,
+          `summary: ${yamlQuote('Read-symlink failed: path must be within rtws (runtime workspace).')}`,
+        ].join('\n'),
+      );
+    }
+    if (!hasReadAccess(caller, rel)) {
+      return fail(getAccessDeniedMessage('read', rel, workLanguage));
+    }
+
+    try {
+      const pathStat = await fs.lstat(absPath);
+      if (!pathStat.isSymbolicLink()) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: read_symlink`,
+            `path: ${yamlQuote(rel)}`,
+            `error: NOT_SYMLINK`,
+            `summary: ${yamlQuote('Read-symlink failed: path is not a symlink.')}`,
+          ].join('\n'),
+        );
+      }
+      const target = await fs.readlink(absPath);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: read_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `target: ${yamlQuote(target)}`,
+          `summary: ${yamlQuote(`Read-symlink: ${rel} -> ${target}.`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `mode: read_symlink`,
+        `path: ${yamlQuote(rel)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      return failYaml(yaml);
+    }
+  },
+};
+
+export const createSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'create_symlink',
+  description: 'Create a symlink relative to rtws (runtime workspace).',
+  descriptionI18n: {
+    en: 'Create a symlink relative to rtws (runtime workspace).',
+    zh: '在 rtws（运行时工作区）内创建符号链接。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'target'],
+    properties: {
+      path: { type: 'string', description: 'rtws-relative symlink path to create.' },
+      target: {
+        type: 'string',
+        description:
+          'Symlink target string, written as provided. Relative targets are resolved by the filesystem relative to the link parent.',
+      },
+      symlink_type: {
+        type: 'string',
+        enum: ['file', 'dir', 'junction'],
+        description: 'Optional Node symlink type hint.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const workLanguage = getWorkLanguage();
+    const pathValue = args['path'];
+    const targetValue = args['target'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
+    const target = typeof targetValue === 'string' ? targetValue : '';
+    if (!rel || target === '') {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: create_symlink`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote('Create-symlink failed: path and target required.')}`,
+        ].join('\n'),
+      );
+    }
+
+    let symlinkType: 'file' | 'dir' | 'junction' | undefined;
+    try {
+      symlinkType = normalizeSymlinkType(args['symlink_type']);
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: create_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `target: ${yamlQuote(target)}`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+
+    const linkAbsPath = path.resolve(process.cwd(), rel);
+    if (!isPathInsideRtws(linkAbsPath)) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: create_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `target: ${yamlQuote(target)}`,
+          `error: PATH_OUTSIDE_WORKSPACE`,
+          `summary: ${yamlQuote('Create-symlink failed: path must be within rtws (runtime workspace).')}`,
+        ].join('\n'),
+      );
+    }
+    if (!hasWriteAccess(caller, rel)) {
+      return fail(getAccessDeniedMessage('write', rel, workLanguage));
+    }
+
+    try {
+      const parentAbs = path.dirname(linkAbsPath);
+      const parentInfo = await statWithSymlinkInfo(parentAbs).catch(() => undefined);
+      if (!parentInfo || !parentInfo.followStat.isDirectory()) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: create_symlink`,
+            `path: ${yamlQuote(rel)}`,
+            `target: ${yamlQuote(target)}`,
+            `error: PARENT_NOT_DIR`,
+            `summary: ${yamlQuote('Create-symlink failed: parent directory does not exist. Use mk_dir first.')}`,
+          ].join('\n'),
+        );
+      }
+
+      const exists = await fs
+        .lstat(linkAbsPath)
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            (error as { code?: unknown }).code === 'ENOENT'
+          ) {
+            return false;
+          }
+          throw error;
+        });
+      if (exists) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: create_symlink`,
+            `path: ${yamlQuote(rel)}`,
+            `target: ${yamlQuote(target)}`,
+            `error: PATH_EXISTS`,
+            `summary: ${yamlQuote('Create-symlink failed: path already exists.')}`,
+          ].join('\n'),
+        );
+      }
+
+      await fs.symlink(target, linkAbsPath, symlinkType);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: create_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `target: ${yamlQuote(target)}`,
+          ...(symlinkType ? [`symlink_type: ${yamlQuote(symlinkType)}`] : []),
+          `summary: ${yamlQuote(`Create-symlink: ${rel} -> ${target}.`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `mode: create_symlink`,
+        `path: ${yamlQuote(rel)}`,
+        `target: ${yamlQuote(target)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      return failYaml(yaml);
+    }
+  },
+};
+
+export const rmSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'rm_symlink',
+  description: 'Remove a symlink path itself without touching its target.',
+  descriptionI18n: {
+    en: 'Remove a symlink path itself without touching its target.',
+    zh: '删除符号链接路径本身，不删除其目标。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', description: 'rtws-relative symlink path.' },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const workLanguage = getWorkLanguage();
+    const pathValue = args['path'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
+    if (!rel) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: rm_symlink`,
+          `error: PATH_REQUIRED`,
+          `summary: ${yamlQuote('Rm-symlink failed: path required.')}`,
+        ].join('\n'),
+      );
+    }
+
+    const absPath = path.resolve(process.cwd(), rel);
+    if (!isPathInsideRtws(absPath)) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: rm_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `error: PATH_OUTSIDE_WORKSPACE`,
+          `summary: ${yamlQuote('Rm-symlink failed: path must be within rtws (runtime workspace).')}`,
+        ].join('\n'),
+      );
+    }
+    if (!hasWriteAccess(caller, rel)) {
+      return fail(getAccessDeniedMessage('write', rel, workLanguage));
+    }
+
+    try {
+      const pathStat = await fs.lstat(absPath);
+      if (!pathStat.isSymbolicLink()) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: rm_symlink`,
+            `path: ${yamlQuote(rel)}`,
+            `error: NOT_SYMLINK`,
+            `summary: ${yamlQuote('Rm-symlink failed: path is not a symlink.')}`,
+          ].join('\n'),
+        );
+      }
+      const target = await fs.readlink(absPath).catch(() => '<unreadable>');
+      await fs.unlink(absPath);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: rm_symlink`,
+          `path: ${yamlQuote(rel)}`,
+          `target: ${yamlQuote(target)}`,
+          `summary: ${yamlQuote(`Rm-symlink: removed ${rel} -> ${target}.`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `mode: rm_symlink`,
+        `path: ${yamlQuote(rel)}`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');

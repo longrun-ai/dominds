@@ -20,6 +20,7 @@
 ## 1. 支撑工具（读/定位/审阅）
 
 - `read_file`（函数工具）：带上限/可选行号装饰的只读查看（用于复核与定位）
+- `read_symlink`（函数工具）：读取 symlink 目标且不跟随链接
 - `ripgrep_*`（函数工具）：定位锚点与候选片段（`ripgrep_snippets` 通常最有用）
 
 ## 2. 原始写入工具（例外）
@@ -43,6 +44,15 @@
 - `content_format`：可选文本提示，任意非空标签都可接受（例如 `yaml`、`toml`、`json`、`markdown`）
 - **护栏（默认拒绝）**：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 prepare/apply（避免把 patch 文本误写进文件）
 - **限制**：不负责创建文件；创建空文件/新文件请用 `create_new_file`；创建"带非空初始内容"的新文件可用 `prepare_file_append create=true` → `apply_file_modification`
+
+### 2.3 create_symlink / rm_symlink
+
+创建或删除 symlink 路径。
+
+- **设计定位**：把 symlink 操作显式化，避免混入普通文件/目录编辑语义
+- **行为**：`create_symlink` 会按传入值原样写入 target 字符串；相对 target 由文件系统按 link 父目录解析
+- **删除**：`rm_symlink` 删除链接路径本身，不触碰目标，也可删除 broken symlink
+- **输出**：成功/失败均为 YAML，包含 `mode: create_symlink` / `mode: rm_symlink`
 
 ## 3. 增量编辑（prepare-first）
 

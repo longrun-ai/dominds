@@ -18,7 +18,17 @@ import {
   updateReminderTool,
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
-import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
+import {
+  createSymlinkTool,
+  listDirTool,
+  mkDirTool,
+  moveDirTool,
+  moveFileTool,
+  readSymlinkTool,
+  rmDirTool,
+  rmFileTool,
+  rmSymlinkTool,
+} from './fs';
 import { buildBuiltinManualSpec } from './manual/spec';
 import { mcpDisableTool, mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
@@ -88,9 +98,12 @@ function manualSpecFor(toolsetId: string) {
 registerTool(listDirTool);
 registerTool(rmDirTool);
 registerTool(rmFileTool);
+registerTool(rmSymlinkTool);
 registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);
+registerTool(readSymlinkTool);
+registerTool(createSymlinkTool);
 registerTool(readFileTool);
 registerTool(readPictureTool);
 registerTool(writePictureTool);
@@ -243,6 +256,7 @@ setToolsetMeta('mcp_admin', {
 });
 registerToolset('ws_read', [
   listDirTool,
+  readSymlinkTool,
   readFileTool,
   readPictureTool,
   ripgrepFilesTool,
@@ -264,9 +278,12 @@ registerToolset('ws_mod', [
   listDirTool,
   rmDirTool,
   rmFileTool,
+  rmSymlinkTool,
   mkDirTool,
   moveFileTool,
   moveDirTool,
+  readSymlinkTool,
+  createSymlinkTool,
   readFileTool,
   readPictureTool,
   writePictureTool,
