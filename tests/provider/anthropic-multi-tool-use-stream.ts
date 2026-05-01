@@ -296,6 +296,115 @@ async function main() {
     `Expected malformed text-rendered tool metadata itself not to be emitted as saying, got ${JSON.stringify(malformedTextToolUseWords.join(''))}`,
   );
 
+  const sentinelLessTextToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  const sentinelLessTextToolUseWords: string[] = [];
+  async function* sentinelLessTextRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: [
+          '现在让我查看工作区状态，确认是否还有其他需要更新的内容：',
+          'Tool name: list_dir',
+          'Call ID: call_sentinel_less_text_tool',
+          'Raw arguments, verbatim:',
+          '<raw_arguments>',
+          '{"path":"."}',
+          '</raw_arguments>',
+        ].join('\n'),
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    sentinelLessTextRenderedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingChunk: async (chunk: string) => {
+        sentinelLessTextToolUseWords.push(chunk);
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        sentinelLessTextToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+    },
+  );
+  assert(
+    sentinelLessTextToolUseWords.join('') ===
+      '现在让我查看工作区状态，确认是否还有其他需要更新的内容：',
+    `Expected prose before sentinel-less text-rendered tool call to remain saying, got ${JSON.stringify(sentinelLessTextToolUseWords.join(''))}`,
+  );
+  assert(
+    sentinelLessTextToolUseCalls.length === 1 &&
+      sentinelLessTextToolUseCalls[0]?.id === 'call_sentinel_less_text_tool' &&
+      sentinelLessTextToolUseCalls[0].name === 'list_dir' &&
+      sentinelLessTextToolUseCalls[0].args === '{"path":"."}',
+    `Expected sentinel-less text-rendered tool metadata to become a tool call, got ${JSON.stringify(sentinelLessTextToolUseCalls)}`,
+  );
+
+  const inlineToolNameWords: string[] = [];
+  const inlineToolNameCalls: Array<{ id: string; name: string; args: string }> = [];
+  const inlineToolNameText =
+    '普通说明里提到 Tool name: list_dir\nCall ID: call_inline_not_tool\nRaw arguments, verbatim:\n<raw_arguments>{"path":"."}</raw_arguments>';
+  async function* inlineToolNameEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: inlineToolNameText },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    inlineToolNameEvents(),
+    {
+      ...emptyToolReceiver,
+      sayingChunk: async (chunk: string) => {
+        inlineToolNameWords.push(chunk);
+      },
+      funcCall: async (callId: string, name: string, args: string) => {
+        inlineToolNameCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+    },
+  );
+  assert(
+    inlineToolNameCalls.length === 0 && inlineToolNameWords.join('') === inlineToolNameText,
+    `Expected inline Tool name mention to remain saying text, got calls=${JSON.stringify(inlineToolNameCalls)} text=${JSON.stringify(inlineToolNameWords.join(''))}`,
+  );
+
   const duplicateTextToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
   async function* duplicateTextRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
     yield {
@@ -1057,6 +1166,38 @@ async function main() {
     `Expected built-in volcano provider to convert text-rendered tool args, got ${providerTextToolUseCalls[0]?.args ?? ''}`,
   );
 
+  const sentinelLessTextRenderedToolUseSse = [
+    'event: message_start',
+    'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0},"content":[]}}',
+    '',
+    'event: content_block_start',
+    'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"前置说明。\\nTool name: list_dir\\n"}}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Call ID: call_provider_sentinel_less_text_tool\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\"path\\":\\".\\"}\\n</raw_arguments>"}}',
+    '',
+    'event: content_block_stop',
+    'data: {"type":"content_block_stop","index":0}',
+    '',
+    'event: message_stop',
+    'data: {"type":"message_stop"}',
+    '',
+  ].join('\n');
+  const providerSentinelLessToolUseCalls = await collectMockedProviderFuncCalls(
+    volcanoProvider,
+    sentinelLessTextRenderedToolUseSse,
+  );
+  assert(
+    providerSentinelLessToolUseCalls.length === 1 &&
+      providerSentinelLessToolUseCalls[0]?.id === 'call_provider_sentinel_less_text_tool' &&
+      providerSentinelLessToolUseCalls[0].name === 'list_dir' &&
+      providerSentinelLessToolUseCalls[0].args === '{"path":"."}',
+    `Expected provider-config sentinel-less text-rendered tool call to convert, got ${JSON.stringify(providerSentinelLessToolUseCalls)}`,
+  );
+
   const batchTextRenderedToolUseBody = JSON.stringify({
     id: 'msg-batch-tool-use',
     type: 'message',
@@ -1092,6 +1233,41 @@ async function main() {
       providerBatchMessages[1].name === 'read_file' &&
       providerBatchMessages[1].arguments === '{"path":"batch-a.md"}',
     `Expected batch text before text-rendered tool call to remain saying, got ${JSON.stringify(providerBatchMessages)}`,
+  );
+
+  const batchSentinelLessTextRenderedToolUseBody = JSON.stringify({
+    id: 'msg-batch-sentinel-less-tool-use',
+    type: 'message',
+    role: 'assistant',
+    model: 'glm-5.1',
+    usage: { input_tokens: 1, output_tokens: 1 },
+    content: [
+      {
+        type: 'text',
+        text: [
+          '批量响应前置说明。',
+          'Tool name: list_dir',
+          'Call ID: call_batch_sentinel_less_text_tool',
+          'Raw arguments, verbatim:',
+          '<raw_arguments>{"path":"."}</raw_arguments>',
+        ].join('\n'),
+      },
+    ],
+  });
+  const providerBatchSentinelLessMessages = await collectMockedProviderBatchMessages(
+    volcanoProvider,
+    batchSentinelLessTextRenderedToolUseBody,
+  );
+  assert(
+    providerBatchSentinelLessMessages.length === 2 &&
+      providerBatchSentinelLessMessages[0]?.type === 'saying_msg' &&
+      providerBatchSentinelLessMessages[0].role === 'assistant' &&
+      providerBatchSentinelLessMessages[0].content === '批量响应前置说明。' &&
+      providerBatchSentinelLessMessages[1]?.type === 'func_call_msg' &&
+      providerBatchSentinelLessMessages[1].id === 'call_batch_sentinel_less_text_tool' &&
+      providerBatchSentinelLessMessages[1].name === 'list_dir' &&
+      providerBatchSentinelLessMessages[1].arguments === '{"path":"."}',
+    `Expected batch sentinel-less text-rendered tool call to convert, got ${JSON.stringify(providerBatchSentinelLessMessages)}`,
   );
 
   console.log('✓ Anthropic multi tool_use streaming test passed');

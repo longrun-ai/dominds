@@ -72,8 +72,14 @@ const ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION =
   'Return the final answer as a JSON object. Do not include any non-JSON text.';
 const ANTHROPIC_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_SSE';
 const ANTHROPIC_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_DIR';
-const VOLCANO_TEXT_TOOL_USE_PATTERN =
-  /Function call emitted by the assistant\.\r?\nTool name:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\r?\nCall ID:\s*(call_[A-Za-z0-9_-]+)\r?\nRaw arguments, verbatim:\r?\n<raw_arguments>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/raw_arguments>/g;
+const VOLCANO_TEXT_TOOL_USE_PATTERN = new RegExp(
+  String.raw`(?:Function call emitted by the assistant\.\r?\n|^|\r?\n)` +
+    String.raw`Tool name:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\r?\n` +
+    String.raw`Call ID:\s*(call_[A-Za-z0-9_-]+)\r?\n` +
+    String.raw`Raw arguments, verbatim:\r?\n` +
+    String.raw`<raw_arguments>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?</raw_arguments>`,
+  'g',
+);
 const VOLCANO_SEED_TOOL_CALL_PATTERN =
   /<seed:tool_call>\s*<function\s+name="([A-Za-z_][A-Za-z0-9_.:-]*)">\s*([\s\S]*?)<\/function>\s*<\/seed:tool_call>/g;
 const VOLCANO_SEED_TOOL_PARAMETER_PATTERN =
