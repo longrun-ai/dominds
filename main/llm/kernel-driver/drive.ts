@@ -60,6 +60,8 @@ import {
 import { formatTaskDocContent } from '../../utils/taskdoc';
 import {
   createLlmFailureQuirkHandlerSession,
+  normalizeProviderApiQuirks,
+  VOLCANO_TOOL_USE_API_QUIRK,
   type LlmFailureQuirkHandlerSession,
 } from '../api-quirks';
 import type {
@@ -1203,6 +1205,16 @@ async function loadKnownFunctionCallIds(dialog: Dialog): Promise<ReadonlySet<str
     }
   }
   return known;
+}
+
+async function loadKnownFunctionCallIdsForProviderQuirks(
+  dialog: Dialog,
+  providerConfig: ProviderConfig,
+): Promise<ReadonlySet<string> | undefined> {
+  if (!normalizeProviderApiQuirks(providerConfig).has(VOLCANO_TOOL_USE_API_QUIRK)) {
+    return undefined;
+  }
+  return await loadKnownFunctionCallIds(dialog);
 }
 
 function formatDuplicateFunctionCallResult(args: { callId: string; callName: string }): string {
@@ -2622,6 +2634,10 @@ export async function driveDialogStreamCore(
                 sawNativeToolSideChannelOutput = false;
                 streamedFuncCalls.length = 0;
                 newMsgs.length = 0;
+                const knownFunctionCallIds = await loadKnownFunctionCallIdsForProviderQuirks(
+                  dlg,
+                  providerCfg,
+                );
                 const streamResult = await llmGen.genToReceiver(
                   providerCfg,
                   agent,
@@ -2633,6 +2649,7 @@ export async function driveDialogStreamCore(
                     providerKey: provider,
                     modelKey: model,
                     promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                    knownFunctionCallIds,
                   },
                   ctxMsgs,
                   receiver,

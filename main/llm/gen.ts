@@ -61,6 +61,9 @@ export interface LlmRequestContext {
   providerKey?: string;
   modelKey?: string;
   promptCacheKey?: string;
+  // Provider-adapter hint for quirks that must repair provider-assigned tool call ids before the
+  // kernel driver sees them. Normal duplicate-call enforcement remains in the kernel driver.
+  knownFunctionCallIds?: ReadonlySet<string>;
 }
 
 export type ToolResultImageIngest = {

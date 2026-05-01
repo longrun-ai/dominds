@@ -27,7 +27,11 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import { normalizeProviderApiQuirks } from '../api-quirks';
+import {
+  GLM_VIA_VOLCANO_API_QUIRK,
+  normalizeProviderApiQuirks,
+  VOLCANO_TOOL_USE_API_QUIRK,
+} from '../api-quirks';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchOutput,
@@ -68,8 +72,6 @@ const ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION =
   'Return the final answer as a JSON object. Do not include any non-JSON text.';
 const ANTHROPIC_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_SSE';
 const ANTHROPIC_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_DIR';
-const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
-const VOLCANO_TOOL_USE_API_QUIRK = 'volcano-tool-use';
 const VOLCANO_TEXT_TOOL_USE_PATTERN =
   /Function call emitted by the assistant\.\r?\nTool name:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\r?\nCall ID:\s*(call_[A-Za-z0-9_-]+)\r?\nRaw arguments, verbatim:\r?\n<raw_arguments>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/raw_arguments>/g;
 const VOLCANO_SEED_TOOL_CALL_PATTERN =
@@ -107,6 +109,7 @@ export type AnthropicStreamConsumeOptions = {
   forcedJsonToolName?: string;
   quirks?: AnthropicStreamConsumeQuirks;
   genseq?: number;
+  knownFunctionCallIds?: ReadonlySet<string>;
 };
 
 type OfficialAnthropicThinkingConfig =
@@ -1742,6 +1745,20 @@ type VolcanoTextToolUsePart =
   | { kind: 'text'; text: string }
   | { kind: 'tool_use'; id: string; name: string; rawArgumentsText: string };
 
+type VolcanoToolCallIdRegistry = {
+  readonly used: Set<string>;
+  readonly nextSuffixByCallId: Map<string, number>;
+};
+
+function createVolcanoToolCallIdRegistry(
+  knownFunctionCallIds: ReadonlySet<string> | undefined,
+): VolcanoToolCallIdRegistry {
+  return {
+    used: new Set(knownFunctionCallIds ?? []),
+    nextSuffixByCallId: new Map(),
+  };
+}
+
 function decodeVolcanoSeedXmlText(text: string): string {
   return text
     .replace(/&quot;/g, '"')
@@ -1772,6 +1789,34 @@ function createVolcanoSeedToolCallId(args: {
     return `call_volcano_seed_g${String(args.genseq)}_${hash}`;
   }
   return `call_volcano_seed_${hash}`;
+}
+
+function uniquifyVolcanoTextToolCallId(args: {
+  callId: string;
+  toolName: string;
+  idRegistry: VolcanoToolCallIdRegistry | undefined;
+}): string {
+  const trimmed = args.callId.trim();
+  if (trimmed.length === 0 || args.idRegistry === undefined) return args.callId;
+  if (!args.idRegistry.used.has(trimmed)) {
+    args.idRegistry.used.add(trimmed);
+    return trimmed;
+  }
+
+  for (;;) {
+    const nextSuffix = (args.idRegistry.nextSuffixByCallId.get(trimmed) ?? 0) + 1;
+    args.idRegistry.nextSuffixByCallId.set(trimmed, nextSuffix);
+    const candidate = `${trimmed}_v${String(nextSuffix)}`;
+    if (args.idRegistry.used.has(candidate)) continue;
+    args.idRegistry.used.add(candidate);
+    log.warn('ANTH volcano-tool-use quirk rewrote duplicate function call id', undefined, {
+      quirk: VOLCANO_TOOL_USE_API_QUIRK,
+      originalCallId: trimmed,
+      callId: candidate,
+      toolName: args.toolName,
+    });
+    return candidate;
+  }
 }
 
 function assertValidAnthropicStreamGenseq(genseq: number | undefined): void {
@@ -1852,6 +1897,7 @@ function splitVolcanoTextToolUseParts(args: {
   text: string;
   genseq?: number;
   blockIndex?: number;
+  idRegistry?: VolcanoToolCallIdRegistry;
 }): VolcanoTextToolUsePart[] {
   const parts: VolcanoTextToolUsePart[] = [];
   const matches: Array<{
@@ -1916,7 +1962,11 @@ function splitVolcanoTextToolUseParts(args: {
     }
     parts.push({
       kind: 'tool_use',
-      id: match.id,
+      id: uniquifyVolcanoTextToolCallId({
+        callId: match.id,
+        toolName: match.name,
+        idRegistry: args.idRegistry,
+      }),
       name: match.name,
       rawArgumentsText: match.rawArgumentsText,
     });
@@ -1937,6 +1987,7 @@ async function emitTextWithVolcanoToolUseQuirk(args: {
   thinkingStarted: boolean;
   genseq?: number;
   blockIndex?: number;
+  idRegistry?: VolcanoToolCallIdRegistry;
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
@@ -1945,6 +1996,7 @@ async function emitTextWithVolcanoToolUseQuirk(args: {
         text: args.text,
         genseq: args.genseq,
         blockIndex: args.blockIndex,
+        idRegistry: args.idRegistry,
       })
     : [{ kind: 'text' as const, text: args.text }];
 
@@ -1989,6 +2041,7 @@ async function emitThinkingWithVolcanoToolUseQuirk(args: {
   thinkingStarted: boolean;
   genseq?: number;
   blockIndex?: number;
+  idRegistry?: VolcanoToolCallIdRegistry;
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
@@ -1997,6 +2050,7 @@ async function emitThinkingWithVolcanoToolUseQuirk(args: {
         text: args.text,
         genseq: args.genseq,
         blockIndex: args.blockIndex,
+        idRegistry: args.idRegistry,
       })
     : [{ kind: 'text' as const, text: args.text }];
 
@@ -2041,6 +2095,7 @@ async function flushPendingVolcanoToolUseBlocks(args: {
   sayingStarted: boolean;
   thinkingStarted: boolean;
   genseq?: number;
+  idRegistry?: VolcanoToolCallIdRegistry;
 }): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
   let sayingStarted = args.sayingStarted;
   let thinkingStarted = args.thinkingStarted;
@@ -2069,6 +2124,7 @@ async function flushPendingVolcanoToolUseBlocks(args: {
         thinkingStarted,
         genseq: args.genseq,
         blockIndex,
+        idRegistry: args.idRegistry,
       });
     } else {
       if (pendingThinking === undefined) {
@@ -2084,6 +2140,7 @@ async function flushPendingVolcanoToolUseBlocks(args: {
         thinkingStarted,
         genseq: args.genseq,
         blockIndex,
+        idRegistry: args.idRegistry,
       });
     }
     sayingStarted = updated.sayingStarted;
@@ -2173,6 +2230,8 @@ function anthropicToChatMessages(
   message: unknown,
   genseq: number,
   forcedJsonToolName?: string,
+  quirks?: AnthropicStreamConsumeQuirks,
+  knownFunctionCallIds?: ReadonlySet<string>,
 ): ChatMessage[] {
   const results: ChatMessage[] = [];
 
@@ -2201,55 +2260,87 @@ function anthropicToChatMessages(
       });
     }
   }
-
-  const textContent = extractTextContent(blocks);
-  if (textContent && role === 'assistant') {
+  const pushAssistantSaying = (contentText: string): void => {
+    if (contentText.length === 0) return;
+    const previous = results.length > 0 ? results[results.length - 1] : undefined;
+    if (previous?.type === 'saying_msg' && previous.role === 'assistant') {
+      results[results.length - 1] = {
+        ...previous,
+        content: `${previous.content}${contentText}`,
+      };
+      return;
+    }
     results.push({
       type: 'saying_msg',
-      role,
-      content: textContent,
-      genseq: genseq,
+      role: 'assistant',
+      content: contentText,
+      genseq,
     });
-  }
+  };
+
   if (role === 'assistant') {
-    const toolBlocks = blocks.filter(isToolUseBlock);
-    toolBlocks.forEach((block) => {
-      if (forcedJsonToolName && block.name === forcedJsonToolName) {
-        const jsonText = serializeAnthropicForcedJsonObject(
-          block.input,
-          `tool_use:${block.id}:${block.name}`,
-        );
-        results.push({
-          type: 'saying_msg',
-          role: 'assistant',
-          content: jsonText,
-          genseq: genseq,
-        });
-        return;
+    const volcanoToolCallIdRegistry: VolcanoToolCallIdRegistry | undefined =
+      quirks?.convertVolcanoTextToolUseBlocks === true
+        ? createVolcanoToolCallIdRegistry(knownFunctionCallIds)
+        : undefined;
+    for (const block of blocks) {
+      if (isRecord(block) && block.type === 'text' && typeof block.text === 'string') {
+        const parts =
+          quirks?.convertVolcanoTextToolUseBlocks === true
+            ? splitVolcanoTextToolUseParts({
+                text: block.text,
+                genseq,
+                idRegistry: volcanoToolCallIdRegistry,
+              })
+            : [{ kind: 'text' as const, text: block.text }];
+        for (const part of parts) {
+          if (part.kind === 'text') {
+            pushAssistantSaying(part.text);
+            continue;
+          }
+          log.warn(
+            'ANTH quirk converted batch text-rendered tool use to function call',
+            undefined,
+            {
+              quirk: VOLCANO_TOOL_USE_API_QUIRK,
+              callId: part.id,
+              toolName: part.name,
+            },
+          );
+          results.push({
+            type: 'func_call_msg',
+            id: part.id,
+            name: part.name,
+            arguments: part.rawArgumentsText,
+            role: 'assistant',
+            genseq,
+          });
+        }
+        continue;
       }
-      results.push({
-        type: 'func_call_msg',
-        id: block.id,
-        name: block.name,
-        arguments: JSON.stringify(block.input),
-        role: 'assistant',
-        genseq: genseq,
-      });
-    });
+
+      if (isToolUseBlock(block)) {
+        if (forcedJsonToolName && block.name === forcedJsonToolName) {
+          const jsonText = serializeAnthropicForcedJsonObject(
+            block.input,
+            `tool_use:${block.id}:${block.name}`,
+          );
+          pushAssistantSaying(jsonText);
+          continue;
+        }
+        results.push({
+          type: 'func_call_msg',
+          id: block.id,
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+          role: 'assistant',
+          genseq,
+        });
+      }
+    }
   }
 
   return results;
-}
-
-function extractTextContent(blocks: unknown[]): string {
-  return blocks
-    .map((block) => {
-      if (isRecord(block) && block.type === 'text' && typeof block.text === 'string') {
-        return block.text;
-      }
-      return '';
-    })
-    .join('');
 }
 
 async function emitAnthropicStreamReadError(
@@ -2359,6 +2450,10 @@ export async function consumeAnthropicStream(
   };
   const { abortSignal, forcedJsonToolName, genseq } = options;
   assertValidAnthropicStreamGenseq(genseq);
+  const volcanoToolCallIdRegistry: VolcanoToolCallIdRegistry | undefined =
+    quirks.convertVolcanoTextToolUseBlocks
+      ? createVolcanoToolCallIdRegistry(options.knownFunctionCallIds)
+      : undefined;
 
   // Stream lifecycle management using SDK start/stop events
   const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
@@ -2448,6 +2543,7 @@ export async function consumeAnthropicStream(
                 thinkingStarted,
                 genseq,
                 blockIndex,
+                idRegistry: volcanoToolCallIdRegistry,
               });
               sayingStarted = updated.sayingStarted;
               thinkingStarted = updated.thinkingStarted;
@@ -2471,6 +2567,7 @@ export async function consumeAnthropicStream(
                 thinkingStarted,
                 genseq,
                 blockIndex,
+                idRegistry: volcanoToolCallIdRegistry,
               });
               sayingStarted = updated.sayingStarted;
               thinkingStarted = updated.thinkingStarted;
@@ -2555,6 +2652,7 @@ export async function consumeAnthropicStream(
               thinkingStarted,
               genseq,
               blockIndex,
+              idRegistry: volcanoToolCallIdRegistry,
             });
             sayingStarted = updated.sayingStarted;
             thinkingStarted = updated.thinkingStarted;
@@ -2571,6 +2669,7 @@ export async function consumeAnthropicStream(
               thinkingStarted,
               genseq,
               blockIndex,
+              idRegistry: volcanoToolCallIdRegistry,
             });
             sayingStarted = updated.sayingStarted;
             thinkingStarted = updated.thinkingStarted;
@@ -2657,6 +2756,7 @@ export async function consumeAnthropicStream(
           sayingStarted,
           thinkingStarted,
           genseq,
+          idRegistry: volcanoToolCallIdRegistry,
         });
         sayingStarted = updated.sayingStarted;
         thinkingStarted = updated.thinkingStarted;
@@ -2872,6 +2972,7 @@ export class AnthropicGen implements LlmGenerator {
       forcedJsonToolName: forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
       quirks: resolveAnthropicStreamConsumeQuirks(providerConfig),
       genseq,
+      knownFunctionCallIds: requestContext.knownFunctionCallIds,
     });
   }
 
@@ -2989,6 +3090,8 @@ export class AnthropicGen implements LlmGenerator {
         response,
         genseq,
         forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+        resolveAnthropicStreamConsumeQuirks(providerConfig),
+        requestContext.knownFunctionCallIds,
       ),
       ...(outputs.length > 0 ? { outputs } : {}),
       usage,

@@ -3,7 +3,7 @@ import YAML from 'yaml';
 
 import type { ProviderConfig } from '../../main/llm/client';
 import { readBuiltinDefaultsYamlRaw } from '../../main/llm/client';
-import type { LlmStreamReceiver } from '../../main/llm/gen';
+import type { LlmBatchResult, LlmStreamReceiver } from '../../main/llm/gen';
 import { AnthropicGen, consumeAnthropicStream } from '../../main/llm/gen/anthropic';
 
 function assert(condition: boolean, message: string): void {
@@ -294,6 +294,69 @@ async function main() {
   assert(
     malformedTextToolUseWords.join('') === '',
     `Expected malformed text-rendered tool metadata itself not to be emitted as saying, got ${JSON.stringify(malformedTextToolUseWords.join(''))}`,
+  );
+
+  const duplicateTextToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
+  async function* duplicateTextRenderedToolUseEvents(): AsyncIterable<MessageStreamEvent> {
+    yield {
+      type: 'message_start',
+      message: { usage: { input_tokens: 0, output_tokens: 0 } },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    } as unknown as MessageStreamEvent;
+    yield {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: [
+          'Function call emitted by the assistant.',
+          'Tool name: read_file',
+          'Call ID: call_reused_volcano_text_id',
+          'Raw arguments, verbatim:',
+          '<raw_arguments>{"path":"a.md"}</raw_arguments>',
+          'Function call emitted by the assistant.',
+          'Tool name: read_file',
+          'Call ID: call_reused_volcano_text_id',
+          'Raw arguments, verbatim:',
+          '<raw_arguments>{"path":"b.md"}</raw_arguments>',
+        ].join('\n'),
+      },
+    } as unknown as MessageStreamEvent;
+    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+  }
+
+  await consumeAnthropicStream(
+    duplicateTextRenderedToolUseEvents(),
+    {
+      ...emptyToolReceiver,
+      funcCall: async (callId: string, name: string, args: string) => {
+        duplicateTextToolUseCalls.push({ id: callId, name, args });
+      },
+    },
+    {
+      quirks: {
+        normalizeLoneClosingBraceEmptyToolInputDelta: false,
+        convertVolcanoTextToolUseBlocks: true,
+      },
+      knownFunctionCallIds: new Set(['call_reused_volcano_text_id']),
+    },
+  );
+  assert(
+    duplicateTextToolUseCalls.length === 2,
+    `Expected 2 duplicate-id text-rendered tool calls, got ${duplicateTextToolUseCalls.length}`,
+  );
+  assert(
+    duplicateTextToolUseCalls[0]?.id === 'call_reused_volcano_text_id_v1',
+    `Expected first duplicate text-rendered call id to get _v1, got ${duplicateTextToolUseCalls[0]?.id ?? ''}`,
+  );
+  assert(
+    duplicateTextToolUseCalls[1]?.id === 'call_reused_volcano_text_id_v2',
+    `Expected second duplicate text-rendered call id to get _v2, got ${duplicateTextToolUseCalls[1]?.id ?? ''}`,
   );
 
   const messageStopFlushToolUseCalls: Array<{ id: string; name: string; args: string }> = [];
@@ -805,6 +868,7 @@ async function main() {
   async function collectMockedProviderFuncCalls(
     provider: ProviderConfig,
     responseText: string,
+    knownFunctionCallIds?: ReadonlySet<string>,
   ): Promise<Array<{ id: string; name: string; args: string }>> {
     const originalFetch = globalThis.fetch;
     const originalArkKey = process.env.ARK_API_KEY;
@@ -827,6 +891,7 @@ async function main() {
           dialogRootId: 'root',
           providerKey: 'volcano-engine-coding-plan',
           modelKey: 'glm-5.1',
+          knownFunctionCallIds,
         },
         [
           {
@@ -855,6 +920,56 @@ async function main() {
       }
     }
     return providerFuncCalls;
+  }
+
+  async function collectMockedProviderBatchMessages(
+    provider: ProviderConfig,
+    responseText: string,
+    knownFunctionCallIds?: ReadonlySet<string>,
+  ): Promise<LlmBatchResult['messages']> {
+    const originalFetch = globalThis.fetch;
+    const originalArkKey = process.env.ARK_API_KEY;
+    try {
+      process.env.ARK_API_KEY = 'test-key';
+      globalThis.fetch = async (): Promise<Response> =>
+        new Response(responseText, {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      const result = await new AnthropicGen('anthropic-compatible').genMoreMessages(
+        provider,
+        { id: 'tester', name: 'tester', model: 'glm-5.1' },
+        '',
+        [],
+        {
+          dialogSelfId: 'self',
+          dialogRootId: 'root',
+          providerKey: 'volcano-engine-coding-plan',
+          modelKey: 'glm-5.1',
+          knownFunctionCallIds,
+        },
+        [
+          {
+            type: 'prompting_msg',
+            role: 'user',
+            genseq: 1,
+            msgId: 'user-1',
+            grammar: 'markdown',
+            content: 'call a tool',
+          },
+        ],
+        1,
+      );
+      return result.messages;
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalArkKey === undefined) {
+        delete process.env.ARK_API_KEY;
+      } else {
+        process.env.ARK_API_KEY = originalArkKey;
+      }
+    }
   }
 
   const malformedEmptyToolInputSse = [
@@ -940,6 +1055,43 @@ async function main() {
     providerTextToolUseCalls[0]?.args ===
       '{"expectedConversationId":"69e093e8-76b8-839a-9378-b65b801038b9"}',
     `Expected built-in volcano provider to convert text-rendered tool args, got ${providerTextToolUseCalls[0]?.args ?? ''}`,
+  );
+
+  const batchTextRenderedToolUseBody = JSON.stringify({
+    id: 'msg-batch-tool-use',
+    type: 'message',
+    role: 'assistant',
+    model: 'glm-5.1',
+    usage: { input_tokens: 1, output_tokens: 1 },
+    content: [
+      {
+        type: 'text',
+        text: [
+          '批量响应前置说明。',
+          'Function call emitted by the assistant.',
+          'Tool name: read_file',
+          'Call ID: call_batch_reused_volcano_text_id',
+          'Raw arguments, verbatim:',
+          '<raw_arguments>{"path":"batch-a.md"}</raw_arguments>',
+        ].join('\n'),
+      },
+    ],
+  });
+  const providerBatchMessages = await collectMockedProviderBatchMessages(
+    volcanoProvider,
+    batchTextRenderedToolUseBody,
+    new Set(['call_batch_reused_volcano_text_id']),
+  );
+  assert(
+    providerBatchMessages.length === 2 &&
+      providerBatchMessages[0]?.type === 'saying_msg' &&
+      providerBatchMessages[0].role === 'assistant' &&
+      providerBatchMessages[0].content === '批量响应前置说明。\n' &&
+      providerBatchMessages[1]?.type === 'func_call_msg' &&
+      providerBatchMessages[1].id === 'call_batch_reused_volcano_text_id_v1' &&
+      providerBatchMessages[1].name === 'read_file' &&
+      providerBatchMessages[1].arguments === '{"path":"batch-a.md"}',
+    `Expected batch text before text-rendered tool call to remain saying, got ${JSON.stringify(providerBatchMessages)}`,
   );
 
   console.log('✓ Anthropic multi tool_use streaming test passed');
