@@ -37,6 +37,11 @@ import {
   type McpToolsetManualByServer,
 } from './manual-problems';
 import {
+  clearMcpPromptResourceCatalog,
+  refreshMcpPromptResourceCatalog,
+  unregisterMcpPromptResourceCatalog,
+} from './resources';
+import {
   extractMcpDiagnosticTextI18n,
   McpSdkClient,
   type McpDiagnosticTextI18n,
@@ -381,6 +386,36 @@ export function getMcpRuntimeLeasesForDialog(dialogKey: string): ReadonlyArray<{
   return leases;
 }
 
+export async function withMcpCatalogClient<T>(
+  serverId: string,
+  fn: (client: McpSdkClient) => Promise<T>,
+): Promise<T> {
+  const state = serverStateById.get(serverId);
+  if (!state) {
+    throw new Error(`MCP server '${serverId}' is not loaded`);
+  }
+  const client =
+    state.cfg.transport === 'stdio'
+      ? await McpSdkClient.connectStdio({
+          serverId,
+          command: state.cfg.command,
+          args: state.cfg.args,
+          env: buildChildEnv(state.cfg, serverId),
+          cwd: await resolveStdioServerCwd(state.cfg, serverId),
+        })
+      : await McpSdkClient.connectStreamableHttp({
+          serverId,
+          url: state.cfg.url,
+          headers: buildHttpHeaders(state.cfg, serverId),
+          sessionId: state.cfg.sessionId,
+        });
+  try {
+    return await fn(client);
+  } finally {
+    await client.close();
+  }
+}
+
 export function getMcpDeclaredServerRuntimeStatuses(): readonly McpDeclaredServerRuntimeStatus[] {
   return declaredServerIdsInYamlOrder.map((serverId) => {
     const catalogEntry = declaredServerRuntimeCatalogById.get(serverId);
@@ -494,6 +529,7 @@ export function stopMcpSupervisor(): void {
 
   lastSeenMcpYamlSig = undefined;
   clearDeclaredServerRuntimeCatalog();
+  clearMcpPromptResourceCatalog();
   supervisorStarted = false;
 }
 
@@ -973,6 +1009,7 @@ function setServerEnabledInMcpYaml(
 function stopLoadedServer(serverId: string): boolean {
   const existing = serverStateById.get(serverId);
   if (!existing) return false;
+  unregisterMcpPromptResourceCatalog(serverId);
   unregisterServer(existing);
   existing.dispatch.requestStop();
   serverStateById.delete(serverId);
@@ -1141,6 +1178,7 @@ async function applyWorkspaceConfig(
   // Remove deleted servers first.
   for (const [serverId, state] of serverStateById.entries()) {
     if (desiredIds.has(serverId)) continue;
+    unregisterMcpPromptResourceCatalog(serverId);
     unregisterServer(state);
     state.dispatch.requestStop();
     runtimeLeaseChanged = true;
@@ -1187,6 +1225,7 @@ async function applyWorkspaceConfig(
       clearDeclaredServerRuntimeError(serverId);
       removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
       if (existing) {
+        unregisterMcpPromptResourceCatalog(serverId);
         unregisterServer(existing);
         existing.dispatch.requestStop();
         runtimeLeaseChanged = true;
@@ -1593,6 +1632,12 @@ async function tryBuildServerState(
           });
 
     const listedTools = await client.listTools();
+    await refreshMcpPromptResourceCatalog({
+      serverId,
+      client,
+      prompts: cfg.prompts,
+      resources: cfg.resources,
+    });
     if (cfg.truelyStateless) {
       sharedRuntime = new McpServerRuntime({ serverId, toolsetName, client });
       client = undefined;

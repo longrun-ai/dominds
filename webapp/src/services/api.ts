@@ -36,6 +36,8 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   CreateRtwsSnippetGroupRequest,
   CreateRtwsSnippetGroupResponse,
+  RenderMcpPromptSnippetRequest,
+  RenderMcpPromptSnippetResponse,
   SaveRtwsSnippetTemplateRequest,
   SaveRtwsSnippetTemplateResponse,
   SnippetCatalogResponse,
@@ -852,6 +854,12 @@ export class ApiClient {
     req: SaveRtwsSnippetTemplateRequest,
   ): Promise<ApiResponse<SaveRtwsSnippetTemplateResponse>> {
     return this.request('/api/snippets/rtws', { method: 'POST', body: req });
+  }
+
+  async renderMcpPromptSnippet(
+    req: RenderMcpPromptSnippetRequest,
+  ): Promise<ApiResponse<RenderMcpPromptSnippetResponse>> {
+    return this.request('/api/snippets/mcp-prompt/render', { method: 'POST', body: req });
   }
 
   async toolsetManual(req: ToolsetManualRequest): Promise<ApiResponse<ToolsetManualResponse>> {

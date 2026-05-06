@@ -4,8 +4,9 @@ import path from 'node:path';
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { parseMarkdownFrontmatter } from '../markdown/frontmatter';
+import { getMcpVirtualSkill, listMcpVirtualSkills } from '../mcp/resources';
 
-export type WorkspaceSkillScope = 'team_shared' | 'individual';
+export type WorkspaceSkillScope = 'team_shared' | 'individual' | 'mcp_resource';
 
 export type LoadedWorkspaceSkill = Readonly<{
   id: string;
@@ -358,6 +359,7 @@ export async function loadWorkspaceSkills(params: {
   rtwsRootAbs: string;
   memberId: string;
   language: LanguageCode;
+  visibleMcpServerIds?: ReadonlySet<string>;
 }): Promise<ReadonlyArray<LoadedWorkspaceSkill>> {
   const teamSharedSkills = await loadScopeSkills({
     ...params,
@@ -367,14 +369,77 @@ export async function loadWorkspaceSkills(params: {
     ...params,
     scope: 'individual',
   });
-  return [...teamSharedSkills, ...individualSkills];
+  const mcpResourceSkills = listMcpVirtualSkills()
+    .filter(
+      (skill) =>
+        params.visibleMcpServerIds === undefined || params.visibleMcpServerIds.has(skill.serverId),
+    )
+    .map(
+      (skill): LoadedWorkspaceSkill => ({
+        id: skill.id,
+        title: skill.title,
+        description: skill.description,
+        prompt: skill.body,
+        body: skill.body,
+        scope: 'mcp_resource',
+        sourcePathAbs: skill.uri,
+        sourcePathRel: `mcp://${skill.serverId}/${skill.uri}`,
+        declaredAllowedTools: skill.declaredAllowedTools,
+        userInvocable: skill.userInvocable,
+        disableModelInvocation: skill.disableModelInvocation,
+      }),
+    );
+  return [...teamSharedSkills, ...individualSkills, ...mcpResourceSkills];
+}
+
+export async function readWorkspaceSkill(params: {
+  rtwsRootAbs: string;
+  memberId: string;
+  language: LanguageCode;
+  skillId: string;
+  visibleMcpServerIds?: ReadonlySet<string>;
+}): Promise<LoadedWorkspaceSkill | null> {
+  const localSkills = await loadWorkspaceSkills({
+    rtwsRootAbs: params.rtwsRootAbs,
+    memberId: params.memberId,
+    language: params.language,
+    visibleMcpServerIds: params.visibleMcpServerIds,
+  });
+  for (const skill of localSkills) {
+    if (skill.id === params.skillId) return skill;
+  }
+  const mcpSkill = getMcpVirtualSkill(params.skillId);
+  if (!mcpSkill) return null;
+  if (
+    params.visibleMcpServerIds !== undefined &&
+    !params.visibleMcpServerIds.has(mcpSkill.serverId)
+  ) {
+    return null;
+  }
+  return {
+    id: mcpSkill.id,
+    title: mcpSkill.title,
+    description: mcpSkill.description,
+    prompt: mcpSkill.body,
+    body: mcpSkill.body,
+    scope: 'mcp_resource',
+    sourcePathAbs: mcpSkill.uri,
+    sourcePathRel: `mcp://${mcpSkill.serverId}/${mcpSkill.uri}`,
+    declaredAllowedTools: mcpSkill.declaredAllowedTools,
+    userInvocable: mcpSkill.userInvocable,
+    disableModelInvocation: mcpSkill.disableModelInvocation,
+  };
 }
 
 function renderScopeLabel(language: LanguageCode, scope: WorkspaceSkillScope): string {
   if (language === 'zh') {
-    return scope === 'team_shared' ? '团队共享' : '个人';
+    if (scope === 'team_shared') return '团队共享';
+    if (scope === 'mcp_resource') return 'MCP 资源';
+    return '个人';
   }
-  return scope === 'team_shared' ? 'Team Shared' : 'Individual';
+  if (scope === 'team_shared') return 'Team Shared';
+  if (scope === 'mcp_resource') return 'MCP Resource';
+  return 'Individual';
 }
 
 export function renderWorkspaceSkillsPrompt(params: {
@@ -384,9 +449,9 @@ export function renderWorkspaceSkillsPrompt(params: {
   if (params.skills.length === 0) return '';
 
   const title = params.language === 'zh' ? '### Skills（工作技能）' : '### Skills';
-  const promptLabel = params.language === 'zh' ? '提示词' : 'Prompt';
   const descLabel = params.language === 'zh' ? '说明' : 'Description';
   const scopeLabel = params.language === 'zh' ? '作用域' : 'Scope';
+  const readLabel = params.language === 'zh' ? '读取正文' : 'Read body';
   const allowedToolsLabel =
     params.language === 'zh' ? '上游 allowed-tools' : 'Upstream allowed-tools';
   const allowedToolsHint =
@@ -397,18 +462,15 @@ export function renderWorkspaceSkillsPrompt(params: {
   const blocks = params.skills.map((skill) => {
     const lines = [
       `#### ${skill.title}`,
+      `- ID: \`${skill.id}\``,
       `- ${scopeLabel}: ${renderScopeLabel(params.language, skill.scope)}`,
       `- ${descLabel}: ${skill.description}`,
+      `- ${readLabel}: \`read_skill({ "skill_id": "${skill.id}" })\``,
     ];
     if (skill.declaredAllowedTools && skill.declaredAllowedTools.length > 0) {
       lines.push(
         `- ${allowedToolsLabel}: ${skill.declaredAllowedTools.join(', ')} (${allowedToolsHint})`,
       );
-    }
-    lines.push(`- ${promptLabel}:`);
-    const body = skill.body.trim();
-    if (body !== '') {
-      lines.push(body);
     }
     return lines.join('\n');
   });

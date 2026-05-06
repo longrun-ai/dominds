@@ -29,6 +29,7 @@ import {
   updateReminderTool,
 } from '../tools/ctrl';
 import { isShellToolName, listShellSpecialistMemberIds } from '../tools/shell-tools';
+import { readSkillTool } from '../tools/skills';
 import { buildToolsetManualTools, formatToolsetManualIntro } from '../tools/toolset-manual';
 import {
   defaultPersonaText,
@@ -263,16 +264,6 @@ export async function loadAgentMinds(
   const knowhow = knowhowRaw && knowhowRaw.trim() !== '' ? knowhowRaw : none;
   const pitfalls = pitfallsRaw && pitfallsRaw.trim() !== '' ? pitfallsRaw : none;
   const envIntro = envIntroRaw && envIntroRaw.trim() !== '' ? envIntroRaw : '';
-  const workspaceSkills = await loadWorkspaceSkills({
-    rtwsRootAbs: process.cwd(),
-    memberId: agent.id,
-    language: workingLanguage,
-  });
-  const skillsText = renderWorkspaceSkillsPrompt({
-    language: workingLanguage,
-    skills: workspaceSkills,
-  });
-
   // Introduction of all team members (mark "(self)" for the current agent)
   const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
 
@@ -298,6 +289,26 @@ export async function loadAgentMinds(
       (t) => !(t.type === 'func' && typeof t.name === 'string' && isShellToolName(t.name)),
     );
   })();
+  const visibleMcpServerIds = new Set(
+    agent
+      .listResolvedToolsetNames({
+        onMissing: 'silent',
+        dynamicToolsetNames,
+        declaredMcpToolsetNames,
+        invalidMcpToolsetNames,
+      })
+      .filter((toolsetName) => declaredMcpToolsetNames?.has(toolsetName)),
+  );
+  const workspaceSkills = await loadWorkspaceSkills({
+    rtwsRootAbs: process.cwd(),
+    memberId: agent.id,
+    language: workingLanguage,
+    visibleMcpServerIds,
+  });
+  const skillsText = renderWorkspaceSkillsPrompt({
+    language: workingLanguage,
+    skills: workspaceSkills,
+  });
 
   // Inject intrinsic dialog-control tools as function tools according to dialog scope.
   const intrinsicFuncTools: FuncTool[] = [
@@ -346,6 +357,9 @@ export async function loadAgentMinds(
   });
   if (manualTools.tools.length > 0) {
     agentTools.push(...manualTools.tools);
+  }
+  if (!agentTools.some((tool) => tool.name === readSkillTool.name)) {
+    agentTools.push(readSkillTool);
   }
 
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');

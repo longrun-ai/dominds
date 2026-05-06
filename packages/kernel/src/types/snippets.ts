@@ -1,4 +1,4 @@
-export type SnippetTemplateSource = 'builtin' | 'rtws';
+export type SnippetTemplateSource = 'builtin' | 'rtws' | 'mcp_prompt';
 
 export type SnippetTemplate = {
   id: string;
@@ -7,6 +7,17 @@ export type SnippetTemplate = {
   content: string;
   source: SnippetTemplateSource;
   path?: string;
+  readonly?: boolean;
+  mcpPrompt?: {
+    serverId: string;
+    promptId: string;
+    name: string;
+    arguments?: ReadonlyArray<{
+      name: string;
+      description?: string;
+      required?: boolean;
+    }>;
+  };
 };
 
 export type SnippetTemplateGroup = {
@@ -54,4 +65,13 @@ export type ToolsetManualRequest = {
 
 export type ToolsetManualResponse =
   | { success: true; markdown: string }
+  | { success: false; error: string };
+
+export type RenderMcpPromptSnippetRequest = {
+  promptId: string;
+  arguments?: Record<string, string>;
+};
+
+export type RenderMcpPromptSnippetResponse =
+  | { success: true; content: string }
   | { success: false; error: string };

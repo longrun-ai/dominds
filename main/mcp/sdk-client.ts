@@ -38,6 +38,42 @@ export type McpListedTool = {
   inputSchema: Record<string, unknown>;
 };
 
+export type McpListedPrompt = {
+  name: string;
+  description?: string;
+  arguments?: ReadonlyArray<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+};
+
+export type McpPromptContent = {
+  description?: string;
+  messages: unknown[];
+};
+
+export type McpListedResource = {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+};
+
+export type McpListedResourceTemplate = {
+  uriTemplate: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+};
+
+export type McpReadResourceContent = {
+  uri: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
+};
+
 export class McpDiagnosticError extends Error {
   public readonly detailTextI18n: McpDiagnosticTextI18n;
 
@@ -157,6 +193,94 @@ export class McpSdkClient {
       if (!cursor) break;
     }
     return out;
+  }
+
+  async listPrompts(timeoutMs: number = 15_000): Promise<McpListedPrompt[]> {
+    this.ensureOpen();
+    const out: McpListedPrompt[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 50; i++) {
+      const res = await this.client.listPrompts(cursor ? { cursor } : {}, { timeout: timeoutMs });
+      for (const prompt of res.prompts) {
+        out.push({
+          name: prompt.name,
+          description: prompt.description,
+          arguments: prompt.arguments,
+        });
+      }
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
+  async getPrompt(
+    name: string,
+    args: Record<string, string> | undefined,
+    timeoutMs: number = 15_000,
+  ): Promise<McpPromptContent> {
+    this.ensureOpen();
+    const res = await this.client.getPrompt(
+      { name, ...(args !== undefined ? { arguments: args } : {}) },
+      { timeout: timeoutMs },
+    );
+    return {
+      description: res.description,
+      messages: res.messages,
+    };
+  }
+
+  async listResources(timeoutMs: number = 15_000): Promise<McpListedResource[]> {
+    this.ensureOpen();
+    const out: McpListedResource[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 50; i++) {
+      const res = await this.client.listResources(cursor ? { cursor } : {}, { timeout: timeoutMs });
+      for (const resource of res.resources) {
+        out.push({
+          uri: resource.uri,
+          name: resource.name,
+          description: resource.description,
+          mimeType: resource.mimeType,
+        });
+      }
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
+  async listResourceTemplates(timeoutMs: number = 15_000): Promise<McpListedResourceTemplate[]> {
+    this.ensureOpen();
+    const out: McpListedResourceTemplate[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 50; i++) {
+      const res = await this.client.listResourceTemplates(cursor ? { cursor } : {}, {
+        timeout: timeoutMs,
+      });
+      for (const resourceTemplate of res.resourceTemplates) {
+        out.push({
+          uriTemplate: resourceTemplate.uriTemplate,
+          name: resourceTemplate.name,
+          description: resourceTemplate.description,
+          mimeType: resourceTemplate.mimeType,
+        });
+      }
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+    return out;
+  }
+
+  async readResource(uri: string, timeoutMs: number = 15_000): Promise<McpReadResourceContent[]> {
+    this.ensureOpen();
+    const res = await this.client.readResource({ uri }, { timeout: timeoutMs });
+    return res.contents.map((content) => ({
+      uri: content.uri,
+      mimeType: content.mimeType,
+      ...('text' in content ? { text: content.text } : {}),
+      ...('blob' in content ? { blob: content.blob } : {}),
+    }));
   }
 
   async callTool(

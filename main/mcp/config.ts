@@ -23,6 +23,28 @@ export type McpManualConfig = {
   sections: readonly McpManualSectionConfig[];
 };
 
+export type McpPromptConfig = {
+  whitelist: string[];
+  blacklist: string[];
+  transform: ToolNameTransform[];
+};
+
+export type McpResourceSkillsConfig = {
+  enabled: boolean;
+  whitelist: string[];
+  blacklist: string[];
+  transform: ToolNameTransform[];
+};
+
+export type McpResourceConfig = {
+  whitelist: string[];
+  blacklist: string[];
+  transform: ToolNameTransform[];
+  mimeTypes: string[];
+  maxBytes?: number;
+  skills: McpResourceSkillsConfig;
+};
+
 type McpServerConfigBase = {
   serverId: string;
   truelyStateless: boolean;
@@ -44,6 +66,8 @@ type McpServerConfigBase = {
    * guardrails, failure handling, team norms) and must not determine server availability.
    */
   manual?: McpManualConfig;
+  prompts: McpPromptConfig;
+  resources: McpResourceConfig;
 };
 
 export type McpStdioServerConfig = McpServerConfigBase & {
@@ -202,6 +226,8 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
 
   const manualVal = obj.manual;
   const manual = manualVal === undefined ? undefined : parseManualConfigLenient(manualVal);
+  const prompts = parsePromptConfig(serverId, obj.prompts);
+  const resources = parseResourceConfig(serverId, obj.resources);
 
   if (transport === 'stdio') {
     const command = obj.command;
@@ -260,6 +286,8 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
       tools: { whitelist, blacklist },
       transform,
       manual,
+      prompts,
+      resources,
     };
   }
 
@@ -316,7 +344,114 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     tools: { whitelist, blacklist },
     transform,
     manual,
+    prompts,
+    resources,
   };
+}
+
+function parsePromptConfig(serverId: string, value: unknown): McpPromptConfig {
+  const obj = value === undefined ? {} : asRecord(value, `servers.${serverId}.prompts`);
+  const whitelist = parseStringArrayOptional(
+    obj.whitelist,
+    `servers.${serverId}.prompts.whitelist`,
+  );
+  const blacklist = parseStringArrayOptional(
+    obj.blacklist,
+    `servers.${serverId}.prompts.blacklist`,
+  );
+  const transformVal = obj.transform;
+  const transform =
+    transformVal === undefined ? [] : parseTransformArrayForPath(transformVal, serverId, 'prompts');
+  return { whitelist, blacklist, transform };
+}
+
+function parseResourceConfig(serverId: string, value: unknown): McpResourceConfig {
+  const obj = value === undefined ? {} : asRecord(value, `servers.${serverId}.resources`);
+  const whitelist = parseStringArrayOptional(
+    obj.whitelist,
+    `servers.${serverId}.resources.whitelist`,
+  );
+  const blacklist = parseStringArrayOptional(
+    obj.blacklist,
+    `servers.${serverId}.resources.blacklist`,
+  );
+  const transformVal = obj.transform;
+  const transform =
+    transformVal === undefined
+      ? []
+      : parseTransformArrayForPath(transformVal, serverId, 'resources');
+  const mimeTypes = parseStringArrayOptional(
+    obj.mimeTypes,
+    `servers.${serverId}.resources.mimeTypes`,
+  );
+  const maxBytesVal = obj.maxBytes;
+  const maxBytes =
+    maxBytesVal === undefined
+      ? undefined
+      : typeof maxBytesVal === 'number' && Number.isInteger(maxBytesVal) && maxBytesVal > 0
+        ? maxBytesVal
+        : (() => {
+            throw new Error(
+              `Invalid mcp.yaml: servers.${serverId}.resources.maxBytes must be a positive integer`,
+            );
+          })();
+
+  const skillsVal = obj.skills;
+  const skillsObj =
+    skillsVal === undefined ? {} : asRecord(skillsVal, `servers.${serverId}.resources.skills`);
+  const enabledVal = skillsObj.enabled;
+  const enabled =
+    enabledVal === undefined
+      ? false
+      : typeof enabledVal === 'boolean'
+        ? enabledVal
+        : (() => {
+            throw new Error(
+              `Invalid mcp.yaml: servers.${serverId}.resources.skills.enabled must be a boolean`,
+            );
+          })();
+  const skillWhitelist = parseStringArrayOptional(
+    skillsObj.whitelist,
+    `servers.${serverId}.resources.skills.whitelist`,
+  );
+  const skillBlacklist = parseStringArrayOptional(
+    skillsObj.blacklist,
+    `servers.${serverId}.resources.skills.blacklist`,
+  );
+  const skillTransformVal = skillsObj.transform;
+  const skillTransform =
+    skillTransformVal === undefined
+      ? []
+      : parseTransformArrayForPath(skillTransformVal, serverId, 'resources.skills');
+
+  return {
+    whitelist,
+    blacklist,
+    transform,
+    mimeTypes,
+    maxBytes,
+    skills: {
+      enabled,
+      whitelist: skillWhitelist,
+      blacklist: skillBlacklist,
+      transform: skillTransform,
+    },
+  };
+}
+
+function parseTransformArrayForPath(
+  value: unknown,
+  serverId: string,
+  configPath: string,
+): ToolNameTransform[] {
+  try {
+    return parseTransformArray(value, serverId);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      msg.replace(`servers.${serverId}.transform`, `servers.${serverId}.${configPath}.transform`),
+    );
+  }
 }
 
 function parseManualConfigLenient(value: unknown): McpManualConfig | undefined {

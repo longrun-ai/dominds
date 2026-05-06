@@ -15,6 +15,8 @@ MCP TypeScript SDK):
 
 - `.minds/mcp.yaml` loader with mandatory hot-reload.
 - MCP-derived tools/toolsets registered into the existing global tool(set) registry.
+- MCP prompts and resources are mapped separately from tools; see
+  [mcp-prompts-resources.md](./mcp-prompts-resources.md).
 - Supported transports: `stdio` and `streamable_http` (SSE transport is not supported as a separate
   config option).
 - rtws Problems surfaced to the WebUI (Problems pill + panel) for MCP and LLM provider

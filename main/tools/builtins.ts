@@ -51,6 +51,7 @@ import {
 import { pendingTellaskReminderOwner } from './pending-tellask-reminder';
 import { readPictureTool, writePictureTool } from './picture';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
+import { fetchResourceTool, listResourcesTool } from './resources';
 import {
   ripgrepCountTool,
   ripgrepFilesTool,
@@ -62,6 +63,7 @@ import {
   addPersonalSkillTool,
   dropPersonalSkillTool,
   importPersonalSkillFromFileTool,
+  readSkillTool,
   replacePersonalSkillTool,
 } from './skills';
 import { teamMgmtTools } from './team_mgmt';
@@ -163,6 +165,11 @@ registerTool(addPersonalSkillTool);
 registerTool(importPersonalSkillFromFileTool);
 registerTool(replacePersonalSkillTool);
 registerTool(dropPersonalSkillTool);
+registerTool(readSkillTool);
+
+// Resource tools
+registerTool(listResourcesTool);
+registerTool(fetchResourceTool);
 
 // Control tools
 registerTool(addReminderTool);
@@ -212,6 +219,7 @@ setToolsetMeta('team_memory', {
   manualSpec: manualSpecFor('team_memory'),
 });
 registerToolset('skills', [
+  readSkillTool,
   addPersonalSkillTool,
   importPersonalSkillFromFileTool,
   replacePersonalSkillTool,
@@ -225,6 +233,16 @@ setToolsetMeta('skills', {
   },
   promptFilesI18n: promptFilesFor('skills'),
   manualSpec: manualSpecFor('skills'),
+});
+registerToolset('resources', [listResourcesTool, fetchResourceTool]);
+setToolsetMeta('resources', {
+  source: 'dominds',
+  descriptionI18n: {
+    en: 'Read-only Dominds resources: list and fetch MCP resources and resource templates.',
+    zh: '只读 Dominds resources：列出并读取 MCP resources 与 resource templates。',
+  },
+  promptFilesI18n: promptFilesFor('resources'),
+  manualSpec: manualSpecFor('resources'),
 });
 registerToolset('control', [
   addReminderTool,

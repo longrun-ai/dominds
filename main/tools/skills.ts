@@ -12,9 +12,10 @@ import { getAccessDeniedMessage, hasReadAccess } from '../access-control';
 import { normalizeMarkdownText, parseMarkdownFrontmatter } from '../markdown/frontmatter';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import type { Team } from '../team';
+import { readWorkspaceSkill } from '../skills/load';
+import { Team } from '../team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
-import { toolFailure } from '../tool';
+import { toolFailure, toolSuccess } from '../tool';
 
 type SkillPathResult =
   | Readonly<{ kind: 'ok'; skillId: string; rel: string; abs: string }>
@@ -43,6 +44,30 @@ type CopyOnWritePersonalSkillResult =
   | Readonly<{ kind: 'failure'; output: ToolCallOutput }>;
 
 type PersonalSkillWriteMode = 'add' | 'replace';
+
+async function listVisibleMcpServerIds(
+  caller: Team.Member,
+  taskDocPath?: string,
+): Promise<Set<string>> {
+  const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
+    member: caller,
+    taskDocPath,
+  });
+  const declared = await Team.readMcpDeclaredToolsets();
+  const declaredMcpToolsetNames =
+    declared.kind === 'loaded' ? declared.declaredServerIds : undefined;
+  const invalidMcpToolsetNames = declared.kind === 'loaded' ? declared.invalidServerIds : undefined;
+  return new Set(
+    caller
+      .listResolvedToolsetNames({
+        onMissing: 'silent',
+        dynamicToolsetNames,
+        declaredMcpToolsetNames,
+        invalidMcpToolsetNames,
+      })
+      .filter((toolsetName) => declaredMcpToolsetNames?.has(toolsetName)),
+  );
+}
 
 function localizedError(language: LanguageCode, zh: string, en: string): string {
   return language === 'zh' ? `错误：${zh}` : `Error: ${en}`;
@@ -1027,5 +1052,76 @@ export const dropPersonalSkillTool: FuncTool = {
     }
     fs.rmSync(target.abs, { recursive: true, force: false });
     return formatToolActionResult(language, 'deleted');
+  },
+};
+
+export const readSkillTool: FuncTool = {
+  type: 'func',
+  name: 'read_skill',
+  description:
+    'Read the full body of one available skill by skill_id. Use this after inspecting the Skills index in the system prompt.',
+  descriptionI18n: {
+    en: 'Read the full body of one available skill by skill_id. Use this after inspecting the Skills index in the system prompt.',
+    zh: '按 skill_id 读取一个可用 skill 的完整正文。先查看系统提示中的 Skills 索引，再按需调用。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['skill_id'],
+    properties: {
+      skill_id: {
+        type: 'string',
+        description: 'One skill ID from the Skills index.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(_dlg, caller, args) {
+    const language =
+      typeof _dlg?.getLastUserLanguageCode === 'function'
+        ? _dlg.getLastUserLanguageCode()
+        : getWorkLanguage();
+    const rawSkillId = args['skill_id'];
+    const skillId = typeof rawSkillId === 'string' ? rawSkillId.trim() : '';
+    if (skillId === '') {
+      return toolFailure(
+        language === 'zh' ? '错误：需要提供 skill_id。' : 'Error: skill_id is required.',
+      );
+    }
+    const skill = await readWorkspaceSkill({
+      rtwsRootAbs: process.cwd(),
+      memberId: caller.id,
+      language,
+      skillId,
+      visibleMcpServerIds: await listVisibleMcpServerIds(caller, _dlg.taskDocPath),
+    });
+    if (!skill) {
+      return toolFailure(
+        language === 'zh'
+          ? `错误：未找到可用 skill '${skillId}'。`
+          : `Error: available skill '${skillId}' was not found.`,
+      );
+    }
+    const idLabel = language === 'zh' ? 'ID' : 'ID';
+    const scopeLabel = language === 'zh' ? '作用域' : 'Scope';
+    const sourceLabel = language === 'zh' ? '来源' : 'Source';
+    const descriptionLabel = language === 'zh' ? '说明' : 'Description';
+    const allowedToolsLabel = language === 'zh' ? '上游 allowed-tools' : 'Upstream allowed-tools';
+    const allowedTools =
+      skill.declaredAllowedTools && skill.declaredAllowedTools.length > 0
+        ? `\n- ${allowedToolsLabel}: ${skill.declaredAllowedTools.join(', ')}`
+        : '';
+    return toolSuccess(
+      [
+        `# ${skill.title}`,
+        '',
+        `- ${idLabel}: ${skill.id}`,
+        `- ${scopeLabel}: ${skill.scope}`,
+        `- ${sourceLabel}: ${skill.sourcePathRel}`,
+        `- ${descriptionLabel}: ${skill.description}${allowedTools}`,
+        '',
+        skill.body.trim(),
+      ].join('\n'),
+    );
   },
 };

@@ -1,67 +1,25 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import type {
+  CreateRtwsSnippetGroupRequest,
+  CreateRtwsSnippetGroupResponse,
+  RenderMcpPromptSnippetRequest,
+  RenderMcpPromptSnippetResponse,
+  SaveRtwsSnippetTemplateRequest,
+  SaveRtwsSnippetTemplateResponse,
+  SnippetTemplateGroup as SnippetCatalogGroup,
+  SnippetCatalogResponse,
+  SnippetTemplate,
+  SnippetTemplatesResponse,
+  ToolsetManualRequest,
+  ToolsetManualResponse,
+} from '@longrun-ai/kernel/types/snippets';
 import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 import { createLogger } from '../log';
+import { getMcpPrompt, listMcpPrompts, renderMcpPrompt } from '../mcp/resources';
+import { withMcpCatalogClient } from '../mcp/supervisor';
 import '../tools/builtins';
-
-type SnippetTemplateSource = 'builtin' | 'rtws';
-
-type SnippetTemplate = {
-  id: string;
-  name: string;
-  description?: string;
-  content: string;
-  source: SnippetTemplateSource;
-  path?: string;
-};
-
-type SnippetCatalogGroup = {
-  key: string;
-  titleI18n: { en: string; zh: string };
-  templates: SnippetTemplate[];
-};
-
-type SnippetCatalogResponse =
-  | { success: true; groups: SnippetCatalogGroup[] }
-  | { success: false; error: string };
-
-type SnippetTemplatesResponse =
-  | { success: true; templates: SnippetTemplate[] }
-  | { success: false; error: string };
-
-type SaveRtwsSnippetTemplateRequest = {
-  groupKey: string;
-  fileName?: string;
-  uiLanguage: 'en' | 'zh';
-  name: string;
-  description?: string;
-  content: string;
-};
-
-type SaveRtwsSnippetTemplateResponse =
-  | { success: true; template: SnippetTemplate }
-  | { success: false; error: string };
-
-type CreateRtwsSnippetGroupRequest = {
-  title: string;
-  uiLanguage: 'en' | 'zh';
-};
-
-type CreateRtwsSnippetGroupResponse =
-  | { success: true; groupKey: string }
-  | { success: false; error: string };
-
-type ToolsetManualRequest = {
-  toolsetId: string;
-  topic?: string;
-  topics?: string[];
-  uiLanguage: 'en' | 'zh';
-};
-
-type ToolsetManualResponse =
-  | { success: true; markdown: string }
-  | { success: false; error: string };
 
 const log = createLogger('snippets-routes');
 
@@ -99,6 +57,21 @@ function parseCreateRtwsSnippetGroupRequest(raw: unknown): CreateRtwsSnippetGrou
   const uiLanguage = uiLanguageRaw === 'zh' || uiLanguageRaw === 'en' ? uiLanguageRaw : null;
   if (!title || !uiLanguage) return null;
   return { title: title.trim(), uiLanguage };
+}
+
+function parseRenderMcpPromptSnippetRequest(raw: unknown): RenderMcpPromptSnippetRequest | null {
+  if (!isRecord(raw)) return null;
+  const promptId = requireNonEmptyString(raw['promptId']);
+  if (!promptId) return null;
+  const argsRaw = raw['arguments'];
+  if (argsRaw === undefined) return { promptId };
+  if (!isRecord(argsRaw)) return null;
+  const args: Record<string, string> = {};
+  for (const [key, value] of Object.entries(argsRaw)) {
+    if (typeof value !== 'string') return null;
+    args[key] = value;
+  }
+  return { promptId, arguments: args };
 }
 
 function buildRtwsTemplateTokenFromName(name: string): string {
@@ -176,6 +149,7 @@ async function buildSnippetCatalog(
 ): Promise<SnippetCatalogGroup[]> {
   const builtin = await readBuiltinSnippets();
   const rtws = await readRtwsSnippets();
+  const mcpPromptGroups = buildMcpPromptSnippetGroups();
 
   const serverRoot = path.resolve(__dirname, '..', '..');
   const builtinCatalogAbs = path.resolve(serverRoot, 'dist', 'snippets', 'catalog.yaml');
@@ -195,6 +169,7 @@ async function buildSnippetCatalog(
         titleI18n: { en: 'All', zh: '全部' },
         templates: [...builtin, ...rtws],
       },
+      ...mcpPromptGroups,
     ];
   }
 
@@ -306,10 +281,40 @@ async function buildSnippetCatalog(
         titleI18n: { en: 'All', zh: '全部' },
         templates: [...builtin, ...rtws],
       },
+      ...mcpPromptGroups,
     ];
   }
 
-  return groups;
+  return [...groups, ...mcpPromptGroups];
+}
+
+function buildMcpPromptSnippetGroups(): SnippetCatalogGroup[] {
+  const byServer = new Map<string, SnippetTemplate[]>();
+  for (const prompt of listMcpPrompts()) {
+    const list = byServer.get(prompt.serverId) ?? [];
+    list.push({
+      id: `mcp_prompt:${prompt.id}`,
+      name: prompt.title,
+      description: prompt.description,
+      content: '',
+      source: 'mcp_prompt',
+      readonly: true,
+      mcpPrompt: {
+        serverId: prompt.serverId,
+        promptId: prompt.id,
+        name: prompt.name,
+        arguments: prompt.arguments,
+      },
+    });
+    byServer.set(prompt.serverId, list);
+  }
+  return [...byServer.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([serverId, templates]) => ({
+      key: `mcp:${serverId}`,
+      titleI18n: { en: `MCP Prompts: ${serverId}`, zh: `MCP 提示词：${serverId}` },
+      templates: templates.sort((a, b) => a.name.localeCompare(b.name)),
+    }));
 }
 
 async function ensureRtwsCatalogGroup(
@@ -708,6 +713,31 @@ export async function handleToolsetManual(rawBody: string): Promise<ToolsetManua
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Failed to load toolset manual';
     log.error('Failed to call man tool', error);
+    return { success: false, error: msg };
+  }
+}
+
+export async function handleRenderMcpPromptSnippet(
+  rawBody: string,
+): Promise<RenderMcpPromptSnippetResponse> {
+  try {
+    const parsed: unknown = JSON.parse(rawBody || '{}');
+    const req = parseRenderMcpPromptSnippetRequest(parsed);
+    if (!req) return { success: false, error: 'Invalid MCP prompt render request' };
+    const prompt = getMcpPrompt(req.promptId);
+    if (!prompt) return { success: false, error: `MCP prompt not found: ${req.promptId}` };
+    const content = await withMcpCatalogClient(prompt.serverId, async (client) => {
+      return await renderMcpPrompt({
+        serverId: prompt.serverId,
+        client,
+        promptName: prompt.name,
+        arguments: req.arguments,
+      });
+    });
+    return { success: true, content };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to render MCP prompt';
+    log.error('Failed to render MCP prompt snippet', error);
     return { success: false, error: msg };
   }
 }

@@ -70,6 +70,7 @@ import {
   handleGetBuiltinSnippets,
   handleGetRtwsSnippets,
   handleGetSnippetCatalog,
+  handleRenderMcpPromptSnippet,
   handleSaveRtwsSnippet,
   handleToolsetManual,
 } from './snippets-routes';
@@ -1492,6 +1493,13 @@ export async function handleApiRoute(
     if (pathname === '/api/snippets/groups' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
       const payload = await handleCreateRtwsSnippetGroup(rawBody);
+      respondJson(res, payload.success ? 200 : 400, payload);
+      return true;
+    }
+
+    if (pathname === '/api/snippets/mcp-prompt/render' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const payload = await handleRenderMcpPromptSnippet(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
       return true;
     }

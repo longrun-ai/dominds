@@ -28,6 +28,8 @@ export class DomindsSnippetsPanel extends HTMLElement {
   private draftFileName: string = '';
   private draftDescription: string = '';
   private draftContent: string = '';
+  private selectedSnippetReadonly: boolean = false;
+  private mcpPromptArgDrafts: Record<string, string> = {};
 
   constructor() {
     super();
@@ -114,6 +116,56 @@ export class DomindsSnippetsPanel extends HTMLElement {
     );
   }
 
+  private getSelectedSnippet(): SnippetItem | null {
+    if (this.state.kind !== 'ready' || this.selectedSnippetId === null) return null;
+    const all = this.state.groups.flatMap((g) => g.templates);
+    return all.find((snippet) => snippet.id === this.selectedSnippetId) ?? null;
+  }
+
+  private async insertSelectedSnippet(): Promise<void> {
+    const selected = this.getSelectedSnippet();
+    if (selected?.source !== 'mcp_prompt' || !selected.mcpPrompt) {
+      this.emitInsertContent(this.draftContent);
+      return;
+    }
+    const promptArguments: Record<string, string> = {};
+    for (const arg of selected.mcpPrompt.arguments ?? []) {
+      const value = this.mcpPromptArgDrafts[arg.name]?.trim() ?? '';
+      if (value !== '' || arg.required) {
+        promptArguments[arg.name] = value;
+      }
+    }
+    try {
+      const api = getApiClient();
+      const resp = await api.renderMcpPromptSnippet({
+        promptId: selected.mcpPrompt.promptId,
+        arguments: promptArguments,
+      });
+      if (!resp.success || !resp.data) {
+        const message = resp.error ?? getUiStrings(this.uiLanguage).snippetsLoadFailed;
+        throw new Error(message);
+      }
+      if (!resp.data.success) {
+        const message = resp.data.error;
+        throw new Error(message);
+      }
+      this.emitInsertContent(resp.data.content);
+    } catch (error: unknown) {
+      dispatchDomindsEvent(
+        this,
+        'ui-toast',
+        {
+          message:
+            error instanceof Error
+              ? error.message
+              : getUiStrings(this.uiLanguage).snippetsLoadFailed,
+          kind: 'error',
+        },
+        { bubbles: true, composed: true },
+      );
+    }
+  }
+
   private selectSnippet(snippet: SnippetItem | null): void {
     if (!snippet) {
       this.selectedSnippetId = null;
@@ -122,16 +174,24 @@ export class DomindsSnippetsPanel extends HTMLElement {
       this.draftFileName = '';
       this.draftDescription = '';
       this.draftContent = '';
+      this.selectedSnippetReadonly = false;
+      this.mcpPromptArgDrafts = {};
       this.render();
       return;
     }
 
     this.selectedSnippetId = snippet.id;
     this.selectedSnippetPath = typeof snippet.path === 'string' ? snippet.path : null;
+    this.selectedSnippetReadonly = snippet.readonly === true || snippet.source === 'mcp_prompt';
     this.draftName = snippet.name;
     this.draftFileName = this.deriveFileNameForEditing(snippet);
     this.draftDescription = typeof snippet.description === 'string' ? snippet.description : '';
     this.draftContent = snippet.content;
+    const promptArgs: Record<string, string> = {};
+    for (const arg of snippet.mcpPrompt?.arguments ?? []) {
+      promptArgs[arg.name] = '';
+    }
+    this.mcpPromptArgDrafts = promptArgs;
     this.render();
   }
 
@@ -186,6 +246,8 @@ export class DomindsSnippetsPanel extends HTMLElement {
       this.draftFileName = '';
       this.draftDescription = '';
       this.draftContent = '';
+      this.selectedSnippetReadonly = false;
+      this.mcpPromptArgDrafts = {};
       await this.load();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : t.snippetsSaveFailed;
@@ -206,6 +268,8 @@ export class DomindsSnippetsPanel extends HTMLElement {
     this.draftFileName = '';
     this.draftDescription = '';
     this.draftContent = '';
+    this.selectedSnippetReadonly = false;
+    this.mcpPromptArgDrafts = {};
     this.render();
   }
 
@@ -253,6 +317,8 @@ export class DomindsSnippetsPanel extends HTMLElement {
       this.draftFileName = '';
       this.draftDescription = '';
       this.draftContent = '';
+      this.selectedSnippetReadonly = false;
+      this.mcpPromptArgDrafts = {};
       await this.load();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : t.snippetsLoadFailed;
@@ -317,7 +383,11 @@ export class DomindsSnippetsPanel extends HTMLElement {
             ? snippet.description
             : '';
         const badge =
-          snippet.source === 'builtin' ? t.snippetsBuiltinTitle : t.snippetsWorkspaceTitle;
+          snippet.source === 'builtin'
+            ? t.snippetsBuiltinTitle
+            : snippet.source === 'mcp_prompt'
+              ? 'MCP'
+              : t.snippetsWorkspaceTitle;
         return `
           <div class="snippet ${selected ? 'selected' : ''}" data-id="${this.escapeHtml(snippet.id)}" role="button" tabindex="0" aria-label="${this.escapeHtml(snippet.name)}">
             <div class="snippet-head">
@@ -352,6 +422,23 @@ export class DomindsSnippetsPanel extends HTMLElement {
         state.selectedGroupKey;
       const editorTitle =
         this.selectedSnippetId === null ? t.snippetsNewTitle : t.snippetsEditorTitle;
+      const selectedSnippet = this.getSelectedSnippet();
+      const mcpPromptArgs = selectedSnippet?.mcpPrompt?.arguments ?? [];
+      const mcpPromptArgsHtml =
+        selectedSnippet?.source === 'mcp_prompt' && mcpPromptArgs.length > 0
+          ? `<div class="form-row args-row">
+              ${mcpPromptArgs
+                .map((arg) => {
+                  const value = this.mcpPromptArgDrafts[arg.name] ?? '';
+                  const required = arg.required ? ' *' : '';
+                  return `<label class="label arg">
+                    <div class="label-text">${this.escapeHtml(arg.name + required)}</div>
+                    <input class="input mcp-arg" data-arg="${this.escapeHtml(arg.name)}" type="text" value="${this.escapeHtml(value)}" />
+                  </label>`;
+                })
+                .join('')}
+            </div>`
+          : '';
       bodyHtml = `
         ${this.renderGroupTabs()}
 	        <div class="layout">
@@ -362,7 +449,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
 	          </div>
 	          <div class="pane right">
 	            <div class="section section-editor">
-	              <textarea id="snippet-content" class="textarea" spellcheck="false">${this.escapeHtml(this.draftContent)}</textarea>
+        <textarea id="snippet-content" class="textarea" spellcheck="false" ${this.selectedSnippetReadonly ? 'readonly' : ''}>${this.escapeHtml(this.draftContent)}</textarea>
 	              <div class="actions">
 	                <div class="actions-left">
 	                  <span class="section-title section-title-inline">${this.escapeHtml(editorTitle)}</span>
@@ -387,10 +474,11 @@ export class DomindsSnippetsPanel extends HTMLElement {
 	                </label>
 	                <label class="label description">
 	                  <div class="label-text">${this.escapeHtml(t.snippetsDescriptionLabel)}</div>
-	                  <input id="new-description" class="input" type="text" value="${this.escapeHtml(this.draftDescription)}" />
-	                </label>
-	              </div>
-	            </div>
+		                  <input id="new-description" class="input" type="text" value="${this.escapeHtml(this.draftDescription)}" />
+		                </label>
+		              </div>
+                  ${mcpPromptArgsHtml}
+		            </div>
 	          </div>
 	        </div>
 	      `;
@@ -490,6 +578,14 @@ export class DomindsSnippetsPanel extends HTMLElement {
         this.updateActionButtons();
       });
     }
+    root.querySelectorAll<HTMLInputElement>('input.mcp-arg').forEach((input) => {
+      input.addEventListener('input', () => {
+        const argName = input.dataset.arg;
+        if (typeof argName !== 'string' || argName === '') return;
+        this.mcpPromptArgDrafts = { ...this.mcpPromptArgDrafts, [argName]: input.value };
+        this.updateActionButtons();
+      });
+    });
     const contentInput = root.querySelector('#snippet-content');
     if (contentInput instanceof HTMLTextAreaElement) {
       contentInput.addEventListener('input', () => {
@@ -507,7 +603,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
     const insertBtn = root.querySelector('#insert');
     if (insertBtn instanceof HTMLButtonElement) {
       insertBtn.addEventListener('click', () => {
-        this.emitInsertContent(this.draftContent);
+        void this.insertSelectedSnippet();
       });
     }
 
@@ -519,7 +615,10 @@ export class DomindsSnippetsPanel extends HTMLElement {
     if (!root) return;
     const saveBtn = root.querySelector('#save');
     if (saveBtn instanceof HTMLButtonElement) {
-      const canSave = this.draftName.trim() !== '' && this.draftContent.trim() !== '';
+      const canSave =
+        !this.selectedSnippetReadonly &&
+        this.draftName.trim() !== '' &&
+        this.draftContent.trim() !== '';
       saveBtn.disabled = !canSave;
       saveBtn.classList.toggle('disabled', !canSave);
       saveBtn.classList.toggle('soft', canSave);
@@ -527,7 +626,17 @@ export class DomindsSnippetsPanel extends HTMLElement {
 
     const insertBtn = root.querySelector('#insert');
     if (insertBtn instanceof HTMLButtonElement) {
-      const canInsert = this.draftContent.trim() !== '';
+      const selectedSnippet = this.getSelectedSnippet();
+      const missingRequiredArg =
+        selectedSnippet?.source === 'mcp_prompt'
+          ? (selectedSnippet.mcpPrompt?.arguments ?? []).some(
+              (arg) => arg.required && (this.mcpPromptArgDrafts[arg.name] ?? '').trim() === '',
+            )
+          : false;
+      const canInsert =
+        !missingRequiredArg &&
+        (this.draftContent.trim() !== '' ||
+          (this.selectedSnippetId !== null && selectedSnippet?.source === 'mcp_prompt'));
       insertBtn.disabled = !canInsert;
       insertBtn.classList.toggle('disabled', !canInsert);
       insertBtn.classList.toggle('preferred', canInsert);
@@ -574,6 +683,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
       .form-row .label.filename{flex:0 0 140px;}
       .form-row .label.name{flex:0 0 180px;}
       .form-row .label.description{flex:1 1 320px;}
+      .form-row .label.arg{flex:1 1 180px;}
       .label-text{font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-secondary,#475569);}
       .input{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:6px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);}
       .form-row .input{width:100%;box-sizing:border-box;}
