@@ -6,7 +6,7 @@
  * Rationale:
  * - Many "OpenAI-compatible" providers implement the Chat Completions API but not the newer
  *   Responses API. Dominds' `apiType: openai` uses the Responses API; this generator targets
- *   chat-completions-only providers (e.g. Volcano Engine Ark `.../api/v3`).
+ *   chat-completions-only providers and explicit provider quirks built on that transport shape.
  * - Isolation principle: this wrapper owns the `model_params.openai-compatible.*` namespace and
  *   must not inherit OpenAI Responses or Codex-specific request meanings.
  */
@@ -30,6 +30,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
+import { normalizeProviderApiQuirks, VOLCENGINE_CODING_PLAN_API_QUIRK } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
@@ -71,6 +72,15 @@ const log = createLogger('llm/openai-compatible');
 type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
   reasoning_content?: string;
 };
+
+type OpenAiCompatibleThinkingConfig = { type: 'enabled' | 'disabled' };
+
+type OpenAiCompatibleChatExtraParams = {
+  thinking?: OpenAiCompatibleThinkingConfig;
+  reasoning_effort?: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'];
+};
+
+type ToolCallValidationMode = 'generic' | 'volcengine-coding-plan';
 
 function limitOpenAiCompatibleToolOutputText(
   text: string,
@@ -119,7 +129,7 @@ function tryExtractChatUsage(usage: unknown): LlmUsageStats {
 }
 
 function buildChatCompletionResponseFormat(
-  openAiParams: NonNullable<Team.ModelParams['openai']>,
+  openAiParams: NonNullable<Team.ModelParams['openai-compatible']>,
 ): ChatCompletionCreateParamsStreaming['response_format'] | undefined {
   const textFormat = openAiParams.text_format;
   if (textFormat === 'text' || textFormat === 'json_object') {
@@ -131,7 +141,7 @@ function buildChatCompletionResponseFormat(
   const rawSchema = openAiParams.text_format_json_schema?.trim();
   if (!schemaName || !rawSchema) {
     throw new Error(
-      'Invalid openai text_format=json_schema: text_format_json_schema_name and text_format_json_schema are required.',
+      'Invalid openai-compatible text_format=json_schema: text_format_json_schema_name and text_format_json_schema are required.',
     );
   }
   let parsedSchema: unknown;
@@ -139,11 +149,11 @@ function buildChatCompletionResponseFormat(
     parsedSchema = JSON.parse(rawSchema);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid openai text_format_json_schema: ${message}`);
+    throw new Error(`Invalid openai-compatible text_format_json_schema: ${message}`);
   }
   if (!isRecord(parsedSchema)) {
     throw new Error(
-      'Invalid openai text_format_json_schema: expected a JSON object at the top level.',
+      'Invalid openai-compatible text_format_json_schema: expected a JSON object at the top level.',
     );
   }
 
@@ -164,6 +174,73 @@ function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefin
   return {
     summary: [{ type: 'summary_text', text }],
   };
+}
+
+function isVolcengineCodingPlanProvider(providerConfig: ProviderConfig): boolean {
+  return normalizeProviderApiQuirks(providerConfig).has(VOLCENGINE_CODING_PLAN_API_QUIRK);
+}
+
+function assertSupportedOpenAiCompatibleModel(providerConfig: ProviderConfig, model: string): void {
+  if (!isVolcengineCodingPlanProvider(providerConfig)) return;
+  if (model === 'ark-code-latest') {
+    throw new Error(
+      `Invalid Volcano Engine Coding Plan model '${model}': Dominds only supports concrete Coding Plan model names.`,
+    );
+  }
+  if (!Object.prototype.hasOwnProperty.call(providerConfig.models, model)) {
+    throw new Error(
+      `Invalid Volcano Engine Coding Plan model '${model}': model must be declared in providerConfig.models.`,
+    );
+  }
+}
+
+function buildVolcengineCodingPlanExtraParams(args: {
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+}): OpenAiCompatibleChatExtraParams {
+  if (!isVolcengineCodingPlanProvider(args.providerConfig)) {
+    if (args.openAiParams.thinking !== undefined) {
+      throw new Error(
+        `Invalid model_params.openai-compatible.thinking for provider '${args.providerConfig.name}': this non-standard parameter requires apiQuirks=${VOLCENGINE_CODING_PLAN_API_QUIRK}.`,
+      );
+    }
+    if (args.openAiParams.reasoning_effort !== undefined) {
+      throw new Error(
+        `Invalid model_params.openai-compatible.reasoning_effort for provider '${args.providerConfig.name}': this non-standard Chat Completions parameter requires apiQuirks=${VOLCENGINE_CODING_PLAN_API_QUIRK}.`,
+      );
+    }
+    return {};
+  }
+
+  const model = args.agent.model ?? '';
+  const modelInfo = args.providerConfig.models[model];
+  const supportsThinking = modelInfo?.supports_thinking === true;
+  const thinking = args.openAiParams.thinking;
+  const reasoningEffort = args.openAiParams.reasoning_effort;
+  if (thinking === false && reasoningEffort !== undefined) {
+    throw new Error(
+      `Invalid Volcano Engine Coding Plan model_params.openai-compatible: thinking=false conflicts with reasoning_effort=${reasoningEffort} for model '${model}'.`,
+    );
+  }
+  if ((thinking !== undefined || reasoningEffort !== undefined) && !supportsThinking) {
+    throw new Error(
+      `Invalid Volcano Engine Coding Plan model_params.openai-compatible thinking/reasoning config for model '${model}': provider metadata does not advertise supports_thinking=true.`,
+    );
+  }
+  if (thinking === undefined && reasoningEffort === undefined) return {};
+  return {
+    ...(thinking !== undefined ? { thinking: { type: thinking ? 'enabled' : 'disabled' } } : {}),
+    ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+  };
+}
+
+export function buildOpenAiCompatibleExtraParamsForTest(args: {
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+}): OpenAiCompatibleChatExtraParams {
+  return buildVolcengineCodingPlanExtraParams(args);
 }
 
 function extractThinkingReasoningText(msg: Extract<ChatMessage, { type: 'thinking_msg' }>): string {
@@ -813,6 +890,7 @@ function applyArgsDelta(state: { argsJson: string }, chunk: string): void {
 type ActiveFuncCall = {
   index: number;
   callId: string;
+  typeSeen: boolean;
   name: string;
   argsJson: string;
   emitted: boolean;
@@ -824,19 +902,369 @@ function synthesizeCallId(genseq: number, index: number): string {
   return `toolcall_${genseq}_${index}`;
 }
 
+function buildOpenAiCompatibleStreamError(args: {
+  detail: string;
+  kind: 'conflicting_stream' | 'invalid_tool_call';
+}): LlmStreamErrorEmittedError {
+  return new LlmStreamErrorEmittedError({
+    detail: args.detail,
+    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+      detail: args.detail,
+      kind: args.kind,
+    }),
+  });
+}
+
 async function maybeEmitFuncCall(
   state: ActiveFuncCall,
   receiver: LlmStreamReceiver,
   genseq: number,
+  validationMode: ToolCallValidationMode,
 ): Promise<void> {
   if (state.emitted) return;
   if (state.callId.trim().length === 0) {
+    if (validationMode === 'volcengine-coding-plan') {
+      const detail = `VOLCENGINE-CODING-PLAN missing streamed tool call id for index=${String(state.index)}`;
+      log.error(detail, new Error('volcengine_coding_plan_missing_tool_call_id'), {
+        callId: state.callId,
+        toolName: state.name,
+      });
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw buildOpenAiCompatibleStreamError({
+        detail,
+        kind: 'invalid_tool_call',
+      });
+    }
     state.callId = synthesizeCallId(genseq, state.index);
   }
-  if (state.name.trim().length === 0) return;
+  if (validationMode === 'volcengine-coding-plan' && !state.typeSeen) {
+    const detail = `VOLCENGINE-CODING-PLAN missing streamed tool call type=function for callId=${state.callId}`;
+    log.error(detail, new Error('volcengine_coding_plan_missing_tool_call_type'), {
+      callId: state.callId,
+      toolName: state.name,
+    });
+    if (receiver.streamError) {
+      await receiver.streamError(detail);
+    }
+    throw buildOpenAiCompatibleStreamError({
+      detail,
+      kind: 'invalid_tool_call',
+    });
+  }
+  if (state.name.trim().length === 0) {
+    if (validationMode === 'volcengine-coding-plan') {
+      const detail = `VOLCENGINE-CODING-PLAN missing streamed tool function name for callId=${state.callId}`;
+      log.error(detail, new Error('volcengine_coding_plan_missing_tool_call_name'), {
+        callId: state.callId,
+      });
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw buildOpenAiCompatibleStreamError({
+        detail,
+        kind: 'invalid_tool_call',
+      });
+    }
+    return;
+  }
   const args = state.argsJson.trim().length > 0 ? state.argsJson : '{}';
+  if (validationMode === 'volcengine-coding-plan') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(args);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const detail = `VOLCENGINE-CODING-PLAN invalid streamed tool arguments JSON for callId=${state.callId}: ${message}`;
+      log.error(detail, error, { callId: state.callId, toolName: state.name });
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw buildOpenAiCompatibleStreamError({
+        detail,
+        kind: 'invalid_tool_call',
+      });
+    }
+    if (!isRecord(parsed)) {
+      const detail = `VOLCENGINE-CODING-PLAN invalid streamed tool arguments for callId=${state.callId}: expected JSON object.`;
+      log.error(detail, new Error('volcengine_coding_plan_non_object_tool_arguments'), {
+        callId: state.callId,
+        toolName: state.name,
+      });
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw buildOpenAiCompatibleStreamError({
+        detail,
+        kind: 'invalid_tool_call',
+      });
+    }
+  }
   state.emitted = true;
   await receiver.funcCall(state.callId, state.name, args);
+}
+
+async function emitOpenAiCompatibleStreamError(args: {
+  receiver: LlmStreamReceiver;
+  detail: string;
+  kind: 'conflicting_stream' | 'invalid_tool_call';
+  errorCode: string;
+  logMeta?: Record<string, unknown>;
+}): Promise<never> {
+  log.error(args.detail, new Error(args.errorCode), args.logMeta);
+  if (args.receiver.streamError) {
+    await args.receiver.streamError(args.detail);
+  }
+  throw buildOpenAiCompatibleStreamError({
+    detail: args.detail,
+    kind: args.kind,
+  });
+}
+
+async function consumeOpenAiCompatibleChatCompletionStream(args: {
+  stream: AsyncIterable<ChatCompletionChunk>;
+  receiver: LlmStreamReceiver;
+  genseq: number;
+  isVolcengineCodingPlan: boolean;
+  abortSignal?: AbortSignal;
+}): Promise<LlmStreamResult> {
+  let sayingStarted = false;
+  let thinkingStarted = false;
+  let currentThinkingContent = '';
+  type ActiveStream = 'idle' | 'thinking' | 'saying';
+  let activeStream: ActiveStream = 'idle';
+  let usage: LlmUsageStats = { kind: 'unavailable' };
+  let returnedModel: string | undefined;
+
+  const activeCallsByIndex = new Map<number, ActiveFuncCall>();
+  const validationMode: ToolCallValidationMode = args.isVolcengineCodingPlan
+    ? 'volcengine-coding-plan'
+    : 'generic';
+
+  const finishThinkingSegment = async (): Promise<void> => {
+    if (!thinkingStarted) return;
+    await args.receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+    thinkingStarted = false;
+    currentThinkingContent = '';
+    if (activeStream === 'thinking') activeStream = 'idle';
+  };
+
+  const finishSayingSegment = async (): Promise<void> => {
+    if (!sayingStarted) return;
+    await args.receiver.sayingFinish();
+    sayingStarted = false;
+    if (activeStream === 'saying') activeStream = 'idle';
+  };
+
+  const ensureCanEnterThinking = async (): Promise<void> => {
+    if (activeStream !== 'saying') return;
+    if (args.isVolcengineCodingPlan) {
+      await finishSayingSegment();
+      return;
+    }
+    await emitOpenAiCompatibleStreamError({
+      receiver: args.receiver,
+      detail:
+        'OPENAI-COMPATIBLE stream overlap violation: received reasoning while saying stream still active',
+      kind: 'conflicting_stream',
+      errorCode: 'openai_compatible_stream_overlap_violation',
+    });
+  };
+
+  const ensureCanEnterSaying = async (): Promise<void> => {
+    if (activeStream !== 'thinking') return;
+    if (args.isVolcengineCodingPlan) {
+      await finishThinkingSegment();
+      return;
+    }
+    await emitOpenAiCompatibleStreamError({
+      receiver: args.receiver,
+      detail:
+        'OPENAI-COMPATIBLE stream overlap violation: received output text while thinking stream still active',
+      kind: 'conflicting_stream',
+      errorCode: 'openai_compatible_stream_overlap_violation',
+    });
+  };
+
+  try {
+    for await (const chunk of args.stream) {
+      if (args.abortSignal?.aborted) throw new Error('AbortError');
+
+      if (
+        returnedModel === undefined &&
+        typeof chunk.model === 'string' &&
+        chunk.model.length > 0
+      ) {
+        returnedModel = chunk.model;
+      }
+
+      if (chunk.usage) {
+        usage = tryExtractChatUsage(chunk.usage);
+      }
+
+      const choice = chunk.choices && chunk.choices.length > 0 ? chunk.choices[0] : undefined;
+      if (!choice) continue;
+
+      const delta = choice.delta;
+      const reasoningDelta = extractReasoningContentField(delta as unknown);
+      if (typeof reasoningDelta === 'string' && reasoningDelta.length > 0) {
+        await ensureCanEnterThinking();
+        if (!thinkingStarted) {
+          thinkingStarted = true;
+          currentThinkingContent = '';
+          await args.receiver.thinkingStart();
+          activeStream = 'thinking';
+        }
+        currentThinkingContent += reasoningDelta;
+        await args.receiver.thinkingChunk(reasoningDelta);
+      }
+
+      const content = delta.content;
+      if (typeof content === 'string' && content.length > 0) {
+        await ensureCanEnterSaying();
+        if (!sayingStarted) {
+          sayingStarted = true;
+          await args.receiver.sayingStart();
+          activeStream = 'saying';
+        }
+        await args.receiver.sayingChunk(content);
+      }
+
+      const toolCalls = delta.tool_calls;
+      if (Array.isArray(toolCalls)) {
+        if (args.isVolcengineCodingPlan) {
+          await finishThinkingSegment();
+          await finishSayingSegment();
+        }
+        for (const call of toolCalls) {
+          const rawIndex: unknown = call.index;
+          const index =
+            typeof rawIndex === 'number' && Number.isInteger(rawIndex) && rawIndex >= 0
+              ? rawIndex
+              : undefined;
+          if (index === undefined) {
+            await emitOpenAiCompatibleStreamError({
+              receiver: args.receiver,
+              detail: `OPENAI-COMPATIBLE invalid tool call index: ${JSON.stringify(rawIndex)}`,
+              kind: 'invalid_tool_call',
+              errorCode: 'openai_compatible_invalid_tool_call_index',
+            });
+            continue;
+          }
+          if (validationMode === 'volcengine-coding-plan') {
+            const rawType: unknown = call.type;
+            if (rawType !== undefined && rawType !== 'function') {
+              const detail = `VOLCENGINE-CODING-PLAN invalid streamed tool call type for index=${String(index)}: expected function, got ${JSON.stringify(rawType)}`;
+              await emitOpenAiCompatibleStreamError({
+                receiver: args.receiver,
+                detail,
+                kind: 'invalid_tool_call',
+                errorCode: 'volcengine_coding_plan_invalid_tool_call_type',
+              });
+            }
+          }
+          const existing = activeCallsByIndex.get(index);
+          const rawCallId: unknown = call.id;
+          if (
+            validationMode === 'volcengine-coding-plan' &&
+            typeof rawCallId === 'string' &&
+            rawCallId.length > 0 &&
+            existing !== undefined &&
+            existing.callId.length > 0 &&
+            existing.callId !== rawCallId
+          ) {
+            const detail = `VOLCENGINE-CODING-PLAN conflicting streamed tool call id for index=${String(index)}: existing=${existing.callId}, next=${rawCallId}`;
+            await emitOpenAiCompatibleStreamError({
+              receiver: args.receiver,
+              detail,
+              kind: 'invalid_tool_call',
+              errorCode: 'volcengine_coding_plan_conflicting_tool_call_id',
+              logMeta: { callId: rawCallId },
+            });
+          }
+          const state: ActiveFuncCall =
+            existing ??
+            ({
+              index,
+              callId: '',
+              typeSeen: false,
+              name: '',
+              argsJson: '',
+              emitted: false,
+            } satisfies ActiveFuncCall);
+
+          if (typeof call.id === 'string' && call.id.length > 0) state.callId = call.id;
+          if (call.type === 'function') state.typeSeen = true;
+          if (call.function) {
+            if (typeof call.function.name === 'string' && call.function.name.length > 0) {
+              if (
+                validationMode === 'volcengine-coding-plan' &&
+                state.name.length > 0 &&
+                state.name !== call.function.name
+              ) {
+                const detail = `VOLCENGINE-CODING-PLAN conflicting streamed tool function name for callId=${state.callId}: existing=${state.name}, next=${call.function.name}`;
+                await emitOpenAiCompatibleStreamError({
+                  receiver: args.receiver,
+                  detail,
+                  kind: 'invalid_tool_call',
+                  errorCode: 'volcengine_coding_plan_conflicting_tool_call_name',
+                  logMeta: { callId: state.callId },
+                });
+              }
+              state.name = call.function.name;
+            }
+            if (typeof call.function.arguments === 'string' && call.function.arguments.length > 0) {
+              applyArgsDelta(state, call.function.arguments);
+            }
+          }
+
+          activeCallsByIndex.set(index, state);
+        }
+      }
+
+      if (choice.finish_reason === 'tool_calls') {
+        await finishThinkingSegment();
+        await finishSayingSegment();
+        activeStream = 'idle';
+        for (const state of activeCallsByIndex.values()) {
+          await maybeEmitFuncCall(state, args.receiver, args.genseq, validationMode);
+        }
+        activeCallsByIndex.clear();
+      }
+
+      if (
+        choice.finish_reason === 'stop' ||
+        choice.finish_reason === 'length' ||
+        choice.finish_reason === 'content_filter'
+      ) {
+        await finishThinkingSegment();
+        await finishSayingSegment();
+        activeStream = 'idle';
+      }
+    }
+
+    for (const state of activeCallsByIndex.values()) {
+      await maybeEmitFuncCall(state, args.receiver, args.genseq, validationMode);
+    }
+  } finally {
+    if (thinkingStarted) {
+      await args.receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+    }
+    if (sayingStarted) await args.receiver.sayingFinish();
+  }
+
+  return { usage, ...(returnedModel ? { llmGenModel: returnedModel } : {}) };
+}
+
+export async function consumeOpenAiCompatibleChatCompletionStreamForTest(args: {
+  stream: AsyncIterable<ChatCompletionChunk>;
+  receiver: LlmStreamReceiver;
+  genseq: number;
+  isVolcengineCodingPlan: boolean;
+  abortSignal?: AbortSignal;
+}): Promise<LlmStreamResult> {
+  return await consumeOpenAiCompatibleChatCompletionStream(args);
 }
 
 function chatCompletionToChatMessages(response: ChatCompletion, genseq: number): ChatMessage[] {
@@ -910,10 +1338,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     if (!agent.model) {
       throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
     }
+    assertSupportedOpenAiCompatibleModel(providerConfig, agent.model);
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
+    const isVolcengineCodingPlan = isVolcengineCodingPlanProvider(providerConfig);
+    const reasoningContentMode =
+      isVolcengineCodingPlan || resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
     const messages = await buildChatCompletionMessages(systemPrompt, context, requestContext, {
       reasoningContentMode,
       providerConfig,
@@ -924,8 +1355,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
+    const volcengineExtraParams = buildVolcengineCodingPlanExtraParams({
+      providerConfig,
+      agent,
+      openAiParams,
+    });
 
-    const payload: ChatCompletionCreateParamsStreaming = {
+    const payload: ChatCompletionCreateParamsStreaming & OpenAiCompatibleChatExtraParams = {
       model: agent.model,
       messages,
       stream: true,
@@ -936,22 +1372,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
+      ...volcengineExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0
         ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
         : { tool_choice: 'none' as const }),
       parallel_tool_calls: parallelToolCalls,
     };
-
-    let sayingStarted = false;
-    let thinkingStarted = false;
-    let currentThinkingContent = '';
-    type ActiveStream = 'idle' | 'thinking' | 'saying';
-    let activeStream: ActiveStream = 'idle';
-    let usage: LlmUsageStats = { kind: 'unavailable' };
-    let returnedModel: string | undefined;
-
-    const activeCallsByIndex = new Map<number, ActiveFuncCall>();
 
     try {
       const stream: AsyncIterable<ChatCompletionChunk> = await client.chat.completions.create(
@@ -960,172 +1387,17 @@ export class OpenAiCompatibleGen implements LlmGenerator {
           ...(abortSignal ? { signal: abortSignal } : {}),
         },
       );
-
-      for await (const chunk of stream) {
-        if (abortSignal?.aborted) throw new Error('AbortError');
-
-        if (
-          returnedModel === undefined &&
-          typeof chunk.model === 'string' &&
-          chunk.model.length > 0
-        ) {
-          returnedModel = chunk.model;
-        }
-
-        if (chunk.usage) {
-          usage = tryExtractChatUsage(chunk.usage);
-        }
-
-        const choice = chunk.choices && chunk.choices.length > 0 ? chunk.choices[0] : undefined;
-        if (!choice) continue;
-
-        const delta = choice.delta;
-        const reasoningDelta = extractReasoningContentField(delta as unknown);
-        if (typeof reasoningDelta === 'string' && reasoningDelta.length > 0) {
-          if (activeStream === 'saying') {
-            const detail =
-              'OPENAI-COMPATIBLE stream overlap violation: received reasoning while saying stream still active';
-            log.error(detail, new Error('openai_compatible_stream_overlap_violation'));
-            if (receiver.streamError) {
-              await receiver.streamError(detail);
-            }
-            if (sayingStarted) {
-              await receiver.sayingFinish();
-              sayingStarted = false;
-            }
-            activeStream = 'idle';
-          }
-          if (!thinkingStarted) {
-            thinkingStarted = true;
-            currentThinkingContent = '';
-            await receiver.thinkingStart();
-            activeStream = 'thinking';
-          }
-          currentThinkingContent += reasoningDelta;
-          await receiver.thinkingChunk(reasoningDelta);
-        }
-
-        const content = delta.content;
-        if (typeof content === 'string' && content.length > 0) {
-          if (activeStream === 'thinking') {
-            const detail =
-              'OPENAI-COMPATIBLE stream overlap violation: received output text while thinking stream still active';
-            log.error(detail, new Error('openai_compatible_stream_overlap_violation'));
-            if (receiver.streamError) {
-              await receiver.streamError(detail);
-            }
-            if (thinkingStarted) {
-              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
-              thinkingStarted = false;
-              currentThinkingContent = '';
-            }
-            activeStream = 'idle';
-          }
-          if (!sayingStarted) {
-            sayingStarted = true;
-            await receiver.sayingStart();
-            activeStream = 'saying';
-          }
-          await receiver.sayingChunk(content);
-        }
-
-        const toolCalls = delta.tool_calls;
-        if (Array.isArray(toolCalls)) {
-          for (const call of toolCalls) {
-            const rawIndex: unknown = call.index;
-            if (typeof rawIndex !== 'number' || !Number.isInteger(rawIndex) || rawIndex < 0) {
-              const detail = `OPENAI-COMPATIBLE invalid tool call index: ${JSON.stringify(rawIndex)}`;
-              log.error(detail, new Error('openai_compatible_invalid_tool_call_index'));
-              if (receiver.streamError) {
-                await receiver.streamError(detail);
-              }
-              throw new LlmStreamErrorEmittedError({
-                detail,
-                i18nStopReason: buildHumanSystemStopReasonTextI18n({
-                  detail,
-                  kind: 'invalid_tool_call',
-                }),
-              });
-            }
-            const index = rawIndex;
-            const existing = activeCallsByIndex.get(index);
-            const state: ActiveFuncCall =
-              existing ??
-              ({
-                index,
-                callId: '',
-                name: '',
-                argsJson: '',
-                emitted: false,
-              } satisfies ActiveFuncCall);
-
-            if (typeof call.id === 'string' && call.id.length > 0) state.callId = call.id;
-            if (call.function) {
-              if (typeof call.function.name === 'string' && call.function.name.length > 0) {
-                state.name = call.function.name;
-              }
-              if (
-                typeof call.function.arguments === 'string' &&
-                call.function.arguments.length > 0
-              ) {
-                applyArgsDelta(state, call.function.arguments);
-              }
-            }
-
-            activeCallsByIndex.set(index, state);
-          }
-        }
-
-        if (choice.finish_reason === 'tool_calls') {
-          if (thinkingStarted) {
-            await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
-            thinkingStarted = false;
-            currentThinkingContent = '';
-          }
-          if (sayingStarted) {
-            await receiver.sayingFinish();
-            sayingStarted = false;
-          }
-          activeStream = 'idle';
-          for (const state of activeCallsByIndex.values()) {
-            await maybeEmitFuncCall(state, receiver, genseq);
-          }
-        }
-
-        if (
-          choice.finish_reason === 'stop' ||
-          choice.finish_reason === 'length' ||
-          choice.finish_reason === 'content_filter'
-        ) {
-          if (thinkingStarted) {
-            await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
-            thinkingStarted = false;
-            currentThinkingContent = '';
-          }
-          if (sayingStarted) {
-            await receiver.sayingFinish();
-            sayingStarted = false;
-          }
-          activeStream = 'idle';
-        }
-      }
-
-      // Best-effort: if the provider never sets finish_reason='tool_calls' but streamed tool deltas,
-      // emit any collected calls at stream end.
-      for (const state of activeCallsByIndex.values()) {
-        await maybeEmitFuncCall(state, receiver, genseq);
-      }
+      return await consumeOpenAiCompatibleChatCompletionStream({
+        stream,
+        receiver,
+        genseq,
+        isVolcengineCodingPlan,
+        abortSignal,
+      });
     } catch (error: unknown) {
       log.warn('OPENAI-COMPATIBLE streaming error', error);
       throw error;
-    } finally {
-      if (thinkingStarted) {
-        await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
-      }
-      if (sayingStarted) await receiver.sayingFinish();
     }
-
-    return { usage, ...(returnedModel ? { llmGenModel: returnedModel } : {}) };
   }
 
   async genMoreMessages(
@@ -1144,9 +1416,12 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     if (!agent.model) {
       throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
     }
+    assertSupportedOpenAiCompatibleModel(providerConfig, agent.model);
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
-    const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
+    const isVolcengineCodingPlan = isVolcengineCodingPlanProvider(providerConfig);
+    const reasoningContentMode =
+      isVolcengineCodingPlan || resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
     const outputs: LlmBatchOutput[] = [];
     const messages = await buildChatCompletionMessages(systemPrompt, context, requestContext, {
       reasoningContentMode,
@@ -1162,15 +1437,22 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
+    const volcengineExtraParams = buildVolcengineCodingPlanExtraParams({
+      providerConfig,
+      agent,
+      openAiParams,
+    });
 
-    const payload: ChatCompletionCreateParamsNonStreaming = {
+    const payload: ChatCompletionCreateParamsNonStreaming & OpenAiCompatibleChatExtraParams = {
       model: agent.model,
       messages,
+      ...(openAiParams.service_tier !== undefined && { service_tier: openAiParams.service_tier }),
       ...(openAiParams.safety_identifier !== undefined && {
         safety_identifier: openAiParams.safety_identifier,
       }),
       ...(openAiParams.temperature !== undefined && { temperature: openAiParams.temperature }),
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
+      ...volcengineExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
       tool_choice: 'auto',

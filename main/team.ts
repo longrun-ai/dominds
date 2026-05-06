@@ -376,6 +376,20 @@ export namespace Team {
     web_search_include_sources?: boolean; // Include web_search_call.action.sources in Responses output.
   };
 
+  type OpenAiCompatibleModelParams = {
+    temperature?: number; // 0-2, controls randomness
+    service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
+    top_p?: number; // 0-1, nucleus sampling
+    parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls.
+    safety_identifier?: string; // OpenAI-compatible safety identifier when supported.
+    text_format?: 'text' | 'json_object' | 'json_schema'; // Maps to Chat Completions response_format.
+    text_format_json_schema_name?: string; // Required when text_format=json_schema.
+    text_format_json_schema?: string; // JSON-encoded schema object when text_format=json_schema.
+    text_format_json_schema_strict?: boolean; // Strict schema adherence when text_format=json_schema.
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // Quirk-only.
+    thinking?: boolean; // Non-standard compatible-provider switch; consumed only by explicit quirks.
+  };
+
   type AnthropicThinkingConfig =
     | { type: 'adaptive' }
     | { type: 'disabled' }
@@ -409,7 +423,7 @@ export namespace Team {
     openai?: OpenAiModelParams;
 
     // OpenAI Chat Completions-compatible wrapper parameters.
-    'openai-compatible'?: OpenAiModelParams;
+    'openai-compatible'?: OpenAiCompatibleModelParams;
 
     // Official Anthropic Messages wrapper parameters.
     anthropic?: AnthropicModelParams;
@@ -1648,6 +1662,19 @@ export namespace Team {
     'web_search_allowed_domains',
     'web_search_include_sources',
   ] as const;
+  export const TEAM_YAML_MODEL_PARAMS_OPENAI_COMPATIBLE_KEYS = [
+    'temperature',
+    'service_tier',
+    'top_p',
+    'parallel_tool_calls',
+    'safety_identifier',
+    'text_format',
+    'text_format_json_schema_name',
+    'text_format_json_schema',
+    'text_format_json_schema_strict',
+    'reasoning_effort',
+    'thinking',
+  ] as const;
   export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = [
     'temperature',
     'service_tier',
@@ -1700,12 +1727,12 @@ export namespace Team {
     memberObj: Record<string, unknown>,
   ): void {
     const hintsAtMember: Record<string, string> = {
-      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\`, \`${atPrefix}.model_params.openai.reasoning_effort\`, or \`${atPrefix}.model_params.openai-compatible.reasoning_effort\`? (not supported at ${atPrefix} root)`,
-      reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\`, \`${atPrefix}.model_params.openai.reasoning_summary\`, or \`${atPrefix}.model_params.openai-compatible.reasoning_summary\`? (not supported at ${atPrefix} root)`,
-      verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\`, \`${atPrefix}.model_params.openai.verbosity\`, or \`${atPrefix}.model_params.openai-compatible.verbosity\`? (not supported at ${atPrefix} root)`,
+      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\`, \`${atPrefix}.model_params.openai.reasoning_effort\`, or quirk-only \`${atPrefix}.model_params.openai-compatible.reasoning_effort\` for Volcano Coding Plan? (not supported at ${atPrefix} root)`,
+      reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\` or \`${atPrefix}.model_params.openai.reasoning_summary\`? (not supported at ${atPrefix} root)`,
+      verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\`, \`${atPrefix}.model_params.openai.parallel_tool_calls\`, or \`${atPrefix}.model_params.openai-compatible.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
       web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\`? (not supported at ${atPrefix} root)`,
-      web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\` or \`${atPrefix}.model_params.openai-compatible.web_search_tool\`? (not supported at ${atPrefix} root)`,
+      web_search_tool: `Did you mean \`${atPrefix}.model_params.openai.web_search_tool\`? (not supported at ${atPrefix} root)`,
       json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\` / \`${atPrefix}.model_params.anthropic-compatible.json_response\`?`,
       text_format: `Did you mean \`${atPrefix}.model_params.openai.text_format\` or \`${atPrefix}.model_params.openai-compatible.text_format\`? (not supported at ${atPrefix} root)`,
       max_tokens: `Did you mean \`${atPrefix}.model_params.anthropic.max_tokens\` or \`${atPrefix}.model_params.anthropic-compatible.max_tokens\`? OpenAI/Codex output-token overrides are not supported.`,
@@ -1734,9 +1761,9 @@ export namespace Team {
 
       const modelParamsAt = `${atPrefix}.${field}`;
       const hintsAtModelParams: Record<string, string> = {
-        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or \`${modelParamsAt}.openai-compatible.reasoning_effort\`?`,
-        reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\`, \`${modelParamsAt}.openai.reasoning_summary\`, or \`${modelParamsAt}.openai-compatible.reasoning_summary\`?`,
-        verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\`, \`${modelParamsAt}.openai.verbosity\`, or \`${modelParamsAt}.openai-compatible.verbosity\`?`,
+        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or quirk-only \`${modelParamsAt}.openai-compatible.reasoning_effort\` for Volcano Coding Plan?`,
+        reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` or \`${modelParamsAt}.openai.reasoning_summary\`?`,
+        verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\`, \`${modelParamsAt}.openai.parallel_tool_calls\`, or \`${modelParamsAt}.openai-compatible.parallel_tool_calls\`?`,
         web_search: `Did you mean \`${modelParamsAt}.codex.web_search\`?`,
         web_search_tool: `Did you mean \`${modelParamsAt}.openai.web_search_tool\`?`,
@@ -1791,7 +1818,7 @@ export namespace Team {
       if (rawOpenaiCompatible !== undefined && isRecordValue(rawOpenaiCompatible)) {
         const unknownAtOpenaiCompatible = listUnknownKeys(
           rawOpenaiCompatible,
-          TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS,
+          TEAM_YAML_MODEL_PARAMS_OPENAI_COMPATIBLE_KEYS,
         );
         if (unknownAtOpenaiCompatible.length > 0) {
           pushIssue(
@@ -3044,6 +3071,88 @@ export namespace Team {
       }
     };
 
+    const validateOpenAiCompatibleParams = (params: Record<string, unknown>, at2: string): void => {
+      asOptionalNumber(params.temperature, `${at2}.temperature`);
+      asOptionalNumber(params.top_p, `${at2}.top_p`);
+      asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
+      asOptionalString(params.safety_identifier, `${at2}.safety_identifier`);
+      asOptionalString(params.text_format_json_schema_name, `${at2}.text_format_json_schema_name`);
+      asOptionalString(params.text_format_json_schema, `${at2}.text_format_json_schema`);
+      asOptionalBoolean(
+        params.text_format_json_schema_strict,
+        `${at2}.text_format_json_schema_strict`,
+      );
+      asOptionalBoolean(params.thinking, `${at2}.thinking`);
+
+      const serviceTier = params.service_tier;
+      if (
+        serviceTier !== undefined &&
+        serviceTier !== 'auto' &&
+        serviceTier !== 'default' &&
+        serviceTier !== 'flex' &&
+        serviceTier !== 'scale' &&
+        serviceTier !== 'priority'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.service_tier: expected auto|default|flex|scale|priority (got ${describeValueType(
+            serviceTier,
+          )})`,
+        );
+      }
+
+      const reasoningEffort = params.reasoning_effort;
+      if (
+        reasoningEffort !== undefined &&
+        reasoningEffort !== 'none' &&
+        reasoningEffort !== 'minimal' &&
+        reasoningEffort !== 'low' &&
+        reasoningEffort !== 'medium' &&
+        reasoningEffort !== 'high' &&
+        reasoningEffort !== 'xhigh'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
+            reasoningEffort,
+          )})`,
+        );
+      }
+
+      const textFormat = params.text_format;
+      if (
+        textFormat !== undefined &&
+        textFormat !== 'text' &&
+        textFormat !== 'json_object' &&
+        textFormat !== 'json_schema'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.text_format: expected text|json_object|json_schema (got ${describeValueType(
+            textFormat,
+          )})`,
+        );
+      }
+
+      const hasJsonSchemaDetails =
+        params.text_format_json_schema_name !== undefined ||
+        params.text_format_json_schema !== undefined ||
+        params.text_format_json_schema_strict !== undefined;
+      if (textFormat === 'json_schema') {
+        if (params.text_format_json_schema_name === undefined) {
+          throw new Error(
+            `Invalid ${at2}: ${at2}.text_format=json_schema requires ${at2}.text_format_json_schema_name.`,
+          );
+        }
+        if (params.text_format_json_schema === undefined) {
+          throw new Error(
+            `Invalid ${at2}: ${at2}.text_format=json_schema requires ${at2}.text_format_json_schema.`,
+          );
+        }
+      } else if (hasJsonSchemaDetails) {
+        throw new Error(
+          `Invalid ${at2}: text_format_json_schema_* fields require ${at2}.text_format=json_schema.`,
+        );
+      }
+    };
+
     const validateOfficialAnthropicThinkingConfig = (value: unknown, at2: string): void => {
       if (value === undefined) return;
       const thinking = asRecord(value, at2);
@@ -3097,7 +3206,7 @@ export namespace Team {
     if (codex) validateCodexParams(codex, `${at}.codex`);
     if (openai) validateOpenAiParams(openai, `${at}.openai`);
     if (openaiCompatible) {
-      validateOpenAiParams(openaiCompatible, `${at}.openai-compatible`);
+      validateOpenAiCompatibleParams(openaiCompatible, `${at}.openai-compatible`);
     }
 
     if (anthropic) {
@@ -3145,10 +3254,10 @@ export namespace Team {
     if (openaiCompatible) {
       const knownOpenAiCompatible = pickKnownModelParams(
         openaiCompatible,
-        TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS,
+        TEAM_YAML_MODEL_PARAMS_OPENAI_COMPATIBLE_KEYS,
       );
       if (Object.keys(knownOpenAiCompatible).length > 0) {
-        out['openai-compatible'] = knownOpenAiCompatible as OpenAiModelParams;
+        out['openai-compatible'] = knownOpenAiCompatible as OpenAiCompatibleModelParams;
       }
     }
     if (anthropic) {

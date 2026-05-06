@@ -12,6 +12,8 @@ This means:
 - `apiType: anthropic` owns official Anthropic Messages semantics, including object-shaped `model_params.anthropic.thinking`.
 - `apiType: anthropic-compatible` owns Anthropic-compatible gateway semantics, including boolean `model_params.anthropic-compatible.thinking` mapped to provider `enabled` / `disabled` request objects.
 
+Some providers expose OpenAI-compatible or Anthropic-compatible endpoints while still requiring an explicit provider quirk profile. Volcano Engine Ark Coding Plan is the canonical example: its OpenAI-compatible integration reuses the Chat Completions transport shape, but `thinking`, `reasoning_content`, tool-call/thinking alternation, `<think>` compatibility, and model capability metadata must stay inside the `volcengine-coding-plan` quirk instead of becoming generic `openai-compatible` semantics. See [`volcengine-coding-plan-openai-compatible.zh.md`](./volcengine-coding-plan-openai-compatible.zh.md) for the design record.
+
 Similar field names across wrappers do not imply compatibility. For example, `reasoning_effort`, `verbosity`, `parallel_tool_calls`, and web search controls may look similar but can still differ in accepted values, payload shape, lifecycle events, validation rules, and runtime meaning.
 
 ## Hard Rules

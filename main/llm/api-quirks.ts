@@ -8,6 +8,7 @@ export type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
 
 export const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
 export const VOLCANO_TOOL_USE_API_QUIRK = 'volcano-tool-use';
+export const VOLCENGINE_CODING_PLAN_API_QUIRK = 'volcengine-coding-plan';
 
 export type LlmFailureSummary = {
   kind: LlmFailureKind;

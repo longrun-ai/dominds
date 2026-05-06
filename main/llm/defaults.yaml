@@ -18,6 +18,9 @@
 #   `apiQuirks: volcano-tool-use` enables a narrow Anthropic-compatible stream quirk for
 #   Volcano Engine Coding Plan text blocks that render a tool call as textual
 #   "Function call emitted by the assistant." metadata instead of protocol tool_use blocks.
+#   `apiQuirks: volcengine-coding-plan` enables the OpenAI-compatible Coding Plan profile for
+#   Volcano Engine's `/api/coding/v3` endpoint. It keeps Volcano-specific thinking, reasoning
+#   stream alternation, and strict tool-call validation out of generic openai-compatible behavior.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -455,35 +458,39 @@ providers:
         context_window: '128K'
   volcano-engine-coding-plan:
     name: Volcano Engine Coding Plan
-    apiType: anthropic-compatible
-    apiQuirks: [glm-via-volcano, volcano-tool-use]
-    baseUrl: https://ark.cn-beijing.volces.com/api/coding
+    apiType: openai-compatible
+    apiQuirks: volcengine-coding-plan
+    baseUrl: https://ark.cn-beijing.volces.com/api/coding/v3
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261
     api_mgmt_url: https://console.volcengine.com/ark
     model_param_options:
-      anthropic-compatible:
+      openai-compatible:
         thinking:
           prominent: true
           type: boolean
-          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the model default_thinking metadata/provider default.
+          description: Volcano Coding Plan quirk only. Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the model default_thinking metadata/provider default.
+        reasoning_effort:
+          type: enum
+          values: [none, minimal, low, medium, high, xhigh]
+          description: Volcano Coding Plan quirk only. Do not combine with thinking=false.
         temperature:
           type: number
           min: 0
-          max: 1
+          max: 2
           description: Sampling temperature.
-        max_tokens:
-          type: integer
-          min: 1
-          description: Maximum output tokens.
         top_p:
           type: number
           min: 0
           max: 1
           description: Nucleus sampling parameter.
-        json_response:
+        parallel_tool_calls:
           type: boolean
-          description: Force JSON object output via Anthropic tool_choice mode.
+          description: Allow the model to emit parallel tool calls.
+        text_format:
+          type: enum
+          values: [text, json_object, json_schema]
+          description: OpenAI-compatible Chat Completions response_format mode.
     models:
       doubao-seed-2.0-code:
         name: Doubao-Seed-2.0-Code
@@ -523,7 +530,6 @@ providers:
         context_window: '256K'
       minimax-m2.7:
         name: MiniMax-M2.7
-        upstream_model: minimax-m2.7
         supports_thinking: true
         default_thinking: true
         supports_image_input: false

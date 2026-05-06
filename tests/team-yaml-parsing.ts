@@ -163,6 +163,12 @@ async function main(): Promise<void> {
     assert.ok(
       mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
     );
+    assert.ok(
+      mdUnknown.detail.errorText.includes(
+        'quirk-only `member_defaults.model_params.openai-compatible.reasoning_effort` for Volcano Coding Plan',
+      ),
+      'root reasoning_effort hint should label openai-compatible reasoning_effort as quirk-only',
+    );
 
     // OpenAI/Codex output-token overrides are intentionally unsupported. Unknown fields should be
     // reported loudly and stripped from the parsed runtime model_params object.
@@ -187,6 +193,11 @@ async function main(): Promise<void> {
         '      openai:',
         '        max_tokens: 321',
         '        temperature: 0',
+        '      openai-compatible:',
+        '        web_search_tool: true',
+        '        reasoning_summary: auto',
+        '        verbosity: high',
+        '        temperature: 0.1',
         '      anthropic:',
         '        max_tokens: 16',
         '',
@@ -227,6 +238,30 @@ async function main(): Promise<void> {
       'model_params.openai.max_tokens should be stripped',
     );
     assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        unsupportedMember.model_params?.['openai-compatible'] ?? {},
+        'web_search_tool',
+      ),
+      false,
+      'model_params.openai-compatible.web_search_tool should be stripped',
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        unsupportedMember.model_params?.['openai-compatible'] ?? {},
+        'reasoning_summary',
+      ),
+      false,
+      'model_params.openai-compatible.reasoning_summary should be stripped',
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        unsupportedMember.model_params?.['openai-compatible'] ?? {},
+        'verbosity',
+      ),
+      false,
+      'model_params.openai-compatible.verbosity should be stripped',
+    );
+    assert.equal(
       unsupportedMember.model_params?.codex?.verbosity,
       'low',
       'valid codex params should be preserved while stripping unknown max_tokens',
@@ -235,6 +270,11 @@ async function main(): Promise<void> {
       unsupportedMember.model_params?.openai?.temperature,
       0,
       'valid openai params should be preserved while stripping unknown max_tokens',
+    );
+    assert.equal(
+      unsupportedMember.model_params?.['openai-compatible']?.temperature,
+      0.1,
+      'valid openai-compatible params should be preserved while stripping Responses-only fields',
     );
     assert.equal(
       unsupportedMember.model_params?.anthropic?.max_tokens,
@@ -259,6 +299,12 @@ async function main(): Promise<void> {
         'team/team_yaml_error/members/alice/model_params/openai/unknown_fields',
       ),
       'openai.max_tokens should be reported as unknown',
+    );
+    assert.ok(
+      unsupportedIds.includes(
+        'team/team_yaml_error/members/alice/model_params/openai-compatible/unknown_fields',
+      ),
+      'openai-compatible Responses-only fields should be reported as unknown',
     );
     const unsupportedRootProblem = unsupportedSnapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/alice/model_params/unknown_fields',
@@ -297,6 +343,20 @@ async function main(): Promise<void> {
         'OpenAI output-token overrides are not supported',
       ),
       'openai max_tokens hint should be explicit',
+    );
+    const unsupportedOpenAiCompatibleProblem = unsupportedSnapshot.problems.find(
+      (p) =>
+        p.id === 'team/team_yaml_error/members/alice/model_params/openai-compatible/unknown_fields',
+    );
+    assert.ok(
+      unsupportedOpenAiCompatibleProblem &&
+        unsupportedOpenAiCompatibleProblem.kind === 'team_workspace_config_error',
+    );
+    assert.ok(
+      unsupportedOpenAiCompatibleProblem.detail.errorText.includes(
+        'model_params.openai-compatible.web_search_tool',
+      ),
+      'openai-compatible unknown fields should be reported with their full paths',
     );
 
     // Anthropic-compatible providers support a boolean thinking switch under their own namespace.
