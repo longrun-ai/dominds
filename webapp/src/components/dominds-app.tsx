@@ -145,7 +145,7 @@ type ToolsWidgetRequestOptions = {
 };
 
 type ToolsWidgetSnapshot = Pick<ToolAvailabilitySnapshot, 'timestamp'> & {
-  directTools: ToolInfo[];
+  standaloneTools: ToolInfo[];
   toolsets: ToolsetInfo[];
   warnings: string[];
 };
@@ -653,7 +653,7 @@ export class DomindsApp extends HTMLElement {
   private toolsWidgetVisible: boolean = false;
   private toolsWidgetLoading: boolean = false;
   private toolsWidgetTimestamp: string = '';
-  private toolsWidgetDirectTools: ToolInfo[] = [];
+  private toolsWidgetStandaloneTools: ToolInfo[] = [];
   private toolsWidgetToolsets: ToolsetInfo[] = [];
   private toolsWidgetWarnings: string[] = [];
   private toolsWidgetError: string | null = null;
@@ -10824,22 +10824,22 @@ export class DomindsApp extends HTMLElement {
     if (
       this.toolsWidgetError &&
       this.toolsWidgetToolsets.length === 0 &&
-      this.toolsWidgetDirectTools.length === 0
+      this.toolsWidgetStandaloneTools.length === 0
     ) {
       return `${errorHtml}${warningHtml}`;
     }
     if (
       this.toolsWidgetLoading &&
       this.toolsWidgetToolsets.length === 0 &&
-      this.toolsWidgetDirectTools.length === 0
+      this.toolsWidgetStandaloneTools.length === 0
     ) {
       return `${loadingHtml}${warningHtml}`;
     }
-    if (this.toolsWidgetToolsets.length === 0 && this.toolsWidgetDirectTools.length === 0) {
+    if (this.toolsWidgetToolsets.length === 0 && this.toolsWidgetStandaloneTools.length === 0) {
       return `${warningHtml}<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
     }
 
-    const directTools = this.toolsWidgetDirectTools;
+    const standaloneTools = this.toolsWidgetStandaloneTools;
     const toolsets = this.toolsWidgetToolsets;
 
     const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -10900,7 +10900,7 @@ export class DomindsApp extends HTMLElement {
       </div>`;
     };
 
-    const renderDirectToolSectionHtml = (
+    const renderStandaloneToolSectionHtml = (
       sectionTitle: string,
       tools: readonly ToolInfo[],
       kindLabel: string,
@@ -10961,12 +10961,16 @@ export class DomindsApp extends HTMLElement {
     const appToolsets = toolsets.filter((ts) => ts.source === 'app');
     const mcpToolsets = toolsets.filter((ts) => ts.source === 'mcp');
 
-    const directSection = renderDirectToolSectionHtml(t.toolsGroupDirect, directTools, 'ƒ');
+    const standaloneSection = renderStandaloneToolSectionHtml(
+      t.toolsGroupStandalone,
+      standaloneTools,
+      'ƒ',
+    );
     const domindsSection = renderSectionHtml(t.toolsGroupDominds, 'ƒ', domindsToolsets);
     const appsSection = renderSectionHtml(t.toolsGroupApps, 'ƒ', appToolsets);
     const mcpSection = renderSectionHtml(t.toolsGroupMcp, 'ƒ', mcpToolsets);
 
-    return `${loadingHtml}${errorHtml}${warningHtml}${directSection}${domindsSection}${appsSection}${mcpSection}`;
+    return `${loadingHtml}${errorHtml}${warningHtml}${standaloneSection}${domindsSection}${appsSection}${mcpSection}`;
   }
 
   private initializeToolsWidgetGeometry(): void {
@@ -11168,13 +11172,13 @@ export class DomindsApp extends HTMLElement {
 
   private applyToolsWidgetSnapshot(snapshot: ToolsWidgetSnapshot | null): void {
     if (!snapshot) {
-      this.toolsWidgetDirectTools = [];
+      this.toolsWidgetStandaloneTools = [];
       this.toolsWidgetToolsets = [];
       this.toolsWidgetWarnings = [];
       this.toolsWidgetTimestamp = '';
       return;
     }
-    this.toolsWidgetDirectTools = snapshot.directTools;
+    this.toolsWidgetStandaloneTools = snapshot.standaloneTools;
     this.toolsWidgetToolsets = snapshot.toolsets;
     this.toolsWidgetWarnings = snapshot.warnings;
     this.toolsWidgetTimestamp = snapshot.timestamp;
@@ -11210,7 +11214,7 @@ export class DomindsApp extends HTMLElement {
     }
 
     const nextSnapshot: ToolsWidgetSnapshot = {
-      directTools: [...res.data.composition.visibleDirectTools],
+      standaloneTools: [...res.data.composition.visibleStandaloneTools],
       toolsets: [...res.data.composition.visibleToolsets],
       warnings: [
         ...(res.data.layers.memberBinding.status === 'error' &&

@@ -302,7 +302,7 @@ export type UiStrings = {
   toolsEmpty: string;
   toolsRefresh: string;
   toolsStatusWarningPrefix: string;
-  toolsGroupDirect: string;
+  toolsGroupStandalone: string;
   toolsGroupDominds: string;
   toolsGroupApps: string;
   toolsGroupMcp: string;
@@ -710,7 +710,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toolsEmpty: '暂无工具',
       toolsRefresh: '刷新',
       toolsStatusWarningPrefix: '工具可用性警告：',
-      toolsGroupDirect: '直接工具',
+      toolsGroupStandalone: '单独工具',
       toolsGroupDominds: 'Dominds 工具',
       toolsGroupApps: 'Apps 工具',
       toolsGroupMcp: 'MCP 工具',
@@ -1133,7 +1133,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toolsEmpty: 'No tools',
     toolsRefresh: 'Refresh',
     toolsStatusWarningPrefix: 'Tool availability warning:',
-    toolsGroupDirect: 'Direct Tools',
+    toolsGroupStandalone: 'Standalone Tools',
     toolsGroupDominds: 'Dominds Tools',
     toolsGroupApps: 'App Tools',
     toolsGroupMcp: 'MCP Tools',

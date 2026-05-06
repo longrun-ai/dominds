@@ -86,8 +86,8 @@ export type ToolAvailabilityComposition = Readonly<{
   revision: string;
   visibleToolsetIds: ReadonlyArray<string>;
   visibleToolsets: ReadonlyArray<ToolsetInfo>;
-  visibleDirectToolIds: ReadonlyArray<string>;
-  visibleDirectTools: ReadonlyArray<ToolInfo>;
+  visibleStandaloneToolIds: ReadonlyArray<string>;
+  visibleStandaloneTools: ReadonlyArray<ToolInfo>;
   runtimeLeaseAffectsVisibility: false;
 }>;
 

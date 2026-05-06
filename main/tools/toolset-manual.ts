@@ -28,6 +28,9 @@ export function buildToolsetManualTools(_options: {
 }): ToolsetManualResult {
   // Create a single unified `man` function instead of man_xxx series
   const tool: FuncTool = buildManTool();
+  if (_options.existingToolNames.has(tool.name)) {
+    return { tools: [], toolNames: [] };
+  }
 
   return { tools: [tool], toolNames: [tool.name] };
 }
@@ -165,7 +168,7 @@ export function formatToolsetManualIntro(
   ].join('\n');
 }
 
-function buildManTool(): FuncTool {
+export function buildManTool(): FuncTool {
   const topicEnums = [...MANUAL_TOPICS, 'all'];
   return {
     type: 'func',

@@ -227,7 +227,10 @@ layer.
 
 - WebUI tools widget no longer caches authority snapshots per dialog.
 - The widget fetches a fresh `/api/tool-availability` snapshot and renders the composed visible
-  toolsets/direct tools for the current context.
+  toolsets/standalone tools for the current context.
+- Composition includes runtime-injected standalone tools such as `man` and `read_skill`, plus the
+  intrinsic `control` toolset with main-dialog vs side-dialog filtering, so the widget follows the
+  effective tools of a fresh drive/load rather than only static `.minds/team.yaml` bindings.
 - In-flight prompts are still not rewritten retroactively. A fresh drive/load uses the latest
   composed availability snapshot, which remains the intended contract.
 - App-controlled dynamic availability is still intentionally narrow in surface area:
