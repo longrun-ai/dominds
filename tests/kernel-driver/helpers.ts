@@ -69,7 +69,7 @@ export async function writeStandardMinds(
     'providers:',
     '  local-mock:',
     '    name: Local Mock',
-    `    apiType: ${options?.providerApiType ?? 'mock'}`,
+    `    apiType: ${JSON.stringify(options?.providerApiType ?? 'mock')}`,
     '    baseUrl: mock-db',
     '    apiKeyEnvVar: MOCK_API_KEY',
   ];

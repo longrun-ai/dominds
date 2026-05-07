@@ -11,6 +11,7 @@ import type {
 } from '../../main/llm/gen';
 import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import type { FuncTool } from '../../main/tool';
@@ -99,6 +100,18 @@ async function main(): Promise<void> {
           msg.content.includes('runtime auto-continue instruction'),
       );
       assert.ok(diligencePrompt, 'expected retry recovery to insert the diligence push prompt');
+
+      const events = await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status);
+      const persistedDiligencePrompt = events.find(
+        (event) =>
+          event.type === 'human_text_record' &&
+          event.origin === 'diligence_push' &&
+          event.content.includes('runtime auto-continue instruction'),
+      );
+      assert.ok(
+        persistedDiligencePrompt,
+        'expected retry recovery prompt to persist with diligence_push origin',
+      );
 
       const recovered = dlg.msgs.find(
         (msg) =>
