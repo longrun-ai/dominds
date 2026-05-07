@@ -10644,6 +10644,12 @@ export class DomindsApp extends HTMLElement {
         return zh ? '对话' : 'Dialog';
       case 'provider':
         return zh ? 'Provider' : 'Provider';
+      case 'debugPath':
+        return zh ? '调试目录' : 'Debug Directory';
+      case 'requestPayloadPath':
+        return zh ? '请求 Payload' : 'Request Payload';
+      case 'debugCaptureError':
+        return zh ? '调试采集错误' : 'Debug Capture Error';
       default:
         return key;
     }
@@ -10683,6 +10689,9 @@ export class DomindsApp extends HTMLElement {
       'rule',
       'dialogId',
       'provider',
+      'debugPath',
+      'requestPayloadPath',
+      'debugCaptureError',
       'errorText',
       'text',
     ];
@@ -10701,7 +10710,9 @@ export class DomindsApp extends HTMLElement {
         key === 'pattern' ||
         key === 'rule' ||
         key === 'dialogId' ||
-        key === 'provider';
+        key === 'provider' ||
+        key === 'debugPath' ||
+        key === 'requestPayloadPath';
       const displayValue =
         typeof value === 'string' && (key === 'errorText' || key === 'text')
           ? this.selectProblemDetailText(problem, value)

@@ -557,9 +557,10 @@ function getWorkspaceProblemPath(problem: WorkspaceProblemRecord): string | null
     case 'mcp_tool_blacklisted':
     case 'mcp_tool_not_whitelisted':
     case 'mcp_tool_invalid_name':
-    case 'llm_provider_rejected_request':
     case 'generic_problem':
       return null;
+    case 'llm_provider_rejected_request':
+      return problem.detail.requestPayloadPath ?? problem.detail.debugPath ?? null;
   }
 }
 
@@ -685,6 +686,15 @@ function formatProblemDetailLines(
     case 'llm_provider_rejected_request':
       lines.push(`  dialog: ${problem.detail.dialogId}`);
       lines.push(`  provider: ${problem.detail.provider}`);
+      if (problem.detail.debugPath !== undefined) {
+        lines.push(`  debug: ${problem.detail.debugPath}`);
+      }
+      if (problem.detail.requestPayloadPath !== undefined) {
+        lines.push(`  request_payload: ${problem.detail.requestPayloadPath}`);
+      }
+      if (problem.detail.debugCaptureError !== undefined) {
+        lines.push(`  debug_capture_error: ${problem.detail.debugCaptureError}`);
+      }
       lines.push(
         '  ' +
           truncateProblemTextBlock(problem.detailTextI18n?.[language] ?? problem.detail.errorText)

@@ -124,6 +124,9 @@ export type WorkspaceProblem =
       detail: {
         dialogId: string;
         provider: string;
+        debugPath?: string;
+        requestPayloadPath?: string;
+        debugCaptureError?: string;
         errorText: string;
       };
     }

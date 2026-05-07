@@ -49,7 +49,7 @@ import {
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { bytesToDataUrl, isVisionImageMimeType } from './artifacts';
-import { classifyOpenAiLikeFailure } from './failure-classifier';
+import { classifyOpenAiLikeFailure, readErrorCode, readErrorStatus } from './failure-classifier';
 import {
   findFirstToolCallAdjacencyViolation,
   formatToolCallAdjacencyViolation,
@@ -74,8 +74,10 @@ const log = createLogger('llm/openai-compatible');
 
 const OPENAI_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_OPENAI_COMPAT_CAPTURE_SSE';
 const OPENAI_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_OPENAI_COMPAT_CAPTURE_DIR';
+const OPENAI_COMPAT_REJECTED_DIR_ENV = 'DOMINDS_OPENAI_COMPAT_REJECTED_DIR';
 const OPENAI_COMPATIBLE_MALFORMED_BATCH_TOOL_CALL_ERROR_CODE =
   'OPENAI_COMPATIBLE_MALFORMED_BATCH_TOOL_CALL';
+const OPENAI_COMPATIBLE_REJECTED_REQUEST_ERROR_CODE = 'OPENAI_COMPATIBLE_REJECTED_REQUEST';
 
 type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
   reasoning_content?: string;
@@ -141,6 +143,24 @@ type OpenAiCompatibleSseCaptureState = {
   invalidFrames: Array<{ frameIndex: number; eventName: string; message: string; data: string }>;
 };
 
+type OpenAiCompatibleRejectedCaptureContext = OpenAiCompatibleCaptureContext & {
+  genseq: number;
+  status: number;
+  code?: string;
+  upstreamMessage: string;
+};
+
+type OpenAiCompatibleRejectedCaptureRecord = {
+  id: string;
+  dir: string;
+  metaPath: string;
+  requestPayloadPath: string;
+};
+
+type OpenAiCompatibleRejectedCaptureResult =
+  | { kind: 'captured'; record: OpenAiCompatibleRejectedCaptureRecord }
+  | { kind: 'capture_failed'; detail: string };
+
 function isOpenAiCompatibleSseCaptureEnabled(): boolean {
   const configured = process.env[OPENAI_COMPAT_CAPTURE_SSE_ENV]?.trim().toLowerCase();
   return configured === '1' || configured === 'true' || configured === 'yes' || configured === 'on';
@@ -152,10 +172,23 @@ function resolveOpenAiCompatibleCaptureDir(): string {
   return path.resolve(process.cwd(), '.dialogs', 'debug', 'openai-compatible-sse');
 }
 
+function resolveOpenAiCompatibleRejectedDir(): string {
+  const configured = process.env[OPENAI_COMPAT_REJECTED_DIR_ENV]?.trim();
+  if (configured && configured.length > 0) return path.resolve(configured);
+  return path.resolve(process.cwd(), '.dialogs', 'debug', 'openai-compatible-rejected');
+}
+
 function sanitizeCapturePathPart(value: string): string {
   const sanitized = value.replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '');
   if (sanitized.length === 0) return 'unknown';
   return sanitized.slice(0, 96);
+}
+
+function formatRejectedCaptureFailureDetail(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const compact = raw.replace(/\s+/g, ' ').trim();
+  if (compact.length === 0) return 'unknown debug capture failure';
+  return compact.slice(0, 500);
 }
 
 function buildOpenAiCompatibleCaptureId(context: OpenAiCompatibleCaptureContext): string {
@@ -166,6 +199,22 @@ function buildOpenAiCompatibleCaptureId(context: OpenAiCompatibleCaptureContext)
     sanitizeCapturePathPart(context.providerKey ?? context.providerName),
     sanitizeCapturePathPart(context.model),
     sanitizeCapturePathPart(context.dialogSelfId),
+    context.requestKind,
+    suffix,
+  ].join('__');
+}
+
+function buildOpenAiCompatibleRejectedCaptureId(
+  context: OpenAiCompatibleRejectedCaptureContext,
+): string {
+  const now = new Date().toISOString().replace(/[:.]/g, '-');
+  const suffix = Math.random().toString(36).slice(2, 10);
+  return [
+    now,
+    sanitizeCapturePathPart(context.providerKey ?? context.providerName),
+    sanitizeCapturePathPart(context.model),
+    sanitizeCapturePathPart(context.dialogSelfId),
+    `g${String(context.genseq)}`,
     context.requestKind,
     suffix,
   ].join('__');
@@ -302,6 +351,64 @@ async function startOpenAiCompatibleCapture(
     requestKind: context.requestKind,
   });
   return record;
+}
+
+async function writeOpenAiCompatibleRejectedCapture(args: {
+  context: OpenAiCompatibleRejectedCaptureContext;
+  payload: unknown;
+  error: unknown;
+}): Promise<OpenAiCompatibleRejectedCaptureRecord> {
+  const captureRoot = resolveOpenAiCompatibleRejectedDir();
+  const id = buildOpenAiCompatibleRejectedCaptureId(args.context);
+  const dir = path.join(captureRoot, id);
+  await fs.mkdir(dir, { recursive: true });
+
+  const record: OpenAiCompatibleRejectedCaptureRecord = {
+    id,
+    dir,
+    metaPath: path.join(dir, 'meta.json'),
+    requestPayloadPath: path.join(dir, 'request-payload.json'),
+  };
+
+  await writeCaptureJson(record.requestPayloadPath, args.payload);
+  await writeCaptureJson(record.metaPath, {
+    id,
+    capturedAt: new Date().toISOString(),
+    context: args.context,
+    request: {
+      payloadPath: record.requestPayloadPath,
+    },
+    error: {
+      name: args.error instanceof Error ? args.error.name : undefined,
+      message: args.context.upstreamMessage,
+      status: args.context.status,
+      code: args.context.code,
+    },
+  });
+
+  return record;
+}
+
+async function tryWriteOpenAiCompatibleRejectedCapture(args: {
+  context: OpenAiCompatibleRejectedCaptureContext;
+  payload: unknown;
+  error: unknown;
+}): Promise<OpenAiCompatibleRejectedCaptureResult> {
+  try {
+    return { kind: 'captured', record: await writeOpenAiCompatibleRejectedCapture(args) };
+  } catch (error: unknown) {
+    const detail = formatRejectedCaptureFailureDetail(error);
+    log.error('OPENAI-COMPATIBLE rejected request debug capture failed', error, {
+      providerKey: args.context.providerKey,
+      providerName: args.context.providerName,
+      model: args.context.model,
+      rootId: args.context.dialogRootId,
+      selfId: args.context.dialogSelfId,
+      genseq: args.context.genseq,
+      requestKind: args.context.requestKind,
+    });
+    return { kind: 'capture_failed', detail };
+  }
 }
 
 function parseSseFrameData(frame: string): { eventName: string; data: string | undefined } {
@@ -690,11 +797,98 @@ function buildOpenAiCompatibleExtraParams(args: {
   };
 }
 
+async function wrapOpenAiCompatibleRejectedRequestError(args: {
+  error: unknown;
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  requestContext: LlmRequestContext;
+  genseq: number;
+  requestKind: 'stream' | 'batch';
+  payload: unknown;
+}): Promise<unknown> {
+  const status = readErrorStatus(args.error);
+  if (status !== 400) return args.error;
+
+  const providerKey = args.requestContext.providerKey ?? args.providerConfig.name;
+  const modelKey = args.requestContext.modelKey ?? args.agent.model ?? 'unknown';
+  const code = readErrorCode(args.error);
+  const upstreamMessage = args.error instanceof Error ? args.error.message : String(args.error);
+  const captureContext: OpenAiCompatibleRejectedCaptureContext = {
+    providerKey,
+    providerName:
+      args.providerConfig.name.trim().length > 0 ? args.providerConfig.name : providerKey,
+    model: modelKey,
+    dialogRootId: args.requestContext.dialogRootId,
+    dialogSelfId: args.requestContext.dialogSelfId,
+    requestKind: args.requestKind,
+    genseq: args.genseq,
+    status,
+    ...(code !== undefined && { code }),
+    upstreamMessage,
+  };
+  const capture = await tryWriteOpenAiCompatibleRejectedCapture({
+    context: captureContext,
+    payload: args.payload,
+    error: args.error,
+  });
+  const captureMessageLines =
+    capture.kind === 'captured'
+      ? [
+          `debugPath=${capture.record.dir}`,
+          `requestPayloadPath=${capture.record.requestPayloadPath}`,
+        ]
+      : [`debugCaptureError=${capture.detail}`];
+  const message = [
+    `OPENAI-compatible provider rejected ${args.requestKind} request with HTTP 400.`,
+    `provider=${providerKey}`,
+    `model=${modelKey}`,
+    `rootId=${args.requestContext.dialogRootId}`,
+    `selfId=${args.requestContext.dialogSelfId}`,
+    `genseq=${String(args.genseq)}`,
+    `upstream=${upstreamMessage}`,
+    ...captureMessageLines,
+  ].join('\n');
+
+  const wrapped: Error & {
+    cause?: unknown;
+    code?: string;
+    debugCaptureError?: string;
+    debugPath?: string;
+    requestPayloadPath?: string;
+    status?: number;
+    statusCode?: number;
+  } = new Error(message);
+  wrapped.name = 'OpenAiCompatibleRejectedRequestError';
+  wrapped.cause = args.error;
+  wrapped.status = status;
+  wrapped.statusCode = status;
+  wrapped.code = code ?? OPENAI_COMPATIBLE_REJECTED_REQUEST_ERROR_CODE;
+  if (capture.kind === 'captured') {
+    wrapped.debugPath = capture.record.dir;
+    wrapped.requestPayloadPath = capture.record.requestPayloadPath;
+  } else {
+    wrapped.debugCaptureError = capture.detail;
+  }
+  return wrapped;
+}
+
 export function buildOpenAiCompatibleExtraParamsForTest(args: {
   agent: Team.Member;
   openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
 }): OpenAiCompatibleChatExtraParams {
   return buildOpenAiCompatibleExtraParams(args);
+}
+
+export async function wrapOpenAiCompatibleRejectedRequestErrorForTest(args: {
+  error: unknown;
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  requestContext: LlmRequestContext;
+  genseq: number;
+  requestKind: 'stream' | 'batch';
+  payload: unknown;
+}): Promise<unknown> {
+  return await wrapOpenAiCompatibleRejectedRequestError(args);
 }
 
 function extractThinkingReasoningText(msg: Extract<ChatMessage, { type: 'thinking_msg' }>): string {
@@ -1768,8 +1962,23 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         abortSignal,
       });
     } catch (error: unknown) {
-      log.warn('OPENAI-COMPATIBLE streaming error', error);
-      throw error;
+      const enrichedError = await wrapOpenAiCompatibleRejectedRequestError({
+        error,
+        providerConfig,
+        agent,
+        requestContext,
+        genseq,
+        requestKind: 'stream',
+        payload,
+      });
+      log.warn('OPENAI-COMPATIBLE streaming error', enrichedError, {
+        providerKey: requestContext.providerKey ?? providerConfig.name,
+        model: requestContext.modelKey ?? agent.model,
+        rootId: requestContext.dialogRootId,
+        selfId: requestContext.dialogSelfId,
+        genseq,
+      });
+      throw enrichedError;
     }
   }
 
@@ -1852,8 +2061,23 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         ...(model ? { llmGenModel: model } : {}),
       };
     } catch (error: unknown) {
-      log.warn('OPENAI-COMPATIBLE batch error', error);
-      throw error;
+      const enrichedError = await wrapOpenAiCompatibleRejectedRequestError({
+        error,
+        providerConfig,
+        agent,
+        requestContext,
+        genseq,
+        requestKind: 'batch',
+        payload,
+      });
+      log.warn('OPENAI-COMPATIBLE batch error', enrichedError, {
+        providerKey: requestContext.providerKey ?? providerConfig.name,
+        model: requestContext.modelKey ?? agent.model,
+        rootId: requestContext.dialogRootId,
+        selfId: requestContext.dialogSelfId,
+        genseq,
+      });
+      throw enrichedError;
     }
   }
 }

@@ -339,6 +339,14 @@ function readErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+function readErrorStringField(error: unknown, field: string): string | undefined {
+  if (!isPlainObject(error)) {
+    return undefined;
+  }
+  const value = error[field];
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
 function isRetriableLlmErrorCode(code: string | undefined): boolean {
   if (!code) return false;
   return AGGRESSIVE_RETRY_LLM_ERROR_CODES.has(code);
@@ -929,6 +937,9 @@ export async function runLlmRequestWithRetry<T>(params: {
       const causeCode = readErrorCode(cause);
       const causeMessage =
         cause === undefined || cause === null ? undefined : extractErrorDetails(cause).message;
+      const debugCaptureError = readErrorStringField(err, 'debugCaptureError');
+      const debugPath = readErrorStringField(err, 'debugPath');
+      const requestPayloadPath = readErrorStringField(err, 'requestPayloadPath');
       const attemptNo = attempt + 1;
       const retryStrategy =
         failure.kind === 'retriable' ? (failure.retryStrategy ?? 'conservative') : undefined;
@@ -936,19 +947,22 @@ export async function runLlmRequestWithRetry<T>(params: {
 
       log.warn('LLM request attempt failed', err, {
         provider: params.provider,
-        dialogId: params.dlg.id.valueOf(),
-        rootId: params.dlg.id.rootId,
-        selfId: params.dlg.id.selfId,
+        failureKind: failure.kind,
+        status: failure.status,
+        code: failure.code,
+        debugPath,
+        requestPayloadPath,
+        debugCaptureError,
         retryStrategy,
         retryMode,
         attemptNumber: attemptNo,
+        dialogId: params.dlg.id.valueOf(),
+        rootId: params.dlg.id.rootId,
+        selfId: params.dlg.id.selfId,
         aggressiveRetryCount,
         aggressiveRetryMaxRetries: params.aggressiveRetryMaxRetries,
-        failureKind: failure.kind,
         quirkHandling: handledFailure.handling.kind,
         quirkSource: handledFailure.handling.sourceQuirk,
-        status: failure.status,
-        code: failure.code,
         errorCode,
         causeCode,
         causeMessage,
@@ -966,6 +980,9 @@ export async function runLlmRequestWithRetry<T>(params: {
           detail: {
             dialogId: params.dlg.id.valueOf(),
             provider: params.provider,
+            debugPath,
+            requestPayloadPath,
+            debugCaptureError,
             errorText: detail,
           },
         });

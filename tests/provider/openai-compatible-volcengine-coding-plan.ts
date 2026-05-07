@@ -1,4 +1,7 @@
+import fs from 'fs/promises';
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
+import os from 'os';
+import path from 'path';
 
 import type { ChatMessage } from '../../main/llm/client';
 import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
@@ -8,6 +11,7 @@ import {
   chatCompletionToChatMessagesForTest,
   consumeOpenAiCompatibleChatCompletionStreamForTest,
   OpenAiCompatibleGen,
+  wrapOpenAiCompatibleRejectedRequestErrorForTest,
 } from '../../main/llm/gen/openai-compatible';
 import { Team } from '../../main/team';
 
@@ -501,6 +505,147 @@ function testOpenAiCompatibleExtraParams(): void {
   );
 }
 
+async function buildOpenAiCompatibleRejectedRequestTestInput(): Promise<{
+  agent: Team.Member;
+  provider: ProviderConfig;
+  upstream: Error & { status?: number; statusCode?: number; code?: string };
+}> {
+  const cfg = await LlmConfig.load();
+  const provider = requireProvider(cfg.getProvider('volcano-engine-coding-plan'));
+  const agent = new Team.Member({
+    id: 'tester',
+    name: 'Tester',
+    model: 'kimi-k2.6',
+  });
+  const upstream: Error & { status?: number; statusCode?: number; code?: string } = new Error(
+    '400 A parameter specified in the request is not valid Request id: test-request',
+  );
+  upstream.status = 400;
+  upstream.statusCode = 400;
+  upstream.code = 'InvalidParameter';
+  return { agent, provider, upstream };
+}
+
+function buildOpenAiCompatibleRejectedRequestContext(): {
+  dialogSelfId: string;
+  dialogRootId: string;
+  providerKey: string;
+  modelKey: string;
+} {
+  return {
+    dialogSelfId: 'tests/provider/openai-compatible-volcengine-coding-plan',
+    dialogRootId: 'tests/provider/openai-compatible-volcengine-coding-plan',
+    providerKey: 'volcano-engine-coding-plan',
+    modelKey: 'kimi-k2.6',
+  };
+}
+
+async function testOpenAiCompatibleRejectedRequestKeepsFailureClassification(): Promise<void> {
+  const { agent, provider, upstream } = await buildOpenAiCompatibleRejectedRequestTestInput();
+  const gen = new OpenAiCompatibleGen();
+
+  const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-openai-compatible-400-'));
+  const previousRejectedDir = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+  try {
+    process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = debugRoot;
+    const wrapped = await wrapOpenAiCompatibleRejectedRequestErrorForTest({
+      error: upstream,
+      providerConfig: provider,
+      agent,
+      requestContext: buildOpenAiCompatibleRejectedRequestContext(),
+      genseq: 43,
+      requestKind: 'stream',
+      payload: { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'ping' }] },
+    });
+
+    const failure = gen.classifyFailure(wrapped);
+    assert(failure?.kind === 'rejected', `expected rejected failure, got ${failure?.kind}`);
+    assert(failure.status === 400, `expected status=400, got ${String(failure.status)}`);
+    assert(
+      failure.code === 'InvalidParameter',
+      `expected InvalidParameter code, got ${String(failure.code)}`,
+    );
+    assert(
+      failure.message.includes('requestPayloadPath='),
+      'expected enriched rejected failure message to include requestPayloadPath',
+    );
+    assert(
+      !failure.message.includes('requestPayload={'),
+      'rejected failure message should not inline the full request payload',
+    );
+
+    const wrappedError = wrapped as Error & { requestPayloadPath?: string };
+    assert(
+      wrappedError.requestPayloadPath !== undefined,
+      'expected wrapped error to carry requestPayloadPath',
+    );
+    const payloadText = await fs.readFile(wrappedError.requestPayloadPath, 'utf-8');
+    const payloadJson: unknown = JSON.parse(payloadText);
+    assert(
+      typeof payloadJson === 'object' &&
+        payloadJson !== null &&
+        'model' in payloadJson &&
+        payloadJson.model === 'kimi-k2.6',
+      'expected debug payload file to preserve request model',
+    );
+    assert(
+      typeof payloadJson === 'object' &&
+        payloadJson !== null &&
+        'messages' in payloadJson &&
+        Array.isArray(payloadJson.messages) &&
+        payloadJson.messages.length === 1,
+      'expected debug payload file to preserve request messages',
+    );
+  } finally {
+    if (previousRejectedDir === undefined) {
+      delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+    } else {
+      process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previousRejectedDir;
+    }
+    await fs.rm(debugRoot, { recursive: true, force: true });
+  }
+}
+
+async function testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure(): Promise<void> {
+  const { agent, provider, upstream } = await buildOpenAiCompatibleRejectedRequestTestInput();
+  const gen = new OpenAiCompatibleGen();
+
+  const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-openai-compatible-400-'));
+  const debugFile = path.join(debugRoot, 'not-dir');
+  await fs.writeFile(debugFile, 'not a directory', 'utf-8');
+  const previousRejectedDir = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+  try {
+    process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = debugFile;
+    const wrapped = await wrapOpenAiCompatibleRejectedRequestErrorForTest({
+      error: upstream,
+      providerConfig: provider,
+      agent,
+      requestContext: buildOpenAiCompatibleRejectedRequestContext(),
+      genseq: 44,
+      requestKind: 'stream',
+      payload: { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'ping' }] },
+    });
+
+    const failure = gen.classifyFailure(wrapped);
+    assert(
+      failure?.kind === 'rejected',
+      `expected rejected failure after capture failure, got ${failure?.kind}`,
+    );
+    assert(failure.status === 400, `expected status=400, got ${String(failure.status)}`);
+    assert(
+      failure.message.includes('debugCaptureError='),
+      'expected debugCaptureError when rejected request capture cannot be written',
+    );
+  } finally {
+    if (previousRejectedDir === undefined) {
+      delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+    } else {
+      process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previousRejectedDir;
+    }
+    await fs.rm(debugRoot, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   await testVolcanoArkAllowsSegmentAlternation();
   await testGenericAllowsSegmentAlternation();
@@ -511,6 +656,8 @@ async function main(): Promise<void> {
   testBatchToolCallMissingNameIsLoud();
   await testBuiltinVolcanoArkCodingPlanProvider();
   testOpenAiCompatibleExtraParams();
+  await testOpenAiCompatibleRejectedRequestKeepsFailureClassification();
+  await testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure();
   console.log('✓ OpenAI-compatible Volcano Ark Coding Plan tests passed');
 }
 
