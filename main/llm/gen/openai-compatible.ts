@@ -111,7 +111,9 @@ type OpenAiCompatibleCaptureRecord = {
 
 type OpenAiCompatibleSseCaptureState = {
   buffer: string;
+  responseBytes: number;
   frameCount: number;
+  doneSeen: boolean;
   jsonFrameCount: number;
   invalidJsonFrameCount: number;
   invalidFrames: Array<{ frameIndex: number; eventName: string; message: string; data: string }>;
@@ -268,7 +270,7 @@ async function startOpenAiCompatibleCapture(
     },
   });
 
-  log.info('OPENAI compatible SSE capture started', {
+  log.info('OPENAI compatible SSE capture started', undefined, {
     captureDir: record.dir,
     providerKey: context.providerKey,
     providerName: context.providerName,
@@ -308,9 +310,14 @@ function parseSseFrameJson(frame: string): {
   }
 }
 
+function describeCaptureError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function buildSseFrameLogLine(frame: string, state: OpenAiCompatibleSseCaptureState): string {
   const { eventName, data } = parseSseFrameData(frame);
   const result = parseSseFrameJson(frame);
+  if (result.kind === 'done') state.doneSeen = true;
   if (result.kind === 'json_ok') state.jsonFrameCount += 1;
   if (result.kind === 'invalid_json') {
     state.invalidJsonFrameCount += 1;
@@ -336,7 +343,12 @@ async function writeAndDrain(
   chunk: string | Uint8Array,
 ): Promise<void> {
   if (!stream.write(chunk)) {
-    await once(stream, 'drain');
+    await Promise.race([
+      once(stream, 'drain'),
+      once(stream, 'error').then(([error]) => {
+        throw error;
+      }),
+    ]);
   }
 }
 
@@ -367,9 +379,12 @@ async function captureOpenAiCompatibleResponseBody(
   const framesStream = createWriteStream(record.framesPath);
   const decoder = new TextDecoder();
   const parseAsSse = record.context.requestKind === 'stream';
+  let captureError: string | undefined;
   const state: OpenAiCompatibleSseCaptureState = {
     buffer: '',
+    responseBytes: 0,
     frameCount: 0,
+    doneSeen: false,
     jsonFrameCount: 0,
     invalidJsonFrameCount: 0,
     invalidFrames: [],
@@ -386,6 +401,7 @@ async function captureOpenAiCompatibleResponseBody(
             done = true;
             break;
           }
+          state.responseBytes += readResult.value.byteLength;
           await writeAndDrain(rawStream, readResult.value);
           if (parseAsSse) {
             state.buffer += decoder.decode(readResult.value, { stream: true });
@@ -419,6 +435,8 @@ async function captureOpenAiCompatibleResponseBody(
         reader.releaseLock();
       }
     }
+  } catch (error: unknown) {
+    captureError = describeCaptureError(error);
   } finally {
     await Promise.all([endWriteStream(rawStream), endWriteStream(framesStream)]);
   }
@@ -430,8 +448,11 @@ async function captureOpenAiCompatibleResponseBody(
     ok: response.ok,
     statusText: response.statusText,
     requestKind: record.context.requestKind,
+    captureError,
     headers: headersToRedactedRecord(response.headers),
+    responseBytes: state.responseBytes,
     frameCount: state.frameCount,
+    doneSeen: state.doneSeen,
     jsonFrameCount: state.jsonFrameCount,
     invalidJsonFrameCount: state.invalidJsonFrameCount,
     invalidFrames: state.invalidFrames,
@@ -447,15 +468,22 @@ async function captureOpenAiCompatibleResponseBody(
       rootId: record.context.dialogRootId,
       selfId: record.context.dialogSelfId,
     });
-  } else {
-    log.info('OPENAI compatible SSE capture completed', {
+  } else if (captureError === undefined) {
+    log.info('OPENAI compatible SSE capture completed', undefined, {
       captureDir: record.dir,
+      responseBytes: state.responseBytes,
       frameCount: state.frameCount,
+      doneSeen: state.doneSeen,
       providerKey: record.context.providerKey,
       model: record.context.model,
       rootId: record.context.dialogRootId,
       selfId: record.context.dialogSelfId,
     });
+  }
+  if (captureError !== undefined) {
+    throw new Error(
+      `OPENAI compatible SSE capture failed while reading response clone: ${captureError}`,
+    );
   }
 }
 

@@ -172,7 +172,9 @@ type SseFrameParseResult =
 
 type SseCaptureState = {
   buffer: string;
+  responseBytes: number;
   frameCount: number;
+  doneSeen: boolean;
   jsonFrameCount: number;
   invalidJsonFrameCount: number;
   invalidFrames: Array<{ frameIndex: number; eventName: string; message: string; data: string }>;
@@ -357,7 +359,7 @@ async function startAnthropicCompatibleCapture(
     },
   });
 
-  log.info('ANTH compatible SSE capture started', {
+  log.info('ANTH compatible SSE capture started', undefined, {
     captureDir: record.dir,
     providerKey: context.providerKey,
     providerName: context.providerName,
@@ -393,9 +395,14 @@ function parseSseFrameJson(frame: string): SseFrameParseResult {
   }
 }
 
+function describeCaptureError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function buildSseFrameLogLine(frame: string, state: SseCaptureState): string {
   const { eventName, data } = parseSseFrameData(frame);
   const result = parseSseFrameJson(frame);
+  if (result.kind === 'done') state.doneSeen = true;
   if (result.kind === 'json_ok') state.jsonFrameCount += 1;
   if (result.kind === 'invalid_json') {
     state.invalidJsonFrameCount += 1;
@@ -421,7 +428,12 @@ async function writeAndDrain(
   chunk: string | Uint8Array,
 ): Promise<void> {
   if (!stream.write(chunk)) {
-    await once(stream, 'drain');
+    await Promise.race([
+      once(stream, 'drain'),
+      once(stream, 'error').then(([error]) => {
+        throw error;
+      }),
+    ]);
   }
 }
 
@@ -451,9 +463,13 @@ async function captureAnthropicCompatibleResponseBody(
   const rawStream = createWriteStream(record.responseBodyPath);
   const framesStream = createWriteStream(record.framesPath);
   const decoder = new TextDecoder();
+  const parseAsSse = record.context.requestKind === 'stream';
+  let captureError: string | undefined;
   const state: SseCaptureState = {
     buffer: '',
+    responseBytes: 0,
     frameCount: 0,
+    doneSeen: false,
     jsonFrameCount: 0,
     invalidJsonFrameCount: 0,
     invalidFrames: [],
@@ -470,23 +486,28 @@ async function captureAnthropicCompatibleResponseBody(
             done = true;
             break;
           }
+          state.responseBytes += readResult.value.byteLength;
           await writeAndDrain(rawStream, readResult.value);
-          state.buffer += decoder.decode(readResult.value, { stream: true });
-          for (;;) {
-            const separator = state.buffer.match(/\r?\n\r?\n/);
-            if (!separator || separator.index === undefined) break;
-            const frame = state.buffer.slice(0, separator.index);
-            state.buffer = state.buffer.slice(separator.index + separator[0].length);
-            if (frame.trim().length === 0) continue;
-            state.frameCount += 1;
-            await writeAndDrain(framesStream, buildSseFrameLogLine(frame, state));
+          if (parseAsSse) {
+            state.buffer += decoder.decode(readResult.value, { stream: true });
+            for (;;) {
+              const separator = state.buffer.match(/\r?\n\r?\n/);
+              if (!separator || separator.index === undefined) break;
+              const frame = state.buffer.slice(0, separator.index);
+              state.buffer = state.buffer.slice(separator.index + separator[0].length);
+              if (frame.trim().length === 0) continue;
+              state.frameCount += 1;
+              await writeAndDrain(framesStream, buildSseFrameLogLine(frame, state));
+            }
           }
         }
-        const rest = decoder.decode();
-        if (rest.length > 0) state.buffer += rest;
-        if (state.buffer.trim().length > 0) {
-          state.frameCount += 1;
-          await writeAndDrain(framesStream, buildSseFrameLogLine(state.buffer, state));
+        if (parseAsSse) {
+          const rest = decoder.decode();
+          if (rest.length > 0) state.buffer += rest;
+          if (state.buffer.trim().length > 0) {
+            state.frameCount += 1;
+            await writeAndDrain(framesStream, buildSseFrameLogLine(state.buffer, state));
+          }
         }
       } finally {
         if (!done) {
@@ -499,6 +520,8 @@ async function captureAnthropicCompatibleResponseBody(
         reader.releaseLock();
       }
     }
+  } catch (error: unknown) {
+    captureError = describeCaptureError(error);
   } finally {
     await Promise.all([endWriteStream(rawStream), endWriteStream(framesStream)]);
   }
@@ -509,8 +532,12 @@ async function captureAnthropicCompatibleResponseBody(
     status: response.status,
     ok: response.ok,
     statusText: response.statusText,
+    requestKind: record.context.requestKind,
+    captureError,
     headers: headersToRedactedRecord(response.headers),
+    responseBytes: state.responseBytes,
     frameCount: state.frameCount,
+    doneSeen: state.doneSeen,
     jsonFrameCount: state.jsonFrameCount,
     invalidJsonFrameCount: state.invalidJsonFrameCount,
     invalidFrames: state.invalidFrames,
@@ -526,15 +553,22 @@ async function captureAnthropicCompatibleResponseBody(
       rootId: record.context.dialogRootId,
       selfId: record.context.dialogSelfId,
     });
-  } else {
-    log.info('ANTH compatible SSE capture completed', {
+  } else if (captureError === undefined) {
+    log.info('ANTH compatible SSE capture completed', undefined, {
       captureDir: record.dir,
+      responseBytes: state.responseBytes,
       frameCount: state.frameCount,
+      doneSeen: state.doneSeen,
       providerKey: record.context.providerKey,
       model: record.context.model,
       rootId: record.context.dialogRootId,
       selfId: record.context.dialogSelfId,
     });
+  }
+  if (captureError !== undefined) {
+    throw new Error(
+      `ANTH compatible SSE capture failed while reading response clone: ${captureError}`,
+    );
   }
 }
 
