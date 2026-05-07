@@ -14,12 +14,12 @@ The mechanism is the runtime-enforced contract applied to the spawned Side Dialo
 
 ## 2. Design principles and tradeoffs
 
-### 2.1 Predictability first: FBR is tool-less until final closure
+### 2.1 Predictability first: FBR cannot use ordinary tools until final closure
 
 FBR is meant to be “reasoning over text”, not “an agent run that explores the environment”. To keep it safe and
 predictable, FBR Side Dialogs must be:
 
-- **tool-less by construction during divergence/convergence** (technically enforced; not “please don’t use tools”), and
+- **isolated from ordinary tools during divergence/convergence** (no tellask / file / shell / browser / rtws access; provider requests may use `tool_choice: "none"` or equivalent), and
 - **closure-only in the final stage** (exactly two conclusion functions, no other tools), and
 - **body-first** (the tellask body is the authoritative task context).
 
@@ -75,12 +75,12 @@ When driving an FBR Side Dialog created by `freshBootsReasoning({ tellaskContent
 Intuition: “fresh boots” means “fresh relative to the tellasker-side thread”, not “ignores baseline system rules”. Runtime may
 still inject baseline policy/safety/formatting context, but the tellask body remains the authority.
 
-### 4.2 Tool-less (prompt + technical enforcement)
+### 4.2 Tool isolation (prompt + technical enforcement)
 
 Tool-less FBR has two layers, both required:
 
 1. **Prompt contract**: the runtime must communicate the current phase constraints unambiguously.
-2. **API/transport contract**: divergence/convergence must be technically tool-less; final closure may expose exactly two conclusion functions and nothing else.
+2. **API/transport contract**: divergence/convergence must expose no callable Dominds tools; final closure may expose exactly two conclusion functions and nothing else.
 
 #### 4.2.1 System prompt requirements (no tool instructions)
 
@@ -110,12 +110,12 @@ If a provider integration normally injects a tool prompt or schema, then for FBR
 
 Under no circumstances should the FBR Side Dialog see any tool definitions.
 
-#### 4.2.3 The LLM request MUST be “zero tools”
+#### 4.2.3 Divergence/convergence requests expose no callable tools
 
-For divergence/convergence, the LLM request for an FBR Side Dialog (`freshBootsReasoning`) MUST have **zero tools available**:
+For divergence/convergence, the LLM request for an FBR Side Dialog (`freshBootsReasoning`) MUST have no callable Dominds tools available:
 
 - the request payload must not include tool/function definitions (effective tool list must be empty)
-- provider tool-calling / function-calling modes must not be enabled
+- provider tool-calling / function-calling modes should use `none` or the closest provider-equivalent disabled mode
 
 In the final closure phase, runtime MAY expose exactly these two functions and no others:
 
@@ -217,7 +217,7 @@ members:
 
 ## 9. Acceptance checklist
 
-- `freshBootsReasoning({ tellaskContent: "..." })` triggers tool-less FBR; the LLM request is technically “zero tools”.
+- `freshBootsReasoning({ tellaskContent: "..." })` triggers FBR; divergence/convergence expose no callable tools, and final closure requires one of the two conclusion tools.
 - The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
 - FBR Side Dialogs cannot issue teammate Tellasks (including `tellaskBack`).
 - `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.

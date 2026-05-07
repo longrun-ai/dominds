@@ -884,8 +884,7 @@ async function handleSetDiligencePush(
       return;
     }
 
-    // Diligence Push is main-dialog state. Even if a sideDialog is displayed, always mutate the root.
-    const dialogIdObj = new DialogID(rootId);
+    const dialogIdObj = new DialogID(selfId, rootId);
     const requestedStatusInput = readOptionalPersistableDialogStatus(dialog.status);
     if (requestedStatusInput.kind === 'invalid') {
       ws.send(
@@ -898,8 +897,8 @@ async function handleSetDiligencePush(
     }
     const requestedStatus =
       requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
-    const rootMeta = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
-    if (!rootMeta) {
+    const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
+    if (!metadata) {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -924,10 +923,15 @@ async function handleSetDiligencePush(
       requestedStatus,
     );
 
-    // Update live in-memory instance if it's loaded.
     const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, requestedStatus);
     if (mainDialog) {
-      mainDialog.disableDiligencePush = disableDiligencePush;
+      const loadedDialog =
+        dialogIdObj.selfId === dialogIdObj.rootId
+          ? mainDialog
+          : await ensureDialogLoaded(mainDialog, dialogIdObj, requestedStatus);
+      if (loadedDialog) {
+        loadedDialog.disableDiligencePush = disableDiligencePush;
+      }
     }
 
     const msg: DiligencePushUpdatedMessage = {
@@ -940,6 +944,7 @@ async function handleSetDiligencePush(
 
     const shouldTriggerImmediateDiligence =
       requestedStatus === 'running' &&
+      dialogIdObj.selfId === dialogIdObj.rootId &&
       prevDisableDiligencePush &&
       !disableDiligencePush &&
       mainDialog instanceof MainDialog;
@@ -1208,7 +1213,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     const diligencePushMax = normalizeDiligencePushMax(
       resolveMemberDiligencePushMax(team, agentId),
     );
-    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    const defaultDisableDiligencePush = false;
     dialog.disableDiligencePush = defaultDisableDiligencePush;
     dialog.diligencePushRemainingBudget = diligencePushMax > 0 ? diligencePushMax : 0;
 
@@ -1417,17 +1422,21 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     const diligencePushMax = normalizeDiligencePushMax(
       resolveMemberDiligencePushMax(team, metadata.agentId),
     );
-    const rootLatest = await DialogPersistence.loadDialogLatest(
-      new DialogID(dialogIdObj.rootId),
-      requestedStatus,
-    );
-    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    const displayedLatest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
+    const defaultDisableDiligencePush = false;
     const persistedDisableDiligencePush =
-      rootLatest && typeof rootLatest.disableDiligencePush === 'boolean'
-        ? rootLatest.disableDiligencePush
+      displayedLatest && typeof displayedLatest.disableDiligencePush === 'boolean'
+        ? displayedLatest.disableDiligencePush
         : defaultDisableDiligencePush;
     const effectiveDisableDiligencePush = persistedDisableDiligencePush;
-    mainDialog.disableDiligencePush = effectiveDisableDiligencePush;
+    if (dialogIdObj.selfId === dialogIdObj.rootId) {
+      mainDialog.disableDiligencePush = effectiveDisableDiligencePush;
+    } else {
+      const loaded = await ensureDialogLoaded(mainDialog, dialogIdObj, requestedStatus);
+      if (loaded) {
+        loaded.disableDiligencePush = effectiveDisableDiligencePush;
+      }
+    }
     let derivedAskerDialogId: string | undefined;
     let assignmentFromAsker:
       | Awaited<ReturnType<typeof DialogPersistence.loadSideDialogAssignmentFromAsker>>
@@ -1470,7 +1479,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       disableDiligencePush: effectiveDisableDiligencePush,
       diligencePushMax,
       diligencePushRemainingBudget: clampNonNegativeFiniteInt(
-        mainDialog.diligencePushRemainingBudget,
+        dialogIdObj.selfId === dialogIdObj.rootId ? mainDialog.diligencePushRemainingBudget : 0,
         diligencePushMax > 0 ? diligencePushMax : 0,
       ),
     };

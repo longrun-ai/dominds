@@ -3634,7 +3634,10 @@ export class DiskFileDialogStore extends DialogStore {
           },
         );
         const latest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
-        sideDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+        sideDialog.disableDiligencePush =
+          latest && typeof latest.disableDiligencePush === 'boolean'
+            ? latest.disableDiligencePush
+            : false;
         if (sideDialog.sessionSlug) {
           mainDialog.registerSideDialog(sideDialog);
         }

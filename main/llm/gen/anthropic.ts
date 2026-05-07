@@ -144,6 +144,32 @@ type AnthropicNonStreamingRequestParams = AnthropicRequestBaseParams & {
   signal?: AbortSignal;
 };
 
+function resolveAnthropicToolChoice(
+  tools: readonly Tool[],
+  requestContext: LlmRequestContext,
+  forceJsonResponse: boolean,
+): AnthropicRequestBaseParams['tool_choice'] | undefined {
+  if (forceJsonResponse) {
+    return {
+      type: 'tool' as const,
+      name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
+      disable_parallel_tool_use: true,
+    };
+  }
+  const requirement = requestContext.toolUseRequirement ?? 'auto';
+  if (tools.length === 0) {
+    if (requirement === 'required') {
+      throw new Error(
+        `Anthropic request invariant violation: toolUseRequirement=required but no tools are available (dialog=${requestContext.dialogSelfId})`,
+      );
+    }
+    return undefined;
+  }
+  if (requirement === 'none') return { type: 'none' as const };
+  if (requirement === 'required') return { type: 'any' as const };
+  return { type: 'auto' as const };
+}
+
 type AnthropicCompatibleCaptureContext = {
   providerKey: string | undefined;
   providerName: string;
@@ -2958,6 +2984,11 @@ export class AnthropicGen implements LlmGenerator {
     const thinking = buildAnthropicThinkingConfig(anthropicParams, providerConfig);
 
     const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
+    const toolChoice = resolveAnthropicToolChoice(
+      anthropicTools,
+      requestContext,
+      forceJsonResponse,
+    );
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
@@ -2965,13 +2996,7 @@ export class AnthropicGen implements LlmGenerator {
       max_tokens: maxTokens,
       ...(thinking !== undefined && { thinking }),
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      ...(forceJsonResponse && {
-        tool_choice: {
-          type: 'tool' as const,
-          name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
-          disable_parallel_tool_use: true,
-        },
-      }),
+      ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       ...(anthropicParams.temperature !== undefined && {
         temperature: anthropicParams.temperature,
       }),
@@ -3067,6 +3092,11 @@ export class AnthropicGen implements LlmGenerator {
     const thinking = buildAnthropicThinkingConfig(anthropicParams, providerConfig);
 
     const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
+    const toolChoice = resolveAnthropicToolChoice(
+      anthropicTools,
+      requestContext,
+      forceJsonResponse,
+    );
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
@@ -3074,13 +3104,7 @@ export class AnthropicGen implements LlmGenerator {
       max_tokens: maxTokens,
       ...(thinking !== undefined && { thinking }),
       ...(anthropicTools.length > 0 && { tools: anthropicTools }),
-      ...(forceJsonResponse && {
-        tool_choice: {
-          type: 'tool' as const,
-          name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
-          disable_parallel_tool_use: true,
-        },
-      }),
+      ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       ...(anthropicParams.temperature !== undefined && {
         temperature: anthropicParams.temperature,
       }),

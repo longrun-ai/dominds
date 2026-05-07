@@ -10,10 +10,17 @@ is often not what operators want: they want the agent to keep pushing forward un
 - legitimately suspends for a human decision (Q4H), or
 - legitimately suspends waiting for Side Dialogs (tellask/backfill).
 
-This document specifies a runtime mechanism ("diligence-push") that, for **main dialogs only**,
-prevents the dialog from stopping: whenever the driver would otherwise stop, it auto-sends a short
-diligence prompt (rendered as a normal user bubble) and continues generation, except when the dialog
-is legitimately suspended (Q4H or pending Side Dialogs).
+This document specifies two related runtime controls:
+
+- **Auto-continue injection**: for **main dialogs only**, whenever the driver would otherwise stop,
+  runtime auto-sends a short diligence prompt (rendered as a normal user bubble) and continues
+  generation, except when the dialog is legitimately suspended (Q4H or pending Side Dialogs).
+- **Required tool-use control**: for ordinary main and side dialog rounds, the Diligence Push
+  checkbox controls whether the provider request must end through a Dominds tool call. When checked,
+  the model is expected to call a tool such as `askHuman`, `tellask*`, `replyTellask*`, or another
+  runtime-provided function instead of stopping with a plain-text question/final answer. FBR middle
+  rounds are the intentional exception: they may run with no callable tools; FBR closure requires one
+  of the conclusion tools.
 
 ## Goals
 
@@ -25,7 +32,8 @@ is legitimately suspended (Q4H or pending Side Dialogs).
 ## Non-goals
 
 - Auto-completing / auto-marking a dialog as done.
-- Applying this behavior to Side Dialogs (Side Dialogs remain scoped and should report back to their tellasker).
+- Auto-injecting Diligence Push prompts into Side Dialogs (Side Dialogs remain scoped and should
+  report back to their tellasker).
 
 ## Definitions
 

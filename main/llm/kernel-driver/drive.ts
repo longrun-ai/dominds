@@ -110,6 +110,7 @@ import {
 import {
   buildKernelDriverPolicy,
   resolveKernelDriverPolicyViolationKind,
+  type KernelDriverPolicyState,
   validateKernelDriverPolicyInvariants,
 } from './guardrails';
 import { resolvePromptReplyGuidance } from './reply-guidance';
@@ -316,6 +317,22 @@ function isUserOriginPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return prompt.origin === 'user';
 }
 
+function resolveToolUseRequirement(
+  dlg: Dialog,
+  policy: KernelDriverPolicyState,
+): 'none' | 'auto' | 'required' {
+  // FBR middle rounds are deliberately isolated from callable tools. Final closure is the opposite:
+  // the model must call one of the FBR conclusion tools instead of ending in plain text.
+  if (policy.mode === 'fbr_toolless') return 'none';
+  if (policy.mode === 'fbr_conclusion_only') return 'required';
+
+  // For ordinary Dominds dialog rounds, the Diligence Push checkbox controls the provider-level
+  // obligation directly. The numeric Diligence Push budget only limits automatic runtime prompts;
+  // it must not downgrade the round into ordinary chat where the model can stop by asking/answering
+  // in plain text instead of calling askHuman/tellask/reply tools.
+  return dlg.disableDiligencePush ? 'auto' : 'required';
+}
+
 function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo | undefined {
   return providerCfg.models[model];
 }
@@ -510,7 +527,7 @@ function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): Func
     type: 'func',
     name: 'freshBootsReasoning',
     description:
-      'Start a tool-less FBR Side Dialog. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
+      'Start a tool-isolated FBR Side Dialog. `tellaskContent` must stay neutral and factual: Goal/Facts/Constraints/Evidence[/Unknowns], with no analysis scaffold. If the user says “FBR x3” or “3x FBR”, set `effort: 3`: `xN` is the absolute effort value, not “N times the current default”. ' +
       fbrDefaultHint,
     parameters: {
       type: 'object',
@@ -2401,6 +2418,7 @@ export async function driveDialogStreamCore(
                       providerKey: provider,
                       modelKey: model,
                       promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                      toolUseRequirement: resolveToolUseRequirement(dlg, policy),
                     },
                     ctxMsgs,
                     dlg.activeGenSeq,
@@ -2649,6 +2667,7 @@ export async function driveDialogStreamCore(
                     providerKey: provider,
                     modelKey: model,
                     promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                    toolUseRequirement: resolveToolUseRequirement(dlg, policy),
                     knownFunctionCallIds,
                   },
                   ctxMsgs,

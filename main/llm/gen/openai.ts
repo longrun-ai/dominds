@@ -87,6 +87,31 @@ const OPENAI_NATIVE_TOOL_ITEM_TYPES = new Set<OpenAiResponsesNativeToolItemType>
 
 const OPENAI_MALFORMED_BATCH_OUTPUT_ITEM_ERROR_CODE = 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM';
 
+export function resolveOpenAiToolChoice(
+  tools: readonly Tool[],
+  requestContext: LlmRequestContext,
+): 'none' | 'auto' | 'required' {
+  const requirement = requestContext.toolUseRequirement ?? 'auto';
+  if (tools.length === 0) {
+    if (requirement === 'required') {
+      throw new Error(
+        `OpenAI request invariant violation: toolUseRequirement=required but no tools are available (dialog=${requestContext.dialogSelfId})`,
+      );
+    }
+    return 'none';
+  }
+  if (requirement === 'none') return 'none';
+  if (requirement === 'required') return 'required';
+  return 'auto';
+}
+
+function resolveOpenAiRequestTools(
+  tools: readonly Tool[],
+  requestContext: LlmRequestContext,
+): Tool[] {
+  return (requestContext.toolUseRequirement ?? 'auto') === 'none' ? [] : [...tools];
+}
+
 function limitOpenAiToolOutputText(text: string, msg: FuncResultMsg, limitChars: number): string {
   const limited = truncateProviderToolOutputText(text, limitChars);
   if (limited.truncated) {
@@ -1561,6 +1586,7 @@ export class OpenAiGen implements LlmGenerator {
     const nativeTools = buildOpenAiNativeTools(openAiParams);
     const include = buildOpenAiInclude(requestInput, reasoning, openAiParams);
     const tools = [...funcTools.map(funcToolToOpenAiTool), ...nativeTools];
+    const requestTools = resolveOpenAiRequestTools(tools, requestContext);
     const vendorHeartbeatEventTypes = resolveOpenAiVendorHeartbeatEventTypes(providerConfig);
 
     const payload: ResponseCreateParamsStreaming = {
@@ -1579,9 +1605,8 @@ export class OpenAiGen implements LlmGenerator {
       ...(reasoning !== undefined && { reasoning }),
       ...(include !== undefined ? { include } : {}),
       ...(textConfig !== undefined && { text: textConfig }),
-      ...(tools.length > 0
-        ? { tools, tool_choice: 'auto' as const }
-        : { tool_choice: 'none' as const }),
+      ...(requestTools.length > 0 ? { tools: requestTools } : {}),
+      tool_choice: resolveOpenAiToolChoice(requestTools, requestContext),
     };
 
     let sayingStarted = false;
@@ -2496,6 +2521,7 @@ export class OpenAiGen implements LlmGenerator {
     const nativeTools = buildOpenAiNativeTools(openAiParams);
     const include = buildOpenAiInclude(requestInput, reasoning, openAiParams);
     const tools = [...funcTools.map(funcToolToOpenAiTool), ...nativeTools];
+    const requestTools = resolveOpenAiRequestTools(tools, requestContext);
 
     const payload: ResponseCreateParamsNonStreaming = {
       model: agent.model,
@@ -2513,9 +2539,8 @@ export class OpenAiGen implements LlmGenerator {
       ...(reasoning !== undefined && { reasoning }),
       ...(include !== undefined ? { include } : {}),
       ...(textConfig !== undefined && { text: textConfig }),
-      ...(tools.length > 0
-        ? { tools, tool_choice: 'auto' as const }
-        : { tool_choice: 'none' as const }),
+      ...(requestTools.length > 0 ? { tools: requestTools } : {}),
+      tool_choice: resolveOpenAiToolChoice(requestTools, requestContext),
     };
 
     const response = await client.responses.create(payload, {

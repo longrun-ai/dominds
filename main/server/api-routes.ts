@@ -2762,7 +2762,7 @@ async function handleCreateDialog(
     const diligencePushMax = normalizeDiligencePushMax(
       resolveMemberDiligencePushMax(team, agentId),
     );
-    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    const defaultDisableDiligencePush = false;
     dialog.disableDiligencePush = defaultDisableDiligencePush;
     dialog.diligencePushRemainingBudget = diligencePushMax > 0 ? diligencePushMax : 0;
 

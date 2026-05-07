@@ -89,6 +89,31 @@ type OpenAiCompatibleChatExtraParams = {
 
 type ToolCallValidationMode = 'generic' | 'volcengine-coding-plan';
 
+function resolveOpenAiCompatibleToolChoice(
+  funcTools: readonly FuncTool[],
+  requestContext: LlmRequestContext,
+): 'none' | 'auto' | 'required' {
+  const requirement = requestContext.toolUseRequirement ?? 'auto';
+  if (funcTools.length === 0) {
+    if (requirement === 'required') {
+      throw new Error(
+        `OpenAI-compatible request invariant violation: toolUseRequirement=required but no tools are available (dialog=${requestContext.dialogSelfId})`,
+      );
+    }
+    return 'none';
+  }
+  if (requirement === 'none') return 'none';
+  if (requirement === 'required') return 'required';
+  return 'auto';
+}
+
+function resolveOpenAiCompatibleRequestTools(
+  funcTools: readonly FuncTool[],
+  requestContext: LlmRequestContext,
+): FuncTool[] {
+  return (requestContext.toolUseRequirement ?? 'auto') === 'none' ? [] : [...funcTools];
+}
+
 type OpenAiCompatibleCaptureContext = {
   providerKey: string;
   providerName: string;
@@ -1830,6 +1855,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
+    const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
     const volcengineExtraParams = buildVolcengineCodingPlanExtraParams({
       providerConfig,
       agent,
@@ -1849,9 +1875,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...volcengineExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
-      ...(funcTools.length > 0
-        ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
-        : { tool_choice: 'none' as const }),
+      ...(requestTools.length > 0
+        ? { tools: requestTools.map(funcToolToChatCompletionTool) }
+        : {}),
+      tool_choice: resolveOpenAiCompatibleToolChoice(requestTools, requestContext),
       parallel_tool_calls: parallelToolCalls,
     };
 
@@ -1918,6 +1945,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
+    const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
     const volcengineExtraParams = buildVolcengineCodingPlanExtraParams({
       providerConfig,
       agent,
@@ -1935,8 +1963,8 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...volcengineExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
-      tool_choice: 'auto',
+      ...(requestTools.length > 0 && { tools: requestTools.map(funcToolToChatCompletionTool) }),
+      tool_choice: resolveOpenAiCompatibleToolChoice(requestTools, requestContext),
       parallel_tool_calls: parallelToolCalls,
     };
 

@@ -745,8 +745,12 @@ export class DomindsApp extends HTMLElement {
   }
 
   private isDiligenceApplicableToCurrentDialog(): boolean {
+    return this.currentDialog !== null;
+  }
+
+  private isDiligenceBudgetApplicableToCurrentDialog(): boolean {
     const current = this.currentDialog;
-    if (!current) return true;
+    if (!current) return false;
     return current.selfId === current.rootId;
   }
 
@@ -762,7 +766,6 @@ export class DomindsApp extends HTMLElement {
 
   private resolveDiligenceStateFromReady(readyMsg: DialogReadyMessage): DiligenceStateSnapshot {
     const configuredMax = this.normalizeDiligenceMax(readyMsg.diligencePushMax);
-    const defaultDisableDiligencePush = configuredMax !== null ? configuredMax <= 0 : false;
     const normalizedRemaining = this.normalizeDiligenceRemaining(
       readyMsg.diligencePushRemainingBudget,
     );
@@ -773,7 +776,7 @@ export class DomindsApp extends HTMLElement {
       remaining = Math.min(remaining, configuredMax);
     }
     return {
-      disableDiligencePush: readyMsg.disableDiligencePush ?? defaultDisableDiligencePush,
+      disableDiligencePush: readyMsg.disableDiligencePush ?? false,
       configuredMax,
       remaining,
     };
@@ -787,7 +790,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
-    if (!this.isDiligenceApplicableToCurrentDialog()) {
+    if (!this.isDiligenceBudgetApplicableToCurrentDialog()) {
       return { text: '—', hasRemaining: false };
     }
 
@@ -7603,7 +7606,7 @@ export class DomindsApp extends HTMLElement {
           e.preventDefault();
           e.stopPropagation();
           if (!this.currentDialog) return;
-          if (!this.isDiligenceApplicableToCurrentDialog()) {
+          if (!this.isDiligenceBudgetApplicableToCurrentDialog()) {
             this.playDiligenceNotApplicableShake();
             return;
           }
@@ -7709,9 +7712,6 @@ export class DomindsApp extends HTMLElement {
       this.showToast(t.noActiveDialogToast, 'warning');
       return;
     }
-    if (!this.isDiligenceApplicableToCurrentDialog()) {
-      return;
-    }
     const status = this.requireCurrentDialogActionStatus();
     if (status === null) {
       return;
@@ -7720,7 +7720,7 @@ export class DomindsApp extends HTMLElement {
     this.wsManager.sendRaw({
       type: 'set_diligence_push',
       dialog: {
-        selfId: this.currentDialog.rootId,
+        selfId: this.currentDialog.selfId,
         rootId: this.currentDialog.rootId,
         status,
       },
@@ -11401,14 +11401,22 @@ export class DomindsApp extends HTMLElement {
 
       case 'diligence_push_updated': {
         const evt = message as DiligencePushUpdatedMessage;
-        if (this.currentDialog && evt.dialog.rootId === this.currentDialog.rootId) {
+        if (
+          this.currentDialog &&
+          evt.dialog.rootId === this.currentDialog.rootId &&
+          evt.dialog.selfId === this.currentDialog.selfId
+        ) {
           this.disableDiligencePush = evt.disableDiligencePush;
           this.updateBottomPanelFooterUi();
         }
         return true;
       }
       case 'diligence_budget_evt': {
-        if (this.currentDialog && message.dialog.rootId === this.currentDialog.rootId) {
+        if (
+          this.currentDialog &&
+          message.dialog.rootId === this.currentDialog.rootId &&
+          message.dialog.selfId === this.currentDialog.selfId
+        ) {
           this.diligencePushConfiguredMax = this.normalizeDiligenceMax(message.maxInjectCount);
           this.diligencePushRemaining = this.normalizeDiligenceRemaining(message.remainingCount);
           this.disableDiligencePush = message.disableDiligencePush;

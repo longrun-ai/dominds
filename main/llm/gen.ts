@@ -61,6 +61,12 @@ export interface LlmRequestContext {
   providerKey?: string;
   modelKey?: string;
   promptCacheKey?: string;
+  // Dominds dialogs are protocol-driven, not open-ended chat completions. In ordinary dialog
+  // rounds, enabled Diligence Push means the model must exit through a function/tool call such as
+  // askHuman, a tellask/reply tool, or another constrained runtime tool. Special runtime policies
+  // can narrow this: FBR middle rounds intentionally run with no callable tools, while FBR closure
+  // requires one of the conclusion tools.
+  toolUseRequirement?: 'none' | 'auto' | 'required';
   // Provider-adapter hint for quirks that must repair provider-assigned tool call ids before the
   // kernel driver sees them. Normal duplicate-call enforcement remains in the kernel driver.
   knownFunctionCallIds?: ReadonlySet<string>;

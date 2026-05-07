@@ -86,7 +86,7 @@ export async function getOrRestoreMainDialog(
   } catch (_err: unknown) {
     diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
   }
-  const defaultDisableDiligencePush = diligencePushMax <= 0;
+  const defaultDisableDiligencePush = false;
 
   const rootStore = new DiskFileDialogStore(mainDialogId);
   const mainDialog = new MainDialog(
@@ -224,7 +224,10 @@ export async function ensureDialogLoaded(
       pendingCourseStartPrompt,
     },
   );
-  sideDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+  sideDialog.disableDiligencePush =
+    latest && typeof latest.disableDiligencePush === 'boolean'
+      ? latest.disableDiligencePush
+      : false;
   if (sideDialog.sessionSlug) {
     mainDialog.registerSideDialog(sideDialog);
   }

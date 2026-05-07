@@ -64,6 +64,43 @@ import {
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
 
+type CodexToolChoice = 'none' | 'auto' | 'required';
+type CodexResponsesRequest = Omit<ChatGptResponsesRequest, 'tool_choice'> & {
+  tool_choice: CodexToolChoice;
+};
+
+export function resolveCodexToolChoice(
+  tools: readonly ChatGptTool[],
+  requestContext: LlmRequestContext,
+): CodexToolChoice {
+  const requirement = requestContext.toolUseRequirement ?? 'auto';
+  if (tools.length === 0) {
+    if (requirement === 'required') {
+      throw new Error(
+        `Codex request invariant violation: toolUseRequirement=required but no tools are available (dialog=${requestContext.dialogSelfId})`,
+      );
+    }
+    return 'none';
+  }
+  if (requirement === 'none') return 'none';
+  if (requirement === 'required') return 'required';
+  return 'auto';
+}
+
+function resolveCodexRequestTools(
+  tools: readonly ChatGptTool[],
+  requestContext: LlmRequestContext,
+): ChatGptTool[] {
+  return (requestContext.toolUseRequirement ?? 'auto') === 'none' ? [] : [...tools];
+}
+
+function toCodexAuthRequest(payload: CodexResponsesRequest): ChatGptResponsesRequest {
+  // `@longrun-ai/codex-auth` currently types ChatGPT Responses `tool_choice` as only `'auto'`,
+  // while the wire API accepts the same `'none' | 'auto' | 'required'` control used by Responses.
+  // Keep the widened type local to this adapter and cross the stale package boundary explicitly.
+  return payload as unknown as ChatGptResponsesRequest;
+}
+
 export function resolveCodexServiceTier(
   serviceTier: ChatGptResponsesRequest['service_tier'] | undefined,
 ): Exclude<NonNullable<ChatGptResponsesRequest['service_tier']>, 'default'> | undefined {
@@ -779,7 +816,7 @@ async function buildCodexRequest(
   context: ChatMessage[],
   onToolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>,
   onUserImageIngest?: (ingest: UserImageIngest) => Promise<void>,
-): Promise<ChatGptResponsesRequest> {
+): Promise<CodexResponsesRequest> {
   if (!agent.model) {
     throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
   }
@@ -803,13 +840,14 @@ async function buildCodexRequest(
   const nativeTools = buildCodexNativeTools(agent);
   assertNoCodexNativeToolCollisions(funcTools, nativeTools);
   const tools: ChatGptTool[] = [...funcTools.map(funcToolToCodex), ...nativeTools];
+  const requestTools = resolveCodexRequestTools(tools, requestContext);
 
   return {
     model: agent.model,
     instructions,
     input,
-    tools,
-    tool_choice: 'auto',
+    tools: requestTools,
+    tool_choice: resolveCodexToolChoice(requestTools, requestContext),
     parallel_tool_calls: parallelToolCalls,
     reasoning,
     ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
@@ -1245,7 +1283,11 @@ export class CodexGen implements LlmGenerator {
     };
 
     try {
-      await client.trigger(payload, eventReceiver, abortSignal ? { signal: abortSignal } : {});
+      await client.trigger(
+        toCodexAuthRequest(payload),
+        eventReceiver,
+        abortSignal ? { signal: abortSignal } : {},
+      );
     } catch (error: unknown) {
       log.warn('CODEX streaming error', error);
       throw error;
