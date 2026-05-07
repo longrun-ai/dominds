@@ -137,6 +137,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   remainingBudget: number;
   diligencePushMax: number;
   suppressDiligencePush?: boolean;
+  ignoreBudgetExhaustion?: boolean;
 }): Promise<
   | { kind: 'disabled'; nextRemainingBudget: number }
   | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
@@ -172,9 +173,10 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
       ? Math.max(0, Math.floor(options.remainingBudget))
       : 0;
+  const bypassBudget = options.ignoreBudgetExhaustion === true;
 
   if (maxInjectCount < 1) {
-    if (normalizedRemaining < 1) {
+    if (!bypassBudget) {
       return { kind: 'disabled', nextRemainingBudget: 0 };
     }
     const prompt: KernelDriverDiligencePrompt = {
@@ -187,12 +189,12 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
       kind: 'prompt',
       prompt,
       maxInjectCount: 0,
-      nextRemainingBudget: normalizedRemaining - 1,
+      nextRemainingBudget: 0,
     };
   }
 
   const currentRemaining = Math.min(normalizedRemaining, maxInjectCount);
-  if (currentRemaining < 1) {
+  if (currentRemaining < 1 && !bypassBudget) {
     return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
   }
 
@@ -206,7 +208,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     kind: 'prompt',
     prompt,
     maxInjectCount,
-    nextRemainingBudget: currentRemaining - 1,
+    nextRemainingBudget: Math.max(0, currentRemaining - 1),
   };
 }
 

@@ -1618,8 +1618,15 @@ async function maybeContinueWithDiligencePrompt(args: {
   team: Team;
   suppressDiligencePushForDrive: boolean;
   allowPendingSideDialogs?: boolean;
+  ignoreBudgetExhaustion?: boolean;
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
-  const { dlg, team, suppressDiligencePushForDrive, allowPendingSideDialogs } = args;
+  const {
+    dlg,
+    team,
+    suppressDiligencePushForDrive,
+    allowPendingSideDialogs,
+    ignoreBudgetExhaustion,
+  } = args;
 
   if (!(dlg instanceof MainDialog)) {
     return { kind: 'break' };
@@ -1641,6 +1648,7 @@ async function maybeContinueWithDiligencePrompt(args: {
     remainingBudget: dlg.diligencePushRemainingBudget,
     diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
     suppressDiligencePush: suppressDiligencePushForDrive,
+    ignoreBudgetExhaustion,
   });
 
   dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
@@ -1688,9 +1696,12 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
     // `diligence_push_once` is a provider-quirk deadlock breaker rather than the ordinary
     // "dialog is about to go idle" auto-continue path. In practice this can happen in a
     // function-result-driven generation round right after the main dialog has already registered
-    // a pending tellask/sideDialog. Keep Q4H as a hard blocker, but do not let pending sideDialogs
-    // veto this one-time recovery injection or the same-context deadlock cannot be broken.
+    // a pending tellask/sideDialog, or after the normal Diligence Push budget has been exhausted.
+    // Keep Q4H / explicit disable as hard blockers, but do not let pending sideDialogs or the
+    // ordinary keep-going budget veto this one-time recovery injection or the same-context
+    // deadlock cannot be broken.
     allowPendingSideDialogs: true,
+    ignoreBudgetExhaustion: true,
   });
 }
 

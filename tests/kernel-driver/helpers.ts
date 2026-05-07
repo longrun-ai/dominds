@@ -56,28 +56,29 @@ export async function writeStandardMinds(
     extraMembers?: ReadonlyArray<string>;
     memberToolsets?: ReadonlyArray<string>;
     memberTools?: ReadonlyArray<string>;
+    diligencePushMax?: number;
+    providerApiType?: string;
+    providerApiQuirks?: ReadonlyArray<string>;
   },
 ): Promise<void> {
   const includePangu = options?.includePangu === true;
   await fs.mkdir(path.join(tmpRoot, '.minds'), { recursive: true });
   await fs.mkdir(path.join(tmpRoot, 'mock-db'), { recursive: true });
 
-  await fs.writeFile(
-    path.join(tmpRoot, '.minds', 'llm.yaml'),
-    [
-      'providers:',
-      '  local-mock:',
-      '    name: Local Mock',
-      '    apiType: mock',
-      '    baseUrl: mock-db',
-      '    apiKeyEnvVar: MOCK_API_KEY',
-      '    models:',
-      '      default:',
-      '        name: Default',
-      '',
-    ].join('\n'),
-    'utf-8',
-  );
+  const llmLines = [
+    'providers:',
+    '  local-mock:',
+    '    name: Local Mock',
+    `    apiType: ${options?.providerApiType ?? 'mock'}`,
+    '    baseUrl: mock-db',
+    '    apiKeyEnvVar: MOCK_API_KEY',
+  ];
+  if (options?.providerApiQuirks && options.providerApiQuirks.length > 0) {
+    const quoted = options.providerApiQuirks.map((v) => JSON.stringify(v)).join(', ');
+    llmLines.push(`    apiQuirks: [${quoted}]`);
+  }
+  llmLines.push('    models:', '      default:', '        name: Default', '');
+  await fs.writeFile(path.join(tmpRoot, '.minds', 'llm.yaml'), llmLines.join('\n'), 'utf-8');
 
   const teamLines = [
     'member_defaults:',
@@ -89,7 +90,7 @@ export async function writeStandardMinds(
     '    name: Tester',
     '    provider: local-mock',
     '    model: default',
-    '    diligence-push-max: 2',
+    `    diligence-push-max: ${String(options?.diligencePushMax ?? 2)}`,
   ];
   if (options?.memberToolsets && options.memberToolsets.length > 0) {
     const quoted = options.memberToolsets.map((v) => JSON.stringify(v)).join(', ');
