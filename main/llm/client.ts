@@ -30,6 +30,9 @@ export interface ModelInfo {
   default_thinking?: boolean;
   // Whether the provider advertises a request-level thinking on/off switch for this model.
   supports_thinking?: boolean;
+  // Whether this model accepts Chat Completions `tool_choice`. Set false for OpenAI-compatible
+  // gateways/models that support `tools` but reject `tool_choice` itself.
+  supports_tool_choice?: boolean;
   context_length?: number;
   input_length?: number;
   output_length?: number;

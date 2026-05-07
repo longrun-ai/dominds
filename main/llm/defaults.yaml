@@ -568,6 +568,7 @@ providers:
         name: Kimi-K2.6
         supports_thinking: true
         default_thinking: true
+        supports_tool_choice: false
         supports_image_input: true
         context_length: 200000
         input_length: 200000
@@ -577,6 +578,7 @@ providers:
         name: Kimi-K2.5
         supports_thinking: true
         default_thinking: false
+        supports_tool_choice: false
         supports_image_input: true
         context_length: 200000
         input_length: 200000

@@ -34,7 +34,7 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
+import type { ChatMessage, FuncResultMsg, ModelInfo, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
   type LlmBatchOutput,
@@ -88,10 +88,11 @@ type OpenAiCompatibleChatExtraParams = {
   reasoning_effort?: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'];
 };
 
-function resolveOpenAiCompatibleToolChoice(
+export function resolveOpenAiCompatibleToolChoice(
   funcTools: readonly FuncTool[],
   requestContext: LlmRequestContext,
-): 'none' | 'auto' | 'required' {
+  modelInfo?: ModelInfo,
+): 'none' | 'auto' | 'required' | undefined {
   const requirement = requestContext.toolUseRequirement ?? 'auto';
   if (funcTools.length === 0) {
     if (requirement === 'required') {
@@ -99,8 +100,9 @@ function resolveOpenAiCompatibleToolChoice(
         `OpenAI-compatible request invariant violation: toolUseRequirement=required but no tools are available (dialog=${requestContext.dialogSelfId})`,
       );
     }
-    return 'none';
+    return modelInfo?.supports_tool_choice === false ? undefined : 'none';
   }
+  if (modelInfo?.supports_tool_choice === false) return undefined;
   if (requirement === 'none') return 'none';
   if (requirement === 'required') return 'required';
   return 'auto';
@@ -111,6 +113,20 @@ function resolveOpenAiCompatibleRequestTools(
   requestContext: LlmRequestContext,
 ): FuncTool[] {
   return (requestContext.toolUseRequirement ?? 'auto') === 'none' ? [] : [...funcTools];
+}
+
+function resolveOpenAiCompatibleRequestModelInfo(
+  providerConfig: ProviderConfig,
+  agent: Team.Member,
+  requestContext: LlmRequestContext,
+): ModelInfo | undefined {
+  const requestModelKey = requestContext.modelKey;
+  const modelKey =
+    typeof requestModelKey === 'string' && requestModelKey.trim() !== ''
+      ? requestModelKey
+      : agent.model;
+  if (typeof modelKey !== 'string' || modelKey.trim() === '') return undefined;
+  return providerConfig.models[modelKey];
 }
 
 type OpenAiCompatibleCaptureContext = {
@@ -1925,6 +1941,12 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
     const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
+    const modelInfo = resolveOpenAiCompatibleRequestModelInfo(
+      providerConfig,
+      agent,
+      requestContext,
+    );
+    const toolChoice = resolveOpenAiCompatibleToolChoice(requestTools, requestContext, modelInfo);
     const openAiCompatibleExtraParams = buildOpenAiCompatibleExtraParams({
       agent,
       openAiParams,
@@ -1944,7 +1966,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...openAiCompatibleExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(requestTools.length > 0 ? { tools: requestTools.map(funcToolToChatCompletionTool) } : {}),
-      tool_choice: resolveOpenAiCompatibleToolChoice(requestTools, requestContext),
+      ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       parallel_tool_calls: parallelToolCalls,
     };
 
@@ -2021,6 +2043,12 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
     const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
+    const modelInfo = resolveOpenAiCompatibleRequestModelInfo(
+      providerConfig,
+      agent,
+      requestContext,
+    );
+    const toolChoice = resolveOpenAiCompatibleToolChoice(requestTools, requestContext, modelInfo);
     const openAiCompatibleExtraParams = buildOpenAiCompatibleExtraParams({
       agent,
       openAiParams,
@@ -2038,7 +2066,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...openAiCompatibleExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(requestTools.length > 0 && { tools: requestTools.map(funcToolToChatCompletionTool) }),
-      tool_choice: resolveOpenAiCompatibleToolChoice(requestTools, requestContext),
+      ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       parallel_tool_calls: parallelToolCalls,
     };
 
