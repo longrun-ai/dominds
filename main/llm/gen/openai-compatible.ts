@@ -11,6 +11,9 @@
  *   must not inherit OpenAI Responses or Codex-specific request meanings.
  */
 
+import { once } from 'events';
+import { createWriteStream } from 'fs';
+import fs from 'fs/promises';
 import OpenAI from 'openai';
 import type {
   ChatCompletion,
@@ -22,6 +25,7 @@ import type {
   ChatCompletionTool,
 } from 'openai/resources/chat/completions';
 import type { FunctionDefinition } from 'openai/resources/shared';
+import path from 'path';
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
@@ -69,6 +73,9 @@ import {
 
 const log = createLogger('llm/openai-compatible');
 
+const OPENAI_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_OPENAI_COMPAT_CAPTURE_SSE';
+const OPENAI_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_OPENAI_COMPAT_CAPTURE_DIR';
+
 type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
   reasoning_content?: string;
 };
@@ -81,6 +88,440 @@ type OpenAiCompatibleChatExtraParams = {
 };
 
 type ToolCallValidationMode = 'generic' | 'volcengine-coding-plan';
+
+type OpenAiCompatibleCaptureContext = {
+  providerKey: string;
+  providerName: string;
+  model: string;
+  dialogRootId: string;
+  dialogSelfId: string;
+  requestKind: 'stream' | 'batch';
+};
+
+type OpenAiCompatibleCaptureRecord = {
+  id: string;
+  dir: string;
+  metaPath: string;
+  requestBodyPath: string;
+  responseBodyPath: string;
+  framesPath: string;
+  summaryPath: string;
+  context: OpenAiCompatibleCaptureContext;
+};
+
+type OpenAiCompatibleSseCaptureState = {
+  buffer: string;
+  frameCount: number;
+  jsonFrameCount: number;
+  invalidJsonFrameCount: number;
+  invalidFrames: Array<{ frameIndex: number; eventName: string; message: string; data: string }>;
+};
+
+function isOpenAiCompatibleSseCaptureEnabled(): boolean {
+  const configured = process.env[OPENAI_COMPAT_CAPTURE_SSE_ENV]?.trim().toLowerCase();
+  return configured === '1' || configured === 'true' || configured === 'yes' || configured === 'on';
+}
+
+function resolveOpenAiCompatibleCaptureDir(): string {
+  const configured = process.env[OPENAI_COMPAT_CAPTURE_DIR_ENV]?.trim();
+  if (configured && configured.length > 0) return path.resolve(configured);
+  return path.resolve(process.cwd(), '.dialogs', 'debug', 'openai-compatible-sse');
+}
+
+function sanitizeCapturePathPart(value: string): string {
+  const sanitized = value.replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '');
+  if (sanitized.length === 0) return 'unknown';
+  return sanitized.slice(0, 96);
+}
+
+function buildOpenAiCompatibleCaptureId(context: OpenAiCompatibleCaptureContext): string {
+  const now = new Date().toISOString().replace(/[:.]/g, '-');
+  const suffix = Math.random().toString(36).slice(2, 10);
+  return [
+    now,
+    sanitizeCapturePathPart(context.providerKey ?? context.providerName),
+    sanitizeCapturePathPart(context.model),
+    sanitizeCapturePathPart(context.dialogSelfId),
+    context.requestKind,
+    suffix,
+  ].join('__');
+}
+
+function redactHttpHeader(name: string, value: string): string {
+  const normalized = name.toLowerCase();
+  if (
+    normalized === 'authorization' ||
+    normalized === 'x-api-key' ||
+    normalized === 'api-key' ||
+    normalized.includes('token') ||
+    normalized.includes('secret')
+  ) {
+    return '<redacted>';
+  }
+  return value;
+}
+
+function headersToRedactedRecord(headers: Headers): Record<string, string> {
+  const entries: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    entries[name] = redactHttpHeader(name, value);
+  });
+  return entries;
+}
+
+function mergeRequestHeaders(input: string | URL | Request, init?: RequestInit): Headers {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  if (init?.headers !== undefined) {
+    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+  }
+  return headers;
+}
+
+function requestMethod(input: string | URL | Request, init?: RequestInit): string {
+  if (init?.method !== undefined) return init.method;
+  if (input instanceof Request) return input.method;
+  return 'GET';
+}
+
+function requestUrl(input: string | URL | Request): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function decodeArrayBufferView(view: ArrayBufferView): string {
+  return new TextDecoder().decode(view);
+}
+
+async function readCaptureRequestBody(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<string | undefined> {
+  const body = init?.body;
+  if (typeof body === 'string') return body;
+  if (body instanceof URLSearchParams) return body.toString();
+  if (body instanceof Blob) return await body.text();
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
+  if (ArrayBuffer.isView(body)) return decodeArrayBufferView(body);
+  if (body === null) return undefined;
+  if (body !== undefined)
+    return `[unreadable RequestInit body: ${Object.prototype.toString.call(body)}]`;
+  if (input instanceof Request) {
+    try {
+      return await input.clone().text();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return `[failed to clone/read Request body: ${message}]`;
+    }
+  }
+  return undefined;
+}
+
+async function writeCaptureJson(pathname: string, value: unknown): Promise<void> {
+  await fs.writeFile(pathname, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
+}
+
+async function startOpenAiCompatibleCapture(
+  context: OpenAiCompatibleCaptureContext,
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<OpenAiCompatibleCaptureRecord> {
+  const captureRoot = resolveOpenAiCompatibleCaptureDir();
+  const id = buildOpenAiCompatibleCaptureId(context);
+  const dir = path.join(captureRoot, id);
+  await fs.mkdir(dir, { recursive: true });
+
+  const record: OpenAiCompatibleCaptureRecord = {
+    id,
+    dir,
+    metaPath: path.join(dir, 'meta.json'),
+    requestBodyPath: path.join(dir, 'request-body.txt'),
+    responseBodyPath: path.join(dir, 'response-body.raw'),
+    framesPath: path.join(dir, 'sse-frames.jsonl'),
+    summaryPath: path.join(dir, 'summary.json'),
+    context,
+  };
+
+  const bodyText = await readCaptureRequestBody(input, init);
+  await fs.writeFile(record.requestBodyPath, bodyText ?? '', 'utf-8');
+
+  await writeCaptureJson(record.metaPath, {
+    id: record.id,
+    capturedAt: new Date().toISOString(),
+    context,
+    env: {
+      enabledBy: OPENAI_COMPAT_CAPTURE_SSE_ENV,
+      captureDirEnv: process.env[OPENAI_COMPAT_CAPTURE_DIR_ENV]
+        ? OPENAI_COMPAT_CAPTURE_DIR_ENV
+        : undefined,
+    },
+    request: {
+      method: requestMethod(input, init),
+      url: requestUrl(input),
+      headers: headersToRedactedRecord(mergeRequestHeaders(input, init)),
+      bodyPath: record.requestBodyPath,
+    },
+    response: {
+      bodyPath: record.responseBodyPath,
+      framesPath: record.framesPath,
+      summaryPath: record.summaryPath,
+    },
+  });
+
+  log.info('OPENAI compatible SSE capture started', {
+    captureDir: record.dir,
+    providerKey: context.providerKey,
+    providerName: context.providerName,
+    model: context.model,
+    rootId: context.dialogRootId,
+    selfId: context.dialogSelfId,
+    requestKind: context.requestKind,
+  });
+  return record;
+}
+
+function parseSseFrameData(frame: string): { eventName: string; data: string | undefined } {
+  const lines = frame.split(/\r?\n/);
+  const eventLine = lines.find((line) => line.startsWith('event:'));
+  const eventName = eventLine ? eventLine.slice('event:'.length).trim() : '';
+  const dataLines = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => (line.startsWith('data: ') ? line.slice(6) : line.slice(5)));
+  if (dataLines.length === 0) return { eventName, data: undefined };
+  return { eventName, data: dataLines.join('\n') };
+}
+
+function parseSseFrameJson(frame: string): {
+  kind: 'json_ok' | 'done' | 'no_data' | 'invalid_json';
+  message?: string;
+  data?: string;
+} {
+  const { data } = parseSseFrameData(frame);
+  if (data === undefined) return { kind: 'no_data' };
+  if (data === '[DONE]') return { kind: 'done' };
+  try {
+    JSON.parse(data);
+    return { kind: 'json_ok' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { kind: 'invalid_json', message, data };
+  }
+}
+
+function buildSseFrameLogLine(frame: string, state: OpenAiCompatibleSseCaptureState): string {
+  const { eventName, data } = parseSseFrameData(frame);
+  const result = parseSseFrameJson(frame);
+  if (result.kind === 'json_ok') state.jsonFrameCount += 1;
+  if (result.kind === 'invalid_json') {
+    state.invalidJsonFrameCount += 1;
+    state.invalidFrames.push({
+      frameIndex: state.frameCount,
+      eventName,
+      message: result.message ?? 'unknown parse error',
+      data: result.data ?? '',
+    });
+  }
+  return `${JSON.stringify({
+    frameIndex: state.frameCount,
+    eventName,
+    dataBytes: data === undefined ? 0 : Buffer.byteLength(data),
+    parse: result.kind,
+    error: result.kind === 'invalid_json' ? result.message : undefined,
+    data: result.kind === 'invalid_json' ? result.data : undefined,
+  })}\n`;
+}
+
+async function writeAndDrain(
+  stream: ReturnType<typeof createWriteStream>,
+  chunk: string | Uint8Array,
+): Promise<void> {
+  if (!stream.write(chunk)) {
+    await once(stream, 'drain');
+  }
+}
+
+async function endWriteStream(stream: ReturnType<typeof createWriteStream>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    stream.once('error', reject);
+    stream.end(resolve);
+  });
+}
+
+async function cancelReadableStreamReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  context: { captureDir?: string; providerKey?: string; model?: string },
+): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch (error: unknown) {
+    log.warn('OPENAI compatible response reader cancel failed during cleanup', error, context);
+  }
+}
+
+async function captureOpenAiCompatibleResponseBody(
+  record: OpenAiCompatibleCaptureRecord,
+  response: Response,
+): Promise<void> {
+  const responseClone = response.clone();
+  const rawStream = createWriteStream(record.responseBodyPath);
+  const framesStream = createWriteStream(record.framesPath);
+  const decoder = new TextDecoder();
+  const parseAsSse = record.context.requestKind === 'stream';
+  const state: OpenAiCompatibleSseCaptureState = {
+    buffer: '',
+    frameCount: 0,
+    jsonFrameCount: 0,
+    invalidJsonFrameCount: 0,
+    invalidFrames: [],
+  };
+
+  try {
+    if (responseClone.body) {
+      const reader = responseClone.body.getReader();
+      let done = false;
+      try {
+        for (;;) {
+          const readResult = await reader.read();
+          if (readResult.done) {
+            done = true;
+            break;
+          }
+          await writeAndDrain(rawStream, readResult.value);
+          if (parseAsSse) {
+            state.buffer += decoder.decode(readResult.value, { stream: true });
+            for (;;) {
+              const separator = state.buffer.match(/\r?\n\r?\n/);
+              if (!separator || separator.index === undefined) break;
+              const frame = state.buffer.slice(0, separator.index);
+              state.buffer = state.buffer.slice(separator.index + separator[0].length);
+              if (frame.trim().length === 0) continue;
+              state.frameCount += 1;
+              await writeAndDrain(framesStream, buildSseFrameLogLine(frame, state));
+            }
+          }
+        }
+        if (parseAsSse) {
+          const rest = decoder.decode();
+          if (rest.length > 0) state.buffer += rest;
+          if (state.buffer.trim().length > 0) {
+            state.frameCount += 1;
+            await writeAndDrain(framesStream, buildSseFrameLogLine(state.buffer, state));
+          }
+        }
+      } finally {
+        if (!done) {
+          await cancelReadableStreamReader(reader, {
+            captureDir: record.dir,
+            providerKey: record.context.providerKey,
+            model: record.context.model,
+          });
+        }
+        reader.releaseLock();
+      }
+    }
+  } finally {
+    await Promise.all([endWriteStream(rawStream), endWriteStream(framesStream)]);
+  }
+
+  await writeCaptureJson(record.summaryPath, {
+    id: record.id,
+    completedAt: new Date().toISOString(),
+    status: response.status,
+    ok: response.ok,
+    statusText: response.statusText,
+    requestKind: record.context.requestKind,
+    headers: headersToRedactedRecord(response.headers),
+    frameCount: state.frameCount,
+    jsonFrameCount: state.jsonFrameCount,
+    invalidJsonFrameCount: state.invalidJsonFrameCount,
+    invalidFrames: state.invalidFrames,
+  });
+
+  if (state.invalidJsonFrameCount > 0) {
+    log.warn('OPENAI compatible SSE capture found invalid JSON data frame', undefined, {
+      captureDir: record.dir,
+      invalidJsonFrameCount: state.invalidJsonFrameCount,
+      invalidFrames: state.invalidFrames,
+      providerKey: record.context.providerKey,
+      model: record.context.model,
+      rootId: record.context.dialogRootId,
+      selfId: record.context.dialogSelfId,
+    });
+  } else {
+    log.info('OPENAI compatible SSE capture completed', {
+      captureDir: record.dir,
+      frameCount: state.frameCount,
+      providerKey: record.context.providerKey,
+      model: record.context.model,
+      rootId: record.context.dialogRootId,
+      selfId: record.context.dialogSelfId,
+    });
+  }
+}
+
+function buildOpenAiCompatibleCaptureFetch(context: OpenAiCompatibleCaptureContext): typeof fetch {
+  return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const record = await startOpenAiCompatibleCapture(context, input, init);
+    try {
+      const response = await fetch(input, init);
+      void captureOpenAiCompatibleResponseBody(record, response).catch((error: unknown) => {
+        log.error('OPENAI compatible SSE capture failed while reading response clone', error, {
+          captureDir: record.dir,
+          providerKey: context.providerKey,
+          model: context.model,
+          rootId: context.dialogRootId,
+          selfId: context.dialogSelfId,
+        });
+      });
+      return response;
+    } catch (error: unknown) {
+      await writeCaptureJson(record.summaryPath, {
+        id: record.id,
+        completedAt: new Date().toISOString(),
+        fetchError: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
+}
+
+function createOpenAiCompatibleClient(args: {
+  apiKey: string;
+  providerConfig: ProviderConfig;
+  agent: Team.Member;
+  requestContext: LlmRequestContext;
+  requestKind: 'stream' | 'batch';
+}): OpenAI {
+  const providerKey =
+    typeof args.requestContext.providerKey === 'string' &&
+    args.requestContext.providerKey.trim().length > 0
+      ? args.requestContext.providerKey
+      : args.providerConfig.name;
+  const modelKey =
+    typeof args.requestContext.modelKey === 'string' &&
+    args.requestContext.modelKey.trim().length > 0
+      ? args.requestContext.modelKey
+      : (args.agent.model ?? 'unknown');
+  const options: ConstructorParameters<typeof OpenAI>[0] = {
+    apiKey: args.apiKey,
+    baseURL: args.providerConfig.baseUrl,
+  };
+  if (
+    args.providerConfig.apiType === 'openai-compatible' &&
+    isOpenAiCompatibleSseCaptureEnabled()
+  ) {
+    options.fetch = buildOpenAiCompatibleCaptureFetch({
+      providerKey,
+      providerName:
+        args.providerConfig.name.trim().length > 0 ? args.providerConfig.name : providerKey,
+      model: modelKey,
+      dialogRootId: args.requestContext.dialogRootId,
+      dialogSelfId: args.requestContext.dialogSelfId,
+      requestKind: args.requestKind,
+    });
+  }
+  return new OpenAI(options);
+}
 
 function limitOpenAiCompatibleToolOutputText(
   text: string,
@@ -1340,7 +1781,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     }
     assertSupportedOpenAiCompatibleModel(providerConfig, agent.model);
 
-    const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
+    const client = createOpenAiCompatibleClient({
+      apiKey,
+      providerConfig,
+      agent,
+      requestContext,
+      requestKind: 'stream',
+    });
 
     const isVolcengineCodingPlan = isVolcengineCodingPlanProvider(providerConfig);
     const reasoningContentMode =
@@ -1418,7 +1865,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     }
     assertSupportedOpenAiCompatibleModel(providerConfig, agent.model);
 
-    const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
+    const client = createOpenAiCompatibleClient({
+      apiKey,
+      providerConfig,
+      agent,
+      requestContext,
+      requestKind: 'batch',
+    });
     const isVolcengineCodingPlan = isVolcengineCodingPlanProvider(providerConfig);
     const reasoningContentMode =
       isVolcengineCodingPlan || resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
