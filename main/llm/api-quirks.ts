@@ -8,7 +8,7 @@ export type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
 
 export const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
 export const VOLCANO_TOOL_USE_API_QUIRK = 'volcano-tool-use';
-export const VOLCENGINE_CODING_PLAN_API_QUIRK = 'volcengine-coding-plan';
+export const SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK = 'same-context-empty-response';
 
 export type LlmFailureSummary = {
   kind: LlmFailureKind;
@@ -48,6 +48,7 @@ export type LlmQuirkRecoveryUsage = {
 
 export type LlmFailureQuirkHandlerSession = {
   quirkName: string;
+  onRequestContext?: (contextKey: string) => void;
   onFailure: (args: {
     provider: string;
     providerConfig: ProviderConfig;
@@ -65,6 +66,8 @@ type LlmFailureQuirkHandlerFactory = (
 const DOMINDS_LLM_EMPTY_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
 const XCODE_BEST_EMPTY_RESPONSE_SINGLE_RETRY_DELAY_MS = 3000;
 const XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD = 5;
+const SAME_CONTEXT_EMPTY_RESPONSE_SINGLE_RETRY_DELAY_MS = 3000;
+const SAME_CONTEXT_EMPTY_RESPONSE_GIVE_UP_THRESHOLD = 5;
 const XCODE_BEST_GATEWAY_HTML_502_RETRY_MESSAGE =
   'xcode.best gateway returned an HTML 502 Bad Gateway page; retrying conservatively.';
 const XCODE_BEST_AUTH_UNAVAILABLE_RETRY_MESSAGE =
@@ -477,23 +480,25 @@ function readErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function buildXcodeBestEmptyResponseGiveUpText(
-  providerConfig: ProviderConfig,
-  provider: string,
-): {
+function buildSameContextEmptyResponseGiveUpText(args: {
+  providerConfig: ProviderConfig;
+  provider: string;
+  threshold: number;
+}): {
   providerName: string;
   summaryTextI18n: Partial<Record<LanguageCode, string>>;
   recoveryAction: DialogLlmRetryRecoveryAction;
 } {
-  const providerName = providerConfig.name.trim().length > 0 ? providerConfig.name : provider;
+  const providerName =
+    args.providerConfig.name.trim().length > 0 ? args.providerConfig.name : args.provider;
   const summaryTextI18n: Partial<Record<LanguageCode, string>> = {
     zh:
       `${providerName} 在同一对话上下文中连续返回 empty response。` +
-      `Dominds 已在 ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} 次 empty response 后停止沿用同一上下文继续自动重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
+      `Dominds 已在 ${String(args.threshold)} 次 empty response 后停止沿用同一上下文继续自动重试，因为这通常表示 provider 侧该对话上下文已经卡住；` +
       '如果不引入新的信息或新的指令，直接点继续大概率仍然无真实进展；更建议补充上下文、改写问题、换一个切入方式，或在确实需要人类判断时调用 askHuman。',
     en:
       `${providerName} returned empty responses repeatedly for the same dialog context. ` +
-      `Dominds stopped repeating the same-context automatic retry path after ${String(XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD)} empty responses because this usually means the provider-side conversation ` +
+      `Dominds stopped repeating the same-context automatic retry path after ${String(args.threshold)} empty responses because this usually means the provider-side conversation ` +
       'context is stuck; simply pressing Continue without new information or fresh instructions is still unlikely to make real progress, ' +
       'so it is better to add context, reframe the ask, change the angle, or call askHuman when human judgment is genuinely needed.',
   };
@@ -514,7 +519,11 @@ function createXcodeBestFailureQuirkHandlerSession(
     quirkName: 'xcode.best',
     onFailure(args) {
       const { providerName, summaryTextI18n, recoveryAction } =
-        buildXcodeBestEmptyResponseGiveUpText(providerConfig, args.provider);
+        buildSameContextEmptyResponseGiveUpText({
+          providerConfig,
+          provider: args.provider,
+          threshold: XCODE_BEST_EMPTY_RESPONSE_GIVE_UP_THRESHOLD,
+        });
       if (args.failure.code === DOMINDS_LLM_EMPTY_RESPONSE_ERROR_CODE) {
         // xcode.best can enter a same-context deadlock where the upstream keeps returning empty
         // responses forever until the dialog context changes materially. A short burst of
@@ -574,8 +583,70 @@ function createXcodeBestFailureQuirkHandlerSession(
   };
 }
 
+function createSameContextEmptyResponseFailureQuirkHandlerSession(
+  providerConfig: ProviderConfig,
+): LlmFailureQuirkHandlerSession {
+  let lastRequestContextKey: string | undefined;
+  let consecutiveEmptyResponseCount = 0;
+  let consumedDiligencePushRecoverySinceLastSuccess = false;
+
+  return {
+    quirkName: SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK,
+    onRequestContext(contextKey) {
+      if (lastRequestContextKey === contextKey) {
+        return;
+      }
+      lastRequestContextKey = contextKey;
+      consecutiveEmptyResponseCount = 0;
+    },
+    onFailure(args) {
+      if (args.failure.code !== DOMINDS_LLM_EMPTY_RESPONSE_ERROR_CODE) {
+        consecutiveEmptyResponseCount = 0;
+        return { kind: 'default' };
+      }
+
+      const { providerName, summaryTextI18n, recoveryAction } =
+        buildSameContextEmptyResponseGiveUpText({
+          providerConfig,
+          provider: args.provider,
+          threshold: SAME_CONTEXT_EMPTY_RESPONSE_GIVE_UP_THRESHOLD,
+        });
+      consecutiveEmptyResponseCount += 1;
+      if (consecutiveEmptyResponseCount < SAME_CONTEXT_EMPTY_RESPONSE_GIVE_UP_THRESHOLD) {
+        return {
+          kind: 'single_retry',
+          delayMs: SAME_CONTEXT_EMPTY_RESPONSE_SINGLE_RETRY_DELAY_MS,
+        };
+      }
+
+      return {
+        kind: 'give_up',
+        message:
+          `${providerName} returned empty responses repeatedly for the same dialog context; ` +
+          'Dominds stopped repeating the same-context automatic retry path; continuing without new information is still unlikely to make real progress, so it is better to introduce fresh instructions or new context based on the real situation.',
+        summaryTextI18n,
+        recoveryAction: consumedDiligencePushRecoverySinceLastSuccess
+          ? { kind: 'none' }
+          : recoveryAction,
+      };
+    },
+    onRequestSucceeded() {
+      consecutiveEmptyResponseCount = 0;
+      consumedDiligencePushRecoverySinceLastSuccess = false;
+    },
+    onRecoveryActionUsed(usage) {
+      if (usage.action.kind !== 'diligence_push_once') {
+        return;
+      }
+      consecutiveEmptyResponseCount = 0;
+      consumedDiligencePushRecoverySinceLastSuccess = true;
+    },
+  };
+}
+
 const FAILURE_QUIRK_HANDLER_FACTORIES: Record<string, LlmFailureQuirkHandlerFactory> = {
   'xcode.best': createXcodeBestFailureQuirkHandlerSession,
+  [SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK]: createSameContextEmptyResponseFailureQuirkHandlerSession,
 };
 
 export function normalizeProviderApiQuirks(providerConfig: ProviderConfig): Set<string> {
@@ -609,6 +680,11 @@ export function createLlmFailureQuirkHandlerSession(
   }
   return {
     quirkName: 'aggregate',
+    onRequestContext(contextKey) {
+      for (const session of sessions) {
+        session.onRequestContext?.(contextKey);
+      }
+    },
     onFailure(args) {
       for (const session of sessions) {
         const handling = session.onFailure(args);

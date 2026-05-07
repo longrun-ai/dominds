@@ -1,10 +1,11 @@
-import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
+import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
 
 import type { ChatMessage } from '../../main/llm/client';
 import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
-import { LlmStreamErrorEmittedError, type LlmStreamReceiver } from '../../main/llm/gen';
+import type { LlmStreamReceiver } from '../../main/llm/gen';
 import {
   buildOpenAiCompatibleExtraParamsForTest,
+  chatCompletionToChatMessagesForTest,
   consumeOpenAiCompatibleChatCompletionStreamForTest,
   OpenAiCompatibleGen,
 } from '../../main/llm/gen/openai-compatible';
@@ -72,22 +73,7 @@ function makeReceiver(events: string[], streamErrors: string[]): LlmStreamReceiv
   };
 }
 
-async function expectStreamError(run: () => Promise<void>, expected: string): Promise<void> {
-  let caught = false;
-  try {
-    await run();
-  } catch (error: unknown) {
-    caught = true;
-    assert(error instanceof LlmStreamErrorEmittedError, 'expected LlmStreamErrorEmittedError');
-    assert(
-      error.message.includes(expected),
-      `expected error to include ${expected}, got ${error.message}`,
-    );
-  }
-  assert(caught, 'expected stream error to be thrown');
-}
-
-async function testVolcengineAllowsSegmentAlternation(): Promise<void> {
+async function testVolcanoArkAllowsSegmentAlternation(): Promise<void> {
   const events: string[] = [];
   const streamErrors: string[] = [];
   const receiver = makeReceiver(events, streamErrors);
@@ -124,7 +110,6 @@ async function testVolcengineAllowsSegmentAlternation(): Promise<void> {
     ]),
     receiver,
     genseq: 7,
-    isVolcengineCodingPlan: true,
   });
 
   assert(
@@ -135,92 +120,204 @@ async function testVolcengineAllowsSegmentAlternation(): Promise<void> {
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
-async function testGenericStillReportsOverlap(): Promise<void> {
+async function testGenericAllowsSegmentAlternation(): Promise<void> {
   const events: string[] = [];
   const streamErrors: string[] = [];
   const receiver = makeReceiver(events, streamErrors);
 
-  await expectStreamError(async () => {
-    await consumeOpenAiCompatibleChatCompletionStreamForTest({
-      stream: stream([
-        chunk({ delta: { reasoning_content: 'thinking' } }),
-        chunk({ delta: { content: 'content' }, finishReason: 'stop' }),
-      ]),
-      receiver,
-      genseq: 8,
-      isVolcengineCodingPlan: false,
-    });
-  }, 'stream overlap violation');
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({ delta: { reasoning_content: 'thinking' } }),
+      chunk({ delta: { content: 'content' }, finishReason: 'stop' }),
+    ]),
+    receiver,
+    genseq: 8,
+  });
+
   assert(
-    streamErrors.some((detail) => detail.includes('stream overlap violation')),
-    'generic openai-compatible stream should report overlap',
+    events.join('|') ===
+      'thinkingStart|thinking:thinking|thinkingFinish|sayingStart|saying:content|sayingFinish',
+    `unexpected generic segment alternation events: ${events.join('|')}`,
   );
-  assert(streamErrors.length === 1, `expected one stream error, got ${streamErrors.join('|')}`);
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
-async function testVolcengineRequiresToolCallType(): Promise<void> {
+async function testMissingToolCallTypeIsTolerated(): Promise<void> {
   const events: string[] = [];
   const streamErrors: string[] = [];
   const receiver = makeReceiver(events, streamErrors);
 
-  await expectStreamError(async () => {
-    await consumeOpenAiCompatibleChatCompletionStreamForTest({
-      stream: stream([
-        chunk({
-          delta: {
-            tool_calls: [
-              {
-                index: 0,
-                id: 'call-1',
-                function: { name: 'shell_cmd', arguments: '{}' },
-              },
-            ],
-          },
-          finishReason: 'tool_calls',
-        }),
-      ]),
-      receiver,
-      genseq: 9,
-      isVolcengineCodingPlan: true,
-    });
-  }, 'missing streamed tool call type=function');
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: 'call-1',
+              function: { name: 'shell_cmd', arguments: '{}' },
+            },
+          ],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]),
+    receiver,
+    genseq: 9,
+  });
+
+  assert(events.join('|') === 'funcCall:call-1:shell_cmd:{}', `unexpected events: ${events}`);
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
+async function testMissingToolCallIdIsSynthesized(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const receiver = makeReceiver(events, streamErrors);
+
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          tool_calls: [
+            {
+              index: 2,
+              type: 'function',
+              function: { name: 'shell_cmd', arguments: '{}' },
+            },
+          ],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]),
+    receiver,
+    genseq: 11,
+  });
+
   assert(
-    streamErrors.some((detail) => detail.includes('missing streamed tool call type=function')),
-    'expected stream error detail for missing tool call type',
+    events.join('|') === 'funcCall:toolcall_11_2:shell_cmd:{}',
+    `unexpected synthetic tool call id events: ${events.join('|')}`,
+  );
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
+async function testInvalidToolArgumentsPassThroughToToolCall(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const receiver = makeReceiver(events, streamErrors);
+
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: 'call-1',
+              type: 'function',
+              function: { name: 'shell_cmd', arguments: '[]' },
+            },
+          ],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]),
+    receiver,
+    genseq: 10,
+  });
+
+  assert(
+    events.join('|') === 'funcCall:call-1:shell_cmd:[]',
+    `unexpected invalid tool argument pass-through events: ${events.join('|')}`,
+  );
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
+function completion(args: {
+  toolCalls?: NonNullable<ChatCompletion.Choice['message']['tool_calls']>;
+}): ChatCompletion {
+  return {
+    id: 'chatcmpl-test',
+    object: 'chat.completion',
+    created: 1,
+    model: 'kimi-k2.6',
+    choices: [
+      {
+        index: 0,
+        finish_reason: 'tool_calls',
+        logprobs: null,
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: args.toolCalls ?? [],
+          refusal: null,
+        },
+      },
+    ],
+  };
+}
+
+function testBatchToolCallsUseOpenAiCompatibleRules(): void {
+  const messages = chatCompletionToChatMessagesForTest(
+    completion({
+      toolCalls: [
+        {
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'shell_cmd', arguments: '[]' },
+        },
+        {
+          index: 1,
+          type: 'function',
+          function: { name: 'shell_cmd', arguments: '{}' },
+        },
+        {
+          index: 2,
+          function: { name: 'shell_cmd', arguments: '{"ok":true}' },
+        },
+      ],
+    }),
+    12,
+  );
+  const funcCalls = messages.filter((msg) => msg.type === 'func_call_msg');
+  assert(funcCalls.length === 3, `expected three batch tool calls, got ${funcCalls.length}`);
+  assert(
+    funcCalls[0]?.id === 'call-1' && funcCalls[0].arguments === '[]',
+    'expected batch arguments to pass through without object validation',
+  );
+  assert(
+    funcCalls[1]?.id === 'toolcall_12_1' && funcCalls[2]?.id === 'toolcall_12_2',
+    `expected missing batch ids to be synthesized, got ${funcCalls.map((msg) => msg.id).join('|')}`,
   );
 }
 
-async function testVolcengineRequiresObjectToolArguments(): Promise<void> {
-  const events: string[] = [];
-  const streamErrors: string[] = [];
-  const receiver = makeReceiver(events, streamErrors);
-
-  await expectStreamError(async () => {
-    await consumeOpenAiCompatibleChatCompletionStreamForTest({
-      stream: stream([
-        chunk({
-          delta: {
-            tool_calls: [
-              {
-                index: 0,
-                id: 'call-1',
-                type: 'function',
-                function: { name: 'shell_cmd', arguments: '[]' },
-              },
-            ],
+function testBatchToolCallMissingNameIsLoud(): void {
+  let caught = false;
+  try {
+    chatCompletionToChatMessagesForTest(
+      completion({
+        toolCalls: [
+          {
+            index: 0,
+            id: 'call-1',
+            type: 'function',
+            function: { name: '', arguments: '{}' },
           },
-          finishReason: 'tool_calls',
-        }),
-      ]),
-      receiver,
-      genseq: 10,
-      isVolcengineCodingPlan: true,
-    });
-  }, 'expected JSON object');
-  assert(
-    streamErrors.some((detail) => detail.includes('expected JSON object')),
-    'expected stream error detail for non-object tool arguments',
-  );
+        ],
+      }),
+      13,
+    );
+  } catch (error: unknown) {
+    caught = true;
+    const message = error instanceof Error ? error.message : String(error);
+    assert(
+      message.includes('OPENAI-COMPATIBLE malformed batch tool call'),
+      `unexpected batch tool call error: ${message}`,
+    );
+    assert(message.includes('missing tool function name'), `unexpected detail: ${message}`);
+  }
+  assert(caught, 'expected missing batch tool function name to throw');
 }
 
 function requireProvider(provider: ProviderConfig | undefined): ProviderConfig {
@@ -236,14 +333,14 @@ function makePromptContext(): ChatMessage[] {
       type: 'prompting_msg',
       role: 'user',
       genseq: 1,
-      msgId: 'volcengine-config-test',
+      msgId: 'volcano-ark-config-test',
       content: 'hello',
       grammar: 'markdown',
     },
   ];
 }
 
-async function expectRequestBuildError(args: {
+async function expectOpenAiCompatibleRequestBuildError(args: {
   provider: ProviderConfig;
   agent: Team.Member;
   expected: string;
@@ -285,13 +382,15 @@ async function expectRequestBuildError(args: {
   }
 }
 
-async function testBuiltinVolcengineCodingPlanProvider(): Promise<void> {
+async function testBuiltinVolcanoArkCodingPlanProvider(): Promise<void> {
   const cfg = await LlmConfig.load();
   const provider = requireProvider(cfg.getProvider('volcano-engine-coding-plan'));
   assert(provider.apiType === 'openai-compatible', 'expected openai-compatible apiType');
   assert(
-    provider.apiQuirks === 'volcengine-coding-plan',
-    'expected volcengine-coding-plan apiQuirks',
+    Array.isArray(provider.apiQuirks) &&
+      provider.apiQuirks.length === 1 &&
+      provider.apiQuirks[0] === 'same-context-empty-response',
+    'expected only same-context-empty-response Volcano Ark Coding Plan apiQuirk',
   );
   assert(
     provider.baseUrl === 'https://ark.cn-beijing.volces.com/api/coding/v3',
@@ -299,7 +398,7 @@ async function testBuiltinVolcengineCodingPlanProvider(): Promise<void> {
   );
   assert(
     !Object.prototype.hasOwnProperty.call(provider.models, 'ark-code-latest'),
-    'ark-code-latest must not be a built-in Volcano Coding Plan model',
+    'ark-code-latest must not be a built-in Volcano Ark Coding Plan model',
   );
   assert(
     Object.prototype.hasOwnProperty.call(provider.models, 'minimax-m2.7'),
@@ -307,16 +406,10 @@ async function testBuiltinVolcengineCodingPlanProvider(): Promise<void> {
   );
   assert(
     !Object.prototype.hasOwnProperty.call(provider.models, 'minimax-latest'),
-    'floating minimax-latest key should not remain in Volcano Coding Plan provider',
+    'floating minimax-latest key should not remain in Volcano Ark Coding Plan provider',
   );
 
-  await expectRequestBuildError({
-    provider,
-    agent: new Team.Member({ id: 'tester', name: 'Tester', model: 'ark-code-latest' }),
-    expected: 'only supports concrete Coding Plan model names',
-  });
-
-  await expectRequestBuildError({
+  await expectOpenAiCompatibleRequestBuildError({
     provider,
     agent: new Team.Member({
       id: 'tester',
@@ -329,100 +422,12 @@ async function testBuiltinVolcengineCodingPlanProvider(): Promise<void> {
         },
       },
     }),
-    expected: 'thinking=false conflicts with reasoning_effort=medium',
+    expected: 'thinking disabled conflicts with reasoning_effort=medium',
   });
 }
 
-async function testThinkingParamRequiresVolcengineQuirk(): Promise<void> {
-  const provider: ProviderConfig = {
-    name: 'Generic OpenAI Compatible',
-    apiType: 'openai-compatible',
-    baseUrl: 'https://example.invalid/v1',
-    apiKeyEnvVar: 'GENERIC_OPENAI_COMPATIBLE_TEST_KEY',
-    models: {
-      'generic-model': {
-        name: 'Generic Model',
-      },
-    },
-  };
-  await expectRequestBuildError({
-    provider,
-    agent: new Team.Member({
-      id: 'tester',
-      name: 'Tester',
-      model: 'generic-model',
-      model_params: {
-        'openai-compatible': {
-          thinking: true,
-        },
-      },
-    }),
-    expected: 'requires apiQuirks=volcengine-coding-plan',
-  });
-}
-
-async function testReasoningEffortRequiresVolcengineQuirk(): Promise<void> {
-  const provider: ProviderConfig = {
-    name: 'Generic OpenAI Compatible',
-    apiType: 'openai-compatible',
-    baseUrl: 'https://example.invalid/v1',
-    apiKeyEnvVar: 'GENERIC_OPENAI_COMPATIBLE_TEST_KEY',
-    models: {
-      'generic-model': {
-        name: 'Generic Model',
-      },
-    },
-  };
-  await expectRequestBuildError({
-    provider,
-    agent: new Team.Member({
-      id: 'tester',
-      name: 'Tester',
-      model: 'generic-model',
-      model_params: {
-        'openai-compatible': {
-          reasoning_effort: 'medium',
-        },
-      },
-    }),
-    expected: 'model_params.openai-compatible.reasoning_effort',
-  });
-}
-
-async function testReasoningEffortRequiresThinkingCapableModel(): Promise<void> {
-  const provider: ProviderConfig = {
-    name: 'Volcano Test Provider',
-    apiType: 'openai-compatible',
-    apiQuirks: 'volcengine-coding-plan',
-    baseUrl: 'https://example.invalid/v1',
-    apiKeyEnvVar: 'VOLCENGINE_TEST_KEY',
-    models: {
-      'plain-model': {
-        name: 'Plain Model',
-      },
-    },
-  };
-  await expectRequestBuildError({
-    provider,
-    agent: new Team.Member({
-      id: 'tester',
-      name: 'Tester',
-      model: 'plain-model',
-      model_params: {
-        'openai-compatible': {
-          reasoning_effort: 'medium',
-        },
-      },
-    }),
-    expected: 'supports_thinking=true',
-  });
-}
-
-async function testVolcengineAllowsReasoningEffortWithoutThinkingFlag(): Promise<void> {
-  const cfg = await LlmConfig.load();
-  const provider = requireProvider(cfg.getProvider('volcano-engine-coding-plan'));
+function testOpenAiCompatibleExtraParams(): void {
   const extraParams = buildOpenAiCompatibleExtraParamsForTest({
-    providerConfig: provider,
     agent: new Team.Member({
       id: 'tester',
       name: 'Tester',
@@ -437,19 +442,76 @@ async function testVolcengineAllowsReasoningEffortWithoutThinkingFlag(): Promise
     'expected reasoning_effort to be preserved without thinking flag',
   );
   assert(extraParams.thinking === undefined, 'expected no implicit thinking payload');
+
+  const thinkingParams = buildOpenAiCompatibleExtraParamsForTest({
+    agent: new Team.Member({
+      id: 'tester',
+      name: 'Tester',
+      model: 'generic-model',
+    }),
+    openAiParams: {
+      thinking: true,
+    },
+  });
+  assert(
+    thinkingParams.thinking?.type === 'enabled',
+    'expected generic openai-compatible thinking=true payload',
+  );
+
+  const thinkingObject = { type: 'enabled', budget_tokens: 2048 };
+  const thinkingObjectParams = buildOpenAiCompatibleExtraParamsForTest({
+    agent: new Team.Member({
+      id: 'tester',
+      name: 'Tester',
+      model: 'generic-model',
+    }),
+    openAiParams: {
+      thinking: thinkingObject,
+    },
+  });
+  assert(
+    thinkingObjectParams.thinking === thinkingObject,
+    'expected generic openai-compatible thinking object to pass through unchanged',
+  );
+
+  let disabledObjectConflict = false;
+  try {
+    buildOpenAiCompatibleExtraParamsForTest({
+      agent: new Team.Member({
+        id: 'tester',
+        name: 'Tester',
+        model: 'generic-model',
+      }),
+      openAiParams: {
+        thinking: { type: 'disabled' },
+        reasoning_effort: 'medium',
+      },
+    });
+  } catch (error: unknown) {
+    disabledObjectConflict = true;
+    const message = error instanceof Error ? error.message : String(error);
+    assert(
+      message.includes('thinking disabled conflicts with reasoning_effort=medium'),
+      `unexpected disabled thinking conflict error: ${message}`,
+    );
+  }
+  assert(
+    disabledObjectConflict,
+    'expected disabled thinking object to conflict with reasoning_effort',
+  );
 }
 
 async function main(): Promise<void> {
-  await testVolcengineAllowsSegmentAlternation();
-  await testGenericStillReportsOverlap();
-  await testVolcengineRequiresToolCallType();
-  await testVolcengineRequiresObjectToolArguments();
-  await testBuiltinVolcengineCodingPlanProvider();
-  await testThinkingParamRequiresVolcengineQuirk();
-  await testReasoningEffortRequiresVolcengineQuirk();
-  await testReasoningEffortRequiresThinkingCapableModel();
-  await testVolcengineAllowsReasoningEffortWithoutThinkingFlag();
-  console.log('✓ OpenAI-compatible Volcano Coding Plan quirk tests passed');
+  await testVolcanoArkAllowsSegmentAlternation();
+  await testGenericAllowsSegmentAlternation();
+  await testMissingToolCallTypeIsTolerated();
+  await testMissingToolCallIdIsSynthesized();
+  await testInvalidToolArgumentsPassThroughToToolCall();
+  testBatchToolCallsUseOpenAiCompatibleRules();
+  testBatchToolCallMissingNameIsLoud();
+  await testBuiltinVolcanoArkCodingPlanProvider();
+  testOpenAiCompatibleExtraParams();
+  console.log('✓ OpenAI-compatible Volcano Ark Coding Plan tests passed');
 }
 
 main().catch((error: unknown) => {

@@ -331,7 +331,10 @@ export function classifyOpenAiLikeFailure(error: unknown): LlmFailureDisposition
     };
   }
 
-  if (code === 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM') {
+  if (
+    code === 'OPENAI_MALFORMED_BATCH_OUTPUT_ITEM' ||
+    code === 'OPENAI_COMPATIBLE_MALFORMED_BATCH_TOOL_CALL'
+  ) {
     return {
       kind: 'fatal',
       message,

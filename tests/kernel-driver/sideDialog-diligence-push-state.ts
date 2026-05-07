@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import { DialogPersistence } from '../../main/persistence';
 
 import { createMainDialog, withTempRtws, writeStandardMinds } from './helpers';

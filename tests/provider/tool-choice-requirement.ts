@@ -1,8 +1,8 @@
-import assert from 'node:assert/strict';
 import type { ChatGptTool } from '@longrun-ai/codex-auth';
+import assert from 'node:assert/strict';
 import type { Tool } from 'openai/resources/responses/responses';
-import { resolveCodexToolChoice } from '../../main/llm/gen/codex';
 import type { LlmRequestContext } from '../../main/llm/gen';
+import { resolveCodexToolChoice } from '../../main/llm/gen/codex';
 import { resolveOpenAiToolChoice } from '../../main/llm/gen/openai';
 
 const baseContext: LlmRequestContext = {

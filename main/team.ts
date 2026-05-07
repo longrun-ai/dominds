@@ -386,8 +386,8 @@ export namespace Team {
     text_format_json_schema_name?: string; // Required when text_format=json_schema.
     text_format_json_schema?: string; // JSON-encoded schema object when text_format=json_schema.
     text_format_json_schema_strict?: boolean; // Strict schema adherence when text_format=json_schema.
-    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // Quirk-only.
-    thinking?: boolean; // Non-standard compatible-provider switch; consumed only by explicit quirks.
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For compatible reasoning-capable models.
+    thinking?: boolean | Record<string, unknown>; // Boolean shorthand or provider-specific object.
   };
 
   type AnthropicThinkingConfig =
@@ -1727,7 +1727,7 @@ export namespace Team {
     memberObj: Record<string, unknown>,
   ): void {
     const hintsAtMember: Record<string, string> = {
-      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\`, \`${atPrefix}.model_params.openai.reasoning_effort\`, or quirk-only \`${atPrefix}.model_params.openai-compatible.reasoning_effort\` for Volcano Coding Plan? (not supported at ${atPrefix} root)`,
+      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\`, \`${atPrefix}.model_params.openai.reasoning_effort\`, or \`${atPrefix}.model_params.openai-compatible.reasoning_effort\`? (not supported at ${atPrefix} root)`,
       reasoning_summary: `Did you mean \`${atPrefix}.model_params.codex.reasoning_summary\` or \`${atPrefix}.model_params.openai.reasoning_summary\`? (not supported at ${atPrefix} root)`,
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\`, \`${atPrefix}.model_params.openai.parallel_tool_calls\`, or \`${atPrefix}.model_params.openai-compatible.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
@@ -1761,7 +1761,7 @@ export namespace Team {
 
       const modelParamsAt = `${atPrefix}.${field}`;
       const hintsAtModelParams: Record<string, string> = {
-        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or quirk-only \`${modelParamsAt}.openai-compatible.reasoning_effort\` for Volcano Coding Plan?`,
+        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or \`${modelParamsAt}.openai-compatible.reasoning_effort\`?`,
         reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` or \`${modelParamsAt}.openai.reasoning_summary\`?`,
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\`, \`${modelParamsAt}.openai.parallel_tool_calls\`, or \`${modelParamsAt}.openai-compatible.parallel_tool_calls\`?`,
@@ -2726,6 +2726,12 @@ export namespace Team {
     return value;
   }
 
+  function validateOptionalBooleanOrObject(value: unknown, at: string): void {
+    if (value === undefined || typeof value === 'boolean') return;
+    if (isRecordValue(value)) return;
+    throw new Error(`Invalid ${at}: expected boolean|object (got ${describeValueType(value)})`);
+  }
+
   function asOptionalNumber(value: unknown, at: string): number | undefined {
     if (value === undefined) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -3082,7 +3088,7 @@ export namespace Team {
         params.text_format_json_schema_strict,
         `${at2}.text_format_json_schema_strict`,
       );
-      asOptionalBoolean(params.thinking, `${at2}.thinking`);
+      validateOptionalBooleanOrObject(params.thinking, `${at2}.thinking`);
 
       const serviceTier = params.service_tier;
       if (

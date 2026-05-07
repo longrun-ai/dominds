@@ -125,9 +125,7 @@ async function main() {
     },
   ];
 
-  const messages = await buildOpenAiCompatibleRequestMessagesWrapper('', context, {
-    reasoningContentMode: true,
-  });
+  const messages = await buildOpenAiCompatibleRequestMessagesWrapper('', context);
   const roles = messages.map(getRole);
 
   assert(
@@ -188,14 +186,12 @@ async function main() {
 
   let threw = false;
   try {
-    await buildOpenAiCompatibleRequestMessagesWrapper('', orphanedCallContext, {
-      reasoningContentMode: true,
-    });
+    await buildOpenAiCompatibleRequestMessagesWrapper('', orphanedCallContext);
   } catch (err) {
     threw = true;
     const message = err instanceof Error ? err.message : String(err);
     assert(
-      message.includes('unresolved persisted func_call_msg detected'),
+      message.includes('unresolved persisted tool call message detected'),
       'Expected explicit unresolved func_call invariant error',
     );
     assert(message.includes('callId=call-orphan'), 'Expected callId in invariant error');

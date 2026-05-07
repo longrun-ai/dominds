@@ -110,8 +110,8 @@ import {
 import {
   buildKernelDriverPolicy,
   resolveKernelDriverPolicyViolationKind,
-  type KernelDriverPolicyState,
   validateKernelDriverPolicyInvariants,
+  type KernelDriverPolicyState,
 } from './guardrails';
 import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
@@ -2378,6 +2378,15 @@ export async function driveDialogStreamCore(
               newMsgs.length = 0;
             };
 
+            const retryQuirkSession = resolveRetryQuirkSession();
+            const prepareLlmRequestContextKey = (): string => {
+              const promptCacheKey = `${dlg.id.selfId}:c${String(dlg.currentCourse)}`;
+              retryQuirkSession?.onRequestContext?.(
+                `${promptCacheKey}:g${String(dlg.activeGenSeq)}`,
+              );
+              return promptCacheKey;
+            };
+
             if (agent.streaming === false) {
               const batch = await runLlmRequestWithRetry({
                 dlg,
@@ -2391,7 +2400,7 @@ export async function driveDialogStreamCore(
                 retryBackoffMultiplier: retryPolicy.backoffMultiplier,
                 retryMaxDelayMs: retryPolicy.maxDelayMs,
                 classifyFailure: llmGen.classifyFailure?.bind(llmGen),
-                quirkFailureHandlerSession: resolveRetryQuirkSession(),
+                quirkFailureHandlerSession: retryQuirkSession,
                 canRetry: () => true,
                 onRetry: rollbackBatchAttempt,
                 onGiveUp: rollbackBatchAttempt,
@@ -2407,6 +2416,7 @@ export async function driveDialogStreamCore(
                   sawNativeToolSideChannelOutput = false;
                   streamedFuncCalls.length = 0;
                   newMsgs.length = 0;
+                  const promptCacheKey = prepareLlmRequestContextKey();
                   const batchResult = await llmGen.genMoreMessages(
                     providerCfg,
                     agent,
@@ -2417,7 +2427,7 @@ export async function driveDialogStreamCore(
                       dialogRootId: dlg.id.rootId,
                       providerKey: provider,
                       modelKey: model,
-                      promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                      promptCacheKey,
                       toolUseRequirement: resolveToolUseRequirement(dlg, policy),
                     },
                     ctxMsgs,
@@ -2630,7 +2640,7 @@ export async function driveDialogStreamCore(
               retryBackoffMultiplier: retryPolicy.backoffMultiplier,
               retryMaxDelayMs: retryPolicy.maxDelayMs,
               classifyFailure: llmGen.classifyFailure?.bind(llmGen),
-              quirkFailureHandlerSession: resolveRetryQuirkSession(),
+              quirkFailureHandlerSession: retryQuirkSession,
               canRetry: () => true,
               onRetry: rollbackStreamAttempt,
               onGiveUp: rollbackStreamAttempt,
@@ -2656,6 +2666,7 @@ export async function driveDialogStreamCore(
                   dlg,
                   providerCfg,
                 );
+                const promptCacheKey = prepareLlmRequestContextKey();
                 const streamResult = await llmGen.genToReceiver(
                   providerCfg,
                   agent,
@@ -2666,7 +2677,7 @@ export async function driveDialogStreamCore(
                     dialogRootId: dlg.id.rootId,
                     providerKey: provider,
                     modelKey: model,
-                    promptCacheKey: `${dlg.id.selfId}:c${String(dlg.currentCourse)}`,
+                    promptCacheKey,
                     toolUseRequirement: resolveToolUseRequirement(dlg, policy),
                     knownFunctionCallIds,
                   },

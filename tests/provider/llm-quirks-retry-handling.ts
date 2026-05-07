@@ -48,6 +48,21 @@ function buildPlainProviderConfig(): ProviderConfig {
   };
 }
 
+function buildOpenAiCompatibleSameContextEmptyProviderConfig(): ProviderConfig {
+  return {
+    name: 'openai-compatible same-context-empty-response - test',
+    apiType: 'openai-compatible',
+    apiQuirks: 'same-context-empty-response',
+    baseUrl: 'https://api.example.test/v1',
+    apiKeyEnvVar: 'OPENAI_COMPAT_EMPTY_TEST_API_KEY',
+    models: {
+      test: {
+        name: 'Test',
+      },
+    },
+  };
+}
+
 function makeFailure(code: string, message: string): LlmFailureSummary {
   return {
     kind: 'retriable',
@@ -505,6 +520,166 @@ async function verifySingleRetryBypassesAggressiveBurstLimit(): Promise<void> {
     stopped.reason.display.summaryTextI18n.zh?.includes('如果不引入新的信息或新的指令'),
     true,
   );
+}
+
+async function verifyOpenAiCompatibleSameContextEmptyResponseQuirk(): Promise<void> {
+  const providerConfig = buildOpenAiCompatibleSameContextEmptyProviderConfig();
+  const dialog = buildFakeDialog('zh');
+  const retryEventsPromise = readRetryEvents(dialog.id, 9);
+  let attempts = 0;
+
+  await assert.rejects(
+    async () =>
+      runLlmRequestWithRetry({
+        dlg: dialog,
+        provider: 'volcano-engine-coding-plan',
+        modelId: 'test',
+        providerConfig,
+        aggressiveRetryMaxRetries: 0,
+        retryInitialDelayMs: 0,
+        retryConservativeDelayMs: 0,
+        retryBackoffMultiplier: 1,
+        retryMaxDelayMs: 0,
+        canRetry: () => true,
+        doRequest: async () => {
+          attempts += 1;
+          throw {
+            status: 503,
+            code: 'DOMINDS_LLM_EMPTY_RESPONSE',
+            message:
+              'LLM returned empty response (provider=volcano-engine-coding-plan, model=test, streaming=true).',
+          };
+        },
+      }),
+    (error: unknown) => {
+      assert.equal(attempts, 5, 'Expected four quirk-granted single retries before give_up');
+      assert.ok(
+        error instanceof LlmRetryStoppedError,
+        'Expected LlmRetryStoppedError to be thrown',
+      );
+      assert.equal(error.reason.recoveryAction.kind, 'diligence_push_once');
+      assert.match(error.message, /同一对话上下文中连续返回 empty response/u);
+      return true;
+    },
+  );
+
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    [
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'waiting',
+      'running',
+      'stopped',
+    ],
+  );
+  const stopped = retryEvents.at(-1);
+  assert.ok(stopped, 'Expected stopped event');
+  assert.equal(stopped.phase, 'stopped');
+  if (stopped.phase !== 'stopped') {
+    throw new Error(`Expected stopped event, got ${stopped.phase}`);
+  }
+  assert.equal(stopped.reason.recoveryAction.kind, 'diligence_push_once');
+  assert.equal(
+    stopped.reason.display.summaryTextI18n.zh?.includes('同一对话上下文中连续返回 empty response'),
+    true,
+  );
+}
+
+async function verifySameContextEmptyResponseQuirkResetsOnContextChange(): Promise<void> {
+  const providerConfig = buildOpenAiCompatibleSameContextEmptyProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected same-context-empty-response quirk handler session');
+
+  const emptyFailure = makeFailure('DOMINDS_LLM_EMPTY_RESPONSE', 'empty response');
+  session.onRequestContext?.('97/a3/0213f50b:c2:g24');
+  for (let index = 0; index < 4; index += 1) {
+    session.onRequestContext?.('97/a3/0213f50b:c2:g24');
+    assert.equal(
+      session.onFailure({
+        provider: 'volcano-engine-coding-plan',
+        providerConfig,
+        failure: emptyFailure,
+        error: new Error('empty response'),
+      }).kind,
+      'single_retry',
+    );
+  }
+
+  session.onRequestContext?.('97/a3/0213f50b:c2:g24');
+  assert.equal(
+    session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: emptyFailure,
+      error: new Error('empty response'),
+    }).kind,
+    'give_up',
+    'Expected repeated notifications for the same dialog generation to keep the streak',
+  );
+
+  session.onRequestContext?.('97/a3/0213f50b:c2:g25');
+  assert.equal(
+    session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: emptyFailure,
+      error: new Error('empty response'),
+    }).kind,
+    'single_retry',
+    'Expected a materially new dialog generation to reset the empty-response streak',
+  );
+}
+
+async function verifySameContextEmptyResponseRecoveryClosesLoopAcrossContextChange(): Promise<void> {
+  const providerConfig = buildOpenAiCompatibleSameContextEmptyProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected same-context-empty-response quirk handler session');
+
+  const emptyFailure = makeFailure('DOMINDS_LLM_EMPTY_RESPONSE', 'empty response');
+  session.onRequestContext?.('97/a3/0213f50b:c2:g24');
+  let firstGiveUp: ReturnType<NonNullable<typeof session>['onFailure']> | undefined;
+  for (let index = 0; index < 5; index += 1) {
+    firstGiveUp = session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: emptyFailure,
+      error: new Error('empty response'),
+    });
+  }
+  assert.equal(firstGiveUp?.kind, 'give_up');
+  if (firstGiveUp?.kind !== 'give_up') {
+    throw new Error(`Expected first same-context empty response give_up, got ${firstGiveUp?.kind}`);
+  }
+  assert.equal(firstGiveUp.recoveryAction.kind, 'diligence_push_once');
+
+  session.onRecoveryActionUsed?.({
+    action: firstGiveUp.recoveryAction,
+    sourceQuirk: 'same-context-empty-response',
+  });
+  session.onRequestContext?.('97/a3/0213f50b:c2:g25');
+
+  let secondGiveUp: ReturnType<NonNullable<typeof session>['onFailure']> | undefined;
+  for (let index = 0; index < 5; index += 1) {
+    secondGiveUp = session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: emptyFailure,
+      error: new Error('empty response'),
+    });
+  }
+  assert.equal(secondGiveUp?.kind, 'give_up');
+  if (secondGiveUp?.kind !== 'give_up') {
+    throw new Error(
+      `Expected second same-context empty response give_up, got ${secondGiveUp?.kind}`,
+    );
+  }
+  assert.equal(secondGiveUp.recoveryAction.kind, 'none');
 }
 
 async function verifyRetryStoppedRecoveryHookSuppressesStoppedEvent(): Promise<void> {
@@ -1492,6 +1667,9 @@ async function verifyAggressiveRetriesDowngradeToConservative(): Promise<void> {
 async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
   await verifySingleRetryBypassesAggressiveBurstLimit();
+  await verifyOpenAiCompatibleSameContextEmptyResponseQuirk();
+  await verifySameContextEmptyResponseQuirkResetsOnContextChange();
+  await verifySameContextEmptyResponseRecoveryClosesLoopAcrossContextChange();
   await verifyRetryStoppedRecoveryHookSuppressesStoppedEvent();
   await verifyRetryStoppedRecoveryHookCanRefuseSecondRecovery();
   await verifySharedQuirkSessionRecoveryResetsAfterSuccess();

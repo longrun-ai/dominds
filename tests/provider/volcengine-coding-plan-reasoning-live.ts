@@ -310,7 +310,7 @@ async function main(): Promise<void> {
 
   await testDeepSeekThinking(provider);
   await testAlternatingThinking(provider);
-  console.log('✓ Volcano Coding Plan reasoning live tests passed');
+  console.log('✓ Volcano Ark Coding Plan reasoning live tests passed');
 }
 
 main().catch((error: unknown) => {

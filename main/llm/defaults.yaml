@@ -13,14 +13,13 @@
 #   classification for gateway-returned HTML 502 Bad Gateway pages and
 #   `500 auth_unavailable: no auth available` infrastructure failures.
 #   `apiQuirks: glm-via-volcano` enables a narrow Anthropic-compatible stream quirk for
-#   Volcano Engine Coding Plan tool calls where an empty-object tool input may arrive as
+#   Volcano Ark Coding Plan tool calls where an empty-object tool input may arrive as
 #   content_block_start.input={} followed by a lone `partial_json: "}"`.
 #   `apiQuirks: volcano-tool-use` enables a narrow Anthropic-compatible stream quirk for
-#   Volcano Engine Coding Plan text blocks that render a tool call as textual
+#   Volcano Ark Coding Plan text blocks that render a tool call as textual
 #   "Function call emitted by the assistant." metadata instead of protocol tool_use blocks.
-#   `apiQuirks: volcengine-coding-plan` enables the OpenAI-compatible Coding Plan profile for
-#   Volcano Engine's `/api/coding/v3` endpoint. It keeps Volcano-specific thinking, reasoning
-#   stream alternation, and strict tool-call validation out of generic openai-compatible behavior.
+#   `apiQuirks: same-context-empty-response` detects repeated empty responses in the same
+#   dialog generation context and stops same-context retry loops with a deadlock-break prompt.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -457,9 +456,10 @@ providers:
         output_length: 8192
         context_window: '128K'
   volcano-engine-coding-plan:
-    name: Volcano Engine Coding Plan
+    name: Volcano Ark Coding Plan
     apiType: openai-compatible
-    apiQuirks: volcengine-coding-plan
+    apiQuirks:
+      - same-context-empty-response
     baseUrl: https://ark.cn-beijing.volces.com/api/coding/v3
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261
@@ -468,12 +468,12 @@ providers:
       openai-compatible:
         thinking:
           prominent: true
-          type: boolean
-          description: Volcano Coding Plan quirk only. Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the model default_thinking metadata/provider default.
+          type: boolean|object
+          description: OpenAI-compatible Chat Completions extension. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by this provider/model. Leave unset to use the model default_thinking metadata/provider default.
         reasoning_effort:
           type: enum
           values: [none, minimal, low, medium, high, xhigh]
-          description: Volcano Coding Plan quirk only. Do not combine with thinking=false.
+          description: OpenAI-compatible reasoning effort level when supported by the selected upstream model. Do not combine with disabled thinking.
         temperature:
           type: number
           min: 0

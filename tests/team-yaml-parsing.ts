@@ -165,9 +165,9 @@ async function main(): Promise<void> {
     );
     assert.ok(
       mdUnknown.detail.errorText.includes(
-        'quirk-only `member_defaults.model_params.openai-compatible.reasoning_effort` for Volcano Coding Plan',
+        '`member_defaults.model_params.openai-compatible.reasoning_effort`',
       ),
-      'root reasoning_effort hint should label openai-compatible reasoning_effort as quirk-only',
+      'root reasoning_effort hint should include openai-compatible reasoning_effort',
     );
 
     // OpenAI/Codex output-token overrides are intentionally unsupported. Unknown fields should be
@@ -386,6 +386,46 @@ async function main(): Promise<void> {
       getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
       false,
       'valid anthropic thinking flag should not produce problems',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: volcano-engine-coding-plan',
+        '  model: doubao-seed-2.0-code',
+        '  model_params:',
+        '    openai-compatible:',
+        '      thinking:',
+        '        type: enabled',
+        '        budget_tokens: 2048',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    const teamOpenAiCompatibleThinkingObject = await Team.load();
+    const openAiCompatibleThinkingObjectMember =
+      teamOpenAiCompatibleThinkingObject.getMember('alice');
+    assert.ok(
+      openAiCompatibleThinkingObjectMember,
+      'alice should load with openai-compatible thinking object',
+    );
+    assert.deepEqual(
+      openAiCompatibleThinkingObjectMember.model_params?.['openai-compatible']?.thinking,
+      {
+        type: 'enabled',
+        budget_tokens: 2048,
+      },
+    );
+    assert.equal(
+      getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
+      false,
+      'valid openai-compatible thinking object should not produce problems',
     );
 
     removeProblemsByPrefix('team/team_yaml_error/');
