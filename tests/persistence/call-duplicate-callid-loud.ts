@@ -9,11 +9,7 @@ async function main(): Promise<void> {
 
     const dlg = await createMainDialog('tester');
     await dlg.persistFunctionCall('duplicate-func-call', 'env_get', '{}', 1);
-
-    await assert.rejects(
-      dlg.persistFunctionCall('duplicate-func-call', 'env_get', '{"second":true}', 1),
-      /func_call duplicate callId invariant violation/u,
-    );
+    await dlg.persistFunctionCall('duplicate-func-call', 'env_get', '{"second":true}', 1);
 
     await dlg.persistTellaskCall('duplicate-tellask-call', 'tellaskBack', '{}', 1);
     await assert.rejects(
@@ -26,8 +22,8 @@ async function main(): Promise<void> {
       events.filter(
         (event) => event.type === 'func_call_record' && event.id === 'duplicate-func-call',
       ).length,
-      1,
-      'expected duplicate func call write to persist exactly one canonical call record',
+      2,
+      'expected raw duplicate ordinary function call writes to both persist',
     );
     assert.equal(
       events.filter(

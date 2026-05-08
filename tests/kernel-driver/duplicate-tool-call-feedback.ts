@@ -42,28 +42,18 @@ async function collectEvents(
   return events;
 }
 
-function duplicateCallResultContent(callId: string, callName: string): string {
-  return [
-    `Error: this function call was rejected because callId \`${callId}\` has already been used.`,
-    '',
-    `Do not reuse an existing callId for \`${callName}\`. If you still need the tool, issue a new function call with a fresh callId.`,
-  ].join('\n');
-}
-
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
-    await writeStandardMinds(tmpRoot);
+    await writeStandardMinds(tmpRoot, { memberTools: ['env_get'] });
 
     const duplicatePrompt = 'Repeat an old function call id.';
     const duplicateCallId = 'duplicate-function-call-id';
-    const duplicateCallName = 'perform_paste';
-    const duplicateResult = duplicateCallResultContent(duplicateCallId, duplicateCallName);
-    const recovered = 'Recovered after duplicate call-id feedback.';
+    const duplicateCallName = 'env_get';
+    const recovered = 'Recovered after duplicate raw call-id mapping.';
     const sameRoundPrompt = 'Reuse one function call id twice in the same response.';
     const sameRoundCallId = 'same-round-duplicate-function-call-id';
-    const sameRoundDuplicateResult = duplicateCallResultContent(sameRoundCallId, duplicateCallName);
-    const sameRoundRecovered = 'Recovered after same-round duplicate call-id feedback.';
+    const sameRoundRecovered = 'Recovered after same-round duplicate raw call-id mapping.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -74,12 +64,12 @@ async function main(): Promise<void> {
           {
             id: duplicateCallId,
             name: duplicateCallName,
-            arguments: { text: 'stale paste' },
+            arguments: { key: 'DOMINDS_DUPLICATE_TOOL_CALL_FEEDBACK' },
           },
         ],
       },
       {
-        message: duplicateResult,
+        message: '(unset)',
         role: 'tool',
         response: recovered,
       },
@@ -91,17 +81,17 @@ async function main(): Promise<void> {
           {
             id: sameRoundCallId,
             name: duplicateCallName,
-            arguments: { text: 'first paste' },
+            arguments: { key: 'DOMINDS_DUPLICATE_TOOL_CALL_FEEDBACK' },
           },
           {
             id: sameRoundCallId,
             name: duplicateCallName,
-            arguments: { text: 'second paste' },
+            arguments: { key: 'DOMINDS_DUPLICATE_TOOL_CALL_FEEDBACK' },
           },
         ],
       },
       {
-        message: sameRoundDuplicateResult,
+        message: '(unset)',
         role: 'tool',
         response: sameRoundRecovered,
       },
@@ -118,46 +108,35 @@ async function main(): Promise<void> {
       true,
     );
 
-    assert(
-      dlg.msgs.some(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.id === duplicateCallId &&
-          msg.name === duplicateCallName &&
-          msg.content === duplicateResult,
-      ),
-      'duplicate function call should be returned to the LLM as a tool failure result',
+    const duplicateFuncCalls = dlg.msgs.filter(
+      (msg) => msg.type === 'func_call_msg' && msg.name === duplicateCallName,
     );
-    assert(
-      dlg.msgs.some(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === recovered,
-      ),
-      'driver should continue after duplicate call-id feedback',
-    );
-
-    const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, dlg.status);
     assert.equal(
-      events.filter((event) => event.type === 'func_call_record' && event.id === duplicateCallId)
-        .length,
+      duplicateFuncCalls.length,
       1,
-      'duplicate LLM call must not persist a second function call record',
+      'expected one duplicate raw-id call in live context',
+    );
+    assert.equal(duplicateFuncCalls[0]?.rawId, duplicateCallId);
+    assert.notEqual(duplicateFuncCalls[0]?.id, duplicateCallId);
+    const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, dlg.status);
+    const duplicateCallRecords = events.filter(
+      (event) =>
+        event.type === 'func_call_record' &&
+        event.name === duplicateCallName &&
+        event.rawId === duplicateCallId,
     );
     assert.equal(
-      events.filter((event) => event.type === 'func_result_record' && event.id === duplicateCallId)
-        .length,
-      0,
-      'duplicate LLM call feedback must not persist a second call-id result fact',
+      duplicateCallRecords.length,
+      2,
+      'duplicate raw id should still persist both calls',
     );
+    assert.notEqual(duplicateCallRecords[1]?.id, duplicateCallId);
 
     const streamErrors = (await collectEvents(ch, 300)).filter(
       (event): event is Extract<TypedDialogEvent, { type: 'stream_error_evt' }> =>
         event.type === 'stream_error_evt',
     );
-    assert.deepEqual(
-      streamErrors,
-      [],
-      'duplicate LLM call feedback must not emit stream_error_evt',
-    );
+    assert.deepEqual(streamErrors, [], 'duplicate raw-id mapping must not emit stream_error_evt');
 
     const sameRoundDlg = await createMainDialog('tester');
     sameRoundDlg.disableDiligencePush = true;
@@ -169,45 +148,30 @@ async function main(): Promise<void> {
       true,
     );
 
-    assert(
-      sameRoundDlg.msgs.some(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.id === sameRoundCallId &&
-          msg.name === duplicateCallName &&
-          msg.content === sameRoundDuplicateResult,
-      ),
-      'same-round duplicate function call should be returned as a tool failure result',
+    const sameRoundFuncCalls = sameRoundDlg.msgs.filter(
+      (msg) => msg.type === 'func_call_msg' && msg.name === duplicateCallName,
     );
-    assert(
-      sameRoundDlg.msgs.some(
-        (msg) =>
-          msg.type === 'saying_msg' &&
-          msg.role === 'assistant' &&
-          msg.content === sameRoundRecovered,
-      ),
-      'driver should continue after same-round duplicate call-id feedback',
-    );
-
+    assert.equal(sameRoundFuncCalls.length, 2, 'expected both same-round raw-id calls');
+    assert.equal(sameRoundFuncCalls[0]?.id, sameRoundCallId);
+    assert.equal(sameRoundFuncCalls[1]?.rawId, sameRoundCallId);
+    assert.notEqual(sameRoundFuncCalls[1]?.id, sameRoundCallId);
     const sameRoundEvents = await DialogPersistence.loadCourseEvents(
       sameRoundDlg.id,
       1,
       sameRoundDlg.status,
     );
-    assert.equal(
-      sameRoundEvents.filter(
-        (event) => event.type === 'func_call_record' && event.id === sameRoundCallId,
-      ).length,
-      1,
-      'same-round duplicate LLM calls must persist only the first function call record',
+    const sameRoundCallRecords = sameRoundEvents.filter(
+      (event) =>
+        event.type === 'func_call_record' &&
+        event.name === duplicateCallName &&
+        event.rawId === sameRoundCallId,
     );
     assert.equal(
-      sameRoundEvents.filter(
-        (event) => event.type === 'func_result_record' && event.id === sameRoundCallId,
-      ).length,
-      1,
-      'same-round duplicate LLM calls must persist only the first function result record',
+      sameRoundCallRecords.length,
+      2,
+      'same-round duplicate raw ids should both persist',
     );
+    assert.notEqual(sameRoundCallRecords[1]?.id, sameRoundCallId);
     const sameRoundStreamErrors = (await collectEvents(sameRoundCh, 300)).filter(
       (event): event is Extract<TypedDialogEvent, { type: 'stream_error_evt' }> =>
         event.type === 'stream_error_evt',

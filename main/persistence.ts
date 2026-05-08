@@ -787,6 +787,8 @@ function cloneRootGenerationAnchor(anchor: RootGenerationAnchor): RootGeneration
 }
 
 function buildFuncCallRecord(args: {
+  rawId?: string;
+  effectiveId?: string;
   id: string;
   name: string;
   rawArgumentsText: string;
@@ -796,6 +798,8 @@ function buildFuncCallRecord(args: {
     ts: formatUnifiedTimestamp(new Date()),
     type: 'func_call_record',
     genseq: args.genseq,
+    ...(args.rawId !== undefined ? { rawId: args.rawId } : {}),
+    ...(args.effectiveId !== undefined ? { effectiveId: args.effectiveId } : {}),
     id: args.id,
     name: args.name,
     rawArgumentsText: args.rawArgumentsText,
@@ -807,6 +811,8 @@ function buildFuncResultRecord(funcResult: FuncResultMsg, genseq: number): FuncR
     ts: formatUnifiedTimestamp(new Date()),
     type: 'func_result_record',
     id: funcResult.id,
+    ...(funcResult.rawId !== undefined ? { rawId: funcResult.rawId } : {}),
+    ...(funcResult.effectiveId !== undefined ? { effectiveId: funcResult.effectiveId } : {}),
     name: funcResult.name,
     content: funcResult.content,
     contentItems: funcResult.contentItems,
@@ -2221,19 +2227,6 @@ export class DiskFileDialogStore extends DialogStore {
         `receiveFuncResult invariant violation: missing valid genseq for func result ${funcResult.id}`,
       );
     }
-    const existingFuncResult = await this.findExistingFuncResultRecord(dialog, funcResult.id);
-    if (existingFuncResult) {
-      await this.raiseDuplicateCallResultInvariantViolation({
-        dialog,
-        kind: 'func_result',
-        callId: funcResult.id,
-        callName: funcResult.name,
-        incomingCourse: course,
-        incomingGenseq: genseq,
-        existingCourse: existingFuncResult.course,
-        existingGenseq: existingFuncResult.record.genseq,
-      });
-    }
     const funcResultRecord = buildFuncResultRecord(funcResult, genseq);
     await this.appendEvent(dialog, course, funcResultRecord);
 
@@ -2247,6 +2240,8 @@ export class DiskFileDialogStore extends DialogStore {
       const funcResultEvt: FunctionResultEvent = {
         type: 'func_result_evt',
         id: funcResult.id,
+        ...(funcResult.rawId !== undefined ? { rawId: funcResult.rawId } : {}),
+        ...(funcResult.effectiveId !== undefined ? { effectiveId: funcResult.effectiveId } : {}),
         name: funcResult.name,
         content: funcResult.content,
         contentItems: funcResult.contentItems,
@@ -2259,7 +2254,11 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async receiveTellaskResult(dialog: Dialog, result: TellaskResultMsg): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const existingTellaskResult = await this.findExistingTellaskResultRecord(dialog, result.callId);
+    const existingTellaskResult = await this.findExistingTellaskResultRecord(
+      dialog,
+      course,
+      result.callId,
+    );
     if (existingTellaskResult) {
       await this.raiseDuplicateCallResultInvariantViolation({
         dialog,
@@ -2268,7 +2267,7 @@ export class DiskFileDialogStore extends DialogStore {
         callName: result.callName,
         incomingCourse: course,
         incomingGenseq: undefined,
-        existingCourse: existingTellaskResult.course,
+        existingCourse: course,
         existingGenseq: undefined,
       });
     }
@@ -2303,82 +2302,38 @@ export class DiskFileDialogStore extends DialogStore {
     return await DialogPersistence.ensureSideDialogDirectory(dialogId);
   }
 
-  private async findExistingFuncResultRecord(
+  private async findExistingTellaskCallRecord(
     dialog: Dialog,
+    course: number,
     callId: string,
-  ): Promise<
-    | {
-        course: number;
-        record: FuncResultRecord;
+  ): Promise<TellaskCallRecord | undefined> {
+    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+    for (const event of events) {
+      if (event.type !== 'tellask_call_record') {
+        continue;
       }
-    | undefined
-  > {
-    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
-    for (let course = 1; course <= maxCourse; course += 1) {
-      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-      for (const event of events) {
-        if (event.type !== 'func_result_record') {
-          continue;
-        }
-        if (event.id !== callId) {
-          continue;
-        }
-        return { course, record: event };
+      if (event.id !== callId) {
+        continue;
       }
-    }
-    return undefined;
-  }
-
-  private async findExistingCallRecord(
-    dialog: Dialog,
-    callId: string,
-  ): Promise<
-    | {
-        course: number;
-        record: FuncCallRecord | TellaskCallRecord;
-      }
-    | undefined
-  > {
-    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
-    for (let course = 1; course <= maxCourse; course += 1) {
-      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-      for (const event of events) {
-        if (event.type === 'func_call_record' && event.id === callId) {
-          return { course, record: event };
-        }
-        if (event.type === 'tellask_call_record' && event.id === callId) {
-          return { course, record: event };
-        }
-      }
+      return event;
     }
     return undefined;
   }
 
   private async findExistingTellaskResultRecord(
     dialog: Dialog,
+    course: number,
     callId: string,
-  ): Promise<
-    | {
-        course: number;
-        record: TellaskResultRecord;
+  ): Promise<TellaskResultRecord | undefined> {
+    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
+    for (const event of events) {
+      if (event.type !== 'tellask_result_record') {
+        continue;
       }
-    | undefined
-  > {
-    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
-    for (let course = 1; course <= maxCourse; course += 1) {
-      const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-      for (const event of events) {
-        if (event.type !== 'tellask_result_record') {
-          continue;
-        }
-        if (event.callId !== callId) {
-          continue;
-        }
-        return { course, record: event };
+      if (event.callId !== callId) {
+        continue;
       }
+      return event;
     }
     return undefined;
   }
@@ -3333,6 +3288,7 @@ export class DiskFileDialogStore extends DialogStore {
     name: string,
     rawArgumentsText: string,
     genseq: number,
+    rawId?: string,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     if (!Number.isFinite(genseq) || genseq <= 0) {
@@ -3340,27 +3296,23 @@ export class DiskFileDialogStore extends DialogStore {
         `persistFunctionCall invariant violation: missing valid genseq for func call ${id}`,
       );
     }
-    const existingCall = await this.findExistingCallRecord(dialog, id);
-    if (existingCall) {
-      await this.raiseDuplicateCallInvariantViolation({
-        dialog,
-        kind: 'func_call',
-        callId: id,
-        callName: name,
-        incomingCourse: course,
-        incomingGenseq: genseq,
-        existingCourse: existingCall.course,
-        existingGenseq: existingCall.record.genseq,
-        existingName: existingCall.record.name,
-      });
-    }
-    const funcCallEvent = buildFuncCallRecord({ id, name, rawArgumentsText, genseq });
+    const normalizedRawId = typeof rawId === 'string' && rawId.trim() !== '' ? rawId : id;
+    const funcCallEvent = buildFuncCallRecord({
+      rawId: normalizedRawId,
+      effectiveId: id,
+      id,
+      name,
+      rawArgumentsText,
+      genseq,
+    });
 
     await this.appendEvent(dialog, course, funcCallEvent);
 
     const funcCallEvt: FuncCallStartEvent = {
       type: 'func_call_requested_evt',
       funcId: id,
+      rawFuncId: normalizedRawId,
+      effectiveFuncId: id,
       funcName: name,
       arguments: rawArgumentsText,
       course,
@@ -3393,7 +3345,7 @@ export class DiskFileDialogStore extends DialogStore {
         `persistTellaskCall invariant violation: missing valid genseq for tellask call ${id}`,
       );
     }
-    const existingCall = await this.findExistingCallRecord(dialog, id);
+    const existingCall = await this.findExistingTellaskCallRecord(dialog, course, id);
     if (existingCall) {
       await this.raiseDuplicateCallInvariantViolation({
         dialog,
@@ -3402,9 +3354,9 @@ export class DiskFileDialogStore extends DialogStore {
         callName: name,
         incomingCourse: course,
         incomingGenseq: genseq,
-        existingCourse: existingCall.course,
-        existingGenseq: existingCall.record.genseq,
-        existingName: existingCall.record.name,
+        existingCourse: course,
+        existingGenseq: existingCall.genseq,
+        existingName: existingCall.name,
       });
     }
     const tellaskCallEvent = buildTellaskCallRecord({
@@ -3423,6 +3375,8 @@ export class DiskFileDialogStore extends DialogStore {
       const funcCallEvt: FuncCallStartEvent = {
         type: 'func_call_requested_evt',
         funcId: id,
+        rawFuncId: id,
+        effectiveFuncId: id,
         funcName: name,
         arguments: formatTellaskCallArguments(tellaskCallEvent),
         course,
@@ -4135,6 +4089,8 @@ export class DiskFileDialogStore extends DialogStore {
         const funcCall = {
           type: 'func_call_requested_evt',
           funcId: event.id,
+          rawFuncId: event.rawId,
+          effectiveFuncId: event.effectiveId ?? event.id,
           funcName: event.name,
           arguments: event.rawArgumentsText,
           course,
@@ -4157,6 +4113,8 @@ export class DiskFileDialogStore extends DialogStore {
           const replyCall = {
             type: 'func_call_requested_evt',
             funcId: event.id,
+            rawFuncId: event.id,
+            effectiveFuncId: event.id,
             funcName: event.name,
             arguments: formatTellaskCallArguments(event),
             course,
@@ -4390,6 +4348,8 @@ export class DiskFileDialogStore extends DialogStore {
         const funcResult = {
           type: 'func_result_evt',
           id: event.id,
+          rawId: event.rawId,
+          effectiveId: event.effectiveId ?? event.id,
           name: event.name,
           content: event.content,
           contentItems: event.contentItems,
@@ -8782,6 +8742,8 @@ export class DialogPersistence {
             role: 'assistant',
             genseq: event.genseq,
             id: event.id,
+            ...(event.rawId !== undefined ? { rawId: event.rawId } : {}),
+            ...(event.effectiveId !== undefined ? { effectiveId: event.effectiveId } : {}),
             name: event.name,
             arguments: event.rawArgumentsText,
           });
@@ -8822,6 +8784,8 @@ export class DialogPersistence {
             role: 'tool',
             genseq: event.genseq,
             id: event.id,
+            ...(event.rawId !== undefined ? { rawId: event.rawId } : {}),
+            ...(event.effectiveId !== undefined ? { effectiveId: event.effectiveId } : {}),
             name: event.name,
             content: event.content,
             contentItems: event.contentItems,

@@ -12,12 +12,6 @@
 #   repeated empty-response deadlock detection for the same unchanged dialog context, plus conservative retry
 #   classification for gateway-returned HTML 502 Bad Gateway pages and
 #   `500 auth_unavailable: no auth available` infrastructure failures.
-#   `apiQuirks: glm-via-volcano` enables a narrow Anthropic-compatible stream quirk for
-#   Volcano Ark Coding Plan tool calls where an empty-object tool input may arrive as
-#   content_block_start.input={} followed by a lone `partial_json: "}"`.
-#   `apiQuirks: volcano-tool-use` enables a narrow Anthropic-compatible stream quirk for
-#   Volcano Ark Coding Plan text blocks that render a tool call as textual
-#   "Function call emitted by the assistant." metadata instead of protocol tool_use blocks.
 #   `apiQuirks: same-context-empty-response` detects repeated empty responses in the same
 #   dialog generation context and stops same-context retry loops with a deadlock-break prompt.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload

@@ -44,6 +44,8 @@ export type FuncCallMsg = Readonly<{
   role: 'assistant';
   genseq: number;
   id: string;
+  effectiveId?: string;
+  rawId?: string;
   name: string;
   arguments: string;
   provider_data?: ProviderData;
@@ -54,6 +56,8 @@ export type FuncResultMsg = Readonly<{
   role: 'tool';
   genseq: number;
   id: string;
+  effectiveId?: string;
+  rawId?: string;
   name: string;
   content: string;
   contentItems?: FuncResultContentItem[];

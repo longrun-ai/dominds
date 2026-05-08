@@ -6,8 +6,6 @@ import type { LlmRetryStrategy } from './gen';
 
 export type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
 
-export const GLM_VIA_VOLCANO_API_QUIRK = 'glm-via-volcano';
-export const VOLCANO_TOOL_USE_API_QUIRK = 'volcano-tool-use';
 export const SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK = 'same-context-empty-response';
 
 export type LlmFailureSummary = {

@@ -174,6 +174,8 @@ export type FuncCallStartEvent = LlmGenDlgEvent & {
   type: 'func_call_requested_evt';
   funcName: string;
   funcId: string;
+  rawFuncId?: string;
+  effectiveFuncId?: string;
   arguments: string;
   course: number;
   genseq: number;
@@ -182,6 +184,8 @@ export type FuncCallStartEvent = LlmGenDlgEvent & {
 export interface FunctionResultEvent {
   type: 'func_result_evt';
   id: string;
+  rawId?: string;
+  effectiveId?: string;
   name: string;
   content: string;
   contentItems?: FuncResultContentItem[];

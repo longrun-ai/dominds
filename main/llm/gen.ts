@@ -67,9 +67,6 @@ export interface LlmRequestContext {
   // can narrow this: FBR middle rounds intentionally run with no callable tools, while FBR closure
   // requires one of the conclusion tools.
   toolUseRequirement?: 'none' | 'auto' | 'required';
-  // Provider-adapter hint for quirks that must repair provider-assigned tool call ids before the
-  // kernel driver sees them. Normal duplicate-call enforcement remains in the kernel driver.
-  knownFunctionCallIds?: ReadonlySet<string>;
 }
 
 export type ToolResultImageIngest = {
@@ -177,7 +174,12 @@ export interface LlmStreamReceiver {
   sayingStart: () => Promise<void>;
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
-  funcCall: (callId: string, name: string, args: string) => Promise<void>;
+  funcCall: (
+    callId: string,
+    name: string,
+    args: string,
+    ids?: { rawCallId?: string; effectiveCallId?: string },
+  ) => Promise<void>;
   webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
   nativeToolCall?: (call: OpenAiResponsesNativeToolCall) => Promise<void>;
   toolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;

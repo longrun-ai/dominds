@@ -1633,7 +1633,15 @@ export class DomindsDialogContainer extends HTMLElement {
           'timestamp' in ev && typeof ev.timestamp === 'string'
             ? ev.timestamp
             : new Date().toISOString().slice(0, 19).replace('T', ' ');
-        this.handleFuncCallRequested(ev.genseq, ev.funcId, ev.funcName, ev.arguments, timestamp);
+        this.handleFuncCallRequested(
+          ev.genseq,
+          ev.funcId,
+          ev.funcName,
+          ev.arguments,
+          timestamp,
+          ev.rawFuncId,
+          ev.effectiveFuncId,
+        );
         break;
       }
       case 'web_search_call_evt':
@@ -2385,6 +2393,8 @@ export class DomindsDialogContainer extends HTMLElement {
     funcName: string,
     argumentsStr: string,
     timestamp: string,
+    rawFuncId?: string,
+    effectiveFuncId?: string,
   ): void {
     const existingSection = this.findFuncCallSection(genseq, funcId);
     if (existingSection) {
@@ -2413,7 +2423,13 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     // Create and append func-call section with all data at once (non-streaming mode)
-    const funcCallSection = this.createFuncCallSection(funcId, funcName, argumentsStr);
+    const funcCallSection = this.createFuncCallSection(
+      funcId,
+      funcName,
+      argumentsStr,
+      rawFuncId,
+      effectiveFuncId,
+    );
     funcCallSection.setAttribute('data-genseq', String(genseq));
     const appendTarget = this.getFuncCallAppendTarget(genseq, bubble);
     appendTarget.appendChild(funcCallSection);
@@ -5044,10 +5060,18 @@ export class DomindsDialogContainer extends HTMLElement {
     funcId: string,
     funcName: string,
     argumentsStr: string,
+    rawFuncId?: string,
+    effectiveFuncId?: string,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = 'func-call-section';
     el.setAttribute('data-func-id', funcId);
+    if (typeof rawFuncId === 'string' && rawFuncId.trim() !== '') {
+      el.setAttribute('data-raw-func-id', rawFuncId);
+    }
+    if (typeof effectiveFuncId === 'string' && effectiveFuncId.trim() !== '') {
+      el.setAttribute('data-effective-func-id', effectiveFuncId);
+    }
     el.setAttribute('data-func-name', funcName);
     el.setAttribute('data-func-arguments', argumentsStr);
     // Parse arguments for display

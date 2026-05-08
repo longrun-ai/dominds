@@ -3093,11 +3093,11 @@ export async function processTellaskFunctionRound(args: {
   const resolvedTellask = resolveTellaskFunctionCalls(funcCallsForResolution, {
     allowedSpecials: args.allowedSpecials,
   });
-  const validByCallId = new Map(
-    resolvedTellask.validCalls.map((handled) => [handled.originalCall.id, handled] as const),
+  const validByOriginalCall = new Map(
+    resolvedTellask.validCalls.map((handled) => [handled.originalCall, handled] as const),
   );
-  const invalidByCallId = new Map(
-    resolvedTellask.invalidCalls.map((issue) => [issue.originalCall.id, issue] as const),
+  const invalidByOriginalCall = new Map(
+    resolvedTellask.invalidCalls.map((issue) => [issue.originalCall, issue] as const),
   );
   const orderedSpecialDispositions: OrderedTellaskDisposition[] = [];
   for (const originalCall of args.funcCalls) {
@@ -3131,12 +3131,12 @@ export async function processTellaskFunctionRound(args: {
       });
       continue;
     }
-    const handled = validByCallId.get(originalCall.id);
+    const handled = validByOriginalCall.get(originalCall);
     if (handled) {
       orderedSpecialDispositions.push({ kind: 'valid', handled });
       continue;
     }
-    const issue = invalidByCallId.get(originalCall.id);
+    const issue = invalidByOriginalCall.get(originalCall);
     if (issue) {
       orderedSpecialDispositions.push({ kind: 'invalid', callName: originalCall.name, issue });
       continue;
@@ -3154,7 +3154,9 @@ export async function processTellaskFunctionRound(args: {
   const specialCallById = new Map(
     orderedValidCalls.map(({ call }) => [call.callId, call] as const),
   );
-  const originalCallById = new Map(args.funcCalls.map((call) => [call.id, call] as const));
+  const originalCallBySpecialCall = new Map(
+    orderedValidCalls.map(({ call, originalCall }) => [call, originalCall] as const),
+  );
   const tellaskCallMessages: FuncCallMsg[] = [];
   const issueResults: FuncResultMsg[] = [];
   for (const disposition of orderedSpecialDispositions) {
@@ -3247,7 +3249,7 @@ export async function processTellaskFunctionRound(args: {
       if (issueResults.some((result) => result.id === call.callId)) {
         continue;
       }
-      const originalCall = originalCallById.get(call.callId);
+      const originalCall = originalCallBySpecialCall.get(call);
       if (!originalCall) {
         throw new Error(
           `kernel-driver tellask special call invariant violation: missing original call for '${call.callId}'`,
@@ -3283,11 +3285,16 @@ export async function processTellaskFunctionRound(args: {
       }
       const originatingCall = specialCallById.get(callId);
       if (originatingCall) {
-        const originalCall = originalCallById.get(callId);
+        const originalCall = originalCallBySpecialCall.get(originatingCall);
+        if (!originalCall) {
+          throw new Error(
+            `kernel-driver tellask result invariant violation: missing original call for '${callId}'`,
+          );
+        }
         const result: FuncResultMsg = {
           type: 'func_result_msg',
           role: 'tool',
-          genseq: originalCall?.genseq ?? 1,
+          genseq: originalCall.genseq,
           id: callId,
           name: originatingCall.callName,
           content: output.content,
@@ -3304,7 +3311,7 @@ export async function processTellaskFunctionRound(args: {
     if (tellaskFuncResultByCallId.has(call.callId)) {
       continue;
     }
-    const originalCall = originalCallById.get(call.callId);
+    const originalCall = originalCallBySpecialCall.get(call);
     if (!originalCall) {
       throw new Error(
         `kernel-driver tellask call invariant violation: missing original call for '${call.callId}'`,

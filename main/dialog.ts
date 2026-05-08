@@ -2016,8 +2016,9 @@ export abstract class Dialog {
     name: string,
     rawArgumentsText: string,
     genseq: number,
+    rawId?: string,
   ): Promise<void> {
-    return await this.dlgStore.persistFunctionCall(this, id, name, rawArgumentsText, genseq);
+    return await this.dlgStore.persistFunctionCall(this, id, name, rawArgumentsText, genseq, rawId);
   }
 
   public async persistTellaskCall(
@@ -2734,6 +2735,7 @@ export abstract class DialogStore {
     _name: string,
     _rawArgumentsText: string,
     _genseq: number,
+    _rawId?: string,
   ): Promise<void> {}
 
   public async persistTellaskCall(

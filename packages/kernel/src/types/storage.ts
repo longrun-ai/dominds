@@ -382,6 +382,8 @@ export interface FuncCallRecord extends RootGenerationRef {
   ts: string;
   type: 'func_call_record';
   genseq: number;
+  rawId?: string;
+  effectiveId?: string;
   id: string;
   name: string;
   rawArgumentsText: string;
@@ -587,6 +589,8 @@ export interface FuncResultRecord extends RootGenerationRef {
   ts: string;
   type: 'func_result_record';
   genseq: number;
+  rawId?: string;
+  effectiveId?: string;
   id: string;
   name: string;
   content: string;

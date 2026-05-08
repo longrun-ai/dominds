@@ -15,7 +15,6 @@ import type {
   Tool,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
-import { createHash } from 'crypto';
 import { once } from 'events';
 import { createWriteStream } from 'fs';
 import fs from 'fs/promises';
@@ -27,11 +26,6 @@ import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import {
-  GLM_VIA_VOLCANO_API_QUIRK,
-  normalizeProviderApiQuirks,
-  VOLCANO_TOOL_USE_API_QUIRK,
-} from '../api-quirks';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   LlmBatchOutput,
@@ -72,18 +66,6 @@ const ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION =
   'Return the final answer as a JSON object. Do not include any non-JSON text.';
 const ANTHROPIC_COMPAT_CAPTURE_SSE_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_SSE';
 const ANTHROPIC_COMPAT_CAPTURE_DIR_ENV = 'DOMINDS_ANTHROPIC_COMPAT_CAPTURE_DIR';
-const VOLCANO_TEXT_TOOL_USE_PATTERN = new RegExp(
-  String.raw`(?:Function call emitted by the assistant\.\r?\n|^|\r?\n)` +
-    String.raw`Tool name:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\r?\n` +
-    String.raw`Call ID:\s*(call_[A-Za-z0-9_-]+)\r?\n` +
-    String.raw`Raw arguments, verbatim:\r?\n` +
-    String.raw`<raw_arguments>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?</raw_arguments>`,
-  'g',
-);
-const VOLCANO_SEED_TOOL_CALL_PATTERN =
-  /<seed:tool_call>\s*<function\s+name="([A-Za-z_][A-Za-z0-9_.:-]*)">\s*([\s\S]*?)<\/function>\s*<\/seed:tool_call>/g;
-const VOLCANO_SEED_TOOL_PARAMETER_PATTERN =
-  /<parameter\s+name="([^"]+)"\s+string="(true|false)">([\s\S]*?)<\/parameter>/g;
 const ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA = {
   type: 'object',
   additionalProperties: true,
@@ -105,17 +87,10 @@ type ActiveToolUse = {
   initialInput: unknown;
 };
 
-export type AnthropicStreamConsumeQuirks = {
-  normalizeLoneClosingBraceEmptyToolInputDelta: boolean;
-  convertVolcanoTextToolUseBlocks: boolean;
-};
-
 export type AnthropicStreamConsumeOptions = {
   abortSignal?: AbortSignal;
   forcedJsonToolName?: string;
-  quirks?: AnthropicStreamConsumeQuirks;
   genseq?: number;
-  knownFunctionCallIds?: ReadonlySet<string>;
 };
 
 type OfficialAnthropicThinkingConfig =
@@ -651,16 +626,6 @@ function createAnthropicClient(args: {
     });
   }
   return new Anthropic(options);
-}
-
-function resolveAnthropicStreamConsumeQuirks(
-  providerConfig: ProviderConfig,
-): AnthropicStreamConsumeQuirks {
-  const apiQuirks = normalizeProviderApiQuirks(providerConfig);
-  return {
-    normalizeLoneClosingBraceEmptyToolInputDelta: apiQuirks.has(GLM_VIA_VOLCANO_API_QUIRK),
-    convertVolcanoTextToolUseBlocks: apiQuirks.has(VOLCANO_TOOL_USE_API_QUIRK),
-  };
 }
 
 function buildAnthropicCompatibleMessagesUrl(providerConfig: ProviderConfig): string {
@@ -1758,34 +1723,10 @@ function stringifyToolUseInitialInput(input: unknown): string {
   return typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
 }
 
-function isEmptyJsonObject(value: unknown): boolean {
-  return isNonArrayRecord(value) && Object.keys(value).length === 0;
-}
-
-function resolveToolUseArgumentsJson(
-  state: ActiveToolUse,
-  quirks: AnthropicStreamConsumeQuirks,
-): string {
+function resolveToolUseArgumentsJson(state: ActiveToolUse): string {
   const trimmed = state.inputJson.trim();
   if (trimmed.length === 0) {
     return stringifyToolUseInitialInput(state.initialInput);
-  }
-
-  if (
-    quirks.normalizeLoneClosingBraceEmptyToolInputDelta &&
-    trimmed === '}' &&
-    isEmptyJsonObject(state.initialInput)
-  ) {
-    log.warn(
-      'ANTH quirk normalized lone closing-brace tool input delta to empty object',
-      undefined,
-      {
-        quirk: GLM_VIA_VOLCANO_API_QUIRK,
-        callId: state.id,
-        toolName: state.name,
-      },
-    );
-    return '{}';
   }
 
   try {
@@ -1807,414 +1748,11 @@ function resolveToolUseArgumentsJson(
   }
 }
 
-type VolcanoTextToolUsePart =
-  | { kind: 'text'; text: string }
-  | { kind: 'tool_use'; id: string; name: string; rawArgumentsText: string };
-
-type VolcanoToolCallIdRegistry = {
-  readonly used: Set<string>;
-  readonly nextSuffixByCallId: Map<string, number>;
-};
-
-function createVolcanoToolCallIdRegistry(
-  knownFunctionCallIds: ReadonlySet<string> | undefined,
-): VolcanoToolCallIdRegistry {
-  return {
-    used: new Set(knownFunctionCallIds ?? []),
-    nextSuffixByCallId: new Map(),
-  };
-}
-
-function decodeVolcanoSeedXmlText(text: string): string {
-  return text
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-function createVolcanoSeedToolCallId(args: {
-  name: string;
-  rawParametersText: string;
-  textIndex: number;
-  blockIndex?: number;
-  genseq?: number;
-}): string {
-  const hash = createHash('sha256')
-    .update(args.name)
-    .update('\0')
-    .update(args.rawParametersText)
-    .update('\0')
-    .update(String(args.textIndex))
-    .update('\0')
-    .update(args.blockIndex === undefined ? '' : String(args.blockIndex))
-    .digest('hex')
-    .slice(0, 24);
-  if (args.genseq !== undefined) {
-    return `call_volcano_seed_g${String(args.genseq)}_${hash}`;
-  }
-  return `call_volcano_seed_${hash}`;
-}
-
-function uniquifyVolcanoTextToolCallId(args: {
-  callId: string;
-  toolName: string;
-  idRegistry: VolcanoToolCallIdRegistry | undefined;
-}): string {
-  const trimmed = args.callId.trim();
-  if (trimmed.length === 0 || args.idRegistry === undefined) return args.callId;
-  if (!args.idRegistry.used.has(trimmed)) {
-    args.idRegistry.used.add(trimmed);
-    return trimmed;
-  }
-
-  for (;;) {
-    const nextSuffix = (args.idRegistry.nextSuffixByCallId.get(trimmed) ?? 0) + 1;
-    args.idRegistry.nextSuffixByCallId.set(trimmed, nextSuffix);
-    const candidate = `${trimmed}_v${String(nextSuffix)}`;
-    if (args.idRegistry.used.has(candidate)) continue;
-    args.idRegistry.used.add(candidate);
-    log.warn('ANTH volcano-tool-use quirk rewrote duplicate function call id', undefined, {
-      quirk: VOLCANO_TOOL_USE_API_QUIRK,
-      originalCallId: trimmed,
-      callId: candidate,
-      toolName: args.toolName,
-    });
-    return candidate;
-  }
-}
-
 function assertValidAnthropicStreamGenseq(genseq: number | undefined): void {
   if (genseq === undefined) return;
   if (!Number.isInteger(genseq) || genseq <= 0) {
     throw new Error(`Invalid Anthropic stream genseq for tool-call correlation: ${String(genseq)}`);
   }
-}
-
-function parseVolcanoSeedParameterValue(args: {
-  name: string;
-  stringFlag: 'true' | 'false';
-  rawValueText: string;
-}): unknown {
-  const decoded = decodeVolcanoSeedXmlText(args.rawValueText);
-  if (args.stringFlag === 'true') return decoded;
-
-  try {
-    return JSON.parse(decoded) as unknown;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameter JSON for ${args.name}: ${message}`,
-    );
-  }
-}
-
-function parseVolcanoSeedToolArgumentsJson(rawParametersText: string): string {
-  const parameters: Record<string, unknown> = {};
-  let cursor = 0;
-  VOLCANO_SEED_TOOL_PARAMETER_PATTERN.lastIndex = 0;
-  for (;;) {
-    const match = VOLCANO_SEED_TOOL_PARAMETER_PATTERN.exec(rawParametersText);
-    if (!match) break;
-    if (rawParametersText.slice(cursor, match.index).trim().length > 0) {
-      throw new Error(
-        `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: unexpected text between parameters`,
-      );
-    }
-
-    const rawName = match[1];
-    const stringFlag = match[2];
-    const rawValueText = match[3];
-    if (rawName === undefined || stringFlag === undefined || rawValueText === undefined) {
-      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameter`);
-    }
-    if (stringFlag !== 'true' && stringFlag !== 'false') {
-      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call string flag`);
-    }
-
-    const name = decodeVolcanoSeedXmlText(rawName);
-    if (Object.prototype.hasOwnProperty.call(parameters, name)) {
-      throw new Error(
-        `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: duplicate parameter ${name}`,
-      );
-    }
-    parameters[name] = parseVolcanoSeedParameterValue({
-      name,
-      stringFlag,
-      rawValueText,
-    });
-    cursor = VOLCANO_SEED_TOOL_PARAMETER_PATTERN.lastIndex;
-  }
-
-  if (cursor === 0 && rawParametersText.trim().length > 0) {
-    throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call parameters`);
-  }
-  if (rawParametersText.slice(cursor).trim().length > 0) {
-    throw new Error(
-      `Malformed ${VOLCANO_TOOL_USE_API_QUIRK} seed tool_call: unexpected trailing parameter text`,
-    );
-  }
-
-  return JSON.stringify(parameters);
-}
-
-function splitVolcanoTextToolUseParts(args: {
-  text: string;
-  genseq?: number;
-  blockIndex?: number;
-  idRegistry?: VolcanoToolCallIdRegistry;
-}): VolcanoTextToolUsePart[] {
-  const parts: VolcanoTextToolUsePart[] = [];
-  const matches: Array<{
-    index: number;
-    endIndex: number;
-    id: string;
-    name: string;
-    rawArgumentsText: string;
-  }> = [];
-
-  VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex = 0;
-  for (;;) {
-    const match = VOLCANO_TEXT_TOOL_USE_PATTERN.exec(args.text);
-    if (!match) break;
-    const name = match[1];
-    const id = match[2];
-    const rawArguments = match[3];
-    if (name === undefined || id === undefined || rawArguments === undefined) {
-      continue;
-    }
-    matches.push({
-      index: match.index,
-      endIndex: VOLCANO_TEXT_TOOL_USE_PATTERN.lastIndex,
-      id,
-      name,
-      rawArgumentsText: rawArguments,
-    });
-  }
-
-  VOLCANO_SEED_TOOL_CALL_PATTERN.lastIndex = 0;
-  for (;;) {
-    const match = VOLCANO_SEED_TOOL_CALL_PATTERN.exec(args.text);
-    if (!match) break;
-    const name = match[1];
-    const rawParametersText = match[2];
-    if (name === undefined || rawParametersText === undefined) {
-      continue;
-    }
-    matches.push({
-      index: match.index,
-      endIndex: VOLCANO_SEED_TOOL_CALL_PATTERN.lastIndex,
-      id: createVolcanoSeedToolCallId({
-        name,
-        rawParametersText,
-        textIndex: match.index,
-        blockIndex: args.blockIndex,
-        genseq: args.genseq,
-      }),
-      name,
-      rawArgumentsText: parseVolcanoSeedToolArgumentsJson(rawParametersText),
-    });
-  }
-
-  matches.sort((a, b) => a.index - b.index);
-  let cursor = 0;
-  for (const match of matches) {
-    if (match.index < cursor) {
-      throw new Error(`Malformed ${VOLCANO_TOOL_USE_API_QUIRK} text tool_call: overlapping blocks`);
-    }
-    if (match.index > cursor) {
-      parts.push({ kind: 'text', text: args.text.slice(cursor, match.index) });
-    }
-    parts.push({
-      kind: 'tool_use',
-      id: uniquifyVolcanoTextToolCallId({
-        callId: match.id,
-        toolName: match.name,
-        idRegistry: args.idRegistry,
-      }),
-      name: match.name,
-      rawArgumentsText: match.rawArgumentsText,
-    });
-    cursor = match.endIndex;
-  }
-  if (cursor === 0) return [{ kind: 'text', text: args.text }];
-  if (cursor < args.text.length) {
-    parts.push({ kind: 'text', text: args.text.slice(cursor) });
-  }
-  return parts;
-}
-
-async function emitTextWithVolcanoToolUseQuirk(args: {
-  text: string;
-  receiver: LlmStreamReceiver;
-  quirks: AnthropicStreamConsumeQuirks;
-  sayingStarted: boolean;
-  thinkingStarted: boolean;
-  genseq?: number;
-  blockIndex?: number;
-  idRegistry?: VolcanoToolCallIdRegistry;
-}): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
-  let sayingStarted = args.sayingStarted;
-  let thinkingStarted = args.thinkingStarted;
-  const parts = args.quirks.convertVolcanoTextToolUseBlocks
-    ? splitVolcanoTextToolUseParts({
-        text: args.text,
-        genseq: args.genseq,
-        blockIndex: args.blockIndex,
-        idRegistry: args.idRegistry,
-      })
-    : [{ kind: 'text' as const, text: args.text }];
-
-  for (const part of parts) {
-    if (part.kind === 'text') {
-      if (part.text.length === 0) continue;
-      if (thinkingStarted) {
-        log.error(
-          'ANTH stream ordering violation: received text_delta while thinking stream still active',
-          new Error('anthropic_stream_order_violation'),
-        );
-        await args.receiver.thinkingFinish();
-        thinkingStarted = false;
-      }
-      if (!sayingStarted) {
-        sayingStarted = true;
-        await args.receiver.sayingStart();
-      }
-      await args.receiver.sayingChunk(part.text);
-      continue;
-    }
-
-    if (sayingStarted) {
-      await args.receiver.sayingFinish();
-      sayingStarted = false;
-    }
-    log.warn('ANTH quirk converted text-rendered tool use to function call', undefined, {
-      quirk: VOLCANO_TOOL_USE_API_QUIRK,
-      callId: part.id,
-      toolName: part.name,
-    });
-    await args.receiver.funcCall(part.id, part.name, part.rawArgumentsText);
-  }
-  return { sayingStarted, thinkingStarted };
-}
-
-async function emitThinkingWithVolcanoToolUseQuirk(args: {
-  text: string;
-  receiver: LlmStreamReceiver;
-  quirks: AnthropicStreamConsumeQuirks;
-  sayingStarted: boolean;
-  thinkingStarted: boolean;
-  genseq?: number;
-  blockIndex?: number;
-  idRegistry?: VolcanoToolCallIdRegistry;
-}): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
-  let sayingStarted = args.sayingStarted;
-  let thinkingStarted = args.thinkingStarted;
-  const parts = args.quirks.convertVolcanoTextToolUseBlocks
-    ? splitVolcanoTextToolUseParts({
-        text: args.text,
-        genseq: args.genseq,
-        blockIndex: args.blockIndex,
-        idRegistry: args.idRegistry,
-      })
-    : [{ kind: 'text' as const, text: args.text }];
-
-  for (const part of parts) {
-    if (part.kind === 'text') {
-      if (part.text.length === 0) continue;
-      if (sayingStarted) {
-        log.error(
-          'ANTH stream ordering violation: received thinking_delta while saying stream still active',
-          new Error('anthropic_stream_order_violation'),
-        );
-        await args.receiver.sayingFinish();
-        sayingStarted = false;
-      }
-      if (!thinkingStarted) {
-        thinkingStarted = true;
-        await args.receiver.thinkingStart();
-      }
-      await args.receiver.thinkingChunk(part.text);
-      continue;
-    }
-
-    if (thinkingStarted) {
-      await args.receiver.thinkingFinish();
-      thinkingStarted = false;
-    }
-    log.warn('ANTH quirk converted thinking-rendered tool use to function call', undefined, {
-      quirk: VOLCANO_TOOL_USE_API_QUIRK,
-      callId: part.id,
-      toolName: part.name,
-    });
-    await args.receiver.funcCall(part.id, part.name, part.rawArgumentsText);
-  }
-  return { sayingStarted, thinkingStarted };
-}
-
-async function flushPendingVolcanoToolUseBlocks(args: {
-  textBlocks: Map<number, string>;
-  thinkingBlocks: Map<number, string>;
-  receiver: LlmStreamReceiver;
-  quirks: AnthropicStreamConsumeQuirks;
-  sayingStarted: boolean;
-  thinkingStarted: boolean;
-  genseq?: number;
-  idRegistry?: VolcanoToolCallIdRegistry;
-}): Promise<{ sayingStarted: boolean; thinkingStarted: boolean }> {
-  let sayingStarted = args.sayingStarted;
-  let thinkingStarted = args.thinkingStarted;
-  const blockIndexes = new Set<number>([...args.textBlocks.keys(), ...args.thinkingBlocks.keys()]);
-  for (const blockIndex of [...blockIndexes].sort((a, b) => a - b)) {
-    const pendingText = args.textBlocks.get(blockIndex);
-    const pendingThinking = args.thinkingBlocks.get(blockIndex);
-    if (pendingText !== undefined && pendingThinking !== undefined) {
-      throw new Error(
-        `ANTH invariant violation: block ${String(blockIndex)} has both pending text and thinking`,
-      );
-    }
-    if (pendingText === undefined && pendingThinking === undefined) {
-      throw new Error(
-        `ANTH invariant violation: block ${String(blockIndex)} has no pending text or thinking`,
-      );
-    }
-
-    let updated: { sayingStarted: boolean; thinkingStarted: boolean };
-    if (pendingText !== undefined) {
-      updated = await emitTextWithVolcanoToolUseQuirk({
-        text: pendingText,
-        receiver: args.receiver,
-        quirks: args.quirks,
-        sayingStarted,
-        thinkingStarted,
-        genseq: args.genseq,
-        blockIndex,
-        idRegistry: args.idRegistry,
-      });
-    } else {
-      if (pendingThinking === undefined) {
-        throw new Error(
-          `ANTH invariant violation: block ${String(blockIndex)} has no pending thinking`,
-        );
-      }
-      updated = await emitThinkingWithVolcanoToolUseQuirk({
-        text: pendingThinking,
-        receiver: args.receiver,
-        quirks: args.quirks,
-        sayingStarted,
-        thinkingStarted,
-        genseq: args.genseq,
-        blockIndex,
-        idRegistry: args.idRegistry,
-      });
-    }
-    sayingStarted = updated.sayingStarted;
-    thinkingStarted = updated.thinkingStarted;
-  }
-  args.textBlocks.clear();
-  args.thinkingBlocks.clear();
-  return { sayingStarted, thinkingStarted };
 }
 
 /**
@@ -2296,8 +1834,6 @@ function anthropicToChatMessages(
   message: unknown,
   genseq: number,
   forcedJsonToolName?: string,
-  quirks?: AnthropicStreamConsumeQuirks,
-  knownFunctionCallIds?: ReadonlySet<string>,
 ): ChatMessage[] {
   const results: ChatMessage[] = [];
 
@@ -2345,43 +1881,9 @@ function anthropicToChatMessages(
   };
 
   if (role === 'assistant') {
-    const volcanoToolCallIdRegistry: VolcanoToolCallIdRegistry | undefined =
-      quirks?.convertVolcanoTextToolUseBlocks === true
-        ? createVolcanoToolCallIdRegistry(knownFunctionCallIds)
-        : undefined;
     for (const block of blocks) {
       if (isRecord(block) && block.type === 'text' && typeof block.text === 'string') {
-        const parts =
-          quirks?.convertVolcanoTextToolUseBlocks === true
-            ? splitVolcanoTextToolUseParts({
-                text: block.text,
-                genseq,
-                idRegistry: volcanoToolCallIdRegistry,
-              })
-            : [{ kind: 'text' as const, text: block.text }];
-        for (const part of parts) {
-          if (part.kind === 'text') {
-            pushAssistantSaying(part.text);
-            continue;
-          }
-          log.warn(
-            'ANTH quirk converted batch text-rendered tool use to function call',
-            undefined,
-            {
-              quirk: VOLCANO_TOOL_USE_API_QUIRK,
-              callId: part.id,
-              toolName: part.name,
-            },
-          );
-          results.push({
-            type: 'func_call_msg',
-            id: part.id,
-            name: part.name,
-            arguments: part.rawArgumentsText,
-            role: 'assistant',
-            genseq,
-          });
-        }
+        pushAssistantSaying(block.text);
         continue;
       }
 
@@ -2510,22 +2012,12 @@ export async function consumeAnthropicStream(
   receiver: LlmStreamReceiver,
   options: AnthropicStreamConsumeOptions = {},
 ): Promise<AnthropicStreamConsumeResult> {
-  const quirks = options.quirks ?? {
-    normalizeLoneClosingBraceEmptyToolInputDelta: false,
-    convertVolcanoTextToolUseBlocks: false,
-  };
   const { abortSignal, forcedJsonToolName, genseq } = options;
   assertValidAnthropicStreamGenseq(genseq);
-  const volcanoToolCallIdRegistry: VolcanoToolCallIdRegistry | undefined =
-    quirks.convertVolcanoTextToolUseBlocks
-      ? createVolcanoToolCallIdRegistry(options.knownFunctionCallIds)
-      : undefined;
 
   // Stream lifecycle management using SDK start/stop events
   const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
   const activeToolUses = new Map<number, ActiveToolUse>();
-  const pendingVolcanoTextToolUseBlocks = new Map<number, string>();
-  const pendingVolcanoThinkingToolUseBlocks = new Map<number, string>();
   let sayingStarted = false;
   let thinkingStarted = false;
   let messageStarted = false;
@@ -2553,8 +2045,6 @@ export async function consumeAnthropicStream(
             },
           );
           activeToolUses.delete(blockIndex);
-          pendingVolcanoTextToolUseBlocks.delete(blockIndex);
-          pendingVolcanoThinkingToolUseBlocks.delete(blockIndex);
         }
         activeContentBlocks.set(blockIndex, contentBlock);
 
@@ -2566,10 +2056,6 @@ export async function consumeAnthropicStream(
             inputJson: '',
             initialInput: contentBlock.input,
           });
-        } else if (contentBlock.type === 'text' && quirks.convertVolcanoTextToolUseBlocks) {
-          pendingVolcanoTextToolUseBlocks.set(blockIndex, contentBlock.text ?? '');
-        } else if (contentBlock.type === 'thinking' && quirks.convertVolcanoTextToolUseBlocks) {
-          pendingVolcanoThinkingToolUseBlocks.set(blockIndex, contentBlock.thinking ?? '');
         }
 
         break;
@@ -2597,47 +2083,36 @@ export async function consumeAnthropicStream(
         if (delta.type === 'text_delta') {
           const textDelta = delta.text ?? '';
           if (textDelta) {
-            const pendingText = pendingVolcanoTextToolUseBlocks.get(blockIndex);
-            if (pendingText !== undefined) {
-              pendingVolcanoTextToolUseBlocks.set(blockIndex, `${pendingText}${textDelta}`);
-            } else {
-              const updated = await emitTextWithVolcanoToolUseQuirk({
-                text: textDelta,
-                receiver,
-                quirks,
-                sayingStarted,
-                thinkingStarted,
-                genseq,
-                blockIndex,
-                idRegistry: volcanoToolCallIdRegistry,
-              });
-              sayingStarted = updated.sayingStarted;
-              thinkingStarted = updated.thinkingStarted;
+            if (thinkingStarted) {
+              log.error(
+                'ANTH stream ordering violation: received text_delta while thinking stream still active',
+                new Error('anthropic_stream_order_violation'),
+              );
+              await receiver.thinkingFinish();
+              thinkingStarted = false;
             }
+            if (!sayingStarted) {
+              sayingStarted = true;
+              await receiver.sayingStart();
+            }
+            await receiver.sayingChunk(textDelta);
           }
         } else if (delta.type === 'thinking_delta') {
           const thinkingDelta = delta.thinking ?? '';
           if (thinkingDelta) {
-            const pendingThinking = pendingVolcanoThinkingToolUseBlocks.get(blockIndex);
-            if (pendingThinking !== undefined) {
-              pendingVolcanoThinkingToolUseBlocks.set(
-                blockIndex,
-                `${pendingThinking}${thinkingDelta}`,
+            if (sayingStarted) {
+              log.error(
+                'ANTH stream ordering violation: received thinking_delta while saying stream still active',
+                new Error('anthropic_stream_order_violation'),
               );
-            } else {
-              const updated = await emitThinkingWithVolcanoToolUseQuirk({
-                text: thinkingDelta,
-                receiver,
-                quirks,
-                sayingStarted,
-                thinkingStarted,
-                genseq,
-                blockIndex,
-                idRegistry: volcanoToolCallIdRegistry,
-              });
-              sayingStarted = updated.sayingStarted;
-              thinkingStarted = updated.thinkingStarted;
+              await receiver.sayingFinish();
+              sayingStarted = false;
             }
+            if (!thinkingStarted) {
+              thinkingStarted = true;
+              await receiver.thinkingStart();
+            }
+            await receiver.thinkingChunk(thinkingDelta);
           }
         } else if (delta.type === 'citations_delta') {
           // Handle CitationsDelta - typically just logging for now
@@ -2702,45 +2177,12 @@ export async function consumeAnthropicStream(
               await receiver.sayingFinish();
               sayingStarted = false;
             } else {
-              const argsJson = resolveToolUseArgumentsJson(activeToolUse, quirks);
+              const argsJson = resolveToolUseArgumentsJson(activeToolUse);
               await receiver.funcCall(activeToolUse.id, activeToolUse.name, argsJson);
             }
           }
           activeToolUses.delete(blockIndex);
-        } else if (activeContentBlock.type === 'text') {
-          const pendingText = pendingVolcanoTextToolUseBlocks.get(blockIndex);
-          if (pendingText !== undefined) {
-            const updated = await emitTextWithVolcanoToolUseQuirk({
-              text: pendingText,
-              receiver,
-              quirks,
-              sayingStarted,
-              thinkingStarted,
-              genseq,
-              blockIndex,
-              idRegistry: volcanoToolCallIdRegistry,
-            });
-            sayingStarted = updated.sayingStarted;
-            thinkingStarted = updated.thinkingStarted;
-            pendingVolcanoTextToolUseBlocks.delete(blockIndex);
-          }
         } else if (activeContentBlock.type === 'thinking') {
-          const pendingThinking = pendingVolcanoThinkingToolUseBlocks.get(blockIndex);
-          if (pendingThinking !== undefined) {
-            const updated = await emitThinkingWithVolcanoToolUseQuirk({
-              text: pendingThinking,
-              receiver,
-              quirks,
-              sayingStarted,
-              thinkingStarted,
-              genseq,
-              blockIndex,
-              idRegistry: volcanoToolCallIdRegistry,
-            });
-            sayingStarted = updated.sayingStarted;
-            thinkingStarted = updated.thinkingStarted;
-            pendingVolcanoThinkingToolUseBlocks.delete(blockIndex);
-          }
           if (thinkingStarted) {
             await receiver.thinkingFinish();
             thinkingStarted = false;
@@ -2814,18 +2256,6 @@ export async function consumeAnthropicStream(
 
       case 'message_stop': {
         messageStopped = true;
-        const updated = await flushPendingVolcanoToolUseBlocks({
-          textBlocks: pendingVolcanoTextToolUseBlocks,
-          thinkingBlocks: pendingVolcanoThinkingToolUseBlocks,
-          receiver,
-          quirks,
-          sayingStarted,
-          thinkingStarted,
-          genseq,
-          idRegistry: volcanoToolCallIdRegistry,
-        });
-        sayingStarted = updated.sayingStarted;
-        thinkingStarted = updated.thinkingStarted;
         activeContentBlocks.clear();
         activeToolUses.clear();
 
@@ -2860,8 +2290,6 @@ export async function consumeAnthropicStream(
     (messageStarted && !messageStopped) ||
     activeContentBlocks.size > 0 ||
     activeToolUses.size > 0 ||
-    pendingVolcanoTextToolUseBlocks.size > 0 ||
-    pendingVolcanoThinkingToolUseBlocks.size > 0 ||
     thinkingStarted ||
     sayingStarted
   ) {
@@ -3035,9 +2463,7 @@ export class AnthropicGen implements LlmGenerator {
     return consumeAnthropicStream(stream, receiver, {
       abortSignal,
       forcedJsonToolName: forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
-      quirks: resolveAnthropicStreamConsumeQuirks(providerConfig),
       genseq,
-      knownFunctionCallIds: requestContext.knownFunctionCallIds,
     });
   }
 
@@ -3154,8 +2580,6 @@ export class AnthropicGen implements LlmGenerator {
         response,
         genseq,
         forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
-        resolveAnthropicStreamConsumeQuirks(providerConfig),
-        requestContext.knownFunctionCallIds,
       ),
       ...(outputs.length > 0 ? { outputs } : {}),
       usage,
