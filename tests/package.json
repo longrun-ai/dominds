@@ -47,6 +47,7 @@
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-sideDialog-dedupe.ts",
     "kernel-driver:context-assembly-order": "pnpm run rtws -- -C script-rtws kernel-driver/context-assembly-order.ts",
     "kernel-driver:q4h-runtime-broadcaster-bootstrap": "pnpm run rtws -- -C script-rtws kernel-driver/q4h-runtime-broadcaster-bootstrap.ts",
+    "kernel-driver:q4h-preserves-diligence-budget": "pnpm run rtws -- -C script-rtws kernel-driver/q4h-preserves-diligence-budget.ts",
     "kernel-driver:sideDialog-queue-commit-mirror": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-queue-commit-mirror.ts",
     "kernel-driver:sideDialog-queue-order-before-gen": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-queue-order-before-gen.ts",
     "kernel-driver:sideDialog-multi-pending-registers-before-drive": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",

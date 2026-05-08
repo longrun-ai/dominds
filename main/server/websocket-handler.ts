@@ -85,7 +85,10 @@ import {
 } from '../dialog-instance-registry';
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
-import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/kernel-driver/runtime';
+import {
+  maybePrepareDiligenceAutoContinuePrompt,
+  suspendForKeepGoingBudgetExhausted,
+} from '../llm/kernel-driver/runtime';
 import { createLogger } from '../log';
 import {
   DialogPersistence,
@@ -1005,11 +1008,13 @@ async function maybeTriggerImmediateDiligencePrompt(mainDialog: MainDialog): Pro
     }));
 
     if (prepared.kind !== 'disabled') {
+      const maxInjectCount = Math.max(0, Math.floor(prepared.maxInjectCount));
+      const remainingCount = Math.max(0, Math.floor(prepared.nextRemainingBudget));
       postDialogEvent(mainDialog, {
         type: 'diligence_budget_evt',
-        maxInjectCount: prepared.maxInjectCount,
-        injectedCount: Math.max(0, prepared.maxInjectCount - prepared.nextRemainingBudget),
-        remainingCount: Math.max(0, prepared.nextRemainingBudget),
+        maxInjectCount,
+        injectedCount: maxInjectCount > 0 ? Math.max(0, maxInjectCount - remainingCount) : 0,
+        remainingCount,
         disableDiligencePush: mainDialog.disableDiligencePush,
       });
     }
@@ -1019,6 +1024,19 @@ async function maybeTriggerImmediateDiligencePrompt(mainDialog: MainDialog): Pro
         source: 'ws_diligence_push',
         reason: 'enable_keep_going_immediate_prompt',
       });
+      return;
+    }
+
+    if (prepared.kind === 'budget_exhausted') {
+      await suspendForKeepGoingBudgetExhausted({
+        dlg: mainDialog,
+        maxInjectCount: prepared.maxInjectCount,
+      });
+      mainDialog.diligencePushRemainingBudget = 0;
+      await DialogPersistence.mutateDialogLatest(mainDialog.id, () => ({
+        kind: 'patch',
+        patch: { diligencePushRemainingBudget: mainDialog.diligencePushRemainingBudget },
+      }));
     }
   } catch (error) {
     log.warn('Failed to trigger immediate diligence prompt after enabling keep-going', error, {

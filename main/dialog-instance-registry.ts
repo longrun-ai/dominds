@@ -116,10 +116,9 @@ export async function getOrRestoreMainDialog(
     persistedRemainingBudget,
     diligencePushMax > 0 ? diligencePushMax : 0,
   );
-  mainDialog.diligencePushRemainingBudget =
-    diligencePushMax > 0
-      ? Math.min(normalizedRemainingBudget, diligencePushMax)
-      : normalizedRemainingBudget;
+  // `diligence-push-max` only seeds defaults. Persisted per-dialog budget is the runtime source of
+  // truth, including operator-added budget above (or despite) the current team default.
+  mainDialog.diligencePushRemainingBudget = normalizedRemainingBudget;
 
   mainDialog.setPersistenceStatus(status);
   globalDialogRegistry.register(mainDialog);

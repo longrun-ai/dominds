@@ -82,15 +82,20 @@ To avoid infinite loops, diligence-push has a per-dialog budget (per-member `dil
 how many auto-continued diligence prompts can be injected for a given dialog before the runtime stops
 issuing further automatic Diligence Pushes for that budget.
 
-- Default: **3**
-- If `< 1`, diligence-push is effectively disabled for that member
+- Default: **99**
+- If `< 1`, new dialogs start with no automatic Diligence Push budget
 - Configurable per-member via `diligence-push-max` in `.minds/team.yaml`
 
-### Reset on Q4H
+Important: `diligence-push-max` is only the default budget used when a dialog instance is created
+or reset. Runtime decisions must use the concrete dialog's remaining budget
+(`diligencePushRemainingBudget`), so a manually refilled dialog can keep auto-continuing even when
+the team default is `0`.
 
-When a dialog becomes suspended due to a pending Q4H (Questions for Human), the diligence-push injection
-counter is reset. This ensures that after the human answers the Q4H and the dialog is resumed, the
-dialog gets a fresh diligence-push budget again.
+### Q4H suspension
+
+When a dialog becomes suspended due to a pending Q4H (Questions for Human), Diligence Push stops
+while that suspension is active. Q4H does not reapply the member default budget; the dialog keeps its
+own remaining budget so operator adjustments survive the suspension boundary.
 
 ### Budget exhausted → stop auto-pushing for that budget
 
@@ -103,9 +108,8 @@ Diligence-push can be disabled per-rtws in either of these ways:
 
 - If the selected diligence file exists but its content is empty/whitespace, diligence-push is disabled (no injection).
 
-Diligence-push can be disabled per-member in either of these ways:
-
-- If `diligence-push-max < 1`, diligence-push is disabled for that member (no injection).
+To stop auto-continue for a specific dialog, set that dialog's remaining budget to `0` or use the
+per-dialog Diligence Push disable switch.
 
 ## Diligence prompt resolution
 
@@ -122,9 +126,10 @@ If the first existing file in the above order has empty/whitespace content, **di
 Note: YAML frontmatter in diligence files is **ignored** by the runtime. If present, it is treated as
 non-content metadata and stripped from the prompt body.
 
-### Team member cap: `diligence-push-max`
+### Team member default budget: `diligence-push-max`
 
-Each team member can optionally cap diligence-push via `.minds/team.yaml`:
+Each team member can optionally set the starting Diligence Push budget for new or reset dialogs via
+`.minds/team.yaml`:
 
 ```yaml
 members:
@@ -135,7 +140,9 @@ members:
 Rules:
 
 - If missing, `diligence-push-max` defaults to **99** for that member.
-- If `diligence-push-max < 1`, diligence-push is disabled for that member (no injection), even if the diligence file exists.
+- If `diligence-push-max < 1`, newly created dialogs start with remaining budget `0`.
+- After creation or reset, runtime business logic follows the dialog's own remaining budget rather
+  than treating `diligence-push-max` as runtime authority.
 - Built-in shadow members `fuxi` and `pangu` default to `diligence-push-max: 0` unless explicitly overridden in team.yaml.
 
 ## UX notes

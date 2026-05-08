@@ -162,7 +162,11 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
 
   const resolved = await resolveRtwsDiligenceConfig();
   if (resolved.kind === 'disabled') {
-    return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
+    const normalizedRemaining =
+      typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
+        ? Math.max(0, Math.floor(options.remainingBudget))
+        : 0;
+    return { kind: 'disabled', nextRemainingBudget: normalizedRemaining };
   }
 
   const maxInjectCount =
@@ -174,11 +178,17 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
       ? Math.max(0, Math.floor(options.remainingBudget))
       : 0;
   const bypassBudget = options.ignoreBudgetExhaustion === true;
-
-  if (maxInjectCount < 1) {
-    if (!bypassBudget) {
-      return { kind: 'disabled', nextRemainingBudget: 0 };
+  // `diligencePushMax` is only the per-member default used when a dialog instance is created or
+  // reset. Runtime business decisions must be based on this dialog's persisted remaining budget so
+  // operator-added budget (for example 51/0) keeps working even when the team default is zero.
+  if (normalizedRemaining < 1 && !bypassBudget) {
+    if (maxInjectCount > 0) {
+      return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
     }
+    return { kind: 'disabled', nextRemainingBudget: 0 };
+  }
+
+  if (normalizedRemaining < 1) {
     const prompt: KernelDriverDiligencePrompt = {
       content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
       msgId: generateShortId(),
@@ -193,7 +203,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     };
   }
 
-  const currentRemaining = Math.min(normalizedRemaining, maxInjectCount);
+  const currentRemaining = normalizedRemaining;
   if (currentRemaining < 1 && !bypassBudget) {
     return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
   }

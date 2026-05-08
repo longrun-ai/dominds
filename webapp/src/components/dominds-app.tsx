@@ -772,8 +772,6 @@ export class DomindsApp extends HTMLElement {
     let remaining: number | null = normalizedRemaining;
     if (remaining === null) {
       remaining = configuredMax !== null && configuredMax > 0 ? configuredMax : 0;
-    } else if (configuredMax !== null && configuredMax > 0) {
-      remaining = Math.min(remaining, configuredMax);
     }
     return {
       disableDiligencePush: readyMsg.disableDiligencePush ?? false,

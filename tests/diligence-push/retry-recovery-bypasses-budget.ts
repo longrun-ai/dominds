@@ -48,13 +48,44 @@ async function main(): Promise<void> {
   assert.equal(disabled.kind, 'disabled');
 
   dlg.disableDiligencePush = false;
-  const ordinaryMaxDisabled = await maybePrepareDiligenceAutoContinuePrompt({
+  const zeroRemainingWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
     isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 0,
   });
-  assert.equal(ordinaryMaxDisabled.kind, 'disabled');
+  assert.equal(zeroRemainingWithZeroDefault.kind, 'disabled');
+  assert.equal(zeroRemainingWithZeroDefault.nextRemainingBudget, 0);
+
+  const manuallyRefilledWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
+    dlg,
+    isMainDialog: true,
+    remainingBudget: 3,
+    diligencePushMax: 0,
+  });
+  assert.equal(manuallyRefilledWithZeroDefault.kind, 'prompt');
+  if (manuallyRefilledWithZeroDefault.kind !== 'prompt') {
+    throw new Error(
+      `Expected manual dialog budget to prepare a prompt, got ${manuallyRefilledWithZeroDefault.kind}`,
+    );
+  }
+  assert.equal(manuallyRefilledWithZeroDefault.maxInjectCount, 0);
+  assert.equal(manuallyRefilledWithZeroDefault.nextRemainingBudget, 2);
+
+  const manuallyExpandedAbovePositiveDefault = await maybePrepareDiligenceAutoContinuePrompt({
+    dlg,
+    isMainDialog: true,
+    remainingBudget: 7,
+    diligencePushMax: 2,
+  });
+  assert.equal(manuallyExpandedAbovePositiveDefault.kind, 'prompt');
+  if (manuallyExpandedAbovePositiveDefault.kind !== 'prompt') {
+    throw new Error(
+      `Expected expanded dialog budget to prepare a prompt, got ${manuallyExpandedAbovePositiveDefault.kind}`,
+    );
+  }
+  assert.equal(manuallyExpandedAbovePositiveDefault.maxInjectCount, 2);
+  assert.equal(manuallyExpandedAbovePositiveDefault.nextRemainingBudget, 6);
 
   const recoveryWithOrdinaryKeepGoingDisabled = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,

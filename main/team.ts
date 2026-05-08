@@ -453,7 +453,8 @@ export namespace Team {
     fbr_effort?: number;
     // FBR-only model params overrides (same schema as model_params).
     fbr_model_params?: ModelParams;
-    // Diligence Push: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
+    // Diligence Push: per-member default budget for newly created or reset dialog instances.
+    // Runtime decisions use each dialog's persisted remaining budget, not this default.
     diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];

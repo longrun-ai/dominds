@@ -780,10 +780,11 @@ function emitDiligenceBudgetEvent(
 ): void {
   const maxInjectCount = Math.max(0, Math.floor(options.maxInjectCount));
   const remainingCount = Math.max(0, Math.floor(options.nextRemainingBudget));
+  const injectedCount = maxInjectCount > 0 ? Math.max(0, maxInjectCount - remainingCount) : 0;
   postDialogEvent(dlg, {
     type: 'diligence_budget_evt',
     maxInjectCount,
-    injectedCount: Math.max(0, maxInjectCount - remainingCount),
+    injectedCount,
     remainingCount,
     disableDiligencePush: dlg.disableDiligencePush,
   });
@@ -1588,25 +1589,20 @@ async function executeFunctionRound(args: {
   };
 }
 
-async function resetDiligenceBudgetAfterQ4H(dlg: Dialog, team: Team): Promise<void> {
+async function preserveDiligenceBudgetAcrossQ4H(dlg: Dialog): Promise<void> {
   try {
     if (!(await dlg.hasPendingQ4H())) {
       return;
     }
-    const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
-    if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
-      const next = Math.floor(configuredMax);
-      dlg.diligencePushRemainingBudget =
-        next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
-    } else {
-      dlg.diligencePushRemainingBudget = Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
-    }
+    // Q4H is a suspension boundary, not a reason to reapply member defaults. Keep the dialog's
+    // own remaining budget as the source of truth so operator-adjusted budgets survive Q4H.
+    dlg.diligencePushRemainingBudget = Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
     void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
       kind: 'patch',
       patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
     }));
   } catch (err) {
-    log.error('kernel-driver failed to reset Diligence Push budget after Q4H', err, {
+    log.error('kernel-driver failed to preserve Diligence Push budget after Q4H', err, {
       dialogId: dlg.id.valueOf(),
     });
     throw err;
@@ -1637,7 +1633,7 @@ async function maybeContinueWithDiligencePrompt(args: {
   });
   if (!suspension.canDrive) {
     if (suspension.q4h) {
-      await resetDiligenceBudgetAfterQ4H(dlg, team);
+      await preserveDiligenceBudgetAcrossQ4H(dlg);
     }
     return { kind: 'break' };
   }
@@ -2988,7 +2984,7 @@ export async function driveDialogStreamCore(
             allowPendingSideDialogs: routed.hasImmediateFollowupToolCalls,
           });
           if (!suspensionAfterToolRound.canDrive) {
-            await resetDiligenceBudgetAfterQ4H(dlg, team);
+            await preserveDiligenceBudgetAcrossQ4H(dlg);
             break;
           }
 
