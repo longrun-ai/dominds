@@ -134,6 +134,7 @@ change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### Current Effective State\n- The memory-carrier boundary cleanup is complete; next we strengthen the Taskdoc bulletin-board semantics; details: <doc-path>#<section>\n\n### Decisions In Effect\n- `personal_memory` is no longer treated as a short-term junk drawer\n- `team_memory` now carries only long-lived team conventions and invariants\n\n### Next Step\n- Add stronger `progress` bulletin-board guidance in control / team_mgmt manuals\n\n### Still-Active Blockers\n- None',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -150,6 +151,7 @@ change_mind({
   selector: 'goals',
   content:
     '## Goals\n\n- [ ] Create all toolset manuals\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] personal_memory\n  - [ ] control (In Progress)\n- [ ] Write tool descriptions',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -166,6 +168,7 @@ change_mind({
   selector: 'constraints',
   content:
     '## Constraints\n\n- man function must dynamically filter toolsets based on team.yaml\n- Runtime effective: Changes to team.yaml immediately visible\n- Toolset names use underscore format\n- New constraint: Each toolset needs 5 topics × 2 languages',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -205,5 +208,6 @@ change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### Current Effective State\n- The boundary wording has been propagated into handbook sources and tests; details: <doc-path>#<section>\n\n### Decisions In Effect\n- role assets / personal_memory / team_memory / Taskdoc-progress / reminders now have separated responsibilities\n\n### Next Step\n- Re-verify control manual wording, Taskdoc display text, and boundary tests\n\n### Still-Active Blockers\n- None',
+  previous_content_hash: 'sha256:...',
 });
 ```

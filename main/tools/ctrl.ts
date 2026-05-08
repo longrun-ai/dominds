@@ -60,6 +60,7 @@ import {
   deleteTaskPackageByChangeMindTarget,
   isTaskPackagePath,
   parseTaskPackageChangeMindTarget,
+  readTaskPackageByChangeMindTarget,
   taskPackageRelativePathForChangeMindTarget,
   updateTaskPackageByChangeMindTarget,
 } from '../utils/task-package';
@@ -76,6 +77,9 @@ type CtrlMessages = Readonly<{
   invalidFormatDoMind: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
+  taskDocPreviousContentHashRequired: string;
+  taskDocPreviousContentHashInvalid: string;
+  taskDocContentHashMismatch: (relativePath: string, currentContentHash: string) => string;
   invalidFormatMindMore: string;
   invalidFormatNeverMind: string;
   mindMoreItemsRequired: string;
@@ -481,9 +485,20 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       invalidFormatDoMind:
         '参数格式不对。用法：do_mind({ selector: string, category?: string, content: string })',
       invalidFormatChangeMind:
-        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
+        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string, previous_content_hash: string })',
       tooManyArgsChangeMind:
-        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
+        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string, previous_content_hash: string })',
+      taskDocPreviousContentHashRequired:
+        '错误：change_mind 需要 previous_content_hash。请先基于已注入的顶层差遣牒内容或 recall_taskdoc 返回的 content_hash，合并原有内容后再整段替换；没有把握时用 mind_more 追加小条目。',
+      taskDocPreviousContentHashInvalid:
+        '错误：previous_content_hash 格式无效。它必须是 recall_taskdoc 或已注入差遣牒状态中显示的 sha256:<64位十六进制> content_hash。',
+      taskDocContentHashMismatch: (relativePath, currentContentHash) =>
+        `错误：${relativePath} 的内容哈希不匹配，说明该章节已变化或你没有基于当前内容改写。\n` +
+        `当前 content_hash：${currentContentHash}\n\n` +
+        `请重新读取/回顾当前章节内容，并只在已充分合并原有内容后重试。若新内容会冲掉、删除或实质替换原有内容，必须满足其一：\n` +
+        `- 获得人类对该替换的直接、针对性确认；或\n` +
+        `- 依据人类认可的明确 SOP/验收标准，已经充分考虑原有内容且该替换合规。\n` +
+        `否则不要覆盖；优先使用 mind_more 追加或向人类确认。`,
       invalidFormatMindMore:
         '参数格式不对。用法：mind_more({ items: string[], sep?: string, selector?: string, category?: string })（selector 默认 progress）',
       invalidFormatNeverMind:
@@ -518,11 +533,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
         `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
       taskDocSectionAlreadyExists: (relativePath) =>
-        `无法新增：${relativePath} 已存在。若确有把握要改写已有章节，请使用 change_mind({ ... })。`,
+        `无法新增：${relativePath} 已存在。若确有把握要改写已有章节，请先取得当前 content_hash，再使用 change_mind({"selector":"<selector>","content":"...","previous_content_hash":"sha256:..."})。`,
       taskDocSectionChangeMissing: (relativePath) =>
         `无法修改：${relativePath} 不存在。若要新增章节，请使用 do_mind({ ... })。`,
       taskDocSectionMissing: (relativePath) =>
-        `未找到：${relativePath}。\n\n新增章节请使用 do_mind；已有章节追加小条目用 mind_more；改写已有章节用 change_mind：\n- do_mind({"category":"<category>","selector":"<selector>","content":"..."})\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"..."})`,
+        `未找到：${relativePath}。\n\n新增章节请使用 do_mind；已有章节追加小条目用 mind_more；改写已有章节用 change_mind 并带上当前 content_hash：\n- do_mind({"category":"<category>","selector":"<selector>","content":"..."})\n- mind_more({"category":"<category>","selector":"<selector>","items":["..."]})\n- change_mind({"category":"<category>","selector":"<selector>","content":"...","previous_content_hash":"sha256:..."})`,
       taskDocSectionDeleteMissing: (relativePath) =>
         `无法删除：${relativePath} 不存在。请先确认要删除的差遣牒章节。`,
       clearedCoursePrompt: (nextCourse) =>
@@ -547,9 +562,20 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     invalidFormatDoMind:
       'Error: Invalid args. Use: do_mind({ selector: string, category?: string, content: string })',
     invalidFormatChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string, previous_content_hash: string })',
     tooManyArgsChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string, previous_content_hash: string })',
+    taskDocPreviousContentHashRequired:
+      'Error: change_mind requires previous_content_hash. Use the content_hash from the injected top-level Taskdoc section or recall_taskdoc result, merge the existing content, then replace the full section. If unsure, use mind_more for small append-only updates.',
+    taskDocPreviousContentHashInvalid:
+      'Error: invalid previous_content_hash. It must be the sha256:<64 hex chars> content_hash shown by recall_taskdoc or the injected Taskdoc status block.',
+    taskDocContentHashMismatch: (relativePath, currentContentHash) =>
+      `Error: content hash mismatch for \`${relativePath}\`; the section changed or your replacement was not based on the current content.\n` +
+      `Current content_hash: ${currentContentHash}\n\n` +
+      `Re-read/review the current section and retry only after fully merging existing content. If the new content would overwrite, delete, or materially replace existing content, one of these must be true:\n` +
+      `- A human gave direct, targeted confirmation for this replacement; or\n` +
+      `- A human-approved explicit SOP/acceptance standard authorizes the replacement, and you have considered the existing content under that standard.\n` +
+      `Otherwise do not overwrite; prefer mind_more or ask the human to confirm.`,
     invalidFormatMindMore:
       'Error: Invalid args. Use: mind_more({ items: string[], sep?: string, selector?: string, category?: string }) (selector defaults to progress).',
     invalidFormatNeverMind:
@@ -585,11 +611,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
     taskDocSectionAlreadyExists: (relativePath) =>
-      `Cannot add: \`${relativePath}\` already exists. If you are sure you need to rewrite an existing section, use \`change_mind({ ... })\`.`,
+      `Cannot add: \`${relativePath}\` already exists. If you are sure you need to rewrite an existing section, get the current content_hash first, then use \`change_mind({"selector":"<selector>","content":"...","previous_content_hash":"sha256:..."})\`.`,
     taskDocSectionChangeMissing: (relativePath) =>
       `Cannot change: \`${relativePath}\` does not exist. To create a new section, use \`do_mind({ ... })\`.`,
     taskDocSectionMissing: (relativePath) =>
-      `Not found: \`${relativePath}\`.\n\nUse \`do_mind\` to create a section, \`mind_more\` for small append-only updates to existing sections, and \`change_mind\` to rewrite existing sections:\n- \`do_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
+      `Not found: \`${relativePath}\`.\n\nUse \`do_mind\` to create a section, \`mind_more\` for small append-only updates to existing sections, and \`change_mind\` with the current content_hash to rewrite existing sections:\n- \`do_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`\n- \`mind_more({\"category\":\"<category>\",\"selector\":\"<selector>\",\"items\":[\"...\"]})\`\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\``,
     taskDocSectionDeleteMissing: (relativePath) =>
       `Cannot delete: \`${relativePath}\` does not exist. Check the Taskdoc section target first.`,
     clearedCoursePrompt: (nextCourse) =>
@@ -903,7 +929,7 @@ export const changeMindTool: FuncTool = {
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['selector', 'content'],
+    required: ['selector', 'content', 'previous_content_hash'],
     properties: {
       selector: {
         type: 'string',
@@ -916,6 +942,11 @@ export const changeMindTool: FuncTool = {
           'Optional category directory within the Taskdoc package. When present, selector targets <category>/<selector>.md.',
       },
       content: { type: 'string', description: 'New section content.' },
+      previous_content_hash: {
+        type: 'string',
+        description:
+          'Content hash of the current section being replaced. Use the content_hash shown in the injected Taskdoc for top-level sections or returned by recall_taskdoc for extra sections.',
+      },
     },
   },
   argsValidation: 'dominds',
@@ -950,6 +981,14 @@ export const changeMindTool: FuncTool = {
     const contentValue = args['content'];
     const newTaskDocContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!newTaskDocContent) return toolFailure(t.taskDocContentRequired);
+
+    const previousContentHashValue = args['previous_content_hash'];
+    const previousContentHash =
+      typeof previousContentHashValue === 'string' ? previousContentHashValue.trim() : '';
+    if (!previousContentHash) return toolFailure(t.taskDocPreviousContentHashRequired);
+    if (!/^sha256:[0-9a-f]{64}$/u.test(previousContentHash)) {
+      return toolFailure(t.taskDocPreviousContentHashInvalid);
+    }
 
     // Taskdoc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
@@ -994,6 +1033,7 @@ export const changeMindTool: FuncTool = {
       taskPackageDirFullPath: fullPath,
       target: parsed.target,
       content: newTaskDocContent,
+      previousContentHash,
       updatedBy: caller.id,
     });
     switch (result.kind) {
@@ -1002,6 +1042,13 @@ export const changeMindTool: FuncTool = {
       case 'missing':
         return toolFailure(
           t.taskDocSectionChangeMissing(taskPackageRelativePathForChangeMindTarget(parsed.target)),
+        );
+      case 'content_hash_mismatch':
+        return toolFailure(
+          t.taskDocContentHashMismatch(
+            taskPackageRelativePathForChangeMindTarget(parsed.target),
+            result.currentContentHash,
+          ),
         );
       default: {
         const _exhaustive: never = result;
@@ -1475,7 +1522,14 @@ export const recallTaskdocTool: FuncTool = {
       throw err;
     }
 
-    const content = await fs.promises.readFile(sectionPath, 'utf8');
+    const current = await readTaskPackageByChangeMindTarget({
+      taskPackageDirFullPath: fullPath,
+      target,
+    });
+    if (current.kind === 'missing') {
+      return toolFailure(t.taskDocSectionMissing(relPath));
+    }
+    const content = current.content;
     const bytes = Buffer.byteLength(content, 'utf8');
     const maxSize = 100 * 1024;
     const clipped = bytes > maxSize ? content.slice(0, maxSize) : content;
@@ -1488,7 +1542,7 @@ export const recallTaskdocTool: FuncTool = {
 
     const closingSeparatorPrefix = clipped.endsWith('\n') ? '' : '\n';
     return toolSuccess(
-      `**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}${closingSeparatorPrefix}---${note}`,
+      `**recall_taskdoc:** \`${relPath}\`\ncontent_hash: \`${current.contentHash}\`\n\n---\n${clipped}${closingSeparatorPrefix}---${note}`,
     );
   },
 };

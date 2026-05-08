@@ -174,7 +174,7 @@ Taskdoc mutation function tools each affect **exactly one** section file of the 
 
 - `do_mind` creates a new section file and MUST fail if the target already exists.
 - `mind_more` appends entries without deduplicating or rewriting old content.
-- `change_mind` replaces an existing section file and MUST fail if the target does not exist.
+- `change_mind` replaces an existing section file and MUST fail if the target does not exist or if the supplied `previous_content_hash` does not match the current section content hash.
 - `never_mind` deletes an existing section file.
 
 Critically:
@@ -191,6 +191,7 @@ They take:
 
 - `selector` (required)
 - `content` (required)
+- `previous_content_hash` (required for `change_mind`)
 - `category` (optional)
 
 When `category` is missing/empty, `selector` targets the **top-level** section files:
@@ -218,6 +219,13 @@ Hard prohibitions:
 - `contracts|acceptance|grants|runbook|decisions|risks` MUST NOT be written outside `category="bearinmind"`.
 - No other category is auto-injected into the system prompt (only an index may be shown).
 
+`previous_content_hash` is the `sha256:...` hash of the current section content after Dominds' canonical Markdown file-ending normalization. It is not stored as extra state.
+
+- For auto-injected top-level sections (`goals`, `constraints`, `progress`), the injected Taskdoc status block shows each current `content_hash`.
+- For non-auto-injected sections, call `recall_taskdoc({ category, selector })`; its result includes `content_hash`.
+- On hash mismatch, the write MUST fail. The agent must re-read/review the current section and retry only after fully merging existing content.
+- If the proposed replacement would overwrite, delete, or materially replace existing content, the agent must have either direct human confirmation for that replacement, or a human-approved explicit SOP/acceptance standard that authorizes the replacement after considering the existing content.
+
 ### `recall_taskdoc` (read-only; for non-auto-injected sections)
 
 Because general file tools cannot read anything under `*.tsk/`, Dominds provides a dedicated read tool:
@@ -230,6 +238,7 @@ Behavior:
 
 - Reads `bearinmind/<whitelisted>.md` or `<category>/<selector>.md`.
 - The top-level three sections (`goals` / `constraints` / `progress`) are already auto-injected, so `recall_taskdoc` does not read them.
+- Returns the section `content_hash` for use as `change_mind.previous_content_hash`.
 
 Example (bearinmind):
 
@@ -249,7 +258,7 @@ Example:
 
 ```text
 Call the function tool `change_mind` with:
-{ "selector": "constraints", "content": "- MUST not browse the web.\n- MUST keep responses under 10 lines unless asked otherwise.\n" }
+{ "selector": "constraints", "content": "- MUST not browse the web.\n- MUST keep responses under 10 lines unless asked otherwise.\n", "previous_content_hash": "sha256:..." }
 ```
 
 ### Behavioral rules

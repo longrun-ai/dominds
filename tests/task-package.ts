@@ -12,7 +12,11 @@ import {
   neverMindTool,
   recallTaskdocTool,
 } from '../main/tools/ctrl';
-import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
+import {
+  computeTaskPackageContentHash,
+  readTaskPackageSections,
+  updateTaskPackageSection,
+} from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
 function requireMessageContent(message: { type: string } & Record<string, unknown>): string {
@@ -150,6 +154,7 @@ async function main(): Promise<void> {
     const msg2Content = requireMessageContent(msg2);
     assert.ok(msg2Content.includes('use `mind_more` to append small notes'));
     assert.ok(msg2Content.includes('use `change_mind` for full-section rewrite/merge'));
+    assert.ok(msg2Content.includes('content_hash=sha256:'));
     assert.ok(msg2Content.includes('## Goals'));
     assert.ok(msg2Content.includes(newGoals));
     assert.ok(msg2Content.includes('- Zero regressions\n\n## Constraints'));
@@ -244,6 +249,7 @@ async function main(): Promise<void> {
       })
     ).content;
     assert.ok(recall.includes('`ux/checklist.md`'));
+    assert.ok(recall.includes('content_hash: `sha256:'));
     assert.ok(recall.includes('UX\n'));
     assert.ok(recall.includes('UX\n---'));
     assert.ok(!recall.includes('UX\n\n---'));
@@ -292,11 +298,54 @@ async function main(): Promise<void> {
         category: 'ux',
         selector: 'missing',
         content: 'should not create',
+        previous_content_hash: computeTaskPackageContentHash('missing'),
       },
     );
     assert.equal(changeMissingResult.outcome, 'failure');
     assert.ok(changeMissingResult.content.includes('does not exist'));
     assert.ok(!(await pathExists(path.join(taskDir, 'ux', 'missing.md'))));
+
+    const changeWithoutHashResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'should not overwrite without hash',
+      },
+    );
+    assert.equal(changeWithoutHashResult.outcome, 'failure');
+    assert.ok(changeWithoutHashResult.content.includes('previous_content_hash'));
+    assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8'), 'UX\n');
+
+    const changeInvalidHashResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'should not overwrite invalid hash',
+        previous_content_hash: 'not-a-hash',
+      },
+    );
+    assert.equal(changeInvalidHashResult.outcome, 'failure');
+    assert.ok(changeInvalidHashResult.content.includes('invalid previous_content_hash'));
+    assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8'), 'UX\n');
+
+    const changeStaleHashResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'should not overwrite stale hash',
+        previous_content_hash: computeTaskPackageContentHash('stale'),
+      },
+    );
+    assert.equal(changeStaleHashResult.outcome, 'failure');
+    assert.ok(changeStaleHashResult.content.includes('content hash mismatch'));
+    assert.ok(changeStaleHashResult.content.includes('human'));
+    assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8'), 'UX\n');
 
     const changeMindResult = await changeMindTool.call(
       dlg,
@@ -305,6 +354,7 @@ async function main(): Promise<void> {
         category: 'ux',
         selector: 'checklist',
         content: 'UX replaced\r\n\r\n',
+        previous_content_hash: computeTaskPackageContentHash('UX\n'),
       },
     );
     assert.equal(changeMindResult.outcome, 'success');
@@ -314,6 +364,32 @@ async function main(): Promise<void> {
     );
     assert.equal(changedChecklistContent, 'UX replaced\n');
     assertSingleTrailingLf(changedChecklistContent, 'ux/checklist.md');
+
+    const concurrentPreviousHash = computeTaskPackageContentHash(changedChecklistContent);
+    const [concurrentA, concurrentB] = await Promise.all([
+      changeMindTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'first concurrent replacement',
+        previous_content_hash: concurrentPreviousHash,
+      }),
+      changeMindTool.call(dlg, { id: 'tester' } as unknown as Team.Member, {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'second concurrent replacement',
+        previous_content_hash: concurrentPreviousHash,
+      }),
+    ]);
+    const concurrentResults = [concurrentA, concurrentB];
+    assert.equal(concurrentResults.filter((result) => result.outcome === 'success').length, 1);
+    assert.equal(concurrentResults.filter((result) => result.outcome === 'failure').length, 1);
+    const concurrentFailure = concurrentResults.find((result) => result.outcome === 'failure');
+    assert.ok(concurrentFailure?.content.includes('content hash mismatch'));
+    const concurrentContent = await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8');
+    assert.ok(
+      concurrentContent === 'first concurrent replacement\n' ||
+        concurrentContent === 'second concurrent replacement\n',
+    );
 
     const neverMindInvalidCategory = await neverMindTool.call(
       dlg,

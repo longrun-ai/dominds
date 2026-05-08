@@ -131,6 +131,7 @@ change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### 当前有效状态\n- 已完成三类记忆载体边界收口，准备补 Taskdoc 公告牌属性；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- `personal_memory` 不再作为短期杂物柜\n- `team_memory` 只承接团队长期共识与不变量\n\n### 下一步\n- 在 control / team_mgmt 手册中补强 `progress` 的公告牌语义\n\n### 仍成立阻塞\n- 无',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -147,6 +148,7 @@ change_mind({
   selector: 'goals',
   content:
     '## Goals\n\n- [ ] 创建所有工具集手册\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] personal_memory\n  - [ ] control (进行中)\n- [ ] 编写工具描述',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -163,6 +165,7 @@ change_mind({
   selector: 'constraints',
   content:
     '## Constraints\n\n- man 函数必须根据 team.yaml 动态过滤工具集\n- 运行时生效：team.yaml 配置变更后立即可见\n- 工具集名称使用下划线格式\n- 新增约束：每个工具集需要 5 个 topic × 2 个语言',
+  previous_content_hash: 'sha256:...',
 });
 ```
 
@@ -202,5 +205,6 @@ change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### 当前有效状态\n- 边界口径已统一到手册源头与测试；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- 角色级资产 / personal_memory / team_memory / Taskdoc-progress / reminders 的职责已经切开\n\n### 下一步\n- 复验 control 手册、Taskdoc 展示文案与边界测试\n\n### 仍成立阻塞\n- 无',
+  previous_content_hash: 'sha256:...',
 });
 ```

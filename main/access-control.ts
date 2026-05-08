@@ -371,7 +371,7 @@ export function getAccessDeniedMessage(
         `- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具无法读/写/列目录/删除其中内容（硬编码无条件拒绝）。`,
       );
       lines.push(
-        `- 提示：新增章节请使用 \`do_mind\`；少量追加请使用 \`mind_more\`（默认 progress：\`mind_more({\"items\":[\"...\"]})\`）；改写已有整章请使用 \`change_mind\`（顶层：\`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`；额外章节：\`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`）。`,
+        `- 提示：新增章节请使用 \`do_mind\`；少量追加请使用 \`mind_more\`（默认 progress：\`mind_more({\"items\":[\"...\"]})\`）；改写已有整章请使用带当前内容哈希的 \`change_mind\`（顶层：\`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`；额外章节：先 \`recall_taskdoc\` 取得 \`content_hash\`，再 \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`）。`,
       );
       lines.push(
         `- 提示：读取额外章节请使用函数工具 \`recall_taskdoc\`：\`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\`。`,
@@ -381,7 +381,7 @@ export function getAccessDeniedMessage(
         `- Note: \`*.tsk/\` is an encapsulated Taskdoc. It is hard-denied for all general file tools.`,
       );
       lines.push(
-        `- Hint: To create a section, use \`do_mind\`; for small append-only updates, use \`mind_more\` (defaults to progress: \`mind_more({\"items\":[\"...\"]})\`); for full-section replacements of existing sections, use \`change_mind\` (top-level: \`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`; extra sections: \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`).`,
+        `- Hint: To create a section, use \`do_mind\`; for small append-only updates, use \`mind_more\` (defaults to progress: \`mind_more({\"items\":[\"...\"]})\`); for full-section replacements, use \`change_mind\` with the current content hash (top-level: \`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`; extra sections: call \`recall_taskdoc\` for \`content_hash\` first, then \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`).`,
       );
       lines.push(
         `- Hint: To read extra sections, use \`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\`.`,

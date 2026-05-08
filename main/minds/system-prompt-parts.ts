@@ -252,11 +252,11 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
         ? '当前是告急处置态：支线对话不要维护差遣牒，也不要整理差遣牒更新提案；把当前对话历史中下一程需要知道的讨论细节、下一步、关键定位、运行/验证信息、临时路径/ID/样例输入和恢复依据写入接续包提醒项。提醒项长度没有技术限制，宁可完整一些；允许多条粗略提醒项求稳，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
-        : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步。当前是告急处置态：先检查当前对话历史里尚未落文档的讨论细节；能作为全队共享状态/决策/约束/目标的，主线优先用 `do_mind` 新增章节保存；只有在确实需要改写已有章节、且已完成合并时，才用 `change_mind`。接续包提醒项只留差遣牒仍未覆盖、但恢复工作容易丢的细节；本程允许先保留多条粗略提醒项求稳，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
+        : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步。当前是告急处置态：先检查当前对话历史里尚未落文档的讨论细节；能作为全队共享状态/决策/约束/目标的，主线优先用 `do_mind` 新增章节保存；只有在确实需要改写已有章节、已完成合并且能带上当前 `content_hash` 作为 `previous_content_hash` 时，才用 `change_mind`。接续包提醒项只留差遣牒仍未覆盖、但恢复工作容易丢的细节；本程允许先保留多条粗略提醒项求稳，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
       : ctx.contextHealthPromptMode === 'caution'
         ? ctx.isSideDialog
           ? '当前是吃紧处置态：支线对话不要维护差遣牒，也不要整理差遣牒更新提案；把当前对话历史中下一程需要知道的讨论细节、下一步、关键定位、运行/验证信息、临时路径/ID/样例输入和恢复依据写入接续包提醒项。提醒项长度没有技术限制，宁可完整一些；若一时来不及，可先保留多条粗略提醒项过桥，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
-          : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步。当前是吃紧处置态：先检查当前对话历史里尚未落文档的讨论细节；能作为全队共享状态/决策/约束/目标的，主线优先用 `do_mind` 新增章节保存；只有在确实需要改写已有章节、且已完成合并时，才用 `change_mind`。接续包提醒项只留差遣牒仍未覆盖、但恢复工作容易丢的细节；若一时来不及，可先保留多条粗略提醒项过桥，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
+          : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步。当前是吃紧处置态：先检查当前对话历史里尚未落文档的讨论细节；能作为全队共享状态/决策/约束/目标的，主线优先用 `do_mind` 新增章节保存；只有在确实需要改写已有章节、已完成合并且能带上当前 `content_hash` 作为 `previous_content_hash` 时，才用 `change_mind`。接续包提醒项只留差遣牒仍未覆盖、但恢复工作容易丢的细节；若一时来不及，可先保留多条粗略提醒项过桥，但不要在当前程提前做“新一程清醒复核”。系统真正开启新一程后，第一步再复核整理：删除冗余、纠正偏激/失真思路，再收敛成高质量提醒项。'
         : '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。接续包提醒项默认应保持结构化、便于快速恢复。';
   const contextHealthLineEn =
     ctx.contextHealthPromptMode === 'critical'
@@ -272,11 +272,11 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
         ? 'Current mode is critical remediation: in a Side Dialog, do not maintain Taskdoc and do not draft Taskdoc update proposals. Put discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and resume reasoning into continuation-package reminders. Reminder length has no technical limit, so prefer being complete. Rough multi-reminder bridge notes are acceptable in this course, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
-        : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps. Current mode is critical remediation: first review current-dialog discussion details not yet written into documentation. If they belong to team-shared state, decisions, constraints, or goals, prefer creating a new section with `do_mind`; use `change_mind` only when an existing section truly needs rewriting and you have merged against the current content. Continuation-package reminders should keep only details still not covered by Taskdoc but easy to lose during resume. Rough multi-reminder bridge notes are acceptable in this course, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
+        : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps. Current mode is critical remediation: first review current-dialog discussion details not yet written into documentation. If they belong to team-shared state, decisions, constraints, or goals, prefer creating a new section with `do_mind`; use `change_mind` only when an existing section truly needs rewriting, you have merged against the current content, and you can pass the current `content_hash` as `previous_content_hash`. Continuation-package reminders should keep only details still not covered by Taskdoc but easy to lose during resume. Rough multi-reminder bridge notes are acceptable in this course, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
       : ctx.contextHealthPromptMode === 'caution'
         ? ctx.isSideDialog
           ? 'Current mode is caution remediation: in a Side Dialog, do not maintain Taskdoc and do not draft Taskdoc update proposals. Put discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and resume reasoning into continuation-package reminders. Reminder length has no technical limit, so prefer being complete. If needed, rough multi-reminder bridge notes are acceptable, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
-          : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps. Current mode is caution remediation: first review current-dialog discussion details not yet written into documentation. If they belong to team-shared state, decisions, constraints, or goals, prefer creating a new section with `do_mind`; use `change_mind` only when an existing section truly needs rewriting and you have merged against the current content. Continuation-package reminders should keep only details still not covered by Taskdoc but easy to lose during resume. If needed, rough multi-reminder bridge notes are acceptable, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
+          : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps. Current mode is caution remediation: first review current-dialog discussion details not yet written into documentation. If they belong to team-shared state, decisions, constraints, or goals, prefer creating a new section with `do_mind`; use `change_mind` only when an existing section truly needs rewriting, you have merged against the current content, and you can pass the current `content_hash` as `previous_content_hash`. Continuation-package reminders should keep only details still not covered by Taskdoc but easy to lose during resume. If needed, rough multi-reminder bridge notes are acceptable, but do not perform the new-course “clear-headed review” early. Once the system actually starts the new course, the first step is to review/rewrite them: remove redundancy, correct biased or distorted bridge notes, then compress them into high-quality reminders.'
         : 'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. Keep continuation-package reminders structured and fast to resume from by default.';
   if (ctx.language === 'zh') {
     return {
@@ -292,7 +292,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       taskdocSectionReplaceLine:
         ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
           ? '- 当前处于支线对话的上下文健康处置态：本程不要维护差遣牒，也不要整理差遣牒更新提案；把下一程需要恢复的细节写入足够详尽的接续包提醒项。'
-          : `- 更新差遣牒时：少量新增条目可用 \`mind_more\` 追加（默认 progress）；缺失章节用 \`do_mind\` 创建；需要删除陈旧项、重排结构或压缩时，用 \`change_mind\` 整章替换并先对照“上下文中注入的当前内容”做合并；需要删除整章文件时用 \`never_mind\`；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
+          : `- 更新差遣牒时：少量新增条目可用 \`mind_more\` 追加（默认 progress）；缺失章节用 \`do_mind\` 创建；需要删除陈旧项、重排结构或压缩时，用 \`change_mind\` 整章替换并先对照“上下文中注入的当前内容”做合并，同时带上当前 \`content_hash\` 作为 \`previous_content_hash\`；需要删除整章文件时用 \`never_mind\`；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
       progressLine:
         ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
           ? '- 当前处于支线对话的上下文健康处置态：本程不更新 `progress`；只把下一程接续所需信息写入提醒项。'
@@ -322,7 +322,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
           ? `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒追加条目/更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`
           : '工作流：停止扩张上下文 → 维护足够详尽的接续包提醒项（`add_reminder` 或 `update_reminder`，长度没有技术限制）→ 然后 `clear_mind` 开启新一程。',
       mainDialogWorkflowLine:
-        '工作流：先做事 → 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时用 `change_mind(progress)`；要删除整章文件时用 `never_mind`）→ 然后 `clear_mind` 清空噪音。',
+        '工作流：先做事 -> 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时用带 `previous_content_hash` 的 `change_mind`；要删除整章文件时用 `never_mind`）-> 然后 `clear_mind` 清空噪音。',
       contextHealthLine: contextHealthLineZh,
       taskdocLogLine: taskdocLogLineZh,
     };
@@ -341,7 +341,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     taskdocSectionReplaceLine:
       ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
         ? '- Current mode is context-health remediation in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course; put resume-critical details into sufficiently detailed continuation-package reminders.'
-        : `- When updating Taskdoc: use \`mind_more\` for small append-only additions (defaults to progress); create missing sections with \`do_mind\`; when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement based on the current injected content; when a whole section file should be removed, use \`never_mind\`; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
+        : `- When updating Taskdoc: use \`mind_more\` for small append-only additions (defaults to progress); create missing sections with \`do_mind\`; when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement based on the current injected content and include the current \`content_hash\` as \`previous_content_hash\`; when a whole section file should be removed, use \`never_mind\`; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
     progressLine:
       ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
         ? '- Current mode is context-health remediation in a Side Dialog: do not update `progress` in this course; put resume-critical information into reminders only.'
@@ -371,7 +371,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
         ? `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft append entries, a merged replacement, or a section deletion and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`
         : 'Workflow: stop expanding context → maintain sufficiently detailed continuation-package reminders (`add_reminder` or `update_reminder`, with no technical length limit) → then `clear_mind` to start a new course.',
     mainDialogWorkflowLine:
-      'Workflow: do work → distill (`update_reminder` + `mind_more(progress)`; use `change_mind(progress)` when compression/deletion is needed; use `never_mind` when removing a whole section file) → then `clear_mind` to drop noise.',
+      'Workflow: do work -> distill (`update_reminder` + `mind_more(progress)`; use `change_mind` with `previous_content_hash` when compression/deletion is needed; use `never_mind` when removing a whole section file) -> then `clear_mind` to drop noise.',
     contextHealthLine: contextHealthLineEn,
     taskdocLogLine: taskdocLogLineEn,
   };

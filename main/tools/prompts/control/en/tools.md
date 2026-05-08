@@ -150,7 +150,7 @@ Create a new Taskdoc section. It fails if the target section already exists.
 
 - Create-only: it does not overwrite existing content
 - Use this for missing resident sections or new extra sections that preserve details without touching existing Taskdoc text
-- If the target already exists and only needs small additions, use `mind_more`; if it needs a full rewrite/merge, use `change_mind`
+- If the target already exists and only needs small additions, use `mind_more`; if it needs a full rewrite/merge, use `change_mind` with the current `content_hash` as `previous_content_hash`
 - Does not start a new course
 - Changes visible to all teammates
 
@@ -163,6 +163,7 @@ Update taskdoc chapter.
 - `selector` (required): Chapter selector (goals/constraints/progress)
 - `category` (optional): Extra section directory; with `selector`, targets `<category>/<selector>.md`
 - `content` (required): New content (full section replacement)
+- `previous_content_hash` (required): The current section `content_hash` you based the replacement on
 
 **Returns:**
 
@@ -175,6 +176,7 @@ updated_at: <update timestamp>
 **Characteristics:**
 
 - Each call replaces an existing entire chapter; it does not create missing sections
+- The replacement is rejected if `previous_content_hash` does not match the current section content hash
 - Does not start a new course
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
@@ -206,7 +208,7 @@ mind_more({
 - Append-only: it does not deduplicate, rewrite, or compress old content
 - Good for adding one or two still-effective states, decisions, next steps, or blockers to `progress`
 - Not for appending every investigation step, long log, full plan, or acceptance record as a chronology; those details belong in formal rtws documentation, while Taskdoc keeps the summary and document pointer
-- If stale entries must be removed, reordered, or compressed, use `change_mind` for a full-section replacement; if a whole section file should be deleted, use `never_mind`
+- If stale entries must be removed, reordered, or compressed, use `change_mind` with the current `content_hash` as `previous_content_hash` for a full-section replacement; if a whole section file should be deleted, use `never_mind`
 - When one topic already has several phase notes, prefer `change_mind` to merge them into a concise current announcement instead of continuing to call `mind_more`
 
 ### 8. never_mind
@@ -221,7 +223,7 @@ Delete a Taskdoc section file.
 **Characteristics:**
 
 - Deletes only the whole section file; it does not edit content
-- Use it only when the whole section is no longer valid. If you only need to remove stale entries or compress structure, prefer `change_mind` with the cleaned full section
+- Use it only when the whole section is no longer valid. If you only need to remove stale entries or compress structure, prefer `change_mind` with the cleaned full section and current `content_hash` as `previous_content_hash`
 - Does not start a new course
 
 ### 9. recall_taskdoc
@@ -309,6 +311,7 @@ change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### Current Effective State\n- The handbook boundary split is now agreed: role assets / personal long-lived experience / Taskdoc-progress / reminders; details: <doc-path>#<section>\n\n### Decisions In Effect\n- `persona / knowhow / pitfalls` no longer absorb daily member experience\n- `personal_memory` is reserved for one member\\'s reusable long-lived experience\n\n### Next Step\n- Strengthen the bulletin-board semantics of Taskdoc `progress`\n\n### Still-Active Blockers\n- None',
+  previous_content_hash: 'sha256:...',
 });
 ```
 

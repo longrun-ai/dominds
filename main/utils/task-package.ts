@@ -12,8 +12,10 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AsyncFifoMutex } from '../runtime/async-fifo-mutex';
 
 export type TaskPackageSection = 'goals' | 'constraints' | 'progress';
 
@@ -90,6 +92,28 @@ export type TaskPackageChangeMindTargetError =
 export type TaskPackageChangeMindTargetParseResult =
   | { kind: 'ok'; target: TaskPackageChangeMindTarget }
   | { kind: 'err'; error: TaskPackageChangeMindTargetError };
+
+export type TaskPackageContentHash = `sha256:${string}`;
+
+const taskPackageFileLocks = new Map<string, AsyncFifoMutex>();
+
+function getTaskPackageFileLock(filePath: string): AsyncFifoMutex {
+  const key = path.resolve(filePath);
+  const existing = taskPackageFileLocks.get(key);
+  if (existing) return existing;
+  const created = new AsyncFifoMutex();
+  taskPackageFileLocks.set(key, created);
+  return created;
+}
+
+async function withTaskPackageFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+  const release = await getTaskPackageFileLock(filePath).acquire();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 
 const sectionToFilename: Record<TaskPackageSection, string> = {
   goals: 'goals.md',
@@ -218,28 +242,57 @@ export async function updateTaskPackageByChangeMindTarget(params: {
   taskPackageDirFullPath: string;
   target: TaskPackageChangeMindTarget;
   content: string;
+  previousContentHash: string;
   updatedBy?: string;
-}): Promise<{ kind: 'updated' } | { kind: 'missing' }> {
-  const { taskPackageDirFullPath, target, content } = params;
+}): Promise<
+  | { kind: 'updated' }
+  | { kind: 'missing' }
+  | { kind: 'content_hash_mismatch'; currentContentHash: TaskPackageContentHash }
+> {
+  const { taskPackageDirFullPath, target, content, previousContentHash } = params;
   const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
-  try {
-    const st = await fs.promises.stat(filePath);
-    if (!st.isFile()) {
-      throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+  return await withTaskPackageFileLock(filePath, async () => {
+    try {
+      const st = await fs.promises.stat(filePath);
+      if (!st.isFile()) {
+        throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+      }
+      const currentContent = await fs.promises.readFile(filePath, 'utf8');
+      const currentContentHash = computeTaskPackageContentHash(currentContent);
+      if (currentContentHash !== previousContentHash) {
+        return { kind: 'content_hash_mismatch', currentContentHash };
+      }
+      await writeExistingMarkdownFileWithCanonicalEnding(filePath, content);
+      return { kind: 'updated' };
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return { kind: 'missing' };
+      }
+      throw err;
     }
-    await writeExistingMarkdownFileWithCanonicalEnding(filePath, content);
-    return { kind: 'updated' };
-  } catch (err: unknown) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: unknown }).code === 'ENOENT'
-    ) {
-      return { kind: 'missing' };
-    }
-    throw err;
-  }
+  });
+}
+
+export async function readTaskPackageByChangeMindTarget(params: {
+  taskPackageDirFullPath: string;
+  target: TaskPackageChangeMindTarget;
+}): Promise<
+  { kind: 'present'; content: string; contentHash: TaskPackageContentHash } | { kind: 'missing' }
+> {
+  const filePath = taskPackageFilePathForChangeMindTarget(
+    params.taskPackageDirFullPath,
+    params.target,
+  );
+  return await withTaskPackageFileLock(filePath, async () => {
+    const content = await readTextFileIfPresent(filePath);
+    if (content === null) return { kind: 'missing' };
+    return { kind: 'present', content, contentHash: computeTaskPackageContentHash(content) };
+  });
 }
 
 export async function createTaskPackageByChangeMindTarget(params: {
@@ -252,21 +305,23 @@ export async function createTaskPackageByChangeMindTarget(params: {
   await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
 
   const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  try {
-    await writeNewMarkdownFileWithCanonicalEnding(filePath, content);
-    return { kind: 'created' };
-  } catch (err: unknown) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: unknown }).code === 'EEXIST'
-    ) {
-      return { kind: 'exists' };
+  return await withTaskPackageFileLock(filePath, async () => {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    try {
+      await writeNewMarkdownFileWithCanonicalEnding(filePath, content);
+      return { kind: 'created' };
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'EEXIST'
+      ) {
+        return { kind: 'exists' };
+      }
+      throw err;
     }
-    throw err;
-  }
+  });
 }
 
 export async function appendTaskPackageByChangeMindTarget(params: {
@@ -280,11 +335,13 @@ export async function appendTaskPackageByChangeMindTarget(params: {
   await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
 
   const filePath = taskPackageFilePathForChangeMindTarget(taskPackageDirFullPath, target);
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  const current = await readTextFileIfPresent(filePath);
-  const next =
-    current === null || current.trim() === '' ? content : joinForAppend(current, content, sep);
-  await writeMarkdownFileWithCanonicalEnding(filePath, next);
+  await withTaskPackageFileLock(filePath, async () => {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    const current = await readTextFileIfPresent(filePath);
+    const next =
+      current === null || current.trim() === '' ? content : joinForAppend(current, content, sep);
+    await writeMarkdownFileWithCanonicalEnding(filePath, next);
+  });
 }
 
 export async function deleteTaskPackageByChangeMindTarget(params: {
@@ -296,44 +353,40 @@ export async function deleteTaskPackageByChangeMindTarget(params: {
     params.target,
   );
 
-  try {
-    const st = await fs.promises.stat(filePath);
-    if (!st.isFile()) {
-      throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+  return await withTaskPackageFileLock(filePath, async () => {
+    try {
+      const st = await fs.promises.stat(filePath);
+      if (!st.isFile()) {
+        throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+      }
+      await fs.promises.unlink(filePath);
+      return { kind: 'deleted' };
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return { kind: 'missing' };
+      }
+      throw err;
     }
-    await fs.promises.unlink(filePath);
-    return { kind: 'deleted' };
-  } catch (err: unknown) {
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: unknown }).code === 'ENOENT'
-    ) {
-      return { kind: 'missing' };
-    }
-    throw err;
-  }
+  });
 }
 
 async function writeMarkdownFileWithCanonicalEnding(
   filePath: string,
   content: string,
 ): Promise<void> {
-  await fs.promises.writeFile(filePath, withCanonicalMarkdownFileEnding(content), 'utf8');
+  await writeMarkdownFileWithCanonicalEndingViaRename(filePath, content, 'overwrite');
 }
 
 async function writeExistingMarkdownFileWithCanonicalEnding(
   filePath: string,
   content: string,
 ): Promise<void> {
-  const handle = await fs.promises.open(filePath, 'r+');
-  try {
-    await handle.truncate(0);
-    await handle.writeFile(withCanonicalMarkdownFileEnding(content), 'utf8');
-  } finally {
-    await handle.close();
-  }
+  await writeMarkdownFileWithCanonicalEndingViaRename(filePath, content, 'replace-existing');
 }
 
 async function writeNewMarkdownFileWithCanonicalEnding(
@@ -346,10 +399,59 @@ async function writeNewMarkdownFileWithCanonicalEnding(
   });
 }
 
+async function writeMarkdownFileWithCanonicalEndingViaRename(
+  filePath: string,
+  content: string,
+  mode: 'overwrite' | 'replace-existing',
+): Promise<void> {
+  const tempFilePath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  if (mode === 'replace-existing') {
+    const st = await fs.promises.stat(filePath);
+    if (!st.isFile()) {
+      throw new Error(`Taskdoc section target is not a file: ${filePath}`);
+    }
+  }
+  try {
+    await fs.promises.writeFile(tempFilePath, withCanonicalMarkdownFileEnding(content), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    await fs.promises.rename(tempFilePath, filePath);
+  } catch (err: unknown) {
+    await removeTempFileIfPresent(tempFilePath);
+    throw err;
+  }
+}
+
+async function removeTempFileIfPresent(filePath: string): Promise<void> {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return;
+    }
+    throw err;
+  }
+}
+
 function withCanonicalMarkdownFileEnding(content: string): string {
   const stripped = stripTrailingMarkdownFileNewlines(content);
   if (stripped === '') return '';
   return `${stripped}\n`;
+}
+
+export function computeTaskPackageContentHash(content: string): TaskPackageContentHash {
+  return `sha256:${createHash('sha256')
+    .update(withCanonicalMarkdownFileEnding(content), 'utf8')
+    .digest('hex')}`;
 }
 
 export function taskPackageRelativePathForChangeMindTarget(

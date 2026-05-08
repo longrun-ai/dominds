@@ -821,7 +821,7 @@ Invoke the function tool `clear_mind` with:
 
 - `do_mind`: create one new section; fails if the target already exists.
 - `mind_more`: append small entries to an existing section; defaults to `progress`.
-- `change_mind`: replace one existing section; fails if the target does not exist.
+- `change_mind`: replace one existing section; fails if the target does not exist or `previous_content_hash` does not match the current content hash.
 - `never_mind`: delete one existing section.
 
 **Common section arguments**:
@@ -829,11 +829,12 @@ Invoke the function tool `clear_mind` with:
 - `selector: "goals" | "constraints" | "progress"` for top-level sections; or a valid selector with `category`
 - `category?: string`
 - `content: string` for `do_mind` / `change_mind`
+- `previous_content_hash: string` for `change_mind`
 
 Example:
 
 ```text
-Invoke `do_mind` to create a missing section, or `change_mind` to replace an existing section.
+Invoke `do_mind` to create a missing section, or `change_mind` with the current `content_hash` as `previous_content_hash` to replace an existing section.
 ```
 
 **Behavior**:

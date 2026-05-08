@@ -798,7 +798,7 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 
 - `do_mind`：创建一个新章节；若目标已存在则失败。
 - `mind_more`：向已有章节追加少量条目；默认追加到 `progress`。
-- `change_mind`：替换一个已有章节；若目标不存在则失败。
+- `change_mind`：替换一个已有章节；若目标不存在，或 `previous_content_hash` 与当前内容哈希不匹配，则失败。
 - `never_mind`：删除一个已有章节。
 
 **通用章节参数**：
@@ -806,11 +806,12 @@ async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
 - 顶层章节使用 `selector: "goals" | "constraints" | "progress"`；额外章节使用有效 `selector` 加 `category`
 - `category?: string`
 - `do_mind` / `change_mind` 使用 `content: string`
+- `change_mind` 还需要 `previous_content_hash: string`
 
 示例：
 
 ```text
-调用 `do_mind` 创建缺失章节，或调用 `change_mind` 替换已有章节。
+调用 `do_mind` 创建缺失章节，或调用 `change_mind` 并带上当前 `content_hash` 作为 `previous_content_hash` 替换已有章节。
 ```
 
 **行为**：
