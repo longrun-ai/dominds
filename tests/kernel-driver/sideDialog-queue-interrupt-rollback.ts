@@ -6,6 +6,7 @@ import {
   formatAssignmentFromAskerDialog,
   formatTeammateResponseContent,
 } from '../../main/runtime/inter-dialog-format';
+import { buildReplyToolReminderText } from '../../main/runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
@@ -79,6 +80,18 @@ async function main(): Promise<void> {
       language,
     });
     const panguFinalResponse = 'Verified. Final answer remains 2.';
+    const dlg = await createMainDialog('tester');
+    dlg.disableDiligencePush = true;
+    const replyReminderPrompt = buildReplyToolReminderText({
+      language,
+      directive: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: dlg.id.selfId,
+        targetCallId: 'root-call-pangu',
+        tellaskContent: rootTellaskBody,
+      },
+      replyTargetAgentId: 'tester',
+    });
     const expectedPanguInjected = formatTeammateResponseContent({
       callName: 'tellaskSessionless',
       callId: 'root-call-pangu',
@@ -129,11 +142,9 @@ async function main(): Promise<void> {
       { message: coderReply, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'user', response: panguFinalResponse },
+      { message: replyReminderPrompt, role: 'user', response: panguFinalResponse },
       { message: expectedPanguInjected, role: 'tool', response: rootFinalResponse },
     ]);
-
-    const dlg = await createMainDialog('tester');
-    dlg.disableDiligencePush = true;
 
     await driveDialogStream(
       dlg,

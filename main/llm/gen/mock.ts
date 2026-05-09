@@ -63,10 +63,13 @@ import { log } from '../../log';
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  NO_ACTIVE_REPLY_PREFIX_EN,
+  NO_ACTIVE_REPLY_PREFIX_ZH,
   REPLY_REASSERTION_PREFIX_EN,
   REPLY_REASSERTION_PREFIX_ZH,
   REPLY_SUPPRESSION_PREFIX_EN,
   REPLY_SUPPRESSION_PREFIX_ZH,
+  isReplyToolReminderPromptContent,
 } from '../../runtime/reply-prompt-copy';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
@@ -157,14 +160,11 @@ interface CachedDatabase {
   lookupMap: Map<string, MockResponse[]>;
 }
 
-const REPLY_TOOL_REMINDER_PREFIXES = [
-  '[Dominds replyTellask required]',
-  '[Dominds 必须调用回复工具]',
-] as const;
-
 const RUNTIME_PROMPT_WRAPPER_PREFIXES = [
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  NO_ACTIVE_REPLY_PREFIX_EN,
+  NO_ACTIVE_REPLY_PREFIX_ZH,
   REPLY_REASSERTION_PREFIX_EN,
   REPLY_REASSERTION_PREFIX_ZH,
   REPLY_SUPPRESSION_PREFIX_EN,
@@ -393,10 +393,7 @@ export class MockGen implements LlmGenerator {
     role: string,
     context: ReadonlyArray<ChatMessage>,
   ): MockResponse | null {
-    if (
-      role !== 'user' ||
-      !REPLY_TOOL_REMINDER_PREFIXES.some((prefix) => input.startsWith(prefix))
-    ) {
+    if (role !== 'user' || !isReplyToolReminderPromptContent(input)) {
       return null;
     }
     const toolMatch = input.match(/`(replyTellask(?:Sessionless|Back)?)`/);

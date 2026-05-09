@@ -6,8 +6,12 @@ import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pa
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  NO_ACTIVE_REPLY_PREFIX_EN,
+  NO_ACTIVE_REPLY_PREFIX_ZH,
   REPLY_REASSERTION_PREFIX_EN,
   REPLY_REASSERTION_PREFIX_ZH,
+  REPLY_TOOL_REMINDER_PREFIX_EN,
+  REPLY_TOOL_REMINDER_PREFIX_ZH,
   buildActiveReplyToolNote,
   buildReplyObligationReassertionText,
   buildReplyObligationSuppressionGuideText,
@@ -15,9 +19,6 @@ import {
 import { getWorkLanguage } from '../../runtime/work-language';
 import { loadActiveTellaskReplyDirective } from './tellask-special';
 import type { KernelDriverPrompt } from './types';
-
-const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
-const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
 
 export async function resolveReplyTargetAgentId(args: {
   dlg: Dialog;
@@ -49,9 +50,7 @@ function buildPromptContentWithExactReplyToolName(args: {
     args.dlg instanceof SideDialog &&
     args.dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
   const noActivePrefix =
-    args.language === 'zh'
-      ? '[Dominds 当前无跨对话回复义务]'
-      : '[Dominds no active inter-dialog reply]';
+    args.language === 'zh' ? NO_ACTIVE_REPLY_PREFIX_ZH : NO_ACTIVE_REPLY_PREFIX_EN;
   const activePrefix =
     args.language === 'zh' ? ACTIVE_REPLY_TOOL_PREFIX_ZH : ACTIVE_REPLY_TOOL_PREFIX_EN;
   const reminderPrefixes = [

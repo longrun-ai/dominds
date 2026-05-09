@@ -16,6 +16,7 @@ import {
   formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
+import { NO_ACTIVE_REPLY_PREFIX_ZH } from '../../main/runtime/reply-prompt-copy';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
@@ -326,7 +327,7 @@ async function main(): Promise<void> {
     assert.ok(
       successPromptings.every(
         (msg) =>
-          !msg.content.includes('[Dominds 当前无跨对话回复义务]') &&
+          !msg.content.includes(NO_ACTIVE_REPLY_PREFIX_ZH) &&
           !msg.content.includes('这轮不要调用任何 `reply*`'),
       ),
       'FBR prompts should stay isolated from ordinary inter-dialog reply-obligation guidance',
@@ -398,7 +399,7 @@ async function main(): Promise<void> {
     assert.ok(
       fallbackPromptings.every(
         (msg) =>
-          !msg.content.includes('[Dominds 当前无跨对话回复义务]') &&
+          !msg.content.includes(NO_ACTIVE_REPLY_PREFIX_ZH) &&
           !msg.content.includes('这轮不要调用任何 `reply*`'),
       ),
       'fallback FBR prompts should also avoid ordinary inter-dialog reply-obligation guidance',

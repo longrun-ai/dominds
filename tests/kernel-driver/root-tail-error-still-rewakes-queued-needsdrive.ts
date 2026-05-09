@@ -5,6 +5,7 @@ import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
+import { REPLY_TOOL_REMINDER_PREFIX_EN } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
   makeDriveOptions,
@@ -18,7 +19,7 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const replyReminderPrompt = [
-      '[Dominds replyTellask required]',
+      REPLY_TOOL_REMINDER_PREFIX_EN,
       '',
       'Please now call `replyTellaskBack({ replyContent })` to deliver the reply.',
     ].join('\n');

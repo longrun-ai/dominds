@@ -29,7 +29,10 @@ import {
   buildUserInterjectionPauseStopReason,
   isUserInterjectionPauseStopReason,
 } from '../../runtime/interjection-pause-stop';
-import { buildReplyToolReminderText } from '../../runtime/reply-prompt-copy';
+import {
+  buildReplyToolReminderText,
+  isReplyToolReminderPromptContent,
+} from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { LlmConfig } from '../client';
 import {
@@ -103,15 +106,8 @@ type UpNextPrompt =
   | RuntimeReplyReminderPrompt
   | RuntimeSideDialogReplyReminderPrompt;
 
-const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
-const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
-
 function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): boolean {
-  return (
-    typeof prompt?.content === 'string' &&
-    (prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN) ||
-      prompt.content.startsWith(REPLY_TOOL_REMINDER_PREFIX_ZH))
-  );
+  return typeof prompt?.content === 'string' && isReplyToolReminderPromptContent(prompt.content);
 }
 
 function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
@@ -126,7 +122,6 @@ async function buildReplyToolReminderPrompt(args: {
   return buildReplyToolReminderText({
     language: args.language,
     directive: args.directive,
-    prefix: args.language === 'zh' ? REPLY_TOOL_REMINDER_PREFIX_ZH : REPLY_TOOL_REMINDER_PREFIX_EN,
     replyTargetAgentId: await resolveReplyTargetAgentId({
       dlg: args.dlg,
       directive: args.directive,
@@ -1126,11 +1121,7 @@ export async function executeDriveRound(args: {
                   },
                 );
               } else {
-                const shouldDirectFallbackAfterParentRevive = hasParentReviveEntitlement(
-                  dialog,
-                  driveOptions,
-                );
-                if (!activePromptWasReplyToolReminder && !shouldDirectFallbackAfterParentRevive) {
+                if (!activePromptWasReplyToolReminder) {
                   const language = getWorkLanguage();
                   followUp =
                     sideDialogReplyTarget === undefined
@@ -1168,7 +1159,6 @@ export async function executeDriveRound(args: {
                       dialogId: dialog.id.valueOf(),
                       targetCallId: activeTellaskReplyDirective.targetCallId,
                       targetOwnerDialogId: sideDialogReplyTarget?.ownerDialogId,
-                      directFallbackAfterParentRevive: shouldDirectFallbackAfterParentRevive,
                     },
                   );
                 } else {
@@ -1355,7 +1345,8 @@ export async function executeDriveRound(args: {
                 };
                 if (
                   followUp.kind === 'registered_assignment_update' ||
-                  followUp.kind === 'new_course_runtime_sideDialog'
+                  followUp.kind === 'new_course_runtime_sideDialog' ||
+                  followUp.kind === 'runtime_sideDialog_reply_reminder'
                 ) {
                   const prompt: KernelDriverRuntimeSideDialogPrompt = {
                     ...runtimeCommon,
@@ -1364,7 +1355,10 @@ export async function executeDriveRound(args: {
                   };
                   return prompt;
                 }
-                if (followUp.kind === 'new_course_runtime_reply') {
+                if (
+                  followUp.kind === 'new_course_runtime_reply' ||
+                  followUp.kind === 'runtime_reply_reminder'
+                ) {
                   const prompt: KernelDriverRuntimeReplyPrompt = {
                     ...runtimeCommon,
                     tellaskReplyDirective: followUp.tellaskReplyDirective,

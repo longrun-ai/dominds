@@ -89,7 +89,6 @@ function main(): void {
   const askBackReminder = buildReplyToolReminderText({
     language: 'zh',
     directive: askBackDirective,
-    prefix: '[Dominds 必须调用回复工具]',
     replyTargetAgentId: 'pangu',
   });
   assert.match(askBackReminder, /@pangu 的【回问诉请】还在等你的回复/u);

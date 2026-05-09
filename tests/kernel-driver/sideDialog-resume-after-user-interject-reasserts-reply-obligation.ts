@@ -7,6 +7,7 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
 import { isUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
+import { buildReplyToolReminderText } from '../../main/runtime/reply-prompt-copy';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createMainDialog,
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
     const secondCycleInterjectPrompt =
       'Pause again after Continue; I still want one more temporary local answer.';
     const secondCycleInterjectResponse = 'Handled the second-cycle interruption locally too.';
-    const finalResponse = 'Nested work is back, so I can now finalize the parent side dialog.';
+    const fallbackResponse = 'Nested work is back, and I am still sending a plain final answer.';
 
     const sideDialog = await root.createSideDialog(
       'pangu',
@@ -65,6 +66,11 @@ async function main(): Promise<void> {
       directive: assignmentDirective,
       language: 'en',
     });
+    const replyReminderPrompt = buildReplyToolReminderText({
+      language: 'en',
+      directive: assignmentDirective,
+      replyTargetAgentId: 'tester',
+    });
     assert.match(reassertionPrompt, /@tester's 【Fresh Tellask】 is still waiting for your reply/u);
     assert.match(reassertionPrompt, /call `replyTellaskSessionless` to deliver it/u);
     assert.match(reassertionPrompt, /not asking you to reply immediately/u);
@@ -83,7 +89,12 @@ async function main(): Promise<void> {
       {
         message: reassertionPrompt,
         role: 'user',
-        response: finalResponse,
+        response: 'Nested work is back, so I can now finalize the parent side dialog.',
+      },
+      {
+        message: replyReminderPrompt,
+        role: 'user',
+        response: fallbackResponse,
       },
       {
         message: secondCycleInterjectPrompt,
@@ -402,6 +413,40 @@ async function main(): Promise<void> {
       surfacedGuidesAfterResume.length,
       2,
       'actual resume should not emit any duplicate reassertion guide beyond the two blocked-Continue surfacings',
+    );
+
+    const replyReminderEvent = events.find(
+      (event) =>
+        event.type === 'human_text_record' &&
+        event.origin === 'runtime' &&
+        event.content === replyReminderPrompt,
+    );
+    const replyReminderIndex =
+      replyReminderEvent === undefined ? -1 : events.indexOf(replyReminderEvent);
+    assert.ok(
+      replyReminderIndex >= 0,
+      'first plain answer after parent-revive resume should queue and consume one replyTellask reminder before fallback',
+    );
+    assert.deepEqual(
+      replyReminderEvent?.tellaskReplyDirective,
+      assignmentDirective,
+      'replyTellask reminder prompt must persist the active reply directive for the reminder round',
+    );
+    const fallbackWordsRecord = events.find(
+      (event): event is Extract<(typeof events)[number], { type: 'agent_words_record' }> =>
+        event.type === 'agent_words_record' && event.content === fallbackResponse,
+    );
+    assert.ok(fallbackWordsRecord, 'reminder round should receive the second plain fallback body');
+    const fallbackResolutionIndex = events.findIndex(
+      (event) =>
+        event.type === 'tellask_reply_resolution_record' &&
+        event.replyCallName === 'replyTellaskSessionless' &&
+        event.targetCallId === assignmentDirective.targetCallId,
+    );
+    assert.ok(fallbackResolutionIndex >= 0, 'second plain answer should trigger direct fallback');
+    assert.ok(
+      replyReminderIndex < fallbackResolutionIndex,
+      'replyTellask reminder must be persisted before the direct fallback response anchor',
     );
 
     const pendingAtRoot = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);

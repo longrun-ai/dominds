@@ -5,6 +5,7 @@ import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import { runBackendDriver } from '../../main/llm/kernel-driver/loop';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
+import { REPLY_TOOL_REMINDER_PREFIX_EN } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
   waitFor,
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const prompt = [
-      '[Dominds replyTellask required]',
+      REPLY_TOOL_REMINDER_PREFIX_EN,
       '',
       'Please now call `replyTellaskBack({ replyContent })` to deliver the reply.',
     ].join('\n');

@@ -9,6 +9,11 @@ import {
 } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
 import { isUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
+import {
+  ACTIVE_REPLY_TOOL_PREFIX_EN,
+  NO_ACTIVE_REPLY_PREFIX_EN,
+  REPLY_TOOL_REMINDER_PREFIX_EN,
+} from '../../main/runtime/reply-prompt-copy';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createMainDialog,
@@ -19,10 +24,6 @@ import {
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
-
-const ACTIVE_REPLY_PREFIX = '[Dominds active reply tool]';
-const NO_ACTIVE_REPLY_PREFIX = '[Dominds no active inter-dialog reply]';
-const REPLY_REMINDER_PREFIX = '[Dominds replyTellask required]';
 
 function lastAssistantSayingContent(msgs: readonly ChatMessage[]): string | null {
   for (let index = msgs.length - 1; index >= 0; index -= 1) {
@@ -37,9 +38,9 @@ function lastAssistantSayingContent(msgs: readonly ChatMessage[]): string | null
 function assertNoInjectedReplyGuidance(contents: readonly string[]): void {
   for (const content of contents) {
     assert.ok(
-      !content.startsWith(ACTIVE_REPLY_PREFIX) &&
-        !content.startsWith(NO_ACTIVE_REPLY_PREFIX) &&
-        !content.startsWith(REPLY_REMINDER_PREFIX),
+      !content.startsWith(ACTIVE_REPLY_TOOL_PREFIX_EN) &&
+        !content.startsWith(NO_ACTIVE_REPLY_PREFIX_EN) &&
+        !content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN),
       `unexpected injected reply guidance: ${content}`,
     );
   }
@@ -512,7 +513,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     tellaskContent: 'Deliver the tellasker reply once the askHuman answer is in.',
   });
   assert.equal(
-    guidance.promptContent?.startsWith(ACTIVE_REPLY_PREFIX),
+    guidance.promptContent?.startsWith(ACTIVE_REPLY_TOOL_PREFIX_EN),
     true,
     'askHuman answers should continue the active reply-obligation path instead of being downgraded into interjection suppression',
   );

@@ -4,6 +4,10 @@ import { getTellaskKindLabel } from './tellask-labels';
 
 export const ACTIVE_REPLY_TOOL_PREFIX_EN = '[Dominds active reply tool]';
 export const ACTIVE_REPLY_TOOL_PREFIX_ZH = '[Dominds 当前回复工具]';
+export const NO_ACTIVE_REPLY_PREFIX_EN = '[Dominds no active inter-dialog reply]';
+export const NO_ACTIVE_REPLY_PREFIX_ZH = '[Dominds 当前无跨对话回复义务]';
+export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds replyTellask required]';
+export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 必须调用回复工具]';
 export const REPLY_REASSERTION_PREFIX_EN = '[Dominds long-line reminder]';
 export const REPLY_REASSERTION_PREFIX_ZH = '[Dominds 长线提醒]';
 export const REPLY_SUPPRESSION_PREFIX_EN = '[Dominds handle this interjection first]';
@@ -159,12 +163,13 @@ export function buildReplyObligationReassertionText(args: ReplyObligationCopyArg
 export function buildReplyToolReminderText(args: {
   language: LanguageCode;
   directive: TellaskReplyDirective;
-  prefix: string;
   replyTargetAgentId?: string;
 }): string {
+  const prefix =
+    args.language === 'zh' ? REPLY_TOOL_REMINDER_PREFIX_ZH : REPLY_TOOL_REMINDER_PREFIX_EN;
   return args.language === 'zh'
     ? [
-        args.prefix,
+        prefix,
         '',
         `你刚才已经写了正文，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
         '',
@@ -172,13 +177,20 @@ export function buildReplyToolReminderText(args: {
         '如果你再次直接输出最终消息而仍不调用该工具，运行时会按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
       ].join('\n')
     : [
-        args.prefix,
+        prefix,
         '',
         `You already wrote the reply body, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
         '',
         buildReplyToolReminderLine(args),
         'If you still emit a plain final message without the tool, runtime will deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
       ].join('\n');
+}
+
+export function isReplyToolReminderPromptContent(content: string): boolean {
+  return (
+    content.startsWith(REPLY_TOOL_REMINDER_PREFIX_ZH) ||
+    content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN)
+  );
 }
 
 export function isStandaloneRuntimeGuidePromptContent(content: string): boolean {
