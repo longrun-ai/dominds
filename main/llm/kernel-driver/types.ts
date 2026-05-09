@@ -36,6 +36,7 @@ export type KernelDriverDriveSource =
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
+  resumeInProgressGeneration?: boolean;
   noPromptSideDialogResumeEntitlement?:
     | Readonly<{
         ownerDialogId: string;

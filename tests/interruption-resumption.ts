@@ -3,13 +3,30 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
+import { installRecordingGlobalDialogEventBroadcaster } from '../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID } from '../main/dialog';
 import {
-  getRunControlCountsSnapshot,
   reconcileDisplayStatesAfterRestart,
   refreshRunControlProjectionFromPersistenceFacts,
 } from '../main/dialog-display-state';
+import { globalDialogRegistry } from '../main/dialog-global-registry';
+import { driveDialogStream } from '../main/llm/kernel-driver';
+import { runBackendDriver } from '../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../main/persistence';
+import { recoverProceedingDrivesAfterRestart } from '../main/recovery/proceeding-drive';
+import { formatAssignmentFromAskerDialog } from '../main/runtime/inter-dialog-format';
+import { getWorkLanguage } from '../main/runtime/work-language';
+import {
+  createMainDialog,
+  lastAssistantSaying,
+  makeDriveOptions,
+  makeUserPrompt,
+  waitFor,
+  waitForAllDialogsUnlocked,
+  wrapPromptWithExpectedReplyTool,
+  writeMockDb,
+  writeStandardMinds,
+} from './kernel-driver/helpers';
 
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -22,26 +39,147 @@ async function main(): Promise<void> {
 
   try {
     process.chdir(tmpRoot);
+    installRecordingGlobalDialogEventBroadcaster({ label: 'interruption-resumption' });
+    await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    // Dialog A: was proceeding when server crashed => becomes stopped (resumable) after reconcile.
-    const aRoot = 'dlg-a';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'dialog.yaml'), { id: aRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: true,
-      displayState: { kind: 'proceeding' },
+    // Dialog A: was actively generating when server crashed => remains proceeding and is queued
+    // for automatic backend drive after restart.
+    const rootA = await createMainDialog('tester');
+    rootA.disableDiligencePush = true;
+    const aRoot = rootA.id.rootId;
+    await DialogPersistence.mutateDialogLatest(rootA.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: true,
+        displayState: { kind: 'proceeding' },
+        disableDiligencePush: true,
+      },
+    }));
+    await fs.writeFile(
+      path.join(tmpRoot, '.dialogs', 'run', aRoot, 'course-001.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'gen_start_record',
+        genseq: 1,
+        rootCourse: 1,
+        rootGenseq: 1,
+      })}\n${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'human_text_record',
+        genseq: 1,
+        content: 'Continue the already-started generation after restart.',
+        msgId: 'prompt-a',
+        grammar: 'markdown',
+        origin: 'user',
+        userLanguageCode: 'en',
+        rootCourse: 1,
+        rootGenseq: 1,
+      })}\n`,
+      'utf-8',
+    );
+    await DialogPersistence.savePendingSideDialogs(new DialogID(aRoot), [
+      {
+        sideDialogId: 'sub-a',
+        createdAt: new Date().toISOString(),
+        callName: 'tellask',
+        mentionList: ['@worker'],
+        tellaskContent: 'Still pending while the root generation was in flight',
+        targetAgentId: 'worker',
+        callId: 'call-sub-a',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        callType: 'B',
+        sessionSlug: 'session-a',
+      },
+    ]);
+    globalDialogRegistry.unregister(aRoot);
+    const sideRoot = await createMainDialog('tester');
+    sideRoot.disableDiligencePush = true;
+    const sideTrigger = 'Create side dialog for restart recovery.';
+    const sideTellaskBody = 'Finish from a side dialog after restart.';
+    const sideSessionSlug = 'side-restart-recovery';
+    const language = getWorkLanguage();
+    const sidePrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
+        callName: 'tellask',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: sideTellaskBody,
+        language,
+        sessionSlug: sideSessionSlug,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellask',
+      language,
     });
+    await writeMockDb(tmpRoot, [
+      {
+        message: 'Continue the already-started generation after restart.',
+        role: 'user',
+        response: 'Restart recovery drove the in-progress root generation.',
+      },
+      {
+        message: sideTrigger,
+        role: 'user',
+        response: 'Creating side dialog.',
+        funcCalls: [
+          {
+            id: 'side-restart-call',
+            name: 'tellask',
+            arguments: {
+              targetAgentId: 'pangu',
+              sessionSlug: sideSessionSlug,
+              tellaskContent: sideTellaskBody,
+            },
+          },
+        ],
+      },
+      {
+        message: sidePrompt,
+        role: 'user',
+        response: 'Side dialog recovered and replies after restart.',
+        funcCalls: [
+          {
+            id: 'side-restart-reply',
+            name: 'replyTellask',
+            arguments: {
+              replyContent: 'Side dialog recovered and replies after restart.',
+            },
+          },
+        ],
+      },
+    ]);
+    await driveDialogStream(
+      sideRoot,
+      makeUserPrompt(sideTrigger, 'side-trigger', { userLanguageCode: language }),
+      true,
+      makeDriveOptions(),
+    );
+    await waitForAllDialogsUnlocked(sideRoot, 3_000);
+    const sideDialog = sideRoot
+      .getAllDialogs()
+      .find((dialog) => dialog.id.selfId !== dialog.id.rootId);
+    assert.ok(sideDialog, 'expected side dialog to be created before restart simulation');
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: true,
+        displayState: { kind: 'proceeding' },
+      },
+    }));
+    globalDialogRegistry.unregister(sideRoot.id.rootId);
 
-    // Dialog B: was proceeding, but now has pending Q4H => becomes blocked after reconcile.
+    // Dialog B: was proceeding, but not actively generating. It is still reconciled from durable
+    // blocker facts rather than auto-driven.
     const bRoot = 'dlg-b';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'dialog.yaml'), { id: bRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'latest.yaml'), {
       currentCourse: 1,
       lastModified: new Date().toISOString(),
       status: 'active',
-      generating: true,
+      generating: false,
+      needsDrive: true,
       displayState: { kind: 'proceeding' },
     });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'q4h.yaml'), {
@@ -57,6 +195,22 @@ async function main(): Promise<void> {
       updatedAt: new Date().toISOString(),
     });
 
+    // Dialog I: generating=true is not enough for automatic recovery when an explicit
+    // non-restart interruption marker says the drive must be manually resumed.
+    const iRoot = 'dlg-i';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'dialog.yaml'), { id: iRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: true,
+      displayState: { kind: 'proceeding' },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'user_stop', detail: 'operator paused before restart' },
+      },
+    });
+
     // Dialog C: malformed q4h should quarantine only itself instead of aborting the whole rebuild.
     const cRoot = 'dlg-c';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'dialog.yaml'), { id: cRoot });
@@ -64,8 +218,9 @@ async function main(): Promise<void> {
       currentCourse: 1,
       lastModified: new Date().toISOString(),
       status: 'active',
-      generating: true,
-      displayState: { kind: 'proceeding' },
+      generating: false,
+      needsDrive: true,
+      displayState: { kind: 'idle_waiting_user' },
     });
     await fs.writeFile(
       path.join(tmpRoot, '.dialogs', 'run', cRoot, 'q4h.yaml'),
@@ -141,8 +296,8 @@ async function main(): Promise<void> {
       },
     });
 
-    // Dialog G: a proceeding dialog left behind by restart reconcile becomes a resumable
-    // server-restart interruption and should be counted as resumable.
+    // Dialog G: a stale queued drive with no active generation/proceeding projection becomes a
+    // resumable server-restart interruption and should be counted as resumable.
     const gRoot = 'dlg-g';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'dialog.yaml'), { id: gRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'latest.yaml'), {
@@ -150,18 +305,64 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      displayState: { kind: 'proceeding' },
+      needsDrive: true,
+      displayState: { kind: 'idle_waiting_user' },
     });
 
     await reconcileDisplayStatesAfterRestart();
 
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
     assert.ok(latestA, 'latest.yaml for dlg-a should exist');
-    assert.equal(latestA.generating, false);
+    assert.equal(latestA.generating, true);
+    assert.equal(latestA.needsDrive, true);
     assert.ok(latestA.displayState);
-    assert.equal(latestA.displayState.kind, 'stopped');
-    assert.equal(latestA.displayState.reason.kind, 'server_restart');
-    assert.equal(latestA.displayState.continueEnabled, true);
+    assert.equal(latestA.displayState.kind, 'proceeding');
+    assert.equal(latestA.executionMarker, undefined);
+    assert.equal(globalDialogRegistry.get(aRoot), undefined);
+
+    await recoverProceedingDrivesAfterRestart();
+    const recoveredA = globalDialogRegistry.get(aRoot);
+    assert.ok(recoveredA, 'restart recovery should restore dlg-a root');
+    assert.equal(
+      globalDialogRegistry.isMarkedNeedingDrive(aRoot),
+      true,
+      'restart recovery should enqueue dlg-a for backend drive',
+    );
+    void runBackendDriver();
+    await waitFor(
+      async () =>
+        lastAssistantSaying(recoveredA) ===
+        'Restart recovery drove the in-progress root generation.',
+      3_000,
+      'backend loop to resume in-progress generation even while pending sideDialogs remain',
+    );
+    await waitForAllDialogsUnlocked(recoveredA, 3_000);
+    const latestAAfterDrive = await DialogPersistence.loadDialogLatest(
+      new DialogID(aRoot),
+      'running',
+    );
+    assert.equal(latestAAfterDrive?.generating, false);
+    assert.equal(latestAAfterDrive?.displayState?.kind, 'blocked');
+
+    await waitFor(
+      async () =>
+        sideRoot.msgs.some(
+          (msg) =>
+            msg.type === 'tellask_result_msg' &&
+            msg.content.includes('Side dialog recovered and replies after restart.'),
+        ),
+      3_000,
+      'restart recovery to directly resume in-progress sideDialog generation',
+    );
+    assert.ok(
+      sideRoot.msgs.some(
+        (msg) =>
+          msg.type === 'tellask_result_msg' &&
+          msg.content.includes('side-restart-call') &&
+          msg.content.includes('Side dialog recovered and replies after restart.'),
+      ),
+      'sideDialog restart recovery should deliver replyTellask back to root',
+    );
 
     const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
     assert.ok(latestB, 'latest.yaml for dlg-b should exist');
@@ -170,6 +371,15 @@ async function main(): Promise<void> {
     assert.equal(latestB.displayState.kind, 'blocked');
     assert.equal(latestB.displayState.reason.kind, 'needs_human_input');
 
+    const latestI = await DialogPersistence.loadDialogLatest(new DialogID(iRoot), 'running');
+    assert.ok(latestI, 'latest.yaml for dlg-i should exist');
+    assert.equal(latestI.generating, false);
+    assert.ok(latestI.displayState);
+    assert.equal(latestI.displayState.kind, 'stopped');
+    assert.equal(latestI.displayState.reason.kind, 'user_stop');
+    assert.equal(latestI.executionMarker?.kind, 'interrupted');
+    assert.equal(latestI.executionMarker.reason.kind, 'user_stop');
+
     assert.equal(await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running'), null);
     await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot));
 
@@ -177,10 +387,6 @@ async function main(): Promise<void> {
     assert.ok(latestD, 'latest.yaml for dlg-d should exist');
     assert.ok(latestD.displayState);
     assert.equal(latestD.displayState.kind, 'idle_waiting_user');
-
-    const countsBeforeManualHealing = await getRunControlCountsSnapshot();
-    assert.equal(countsBeforeManualHealing.proceeding, 0);
-    assert.equal(countsBeforeManualHealing.resumable, 3);
 
     const healedE = await refreshRunControlProjectionFromPersistenceFacts(
       new DialogID(eRoot),

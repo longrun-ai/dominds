@@ -53,13 +53,15 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      if (!(await mainDialog.canDrive())) {
+      const resumeInProgressGeneration = latest?.generating === true;
+      if (!resumeInProgressGeneration && !(await mainDialog.canDrive())) {
         continue;
       }
 
       await driveDialogStream(mainDialog, undefined, true, {
         source: 'kernel_driver_backend_loop',
         reason: 'global_dialog_registry_needs_drive',
+        ...(resumeInProgressGeneration ? { resumeInProgressGeneration: true } : {}),
       });
 
       const status = await mainDialog.getSuspensionStatus();

@@ -494,6 +494,7 @@ async function inspectNoPromptSideDialogDrive(args: {
   const explicitInterruptedResumeAllowed =
     args.driveOptions?.allowResumeFromInterrupted === true &&
     latest?.executionMarker?.kind === 'interrupted';
+  const inProgressGenerationResumeAllowed = args.driveOptions?.resumeInProgressGeneration === true;
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
@@ -507,7 +508,11 @@ async function inspectNoPromptSideDialogDrive(args: {
       lastEvent,
     };
   }
-  if (!explicitInterruptedResumeAllowed && !supplyResponseParentReviveAllowed) {
+  if (
+    !explicitInterruptedResumeAllowed &&
+    !inProgressGenerationResumeAllowed &&
+    !supplyResponseParentReviveAllowed
+  ) {
     return {
       shouldReject: true,
       source,
@@ -850,7 +855,7 @@ export async function executeDriveRound(args: {
         : hasEntitledParentRevive
           ? await loadFreshSuspensionStatusFromPersistence(dialog, driveOptions)
           : await dialog.getSuspensionStatus({
-              allowPendingSideDialogs: false,
+              allowPendingSideDialogs: driveOptions?.resumeInProgressGeneration === true,
             });
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
       const queuedSideDialogPromptCanResume =

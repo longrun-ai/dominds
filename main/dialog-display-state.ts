@@ -677,6 +677,20 @@ async function computeIdleDisplayStateForReconciliation(
   }
 }
 
+export function isRecoverableGeneratingLatest(latest: DialogLatestFile | null): boolean {
+  if (latest?.generating !== true) {
+    return false;
+  }
+  const marker = latest.executionMarker;
+  if (!marker) {
+    return true;
+  }
+  if (marker.kind === 'dead') {
+    return false;
+  }
+  return marker.kind !== 'interrupted' || marker.reason.kind === 'pending_course_start';
+}
+
 export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
   const dialogIds = await DialogPersistence.listAllDialogIds('running');
   for (const dialogId of dialogIds) {
@@ -716,12 +730,29 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       continue;
     }
 
-    const wasProceeding =
-      latest?.generating === true ||
-      (existing !== undefined &&
-        (existing.kind === 'proceeding' || existing.kind === 'proceeding_stop_requested'));
+    if (isRecoverableGeneratingLatest(latest)) {
+      try {
+        await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+          kind: 'patch',
+          patch: {
+            needsDrive: true,
+            displayState: { kind: 'proceeding' },
+            executionMarker:
+              existingMarker?.kind === 'interrupted' &&
+              existingMarker.reason.kind === 'pending_course_start'
+                ? undefined
+                : existingMarker,
+          },
+        }));
+      } catch (err) {
+        log.warn('Failed to preserve proceeding dialog for auto-drive after restart', err, {
+          dialogId: dialogId.valueOf(),
+        });
+      }
+      continue;
+    }
 
-    if (wasProceeding) {
+    if (latest?.generating === true || latest?.needsDrive === true) {
       const nextIdle = await computeIdleDisplayStateForReconciliation(dialogId);
       if (!nextIdle) {
         continue;
