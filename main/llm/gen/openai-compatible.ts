@@ -32,8 +32,10 @@ import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
+import { DOMINDS_RUNNING_VERSION } from '../../server/dominds-running-version';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
+import { normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ModelInfo, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
@@ -86,7 +88,11 @@ type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
 type OpenAiCompatibleChatExtraParams = {
   thinking?: boolean | Record<string, unknown>;
   reasoning_effort?: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'];
+  prompt_cache_key?: string;
 };
+
+const KIMI_CODE_API_QUIRK = 'kimi-code';
+const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 
 export function resolveOpenAiCompatibleToolChoice(
   funcTools: readonly FuncTool[],
@@ -127,6 +133,17 @@ function resolveOpenAiCompatibleRequestModelInfo(
       : agent.model;
   if (typeof modelKey !== 'string' || modelKey.trim() === '') return undefined;
   return providerConfig.models[modelKey];
+}
+
+function resolveOpenAiCompatibleParallelToolCalls(args: {
+  providerConfig: ProviderConfig;
+  openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+}): boolean | undefined {
+  if (args.openAiParams.parallel_tool_calls !== undefined) {
+    return args.openAiParams.parallel_tool_calls;
+  }
+  if (isKimiCodeProvider(args.providerConfig)) return undefined;
+  return true;
 }
 
 type OpenAiCompatibleCaptureContext = {
@@ -679,6 +696,11 @@ function createOpenAiCompatibleClient(args: {
     apiKey: args.apiKey,
     baseURL: args.providerConfig.baseUrl,
   };
+  if (isKimiCodeProvider(args.providerConfig)) {
+    options.defaultHeaders = {
+      'User-Agent': `Dominds/${DOMINDS_RUNNING_VERSION || 'dev'}`,
+    };
+  }
   if (
     args.providerConfig.apiType === 'openai-compatible' &&
     isOpenAiCompatibleSseCaptureEnabled()
@@ -715,6 +737,24 @@ function limitOpenAiCompatibleToolOutputText(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isKimiCodeProvider(providerConfig: ProviderConfig): boolean {
+  return normalizeProviderApiQuirks(providerConfig).has(KIMI_CODE_API_QUIRK);
+}
+
+function isKimiCodeReasoningEffort(
+  value: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'],
+): value is 'low' | 'medium' | 'high' {
+  return typeof value === 'string' && KIMI_CODE_REASONING_EFFORTS.has(value);
+}
+
+function isKimiCodeThinkingMode(
+  value: unknown,
+): value is 'auto' | 'off' | 'low' | 'medium' | 'high' {
+  return (
+    value === 'auto' || value === 'off' || value === 'low' || value === 'medium' || value === 'high'
+  );
 }
 
 function isLlmRequestContext(value: unknown): value is LlmRequestContext {
@@ -791,11 +831,21 @@ function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefin
 }
 
 function buildOpenAiCompatibleExtraParams(args: {
+  providerConfig?: ProviderConfig;
   agent: Team.Member;
   openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+  requestContext?: LlmRequestContext;
 }): OpenAiCompatibleChatExtraParams {
+  if (args.providerConfig !== undefined && isKimiCodeProvider(args.providerConfig)) {
+    return buildKimiCodeOpenAiCompatibleExtraParams(args);
+  }
   const model = args.agent.model ?? '';
   const thinking = args.openAiParams.thinking;
+  if (typeof thinking === 'string') {
+    throw new Error(
+      `Invalid openai-compatible model_params: string thinking mode '${thinking}' requires apiQuirks: ${KIMI_CODE_API_QUIRK} for model '${model}'.`,
+    );
+  }
   const reasoningEffort = args.openAiParams.reasoning_effort;
   const thinkingDisabled =
     thinking === false || (isRecord(thinking) && thinking.type === 'disabled');
@@ -808,6 +858,79 @@ function buildOpenAiCompatibleExtraParams(args: {
   const thinkingPayload =
     typeof thinking === 'boolean' ? { type: thinking ? 'enabled' : 'disabled' } : thinking;
   return {
+    ...(thinkingPayload !== undefined ? { thinking: thinkingPayload } : {}),
+    ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+  };
+}
+
+function buildKimiCodeOpenAiCompatibleExtraParams(args: {
+  agent: Team.Member;
+  openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+  requestContext?: LlmRequestContext;
+}): OpenAiCompatibleChatExtraParams {
+  const model = args.agent.model ?? '';
+  const thinking = args.openAiParams.thinking;
+  const reasoningEffort = args.openAiParams.reasoning_effort;
+  const promptCacheKey = args.requestContext?.promptCacheKey?.trim();
+
+  if (reasoningEffort !== undefined && !isKimiCodeReasoningEffort(reasoningEffort)) {
+    throw new Error(
+      `Invalid Kimi Code openai-compatible model_params: reasoning_effort=${reasoningEffort} is not supported for model '${model}'; expected low|medium|high.`,
+    );
+  }
+
+  const base: OpenAiCompatibleChatExtraParams =
+    promptCacheKey !== undefined && promptCacheKey.length > 0
+      ? { prompt_cache_key: promptCacheKey }
+      : {};
+
+  if (thinking === undefined) {
+    return {
+      ...base,
+      ...(reasoningEffort !== undefined
+        ? { thinking: { type: 'enabled' }, reasoning_effort: reasoningEffort }
+        : {}),
+    };
+  }
+
+  if (thinking === 'auto' || thinking === 'off') {
+    if (reasoningEffort !== undefined) {
+      throw new Error(
+        `Invalid Kimi Code openai-compatible model_params: thinking=${thinking} conflicts with reasoning_effort=${reasoningEffort} for model '${model}'.`,
+      );
+    }
+    if (thinking === 'auto') return base;
+    return {
+      ...base,
+      thinking: { type: 'disabled' },
+    };
+  }
+
+  if (isKimiCodeThinkingMode(thinking)) {
+    if (reasoningEffort !== undefined && reasoningEffort !== thinking) {
+      throw new Error(
+        `Invalid Kimi Code openai-compatible model_params: thinking=${thinking} conflicts with reasoning_effort=${reasoningEffort} for model '${model}'.`,
+      );
+    }
+    return {
+      ...base,
+      thinking: { type: 'enabled' },
+      reasoning_effort: thinking,
+    };
+  }
+
+  const thinkingDisabled =
+    thinking === false || (isRecord(thinking) && thinking.type === 'disabled');
+  if (thinkingDisabled && reasoningEffort !== undefined) {
+    throw new Error(
+      `Invalid Kimi Code openai-compatible model_params: thinking disabled conflicts with reasoning_effort=${reasoningEffort} for model '${model}'.`,
+    );
+  }
+
+  const thinkingPayload =
+    typeof thinking === 'boolean' ? { type: thinking ? 'enabled' : 'disabled' } : thinking;
+  return {
+    ...base,
     ...(thinkingPayload !== undefined ? { thinking: thinkingPayload } : {}),
     ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
   };
@@ -889,8 +1012,10 @@ async function wrapOpenAiCompatibleRejectedRequestError(args: {
 }
 
 export function buildOpenAiCompatibleExtraParamsForTest(args: {
+  providerConfig?: ProviderConfig;
   agent: Team.Member;
   openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
+  requestContext?: LlmRequestContext;
 }): OpenAiCompatibleChatExtraParams {
   return buildOpenAiCompatibleExtraParams(args);
 }
@@ -1938,7 +2063,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     });
 
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
-    const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
+    const parallelToolCalls = resolveOpenAiCompatibleParallelToolCalls({
+      providerConfig,
+      openAiParams,
+    });
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
     const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
     const modelInfo = resolveOpenAiCompatibleRequestModelInfo(
@@ -1948,8 +2076,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     );
     const toolChoice = resolveOpenAiCompatibleToolChoice(requestTools, requestContext, modelInfo);
     const openAiCompatibleExtraParams = buildOpenAiCompatibleExtraParams({
+      providerConfig,
       agent,
       openAiParams,
+      requestContext,
     });
 
     const payload: ChatCompletionCreateParamsStreaming & OpenAiCompatibleChatExtraParams = {
@@ -1967,7 +2097,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(requestTools.length > 0 ? { tools: requestTools.map(funcToolToChatCompletionTool) } : {}),
       ...(toolChoice !== undefined && { tool_choice: toolChoice }),
-      parallel_tool_calls: parallelToolCalls,
+      ...(parallelToolCalls !== undefined && { parallel_tool_calls: parallelToolCalls }),
     };
 
     try {
@@ -2040,7 +2170,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     });
 
     const openAiParams = agent.model_params?.['openai-compatible'] || {};
-    const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
+    const parallelToolCalls = resolveOpenAiCompatibleParallelToolCalls({
+      providerConfig,
+      openAiParams,
+    });
     const responseFormat = buildChatCompletionResponseFormat(openAiParams);
     const requestTools = resolveOpenAiCompatibleRequestTools(funcTools, requestContext);
     const modelInfo = resolveOpenAiCompatibleRequestModelInfo(
@@ -2050,8 +2183,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     );
     const toolChoice = resolveOpenAiCompatibleToolChoice(requestTools, requestContext, modelInfo);
     const openAiCompatibleExtraParams = buildOpenAiCompatibleExtraParams({
+      providerConfig,
       agent,
       openAiParams,
+      requestContext,
     });
 
     const payload: ChatCompletionCreateParamsNonStreaming & OpenAiCompatibleChatExtraParams = {
@@ -2067,7 +2202,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(requestTools.length > 0 && { tools: requestTools.map(funcToolToChatCompletionTool) }),
       ...(toolChoice !== undefined && { tool_choice: toolChoice }),
-      parallel_tool_calls: parallelToolCalls,
+      ...(parallelToolCalls !== undefined && { parallel_tool_calls: parallelToolCalls }),
     };
 
     try {

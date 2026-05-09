@@ -14,6 +14,7 @@
     "provider-user-image-model-support": "tsx provider/user-image-model-support.ts",
     "provider-anthropic-multi-tool-use-stream": "tsx provider/anthropic-multi-tool-use-stream.ts",
     "provider-anthropic-stream-errors": "tsx provider/anthropic-stream-errors.ts",
+    "provider-openai-compatible-kimi-code": "tsx provider/openai-compatible-kimi-code.ts",
     "provider-openai-compatible-volcengine-coding-plan": "tsx provider/openai-compatible-volcengine-coding-plan.ts",
     "provider-tool-choice-requirement": "tsx provider/tool-choice-requirement.ts",
     "provider-openai-whitespace": "tsx provider/openai-whitespace.ts",

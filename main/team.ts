@@ -376,6 +376,8 @@ export namespace Team {
     web_search_include_sources?: boolean; // Include web_search_call.action.sources in Responses output.
   };
 
+  type OpenAiCompatibleThinkingMode = 'auto' | 'off' | 'low' | 'medium' | 'high';
+
   type OpenAiCompatibleModelParams = {
     temperature?: number; // 0-2, controls randomness
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
@@ -387,7 +389,7 @@ export namespace Team {
     text_format_json_schema?: string; // JSON-encoded schema object when text_format=json_schema.
     text_format_json_schema_strict?: boolean; // Strict schema adherence when text_format=json_schema.
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For compatible reasoning-capable models.
-    thinking?: boolean | Record<string, unknown>; // Boolean shorthand or provider-specific object.
+    thinking?: boolean | OpenAiCompatibleThinkingMode | Record<string, unknown>; // Boolean shorthand, Kimi Code mode, or provider-specific object.
   };
 
   type AnthropicThinkingConfig =
@@ -3089,7 +3091,23 @@ export namespace Team {
         params.text_format_json_schema_strict,
         `${at2}.text_format_json_schema_strict`,
       );
-      validateOptionalBooleanOrObject(params.thinking, `${at2}.thinking`);
+      const thinking = params.thinking;
+      if (
+        thinking !== undefined &&
+        typeof thinking !== 'boolean' &&
+        !isRecordValue(thinking) &&
+        thinking !== 'auto' &&
+        thinking !== 'off' &&
+        thinking !== 'low' &&
+        thinking !== 'medium' &&
+        thinking !== 'high'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.thinking: expected boolean|object|auto|off|low|medium|high (got ${describeValueType(
+            thinking,
+          )})`,
+        );
+      }
 
       const serviceTier = params.service_tier;
       if (

@@ -449,6 +449,48 @@ providers:
         input_length: 128000
         output_length: 8192
         context_window: '128K'
+  kimi-code:
+    name: Kimi Code
+    apiType: openai-compatible
+    apiQuirks:
+      - kimi-code
+    baseUrl: https://api.kimi.com/coding/v1
+    apiKeyEnvVar: KIMI_CODE_API_KEY
+    tech_spec_url: https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html
+    api_mgmt_url: https://www.kimi.com/code/console
+    model_param_options:
+      openai-compatible:
+        thinking:
+          prominent: true
+          default: medium
+          type: enum
+          values: [auto, off, low, medium, high]
+          description: Kimi Code thinking mode. auto leaves thinking/reasoning_effort unset; off sends thinking.type=disabled; low/medium/high send thinking.type=enabled plus the matching reasoning_effort.
+        reasoning_effort:
+          type: enum
+          values: [low, medium, high]
+          description: Advanced Kimi Code wire-level reasoning effort override. Prefer the prominent thinking enum for normal setup; do not combine with auto/off/disabled thinking.
+        temperature:
+          type: number
+          min: 0
+          max: 2
+          description: Sampling temperature. Leave unset unless you have verified the current Kimi Code API accepts the chosen value.
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Nucleus sampling parameter.
+    models:
+      kimi-for-coding:
+        name: Kimi For Coding
+        supports_thinking: true
+        default_thinking: true
+        supports_tool_choice: false
+        supports_image_input: true
+        context_length: 262144
+        input_length: 262144
+        output_length: 32768
+        context_window: '262K'
   volcano-engine-coding-plan:
     name: Volcano Ark Coding Plan
     apiType: openai-compatible

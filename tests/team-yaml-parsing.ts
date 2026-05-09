@@ -433,6 +433,40 @@ async function main(): Promise<void> {
       path.join(tmpRoot, '.minds', 'team.yaml'),
       [
         'member_defaults:',
+        '  provider: kimi-code',
+        '  model: kimi-for-coding',
+        '  model_params:',
+        '    openai-compatible:',
+        '      thinking: medium',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '',
+      ].join('\n'),
+    );
+
+    const teamOpenAiCompatibleThinkingMode = await Team.load();
+    const openAiCompatibleThinkingModeMember = teamOpenAiCompatibleThinkingMode.getMember('alice');
+    assert.ok(
+      openAiCompatibleThinkingModeMember,
+      'alice should load with Kimi Code openai-compatible thinking mode',
+    );
+    assert.equal(
+      openAiCompatibleThinkingModeMember.model_params?.['openai-compatible']?.thinking,
+      'medium',
+    );
+    assert.equal(
+      getProblemsSnapshot().problems.some((p) => p.id.includes('thinking/invalid_ignored')),
+      false,
+      'valid Kimi Code openai-compatible thinking mode should not produce problems',
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
         '  provider: anthropic',
         '  model: claude-sonnet-4.5',
         '  model_params:',
