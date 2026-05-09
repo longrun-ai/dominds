@@ -265,6 +265,12 @@ export type UiStrings = {
   connectionError: string;
   connectionReconnecting: string;
   connectionFailedDetails: string;
+  connectionServerClosedNotice: string;
+  connectionInterruptedRetryingNotice: string;
+  connectionConnectFailedNotice: string;
+  connectionTimeoutNotice: string;
+  connectionReconnectExhaustedNotice: string;
+  connectionGenericErrorNotice: string;
   connectionReconnectToServerTitle: string;
   connectionReconnect: string;
 
@@ -673,6 +679,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       connectionError: '连接错误',
       connectionReconnecting: '重连中',
       connectionFailedDetails: '连接失败',
+      connectionServerClosedNotice: '后端连接已关闭。',
+      connectionInterruptedRetryingNotice: '后端连接已断开，正在尝试重新连接。',
+      connectionConnectFailedNotice: '无法连接到后端，请确认服务正在运行。',
+      connectionTimeoutNotice: '连接后端超时，请确认服务正在运行。',
+      connectionReconnectExhaustedNotice: '已多次尝试重连但仍无法连接，请检查后端服务状态。',
+      connectionGenericErrorNotice: '后端连接出现问题。',
       connectionReconnectToServerTitle: '重新连接到服务器',
       connectionReconnect: '重连',
 
@@ -1096,6 +1108,15 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     connectionError: 'Error',
     connectionReconnecting: 'Reconnecting',
     connectionFailedDetails: 'connection failed',
+    connectionServerClosedNotice: 'Backend connection closed.',
+    connectionInterruptedRetryingNotice: 'Backend connection was interrupted; reconnecting.',
+    connectionConnectFailedNotice:
+      'Cannot connect to the backend. Check that the service is running.',
+    connectionTimeoutNotice:
+      'Timed out connecting to the backend. Check that the service is running.',
+    connectionReconnectExhaustedNotice:
+      'Could not reconnect after several attempts. Check the backend service status.',
+    connectionGenericErrorNotice: 'Backend connection problem.',
     connectionReconnectToServerTitle: 'Reconnect to server',
     connectionReconnect: 'Reconnect',
 

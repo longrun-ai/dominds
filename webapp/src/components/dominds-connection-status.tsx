@@ -403,7 +403,7 @@ export class DomindsConnectionStatus extends HTMLElement {
       case 'reconnecting':
         return {
           text: t.connectionReconnecting,
-          details: `(${this.getReconnectAttempts()}/5)`,
+          details: `(${this.getReconnectAttempts()}/${this.getMaxReconnectAttempts()})`,
         };
       default:
         return {
@@ -416,6 +416,11 @@ export class DomindsConnectionStatus extends HTMLElement {
   private getReconnectAttempts(): number {
     const state = this.wsManager.getConnectionState();
     return state.reconnectAttempts;
+  }
+
+  private getMaxReconnectAttempts(): number {
+    const state = this.wsManager.getConnectionState();
+    return state.maxReconnectAttempts;
   }
 
   private addVisualFeedback(status: ConnectionStatus): void {
@@ -448,7 +453,6 @@ export class DomindsConnectionStatus extends HTMLElement {
   private async handleReconnect(): Promise<void> {
     if (this.reconnectButton) {
       this.reconnectButton.disabled = true;
-      this.reconnectButton.textContent = '⏳';
     }
 
     try {
@@ -460,7 +464,6 @@ export class DomindsConnectionStatus extends HTMLElement {
       setTimeout(() => {
         if (this.reconnectButton) {
           this.reconnectButton.disabled = false;
-          this.reconnectButton.textContent = '🔄';
         }
       }, 1000);
     }

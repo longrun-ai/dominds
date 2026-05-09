@@ -8,6 +8,7 @@ import type { ConnectionState } from '@/services/store';
 import { createPubChan, createSubChan, PubChan, SubChan } from '@longrun-ai/kernel/evt';
 import { parseWebSocketMessage, type WebSocketMessage } from '@longrun-ai/kernel/types';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
+import { getUiStrings } from '../i18n/ui';
 import { getWebSocketUrl } from '../utils';
 // StreamHandler removed - streaming is now handled directly by event type matching
 
@@ -31,6 +32,10 @@ export class WebSocketManager {
   };
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastOpenSeen = false;
+  private reconnectingAfterOpen = false;
+  private pendingCloseNotice: string | null = null;
   private messageId = 0;
 
   // PubChan instances for backend event management
@@ -61,6 +66,7 @@ export class WebSocketManager {
     }
 
     this.updateConnectionState({ status: 'connecting', error: undefined });
+    this.lastOpenSeen = false;
 
     try {
       const wsUrl = this.config.url.replace(/^http/, 'ws');
@@ -85,10 +91,12 @@ export class WebSocketManager {
       };
 
       // Set connection timeout (reduced to 5 seconds)
-      setTimeout(() => {
+      this.clearConnectionTimeoutTimer();
+      this.connectionTimeoutTimer = setTimeout(() => {
+        this.connectionTimeoutTimer = null;
         if (this.ws === ws && ws.readyState === WebSocket.CONNECTING) {
           console.warn('WebSocket connection timeout');
-          this.handleError(new Error('Connection timeout'));
+          this.pendingCloseNotice = this.getConnectionNotice('timeout');
           ws.close(4000, 'Connection timeout');
         }
       }, 5000);
@@ -96,7 +104,7 @@ export class WebSocketManager {
       console.error('Failed to create WebSocket connection:', error);
       this.updateConnectionState({
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: this.describeCreateFailure(error),
       });
       this.scheduleReconnect();
     }
@@ -115,6 +123,9 @@ export class WebSocketManager {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.clearConnectionTimeoutTimer();
+    this.pendingCloseNotice = null;
+    this.reconnectingAfterOpen = false;
 
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
@@ -179,6 +190,10 @@ export class WebSocketManager {
   // Private methods
 
   private handleOpen(): void {
+    this.clearConnectionTimeoutTimer();
+    this.lastOpenSeen = true;
+    this.reconnectingAfterOpen = false;
+    this.pendingCloseNotice = null;
     this.updateConnectionState({
       status: 'connected',
       lastConnected: new Date(),
@@ -201,6 +216,7 @@ export class WebSocketManager {
   }
 
   private handleClose(event: CloseEvent): void {
+    this.clearConnectionTimeoutTimer();
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
@@ -208,26 +224,39 @@ export class WebSocketManager {
     this.ws = null;
 
     if (event.code === 4401 || event.reason === 'unauthorized') {
+      this.pendingCloseNotice = null;
       this.updateConnectionState({ status: 'error', error: 'Unauthorized' });
       return;
     }
 
-    this.updateConnectionState({ status: 'disconnected', error: undefined });
-
     // Attempt to reconnect unless it was a clean close (code 1000)
     if (event.code !== 1000) {
-      console.warn('Abnormal close detected, scheduling reconnect');
+      const error = this.describeClose(event);
+      this.pendingCloseNotice = null;
+      this.reconnectingAfterOpen = this.reconnectingAfterOpen || this.lastOpenSeen;
+      console.warn('Abnormal close detected, scheduling reconnect', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        error,
+      });
+      this.updateConnectionState({ status: 'disconnected', error });
       this.scheduleReconnect();
+      return;
     }
+
+    this.updateConnectionState({
+      status: 'disconnected',
+      error: this.lastOpenSeen ? this.getConnectionNotice('serverClosed') : undefined,
+    });
+    this.pendingCloseNotice = null;
+    this.reconnectingAfterOpen = false;
   }
 
   private handleError(error: Event | Error): void {
     console.error('WebSocket error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown WebSocket error';
-    this.updateConnectionState({
-      status: 'error',
-      error: errorMessage,
-    });
+    // Browser WebSocket error events usually do not carry a message; the following close event
+    // carries code/reason and is the single source for user-visible connection state.
   }
 
   private processMessage(message: WebSocketMessage): void {
@@ -272,13 +301,63 @@ export class WebSocketManager {
     this.connPubChan.write({ ...this.connectionState });
   }
 
+  private clearConnectionTimeoutTimer(): void {
+    if (!this.connectionTimeoutTimer) {
+      return;
+    }
+    clearTimeout(this.connectionTimeoutTimer);
+    this.connectionTimeoutTimer = null;
+  }
+
+  private getConnectionNotice(
+    kind:
+      | 'serverClosed'
+      | 'interruptedRetrying'
+      | 'connectFailed'
+      | 'timeout'
+      | 'reconnectExhausted',
+  ): string {
+    const t = getUiStrings(this.uiLanguage ?? 'en');
+    switch (kind) {
+      case 'serverClosed':
+        return t.connectionServerClosedNotice;
+      case 'interruptedRetrying':
+        return t.connectionInterruptedRetryingNotice;
+      case 'connectFailed':
+        return t.connectionConnectFailedNotice;
+      case 'timeout':
+        return t.connectionTimeoutNotice;
+      case 'reconnectExhausted':
+        return t.connectionReconnectExhaustedNotice;
+    }
+  }
+
+  private describeClose(event: CloseEvent): string {
+    if (this.pendingCloseNotice) {
+      return this.pendingCloseNotice;
+    }
+    if (event.code === 4000 && event.reason === 'Connection timeout') {
+      return this.getConnectionNotice('timeout');
+    }
+    return this.lastOpenSeen || this.reconnectingAfterOpen
+      ? this.getConnectionNotice('interruptedRetrying')
+      : this.getConnectionNotice('connectFailed');
+  }
+
+  private describeCreateFailure(error: unknown): string {
+    if (error instanceof Error && error.message.trim() !== '') {
+      return error.message;
+    }
+    return this.getConnectionNotice('connectFailed');
+  }
+
   private scheduleReconnect(): void {
     if (this.reconnectTimer) {
       return;
     }
 
     if (this.connectionState.reconnectAttempts >= this.connectionState.maxReconnectAttempts) {
-      const errorMessage = 'Max reconnection attempts reached';
+      const errorMessage = this.getConnectionNotice('reconnectExhausted');
       console.error(errorMessage);
       this.updateConnectionState({ status: 'error', error: errorMessage });
       return;
@@ -289,7 +368,7 @@ export class WebSocketManager {
     this.updateConnectionState({
       status: 'reconnecting',
       reconnectAttempts: this.connectionState.reconnectAttempts + 1,
-      error: undefined,
+      error: this.connectionState.error,
     });
 
     this.reconnectTimer = setTimeout(() => {

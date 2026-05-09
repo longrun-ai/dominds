@@ -7835,6 +7835,7 @@ export class DomindsApp extends HTMLElement {
   private async loadInitialData(): Promise<void> {
     // Connect to WebSocket first, then load other data
     try {
+      this.wsManager.setUiLanguage(this.uiLanguage);
       await this.wsManager.connect();
     } catch (error) {
       console.warn('Initial WebSocket connection failed:', error);
@@ -10202,6 +10203,28 @@ export class DomindsApp extends HTMLElement {
         this.wsConnectionErrorHistoryRecorded = false;
       }
 
+      if (
+        state.status === 'reconnecting' &&
+        this.wsConnectionOutageEligibleForHistory &&
+        !this.wsConnectionErrorHistoryRecorded
+      ) {
+        this.showConnectionOutageWarning(
+          state.error || getUiStrings(this.uiLanguage).connectionInterruptedRetryingNotice,
+        );
+        return;
+      }
+
+      if (
+        state.status === 'disconnected' &&
+        this.wsConnectionOutageEligibleForHistory &&
+        !this.wsConnectionErrorHistoryRecorded
+      ) {
+        this.showConnectionOutageWarning(
+          state.error || getUiStrings(this.uiLanguage).connectionServerClosedNotice,
+        );
+        return;
+      }
+
       if (state.status !== 'error') {
         return;
       }
@@ -10214,10 +10237,21 @@ export class DomindsApp extends HTMLElement {
       if (persistHistory) {
         this.wsConnectionErrorHistoryRecorded = true;
       }
-      this.showError(state.error || 'Connection error', 'error', {
-        history: persistHistory ? 'persist' : 'skip',
-      });
+      this.showError(
+        state.error || getUiStrings(this.uiLanguage).connectionGenericErrorNotice,
+        'error',
+        {
+          history: persistHistory ? 'persist' : 'skip',
+        },
+      );
     }
+  }
+
+  private showConnectionOutageWarning(message: string): void {
+    this.wsConnectionErrorHistoryRecorded = true;
+    this.showError(message, 'warning', {
+      history: 'persist',
+    });
   }
 
   private async reopenCurrentDialogAfterReconnect(): Promise<void> {

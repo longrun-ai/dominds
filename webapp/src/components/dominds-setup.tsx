@@ -150,6 +150,7 @@ export class DomindsSetup extends HTMLElement {
 
   private async connectRuntimeStatusChannel(): Promise<void> {
     try {
+      this.wsManager.setUiLanguage(this.uiLanguage);
       await this.wsManager.connect();
     } catch (error) {
       console.warn('Failed to connect setup WebSocket runtime status channel', error);
