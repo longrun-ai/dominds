@@ -150,7 +150,7 @@ status: ok|error
 
 - 只创建，不覆盖已有内容
 - 适合创建缺失的常驻章节，或新增额外章节来保留细节，同时不触碰已有差遣牒正文
-- 若目标已存在且只需少量补充，用 `mind_more`；若需要整章改写/合并，用 `change_mind` 并带上当前 `content_hash` 作为 `previous_content_hash`
+- 若目标已存在且只需少量补充，用 `mind_more`；若需要整章改写/合并，先调用 `recall_taskdoc`，再用 `change_mind` 并带上返回的 `content_hash` 作为 `previous_content_hash`
 - 不开启新 course
 - 变更对所有队友可见
 
@@ -163,7 +163,7 @@ status: ok|error
 - `selector`（必需）：章节选择器（goals/constraints/progress）
 - `category`（可选）：额外章节目录；与 `selector` 组合定位 `<category>/<selector>.md`
 - `content`（必需）：新内容（整段替换）
-- `previous_content_hash`（必需）：本次替换所基于的当前章节 `content_hash`
+- `previous_content_hash`（必需）：`recall_taskdoc` 返回的当前章节 `content_hash`
 
 **返回：**
 
@@ -205,7 +205,7 @@ mind_more({
 - 只追加，不会自动去重、改写或压缩旧内容
 - 适合给 `progress` 补一两条当前仍有效的状态、决策、下一步或阻塞
 - 不适合把每一步调查过程、长日志、完整方案或验收记录当流水账追加进去；这些细节应写入 rtws 正式文档，差遣牒只写摘要和文档定位 pointer
-- 若需要删除陈旧项、重排结构或压缩公告牌，仍使用带当前 `content_hash` 作为 `previous_content_hash` 的 `change_mind` 做整章替换；若要删除整个章节文件，使用 `never_mind`
+- 若需要删除陈旧项、重排结构或压缩公告牌，先调用 `recall_taskdoc`，再使用带返回 `content_hash` 作为 `previous_content_hash` 的 `change_mind` 做整章替换；若要删除整个章节文件，使用 `never_mind`
 - 当同一主题已经有多条阶段记录时，优先 `change_mind` 合并成当前仍有效的简明公告，而不是继续 `mind_more`
 
 ### 8. never_mind
@@ -220,7 +220,7 @@ mind_more({
 **特点：**
 
 - 只删除整章文件，不做内容编辑
-- 仅用于章节整体不再成立；如果只是删除几条陈旧项或压缩结构，优先用带当前 `content_hash` 作为 `previous_content_hash` 的 `change_mind` 写回整理后的全文
+- 仅用于章节整体不再成立；如果只是删除几条陈旧项或压缩结构，优先先 `recall_taskdoc`，再用带返回 `content_hash` 作为 `previous_content_hash` 的 `change_mind` 写回整理后的全文
 - 不开启新 course
 
 ### 9. recall_taskdoc
@@ -229,15 +229,16 @@ mind_more({
 
 **参数：**
 
-- `category`（必需）：类别目录
-- `selector`（必需）：章节选择器
+- `selector`（必需）：章节选择器。顶层章节（`goals` / `constraints` / `progress`）省略 `category`
+- `category`（可选）：类别目录。固定 bear-in-mind 章节使用 `bearinmind`，其他额外章节使用对应目录
 
 **返回：**
 
 ```yaml
 status: ok|error
-category: <类别>
 selector: <选择器>
+category: <传入 category 时返回>
+content_hash: <crc32 校验值>
 content: <章节内容>
 retrieved_at: <读取时间戳>
 ```
@@ -300,17 +301,25 @@ mind_more({
 ### 整章替换差遣牒进度
 
 ```typescript
+recall_taskdoc({
+  selector: 'progress',
+});
+
 change_mind({
   selector: 'progress',
   content:
     '## Progress\n\n### 当前有效状态\n- 手册边界方案已确定：角色级资产 / 个人长期经验 / Taskdoc-progress / reminders 分流；细节见 <文档路径>#<章节>\n\n### 已生效决策\n- `persona / knowhow / pitfalls` 不承接成员日常经验\n- `personal_memory` 只承接成员自己的长期可复用经验\n\n### 下一步\n- 补齐 Taskdoc `progress` 的公告牌属性说明\n\n### 仍成立阻塞\n- 无',
-  previous_content_hash: 'sha256:...',
+  previous_content_hash: 'crc32:...',
 });
 ```
 
 ### 读取差遣牒章节
 
 ```typescript
+recall_taskdoc({
+  selector: 'progress',
+});
+
 recall_taskdoc({
   category: 'bearinmind',
   selector: 'runbook',

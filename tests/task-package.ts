@@ -153,8 +153,9 @@ async function main(): Promise<void> {
     const msg2 = await formatTaskDocContent(dlg);
     const msg2Content = requireMessageContent(msg2);
     assert.ok(msg2Content.includes('use `mind_more` to append small notes'));
-    assert.ok(msg2Content.includes('use `change_mind` for full-section rewrite/merge'));
-    assert.ok(msg2Content.includes('content_hash=sha256:'));
+    assert.ok(msg2Content.includes('for full-section rewrite/merge'));
+    assert.ok(msg2Content.includes('first call `recall_taskdoc({"selector":"<selector>"})`'));
+    assert.ok(!msg2Content.includes('content_hash='));
     assert.ok(msg2Content.includes('## Goals'));
     assert.ok(msg2Content.includes(newGoals));
     assert.ok(msg2Content.includes('- Zero regressions\n\n## Constraints'));
@@ -249,10 +250,19 @@ async function main(): Promise<void> {
       })
     ).content;
     assert.ok(recall.includes('`ux/checklist.md`'));
-    assert.ok(recall.includes('content_hash: `sha256:'));
+    assert.ok(recall.includes('content_hash: `crc32:'));
     assert.ok(recall.includes('UX\n'));
     assert.ok(recall.includes('UX\n---'));
     assert.ok(!recall.includes('UX\n\n---'));
+
+    const topLevelRecall = (
+      await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
+        selector: 'progress',
+      })
+    ).content;
+    assert.ok(topLevelRecall.includes('`progress.md`'));
+    assert.ok(topLevelRecall.includes('content_hash: `crc32:'));
+    assert.ok(topLevelRecall.includes(newProgress));
 
     const missingRecall = (
       await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
@@ -330,6 +340,20 @@ async function main(): Promise<void> {
     );
     assert.equal(changeInvalidHashResult.outcome, 'failure');
     assert.ok(changeInvalidHashResult.content.includes('invalid previous_content_hash'));
+    assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8'), 'UX\n');
+
+    const changeLegacyShaHashResult = await changeMindTool.call(
+      dlg,
+      { id: 'tester' } as unknown as Team.Member,
+      {
+        category: 'ux',
+        selector: 'checklist',
+        content: 'should not overwrite with legacy hash',
+        previous_content_hash: `sha256:${'0'.repeat(64)}`,
+      },
+    );
+    assert.equal(changeLegacyShaHashResult.outcome, 'failure');
+    assert.ok(changeLegacyShaHashResult.content.includes('crc32:<8 hex chars>'));
     assert.equal(await fs.readFile(path.join(taskDir, 'ux', 'checklist.md'), 'utf-8'), 'UX\n');
 
     const changeStaleHashResult = await changeMindTool.call(

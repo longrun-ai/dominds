@@ -12,9 +12,9 @@
  */
 
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { crc32 } from 'zlib';
 import { AsyncFifoMutex } from '../runtime/async-fifo-mutex';
 
 export type TaskPackageSection = 'goals' | 'constraints' | 'progress';
@@ -93,7 +93,7 @@ export type TaskPackageChangeMindTargetParseResult =
   | { kind: 'ok'; target: TaskPackageChangeMindTarget }
   | { kind: 'err'; error: TaskPackageChangeMindTargetError };
 
-export type TaskPackageContentHash = `sha256:${string}`;
+export type TaskPackageContentHash = `crc32:${string}`;
 
 const taskPackageFileLocks = new Map<string, AsyncFifoMutex>();
 
@@ -449,9 +449,8 @@ function withCanonicalMarkdownFileEnding(content: string): string {
 }
 
 export function computeTaskPackageContentHash(content: string): TaskPackageContentHash {
-  return `sha256:${createHash('sha256')
-    .update(withCanonicalMarkdownFileEnding(content), 'utf8')
-    .digest('hex')}`;
+  const checksum = crc32(withCanonicalMarkdownFileEnding(content)) >>> 0;
+  return `crc32:${checksum.toString(16).padStart(8, '0')}`;
 }
 
 export function taskPackageRelativePathForChangeMindTarget(

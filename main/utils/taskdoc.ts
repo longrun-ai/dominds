@@ -9,7 +9,6 @@ import { Dialog, SideDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { getWorkLanguage } from '../runtime/work-language';
 import {
-  computeTaskPackageContentHash,
   formatEffectiveTaskDocFromSections,
   isTaskPackagePath,
   readTaskPackageForInjection,
@@ -127,13 +126,6 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     const goalsStatus = pkg.sections.goals.kind === 'present' ? 'present' : 'missing';
     const constraintsStatus = pkg.sections.constraints.kind === 'present' ? 'present' : 'missing';
     const progressStatus = pkg.sections.progress.kind === 'present' ? 'present' : 'missing';
-    const formatSectionStatus = (
-      status: string,
-      state: TaskPackageSectionsState[keyof TaskPackageSectionsState],
-    ): string => {
-      if (state.kind !== 'present') return status;
-      return `${status}; content_hash=${computeTaskPackageContentHash(state.content)}`;
-    };
     const bearInMindStatus: 'absent' | 'present' | 'invalid' =
       pkg.bearInMind.kind === 'absent'
         ? 'absent'
@@ -204,12 +196,12 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           for (const cat of extra.categories) {
             for (const selector of cat.selectors) {
               entries.push(
-                `- \`${cat.category}/${selector}.md\`（读：\`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`；追加：\`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`；替换：先 recall 取得 content_hash，再 \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`）`,
+                `- \`${cat.category}/${selector}.md\`（读/取 content_hash：\`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`；追加：\`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`；替换：先 recall 取得 content_hash，再 \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\`）`,
               );
             }
           }
 
-          const header = `**额外章节索引（不会自动注入；需要时用 \`recall_taskdoc\` 显式读取）：**`;
+          const header = `**额外章节索引（不会自动注入；需要时用 \`recall_taskdoc\` 显式读取/取 content_hash）：**`;
           const body = entries.length > 0 ? entries : ['- （无）'];
           const truncatedLine = extra.truncated
             ? `- ⚠️ 已截断：目录条目过多，仅展示前 64 项。`
@@ -229,12 +221,12 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         for (const cat of extra.categories) {
           for (const selector of cat.selectors) {
             entries.push(
-              `- \`${cat.category}/${selector}.md\` (read: \`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`; append: \`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`; replace: recall first for content_hash, then \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\",\"previous_content_hash\":\"sha256:...\"})\`)`,
+              `- \`${cat.category}/${selector}.md\` (read/get content_hash: \`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`; append: \`mind_more({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"items\":[\"...\"]})\`; replace: recall first for content_hash, then \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\`)`,
             );
           }
         }
 
-        const header = `**Extra sections index (NOT auto-injected; use \`recall_taskdoc\` when needed):**`;
+        const header = `**Extra sections index (NOT auto-injected; use \`recall_taskdoc\` to read/get content_hash):**`;
         const body = entries.length > 0 ? entries : ['- (none)'];
         const truncatedLine = extra.truncated
           ? `- ⚠️ Truncated: too many entries; showing first 64.`
@@ -278,11 +270,11 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           presentSectionsZh.length === 0
             ? []
             : [
-                `- 已存在常驻分段（${presentSectionsZh.map((s) => `\`${s}\``).join(' / ')}）需要追加少量条目时，使用 \`mind_more\`；需要整体改写/合并时，使用 \`change_mind\` 并带上该分段当前 \`content_hash\` 作为 \`previous_content_hash\`。没有把握时不要覆盖，优先新增额外章节或追加小条目。`,
+                `- 已存在常驻分段（${presentSectionsZh.map((s) => `\`${s}\``).join(' / ')}）需要追加少量条目时，使用 \`mind_more\`；需要整体改写/合并时，先用 \`recall_taskdoc({"selector":"<selector>"})\` 显式取得该分段当前 \`content_hash\`，再用 \`change_mind\` 并带上它作为 \`previous_content_hash\`。没有把握时不要覆盖，优先新增额外章节或追加小条目。`,
               ];
         const maintenanceLine = isSideDialog
           ? `- 支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、已合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`
-          : `- 维护方式：少量新增条目优先用 \`mind_more({\"items\":[\"...\"]})\` 追加到 \`progress\`（也可指定 selector/category）；需要删除陈旧项、重排或压缩时，用 \`change_mind\` 指定分段做整章替换，并必须带上当前 \`content_hash\` 作为 \`previous_content_hash\`。`;
+          : `- 维护方式：少量新增条目优先用 \`mind_more({\"items\":[\"...\"]})\` 追加到 \`progress\`（也可指定 selector/category）；需要删除陈旧项、重排或压缩时，先用 \`recall_taskdoc\` 显式取得当前 \`content_hash\`，再用 \`change_mind\` 指定分段做整章替换，并必须带上它作为 \`previous_content_hash\`。`;
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录：顶层 3 个分段（\`goals\` / \`constraints\` / \`progress\`）一定会自动注入；\`bearinmind/\`（固定白名单）可选自动注入；其他章节不会自动注入，仅以“目录索引”形式提示并需用 \`recall_taskdoc\` 显式读取。`,
@@ -294,9 +286,9 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           ...presentSectionLine,
           ``,
           `**分段状态：**`,
-          `- \`goals.md\`：${formatSectionStatus(goalsZh, pkg.sections.goals)}`,
-          `- \`constraints.md\`：${formatSectionStatus(constraintsZh, pkg.sections.constraints)}`,
-          `- \`progress.md\`：${formatSectionStatus(progressZh, pkg.sections.progress)}`,
+          `- \`goals.md\`：${goalsZh}`,
+          `- \`constraints.md\`：${constraintsZh}`,
+          `- \`progress.md\`：${progressZh}`,
           `- \`bearinmind/\`（可选注入）：${bearZh}`,
           ...(bearExtrasLine ? [bearExtrasLine] : []),
           ``,
@@ -330,11 +322,11 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         presentSectionsEn.length === 0
           ? []
           : [
-              `- For existing resident sections (${presentSectionsEn.map((s) => `\`${s}\``).join(' / ')}), use \`mind_more\` to append small notes, and use \`change_mind\` for full-section rewrite/merge with that section's current \`content_hash\` as \`previous_content_hash\`. If unsure, do not overwrite; prefer creating an extra section or appending small notes.`,
+              `- For existing resident sections (${presentSectionsEn.map((s) => `\`${s}\``).join(' / ')}), use \`mind_more\` to append small notes; for full-section rewrite/merge, first call \`recall_taskdoc({"selector":"<selector>"})\` to get the current \`content_hash\`, then pass it to \`change_mind\` as \`previous_content_hash\`. If unsure, do not overwrite; prefer creating an extra section or appending small notes.`,
             ];
       const maintenanceLine = isSideDialog
         ? `- Side Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide the new section to create, entries to append, a fully merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`
-        : `- Maintenance: for small additions, prefer \`mind_more({\"items\":[\"...\"]})\` to append to \`progress\` (selector/category may be specified); when stale entries must be removed, reordered, or compressed, use \`change_mind\` for a full-section replacement and include the current \`content_hash\` as \`previous_content_hash\`.`;
+        : `- Maintenance: for small additions, prefer \`mind_more({\"items\":[\"...\"]})\` to append to \`progress\` (selector/category may be specified); when stale entries must be removed, reordered, or compressed, first call \`recall_taskdoc\` to get the current \`content_hash\`, then use \`change_mind\` for a full-section replacement with that value as \`previous_content_hash\`.`;
       const bearEn =
         bearInMindStatus === 'absent'
           ? 'absent'
@@ -358,9 +350,9 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         ...presentSectionLine,
         ``,
         `**Sections:**`,
-        `- \`goals.md\`: ${formatSectionStatus(goalsStatus, pkg.sections.goals)}`,
-        `- \`constraints.md\`: ${formatSectionStatus(constraintsStatus, pkg.sections.constraints)}`,
-        `- \`progress.md\`: ${formatSectionStatus(progressStatus, pkg.sections.progress)}`,
+        `- \`goals.md\`: ${goalsStatus}`,
+        `- \`constraints.md\`: ${constraintsStatus}`,
+        `- \`progress.md\`: ${progressStatus}`,
         `- \`bearinmind/\` (optional injection): ${bearEn}`,
         ...(bearExtrasLine ? [bearExtrasLine] : []),
         ``,
@@ -377,7 +369,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       if (language === 'zh') {
         const howToUpdate = isSideDialog
           ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。`
-          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`mind_more\` 追加少量条目，或用带 \`previous_content_hash\` 的 \`change_mind\` 做整章替换；缺失章节用 \`do_mind\` 创建；禁止覆盖/抹掉他人条目。`;
+          : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`mind_more\` 追加少量条目；需要整章替换时，先用 \`recall_taskdoc\` 取得当前 \`content_hash\`，再用带 \`previous_content_hash\` 的 \`change_mind\`；缺失章节用 \`do_mind\` 创建；禁止覆盖/抹掉他人条目。`;
         return {
           type: 'environment_msg',
           role: 'user',
@@ -393,7 +385,7 @@ ${howToUpdate}`,
 
       const howToUpdate = isSideDialog
         ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSide Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with the new section to create, entries to append, a merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).`
-        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` with \`previous_content_hash\` for full-section replacements; create missing sections with \`do_mind\`; do not overwrite/delete other contributors.`;
+        : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use \`mind_more\` for small append-only updates; for full-section replacements, first use \`recall_taskdoc\` to get the current \`content_hash\`, then call \`change_mind\` with \`previous_content_hash\`; create missing sections with \`do_mind\`; do not overwrite/delete other contributors.`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -410,7 +402,7 @@ ${howToUpdate}`,
     if (language === 'zh') {
       const footerLine = isSideDialog
         ? `*支线对话中不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供要新增的章节、要追加的条目、合并好的“分段全文替换稿”或要删除的章节（禁止覆盖/抹掉他人条目）。*`
-        : `*在当前对话中用 \`mind_more\` 追加少量条目，或用带 \`previous_content_hash\` 的 \`change_mind\` 替换整段；缺失章节用 \`do_mind\` 创建；更新时禁止覆盖他人条目。*`;
+        : `*在当前对话中用 \`mind_more\` 追加少量条目；需要整段替换时先用 \`recall_taskdoc\` 取得当前 \`content_hash\`，再用带 \`previous_content_hash\` 的 \`change_mind\`；缺失章节用 \`do_mind\` 创建；更新时禁止覆盖他人条目。*`;
       return {
         type: 'environment_msg',
         role: 'user',
@@ -434,7 +426,7 @@ ${footerLine}
 
     const footerLine = isSideDialog
       ? `*Side Dialogs cannot call \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with the new section to create, entries to append, a merged full-section replacement draft, or the section to delete (do not overwrite/delete other contributors).*`
-      : `*In this dialog, use \`mind_more\` for small append-only updates, or \`change_mind\` with \`previous_content_hash\` for full-section replacements; create missing sections with \`do_mind\`; do not overwrite other contributors.*`;
+      : `*In this dialog, use \`mind_more\` for small append-only updates; for full-section replacements, first use \`recall_taskdoc\` to get the current \`content_hash\`, then call \`change_mind\` with \`previous_content_hash\`; create missing sections with \`do_mind\`; do not overwrite other contributors.*`;
     return {
       type: 'environment_msg',
       role: 'user',

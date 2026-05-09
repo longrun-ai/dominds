@@ -149,7 +149,7 @@ Below is the canonical copy. If you need to rephrase it for UI layout, you MUST 
 
 - Any `.tsk/` directory and its subpaths (`**/*.tsk/**`) are encapsulated state: general file tools MUST NOT read/write/list them (e.g. `read_file` / `write_file` / `list_dir`).
 - Taskdoc updates MUST go through explicit Taskdoc function tools: `do_mind` creates a new section, `mind_more` appends small entries to an existing section, `change_mind` replaces an existing section, and `never_mind` deletes a section.
-- To read extra sections that are NOT auto-injected, use the function tool `recall_taskdoc({ category, selector })`.
+- To read any Taskdoc section or get its `content_hash`, use the function tool `recall_taskdoc({ selector, category? })`.
 
 **Taskdoc auto-injection rules (system prompt)**
 
@@ -219,25 +219,25 @@ Hard prohibitions:
 - `contracts|acceptance|grants|runbook|decisions|risks` MUST NOT be written outside `category="bearinmind"`.
 - No other category is auto-injected into the system prompt (only an index may be shown).
 
-`previous_content_hash` is the `sha256:...` hash of the current section content after Dominds' canonical Markdown file-ending normalization. It is not stored as extra state.
+`previous_content_hash` is the `crc32:...` checksum of the current section content after Dominds' canonical Markdown file-ending normalization. It is not stored as extra state.
 
-- For auto-injected top-level sections (`goals`, `constraints`, `progress`), the injected Taskdoc status block shows each current `content_hash`.
-- For non-auto-injected sections, call `recall_taskdoc({ category, selector })`; its result includes `content_hash`.
+- For top-level sections (`goals`, `constraints`, `progress`), call `recall_taskdoc({ selector })`; its result includes `content_hash`.
+- For extra non-auto-injected sections, call `recall_taskdoc({ category, selector })`; its result includes `content_hash`.
 - On hash mismatch, the write MUST fail. The agent must re-read/review the current section and retry only after fully merging existing content.
 - If the proposed replacement would overwrite, delete, or materially replace existing content, the agent must have either direct human confirmation for that replacement, or a human-approved explicit SOP/acceptance standard that authorizes the replacement after considering the existing content.
 
-### `recall_taskdoc` (read-only; for non-auto-injected sections)
+### `recall_taskdoc` (read-only; for Taskdoc sections and content_hash)
 
 Because general file tools cannot read anything under `*.tsk/`, Dominds provides a dedicated read tool:
 
 ```
-recall_taskdoc({ category, selector })
+recall_taskdoc({ selector, category? })
 ```
 
 Behavior:
 
 - Reads `bearinmind/<whitelisted>.md` or `<category>/<selector>.md`.
-- The top-level three sections (`goals` / `constraints` / `progress`) are already auto-injected, so `recall_taskdoc` does not read them.
+- The top-level three sections (`goals` / `constraints` / `progress`) are auto-injected as content, but their `content_hash` is only returned by `recall_taskdoc`.
 - Returns the section `content_hash` for use as `change_mind.previous_content_hash`.
 
 Example (bearinmind):
@@ -257,8 +257,11 @@ Call the function tool `recall_taskdoc` with:
 Example:
 
 ```text
+Call the function tool `recall_taskdoc` with:
+{ "selector": "constraints" }
+
 Call the function tool `change_mind` with:
-{ "selector": "constraints", "content": "- MUST not browse the web.\n- MUST keep responses under 10 lines unless asked otherwise.\n", "previous_content_hash": "sha256:..." }
+{ "selector": "constraints", "content": "- MUST not browse the web.\n- MUST keep responses under 10 lines unless asked otherwise.\n", "previous_content_hash": "crc32:..." }
 ```
 
 ### Behavioral rules
