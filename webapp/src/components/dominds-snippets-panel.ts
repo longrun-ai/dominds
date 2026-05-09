@@ -15,6 +15,15 @@ type LoadState =
   | { kind: 'ready'; groups: SnippetGroup[]; selectedGroupKey: string }
   | { kind: 'error'; message: string };
 
+type McpPromptPreviewState =
+  | { kind: 'idle' }
+  | { kind: 'loading'; promptId: string; seq: number }
+  | { kind: 'ready'; promptId: string; seq: number }
+  | { kind: 'blocked'; promptId: string; missingArgs: string[] }
+  | { kind: 'error'; promptId: string; seq: number; message: string };
+
+type McpPromptArg = NonNullable<NonNullable<SnippetItem['mcpPrompt']>['arguments']>[number];
+
 export class DomindsSnippetsPanel extends HTMLElement {
   private uiLanguage: LanguageCode = 'en';
   private state: LoadState = { kind: 'idle' };
@@ -30,6 +39,11 @@ export class DomindsSnippetsPanel extends HTMLElement {
   private draftContent: string = '';
   private selectedSnippetReadonly: boolean = false;
   private mcpPromptArgDrafts: Record<string, string> = {};
+  private snippetScrollTops: Record<string, number> = {};
+  private loadSeq: number = 0;
+  private mcpPreviewSeq: number = 0;
+  private mcpPreviewTimer: ReturnType<typeof window.setTimeout> | null = null;
+  private mcpPreviewState: McpPromptPreviewState = { kind: 'idle' };
 
   constructor() {
     super();
@@ -37,23 +51,34 @@ export class DomindsSnippetsPanel extends HTMLElement {
   }
 
   connectedCallback(): void {
-    this.render();
     void this.load();
   }
 
+  disconnectedCallback(): void {
+    this.loadSeq += 1;
+    this.mcpPreviewSeq += 1;
+    this.clearMcpPreviewTimer();
+  }
+
   public setUiLanguage(language: LanguageCode): void {
+    if (this.uiLanguage === language) return;
     this.uiLanguage = language;
-    this.render();
     void this.load();
   }
 
   private async load(): Promise<void> {
     const t = getUiStrings(this.uiLanguage);
+    const seq = this.loadSeq + 1;
+    this.loadSeq = seq;
+    this.clearMcpPreviewTimer();
+    this.mcpPreviewSeq += 1;
+    this.mcpPreviewState = { kind: 'idle' };
     this.state = { kind: 'loading' };
     this.render();
     try {
       const api = getApiClient();
       const catalogResp = await api.getSnippetCatalog(this.uiLanguage);
+      if (this.loadSeq !== seq) return;
 
       if (!catalogResp.success && catalogResp.status === 401) {
         dispatchDomindsEvent(
@@ -92,14 +117,60 @@ export class DomindsSnippetsPanel extends HTMLElement {
         return;
       }
       this.state = { kind: 'ready', groups, selectedGroupKey: desiredKey };
+      this.reconcileSelectionAfterCatalogLoad();
       this.render();
+      if (this.getSelectedSnippet()?.source === 'mcp_prompt') {
+        void this.refreshMcpPromptPreview();
+      }
     } catch (error: unknown) {
+      if (this.loadSeq !== seq) return;
       this.state = {
         kind: 'error',
         message: error instanceof Error ? error.message : t.snippetsLoadFailed,
       };
       this.render();
     }
+  }
+
+  private reconcileSelectionAfterCatalogLoad(): void {
+    if (this.selectedSnippetId === null) return;
+    const selected = this.getSelectedSnippet();
+    if (!selected) {
+      this.clearSelectedSnippetDraft();
+      return;
+    }
+    this.selectedSnippetPath = typeof selected.path === 'string' ? selected.path : null;
+    this.selectedSnippetReadonly = selected.readonly === true || selected.source === 'mcp_prompt';
+    this.draftName = selected.name;
+    this.draftFileName = this.deriveFileNameForEditing(selected);
+    this.draftDescription = typeof selected.description === 'string' ? selected.description : '';
+    this.draftContent = selected.content;
+    const promptArgs: Record<string, string> = {};
+    for (const arg of selected.mcpPrompt?.arguments ?? []) {
+      promptArgs[arg.name] = this.mcpPromptArgDrafts[arg.name] ?? '';
+    }
+    this.mcpPromptArgDrafts = promptArgs;
+    this.mcpPreviewState = { kind: 'idle' };
+  }
+
+  private clearMcpPreviewTimer(): void {
+    if (this.mcpPreviewTimer === null) return;
+    window.clearTimeout(this.mcpPreviewTimer);
+    this.mcpPreviewTimer = null;
+  }
+
+  private clearSelectedSnippetDraft(): void {
+    this.clearMcpPreviewTimer();
+    this.mcpPreviewSeq += 1;
+    this.selectedSnippetId = null;
+    this.selectedSnippetPath = null;
+    this.draftName = '';
+    this.draftFileName = '';
+    this.draftDescription = '';
+    this.draftContent = '';
+    this.selectedSnippetReadonly = false;
+    this.mcpPromptArgDrafts = {};
+    this.mcpPreviewState = { kind: 'idle' };
   }
 
   private emitInsertContent(content: string): void {
@@ -128,18 +199,22 @@ export class DomindsSnippetsPanel extends HTMLElement {
       this.emitInsertContent(this.draftContent);
       return;
     }
-    const promptArguments: Record<string, string> = {};
-    for (const arg of selected.mcpPrompt.arguments ?? []) {
-      const value = this.mcpPromptArgDrafts[arg.name]?.trim() ?? '';
-      if (value !== '' || arg.required) {
-        promptArguments[arg.name] = value;
-      }
+    const args = this.buildMcpPromptArgumentPayload(selected);
+    if (args.kind === 'blocked') {
+      this.mcpPreviewState = {
+        kind: 'blocked',
+        promptId: selected.mcpPrompt.promptId,
+        missingArgs: args.missingArgs,
+      };
+      this.draftContent = this.renderMcpPromptBlockedPreview(selected, args.missingArgs);
+      this.patchPreviewDom();
+      return;
     }
     try {
       const api = getApiClient();
       const resp = await api.renderMcpPromptSnippet({
         promptId: selected.mcpPrompt.promptId,
-        arguments: promptArguments,
+        arguments: args.arguments,
       });
       if (!resp.success || !resp.data) {
         const message = resp.error ?? getUiStrings(this.uiLanguage).snippetsLoadFailed;
@@ -166,20 +241,127 @@ export class DomindsSnippetsPanel extends HTMLElement {
     }
   }
 
-  private selectSnippet(snippet: SnippetItem | null): void {
-    if (!snippet) {
-      this.selectedSnippetId = null;
-      this.selectedSnippetPath = null;
-      this.draftName = '';
-      this.draftFileName = '';
-      this.draftDescription = '';
-      this.draftContent = '';
-      this.selectedSnippetReadonly = false;
-      this.mcpPromptArgDrafts = {};
-      this.render();
+  private buildMcpPromptArgumentPayload(
+    snippet: SnippetItem,
+  ):
+    | { kind: 'ready'; arguments: Record<string, string> }
+    | { kind: 'blocked'; missingArgs: string[] } {
+    const promptArguments: Record<string, string> = {};
+    const missingArgs: string[] = [];
+    for (const arg of snippet.mcpPrompt?.arguments ?? []) {
+      const value = this.mcpPromptArgDrafts[arg.name]?.trim() ?? '';
+      if (value === '') {
+        if (arg.required) missingArgs.push(arg.name);
+        continue;
+      }
+      promptArguments[arg.name] = value;
+    }
+    if (missingArgs.length > 0) return { kind: 'blocked', missingArgs };
+    return { kind: 'ready', arguments: promptArguments };
+  }
+
+  private renderMcpPromptBlockedPreview(snippet: SnippetItem, missingArgs: string[]): string {
+    const t = getUiStrings(this.uiLanguage);
+    const parts: string[] = [];
+    if (typeof snippet.description === 'string' && snippet.description.trim() !== '') {
+      parts.push(`<!-- ${snippet.description.trim()} -->`);
+    }
+    parts.push(`${t.snippetsMcpPreviewMissingArgs} ${missingArgs.join(', ')}`);
+    return parts.join('\n\n');
+  }
+
+  private renderMcpPromptLoadingPreview(snippet: SnippetItem): string {
+    const t = getUiStrings(this.uiLanguage);
+    const parts: string[] = [];
+    if (typeof snippet.description === 'string' && snippet.description.trim() !== '') {
+      parts.push(`<!-- ${snippet.description.trim()} -->`);
+    }
+    parts.push(t.snippetsMcpPreviewLoading);
+    return parts.join('\n\n');
+  }
+
+  private renderMcpPromptErrorPreview(snippet: SnippetItem, message: string): string {
+    const t = getUiStrings(this.uiLanguage);
+    const parts: string[] = [];
+    if (typeof snippet.description === 'string' && snippet.description.trim() !== '') {
+      parts.push(`<!-- ${snippet.description.trim()} -->`);
+    }
+    parts.push(`${t.snippetsMcpPreviewFailed}: ${message}`);
+    return parts.join('\n\n');
+  }
+
+  private scheduleMcpPromptPreview(): void {
+    this.clearMcpPreviewTimer();
+    this.mcpPreviewTimer = window.setTimeout(() => {
+      this.mcpPreviewTimer = null;
+      void this.refreshMcpPromptPreview();
+    }, 250);
+  }
+
+  private async refreshMcpPromptPreview(): Promise<void> {
+    const selected = this.getSelectedSnippet();
+    if (selected?.source !== 'mcp_prompt' || !selected.mcpPrompt) {
+      this.mcpPreviewState = { kind: 'idle' };
       return;
     }
 
+    const promptId = selected.mcpPrompt.promptId;
+    const seq = this.mcpPreviewSeq + 1;
+    this.mcpPreviewSeq = seq;
+    const args = this.buildMcpPromptArgumentPayload(selected);
+    if (args.kind === 'blocked') {
+      this.mcpPreviewState = { kind: 'blocked', promptId, missingArgs: args.missingArgs };
+      this.draftContent = this.renderMcpPromptBlockedPreview(selected, args.missingArgs);
+      this.patchPreviewDom();
+      return;
+    }
+
+    this.mcpPreviewState = { kind: 'loading', promptId, seq };
+    this.draftContent = this.renderMcpPromptLoadingPreview(selected);
+    this.patchPreviewDom();
+
+    try {
+      const api = getApiClient();
+      const resp = await api.renderMcpPromptSnippet({
+        promptId,
+        arguments: args.arguments,
+      });
+      if (!resp.success || !resp.data) {
+        const message = resp.error ?? getUiStrings(this.uiLanguage).snippetsMcpPreviewFailed;
+        throw new Error(message);
+      }
+      if (!resp.data.success) {
+        throw new Error(resp.data.error);
+      }
+      if (this.selectedSnippetId !== selected.id || this.mcpPreviewSeq !== seq) return;
+      this.mcpPreviewState = { kind: 'ready', promptId, seq };
+      this.draftContent = resp.data.content;
+      this.patchPreviewDom();
+    } catch (error: unknown) {
+      if (this.selectedSnippetId !== selected.id || this.mcpPreviewSeq !== seq) return;
+      const message =
+        error instanceof Error
+          ? error.message
+          : getUiStrings(this.uiLanguage).snippetsMcpPreviewFailed;
+      this.mcpPreviewState = { kind: 'error', promptId, seq, message };
+      this.draftContent = this.renderMcpPromptErrorPreview(selected, message);
+      this.patchPreviewDom();
+    }
+  }
+
+  private selectSnippet(snippet: SnippetItem | null): void {
+    if (!snippet) {
+      const previousSnippetId = this.selectedSnippetId;
+      this.clearSelectedSnippetDraft();
+      this.patchSelectedSnippetDom(previousSnippetId, null);
+      this.patchEditorDom();
+      return;
+    }
+    if (this.selectedSnippetId === snippet.id) return;
+
+    this.clearMcpPreviewTimer();
+    this.mcpPreviewSeq += 1;
+    const previousSnippetId = this.selectedSnippetId;
     this.selectedSnippetId = snippet.id;
     this.selectedSnippetPath = typeof snippet.path === 'string' ? snippet.path : null;
     this.selectedSnippetReadonly = snippet.readonly === true || snippet.source === 'mcp_prompt';
@@ -192,7 +374,12 @@ export class DomindsSnippetsPanel extends HTMLElement {
       promptArgs[arg.name] = '';
     }
     this.mcpPromptArgDrafts = promptArgs;
-    this.render();
+    this.mcpPreviewState = { kind: 'idle' };
+    this.patchSelectedSnippetDom(previousSnippetId, snippet.id);
+    this.patchEditorDom();
+    if (snippet.source === 'mcp_prompt') {
+      void this.refreshMcpPromptPreview();
+    }
   }
 
   private deriveFileNameForEditing(snippet: SnippetItem): string {
@@ -240,19 +427,19 @@ export class DomindsSnippetsPanel extends HTMLElement {
       if (!resp.data.success) {
         throw new Error(resp.data.error);
       }
-      this.selectedSnippetId = null;
-      this.selectedSnippetPath = null;
-      this.draftName = '';
-      this.draftFileName = '';
-      this.draftDescription = '';
-      this.draftContent = '';
-      this.selectedSnippetReadonly = false;
-      this.mcpPromptArgDrafts = {};
+      this.clearSelectedSnippetDraft();
       await this.load();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : t.snippetsSaveFailed;
-      this.state = { kind: 'error', message: msg };
-      this.render();
+      dispatchDomindsEvent(
+        this,
+        'ui-toast',
+        { message: msg, kind: 'error' },
+        {
+          bubbles: true,
+          composed: true,
+        },
+      );
     }
   }
 
@@ -260,24 +447,22 @@ export class DomindsSnippetsPanel extends HTMLElement {
     const state = this.state;
     if (state.kind !== 'ready') return;
     if (key === state.selectedGroupKey) return;
+    const previousKey = state.selectedGroupKey;
+    this.captureSnippetScroll();
     this.lastSelectedGroupKey = key;
     this.state = { ...state, selectedGroupKey: key };
-    this.selectedSnippetId = null;
-    this.selectedSnippetPath = null;
-    this.draftName = '';
-    this.draftFileName = '';
-    this.draftDescription = '';
-    this.draftContent = '';
-    this.selectedSnippetReadonly = false;
-    this.mcpPromptArgDrafts = {};
-    this.render();
+    this.clearSelectedSnippetDraft();
+    this.patchSelectedGroupDom(previousKey, key);
+    this.patchSnippetListDom();
+    this.patchEditorDom();
   }
 
   private startCreateGroup(): void {
+    if (this.creatingGroup) return;
     this.creatingGroup = true;
     this.newGroupDraftTitle = '';
     this.newGroupPendingFocus = true;
-    this.render();
+    this.patchCreateGroupInputDom();
   }
 
   private cancelCreateGroup(): void {
@@ -285,7 +470,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
     this.creatingGroup = false;
     this.newGroupDraftTitle = '';
     this.newGroupPendingFocus = false;
-    this.render();
+    this.patchCreateGroupInputDom();
   }
 
   private async confirmCreateGroup(): Promise<void> {
@@ -311,14 +496,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
       this.newGroupDraftTitle = '';
       this.newGroupPendingFocus = false;
       this.lastSelectedGroupKey = payload.groupKey;
-      this.selectedSnippetId = null;
-      this.selectedSnippetPath = null;
-      this.draftName = '';
-      this.draftFileName = '';
-      this.draftDescription = '';
-      this.draftContent = '';
-      this.selectedSnippetReadonly = false;
-      this.mcpPromptArgDrafts = {};
+      this.clearSelectedSnippetDraft();
       await this.load();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : t.snippetsLoadFailed;
@@ -332,7 +510,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
         },
       );
       this.newGroupPendingFocus = true;
-      this.render();
+      this.patchCreateGroupInputDom();
     }
   }
 
@@ -407,6 +585,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
   private render(): void {
     const root = this.shadowRoot;
     if (!root) return;
+    this.captureSnippetScroll();
     const t = getUiStrings(this.uiLanguage);
     const state = this.state;
 
@@ -426,30 +605,22 @@ export class DomindsSnippetsPanel extends HTMLElement {
       const mcpPromptArgs = selectedSnippet?.mcpPrompt?.arguments ?? [];
       const mcpPromptArgsHtml =
         selectedSnippet?.source === 'mcp_prompt' && mcpPromptArgs.length > 0
-          ? `<div class="form-row args-row">
-              ${mcpPromptArgs
-                .map((arg) => {
-                  const value = this.mcpPromptArgDrafts[arg.name] ?? '';
-                  const required = arg.required ? ' *' : '';
-                  return `<label class="label arg">
-                    <div class="label-text">${this.escapeHtml(arg.name + required)}</div>
-                    <input class="input mcp-arg" data-arg="${this.escapeHtml(arg.name)}" type="text" value="${this.escapeHtml(value)}" />
-                  </label>`;
-                })
-                .join('')}
-            </div>`
+          ? this.renderMcpPromptArgsHtml(mcpPromptArgs)
           : '';
+      const hasPromptArgs = mcpPromptArgsHtml !== '';
+      const previewBusy = this.mcpPreviewState.kind === 'loading';
       bodyHtml = `
         ${this.renderGroupTabs()}
 	        <div class="layout">
 	          <div class="pane left" aria-label="${this.escapeHtml(groupTitle)}">
-	            <div class="pane-scroll">
+	            <div class="pane-scroll" data-scroll-group="${this.escapeHtml(state.selectedGroupKey)}">
 	              <div class="section section-snippets">${this.renderSnippets(snippets)}</div>
 	            </div>
 	          </div>
 	          <div class="pane right">
-	            <div class="section section-editor">
-        <textarea id="snippet-content" class="textarea" spellcheck="false" ${this.selectedSnippetReadonly ? 'readonly' : ''}>${this.escapeHtml(this.draftContent)}</textarea>
+	            <div class="section section-editor ${hasPromptArgs ? 'with-args' : ''}">
+                  ${mcpPromptArgsHtml}
+        <textarea id="snippet-content" class="textarea ${previewBusy ? 'loading' : ''}" spellcheck="false" ${this.selectedSnippetReadonly ? 'readonly' : ''}>${this.escapeHtml(this.draftContent)}</textarea>
 	              <div class="actions">
 	                <div class="actions-left">
 	                  <span class="section-title section-title-inline">${this.escapeHtml(editorTitle)}</span>
@@ -475,9 +646,8 @@ export class DomindsSnippetsPanel extends HTMLElement {
 	                <label class="label description">
 	                  <div class="label-text">${this.escapeHtml(t.snippetsDescriptionLabel)}</div>
 		                  <input id="new-description" class="input" type="text" value="${this.escapeHtml(this.draftDescription)}" />
-		                </label>
-		              </div>
-                  ${mcpPromptArgsHtml}
+			                </label>
+			              </div>
 		            </div>
 	          </div>
 	        </div>
@@ -500,20 +670,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
 
     const newGroupInput = root.querySelector('#new-group-input');
     if (newGroupInput instanceof HTMLInputElement) {
-      newGroupInput.addEventListener('input', () => {
-        this.newGroupDraftTitle = newGroupInput.value;
-      });
-      newGroupInput.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          this.cancelCreateGroup();
-          return;
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          void this.confirmCreateGroup();
-        }
-      });
+      this.bindNewGroupInput(newGroupInput);
     }
     if (this.newGroupPendingFocus && newGroupInput instanceof HTMLInputElement) {
       this.newGroupPendingFocus = false;
@@ -523,29 +680,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
       });
     }
 
-    root.querySelectorAll<HTMLElement>('.snippet[data-id]').forEach((card) => {
-      card.addEventListener('click', (e: Event) => {
-        const target = e.target;
-        if (target instanceof Element && target.closest('button')) return;
-        if (this.state.kind !== 'ready') return;
-        const id = card.getAttribute('data-id');
-        if (typeof id !== 'string' || id === '') return;
-        const all = this.state.groups.flatMap((g) => g.templates);
-        const snippet = all.find((x) => x.id === id);
-        this.selectSnippet(snippet ?? null);
-      });
-
-      card.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        if (this.state.kind !== 'ready') return;
-        const id = card.getAttribute('data-id');
-        if (typeof id !== 'string' || id === '') return;
-        const all = this.state.groups.flatMap((g) => g.templates);
-        const snippet = all.find((x) => x.id === id);
-        this.selectSnippet(snippet ?? null);
-      });
-    });
+    this.bindSnippetCards();
 
     root.querySelectorAll<HTMLButtonElement>('button.group').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -578,14 +713,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
         this.updateActionButtons();
       });
     }
-    root.querySelectorAll<HTMLInputElement>('input.mcp-arg').forEach((input) => {
-      input.addEventListener('input', () => {
-        const argName = input.dataset.arg;
-        if (typeof argName !== 'string' || argName === '') return;
-        this.mcpPromptArgDrafts = { ...this.mcpPromptArgDrafts, [argName]: input.value };
-        this.updateActionButtons();
-      });
-    });
+    this.bindMcpArgInputs();
     const contentInput = root.querySelector('#snippet-content');
     if (contentInput instanceof HTMLTextAreaElement) {
       contentInput.addEventListener('input', () => {
@@ -608,6 +736,300 @@ export class DomindsSnippetsPanel extends HTMLElement {
     }
 
     this.updateActionButtons();
+    this.restoreSnippetScroll();
+  }
+
+  private patchPreviewDom(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const textarea = root.querySelector('#snippet-content');
+    if (textarea instanceof HTMLTextAreaElement && textarea.value !== this.draftContent) {
+      textarea.value = this.draftContent;
+    }
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.classList.toggle('loading', this.mcpPreviewState.kind === 'loading');
+    }
+    this.updateActionButtons();
+  }
+
+  private patchSelectedSnippetDom(previousId: string | null, nextId: string | null): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    if (previousId !== null) {
+      const previous = root.querySelector<HTMLElement>(
+        `.snippet[data-id="${CSS.escape(previousId)}"]`,
+      );
+      if (previous instanceof HTMLElement) previous.classList.remove('selected');
+    }
+    if (nextId !== null) {
+      const next = root.querySelector<HTMLElement>(`.snippet[data-id="${CSS.escape(nextId)}"]`);
+      if (next instanceof HTMLElement) next.classList.add('selected');
+    }
+  }
+
+  private patchSelectedGroupDom(previousKey: string, nextKey: string): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const previous = root.querySelector<HTMLButtonElement>(
+      `button.group[data-group="${CSS.escape(previousKey)}"]`,
+    );
+    if (previous instanceof HTMLButtonElement) previous.classList.remove('active');
+    const next = root.querySelector<HTMLButtonElement>(
+      `button.group[data-group="${CSS.escape(nextKey)}"]`,
+    );
+    if (next instanceof HTMLButtonElement) next.classList.add('active');
+  }
+
+  private patchSnippetListDom(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const pane = root.querySelector('.pane.left');
+    const scroll = root.querySelector('.pane-scroll');
+    const section = root.querySelector('.section-snippets');
+    if (
+      !(pane instanceof HTMLElement) ||
+      !(scroll instanceof HTMLElement) ||
+      !(section instanceof HTMLElement) ||
+      this.state.kind !== 'ready'
+    ) {
+      this.render();
+      return;
+    }
+    const state = this.state;
+    const groupTitle =
+      state.groups.find((g) => g.key === state.selectedGroupKey)?.titleI18n[this.uiLanguage] ??
+      state.selectedGroupKey;
+    pane.setAttribute('aria-label', groupTitle);
+    scroll.dataset.scrollGroup = state.selectedGroupKey;
+    section.innerHTML = this.renderSnippets(this.getSelectedGroupSnippets());
+    this.bindSnippetCards();
+    this.restoreSnippetScroll();
+  }
+
+  private patchEditorDom(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const editor = root.querySelector('.section-editor');
+    if (!(editor instanceof HTMLElement)) {
+      this.render();
+      return;
+    }
+
+    const selectedSnippet = this.getSelectedSnippet();
+    const mcpPromptArgs = selectedSnippet?.mcpPrompt?.arguments ?? [];
+    const hasPromptArgs = selectedSnippet?.source === 'mcp_prompt' && mcpPromptArgs.length > 0;
+    editor.classList.toggle('with-args', hasPromptArgs);
+
+    const existingArgs = editor.querySelector('.args-row');
+    const nextArgsSignature = hasPromptArgs ? this.getMcpPromptArgsSignature(mcpPromptArgs) : '';
+    const argsHtml = hasPromptArgs ? this.renderMcpPromptArgsHtml(mcpPromptArgs) : '';
+    if (existingArgs instanceof HTMLElement) {
+      if (argsHtml === '') {
+        existingArgs.remove();
+      } else if (existingArgs.dataset.argsSignature === nextArgsSignature) {
+        this.patchMcpPromptArgValues(existingArgs);
+      } else {
+        existingArgs.outerHTML = argsHtml;
+      }
+    } else if (argsHtml !== '') {
+      editor.insertAdjacentHTML('afterbegin', argsHtml);
+    }
+    this.bindMcpArgInputs();
+
+    const textarea = root.querySelector('#snippet-content');
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.readOnly = this.selectedSnippetReadonly;
+      textarea.value = this.draftContent;
+      textarea.classList.toggle('loading', this.mcpPreviewState.kind === 'loading');
+    }
+
+    const title = root.querySelector('.section-title-inline');
+    if (title instanceof HTMLElement) {
+      title.textContent =
+        this.selectedSnippetId === null
+          ? getUiStrings(this.uiLanguage).snippetsNewTitle
+          : getUiStrings(this.uiLanguage).snippetsEditorTitle;
+    }
+
+    const fileNameInput = root.querySelector('#new-filename');
+    if (fileNameInput instanceof HTMLInputElement) fileNameInput.value = this.draftFileName;
+    const nameInput = root.querySelector('#new-name');
+    if (nameInput instanceof HTMLInputElement) nameInput.value = this.draftName;
+    const descInput = root.querySelector('#new-description');
+    if (descInput instanceof HTMLInputElement) descInput.value = this.draftDescription;
+    this.updateActionButtons();
+  }
+
+  private patchCreateGroupInputDom(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const buttons = root.querySelector('.groups-buttons');
+    if (!(buttons instanceof HTMLElement)) {
+      this.render();
+      return;
+    }
+    const existing = root.querySelector('#new-group-input');
+    if (!this.creatingGroup) {
+      const wrapper = existing?.closest('.group-input');
+      if (wrapper instanceof HTMLElement) wrapper.remove();
+      return;
+    }
+    if (!(existing instanceof HTMLInputElement)) {
+      const addGroupBtn = root.querySelector('#add-group');
+      const inputHtml = `<span class="group group-input" aria-label="new-group">
+        <input id="new-group-input" class="group-input-el" type="text" value="${this.escapeHtml(
+          this.newGroupDraftTitle,
+        )}" />
+      </span>`;
+      if (addGroupBtn instanceof HTMLButtonElement) {
+        addGroupBtn.insertAdjacentHTML('beforebegin', inputHtml);
+      } else {
+        buttons.insertAdjacentHTML('beforeend', inputHtml);
+      }
+    }
+    const input = root.querySelector('#new-group-input');
+    if (!(input instanceof HTMLInputElement)) return;
+    this.bindNewGroupInput(input);
+    if (!this.newGroupPendingFocus) return;
+    this.newGroupPendingFocus = false;
+    queueMicrotask(() => {
+      input.focus();
+      input.select();
+    });
+  }
+
+  private renderMcpPromptArgsHtml(mcpPromptArgs: readonly McpPromptArg[]): string {
+    if (!mcpPromptArgs || mcpPromptArgs.length === 0) return '';
+    return `<div class="form-row args-row" data-args-signature="${this.escapeHtml(
+      this.getMcpPromptArgsSignature(mcpPromptArgs),
+    )}">
+      ${this.getOrderedMcpPromptArgs(mcpPromptArgs)
+        .map((arg) => {
+          const value = this.mcpPromptArgDrafts[arg.name] ?? '';
+          const required = arg.required ? ' *' : '';
+          const description =
+            typeof arg.description === 'string' && arg.description.trim() !== ''
+              ? arg.description
+              : '';
+          return `<label class="label arg">
+            <div class="label-text">${this.escapeHtml(arg.name + required)}</div>
+            <input class="input mcp-arg" data-arg="${this.escapeHtml(arg.name)}" type="text" value="${this.escapeHtml(value)}" ${description ? `placeholder="${this.escapeHtml(description)}" title="${this.escapeHtml(description)}"` : ''} />
+          </label>`;
+        })
+        .join('')}
+    </div>`;
+  }
+
+  private getOrderedMcpPromptArgs(mcpPromptArgs: readonly McpPromptArg[]): McpPromptArg[] {
+    return [...mcpPromptArgs].sort((left, right) => {
+      if (left.required === right.required) return 0;
+      return left.required ? -1 : 1;
+    });
+  }
+
+  private getMcpPromptArgsSignature(mcpPromptArgs: readonly McpPromptArg[]): string {
+    return this.getOrderedMcpPromptArgs(mcpPromptArgs)
+      .map((arg): readonly [string, boolean, string] => {
+        const description =
+          typeof arg.description === 'string' && arg.description.trim() !== ''
+            ? arg.description
+            : '';
+        return [arg.name, arg.required === true, description];
+      })
+      .map((entry) => JSON.stringify(entry))
+      .join('|');
+  }
+
+  private patchMcpPromptArgValues(argsRow: HTMLElement): void {
+    argsRow.querySelectorAll<HTMLInputElement>('input.mcp-arg').forEach((input) => {
+      const argName = input.dataset.arg;
+      if (typeof argName !== 'string' || argName === '') return;
+      const nextValue = this.mcpPromptArgDrafts[argName] ?? '';
+      if (input.value !== nextValue) input.value = nextValue;
+    });
+  }
+
+  private bindMcpArgInputs(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    root.querySelectorAll<HTMLInputElement>('input.mcp-arg').forEach((input) => {
+      if (input.dataset.bound === 'true') return;
+      input.dataset.bound = 'true';
+      input.addEventListener('input', () => {
+        const argName = input.dataset.arg;
+        if (typeof argName !== 'string' || argName === '') return;
+        this.mcpPromptArgDrafts = { ...this.mcpPromptArgDrafts, [argName]: input.value };
+        this.updateActionButtons();
+        this.scheduleMcpPromptPreview();
+      });
+    });
+  }
+
+  private bindNewGroupInput(input: HTMLInputElement): void {
+    if (input.dataset.bound === 'true') return;
+    input.dataset.bound = 'true';
+    input.addEventListener('input', () => {
+      this.newGroupDraftTitle = input.value;
+    });
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.cancelCreateGroup();
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void this.confirmCreateGroup();
+      }
+    });
+  }
+
+  private bindSnippetCards(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    root.querySelectorAll<HTMLElement>('.snippet[data-id]').forEach((card) => {
+      if (card.dataset.bound === 'true') return;
+      card.dataset.bound = 'true';
+      card.addEventListener('click', (e: Event) => {
+        const target = e.target;
+        if (target instanceof Element && target.closest('button')) return;
+        this.selectSnippetFromCard(card);
+      });
+
+      card.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        this.selectSnippetFromCard(card);
+      });
+    });
+  }
+
+  private selectSnippetFromCard(card: HTMLElement): void {
+    if (this.state.kind !== 'ready') return;
+    const id = card.getAttribute('data-id');
+    if (typeof id !== 'string' || id === '') return;
+    const all = this.state.groups.flatMap((g) => g.templates);
+    const snippet = all.find((x) => x.id === id);
+    this.selectSnippet(snippet ?? null);
+  }
+
+  private captureSnippetScroll(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const scroll = root.querySelector('.pane-scroll');
+    if (!(scroll instanceof HTMLElement)) return;
+    const groupKey = scroll.dataset.scrollGroup;
+    if (typeof groupKey !== 'string' || groupKey === '') return;
+    this.snippetScrollTops = { ...this.snippetScrollTops, [groupKey]: scroll.scrollTop };
+  }
+
+  private restoreSnippetScroll(): void {
+    const root = this.shadowRoot;
+    if (!root || this.state.kind !== 'ready') return;
+    const scroll = root.querySelector('.pane-scroll');
+    if (!(scroll instanceof HTMLElement)) return;
+    const saved = this.snippetScrollTops[this.state.selectedGroupKey];
+    scroll.scrollTop = typeof saved === 'number' ? saved : 0;
   }
 
   private updateActionButtons(): void {
@@ -688,7 +1110,9 @@ export class DomindsSnippetsPanel extends HTMLElement {
       .input{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:6px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);}
       .form-row .input{width:100%;box-sizing:border-box;}
       .textarea{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:6px;padding:3px 8px;font-size:12px;min-height:120px;height:100%;width:100%;box-sizing:border-box;resize:vertical;background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .textarea.loading{color:var(--color-fg-tertiary,#64748b);}
       .section-editor{padding:6px 8px;display:grid;grid-template-rows:minmax(120px,1fr) auto auto;gap:6px;flex:1;min-height:0;}
+      .section-editor.with-args{grid-template-rows:auto minmax(120px,1fr) auto auto;}
       .actions{display:flex;align-items:center;justify-content:space-between;gap:6px;}
       .actions-left,.actions-right{display:flex;align-items:center;gap:6px;}
       .btn{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;}

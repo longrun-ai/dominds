@@ -234,6 +234,9 @@ export type UiStrings = {
   snippetsSave: string;
   snippetsSaveFailed: string;
   snippetsLoadFailed: string;
+  snippetsMcpPreviewLoading: string;
+  snippetsMcpPreviewFailed: string;
+  snippetsMcpPreviewMissingArgs: string;
   unauthorized: string;
   save: string;
   send: string;
@@ -648,6 +651,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       snippetsSave: '保存',
       snippetsSaveFailed: '保存提示词模板失败',
       snippetsLoadFailed: '加载提示词模板失败',
+      snippetsMcpPreviewLoading: '正在加载 MCP 提示词预览…',
+      snippetsMcpPreviewFailed: '加载 MCP 提示词预览失败',
+      snippetsMcpPreviewMissingArgs: '填写必填参数后即可预览：',
       unauthorized: '未认证',
       save: '保存',
       send: '发送',
@@ -1077,6 +1083,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     snippetsSave: 'Save',
     snippetsSaveFailed: 'Failed to save snippet',
     snippetsLoadFailed: 'Failed to load snippets',
+    snippetsMcpPreviewLoading: 'Loading MCP prompt preview...',
+    snippetsMcpPreviewFailed: 'Failed to load MCP prompt preview',
+    snippetsMcpPreviewMissingArgs: 'Fill required arguments to preview:',
     unauthorized: 'Unauthorized',
     save: 'Save',
     send: 'Send',
