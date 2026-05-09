@@ -93,6 +93,8 @@ type OpenAiCompatibleChatExtraParams = {
 
 const KIMI_CODE_API_QUIRK = 'kimi-code';
 const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
+const KIMI_CLI_CLOAK_API_QUIRK = 'kimi-cli-cloak';
+const KIMI_CLI_USER_AGENT = 'KimiCLI/1.41.0';
 
 export function resolveOpenAiCompatibleToolChoice(
   funcTools: readonly FuncTool[],
@@ -696,7 +698,11 @@ function createOpenAiCompatibleClient(args: {
     apiKey: args.apiKey,
     baseURL: args.providerConfig.baseUrl,
   };
-  if (isKimiCodeProvider(args.providerConfig)) {
+  if (isKimiCliCloakProvider(args.providerConfig)) {
+    options.defaultHeaders = {
+      'User-Agent': KIMI_CLI_USER_AGENT,
+    };
+  } else if (isKimiCodeProvider(args.providerConfig)) {
     options.defaultHeaders = {
       'User-Agent': `Dominds/${DOMINDS_RUNNING_VERSION || 'dev'}`,
     };
@@ -741,6 +747,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isKimiCodeProvider(providerConfig: ProviderConfig): boolean {
   return normalizeProviderApiQuirks(providerConfig).has(KIMI_CODE_API_QUIRK);
+}
+
+function isKimiCliCloakProvider(providerConfig: ProviderConfig): boolean {
+  return normalizeProviderApiQuirks(providerConfig).has(KIMI_CLI_CLOAK_API_QUIRK);
 }
 
 function isKimiCodeReasoningEffort(

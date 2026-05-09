@@ -454,6 +454,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - kimi-code
+      - kimi-cli-cloak # TODO: remove this once Kimi officially admits Dominds
     baseUrl: https://api.kimi.com/coding/v1
     apiKeyEnvVar: KIMI_CODE_API_KEY
     tech_spec_url: https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html
