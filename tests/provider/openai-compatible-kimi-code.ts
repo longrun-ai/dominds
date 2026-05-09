@@ -6,6 +6,7 @@ import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
 import { LlmConfig } from '../../main/llm/client';
 import { OpenAiCompatibleGen } from '../../main/llm/gen/openai-compatible';
 import { Team } from '../../main/team';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../../main/tool';
 
 type CapturedRequest = {
   method: string | undefined;
@@ -109,6 +110,7 @@ async function withCaptureServer<T>(
 
 async function captureKimiCodeRequest(
   openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>,
+  funcTools: FuncTool[] = [],
 ): Promise<CapturedRequest> {
   const previousApiKey = process.env.KIMI_CODE_API_KEY;
   process.env.KIMI_CODE_API_KEY = 'test-kimi-code-key';
@@ -120,7 +122,7 @@ async function captureKimiCodeRequest(
         provider,
         agent,
         '',
-        [],
+        funcTools,
         {
           dialogSelfId: 'dialog-self',
           dialogRootId: 'dialog-root',
@@ -143,12 +145,16 @@ async function captureKimiCodeRequest(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function testBuiltinKimiCodeProvider(): Promise<void> {
   const cfg = await LlmConfig.load();
   const provider = cfg.getProvider('kimi-code');
   assert(provider !== undefined, 'expected built-in kimi-code provider');
   assert.equal(provider.apiType, 'openai-compatible');
-  assert.deepEqual(provider.apiQuirks, ['kimi-code']);
+  assert.deepEqual(provider.apiQuirks, ['kimi-code', 'kimi-cli-cloak']);
   assert.equal(provider.baseUrl, 'https://api.kimi.com/coding/v1');
   assert.equal(provider.apiKeyEnvVar, 'KIMI_CODE_API_KEY');
   assert.deepEqual(Object.keys(provider.models), ['kimi-for-coding']);
@@ -203,6 +209,86 @@ async function testKimiCodeExplicitParallelToolCallsPayload(): Promise<void> {
   assert.equal(request.body.parallel_tool_calls, false);
 }
 
+async function testKimiCodeNormalizesToolSchemaPropertyTypes(): Promise<void> {
+  const parameters = {
+    type: 'object',
+    properties: {
+      truncateMode: {
+        description: 'How to truncate long outputs.',
+        enum: ['smart', 'full', 'none'],
+      },
+      retryCount: {
+        enum: [1, 2, 3],
+      },
+      nested: {
+        properties: {
+          mode: {
+            const: 'fast',
+          },
+        },
+      },
+      either: {
+        anyOf: [{ enum: ['a', 'b'] }, { type: 'integer' }],
+      },
+    },
+  } as const;
+  const tool: FuncTool = {
+    type: 'func',
+    name: 'read_context',
+    description: 'Read context.',
+    parameters,
+    async call(_dlg, _caller, _args: ToolArguments): Promise<ToolCallOutput> {
+      return { outcome: 'success', content: 'ok' };
+    },
+  };
+  const request = await captureKimiCodeRequest({ thinking: 'auto' }, [tool]);
+  assert(Array.isArray(request.body.tools), 'expected tools in Kimi Code request');
+  const firstTool = request.body.tools[0];
+  assert(isRecord(firstTool), 'expected first tool object');
+  const firstFunction = firstTool.function;
+  assert(isRecord(firstFunction), 'expected first tool function object');
+  const requestParameters = firstFunction.parameters;
+  assert(isRecord(requestParameters), 'expected first tool parameters object');
+  const requestProperties = requestParameters.properties;
+  assert(isRecord(requestProperties), 'expected first tool properties object');
+  const truncateMode = requestProperties.truncateMode;
+  assert(isRecord(truncateMode), 'expected truncateMode property object');
+  assert.equal(truncateMode.type, 'string');
+  const retryCount = requestProperties.retryCount;
+  assert(isRecord(retryCount), 'expected retryCount property object');
+  assert.equal(retryCount.type, 'integer');
+  const nested = requestProperties.nested;
+  assert(isRecord(nested), 'expected nested property object');
+  assert.equal(nested.type, 'object');
+  const nestedProperties = nested.properties;
+  assert(isRecord(nestedProperties), 'expected nested properties object');
+  const nestedMode = nestedProperties.mode;
+  assert(isRecord(nestedMode), 'expected nested mode property object');
+  assert.equal(nestedMode.type, 'string');
+  const either = requestProperties.either;
+  assert(isRecord(either), 'expected either property object');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(either, 'type'),
+    false,
+    'Kimi Code schema normalization must not add a top-level type to combinator properties',
+  );
+  assert(Array.isArray(either.anyOf), 'expected anyOf branches');
+  assert.equal(either.anyOf.length, 2, 'expected two anyOf branches');
+  const firstBranch = either.anyOf[0];
+  assert(isRecord(firstBranch), 'expected first anyOf branch object');
+  assert.equal(firstBranch.type, 'string');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(parameters.properties.truncateMode, 'type'),
+    false,
+    'Kimi Code schema normalization must not mutate the source tool schema',
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(parameters.properties.nested, 'type'),
+    false,
+    'Kimi Code nested schema normalization must not mutate the source tool schema',
+  );
+}
+
 async function expectKimiCodeRequestBuildError(args: {
   openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>;
   expected: string;
@@ -244,6 +330,7 @@ async function main(): Promise<void> {
   await testKimiCodeThinkingOffPayload();
   await testKimiCodeReasoningEffortPayload();
   await testKimiCodeExplicitParallelToolCallsPayload();
+  await testKimiCodeNormalizesToolSchemaPropertyTypes();
   await testKimiCodeValidation();
   console.log('✓ OpenAI-compatible Kimi Code tests passed');
 }

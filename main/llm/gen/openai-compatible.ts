@@ -95,6 +95,44 @@ const KIMI_CODE_API_QUIRK = 'kimi-code';
 const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 const KIMI_CLI_CLOAK_API_QUIRK = 'kimi-cli-cloak';
 const KIMI_CLI_USER_AGENT = 'KimiCLI/1.41.0';
+const DISABLE_ASSISTANT_TOOL_CALL_REASONING_CONTENT_API_QUIRK =
+  'disable-assistant-tool-call-reasoning-content';
+const JSON_SCHEMA_COMBINATOR_KEYS = new Set([
+  'anyOf',
+  'oneOf',
+  'allOf',
+  'not',
+  'if',
+  'then',
+  'else',
+  '$ref',
+]);
+const JSON_SCHEMA_BRANCH_ARRAY_KEYS = ['anyOf', 'oneOf', 'allOf'] as const;
+const JSON_SCHEMA_OBJECT_KEYS = new Set([
+  'properties',
+  'additionalProperties',
+  'patternProperties',
+  'propertyNames',
+  'required',
+  'minProperties',
+  'maxProperties',
+]);
+const JSON_SCHEMA_ARRAY_KEYS = new Set([
+  'items',
+  'prefixItems',
+  'minItems',
+  'maxItems',
+  'uniqueItems',
+  'contains',
+]);
+const JSON_SCHEMA_STRING_KEYS = new Set(['minLength', 'maxLength', 'pattern', 'format']);
+const JSON_SCHEMA_NUMERIC_KEYS = new Set([
+  'minimum',
+  'maximum',
+  'multipleOf',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+]);
 
 export function resolveOpenAiCompatibleToolChoice(
   funcTools: readonly FuncTool[],
@@ -767,6 +805,112 @@ function isKimiCodeThinkingMode(
   );
 }
 
+function cloneJsonSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => cloneJsonSchemaValue(item));
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      out[key] = cloneJsonSchemaValue(child);
+    }
+    return out;
+  }
+  return value;
+}
+
+function hasAnyOwnKey(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) return true;
+  }
+  return false;
+}
+
+function inferJsonSchemaTypeFromValues(values: readonly unknown[]): string {
+  const inferred = new Set<string>();
+  for (const value of values) {
+    if (typeof value === 'boolean') inferred.add('boolean');
+    else if (typeof value === 'number')
+      inferred.add(Number.isInteger(value) ? 'integer' : 'number');
+    else if (typeof value === 'string') inferred.add('string');
+    else if (value === null) inferred.add('null');
+    else if (Array.isArray(value)) inferred.add('array');
+    else if (isRecord(value)) inferred.add('object');
+    else return 'string';
+  }
+  if (inferred.size === 1) {
+    const only = [...inferred][0];
+    return only ?? 'string';
+  }
+  if (inferred.size === 2 && inferred.has('integer') && inferred.has('number')) {
+    return 'number';
+  }
+  return 'string';
+}
+
+function inferJsonSchemaTypeFromStructure(value: Record<string, unknown>): string {
+  if (hasAnyOwnKey(value, JSON_SCHEMA_OBJECT_KEYS)) return 'object';
+  if (hasAnyOwnKey(value, JSON_SCHEMA_ARRAY_KEYS)) return 'array';
+  if (hasAnyOwnKey(value, JSON_SCHEMA_STRING_KEYS)) return 'string';
+  if (hasAnyOwnKey(value, JSON_SCHEMA_NUMERIC_KEYS)) return 'number';
+  return 'string';
+}
+
+function normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(value: unknown): void {
+  if (!isRecord(value)) return;
+  if (
+    !Object.prototype.hasOwnProperty.call(value, 'type') &&
+    !hasAnyOwnKey(value, JSON_SCHEMA_COMBINATOR_KEYS)
+  ) {
+    const enumValues = value.enum;
+    if (Array.isArray(enumValues) && enumValues.length > 0) {
+      value.type = inferJsonSchemaTypeFromValues(enumValues);
+    } else if (Object.prototype.hasOwnProperty.call(value, 'const')) {
+      value.type = inferJsonSchemaTypeFromValues([value.const]);
+    } else {
+      value.type = inferJsonSchemaTypeFromStructure(value);
+    }
+  }
+  normalizeOpenAiCompatibleKimiCodeJsonSchemaContainer(value);
+}
+
+function normalizeOpenAiCompatibleKimiCodeJsonSchemaContainer(value: unknown): void {
+  if (!isRecord(value)) return;
+
+  const properties = value.properties;
+  if (isRecord(properties)) {
+    for (const property of Object.values(properties)) {
+      normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(property);
+    }
+  }
+
+  const items = value.items;
+  if (isRecord(items)) {
+    normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(items);
+  } else if (Array.isArray(items)) {
+    for (const item of items) {
+      normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(item);
+    }
+  }
+
+  const additionalProperties = value.additionalProperties;
+  if (isRecord(additionalProperties)) {
+    normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(additionalProperties);
+  }
+
+  for (const key of JSON_SCHEMA_BRANCH_ARRAY_KEYS) {
+    const branches = value[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      normalizeOpenAiCompatibleKimiCodeJsonSchemaProperty(branch);
+    }
+  }
+}
+
+function normalizeOpenAiCompatibleKimiCodeJsonSchema(value: unknown): unknown {
+  const cloned = cloneJsonSchemaValue(value);
+  normalizeOpenAiCompatibleKimiCodeJsonSchemaContainer(cloned);
+  return cloned;
+}
+
 function isLlmRequestContext(value: unknown): value is LlmRequestContext {
   return (
     isRecord(value) &&
@@ -1068,10 +1212,27 @@ function attachReasoningContent(
   } as ChatCompletionMessageWithReasoning;
 }
 
-function funcToolToChatCompletionTool(funcTool: FuncTool): ChatCompletionTool {
+function shouldAttachReasoningContentToAssistantToolCalls(
+  providerConfig: ProviderConfig | undefined,
+): boolean {
+  if (providerConfig === undefined) return true;
+  return !normalizeProviderApiQuirks(providerConfig).has(
+    DISABLE_ASSISTANT_TOOL_CALL_REASONING_CONTENT_API_QUIRK,
+  );
+}
+
+function funcToolToChatCompletionTool(
+  funcTool: FuncTool,
+  providerConfig?: ProviderConfig,
+): ChatCompletionTool {
   // MCP schemas are passed through to providers. Chat Completions expects a narrower JSON schema
   // shape; runtime compatibility is handled by provider validation + the driver stop policy.
-  const parameters = funcTool.parameters as unknown as FunctionDefinition['parameters'];
+  const rawParameters = funcTool.parameters as unknown;
+  const parameters = (
+    providerConfig !== undefined && isKimiCodeProvider(providerConfig)
+      ? normalizeOpenAiCompatibleKimiCodeJsonSchema(rawParameters)
+      : rawParameters
+  ) as FunctionDefinition['parameters'];
   const description = getTextForLanguage(
     { i18n: funcTool.descriptionI18n, fallback: funcTool.description },
     getWorkLanguage(),
@@ -1101,7 +1262,6 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
     case 'func_call_msg':
       return {
         role: 'assistant',
-        content: null,
         tool_calls: [
           {
             id: msg.id,
@@ -1552,7 +1712,11 @@ async function buildChatCompletionMessages(
     normalized,
     OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES,
   );
+  const attachToolCallReasoning = shouldAttachReasoningContentToAssistantToolCalls(
+    options?.providerConfig,
+  );
   let pendingReasoningContent: string | undefined;
+  let assistantTurnReasoningContent: string | undefined;
 
   const takePendingReasoningContent = (): string | undefined => {
     const current = pendingReasoningContent;
@@ -1568,9 +1732,15 @@ async function buildChatCompletionMessages(
         : value;
   };
 
+  const noteAssistantTurnReasoningContent = (value: string | undefined): void => {
+    if (!value) return;
+    assistantTurnReasoningContent = value;
+  };
+
   const flushPendingReasoningAsAssistantMessage = (): void => {
     const reasoningContent = takePendingReasoningContent();
     if (!reasoningContent) return;
+    noteAssistantTurnReasoningContent(reasoningContent);
     input.push(
       attachReasoningContent(
         {
@@ -1594,7 +1764,12 @@ async function buildChatCompletionMessages(
 
     if (msg.type === 'func_call_msg') {
       const mapped = chatMessageToChatCompletionMessage(msg);
-      input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
+      const pending = takePendingReasoningContent();
+      noteAssistantTurnReasoningContent(pending);
+      const reasoningContent = attachToolCallReasoning
+        ? (pending ?? assistantTurnReasoningContent)
+        : undefined;
+      input.push(attachReasoningContent(mapped, reasoningContent));
       continue;
     }
 
@@ -1613,6 +1788,15 @@ async function buildChatCompletionMessages(
       continue;
     }
 
+    if (
+      msg.type === 'environment_msg' ||
+      msg.type === 'prompting_msg' ||
+      msg.type === 'tellask_result_msg' ||
+      msg.type === 'tellask_carryover_msg'
+    ) {
+      assistantTurnReasoningContent = undefined;
+    }
+
     const mapped =
       (msg.type === 'prompting_msg' ||
         msg.type === 'tellask_result_msg' ||
@@ -1627,7 +1811,9 @@ async function buildChatCompletionMessages(
             options?.onUserImageIngest,
           )
         : chatMessageToChatCompletionMessage(msg);
-    input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
+    const reasoningContent = takePendingReasoningContent();
+    noteAssistantTurnReasoningContent(reasoningContent);
+    input.push(attachReasoningContent(mapped, reasoningContent));
   }
 
   flushPendingReasoningAsAssistantMessage();
@@ -2105,7 +2291,9 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...openAiCompatibleExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
-      ...(requestTools.length > 0 ? { tools: requestTools.map(funcToolToChatCompletionTool) } : {}),
+      ...(requestTools.length > 0
+        ? { tools: requestTools.map((tool) => funcToolToChatCompletionTool(tool, providerConfig)) }
+        : {}),
       ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       ...(parallelToolCalls !== undefined && { parallel_tool_calls: parallelToolCalls }),
     };
@@ -2210,7 +2398,9 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_p !== undefined && { top_p: openAiParams.top_p }),
       ...openAiCompatibleExtraParams,
       ...(responseFormat !== undefined && { response_format: responseFormat }),
-      ...(requestTools.length > 0 && { tools: requestTools.map(funcToolToChatCompletionTool) }),
+      ...(requestTools.length > 0 && {
+        tools: requestTools.map((tool) => funcToolToChatCompletionTool(tool, providerConfig)),
+      }),
       ...(toolChoice !== undefined && { tool_choice: toolChoice }),
       ...(parallelToolCalls !== undefined && { parallel_tool_calls: parallelToolCalls }),
     };

@@ -30,6 +30,14 @@ type SmokeResult = {
     streamErrors: string[];
     error?: string;
   };
+  historyRoundtrip: {
+    ok: boolean;
+    elapsedMs: number;
+    sayingText: string;
+    thinkingChars: number;
+    streamErrors: string[];
+    error?: string;
+  };
 };
 
 type ReasoningResult = {
@@ -142,6 +150,55 @@ function reasoningContext(model: string): ChatMessage[] {
       msgId: `volc-reasoning-${model}`,
       grammar: 'markdown',
       content: 'Think briefly, then answer exactly: DONE',
+    },
+  ];
+}
+
+function historyRoundtripContext(model: string): ChatMessage[] {
+  return [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 4,
+      msgId: `volc-history-user-${model}`,
+      grammar: 'markdown',
+      content: 'Use tool_echo once.',
+    },
+    {
+      type: 'thinking_msg',
+      role: 'assistant',
+      genseq: 4,
+      content: 'Need to call the echo tool.',
+    },
+    {
+      type: 'saying_msg',
+      role: 'assistant',
+      genseq: 4,
+      content: 'Calling the echo tool.',
+    },
+    {
+      type: 'func_call_msg',
+      role: 'assistant',
+      genseq: 4,
+      id: `call-history-${model}`,
+      name: 'tool_echo',
+      arguments: JSON.stringify({ value: model }),
+    },
+    {
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: 4,
+      id: `call-history-${model}`,
+      name: 'tool_echo',
+      content: `echo:${model}`,
+    },
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 5,
+      msgId: `volc-history-followup-${model}`,
+      grammar: 'markdown',
+      content: 'Reply with exactly: AFTER_TOOL',
     },
   ];
 }
@@ -268,6 +325,56 @@ async function runTool(provider: ProviderConfig, model: string): Promise<SmokeRe
   }
 }
 
+async function runHistoryRoundtrip(
+  provider: ProviderConfig,
+  model: string,
+): Promise<SmokeResult['historyRoundtrip']> {
+  const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
+  const startedAt = Date.now();
+  try {
+    await getGen(provider).genToReceiver(
+      provider,
+      new Team.Member({
+        id: 'volc-live-smoke',
+        name: 'Volc Live Smoke',
+        provider: 'volcano-engine-coding-plan',
+        model,
+        model_params: {
+          'openai-compatible': { temperature: 0, thinking: false, parallel_tool_calls: false },
+        },
+      }),
+      'You are a concise test assistant.',
+      [echoTool()],
+      {
+        dialogSelfId: 'tests/provider/volcengine-coding-plan-live-smoke',
+        dialogRootId: 'tests/provider/volcengine-coding-plan-live-smoke',
+        providerKey: 'volcano-engine-coding-plan',
+        modelKey: model,
+      },
+      historyRoundtripContext(model),
+      buildReceiver(capture),
+      5,
+    );
+    const sayingText = capture.sayingChunks.join('');
+    return {
+      ok: sayingText.trim().includes('AFTER_TOOL') && capture.streamErrors.length === 0,
+      elapsedMs: Date.now() - startedAt,
+      sayingText,
+      thinkingChars: capture.thinkingChars,
+      streamErrors: capture.streamErrors,
+    };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      elapsedMs: Date.now() - startedAt,
+      sayingText: capture.sayingChunks.join(''),
+      thinkingChars: capture.thinkingChars,
+      streamErrors: capture.streamErrors,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function runReasoning(provider: ProviderConfig, model: string): Promise<ReasoningResult> {
   const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
   const startedAt = Date.now();
@@ -334,8 +441,10 @@ async function main(): Promise<void> {
     const content = await runContent(providerCfg, model);
     console.error(`live smoke: ${model} tool`);
     const tool = await runTool(providerCfg, model);
-    results.push({ model, content, tool });
-    console.log(JSON.stringify({ model, content, tool }));
+    console.error(`live smoke: ${model} history roundtrip`);
+    const historyRoundtrip = await runHistoryRoundtrip(providerCfg, model);
+    results.push({ model, content, tool, historyRoundtrip });
+    console.log(JSON.stringify({ model, content, tool, historyRoundtrip }));
   }
 
   let reasoning: ReasoningResult | undefined;
@@ -350,7 +459,9 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ reasoning }));
   }
 
-  const failed = results.filter((item) => !item.content.ok || !item.tool.ok);
+  const failed = results.filter(
+    (item) => !item.content.ok || !item.tool.ok || !item.historyRoundtrip.ok,
+  );
   if (reasoning !== undefined && !reasoning.ok) {
     failed.push({
       model: reasoning.model,
@@ -370,6 +481,13 @@ async function main(): Promise<void> {
         thinkingChars: reasoning.thinkingChars,
         streamErrors: reasoning.streamErrors,
         error: reasoning.error,
+      },
+      historyRoundtrip: {
+        ok: true,
+        elapsedMs: 0,
+        sayingText: '',
+        thinkingChars: 0,
+        streamErrors: [],
       },
     });
   }

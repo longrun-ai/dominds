@@ -28,6 +28,8 @@ function isAssistantReasoningMessage(
 
 function isAssistantToolCallMessage(value: unknown): value is {
   role: 'assistant';
+  content?: unknown;
+  reasoning_content?: string;
   tool_calls: ReadonlyArray<{
     id: string;
     type: string;
@@ -66,6 +68,8 @@ function requireAssistantReasoningMessage(value: unknown): {
 
 function requireAssistantToolCallMessage(value: unknown): {
   role: 'assistant';
+  content?: unknown;
+  reasoning_content?: string;
   tool_calls: ReadonlyArray<{
     id: string;
     type: string;
@@ -145,6 +149,14 @@ async function main() {
   );
 
   const toolCallMsg = requireAssistantToolCallMessage(messages[2]);
+  assert(
+    toolCallMsg.reasoning_content === 'I should use a tool.',
+    'Expected assistant tool call message to carry reasoning_content',
+  );
+  assert(
+    !Object.prototype.hasOwnProperty.call(toolCallMsg, 'content'),
+    'Expected assistant tool call message without visible text to omit content',
+  );
   assert(toolCallMsg.tool_calls.length === 1, 'Expected exactly one tool call');
   const call = toolCallMsg.tool_calls[0];
   assert(isRecord(call), 'Expected tool call to be an object');
@@ -156,6 +168,83 @@ async function main() {
 
   const toolMsg = requireToolMessage(messages[3]);
   assert(toolMsg.tool_call_id === 'call-1', 'Expected tool_call_id to match call id');
+
+  const messagesWithDisabledToolCallReasoning = await buildOpenAiCompatibleRequestMessagesWrapper(
+    '',
+    context,
+    {
+      providerConfig: {
+        name: 'No Tool Call Reasoning',
+        apiType: 'openai-compatible',
+        apiQuirks: ['disable-assistant-tool-call-reasoning-content'],
+        baseUrl: 'https://example.invalid/v1',
+        apiKeyEnvVar: 'EXAMPLE_API_KEY',
+        models: {
+          example: { name: 'example' },
+        },
+      },
+    },
+  );
+  const disabledToolCallMsg = requireAssistantToolCallMessage(
+    messagesWithDisabledToolCallReasoning[2],
+  );
+  assert(
+    disabledToolCallMsg.reasoning_content === undefined,
+    'Expected disable-assistant-tool-call-reasoning-content quirk to omit tool call reasoning_content',
+  );
+  assert(
+    messagesWithDisabledToolCallReasoning[1] !== undefined &&
+      isAssistantReasoningMessage(messagesWithDisabledToolCallReasoning[1]),
+    'Expected disable-assistant-tool-call-reasoning-content quirk to keep text assistant reasoning_content',
+  );
+
+  const assistantTurnToolCallContext: ChatMessage[] = [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 11,
+      msgId: 'user-11',
+      grammar: 'markdown',
+      content: 'Use a tool after explaining.',
+    },
+    {
+      type: 'thinking_msg',
+      role: 'assistant',
+      genseq: 11,
+      content: 'Need context before choosing the tool.',
+    },
+    {
+      type: 'saying_msg',
+      role: 'assistant',
+      genseq: 11,
+      content: 'I will inspect the saved task state first.',
+    },
+    {
+      type: 'func_call_msg',
+      role: 'assistant',
+      genseq: 11,
+      id: 'call-11',
+      name: 'recall_taskdoc',
+      arguments: JSON.stringify({ selector: 'current-state' }),
+    },
+    {
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: 11,
+      id: 'call-11',
+      name: 'recall_taskdoc',
+      content: 'state',
+    },
+  ];
+  const assistantTurnMessages = await buildOpenAiCompatibleRequestMessagesWrapper(
+    '',
+    assistantTurnToolCallContext,
+  );
+  const assistantTurnToolCallMsg = requireAssistantToolCallMessage(assistantTurnMessages[2]);
+  assert(
+    assistantTurnToolCallMsg.reasoning_content === 'Need context before choosing the tool.',
+    'Expected assistant tool call message to keep the current assistant turn reasoning_content',
+  );
 
   const orphanedCallContext: ChatMessage[] = [
     {
