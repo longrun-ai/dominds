@@ -59,19 +59,13 @@ type RunnerState = {
   stderr: ScrollingBuffer;
 };
 
-function sendIpc(msg: CmdRunnerInitialIpcMessage): void {
-  if (typeof process.send !== 'function') {
-    throw new Error('cmd_runner must be launched with an IPC channel');
-  }
-  process.send(msg);
-}
-
 async function flushIpc(msg: CmdRunnerInitialIpcMessage): Promise<void> {
-  if (typeof process.send !== 'function') {
+  const send = process.send;
+  if (typeof send !== 'function') {
     throw new Error('cmd_runner must be launched with an IPC channel');
   }
   await new Promise<void>((resolve, reject) => {
-    process.send?.(msg, (error: Error | null) => {
+    send.call(process, msg, (error: Error | null) => {
       if (error) {
         reject(error);
         return;
@@ -150,6 +144,17 @@ function writeSocketResponse(socket: net.Socket, response: CmdRunnerResponse): v
   socket.end(`${JSON.stringify(response)}\n`);
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    const code =
+      typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
+    return code !== 'ESRCH';
+  }
+}
+
 async function main(): Promise<void> {
   const initMessage = await new Promise<unknown>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -170,10 +175,13 @@ async function main(): Promise<void> {
   if (typeof daemonPid !== 'number') {
     throw new Error('cmd_runner failed to spawn daemon command: missing pid');
   }
+  const stdout = childProcess.stdout;
+  const stderr = childProcess.stderr;
+  if (stdout === null || stderr === null) {
+    throw new Error('cmd_runner failed to spawn daemon command with piped stdout/stderr');
+  }
 
   const endpoint = getCmdRunnerEndpointForDaemonPid(daemonPid);
-  await ensureSocketParentDir(endpoint);
-
   const state: RunnerState = {
     endpoint,
     daemonPid,
@@ -191,6 +199,45 @@ async function main(): Promise<void> {
   let server: net.Server | undefined;
   let closeRequested = false;
   let timeoutHandle: NodeJS.Timeout | undefined;
+  let initialResultSent = false;
+  const tryFlushInitialResult = async (msg: CmdRunnerInitialIpcMessage): Promise<boolean> => {
+    if (initialResultSent) {
+      return false;
+    }
+    initialResultSent = true;
+    await flushIpc(msg);
+    return true;
+  };
+  const waitForObservedChildExitOrMissingPid = async (timeoutMs: number): Promise<boolean> => {
+    if (!state.isRunning || closeRequested || !isProcessAlive(daemonPid)) {
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeout: NodeJS.Timeout;
+      let interval: NodeJS.Timeout;
+      const finish = (exited: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        clearInterval(interval);
+        childProcess.off('close', onClose);
+        resolve(exited || !state.isRunning || closeRequested || !isProcessAlive(daemonPid));
+      };
+      const onClose = (): void => {
+        finish(true);
+      };
+      timeout = setTimeout(() => {
+        finish(false);
+      }, timeoutMs);
+      interval = setInterval(() => {
+        if (!isProcessAlive(daemonPid)) {
+          finish(true);
+        }
+      }, 25);
+      childProcess.once('close', onClose);
+    });
+  };
   const closeServerAndExit = (code: number): void => {
     if (closeRequested) {
       return;
@@ -239,8 +286,8 @@ async function main(): Promise<void> {
     state.exitCode = code;
     state.exitSignal = signal;
     void (async () => {
-      if (state.daemonCommandLine === null) {
-        await flushIpc({
+      if (state.daemonCommandLine === null && !initialResultSent) {
+        await tryFlushInitialResult({
           type: 'completed',
           exitCode: code,
           exitSignal: signal,
@@ -258,7 +305,7 @@ async function main(): Promise<void> {
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
     }
-    void flushIpc({
+    void tryFlushInitialResult({
       type: 'failed',
       errorText: error.message,
     })
@@ -268,12 +315,17 @@ async function main(): Promise<void> {
       });
   });
 
-  childProcess.stdout?.on('data', (data: Buffer) => {
+  stdout.on('data', (data: Buffer) => {
     state.stdout.addText(data.toString());
   });
-  childProcess.stderr?.on('data', (data: Buffer) => {
+  stderr.on('data', (data: Buffer) => {
     state.stderr.addText(data.toString());
   });
+
+  await ensureSocketParentDir(endpoint);
+  if (closeRequested) {
+    return;
+  }
 
   server = net.createServer((socket) => {
     socket.setEncoding('utf8');
@@ -348,6 +400,9 @@ async function main(): Promise<void> {
         return;
       }
       if (daemonCommandLine === undefined || daemonCommandLine.trim() === '') {
+        if (await waitForObservedChildExitOrMissingPid(250)) {
+          return;
+        }
         try {
           process.kill(daemonPid, 'SIGTERM');
         } catch {
@@ -356,7 +411,7 @@ async function main(): Promise<void> {
         if (!state.isRunning) {
           return;
         }
-        sendIpc({
+        await tryFlushInitialResult({
           type: 'failed',
           errorText: `failed to capture daemon command line from OS for pid ${String(daemonPid)}`,
         });
@@ -366,7 +421,7 @@ async function main(): Promise<void> {
         return;
       }
       state.daemonCommandLine = daemonCommandLine;
-      sendIpc({
+      await tryFlushInitialResult({
         type: 'daemonized',
         daemonPid,
         daemonCommandLine,
@@ -377,7 +432,10 @@ async function main(): Promise<void> {
         startTime: state.startTime,
       });
     })().catch((error: unknown) => {
-      sendIpc({
+      if (initialResultSent) {
+        return;
+      }
+      void tryFlushInitialResult({
         type: 'failed',
         errorText: error instanceof Error ? error.message : String(error),
       });

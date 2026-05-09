@@ -15,6 +15,10 @@ async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.writeFile(filePathAbs, content, 'utf-8');
 }
 
+function elapsedMs(startedAt: bigint): number {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
 async function main(): Promise<void> {
   const previousCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(
@@ -93,6 +97,68 @@ async function main(): Promise<void> {
       assert.equal(started.mode, 'prod');
     } finally {
       await started.httpServer.stop();
+      await shutdownAppsRuntime();
+      stopMcpSupervisor();
+    }
+
+    const slowAppRootAbs = path.join(tmpRoot, 'dominds-apps', 'slow-web-dev');
+    await writeText(
+      path.join(slowAppRootAbs, 'src', 'app.js'),
+      [
+        'export async function createDomindsApp() {',
+        '  await new Promise((resolve) => setTimeout(resolve, 2000));',
+        '  return { tools: {} };',
+        '}',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.apps', 'resolution.yaml'),
+      YAML.stringify({
+        schemaVersion: 1,
+        apps: [
+          {
+            id: '@longrun-ai/slow-web-dev',
+            enabled: true,
+            assignedPort: null,
+            source: {
+              kind: 'local',
+              pathAbs: slowAppRootAbs,
+            },
+            installJson: {
+              appId: '@longrun-ai/slow-web-dev',
+              package: {
+                name: '@longrun-ai/slow-web-dev',
+                version: '0.1.0',
+                rootAbs: slowAppRootAbs,
+              },
+              host: {
+                kind: 'node_module',
+                moduleRelPath: './src/app.js',
+                exportName: 'createDomindsApp',
+              },
+              contributes: {},
+            },
+          },
+        ],
+      }),
+    );
+
+    const returnStartedAt = process.hrtime.bigint();
+    const returnedBeforeSlowAppReady = await startServer({
+      port: 0,
+      host: '127.0.0.1',
+      mode: 'prod',
+      startBackendDriver: false,
+      returnAfterListen: true,
+    });
+    try {
+      assert.ok(
+        elapsedMs(returnStartedAt) < 500,
+        'returnAfterListen startup must return before slow apps-host initialization completes',
+      );
+    } finally {
+      await returnedBeforeSlowAppReady.httpServer.stop();
       await shutdownAppsRuntime();
       stopMcpSupervisor();
     }

@@ -139,7 +139,14 @@ async function main(): Promise<void> {
     setWorkLanguage(resolvedLanguage);
     log.info(`working language: ${getWorkLanguage()} (source: ${source})`);
 
-    const started = await startServer({ port, host, mode, strictPort, portAutoDirection });
+    const started = await startServer({
+      port,
+      host,
+      mode,
+      strictPort,
+      portAutoDirection,
+      returnAfterListen: true,
+    });
     const httpServer = started.httpServer;
     const auth = started.auth;
 

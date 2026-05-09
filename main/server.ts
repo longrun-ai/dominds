@@ -10,7 +10,7 @@
  */
 import * as path from 'path';
 import { WebSocket } from 'ws';
-import { initAppsRuntime } from './apps/runtime';
+import { initAppsRuntime, shutdownAppsRuntime } from './apps/runtime';
 import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
 import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
@@ -101,6 +101,7 @@ export type ServerOptions = {
   host?: string;
   mode?: 'dev' | 'prod';
   startBackendDriver?: boolean;
+  returnAfterListen?: boolean;
   strictPort?: boolean;
   portAutoDirection?: WebuiPortAutoDirection;
 };
@@ -113,10 +114,63 @@ export type StartedServer = {
   mode: 'dev' | 'prod';
 };
 
+type PostListenStartupToken = {
+  canceled: boolean;
+};
+
+function attachPostListenStartupCancellation(
+  httpServer: HttpServerCore,
+  token: PostListenStartupToken,
+): HttpServerCore {
+  const originalStop = httpServer.stop.bind(httpServer);
+  httpServer.stop = async (): Promise<void> => {
+    token.canceled = true;
+    await originalStop();
+  };
+  return httpServer;
+}
+
 function getErrnoCode(error: unknown): string | undefined {
   if (!(error instanceof Error)) return undefined;
   const withCode = error as Error & { code?: unknown };
   return typeof withCode.code === 'string' ? withCode.code : undefined;
+}
+
+async function runPostListenStartup(params: {
+  rtwsRootAbs: string;
+  kernel: Readonly<{ host: string; port: number }>;
+  startBackendDriver: boolean;
+  token: PostListenStartupToken;
+}): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  if (params.token.canceled) return;
+  // Apps host is optional for server boot: app failures must stay loud, but they must not block WebUI startup.
+  try {
+    await initAppsRuntime({ rtwsRootAbs: params.rtwsRootAbs, kernel: params.kernel });
+  } catch (error: unknown) {
+    if (params.token.canceled) return;
+    log.warn(
+      'Apps runtime initialization failed during server startup; continuing without app runtime capabilities until the app issue is fixed',
+      error instanceof Error ? error : new Error(String(error)),
+    );
+  }
+
+  if (params.token.canceled) return;
+  // Crash recovery: persisted in-flight generations are re-queued; stale non-generating queues
+  // are surfaced as blocked/resumable from durable facts.
+  await reconcileDisplayStatesAfterRestart();
+  if (params.token.canceled) return;
+  await recoverProceedingDrivesAfterRestart();
+  if (params.token.canceled) return;
+  await recoverPendingReplyTellaskCallsAfterRestart();
+
+  if (params.token.canceled) return;
+  // Tests may opt out so the process can shut down cleanly without a driver stop API.
+  if (params.startBackendDriver) {
+    void runBackendDriver();
+  }
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<StartedServer> {
@@ -130,6 +184,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   const portAutoDirection = opts.portAutoDirection ?? 'down';
   const host = opts.host || '127.0.0.1';
   const startBackendDriver = opts.startBackendDriver ?? true;
+  const returnAfterListen = opts.returnAfterListen === true;
   const portCandidates = buildWebuiPortCandidates({
     preferredPort,
     strictPort,
@@ -203,45 +258,54 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     log.warn(`WebUI preferred port ${preferredPort} was unavailable; listening on ${boundPort}`);
   }
 
+  const postListenStartupToken: PostListenStartupToken = { canceled: false };
+  const httpServer = attachPostListenStartupCancellation(startedCore, postListenStartupToken);
   try {
+    const rtwsRootAbs = process.cwd();
     configureDomindsSelfUpdate({
       host,
       port: boundPort,
       mode: serverMode,
       stopServer: async () => {
-        await startedCore.stop();
+        await httpServer.stop();
       },
     });
 
     // MCP is best-effort: startup must not be blocked by MCP config/server issues.
-    startMcpSupervisor();
-
-    // Apps host is optional for server boot: app failures must stay loud, but they must not block WebUI startup.
     try {
-      await initAppsRuntime({ rtwsRootAbs: process.cwd(), kernel: { host, port: boundPort } });
+      startMcpSupervisor();
     } catch (error: unknown) {
       log.warn(
-        'Apps runtime initialization failed during server startup; continuing without app runtime capabilities until the app issue is fixed',
+        'MCP supervisor startup failed during server startup; continuing without MCP runtime capabilities until the MCP issue is fixed',
         error instanceof Error ? error : new Error(String(error)),
       );
     }
 
-    // Crash recovery: persisted in-flight generations are re-queued; stale non-generating queues
-    // are surfaced as blocked/resumable from durable facts.
-    await reconcileDisplayStatesAfterRestart();
-    await recoverProceedingDrivesAfterRestart();
-    await recoverPendingReplyTellaskCallsAfterRestart();
-
-    // Tests may opt out so the process can shut down cleanly without a driver stop API.
-    if (startBackendDriver) {
-      void runBackendDriver();
+    const postListenStartup = runPostListenStartup({
+      rtwsRootAbs,
+      kernel: { host, port: boundPort },
+      startBackendDriver,
+      token: postListenStartupToken,
+    });
+    if (returnAfterListen) {
+      void postListenStartup.catch((error: unknown) => {
+        log.error(
+          'Post-listen server startup failed; WebUI remains reachable, but runtime recovery/driver startup did not complete',
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      });
+    } else {
+      await postListenStartup;
     }
   } catch (error: unknown) {
-    await startedCore.stop();
+    if (!returnAfterListen) {
+      await httpServer.stop();
+      await shutdownAppsRuntime();
+    }
     throw error;
   }
 
-  return { httpServer: startedCore, auth, host, port: boundPort, mode };
+  return { httpServer, auth, host, port: boundPort, mode };
 }
 
 // Main function for CLI execution
@@ -274,7 +338,7 @@ async function main() {
   const host = (cliArgs['H'] as string) || undefined;
   const mode = (cliArgs['mode'] as 'dev' | 'prod') || undefined;
 
-  await startServer({ port, host, mode, strictPort, portAutoDirection });
+  await startServer({ port, host, mode, strictPort, portAutoDirection, returnAfterListen: true });
 }
 
 // Start server if this file is run directly

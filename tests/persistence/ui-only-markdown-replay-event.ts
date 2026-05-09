@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
@@ -10,6 +10,20 @@ async function main(): Promise<void> {
     const dlg = await createMainDialog('tester');
 
     await dlg.persistUiOnlyMarkdown('Budget exhausted. Please continue manually.', 1);
+    await DialogPersistence.appendEvent(
+      dlg.id,
+      dlg.currentCourse,
+      {
+        ts: '2026-05-10 00:23:15',
+        type: 'tellask_anchor_record',
+        anchorRole: 'assignment',
+        callId: 'tellask:11',
+        genseq: 93,
+        rootCourse: 6,
+        rootGenseq: 0,
+      },
+      dlg.status,
+    );
 
     const replayedPackets: unknown[] = [];
     const replayWs = {
@@ -20,13 +34,22 @@ async function main(): Promise<void> {
     } as unknown as import('ws').WebSocket;
 
     const replayStore = new DiskFileDialogStore(dlg.id);
-    await replayStore.sendDialogEventsDirectly(
-      replayWs,
-      dlg,
-      dlg.currentCourse,
-      dlg.currentCourse,
-      dlg.status,
-    );
+    const warnLines: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...data: unknown[]): void => {
+      warnLines.push(data.map(String).join(' '));
+    };
+    try {
+      await replayStore.sendDialogEventsDirectly(
+        replayWs,
+        dlg,
+        dlg.currentCourse,
+        dlg.currentCourse,
+        dlg.status,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
 
     assert.equal(
       replayedPackets.filter((packet) => {
@@ -53,6 +76,14 @@ async function main(): Promise<void> {
       }).length,
       0,
       'expected ui_only_markdown_record replay to stop emitting generic markdown stream events',
+    );
+
+    assert.equal(
+      warnLines.some((line) =>
+        line.includes('Unknown persistence event type during direct WebSocket send'),
+      ),
+      false,
+      'expected tellask_anchor_record replay to be recognized as metadata without unknown-event warn',
     );
   });
 

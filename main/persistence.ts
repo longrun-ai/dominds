@@ -4580,6 +4580,7 @@ export class DiskFileDialogStore extends DialogStore {
       case 'pending_sideDialogs_reconciled_record':
       case 'sideDialog_registry_reconciled_record':
       case 'sideDialog_responses_reconciled_record':
+      case 'tellask_anchor_record':
         break;
 
       case 'tellask_carryover_record': {
