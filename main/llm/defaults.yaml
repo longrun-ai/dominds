@@ -484,6 +484,7 @@ providers:
     models:
       kimi-for-coding:
         name: Kimi For Coding
+        optimal_max_tokens: 180000
         supports_thinking: true
         default_thinking: true
         supports_tool_choice: false
@@ -603,6 +604,7 @@ providers:
         context_window: '128K'
       kimi-k2.6:
         name: Kimi-K2.6
+        optimal_max_tokens: 180000
         supports_thinking: true
         default_thinking: true
         supports_tool_choice: false
@@ -613,6 +615,7 @@ providers:
         context_window: '200K'
       kimi-k2.5:
         name: Kimi-K2.5
+        optimal_max_tokens: 180000
         supports_thinking: true
         default_thinking: false
         supports_tool_choice: false
