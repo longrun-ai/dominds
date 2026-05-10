@@ -685,6 +685,45 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   ].join('\n');
 }
 
+export function formatAgentFacingCriticalUserInterjectionRemediationGuide(
+  language: LanguageCode,
+  args: {
+    dialogScope: ContextHealthV3RemediationDialogScope;
+    promptsRemainingAfterThis: number;
+  },
+): string {
+  const isSideDialog = args.dialogScope === 'sideDialog';
+  if (language === 'zh') {
+    return [
+      `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急；收到用户插话`,
+      '',
+      '下面紧跟的是一条真实用户消息，不是普通运行时处置提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。',
+      '',
+      `这次用户轮次已计入告急处置倒计数。系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
+      '',
+      isSideDialog
+        ? '行动：先直接回应用户这条插话；不要继续扩张上下文，不要维护差遣牒，也不要整理差遣牒更新提案。若还需要保留接续信息，只维护足够详尽的接续包提醒项，然后尽快 clear_mind。'
+        : '行动：先直接回应用户这条插话；不要继续扩张上下文。若仍有当前对话中尚未落实到文档、且下一程需要知会的讨论细节，先落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥，然后尽快 clear_mind。',
+      '',
+      '要求：不要因为 critical 状态沉默、挂起或只回复“收到/好的”。若必须调用工具才能回答用户，工具结果回来后继续给出用户可见回复；保持回答聚焦，并把清理/换程作为紧随其后的处置动作。',
+    ].join('\n');
+  }
+
+  return [
+    `${formatSystemNoticePrefix(language)} Context state: 🔴 critical; user interjection received`,
+    '',
+    'The next message is a real user message, not an ordinary runtime remediation notice. Treat it as an effective user turn and make the system reaction visible to the user.',
+    '',
+    `This user turn has been counted toward critical remediation. System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
+    '',
+    isSideDialog
+      ? 'Action: answer this user interjection directly first. Do not expand context, do not maintain Taskdoc, and do not draft Taskdoc update proposals. If continuation info still needs preserving, maintain sufficiently detailed continuation-package reminders only, then clear_mind as soon as possible.'
+      : 'Action: answer this user interjection directly first. Do not expand context. If current-dialog discussion details are still undocumented but the next course needs to know them, record them into the appropriate Taskdoc sections first; then add bridge reminders for information still not covered by Taskdoc but easy to lose, and clear_mind as soon as possible.',
+    '',
+    'Requirement: do not go silent, suspend, or reply only with "acknowledged/ok" because context is critical. If a tool call is necessary to answer the user, continue with a user-visible reply after the tool result returns; keep the answer focused, and perform cleanup/course transition immediately after that.',
+  ].join('\n');
+}
+
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (

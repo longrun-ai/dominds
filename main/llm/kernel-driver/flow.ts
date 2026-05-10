@@ -23,6 +23,7 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
+  formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatNewCourseStartPrompt,
 } from '../../runtime/driver-messages';
 import {
@@ -108,6 +109,18 @@ type UpNextPrompt =
 
 function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return typeof prompt?.content === 'string' && isReplyToolReminderPromptContent(prompt.content);
+}
+
+function hasQ4HAnswerCallId(callId: string | undefined): boolean {
+  return typeof callId === 'string' && callId.trim() !== '';
+}
+
+function isEffectiveUserPromptForContextHealth(prompt: KernelDriverPrompt | undefined): boolean {
+  return prompt?.origin === 'user' && !hasQ4HAnswerCallId(prompt.q4hAnswerCallId);
+}
+
+function isQueuedUserPromptForContextHealth(prompt: UpNextPrompt | undefined): boolean {
+  return prompt?.kind === 'user_generation_boundary' && !hasQ4HAnswerCallId(prompt.q4hAnswerCallId);
 }
 
 function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
@@ -603,6 +616,20 @@ async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
   // Do not "optimize" this into only an event or only a deferred prompt. The whole point is that
   // once blocked Continue is clicked, the guide becomes a first-class historical context fact and
   // later real driving should need no special duplicate reassertion path.
+  await surfaceRuntimeGuide(dialog, content);
+  await DialogPersistence.setDeferredReplyReassertion(
+    dialog.id,
+    {
+      reason: 'user_interjection_with_parked_original_task',
+      directive: deferredReplyReassertion.directive,
+      resumeGuideSurfaced: true,
+    },
+    dialog.status,
+  );
+}
+
+async function surfaceRuntimeGuide(dialog: Dialog, content: string): Promise<void> {
+  const genseq = dialog.activeGenSeqOrUndefined ?? 1;
   await dialog.addChatMessages({
     type: 'transient_guide_msg',
     role: 'assistant',
@@ -615,15 +642,6 @@ async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
     genseq,
     content,
   });
-  await DialogPersistence.setDeferredReplyReassertion(
-    dialog.id,
-    {
-      reason: 'user_interjection_with_parked_original_task',
-      directive: deferredReplyReassertion.directive,
-      resumeGuideSurfaced: true,
-    },
-    dialog.status,
-  );
 }
 
 async function resolveEffectivePrompt(
@@ -932,7 +950,8 @@ export async function executeDriveRound(args: {
     }
 
     const snapshot = dialog.getLastContextHealth();
-    const hasQueuedUpNext = dialog.hasUpNext();
+    const queuedUpNextBeforeHealth = dialog.peekUpNext();
+    const hasQueuedUpNext = queuedUpNextBeforeHealth !== undefined;
     const provider = policy.effectiveAgent.provider ?? minds.team.memberDefaults.provider;
     const model = policy.effectiveAgent.model ?? minds.team.memberDefaults.model;
     let cautionRemediationCadenceGenerations =
@@ -948,16 +967,16 @@ export async function executeDriveRound(args: {
     const healthDecision = decideKernelDriverContextHealth({
       dialogKey: dialog.id.key(),
       snapshot,
-      hadUserPromptThisGen: humanPrompt !== undefined,
+      hadUserPromptThisGen:
+        isEffectiveUserPromptForContextHealth(humanPrompt) ||
+        (humanPrompt === undefined && isQueuedUserPromptForContextHealth(queuedUpNextBeforeHealth)),
+      userPromptCriticalRemediationAlreadyApplied: false,
       canInjectPromptThisGen: !hasQueuedUpNext,
       cautionRemediationCadenceGenerations,
       criticalCountdownRemaining,
     });
-    if (healthDecision.kind === 'suspend') {
-      return;
-    }
-
     let healthPrompt: KernelDriverRuntimePrompt | undefined;
+    let criticalUserInterjectionRuntimeGuide: string | undefined;
     if (healthDecision.kind === 'continue') {
       if (healthDecision.reason === 'critical_force_new_course') {
         const language = getWorkLanguage();
@@ -968,6 +987,14 @@ export async function executeDriveRound(args: {
         await dialog.startNewCourse(newCoursePrompt);
         dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
         resetContextHealthRoundState(dialog.id.key());
+      } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
+        const language = getWorkLanguage();
+        const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
+        criticalUserInterjectionRuntimeGuide =
+          formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
+            dialogScope,
+            promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
+          });
       } else if (!hasQueuedUpNext) {
         const language = getWorkLanguage();
         const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
@@ -1043,6 +1070,16 @@ export async function executeDriveRound(args: {
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
+    const coreDriveOptions =
+      criticalUserInterjectionRuntimeGuide === undefined
+        ? driveOptions
+        : {
+            ...(driveOptions ?? {
+              source: driveSource,
+              reason: 'critical_user_prompt_remediation',
+            }),
+            criticalUserInterjectionRuntimeGuide,
+          };
     driveResult = await driveDialogStreamCore(
       dialog,
       {
@@ -1050,7 +1087,7 @@ export async function executeDriveRound(args: {
         driveDialog: args.driveDialog,
       },
       effectivePrompt,
-      driveOptions,
+      coreDriveOptions,
     );
     sideDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? sideDialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;

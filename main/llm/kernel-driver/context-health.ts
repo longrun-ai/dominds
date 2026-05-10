@@ -10,9 +10,9 @@ export type KernelDriverContextHealthDecision =
       reason:
         | 'caution_soft_remediation'
         | 'critical_countdown_remediation'
+        | 'critical_user_prompt_remediation'
         | 'critical_force_new_course';
-    }>
-  | Readonly<{ kind: 'suspend'; reason: 'critical_wait_human' }>;
+    }>;
 
 type ContextHealthRoundState = {
   lastSeenLevel?: ContextHealthLevel;
@@ -101,6 +101,8 @@ export function decideKernelDriverContextHealth(args: {
   dialogKey: string;
   snapshot?: ContextHealthSnapshot;
   hadUserPromptThisGen: boolean;
+  hadUserPromptInImmediateToolChain?: boolean;
+  userPromptCriticalRemediationAlreadyApplied?: boolean;
   canInjectPromptThisGen: boolean;
   cautionRemediationCadenceGenerations: number;
   criticalCountdownRemaining: number;
@@ -159,8 +161,11 @@ export function decideKernelDriverContextHealth(args: {
     if (args.criticalCountdownRemaining <= 0) {
       return { kind: 'continue', reason: 'critical_force_new_course' };
     }
-    return args.hadUserPromptThisGen
-      ? { kind: 'suspend', reason: 'critical_wait_human' }
+    if (args.userPromptCriticalRemediationAlreadyApplied === true) {
+      return { kind: 'proceed' };
+    }
+    return args.hadUserPromptThisGen || args.hadUserPromptInImmediateToolChain === true
+      ? { kind: 'continue', reason: 'critical_user_prompt_remediation' }
       : { kind: 'continue', reason: 'critical_countdown_remediation' };
   }
 

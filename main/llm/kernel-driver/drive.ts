@@ -34,6 +34,7 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
+  formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
   formatReminderContextFooter,
@@ -312,7 +313,29 @@ function normalizeQ4HAnswerCallId(raw: string | undefined): string | undefined {
 
 function isUserOriginPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   if (!prompt) return false;
-  return prompt.origin === 'user';
+  return prompt.origin === 'user' && normalizeQ4HAnswerCallId(prompt.q4hAnswerCallId) === undefined;
+}
+
+function getUserOriginPromptMsgId(prompt: KernelDriverPrompt | undefined): string | undefined {
+  if (!prompt) return undefined;
+  return prompt.origin === 'user' && normalizeQ4HAnswerCallId(prompt.q4hAnswerCallId) === undefined
+    ? prompt.msgId
+    : undefined;
+}
+
+async function persistAndEmitRuntimeGuide(dlg: Dialog, content: string): Promise<void> {
+  await dlg.addChatMessages({
+    type: 'transient_guide_msg',
+    role: 'assistant',
+    content,
+  });
+  await DialogPersistence.persistRuntimeGuide(dlg, content, dlg.activeGenSeq);
+  postDialogEvent(dlg, {
+    type: 'runtime_guide_evt',
+    course: dlg.currentCourse,
+    genseq: dlg.activeGenSeq,
+    content,
+  });
 }
 
 function resolveToolUseRequirement(
@@ -1775,7 +1798,6 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
   model: string;
 }): Promise<
   | { kind: 'no_health_prompt' }
-  | { kind: 'health_suspend' }
   | { kind: 'health_continue'; prompt: KernelDriverPrompt; resetTaskdoc: boolean }
 > {
   const { dlg, providerCfg, model } = args;
@@ -1800,9 +1822,6 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
     criticalCountdownRemaining,
   });
 
-  if (healthDecision.kind === 'suspend') {
-    return { kind: 'health_suspend' };
-  }
   if (healthDecision.kind !== 'continue') {
     return { kind: 'no_health_prompt' };
   }
@@ -1870,6 +1889,7 @@ export async function driveDialogStreamCore(
   const abortSignal = getActiveRunSignal(dlg.id) ?? createActiveRun(dlg.id);
 
   let finalDisplayState: DialogDisplayState | undefined;
+  let criticalUserInterjectionRuntimeGuide = driveOptions?.criticalUserInterjectionRuntimeGuide;
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
@@ -1883,6 +1903,13 @@ export async function driveDialogStreamCore(
   let pubRemindersVer = dlg.remindersVer;
 
   let pendingPrompt: KernelDriverPrompt | undefined = humanPrompt;
+  let resolvingImmediateToolResultForUserPrompt = false;
+  let resolvingImmediateToolResultUserPromptMsgId: string | undefined;
+  let criticalRemediationAppliedUserPromptMsgId =
+    driveOptions?.criticalUserInterjectionRuntimeGuide !== undefined &&
+    humanPrompt?.origin === 'user'
+      ? humanPrompt.msgId
+      : undefined;
   let retryStoppedRecoveryPrompt: KernelDriverPrompt | undefined;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   let genIterNo = 0;
@@ -2023,7 +2050,17 @@ export async function driveDialogStreamCore(
         const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
         const funcTools = projected.tools;
 
+        const currentPendingPrompt = pendingPrompt;
+        let currentGenerationBelongsToUserPrompt = isUserOriginPrompt(currentPendingPrompt);
+        let currentGenerationBelongsToUserToolChain = false;
+        let currentUserPromptMsgId = getUserOriginPromptMsgId(currentPendingPrompt);
         if (genIterNo > 1) {
+          currentGenerationBelongsToUserToolChain = resolvingImmediateToolResultForUserPrompt;
+          if (currentUserPromptMsgId === undefined) {
+            currentUserPromptMsgId = resolvingImmediateToolResultUserPromptMsgId;
+          }
+          resolvingImmediateToolResultForUserPrompt = false;
+          resolvingImmediateToolResultUserPromptMsgId = undefined;
           const snapshot = dlg.getLastContextHealth();
           const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
           const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
@@ -2037,26 +2074,15 @@ export async function driveDialogStreamCore(
           const healthDecision = decideKernelDriverContextHealth({
             dialogKey: dlg.id.key(),
             snapshot,
-            hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
+            hadUserPromptThisGen: currentGenerationBelongsToUserPrompt,
+            hadUserPromptInImmediateToolChain: currentGenerationBelongsToUserToolChain,
+            userPromptCriticalRemediationAlreadyApplied:
+              criticalRemediationAppliedUserPromptMsgId !== undefined &&
+              criticalRemediationAppliedUserPromptMsgId === currentUserPromptMsgId,
             canInjectPromptThisGen: !hasQueuedUpNext,
             cautionRemediationCadenceGenerations,
             criticalCountdownRemaining,
           });
-
-          if (healthDecision.kind === 'suspend') {
-            log.debug(
-              'kernel-driver suspend iterative generation due to critical context while waiting for human prompt',
-              undefined,
-              {
-                dialogId: dlg.id.valueOf(),
-                rootId: dlg.id.rootId,
-                selfId: dlg.id.selfId,
-                genIterNo,
-                pendingPromptOrigin: pendingPrompt?.origin ?? null,
-              },
-            );
-            break;
-          }
 
           if (healthDecision.kind === 'continue') {
             if (healthDecision.reason === 'critical_force_new_course') {
@@ -2077,6 +2103,15 @@ export async function driveDialogStreamCore(
               }
               pendingPrompt = nextPrompt;
               skipTaskdocForThisDrive = false;
+            } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
+              const language = getWorkLanguage();
+              const dialogScope = dlg instanceof SideDialog ? 'sideDialog' : 'mainDialog';
+              criticalUserInterjectionRuntimeGuide =
+                formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
+                  dialogScope,
+                  promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+                });
+              criticalRemediationAppliedUserPromptMsgId = currentUserPromptMsgId;
             } else if (!hasQueuedUpNext) {
               const language = getWorkLanguage();
               const dialogScope = dlg instanceof SideDialog ? 'sideDialog' : 'mainDialog';
@@ -2121,6 +2156,10 @@ export async function driveDialogStreamCore(
 
         await dlg.notifyGeneratingStart(currentPrompt?.msgId);
         try {
+          if (criticalUserInterjectionRuntimeGuide !== undefined) {
+            await persistAndEmitRuntimeGuide(dlg, criticalUserInterjectionRuntimeGuide);
+            criticalUserInterjectionRuntimeGuide = undefined;
+          }
           if (currentPrompt) {
             const origin = currentPrompt.origin;
             if (
@@ -2224,18 +2263,7 @@ export async function driveDialogStreamCore(
               isStandaloneRuntimeGuidePromptContent(replyGuidance.promptContent);
 
             if (currentRuntimeGuideMsg) {
-              await dlg.addChatMessages(currentRuntimeGuideMsg);
-              await DialogPersistence.persistRuntimeGuide(
-                dlg,
-                currentRuntimeGuideMsg.content,
-                dlg.activeGenSeq,
-              );
-              postDialogEvent(dlg, {
-                type: 'runtime_guide_evt',
-                course: dlg.currentCourse,
-                genseq: dlg.activeGenSeq,
-                content: currentRuntimeGuideMsg.content,
-              });
+              await persistAndEmitRuntimeGuide(dlg, currentRuntimeGuideMsg.content);
               currentRuntimeGuideMsg = undefined;
             }
 
@@ -3086,9 +3114,6 @@ export async function driveDialogStreamCore(
               }
               continue;
             }
-            if (healthFirst.kind === 'health_suspend') {
-              break;
-            }
             const next = await maybeContinueWithDiligencePrompt({
               dlg,
               team,
@@ -3101,6 +3126,13 @@ export async function driveDialogStreamCore(
             break;
           }
           if (shouldStartImmediatePostToolGeneration) {
+            resolvingImmediateToolResultForUserPrompt =
+              currentGenerationBelongsToUserPrompt ||
+              currentGenerationBelongsToUserToolChain ||
+              isUserOriginPrompt(currentPrompt);
+            resolvingImmediateToolResultUserPromptMsgId = resolvingImmediateToolResultForUserPrompt
+              ? currentUserPromptMsgId
+              : undefined;
             continue;
           }
         } finally {
