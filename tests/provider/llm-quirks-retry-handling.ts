@@ -8,6 +8,7 @@ import { dialogEventRegistry } from '../../main/evt-registry';
 import {
   createLlmFailureQuirkHandlerSession,
   type LlmFailureSummary,
+  VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
   XCODE_BEST_STREAM_INTERNAL_ERROR_CODE,
 } from '../../main/llm/api-quirks';
 import type { ProviderConfig } from '../../main/llm/client';
@@ -55,6 +56,21 @@ function buildOpenAiCompatibleSameContextEmptyProviderConfig(): ProviderConfig {
     apiQuirks: 'same-context-empty-response',
     baseUrl: 'https://api.example.test/v1',
     apiKeyEnvVar: 'OPENAI_COMPAT_EMPTY_TEST_API_KEY',
+    models: {
+      test: {
+        name: 'Test',
+      },
+    },
+  };
+}
+
+function buildVolcengineInvalidParameterProviderConfig(): ProviderConfig {
+  return {
+    name: 'Volcano Ark Coding Plan - test',
+    apiType: 'openai-compatible',
+    apiQuirks: VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+    apiKeyEnvVar: 'ARK_TEST_API_KEY',
     models: {
       test: {
         name: 'Test',
@@ -119,6 +135,46 @@ function makeXcodeBestMisreported403WithNested429Error(): {
       },
     },
   };
+}
+
+function makeVolcengineInvalidParameterError(): { status: number; code: string; message: string } {
+  return {
+    status: 400,
+    code: 'InvalidParameter',
+    message:
+      '400 A parameter specified in the request is not valid: %s Request id: 021778429772930a9c6544091777d16bd21be5aab8209d34efbd2',
+  };
+}
+
+function makeVolcengineNestedInvalidParameterWith429Error(): {
+  status: number;
+  code: string;
+  message: string;
+  response: { status: number };
+} {
+  return {
+    ...makeVolcengineInvalidParameterError(),
+    response: { status: 429 },
+  };
+}
+
+function makeWrappedVolcengineInvalidParameterError(): Error & {
+  cause: { status: number; code: string; message: string };
+  code: string;
+  status: number;
+} {
+  const cause = makeVolcengineInvalidParameterError();
+  const error = new Error(
+    'OPENAI-compatible provider rejected stream request with HTTP 400.',
+  ) as Error & {
+    cause: { status: number; code: string; message: string };
+    code: string;
+    status: number;
+  };
+  error.cause = cause;
+  error.code = cause.code;
+  error.status = cause.status;
+  return error;
 }
 
 function makeXcodeBestStreamInternalError(args: { status?: number; retryAfter?: string }): {
@@ -589,6 +645,160 @@ async function verifyOpenAiCompatibleSameContextEmptyResponseQuirk(): Promise<vo
     stopped.reason.display.summaryTextI18n.zh?.includes('同一对话上下文中连续返回 empty response'),
     true,
   );
+}
+
+function verifyVolcengineInvalidParameterQuirkUsesAggressiveRetry(): void {
+  const providerConfig = buildVolcengineInvalidParameterProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected Volcano InvalidParameter quirk handler session');
+
+  const error = makeVolcengineInvalidParameterError();
+  const handling = session.onFailure({
+    provider: 'volcano-engine-coding-plan',
+    providerConfig,
+    failure: {
+      kind: 'rejected',
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    },
+    error,
+  });
+
+  assert.equal(handling.kind, 'retry_strategy');
+  if (handling.kind !== 'retry_strategy') {
+    throw new Error(`Expected retry_strategy, got ${handling.kind}`);
+  }
+  assert.equal(handling.retryStrategy, 'aggressive');
+  assert.match(handling.message ?? '', /transient 400 InvalidParameter/u);
+
+  const wrappedError = makeWrappedVolcengineInvalidParameterError();
+  const wrappedHandling = session.onFailure({
+    provider: 'volcano-engine-coding-plan',
+    providerConfig,
+    failure: {
+      kind: 'rejected',
+      status: wrappedError.status,
+      code: wrappedError.code,
+      message: wrappedError.message,
+    },
+    error: wrappedError,
+  });
+  assert.equal(wrappedHandling.kind, 'retry_strategy');
+  if (wrappedHandling.kind !== 'retry_strategy') {
+    throw new Error(`Expected wrapped retry_strategy, got ${wrappedHandling.kind}`);
+  }
+  assert.equal(wrappedHandling.retryStrategy, 'aggressive');
+}
+
+function verifyVolcengineInvalidParameterQuirkStaysOutOfRateLimit(): void {
+  const providerConfig = buildVolcengineInvalidParameterProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected Volcano InvalidParameter quirk handler session');
+
+  const error = makeVolcengineNestedInvalidParameterWith429Error();
+  const handling = session.onFailure({
+    provider: 'volcano-engine-coding-plan',
+    providerConfig,
+    failure: {
+      kind: 'retriable',
+      status: 429,
+      code: error.code,
+      message: error.message,
+    },
+    error,
+  });
+
+  assert.equal(
+    handling.kind,
+    'default',
+    'Expected nested 429 to stay in default smart-rate retry handling',
+  );
+}
+
+function verifyVolcengineInvalidParameterQuirkDoesNotGeneralizeAll400s(): void {
+  const providerConfig = buildVolcengineInvalidParameterProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected Volcano InvalidParameter quirk handler session');
+
+  assert.equal(
+    session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: {
+        kind: 'rejected',
+        status: 400,
+        code: 'context_length_exceeded',
+        message: 'maximum context length exceeded',
+      },
+      error: {
+        status: 400,
+        code: 'context_length_exceeded',
+        message: 'maximum context length exceeded',
+      },
+    }).kind,
+    'default',
+    'Expected context-window 400 to remain rejected',
+  );
+
+  assert.equal(
+    session.onFailure({
+      provider: 'volcano-engine-coding-plan',
+      providerConfig,
+      failure: {
+        kind: 'rejected',
+        status: 400,
+        code: 'InvalidParameter',
+        message: '400 InvalidParameter: unsupported request option',
+      },
+      error: {
+        status: 400,
+        code: 'InvalidParameter',
+        message: '400 InvalidParameter: unsupported request option',
+      },
+    }).kind,
+    'default',
+    'Expected unrelated InvalidParameter 400 to remain rejected',
+  );
+}
+
+async function verifyRuntimeVolcengineInvalidParameterQuirkRetriesRejectedFailure(): Promise<void> {
+  const providerConfig = buildVolcengineInvalidParameterProviderConfig();
+  const dialog = buildFakeDialog('en');
+  const retryEventsPromise = readRetryEvents(dialog.id, 3);
+  let attempts = 0;
+
+  const result = await runLlmRequestWithRetry({
+    dlg: dialog,
+    provider: 'volcano-engine-coding-plan',
+    modelId: 'test',
+    providerConfig,
+    aggressiveRetryMaxRetries: 1,
+    retryInitialDelayMs: 0,
+    retryConservativeDelayMs: 0,
+    retryBackoffMultiplier: 1,
+    retryMaxDelayMs: 0,
+    classifyFailure: classifyOpenAiLikeFailure,
+    canRetry: () => true,
+    doRequest: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw makeVolcengineInvalidParameterError();
+      }
+      return 'ok';
+    },
+  });
+
+  assert.equal(result, 'ok');
+  assert.equal(attempts, 2);
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['waiting', 'running', 'resolved'],
+  );
+  const waiting = retryEvents[0];
+  assert.equal(waiting?.display.summaryTextI18n.en?.includes('strategy=aggressive'), true);
+  assert.match(waiting?.error ?? '', /A parameter specified in the request is not valid/u);
 }
 
 async function verifySameContextEmptyResponseQuirkResetsOnContextChange(): Promise<void> {
@@ -1668,6 +1878,10 @@ async function main(): Promise<void> {
   await verifyQuirkSessionStateMachine();
   await verifySingleRetryBypassesAggressiveBurstLimit();
   await verifyOpenAiCompatibleSameContextEmptyResponseQuirk();
+  verifyVolcengineInvalidParameterQuirkUsesAggressiveRetry();
+  verifyVolcengineInvalidParameterQuirkStaysOutOfRateLimit();
+  verifyVolcengineInvalidParameterQuirkDoesNotGeneralizeAll400s();
+  await verifyRuntimeVolcengineInvalidParameterQuirkRetriesRejectedFailure();
   await verifySameContextEmptyResponseQuirkResetsOnContextChange();
   await verifySameContextEmptyResponseRecoveryClosesLoopAcrossContextChange();
   await verifyRetryStoppedRecoveryHookSuppressesStoppedEvent();

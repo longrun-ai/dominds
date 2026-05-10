@@ -3,6 +3,7 @@ import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/
 import os from 'os';
 import path from 'path';
 
+import { VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK } from '../../main/llm/api-quirks';
 import type { ChatMessage } from '../../main/llm/client';
 import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
 import type { LlmStreamReceiver } from '../../main/llm/gen';
@@ -392,9 +393,10 @@ async function testBuiltinVolcanoArkCodingPlanProvider(): Promise<void> {
   assert(provider.apiType === 'openai-compatible', 'expected openai-compatible apiType');
   assert(
     Array.isArray(provider.apiQuirks) &&
-      provider.apiQuirks.length === 1 &&
-      provider.apiQuirks[0] === 'same-context-empty-response',
-    'expected only same-context-empty-response Volcano Ark Coding Plan apiQuirk',
+      provider.apiQuirks.length === 2 &&
+      provider.apiQuirks.includes('same-context-empty-response') &&
+      provider.apiQuirks.includes(VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK),
+    'expected Volcano Ark Coding Plan retry apiQuirks',
   );
   assert(
     provider.baseUrl === 'https://ark.cn-beijing.volces.com/api/coding/v3',

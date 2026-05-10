@@ -14,6 +14,9 @@
 #   `500 auth_unavailable: no auth available` infrastructure failures.
 #   `apiQuirks: same-context-empty-response` detects repeated empty responses in the same
 #   dialog generation context and stops same-context retry loops with a deadlock-break prompt.
+#   `apiQuirks: volcengine-invalid-parameter-aggressive-retry` classifies Volcano Ark Coding Plan
+#   transient `400 InvalidParameter` failures as aggressive retry when the shape matches that
+#   provider's replay-successful instability.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -498,6 +501,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - same-context-empty-response
+      - volcengine-invalid-parameter-aggressive-retry
     baseUrl: https://ark.cn-beijing.volces.com/api/coding/v3
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://www.volcengine.com/docs/82379/1928261

@@ -7,6 +7,8 @@ import type { LlmRetryStrategy } from './gen';
 export type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
 
 export const SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK = 'same-context-empty-response';
+export const VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK =
+  'volcengine-invalid-parameter-aggressive-retry';
 
 export type LlmFailureSummary = {
   kind: LlmFailureKind;
@@ -77,6 +79,10 @@ const XCODE_BEST_MISREPORTED_403_RETRY_MESSAGE =
 export const XCODE_BEST_STREAM_INTERNAL_ERROR_CODE = 'XCODE_BEST_STREAM_INTERNAL_ERROR';
 const XCODE_BEST_STREAM_INTERNAL_RETRY_MESSAGE =
   'xcode.best upstream stream reported internal_error from peer; retrying aggressively.';
+const VOLCENGINE_INVALID_PARAMETER_MESSAGE_FRAGMENT =
+  'a parameter specified in the request is not valid';
+const VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_MESSAGE =
+  'Volcano Ark Coding Plan returned transient 400 InvalidParameter; retrying aggressively.';
 const LOCAL_FILE_IO_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM']);
 const LOCAL_FILE_IO_SYSCALLS = new Set([
   'open',
@@ -138,6 +144,26 @@ function isXcodeBestAuthUnavailableFailure(failure: LlmFailureSummary, error: un
 function isXcodeBestStreamInternalFailure(failure: LlmFailureSummary, error: unknown): boolean {
   const code = failure.code ?? readErrorCode(error);
   return code === XCODE_BEST_STREAM_INTERNAL_ERROR_CODE;
+}
+
+function isVolcengineTransientInvalidParameterFailure(args: {
+  failure: LlmFailureSummary;
+  error: unknown;
+}): boolean {
+  const statuses = readFailureAndErrorStatuses(args);
+  if (!statuses.includes(400) || statuses.includes(429)) {
+    return false;
+  }
+
+  const code = (args.failure.code ?? readErrorCode(args.error))?.trim();
+  if (code !== 'InvalidParameter') {
+    return false;
+  }
+
+  return (
+    args.failure.message.toLowerCase().includes(VOLCENGINE_INVALID_PARAMETER_MESSAGE_FRAGMENT) ||
+    errorChainIncludesMessageFragment(args.error, VOLCENGINE_INVALID_PARAMETER_MESSAGE_FRAGMENT)
+  );
 }
 
 type XcodeBestQuirkStatusPolicy =
@@ -642,9 +668,33 @@ function createSameContextEmptyResponseFailureQuirkHandlerSession(
   };
 }
 
+function createVolcengineInvalidParameterAggressiveRetryQuirkHandlerSession(): LlmFailureQuirkHandlerSession {
+  return {
+    quirkName: VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
+    onFailure(args) {
+      if (
+        !isVolcengineTransientInvalidParameterFailure({
+          failure: args.failure,
+          error: args.error,
+        })
+      ) {
+        return { kind: 'default' };
+      }
+
+      return {
+        kind: 'retry_strategy',
+        retryStrategy: 'aggressive',
+        message: VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_MESSAGE,
+      };
+    },
+  };
+}
+
 const FAILURE_QUIRK_HANDLER_FACTORIES: Record<string, LlmFailureQuirkHandlerFactory> = {
   'xcode.best': createXcodeBestFailureQuirkHandlerSession,
   [SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK]: createSameContextEmptyResponseFailureQuirkHandlerSession,
+  [VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK]:
+    createVolcengineInvalidParameterAggressiveRetryQuirkHandlerSession,
 };
 
 export function normalizeProviderApiQuirks(providerConfig: ProviderConfig): Set<string> {
