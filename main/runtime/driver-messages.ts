@@ -166,6 +166,80 @@ export function formatDiligenceAutoContinuePrompt(
   ].join('\n');
 }
 
+type SideDialogDiligenceVariant = 0 | 1 | 2;
+
+function truncateSideDialogGoal(goal: string): string {
+  const normalized = goal.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= 900) return normalized;
+  return `${normalized.slice(0, 900).trimEnd()}...`;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function formatSideDialogDiligenceTimestamp(language: LanguageCode, date: Date): string {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hour = pad2(date.getHours());
+  const minute = pad2(date.getMinutes());
+  const second = pad2(date.getSeconds());
+  return language === 'zh'
+    ? `${year} 年 ${month} 月 ${day} 日 ${hour} 时 ${minute} 分 ${second} 秒`
+    : `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+export function formatSideDialogDiligenceAutoContinuePrompt(
+  language: LanguageCode,
+  args: {
+    now: Date;
+    tellaskContent: string;
+    replyToolName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+    variant: SideDialogDiligenceVariant;
+  },
+): string {
+  const noticePrefix = formatSystemNoticePrefix(language);
+  const goal = truncateSideDialogGoal(args.tellaskContent);
+  const timestamp = formatSideDialogDiligenceTimestamp(language, args.now);
+  const replyCall = `${args.replyToolName}({ replyContent })`;
+  if (language === 'zh') {
+    const lines =
+      args.variant === 0
+        ? [
+            `${noticePrefix} 现在是 ${timestamp}，这是一条支线对话运行时续推指令，不是新的用户诉求。`,
+            `请继续完成当前诉请任务；若已经形成可交付结果，必须调用 \`${replyCall}\` 回复诉请者。`,
+          ]
+        : args.variant === 1
+          ? [
+              `${noticePrefix} 现在是 ${timestamp}。当前支线还不能停在空回复或仅确认状态。`,
+              `围绕下面的诉请目标继续推进；准备好最终交付后，精确调用 \`${replyCall}\` 回复。`,
+            ]
+          : [
+              `${noticePrefix} 当前时间：${timestamp}。系统检测到这条支线需要继续推进。`,
+              `请直接执行下一步有效动作，或在结果已完整时调用 \`${replyCall}\` 完成回贴。`,
+            ];
+    return [...lines, '', '当前诉请目标：', goal].join('\n');
+  }
+
+  const lines =
+    args.variant === 0
+      ? [
+          `${noticePrefix} It is now ${timestamp}. This is a runtime continuation instruction for the current Side Dialog, not a new user request.`,
+          `Continue the current Tellask. If you already have a deliverable result, call \`${replyCall}\` to reply to the tellasker.`,
+        ]
+      : args.variant === 1
+        ? [
+            `${noticePrefix} It is now ${timestamp}. This Side Dialog must not stop at an empty response or acknowledgement.`,
+            `Keep working around the Tellask goal below; when final delivery is ready, call \`${replyCall}\` exactly.`,
+          ]
+        : [
+            `${noticePrefix} Current time: ${timestamp}. Runtime detected that this Side Dialog needs another push.`,
+            `Take the next concrete action now, or, if the result is complete, finish by calling \`${replyCall}\`.`,
+          ];
+  return [...lines, '', 'Current Tellask goal:', goal].join('\n');
+}
+
 export function formatReminderContextGuide(language: LanguageCode): string {
   if (language === 'zh') {
     return [

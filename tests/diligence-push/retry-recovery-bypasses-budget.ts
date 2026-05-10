@@ -15,7 +15,6 @@ async function main(): Promise<void> {
 
   const ordinary = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 2,
   });
@@ -24,7 +23,6 @@ async function main(): Promise<void> {
 
   const recovery = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 2,
     ignoreBudgetExhaustion: true,
@@ -40,7 +38,6 @@ async function main(): Promise<void> {
   dlg.disableDiligencePush = true;
   const disabled = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 2,
     ignoreBudgetExhaustion: true,
@@ -50,7 +47,6 @@ async function main(): Promise<void> {
   dlg.disableDiligencePush = false;
   const zeroRemainingWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 0,
   });
@@ -59,7 +55,6 @@ async function main(): Promise<void> {
 
   const manuallyRefilledWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 3,
     diligencePushMax: 0,
   });
@@ -74,7 +69,6 @@ async function main(): Promise<void> {
 
   const manuallyExpandedAbovePositiveDefault = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 7,
     diligencePushMax: 2,
   });
@@ -89,7 +83,6 @@ async function main(): Promise<void> {
 
   const recoveryWithOrdinaryKeepGoingDisabled = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: 0,
     diligencePushMax: 0,
     ignoreBudgetExhaustion: true,

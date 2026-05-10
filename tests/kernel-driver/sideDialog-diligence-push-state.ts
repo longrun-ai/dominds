@@ -4,7 +4,9 @@ import path from 'node:path';
 
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
+import { maybePrepareDiligenceAutoContinuePrompt } from '../../main/llm/kernel-driver/runtime';
 import { DialogPersistence } from '../../main/persistence';
+import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import { createMainDialog, withTempRtws, writeStandardMinds } from './helpers';
 
@@ -15,6 +17,7 @@ type DialogPersistencePrivate = typeof DialogPersistence & {
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
+    setWorkLanguage('zh');
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const root = await createMainDialog('tester');
@@ -98,6 +101,97 @@ async function main(): Promise<void> {
       false,
       'restoring a sideDialog must not overwrite the root Diligence Push state',
     );
+
+    restoredSideDialog.disableDiligencePush = false;
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      restoredSideDialog.id,
+      undefined,
+      restoredSideDialog.status,
+    );
+    const noActiveReplyPush = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg: restoredSideDialog,
+      remainingBudget: 0,
+      diligencePushMax: 0,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(
+      noActiveReplyPush.kind,
+      'disabled',
+      'sideDialog recovery push must give up when there is no active reply obligation',
+    );
+
+    const replyDirective = {
+      expectedReplyCallName: 'replyTellask' as const,
+      targetDialogId: root.id.selfId,
+      targetCallId: 'side-diligence-call',
+      tellaskContent: 'Check the side-dialog Diligence Push state.',
+    };
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      restoredSideDialog.id,
+      replyDirective,
+      restoredSideDialog.status,
+    );
+    const activeReplyPush = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg: restoredSideDialog,
+      remainingBudget: 0,
+      diligencePushMax: 0,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(activeReplyPush.kind, 'prompt');
+    if (activeReplyPush.kind !== 'prompt') {
+      throw new Error(`Expected sideDialog recovery prompt, got ${activeReplyPush.kind}`);
+    }
+    assert.equal(activeReplyPush.prompt.origin, 'runtime');
+    assert.deepEqual(activeReplyPush.prompt.tellaskReplyDirective, replyDirective);
+    assert.match(activeReplyPush.prompt.content, /replyTellask\(\{ replyContent \}\)/);
+    assert.match(activeReplyPush.prompt.content, /Check the side-dialog Diligence Push state\./);
+    assert.doesNotMatch(activeReplyPush.prompt.content, /replyTellaskSessionless/);
+
+    const wrongReplyDirective = {
+      ...replyDirective,
+      expectedReplyCallName: 'replyTellaskSessionless' as const,
+    };
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      restoredSideDialog.id,
+      wrongReplyDirective,
+      restoredSideDialog.status,
+    );
+    await assert.rejects(
+      maybePrepareDiligenceAutoContinuePrompt({
+        dlg: restoredSideDialog,
+        remainingBudget: 0,
+        diligencePushMax: 0,
+        ignoreBudgetExhaustion: true,
+      }),
+      /active reply obligation does not match current assignment/,
+    );
+
+    const askBackDirective = {
+      expectedReplyCallName: 'replyTellaskBack' as const,
+      targetDialogId: 'ask-back-target',
+      targetCallId: 'ask-back-call',
+      tellaskContent: 'Answer the ask-back clarification.',
+    };
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      restoredSideDialog.id,
+      askBackDirective,
+      restoredSideDialog.status,
+    );
+    const askBackPush = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg: restoredSideDialog,
+      remainingBudget: 0,
+      diligencePushMax: 0,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(askBackPush.kind, 'prompt');
+    if (askBackPush.kind !== 'prompt') {
+      throw new Error(`Expected ask-back recovery prompt, got ${askBackPush.kind}`);
+    }
+    assert.equal(askBackPush.prompt.origin, 'runtime');
+    assert.deepEqual(askBackPush.prompt.tellaskReplyDirective, askBackDirective);
+    assert.equal(askBackPush.prompt.sideDialogReplyTarget, undefined);
+    assert.match(askBackPush.prompt.content, /replyTellaskBack\(\{ replyContent \}\)/);
+    assert.match(askBackPush.prompt.content, /Answer the ask-back clarification\./);
   });
 
   console.log('kernel-driver sideDialog-diligence-push-state: PASS');

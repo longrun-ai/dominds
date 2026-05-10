@@ -1690,15 +1690,11 @@ async function maybeContinueWithDiligencePrompt(args: {
     ignoreBudgetExhaustion,
   } = args;
 
-  if (!(dlg instanceof MainDialog)) {
-    return { kind: 'break' };
-  }
-
   const suspension = await dlg.getSuspensionStatus({
     allowPendingSideDialogs: allowPendingSideDialogs === true,
   });
   if (!suspension.canDrive) {
-    if (suspension.q4h) {
+    if (suspension.q4h && dlg instanceof MainDialog) {
       await preserveDiligenceBudgetAcrossQ4H(dlg);
     }
     return { kind: 'break' };
@@ -1706,20 +1702,21 @@ async function maybeContinueWithDiligencePrompt(args: {
 
   const prepared = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
-    isMainDialog: true,
     remainingBudget: dlg.diligencePushRemainingBudget,
     diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
     suppressDiligencePush: suppressDiligencePushForDrive,
     ignoreBudgetExhaustion,
   });
 
-  dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
-  void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
-    kind: 'patch',
-    patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
-  }));
+  if (dlg instanceof MainDialog) {
+    dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
+    void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+      kind: 'patch',
+      patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+    }));
+  }
 
-  if (prepared.kind !== 'disabled') {
+  if (dlg instanceof MainDialog && prepared.kind !== 'disabled') {
     emitDiligenceBudgetEvent(dlg, {
       maxInjectCount: prepared.maxInjectCount,
       nextRemainingBudget: prepared.nextRemainingBudget,
@@ -1727,6 +1724,11 @@ async function maybeContinueWithDiligencePrompt(args: {
   }
 
   if (prepared.kind === 'budget_exhausted') {
+    if (!(dlg instanceof MainDialog)) {
+      throw new Error(
+        `kernel-driver Diligence Push invariant violation: non-main dialog returned budget_exhausted (${dlg.id.valueOf()})`,
+      );
+    }
     await suspendForKeepGoingBudgetExhausted({
       dlg,
       maxInjectCount: prepared.maxInjectCount,

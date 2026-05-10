@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   formatDiligenceAutoContinuePrompt,
+  formatSideDialogDiligenceAutoContinuePrompt,
   formatSystemNoticePrefix,
 } from '../../main/runtime/driver-messages';
 
@@ -43,6 +44,29 @@ async function main(): Promise<void> {
     enPrompt.endsWith(enBody),
     'en diligence auto-continue prompt should preserve the original diligence body',
   );
+
+  const fixedNow = new Date(2026, 4, 10, 17, 56, 21);
+  for (const variant of [0, 1, 2] as const) {
+    const zhSidePrompt = formatSideDialogDiligenceAutoContinuePrompt('zh', {
+      now: fixedNow,
+      tellaskContent: '请读取文件并返回完整结果。',
+      replyToolName: 'replyTellaskSessionless',
+      variant,
+    });
+    assert.match(zhSidePrompt, /2026 年 05 月 10 日 17 时 56 分 21 秒/);
+    assert.match(zhSidePrompt, /replyTellaskSessionless\(\{ replyContent \}\)/);
+    assert.match(zhSidePrompt, /请读取文件并返回完整结果。/);
+
+    const enSidePrompt = formatSideDialogDiligenceAutoContinuePrompt('en', {
+      now: fixedNow,
+      tellaskContent: 'Read the files and return the complete output.',
+      replyToolName: 'replyTellaskBack',
+      variant,
+    });
+    assert.match(enSidePrompt, /2026-05-10 17:56:21/);
+    assert.match(enSidePrompt, /replyTellaskBack\(\{ replyContent \}\)/);
+    assert.match(enSidePrompt, /Read the files and return the complete output\./);
+  }
 
   console.log('OK');
 }

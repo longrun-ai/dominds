@@ -11,13 +11,15 @@ import type {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { Dialog } from '../../dialog';
+import { Dialog, MainDialog, SideDialog } from '../../dialog';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
+import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
 import {
   formatDiligenceAutoContinuePrompt,
   formatQ4HDiligencePushBudgetExhausted,
+  formatSideDialogDiligenceAutoContinuePrompt,
 } from '../../runtime/driver-messages';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../../tool';
@@ -36,7 +38,12 @@ import {
   type LlmRetryStrategy,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
-import type { KernelDriverDiligencePrompt } from './types';
+import type {
+  KernelDriverDiligencePrompt,
+  KernelDriverPrompt,
+  KernelDriverRuntimeReplyPrompt,
+  KernelDriverRuntimeSideDialogPrompt,
+} from './types';
 
 export class LlmRetryStoppedError extends Error {
   public readonly reason: DialogLlmRetryExhaustedReason;
@@ -79,6 +86,16 @@ function stripMarkdownFrontmatter(raw: string): string {
 type RtwsDiligenceResolution =
   | { kind: 'disabled'; reason: 'empty_file' | 'empty_body' }
   | { kind: 'enabled'; diligenceText: string };
+
+type DiligencePromptPreparation =
+  | { kind: 'disabled'; nextRemainingBudget: number }
+  | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
+  | {
+      kind: 'prompt';
+      prompt: KernelDriverPrompt;
+      maxInjectCount: number;
+      nextRemainingBudget: number;
+    };
 
 async function resolveRtwsDiligenceConfig(): Promise<RtwsDiligenceResolution> {
   const workLanguage = getWorkLanguage();
@@ -131,52 +148,149 @@ async function resolveRtwsDiligenceConfig(): Promise<RtwsDiligenceResolution> {
   };
 }
 
+function normalizeDiligenceRemainingBudget(remainingBudget: number): number {
+  return typeof remainingBudget === 'number' && Number.isFinite(remainingBudget)
+    ? Math.max(0, Math.floor(remainingBudget))
+    : 0;
+}
+
+async function maybePrepareSideDialogDiligenceRecoveryPrompt(options: {
+  dlg: SideDialog;
+  remainingBudget: number;
+  suppressDiligencePush?: boolean;
+  ignoreBudgetExhaustion?: boolean;
+}): Promise<DiligencePromptPreparation> {
+  if (options.ignoreBudgetExhaustion !== true) {
+    return { kind: 'disabled', nextRemainingBudget: 0 };
+  }
+  if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {
+    return {
+      kind: 'disabled',
+      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+    };
+  }
+  const assignment = options.dlg.assignmentFromAsker;
+  const activeReplyDirective = await DialogPersistence.loadActiveTellaskReplyObligation(
+    options.dlg.id,
+    options.dlg.status,
+  );
+  if (!activeReplyDirective) {
+    return { kind: 'disabled', nextRemainingBudget: 0 };
+  }
+  const activeTargetCallId = activeReplyDirective.targetCallId.trim();
+  const activeTargetDialogId = activeReplyDirective.targetDialogId.trim();
+  const assignmentCallId = assignment.callId.trim();
+  const assignmentAskerDialogId = assignment.askerDialogId.trim();
+  if (
+    activeTargetCallId === '' ||
+    activeTargetDialogId === '' ||
+    assignmentCallId === '' ||
+    assignmentAskerDialogId === ''
+  ) {
+    throw new Error(
+      `sideDialog diligence recovery invariant violation: empty reply/assignment correlation field for ${options.dlg.id.valueOf()}`,
+    );
+  }
+  const activeMatchesAssignment =
+    activeTargetDialogId === assignmentAskerDialogId &&
+    activeTargetCallId === assignmentCallId &&
+    activeReplyDirective.tellaskContent === assignment.tellaskContent;
+  const activeReplyToolMatchesAssignment =
+    (activeReplyDirective.expectedReplyCallName === 'replyTellask' &&
+      assignment.callName === 'tellask') ||
+    (activeReplyDirective.expectedReplyCallName === 'replyTellaskSessionless' &&
+      (assignment.callName === 'tellaskSessionless' ||
+        assignment.callName === 'freshBootsReasoning'));
+  if (
+    activeReplyDirective.expectedReplyCallName !== 'replyTellaskBack' &&
+    (!activeMatchesAssignment || !activeReplyToolMatchesAssignment)
+  ) {
+    throw new Error(
+      `sideDialog diligence recovery invariant violation: active reply obligation does not match current assignment for ${options.dlg.id.valueOf()}`,
+    );
+  }
+  const variant = (Math.floor(Math.random() * 3) % 3) as 0 | 1 | 2;
+  const commonPrompt = {
+    content: formatSideDialogDiligenceAutoContinuePrompt(getWorkLanguage(), {
+      now: new Date(),
+      tellaskContent: activeReplyDirective.tellaskContent,
+      replyToolName: activeReplyDirective.expectedReplyCallName,
+      variant,
+    }),
+    msgId: generateShortId(),
+    grammar: 'markdown' as const,
+    origin: 'runtime' as const,
+    tellaskReplyDirective: activeReplyDirective,
+  };
+  if (activeReplyDirective.expectedReplyCallName === 'replyTellaskBack') {
+    const prompt: KernelDriverRuntimeReplyPrompt = commonPrompt;
+    return {
+      kind: 'prompt',
+      prompt,
+      maxInjectCount: 0,
+      nextRemainingBudget: 0,
+    };
+  }
+  const prompt: KernelDriverRuntimeSideDialogPrompt = {
+    ...commonPrompt,
+    sideDialogReplyTarget: {
+      ownerDialogId: assignment.askerDialogId,
+      callType: assignment.callName === 'tellask' ? 'B' : 'C',
+      callId: assignment.callId,
+      callSiteCourse: assignment.callSiteCourse,
+      callSiteGenseq: assignment.callSiteGenseq,
+    },
+  };
+  return {
+    kind: 'prompt',
+    prompt,
+    maxInjectCount: 0,
+    nextRemainingBudget: 0,
+  };
+}
+
 export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
-  isMainDialog: boolean;
   remainingBudget: number;
   diligencePushMax: number;
   suppressDiligencePush?: boolean;
   ignoreBudgetExhaustion?: boolean;
-}): Promise<
-  | { kind: 'disabled'; nextRemainingBudget: number }
-  | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
-  | {
-      kind: 'prompt';
-      prompt: KernelDriverDiligencePrompt;
-      maxInjectCount: number;
-      nextRemainingBudget: number;
+}): Promise<DiligencePromptPreparation> {
+  if (!(options.dlg instanceof MainDialog)) {
+    if (!(options.dlg instanceof SideDialog)) {
+      return {
+        kind: 'disabled',
+        nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+      };
     }
-> {
-  if (!options.isMainDialog) {
-    return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
+    return await maybePrepareSideDialogDiligenceRecoveryPrompt({
+      dlg: options.dlg,
+      remainingBudget: options.remainingBudget,
+      suppressDiligencePush: options.suppressDiligencePush,
+      ignoreBudgetExhaustion: options.ignoreBudgetExhaustion,
+    });
   }
 
   if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {
-    const normalizedRemaining =
-      typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
-        ? Math.max(0, Math.floor(options.remainingBudget))
-        : 0;
-    return { kind: 'disabled', nextRemainingBudget: normalizedRemaining };
+    return {
+      kind: 'disabled',
+      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+    };
   }
 
   const resolved = await resolveRtwsDiligenceConfig();
   if (resolved.kind === 'disabled') {
-    const normalizedRemaining =
-      typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
-        ? Math.max(0, Math.floor(options.remainingBudget))
-        : 0;
-    return { kind: 'disabled', nextRemainingBudget: normalizedRemaining };
+    return {
+      kind: 'disabled',
+      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+    };
   }
 
   const maxInjectCount =
     typeof options.diligencePushMax === 'number' && Number.isFinite(options.diligencePushMax)
       ? Math.floor(options.diligencePushMax)
       : 0;
-  const normalizedRemaining =
-    typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
-      ? Math.max(0, Math.floor(options.remainingBudget))
-      : 0;
+  const normalizedRemaining = normalizeDiligenceRemainingBudget(options.remainingBudget);
   const bypassBudget = options.ignoreBudgetExhaustion === true;
   // `diligencePushMax` is only the per-member default used when a dialog instance is created or
   // reset. Runtime business decisions must be based on this dialog's persisted remaining budget so
@@ -203,11 +317,6 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     };
   }
 
-  const currentRemaining = normalizedRemaining;
-  if (currentRemaining < 1 && !bypassBudget) {
-    return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
-  }
-
   const prompt: KernelDriverDiligencePrompt = {
     content: formatDiligenceAutoContinuePrompt(getWorkLanguage(), resolved.diligenceText),
     msgId: generateShortId(),
@@ -218,7 +327,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     kind: 'prompt',
     prompt,
     maxInjectCount,
-    nextRemainingBudget: Math.max(0, currentRemaining - 1),
+    nextRemainingBudget: Math.max(0, normalizedRemaining - 1),
   };
 }
 

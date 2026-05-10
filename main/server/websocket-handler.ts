@@ -996,7 +996,6 @@ async function maybeTriggerImmediateDiligencePrompt(mainDialog: MainDialog): Pro
     const team = await Team.load();
     const prepared = await maybePrepareDiligenceAutoContinuePrompt({
       dlg: mainDialog,
-      isMainDialog: true,
       remainingBudget: mainDialog.diligencePushRemainingBudget,
       diligencePushMax: resolveMemberDiligencePushMax(team, mainDialog.agentId),
     });
