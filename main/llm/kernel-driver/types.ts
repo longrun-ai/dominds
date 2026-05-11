@@ -111,7 +111,7 @@ export type KernelDriverDriveScheduler = (
 export type KernelDriverDriveInvoker = (
   dialog: Dialog,
   options: KernelDriverDriveCallOptions,
-) => Promise<void>;
+) => Promise<KernelDriverCoreResult | void>;
 export type KernelDriverDriveCallbacks = Readonly<{
   scheduleDrive: KernelDriverDriveScheduler;
   driveDialog: KernelDriverDriveInvoker;
@@ -131,7 +131,7 @@ export type KernelDriverDriveArgs =
       driveOptions: KernelDriverDriveOptions,
     ];
 
-export type KernelDriverDriveResult = Promise<void>;
+export type KernelDriverDriveResult = Promise<KernelDriverCoreResult | void>;
 
 export type KernelDriverEmitSayingArgs = [dlg: Dialog, content: string];
 export type KernelDriverEmitSayingResult = Promise<void>;
@@ -147,6 +147,7 @@ export type KernelDriverSupplyResponseArgs = [
     course: number;
     genseq: number;
   },
+  directFallbackSource?: 'saying' | 'thinking_only',
 ];
 export type KernelDriverSupplyResponseResult = Promise<void>;
 
@@ -163,6 +164,8 @@ export type KernelDriverRuntimeState = {
 export type KernelDriverCoreResult = {
   lastAssistantSayingContent: string | null;
   lastAssistantSayingGenseq: number | null;
+  lastAssistantThinkingContent: string | null;
+  lastAssistantThinkingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
   lastAssistantReplyTarget?: KernelDriverSideDialogReplyTarget;
   fbrConclusion?: {

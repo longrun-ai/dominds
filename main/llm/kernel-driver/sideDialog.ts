@@ -206,6 +206,7 @@ export async function supplyResponseToAskerDialog(args: {
   callId?: string;
   status?: 'completed' | 'failed';
   deliveryMode?: 'reply_tool' | 'direct_fallback';
+  directFallbackSource?: 'saying' | 'thinking_only';
   replyResolution?: {
     callId: string;
     replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
@@ -223,6 +224,7 @@ export async function supplyResponseToAskerDialog(args: {
     callId,
     status = 'completed',
     deliveryMode = 'reply_tool',
+    directFallbackSource,
     calleeResponseRef,
     askerCourseOverride,
     scheduleDrive,
@@ -383,6 +385,7 @@ export async function supplyResponseToAskerDialog(args: {
       responseBody: tellaskerResponseBody,
       status,
       deliveryMode,
+      directFallbackSource,
       language: getWorkLanguage(),
     });
     const carryoverCallSiteCourse = result.callSiteCourse;
@@ -717,6 +720,7 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
   responseGenseq: number;
   target: SideDialogReplyTarget;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
+  directFallbackSource?: 'saying' | 'thinking_only';
   replyResolution?: {
     callId: string;
     replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
@@ -818,6 +822,7 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
     callId: target.callId,
     status: 'completed',
     deliveryMode: args.deliveryMode,
+    directFallbackSource: args.directFallbackSource,
     replyResolution: args.replyResolution,
     calleeResponseRef: { course: sideDialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,
@@ -830,6 +835,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
   responseText: string;
   responseGenseq: number;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
+  directFallbackSource?: 'saying' | 'thinking_only';
   replyResolution?: {
     callId: string;
     replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
@@ -922,6 +928,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     callId: assignment.callId,
     status: 'completed',
     deliveryMode: args.deliveryMode,
+    directFallbackSource: args.directFallbackSource,
     replyResolution: args.replyResolution,
     calleeResponseRef: { course: sideDialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,

@@ -59,6 +59,7 @@ export type TellaskResponseFormatInput = {
   responseBody: string;
   status?: 'completed' | 'failed';
   deliveryMode?: 'reply_tool' | 'direct_fallback';
+  directFallbackSource?: 'saying' | 'thinking_only';
   language?: LanguageCode;
 };
 
@@ -376,9 +377,13 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
   const markerPrefix = marker ? `${marker}\n\n` : '';
   const deliveryNotice =
     input.deliveryMode === 'direct_fallback'
-      ? language === 'zh'
-        ? '> 系统提示：本次回贴未调用 replyTellask* 工具，Dominds 已按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
-        : '> System note: this reply did not use a replyTellask* tool. Dominds delivered it via direct-reply fallback and kept this marker for traceability.\n\n'
+      ? input.directFallbackSource === 'thinking_only'
+        ? language === 'zh'
+          ? '> 系统提示：本次回贴未调用 replyTellask* 工具，且模型仅产出 thinking；Dominds 已将该 thinking 内容按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
+          : '> System note: this reply did not use a replyTellask* tool, and the model only produced thinking. Dominds delivered that thinking content via direct-reply fallback and kept this marker for traceability.\n\n'
+        : language === 'zh'
+          ? '> 系统提示：本次回贴未调用 replyTellask* 工具，Dominds 已按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
+          : '> System note: this reply did not use a replyTellask* tool. Dominds delivered it via direct-reply fallback and kept this marker for traceability.\n\n'
       : '';
 
   if (isFbr) {

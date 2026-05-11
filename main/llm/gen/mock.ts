@@ -94,6 +94,12 @@ interface MockResponse {
   /** Mock LLM response */
   response: string;
 
+  /** Optional thinking content override; set response to "" to produce thinking only. */
+  thinkingResponse?: string;
+
+  /** Suppress the mock provider's default thinking prelude for this response. */
+  omitDefaultThinking?: boolean;
+
   /**
    * Optional function calls emitted after saying content.
    * Useful to drive deterministic tool-round tests with the mock provider.
@@ -529,10 +535,15 @@ responses:
       this.buildReplyToolReminderAutoResponse(content, role, context);
     await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
-    await receiver.thinkingStart();
-    await receiver.thinkingChunk(`[${modelName}] `);
-    await receiver.thinkingChunk(content.substring(0, 50) || '(empty)');
-    await receiver.thinkingFinish();
+    const thinkingText =
+      matched?.omitDefaultThinking === true
+        ? (matched.thinkingResponse ?? '')
+        : (matched?.thinkingResponse ?? `[${modelName}] ${content.substring(0, 50) || '(empty)'}`);
+    if (thinkingText !== '') {
+      await receiver.thinkingStart();
+      await receiver.thinkingChunk(thinkingText);
+      await receiver.thinkingFinish();
+    }
 
     if (matched?.streamError) {
       if (matched.emitStreamErrorBeforeThrow && receiver.streamError) {
@@ -663,12 +674,19 @@ responses:
       const responseText =
         matched?.response ?? this.makeFallbackResponse(dbPath, content, role, modelName);
 
-      const thinking: ChatMessage = {
-        type: 'thinking_msg',
-        role: 'assistant',
-        genseq,
-        content: `[${modelName}] ${content.substring(0, 100)}`,
-      };
+      const thinkingText =
+        matched?.omitDefaultThinking === true
+          ? (matched.thinkingResponse ?? '')
+          : (matched?.thinkingResponse ?? `[${modelName}] ${content.substring(0, 100)}`);
+      const thinking: ChatMessage | undefined =
+        thinkingText === ''
+          ? undefined
+          : {
+              type: 'thinking_msg',
+              role: 'assistant',
+              genseq,
+              content: thinkingText,
+            };
 
       const saying: SayingMsg | undefined =
         matched?.streamError || responseText !== ''
@@ -750,7 +768,14 @@ responses:
         }) ?? [];
 
       return {
-        messages: saying ? [thinking, saying, ...funcMsgs] : [thinking, ...funcMsgs],
+        messages:
+          thinking !== undefined
+            ? saying
+              ? [thinking, saying, ...funcMsgs]
+              : [thinking, ...funcMsgs]
+            : saying
+              ? [saying, ...funcMsgs]
+              : [...funcMsgs],
         usage,
         llmGenModel: modelName,
       };

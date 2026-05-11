@@ -20,6 +20,8 @@ export type MockEntry = {
   message: string;
   role: 'user' | 'tool' | 'assistant';
   response: string;
+  thinkingResponse?: string;
+  omitDefaultThinking?: boolean;
   delayMs?: number;
   chunkDelayMs?: number;
   streamError?: string;

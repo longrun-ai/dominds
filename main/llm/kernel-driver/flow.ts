@@ -127,6 +127,59 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
+type DirectFallbackResponse = Readonly<{
+  responseText: string;
+  responseGenseq: number;
+  source: 'saying' | 'thinking_only';
+}>;
+
+function resolveDirectFallbackResponse(args: {
+  driveResult: KernelDriverCoreResult;
+  dialog: Dialog;
+}): DirectFallbackResponse | undefined {
+  if (
+    args.driveResult.lastAssistantSayingContent !== null &&
+    args.driveResult.lastAssistantSayingContent.trim() !== ''
+  ) {
+    if (
+      typeof args.driveResult.lastAssistantSayingGenseq !== 'number' ||
+      !Number.isFinite(args.driveResult.lastAssistantSayingGenseq) ||
+      args.driveResult.lastAssistantSayingGenseq <= 0
+    ) {
+      throw new Error(
+        `Direct reply fallback invariant violation: missing lastAssistantSayingGenseq for dialog=${args.dialog.id.valueOf()}`,
+      );
+    }
+    return {
+      responseText: args.driveResult.lastAssistantSayingContent,
+      responseGenseq: Math.floor(args.driveResult.lastAssistantSayingGenseq),
+      source: 'saying',
+    };
+  }
+
+  if (
+    args.driveResult.lastAssistantThinkingContent !== null &&
+    args.driveResult.lastAssistantThinkingContent.trim() !== ''
+  ) {
+    if (
+      typeof args.driveResult.lastAssistantThinkingGenseq !== 'number' ||
+      !Number.isFinite(args.driveResult.lastAssistantThinkingGenseq) ||
+      args.driveResult.lastAssistantThinkingGenseq <= 0
+    ) {
+      throw new Error(
+        `Direct reply fallback invariant violation: missing lastAssistantThinkingGenseq for dialog=${args.dialog.id.valueOf()}`,
+      );
+    }
+    return {
+      responseText: args.driveResult.lastAssistantThinkingContent,
+      responseGenseq: Math.floor(args.driveResult.lastAssistantThinkingGenseq),
+      source: 'thinking_only',
+    };
+  }
+
+  return undefined;
+}
+
 async function buildReplyToolReminderPrompt(args: {
   dlg: Dialog;
   directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
@@ -1170,7 +1223,8 @@ export async function executeDriveRound(args: {
         dialog instanceof SideDialog &&
         driveResult &&
         !interruptedBySignal &&
-        (driveResult.fbrConclusion !== undefined || driveResult.lastAssistantSayingContent !== null)
+        (driveResult.fbrConclusion !== undefined ||
+          resolveDirectFallbackResponse({ driveResult, dialog }) !== undefined)
       ) {
         if (driveResult.fbrConclusion) {
           await supplySideDialogResponseToAssignedAskerIfPendingV2({
@@ -1179,24 +1233,29 @@ export async function executeDriveRound(args: {
             responseGenseq: driveResult.fbrConclusion.responseGenseq,
             scheduleDrive: args.scheduleDrive,
           });
-        } else if (driveResult.lastAssistantSayingContent !== null) {
+        } else {
+          const directFallbackResponse = resolveDirectFallbackResponse({ driveResult, dialog });
+          if (directFallbackResponse === undefined) {
+            throw new Error(
+              `SideDialog response supply invariant violation: missing direct fallback response for dialog=${dialog.id.valueOf()}`,
+            );
+          }
           const hasInProgressFunctionCall =
             typeof driveResult.lastFunctionCallGenseq === 'number' &&
             Number.isFinite(driveResult.lastFunctionCallGenseq) &&
             driveResult.lastFunctionCallGenseq > 0 &&
-            (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-              !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-              driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
+            directFallbackResponse.responseGenseq <= driveResult.lastFunctionCallGenseq;
           if (hasInProgressFunctionCall) {
             // Any function call means execution is still in-progress. Only supply when the tellaskee
             // has produced a newer assistant saying after the latest function call.
             log.debug(
-              'kernel-driver skip sideDialog response supply because latest saying is not after function calls',
+              'kernel-driver skip sideDialog response supply because latest assistant output is not after function calls',
               undefined,
               {
                 rootId: dialog.id.rootId,
                 selfId: dialog.id.selfId,
-                lastAssistantSayingGenseq: driveResult.lastAssistantSayingGenseq,
+                responseGenseq: directFallbackResponse.responseGenseq,
+                responseSource: directFallbackResponse.source,
                 lastFunctionCallGenseq: driveResult.lastFunctionCallGenseq,
               },
             );
@@ -1268,25 +1327,16 @@ export async function executeDriveRound(args: {
                     },
                   );
                 } else {
-                  if (
-                    typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-                    !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-                    driveResult.lastAssistantSayingGenseq <= 0
-                  ) {
-                    throw new Error(
-                      `SideDialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
-                    );
-                  }
-                  const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
                   const directFallbackCallId = `direct-fallback-${generateShortId()}`;
                   let supplied = false;
                   if (sideDialogReplyTarget) {
                     supplied = await supplySideDialogResponseToSpecificAskerIfPendingV2({
                       sideDialog: dialog,
-                      responseText: driveResult.lastAssistantSayingContent,
-                      responseGenseq,
+                      responseText: directFallbackResponse.responseText,
+                      responseGenseq: directFallbackResponse.responseGenseq,
                       target: sideDialogReplyTarget,
                       deliveryMode: 'direct_fallback',
+                      directFallbackSource: directFallbackResponse.source,
                       replyResolution: {
                         callId: directFallbackCallId,
                         replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
@@ -1296,9 +1346,10 @@ export async function executeDriveRound(args: {
                     if (!supplied) {
                       supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
                         sideDialog: dialog,
-                        responseText: driveResult.lastAssistantSayingContent,
-                        responseGenseq,
+                        responseText: directFallbackResponse.responseText,
+                        responseGenseq: directFallbackResponse.responseGenseq,
                         deliveryMode: 'direct_fallback',
+                        directFallbackSource: directFallbackResponse.source,
                         replyResolution: {
                           callId: directFallbackCallId,
                           replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
@@ -1309,9 +1360,10 @@ export async function executeDriveRound(args: {
                   } else {
                     supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
                       sideDialog: dialog,
-                      responseText: driveResult.lastAssistantSayingContent,
-                      responseGenseq,
+                      responseText: directFallbackResponse.responseText,
+                      responseGenseq: directFallbackResponse.responseGenseq,
                       deliveryMode: 'direct_fallback',
+                      directFallbackSource: directFallbackResponse.source,
                       replyResolution: {
                         callId: directFallbackCallId,
                         replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
@@ -1350,17 +1402,21 @@ export async function executeDriveRound(args: {
         !(dialog instanceof SideDialog) &&
         driveResult &&
         !interruptedBySignal &&
-        driveResult.lastAssistantSayingContent !== null &&
+        resolveDirectFallbackResponse({ driveResult, dialog }) !== undefined &&
         activeTellaskReplyDirective?.expectedReplyCallName === 'replyTellaskBack' &&
         followUp === undefined
       ) {
+        const directFallbackResponse = resolveDirectFallbackResponse({ driveResult, dialog });
+        if (directFallbackResponse === undefined) {
+          throw new Error(
+            `replyTellaskBack fallback invariant violation: missing direct fallback response for dialog=${dialog.id.valueOf()}`,
+          );
+        }
         const hasInProgressFunctionCall =
           typeof driveResult.lastFunctionCallGenseq === 'number' &&
           Number.isFinite(driveResult.lastFunctionCallGenseq) &&
           driveResult.lastFunctionCallGenseq > 0 &&
-          (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-            !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-            driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
+          directFallbackResponse.responseGenseq <= driveResult.lastFunctionCallGenseq;
         if (!hasInProgressFunctionCall) {
           if (!activePromptWasReplyToolReminder) {
             const language = getWorkLanguage();
@@ -1389,12 +1445,13 @@ export async function executeDriveRound(args: {
             await deliverTellaskBackReplyFromDirective({
               replyingDialog: dialog,
               directive: activeTellaskReplyDirective,
-              replyContent: driveResult.lastAssistantSayingContent,
+              replyContent: directFallbackResponse.responseText,
               callbacks: {
                 scheduleDrive: args.scheduleDrive,
                 driveDialog: args.driveDialog,
               },
               deliveryMode: 'direct_fallback',
+              directFallbackSource: directFallbackResponse.source,
             });
             await dialog.appendTellaskReplyResolution({
               callId: `direct-fallback-${generateShortId()}`,
@@ -1527,6 +1584,7 @@ export async function executeDriveRound(args: {
     if (tailError !== undefined) {
       throw tailError;
     }
+    return driveResult;
   } finally {
     if (activeRunPrimed && ownsActiveRun) {
       clearActiveRun(dialog.id);

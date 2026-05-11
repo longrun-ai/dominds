@@ -16,7 +16,10 @@ import type {
 } from './types';
 import { createKernelDriverRuntimeState } from './types';
 
-function dispatchDrive(dialog: Dialog, options: KernelDriverDriveCallOptions): Promise<void> {
+function dispatchDrive(
+  dialog: Dialog,
+  options: KernelDriverDriveCallOptions,
+): KernelDriverDriveResult {
   if (options.humanPrompt) {
     return driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
   }
@@ -34,7 +37,7 @@ export async function driveDialogStream(
       void dispatchDrive(dialog, options);
     },
     driveDialog: async (dialog, options) => {
-      await dispatchDrive(dialog, options);
+      return await dispatchDrive(dialog, options);
     },
   });
 }
@@ -49,8 +52,16 @@ export async function emitSayingEventsBridge(
 export async function supplyResponseToAskerDialog(
   ...args: KernelDriverSupplyResponseArgs
 ): KernelDriverSupplyResponseResult {
-  const [parentDialog, sideDialogId, responseText, callType, callId, status, calleeResponseRef] =
-    args;
+  const [
+    parentDialog,
+    sideDialogId,
+    responseText,
+    callType,
+    callId,
+    status,
+    calleeResponseRef,
+    directFallbackSource,
+  ] = args;
   return await supplyResponseToAskerDialogInternal({
     parentDialog,
     sideDialogId,
@@ -59,6 +70,7 @@ export async function supplyResponseToAskerDialog(
     callId,
     status,
     calleeResponseRef,
+    directFallbackSource,
     scheduleDrive: (dialog, options) => {
       void dispatchDrive(dialog, options);
     },
@@ -82,6 +94,7 @@ export async function supplyResponseToSideDialogBridge(
   callId?: string,
   status?: 'completed' | 'failed',
   calleeResponseRef?: { course: number; genseq: number },
+  directFallbackSource?: 'saying' | 'thinking_only',
 ): Promise<void> {
   await supplyResponseToAskerDialogInternal({
     parentDialog,
@@ -91,6 +104,7 @@ export async function supplyResponseToSideDialogBridge(
     callId,
     status,
     calleeResponseRef,
+    directFallbackSource,
     scheduleDrive: (dialog, options) => {
       void dispatchDrive(dialog, options);
     },

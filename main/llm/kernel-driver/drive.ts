@@ -1892,6 +1892,8 @@ export async function driveDialogStreamCore(
   let criticalUserInterjectionRuntimeGuide = driveOptions?.criticalUserInterjectionRuntimeGuide;
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
+  let lastAssistantThinkingContent: string | null = null;
+  let lastAssistantThinkingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
   let lastAssistantReplyTarget: KernelDriverPrompt['sideDialogReplyTarget'] | undefined;
   let fbrConclusion:
@@ -2562,6 +2564,8 @@ export async function driveDialogStreamCore(
             let streamAttemptCheckpointOffset: number | undefined;
             let streamAttemptSayingContent: string | undefined;
             let streamAttemptSayingGenseq: number | undefined;
+            let streamAttemptThinkingContent: string | undefined;
+            let streamAttemptThinkingGenseq: number | undefined;
             type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
             let streamActive: StreamActiveState = { kind: 'idle' };
             const rollbackStreamAttempt = async (): Promise<void> => {
@@ -2592,6 +2596,8 @@ export async function driveDialogStreamCore(
               currentSayingContent = '';
               streamAttemptSayingContent = undefined;
               streamAttemptSayingGenseq = undefined;
+              streamAttemptThinkingContent = undefined;
+              streamAttemptThinkingGenseq = undefined;
               sawWebSearchSideChannelOutput = false;
               sawNativeToolSideChannelOutput = false;
               streamedFuncCalls.length = 0;
@@ -2642,13 +2648,16 @@ export async function driveDialogStreamCore(
                 if (reasoning) currentThinkingReasoning = reasoning;
                 await dlg.thinkingFinish(reasoning);
                 if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
-                  newMsgs.push({
+                  const thinkingMessage: ThinkingMsg = {
                     type: 'thinking_msg',
                     role: 'assistant',
                     genseq: dlg.activeGenSeq,
                     content: currentThinkingContent,
                     reasoning: currentThinkingReasoning,
-                  });
+                  };
+                  newMsgs.push(thinkingMessage);
+                  streamAttemptThinkingContent = currentThinkingContent;
+                  streamAttemptThinkingGenseq = thinkingMessage.genseq;
                 }
                 currentThinkingContent = '';
                 currentThinkingReasoning = undefined;
@@ -2770,6 +2779,8 @@ export async function driveDialogStreamCore(
                 currentSayingContent = '';
                 streamAttemptSayingContent = undefined;
                 streamAttemptSayingGenseq = undefined;
+                streamAttemptThinkingContent = undefined;
+                streamAttemptThinkingGenseq = undefined;
                 sawWebSearchSideChannelOutput = false;
                 sawNativeToolSideChannelOutput = false;
                 streamedFuncCalls.length = 0;
@@ -2820,6 +2831,14 @@ export async function driveDialogStreamCore(
                 streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
               lastAssistantReplyTarget = currentReplyTarget;
             }
+            if (streamAttemptThinkingContent !== undefined) {
+              lastAssistantThinkingContent = streamAttemptThinkingContent;
+              lastAssistantThinkingGenseq =
+                streamAttemptThinkingGenseq === undefined ? null : streamAttemptThinkingGenseq;
+              if (streamAttemptSayingContent === undefined) {
+                lastAssistantReplyTarget = currentReplyTarget;
+              }
+            }
             return { usage: res.usage, llmGenModel: res.llmGenModel };
           };
 
@@ -2850,6 +2869,9 @@ export async function driveDialogStreamCore(
                 if (msg.type === 'thinking_msg' || msg.type === 'saying_msg') {
                   newMsgs.push(msg);
                   if (msg.type === 'thinking_msg') {
+                    lastAssistantThinkingContent = msg.content;
+                    lastAssistantThinkingGenseq = msg.genseq;
+                    lastAssistantReplyTarget = currentReplyTarget;
                     await emitThinkingEvents(dlg, msg.content, msg.reasoning);
                   } else {
                     lastAssistantSayingContent = msg.content;
@@ -2926,6 +2948,8 @@ export async function driveDialogStreamCore(
               return {
                 lastAssistantSayingContent,
                 lastAssistantSayingGenseq,
+                lastAssistantThinkingContent,
+                lastAssistantThinkingGenseq,
                 lastFunctionCallGenseq,
                 lastAssistantReplyTarget,
               };
@@ -3286,6 +3310,8 @@ export async function driveDialogStreamCore(
   return {
     lastAssistantSayingContent,
     lastAssistantSayingGenseq,
+    lastAssistantThinkingContent,
+    lastAssistantThinkingGenseq,
     lastFunctionCallGenseq,
     lastAssistantReplyTarget,
     fbrConclusion,

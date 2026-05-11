@@ -292,6 +292,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   replyContent: string;
   callbacks: KernelDriverDriveCallbacks;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
+  directFallbackSource?: 'saying' | 'thinking_only';
 }): Promise<TellaskBackReplyDeliveryResult> {
   // Type-A ask-back is the one place where the local tellasker/tellaskee intuition flips:
   // the dialog running `replyTellaskBack` is the ask-back tellaskee, while
@@ -338,6 +339,7 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     responseBody: args.replyContent,
     status: 'completed',
     deliveryMode: args.deliveryMode,
+    directFallbackSource: args.directFallbackSource,
     language: getWorkLanguage(),
   });
   const targetCallSiteCourse = toCallSiteCourseNo(askBackAskerDialog.currentCourse);
@@ -1420,29 +1422,6 @@ async function reviveDialogIfUnblocked(
   });
 }
 
-function extractLastAssistantResponse(
-  messages: Array<{ type: string; content?: string }>,
-  defaultMessage: string,
-): string {
-  let responseText = '';
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.type === 'saying_msg' && typeof msg.content === 'string') {
-      responseText = msg.content;
-      break;
-    }
-    if (msg.type === 'thinking_msg' && typeof msg.content === 'string') {
-      responseText = msg.content;
-    }
-  }
-
-  if (!responseText) {
-    responseText = defaultMessage;
-  }
-
-  return responseText;
-}
-
 function findDeliveredTellaskBackReplyOnAskBackAsker(args: {
   askerDialog: Dialog;
   targetCallId: string;
@@ -1462,20 +1441,6 @@ function findDeliveredTellaskBackReplyOnAskBackAsker(args: {
     return msg;
   }
   return undefined;
-}
-
-async function extractAskBackTellaskeePlaintextFallback(args: {
-  tellaskeeDialog: Dialog;
-}): Promise<string> {
-  try {
-    return extractLastAssistantResponse(
-      args.tellaskeeDialog.msgs,
-      'AskerDialog completed without producing output.',
-    );
-  } catch (err) {
-    log.warn('Failed to extract askerDialog response for Type A', err);
-    return 'AskerDialog completed with errors.';
-  }
 }
 
 async function executeTellaskCall(
@@ -1949,7 +1914,7 @@ async function executeTellaskCall(
             origin: 'runtime',
             tellaskReplyDirective: tellaskBackReplyDirective,
           };
-          await callbacks.driveDialog(askBackTellaskeeDialog, {
+          const askBackTellaskeeDriveResult = await callbacks.driveDialog(askBackTellaskeeDialog, {
             humanPrompt: askerPrompt,
             waitInQue: true,
             driveOptions: {
@@ -1971,9 +1936,24 @@ async function executeTellaskCall(
             return toolOutputs;
           }
 
-          const responseText = await extractAskBackTellaskeePlaintextFallback({
-            tellaskeeDialog: askBackTellaskeeDialog,
-          });
+          const fallbackResponse =
+            askBackTellaskeeDriveResult?.lastAssistantSayingContent !== null &&
+            askBackTellaskeeDriveResult?.lastAssistantSayingContent !== undefined &&
+            askBackTellaskeeDriveResult.lastAssistantSayingContent.trim() !== ''
+              ? {
+                  text: askBackTellaskeeDriveResult.lastAssistantSayingContent,
+                  source: 'saying' as const,
+                }
+              : askBackTellaskeeDriveResult?.lastAssistantThinkingContent !== null &&
+                  askBackTellaskeeDriveResult?.lastAssistantThinkingContent !== undefined &&
+                  askBackTellaskeeDriveResult.lastAssistantThinkingContent.trim() !== ''
+                ? {
+                    text: askBackTellaskeeDriveResult.lastAssistantThinkingContent,
+                    source: 'thinking_only' as const,
+                  }
+                : undefined;
+          const responseText =
+            fallbackResponse?.text ?? 'AskerDialog completed without producing output.';
           const responseContent = formatTellaskResponseContent({
             callName,
             callId,
@@ -1984,6 +1964,7 @@ async function executeTellaskCall(
             responseBody: responseText,
             status: 'completed',
             deliveryMode: 'direct_fallback',
+            directFallbackSource: fallbackResponse?.source,
             language: getWorkLanguage(),
           });
 

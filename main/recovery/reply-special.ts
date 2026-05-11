@@ -2,14 +2,20 @@ import { Dialog, DialogID } from '../dialog';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
 import { driveDialogStream } from '../llm/kernel-driver';
 import { recoverPendingReplyTellaskCalls } from '../llm/kernel-driver/tellask-special';
-import type { KernelDriverDriveCallOptions } from '../llm/kernel-driver/types';
+import type {
+  KernelDriverDriveCallOptions,
+  KernelDriverDriveResult,
+} from '../llm/kernel-driver/types';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 
 const log = createLogger('reply-special-recovery');
 const inFlightReplyRecoveryByDialog = new Map<string, Promise<number>>();
 
-function dispatchDrive(dialog: Dialog, options: KernelDriverDriveCallOptions): Promise<void> {
+function dispatchDrive(
+  dialog: Dialog,
+  options: KernelDriverDriveCallOptions,
+): KernelDriverDriveResult {
   if (options.humanPrompt !== undefined) {
     return driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
   }
@@ -34,7 +40,7 @@ export async function recoverPendingReplyTellaskCallsForDialog(dialog: Dialog): 
         void dispatchDrive(scheduledDialog, options);
       },
       driveDialog: async (scheduledDialog, options) => {
-        await dispatchDrive(scheduledDialog, options);
+        return await dispatchDrive(scheduledDialog, options);
       },
     },
   });
