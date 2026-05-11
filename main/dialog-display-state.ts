@@ -20,7 +20,11 @@ import type {
   DialogDisplayState,
   DialogInterruptionReason,
 } from '@longrun-ai/kernel/types/display-state';
-import type { DialogExecutionMarker, DialogLatestFile } from '@longrun-ai/kernel/types/storage';
+import type {
+  DialogExecutionMarker,
+  DialogLatestFile,
+  PersistedDialogRecord,
+} from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
@@ -104,6 +108,33 @@ function isSameDisplayState(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function isSideDialogResponseAnchor(record: PersistedDialogRecord | undefined): boolean {
+  return record?.type === 'tellask_anchor_record' && record.anchorRole === 'response';
+}
+
+function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): boolean {
+  return state !== undefined && state.kind !== 'idle_waiting_user';
+}
+
+async function hasSideDialogFinalResponseAnchor(
+  dialogId: DialogID,
+  latest: DialogLatestFile,
+): Promise<boolean> {
+  if (dialogId.selfId === dialogId.rootId) {
+    return false;
+  }
+  const rawCourse = latest.currentCourse;
+  const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
+  const courseEvents = await DialogPersistence.loadCourseEvents(dialogId, currentCourse, 'running');
+  for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
+    const event = courseEvents[index];
+    if (event.type === 'tellask_anchor_record') {
+      return isSideDialogResponseAnchor(event);
+    }
+  }
+  return false;
+}
+
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
   if (!state) return 'none';
   if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
@@ -142,7 +173,16 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
         proceeding++;
         continue;
       }
-      const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+      let latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+      if (!latest) {
+        continue;
+      }
+      const healedLatest = await healStaleSideDialogRunControlAfterFinalResponse({
+        dialogId,
+        latest,
+        trigger: 'run_control_snapshot',
+      });
+      latest = healedLatest;
       if (latest?.generating === true) {
         proceeding++;
       } else if (
@@ -534,6 +574,9 @@ async function computeIdleDisplayStateFromPersistence(
       continueEnabled: true,
     };
   }
+  if (latest && (await hasSideDialogFinalResponseAnchor(dialogId, latest))) {
+    return { kind: 'idle_waiting_user' };
+  }
 
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
   const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
@@ -552,6 +595,50 @@ async function computeIdleDisplayStateFromPersistence(
   return { kind: 'idle_waiting_user' };
 }
 
+async function healStaleSideDialogRunControlAfterFinalResponse(args: {
+  dialogId: DialogID;
+  latest: DialogLatestFile;
+  trigger: string;
+}): Promise<DialogLatestFile | null> {
+  if (
+    args.dialogId.selfId === args.dialogId.rootId ||
+    (args.latest.needsDrive !== true &&
+      args.latest.generating !== true &&
+      args.latest.executionMarker?.kind !== 'interrupted' &&
+      !isNonIdleDisplayProjection(args.latest.displayState))
+  ) {
+    return args.latest;
+  }
+  if (args.latest.executionMarker?.kind === 'dead') {
+    return args.latest;
+  }
+  if (args.latest.pendingCourseStartPrompt) {
+    return args.latest;
+  }
+  if (!(await hasSideDialogFinalResponseAnchor(args.dialogId, args.latest))) {
+    return args.latest;
+  }
+
+  log.warn('Healing stale sideDialog run-control flags after final response anchor', undefined, {
+    dialogId: args.dialogId.valueOf(),
+    trigger: args.trigger,
+    previousGenerating: args.latest.generating ?? null,
+    previousNeedsDrive: args.latest.needsDrive ?? null,
+    previousDisplayState: args.latest.displayState ?? null,
+    previousExecutionMarker: args.latest.executionMarker ?? null,
+  });
+  await DialogPersistence.mutateDialogLatest(args.dialogId, () => ({
+    kind: 'patch',
+    patch: {
+      generating: false,
+      needsDrive: false,
+      displayState: { kind: 'idle_waiting_user' },
+      executionMarker: undefined,
+    },
+  }));
+  return await DialogPersistence.loadDialogLatest(args.dialogId, 'running');
+}
+
 export async function refreshRunControlProjectionFromPersistenceFacts(
   dialogId: DialogID,
   trigger:
@@ -561,15 +648,26 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     | 'pending_sideDialogs_changed'
     | 'q4h_changed',
 ): Promise<DialogLatestFile | null> {
-  const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+  let latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
   if (!latest) {
     return null;
   }
 
-  if (latest.generating === true) {
+  if (hasActiveRun(dialogId)) {
     return latest;
   }
-  if (hasActiveRun(dialogId)) {
+
+  const healedStaleSideDialogRunControl = await healStaleSideDialogRunControlAfterFinalResponse({
+    dialogId,
+    latest,
+    trigger,
+  });
+  if (!healedStaleSideDialogRunControl) {
+    return null;
+  }
+  latest = healedStaleSideDialogRunControl;
+
+  if (latest.generating === true) {
     return latest;
   }
 
@@ -610,6 +708,9 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         reason: { kind: 'pending_course_start' },
         continueEnabled: true,
       };
+    }
+    if (await hasSideDialogFinalResponseAnchor(dialogId, latest)) {
+      return { kind: 'idle_waiting_user' };
     }
 
     const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
@@ -706,18 +807,22 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       });
       continue;
     }
-    const existing = latest?.displayState;
+    if (!latest) {
+      continue;
+    }
 
-    const existingMarker = latest?.executionMarker;
+    const existing = latest.displayState;
+    const existingMarker = latest.executionMarker;
 
     if (existingMarker && existingMarker.kind === 'dead' && dialogId.selfId !== dialogId.rootId) {
-      if (latest?.generating === true) {
+      if (latest.generating === true) {
+        const displayState = latest.displayState ?? { kind: 'dead', reason: existingMarker.reason };
         try {
           await DialogPersistence.mutateDialogLatest(dialogId, () => ({
             kind: 'patch',
             patch: {
               generating: false,
-              displayState: latest.displayState ?? { kind: 'dead', reason: existingMarker.reason },
+              displayState,
               executionMarker: existingMarker,
             },
           }));
@@ -728,6 +833,29 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         }
       }
       continue;
+    }
+
+    if (
+      dialogId.selfId !== dialogId.rootId &&
+      (latest.generating === true ||
+        latest.needsDrive === true ||
+        latest.executionMarker?.kind === 'interrupted' ||
+        isNonIdleDisplayProjection(latest.displayState))
+    ) {
+      const healedStaleSideDialogRunControl = await healStaleSideDialogRunControlAfterFinalResponse(
+        {
+          dialogId,
+          latest,
+          trigger: 'restart_reconciliation',
+        },
+      );
+      if (!healedStaleSideDialogRunControl) {
+        continue;
+      }
+      latest = healedStaleSideDialogRunControl;
+      if (latest.generating !== true && latest.needsDrive !== true) {
+        continue;
+      }
     }
 
     if (isRecoverableGeneratingLatest(latest)) {
@@ -752,7 +880,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       continue;
     }
 
-    if (latest?.generating === true || latest?.needsDrive === true) {
+    if (latest.generating === true || latest.needsDrive === true) {
       const nextIdle = await computeIdleDisplayStateForReconciliation(dialogId);
       if (!nextIdle) {
         continue;

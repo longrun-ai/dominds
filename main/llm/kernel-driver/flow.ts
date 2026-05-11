@@ -123,8 +123,8 @@ function isQueuedUserPromptForContextHealth(prompt: UpNextPrompt | undefined): b
   return prompt?.kind === 'user_generation_boundary' && !hasQ4HAnswerCallId(prompt.q4hAnswerCallId);
 }
 
-function isIgnorablePostResponseAnchorTailEvent(type: string): boolean {
-  return type === 'tellask_reply_resolution_record' || type === 'gen_finish_record';
+function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): boolean {
+  return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
 async function buildReplyToolReminderPrompt(args: {
@@ -316,6 +316,50 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
   });
 }
 
+async function clearStaleSideDialogRunControlForFinalResponse(args: {
+  dialog: SideDialog;
+}): Promise<{
+  cleared: boolean;
+  previousGenerating: boolean | null;
+  previousNeedsDrive: boolean | null;
+}> {
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (
+    !latest ||
+    (latest.needsDrive !== true &&
+      latest.generating !== true &&
+      latest.executionMarker?.kind !== 'interrupted' &&
+      !isNonIdleDisplayProjection(latest.displayState)) ||
+    latest.executionMarker?.kind === 'dead' ||
+    latest.pendingCourseStartPrompt
+  ) {
+    return {
+      cleared: false,
+      previousGenerating: latest?.generating ?? null,
+      previousNeedsDrive: latest?.needsDrive ?? null,
+    };
+  }
+
+  await DialogPersistence.mutateDialogLatest(
+    args.dialog.id,
+    () => ({
+      kind: 'patch',
+      patch: {
+        generating: false,
+        needsDrive: false,
+        displayState: { kind: 'idle_waiting_user' } as const,
+        executionMarker: undefined,
+      },
+    }),
+    args.dialog.status,
+  );
+  return {
+    cleared: true,
+    previousGenerating: latest.generating ?? null,
+    previousNeedsDrive: latest.needsDrive ?? null,
+  };
+}
+
 function hasNoPromptSideDialogResumeEntitlement(
   dialog: SideDialog,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -483,21 +527,19 @@ async function inspectNoPromptSideDialogDrive(args: {
     currentCourse,
     args.dialog.status,
   );
-  const rawLastEvent = (() => {
+  const rawLastTellaskAnchor = (() => {
     for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
       const event = courseEvents[index];
-      if (!isIgnorablePostResponseAnchorTailEvent(event.type)) {
+      if (event.type === 'tellask_anchor_record') {
         return event;
       }
     }
-    return courseEvents[courseEvents.length - 1];
+    return undefined;
   })();
   const lastEvent =
-    rawLastEvent?.type === 'tellask_anchor_record'
-      ? { type: rawLastEvent.type, anchorRole: rawLastEvent.anchorRole }
-      : rawLastEvent
-        ? { type: rawLastEvent.type }
-        : undefined;
+    rawLastTellaskAnchor === undefined
+      ? undefined
+      : { type: rawLastTellaskAnchor.type, anchorRole: rawLastTellaskAnchor.anchorRole };
 
   const explicitInterruptedResumeAllowed =
     args.driveOptions?.allowResumeFromInterrupted === true &&
@@ -768,6 +810,33 @@ export async function executeDriveRound(args: {
         latest.executionMarker.kind === 'dead'
       ) {
         return;
+      }
+      if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
+        const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
+        if (inspection.shouldReject && inspection.rejection === 'finalized_after_response_anchor') {
+          const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
+          log.warn(
+            'Dropped stale no-prompt sideDialog drive after final response anchor',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              source: inspection.source,
+              reason: driveOptions?.reason ?? null,
+              rejection: inspection.rejection,
+              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+              displayState: inspection.displayState ?? null,
+              currentCourse: inspection.currentCourse,
+              lastEvent: inspection.lastEvent ?? null,
+              clearedStaleRunControl: cleanup.cleared,
+              previousGenerating: cleanup.previousGenerating,
+              previousNeedsDrive: cleanup.previousNeedsDrive,
+              waitInQue,
+            },
+          );
+          return;
+        }
       }
       const stopRequested = getStopRequestedReason(dialog.id);
       if (stopRequested !== undefined) {

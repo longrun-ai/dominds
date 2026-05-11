@@ -141,6 +141,15 @@ async function main(): Promise<void> {
         lastEventBefore.anchorRole === 'response',
       'expected sideDialog to end its finalized round at a response anchor',
     );
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: true,
+        needsDrive: true,
+        displayState: { kind: 'proceeding' },
+        executionMarker: undefined,
+      },
+    }));
 
     await driveDialogStream(
       sideDialog,
@@ -174,6 +183,23 @@ async function main(): Promise<void> {
       lastEventBefore,
       'stale queued auto-drive must leave the finalized sideDialog tail untouched',
     );
+    const latestAfter = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
+    assert.equal(
+      latestAfter?.generating,
+      false,
+      'stale queued auto-drive should clear stale sideDialog generating after final response anchor',
+    );
+    assert.equal(
+      latestAfter?.needsDrive,
+      false,
+      'stale queued auto-drive should clear stale sideDialog needsDrive after final response anchor',
+    );
+    assert.deepEqual(
+      latestAfter?.displayState,
+      { kind: 'idle_waiting_user' },
+      'stale queued auto-drive should clear stale final-response interruption projection',
+    );
+    assert.equal(latestAfter?.executionMarker, undefined);
   });
 
   console.log('kernel-driver sideDialog-no-empty-autodrive-after-final-response: PASS');

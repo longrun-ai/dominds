@@ -6,6 +6,7 @@ import yaml from 'yaml';
 import { installRecordingGlobalDialogEventBroadcaster } from '../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID } from '../main/dialog';
 import {
+  getRunControlCountsSnapshot,
   reconcileDisplayStatesAfterRestart,
   refreshRunControlProjectionFromPersistenceFacts,
 } from '../main/dialog-display-state';
@@ -309,6 +310,167 @@ async function main(): Promise<void> {
       displayState: { kind: 'idle_waiting_user' },
     });
 
+    // Dialog J: sideDialogs already delivered their final responses, but latest.yaml still has
+    // stale run-control flags/projections. Restart reconciliation must heal the stale queue instead
+    // of presenting a false "interrupted by server restart" state.
+    const jRoot = 'dlg-j';
+    const jSide = 'side-j';
+    const jProjectionOnlySide = 'side-j-projection-only';
+    const jBlockedProjectionSide = 'side-j-blocked-projection';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'dialog.yaml'), { id: jRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      displayState: { kind: 'idle_waiting_user' },
+    });
+    const jSideDir = path.join(tmpRoot, '.dialogs', 'run', jRoot, 'sideDialogs', jSide);
+    await writeYaml(path.join(jSideDir, 'dialog.yaml'), { id: jSide });
+    await writeYaml(path.join(jSideDir, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: true,
+      needsDrive: true,
+      displayState: {
+        kind: 'stopped',
+        reason: { kind: 'server_restart' },
+        continueEnabled: true,
+      },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'server_restart' },
+      },
+    });
+    await fs.writeFile(
+      path.join(jSideDir, 'course-001.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'tellask_anchor_record',
+        anchorRole: 'response',
+        callId: 'call-side-j',
+        genseq: 3,
+        rootCourse: 1,
+        rootGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
+        assignmentCourse: 1,
+        assignmentGenseq: 1,
+      })}\n${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'gen_finish_record',
+        genseq: 3,
+        rootCourse: 1,
+        rootGenseq: 3,
+      })}\n${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'reminders_reconciled_record',
+        rootCourse: 1,
+        rootGenseq: 3,
+        reminders: [],
+      })}\n`,
+      'utf-8',
+    );
+    const jProjectionOnlySideDir = path.join(
+      tmpRoot,
+      '.dialogs',
+      'run',
+      jRoot,
+      'sideDialogs',
+      jProjectionOnlySide,
+    );
+    await writeYaml(path.join(jProjectionOnlySideDir, 'dialog.yaml'), { id: jProjectionOnlySide });
+    await writeYaml(path.join(jProjectionOnlySideDir, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      needsDrive: false,
+      displayState: {
+        kind: 'stopped',
+        reason: { kind: 'server_restart' },
+        continueEnabled: true,
+      },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'server_restart' },
+      },
+    });
+    await fs.writeFile(
+      path.join(jProjectionOnlySideDir, 'course-001.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'tellask_anchor_record',
+        anchorRole: 'response',
+        callId: 'call-side-j-projection-only',
+        genseq: 3,
+        rootCourse: 1,
+        rootGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
+        assignmentCourse: 1,
+        assignmentGenseq: 1,
+      })}\n`,
+      'utf-8',
+    );
+    const jBlockedProjectionSideDir = path.join(
+      tmpRoot,
+      '.dialogs',
+      'run',
+      jRoot,
+      'sideDialogs',
+      jBlockedProjectionSide,
+    );
+    await writeYaml(path.join(jBlockedProjectionSideDir, 'dialog.yaml'), {
+      id: jBlockedProjectionSide,
+    });
+    await writeYaml(path.join(jBlockedProjectionSideDir, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: false,
+      needsDrive: false,
+      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
+    });
+    await fs.writeFile(
+      path.join(jBlockedProjectionSideDir, 'course-001.jsonl'),
+      `${JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'tellask_anchor_record',
+        anchorRole: 'response',
+        callId: 'call-side-j-blocked-projection',
+        genseq: 3,
+        rootCourse: 1,
+        rootGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
+        assignmentCourse: 1,
+        assignmentGenseq: 1,
+      })}\n`,
+      'utf-8',
+    );
+
+    await getRunControlCountsSnapshot();
+    const latestJAfterSnapshot = await DialogPersistence.loadDialogLatest(
+      new DialogID(jSide, jRoot),
+      'running',
+    );
+    assert.deepEqual(
+      latestJAfterSnapshot?.displayState,
+      { kind: 'idle_waiting_user' },
+      'run-control snapshot should heal finalized stale sideDialogs before counting proceeding dialogs',
+    );
+    const latestJProjectionOnlyAfterSnapshot = await DialogPersistence.loadDialogLatest(
+      new DialogID(jProjectionOnlySide, jRoot),
+      'running',
+    );
+    assert.deepEqual(
+      latestJProjectionOnlyAfterSnapshot?.displayState,
+      { kind: 'idle_waiting_user' },
+      'run-control snapshot should heal finalized projection-only sideDialogs before counting resumable dialogs',
+    );
+
     await reconcileDisplayStatesAfterRestart();
 
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
@@ -415,6 +577,57 @@ async function main(): Promise<void> {
     assert.equal(latestG.displayState.kind, 'stopped');
     assert.equal(latestG.displayState.reason.kind, 'server_restart');
     assert.equal(latestG.executionMarker?.kind, 'interrupted');
+
+    const latestJ = await DialogPersistence.loadDialogLatest(new DialogID(jSide, jRoot), 'running');
+    assert.ok(latestJ, 'latest.yaml for dlg-j sideDialog should exist');
+    assert.equal(
+      latestJ.generating,
+      false,
+      'restart reconciliation should clear stale sideDialog generating after final response anchor',
+    );
+    assert.equal(
+      latestJ.needsDrive,
+      false,
+      'restart reconciliation should clear stale sideDialog needsDrive after final response anchor',
+    );
+    assert.deepEqual(
+      latestJ.displayState,
+      { kind: 'idle_waiting_user' },
+      'stale sideDialog needsDrive must not become a false server_restart interruption',
+    );
+    assert.equal(latestJ.executionMarker, undefined);
+    const latestJProjectionOnly = await DialogPersistence.loadDialogLatest(
+      new DialogID(jProjectionOnlySide, jRoot),
+      'running',
+    );
+    assert.ok(
+      latestJProjectionOnly,
+      'latest.yaml for dlg-j projection-only sideDialog should exist',
+    );
+    assert.equal(
+      latestJProjectionOnly.needsDrive,
+      false,
+      'restart reconciliation should not requeue projection-only stale sideDialog state',
+    );
+    assert.deepEqual(
+      latestJProjectionOnly.displayState,
+      { kind: 'idle_waiting_user' },
+      'stale sideDialog interruption projection should clear even when needsDrive is already false',
+    );
+    assert.equal(latestJProjectionOnly.executionMarker, undefined);
+    const latestJBlockedProjection = await DialogPersistence.loadDialogLatest(
+      new DialogID(jBlockedProjectionSide, jRoot),
+      'running',
+    );
+    assert.ok(
+      latestJBlockedProjection,
+      'latest.yaml for dlg-j blocked-projection sideDialog should exist',
+    );
+    assert.deepEqual(
+      latestJBlockedProjection.displayState,
+      { kind: 'idle_waiting_user' },
+      'finalized sideDialog should not retain stale blocked projection after restart',
+    );
 
     const hRoot = 'dlg-h';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', hRoot, 'dialog.yaml'), { id: hRoot });
