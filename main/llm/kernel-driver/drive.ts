@@ -40,6 +40,7 @@ import {
   formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
+  type ReminderContextFollowingDialogState,
 } from '../../runtime/driver-messages';
 import {
   buildActiveReplyObligationContextText,
@@ -314,6 +315,43 @@ function normalizeQ4HAnswerCallId(raw: string | undefined): string | undefined {
 function isUserOriginPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   if (!prompt) return false;
   return prompt.origin === 'user' && normalizeQ4HAnswerCallId(prompt.q4hAnswerCallId) === undefined;
+}
+
+function resolveReminderContextFollowingDialogState(
+  prompt: KernelDriverPrompt | undefined,
+  currentTurnDialogMsgsForContext: readonly ChatMessage[],
+): ReminderContextFollowingDialogState {
+  if (prompt === undefined || currentTurnDialogMsgsForContext.length === 0) return 'none';
+  return prompt.origin === 'user' ? 'user_message' : 'runtime_notice';
+}
+
+function splitDialogMsgsForReminderInsertion(args: {
+  msgs: readonly ChatMessage[];
+  currentPrompt: KernelDriverPrompt | undefined;
+}): {
+  historicalDialogMsgsForContext: ChatMessage[];
+  currentTurnDialogMsgsForContext: ChatMessage[];
+} {
+  const msgId = args.currentPrompt?.msgId;
+  if (typeof msgId !== 'string' || msgId.trim() === '') {
+    return {
+      historicalDialogMsgsForContext: [...args.msgs],
+      currentTurnDialogMsgsForContext: [],
+    };
+  }
+  const currentTurnStart = args.msgs.findIndex(
+    (msg) => msg.type === 'prompting_msg' && msg.msgId === msgId,
+  );
+  if (currentTurnStart < 0) {
+    return {
+      historicalDialogMsgsForContext: [...args.msgs],
+      currentTurnDialogMsgsForContext: [],
+    };
+  }
+  return {
+    historicalDialogMsgsForContext: args.msgs.slice(0, currentTurnStart),
+    currentTurnDialogMsgsForContext: args.msgs.slice(currentTurnStart),
+  };
 }
 
 function getUserOriginPromptMsgId(prompt: KernelDriverPrompt | undefined): string | undefined {
@@ -1109,34 +1147,33 @@ async function projectTellaskFuncResultsForContext(args: {
   };
 }
 
+async function buildActiveReplyObligationContext(dlg: Dialog): Promise<ChatMessage[]> {
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dlg.id,
+    dlg.status,
+  );
+  if (activeReplyObligation === undefined) return [];
+  return [
+    {
+      type: 'environment_msg',
+      role: 'user',
+      content: buildActiveReplyObligationContextText({
+        language: getWorkLanguage(),
+        directive: activeReplyObligation,
+      }),
+    },
+  ];
+}
+
 async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
   const rawDialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => !!m);
   const projected = await projectTellaskFuncResultsForContext({
     dialog: dlg,
     dialogMsgsForContext: rawDialogMsgsForContext,
   });
-  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
-    dlg.id,
-    dlg.status,
-  );
-  const activeReplyObligationContext: ChatMessage[] =
-    activeReplyObligation === undefined
-      ? []
-      : [
-          {
-            type: 'environment_msg',
-            role: 'user',
-            content: buildActiveReplyObligationContextText({
-              language: getWorkLanguage(),
-              directive: activeReplyObligation,
-            }),
-          },
-        ];
-  const businessFiltered = [...activeReplyObligationContext, ...projected.messages].filter(
-    (msg) => {
-      return msg.type !== 'tellask_result_msg' || msg.content.trim() !== '';
-    },
-  );
+  const businessFiltered = projected.messages.filter((msg) => {
+    return msg.type !== 'tellask_result_msg' || msg.content.trim() !== '';
+  });
   const sanitized = sanitizeToolContextForProvider(businessFiltered);
   if (sanitized.droppedViolations.length > 0) {
     const details = sanitized.droppedViolations.map((violation) =>
@@ -2420,6 +2457,11 @@ export async function driveDialogStreamCore(
 
           const renderedReminders = await renderRemindersForContext(dlg);
           const dialogMsgsForContext = await buildDialogMsgsForContext(dlg);
+          const activeReplyObligationContext = await buildActiveReplyObligationContext(dlg);
+          const splitDialogMsgs = splitDialogMsgsForReminderInsertion({
+            msgs: dialogMsgsForContext,
+            currentPrompt,
+          });
           const reminderContextBlock =
             renderedReminders.length > 0
               ? [
@@ -2427,7 +2469,13 @@ export async function driveDialogStreamCore(
                   {
                     type: 'environment_msg',
                     role: 'user',
-                    content: formatReminderContextFooter(getWorkLanguage()),
+                    content: formatReminderContextFooter(
+                      getWorkLanguage(),
+                      resolveReminderContextFollowingDialogState(
+                        currentPrompt,
+                        splitDialogMsgs.currentTurnDialogMsgsForContext,
+                      ),
+                    ),
                   } satisfies ChatMessage,
                 ]
               : renderedReminders;
@@ -2437,12 +2485,15 @@ export async function driveDialogStreamCore(
               memories: minds.memories,
               taskDocMsg,
               coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
-              dialogMsgsForContext,
+              historicalDialogMsgsForContext: splitDialogMsgs.historicalDialogMsgsForContext,
+              currentTurnDialogMsgsForContext: splitDialogMsgs.currentTurnDialogMsgsForContext,
             },
-            ephemeral: {
-              runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : undefined,
+            postTurn: {},
+            tail: {
+              renderedReminders: reminderContextBlock,
+              activeReplyObligationContext,
+              runtimeGuideMsgs: currentRuntimeGuideMsg ? [currentRuntimeGuideMsg] : [],
             },
-            tail: { renderedReminders: reminderContextBlock },
           });
 
           const newMsgs: ChatMessage[] = [];

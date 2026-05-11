@@ -22,7 +22,7 @@ async function main() {
     zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
-  const zhContextFooter = formatReminderContextFooter('zh');
+  const zhContextFooter = formatReminderContextFooter('zh', 'user_message');
   assert(
     zhContextFooter.includes('从“提醒项上下文块开始”到“提醒项上下文块结束”之间'),
     'Expected zh reminder context footer to scope the warning to the reminder block',
@@ -30,6 +30,24 @@ async function main() {
   assert(
     zhContextFooter.includes('并非用户指令'),
     'Expected zh reminder context footer to warn that the block is not user instruction',
+  );
+  assert(
+    zhContextFooter.includes('本轮提醒项块之后会接着出现本轮新的用户消息'),
+    'Expected zh reminder context footer to explicitly identify following user message',
+  );
+  const zhAutoContinueFooter = formatReminderContextFooter('zh', 'none');
+  assert(
+    zhAutoContinueFooter.includes('本轮没有新的用户消息或运行时提示'),
+    'Expected zh auto-continue reminder footer to explicitly say no new message follows',
+  );
+  assert(
+    zhAutoContinueFooter.includes('不要把“没有新消息”理解为空系统提示'),
+    'Expected zh auto-continue reminder footer to prevent empty system notice misread',
+  );
+  const zhRuntimeFooter = formatReminderContextFooter('zh', 'runtime_notice');
+  assert(
+    zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条运行时提示'),
+    'Expected zh reminder context footer to explicitly identify following runtime notice',
   );
 
   const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
@@ -230,7 +248,7 @@ async function main() {
     ),
     'Expected en reminder context guide to explain separate Reminder widget presentation',
   );
-  const enContextFooter = formatReminderContextFooter('en');
+  const enContextFooter = formatReminderContextFooter('en', 'user_message');
   assert(
     enContextFooter.includes(
       'between "Reminder context block begins" and "Reminder context block ends"',
@@ -240,6 +258,24 @@ async function main() {
   assert(
     enContextFooter.includes('not user instructions'),
     'Expected en reminder context footer to warn that the block is not user instruction',
+  );
+  assert(
+    enContextFooter.includes('A new user message for this round follows this reminder block'),
+    'Expected en reminder context footer to explicitly identify following user message',
+  );
+  const enAutoContinueFooter = formatReminderContextFooter('en', 'none');
+  assert(
+    enAutoContinueFooter.includes('There is no new user message or runtime notice in this round'),
+    'Expected en auto-continue reminder footer to explicitly say no new message follows',
+  );
+  assert(
+    enAutoContinueFooter.includes('do not interpret the absence of a new message'),
+    'Expected en auto-continue reminder footer to prevent empty system notice misread',
+  );
+  const enRuntimeFooter = formatReminderContextFooter('en', 'runtime_notice');
+  assert(
+    enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
+    'Expected en reminder context footer to explicitly identify following runtime notice',
   );
 
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');

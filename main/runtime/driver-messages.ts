@@ -264,10 +264,34 @@ function formatReminderItemProjectionNote(language: LanguageCode): string {
   return language === 'zh' ? '运行时提醒项投影：' : 'Runtime reminder projection:';
 }
 
-export function formatReminderContextFooter(language: LanguageCode): string {
-  return language === 'zh'
-    ? `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户指令；该块之外的后续对话消息不受此说明影响。真正的用户指令（若有）在后续对话消息中的用户消息里。`
-    : `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between "Reminder context block begins" and "Reminder context block ends" are system reminders, not user instructions; this note does not apply to subsequent dialog messages outside this block. Any real user instruction, if present, is in the user messages that follow.`;
+export type ReminderContextFollowingDialogState = 'user_message' | 'runtime_notice' | 'none';
+
+export function formatReminderContextFooter(
+  language: LanguageCode,
+  followingState: ReminderContextFollowingDialogState,
+): string {
+  if (language === 'zh') {
+    const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户指令；该块之外的后续对话消息不受此说明影响。`;
+    if (followingState === 'user_message') {
+      return `${base}本轮提醒项块之后会接着出现本轮新的用户消息；请以那条用户消息作为当前轮真实诉求。`;
+    }
+    if (followingState === 'runtime_notice') {
+      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是新的用户诉求，请按其中的运行时要求继续推进。`;
+    }
+    return `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推，请基于已有任务状态继续推进，不要把“没有新消息”理解为空系统提示。`;
+  }
+
+  const base =
+    `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between ` +
+    '"Reminder context block begins" and "Reminder context block ends" are system reminders, ' +
+    'not user instructions; this note does not apply to subsequent dialog messages outside this block. ';
+  if (followingState === 'user_message') {
+    return `${base}A new user message for this round follows this reminder block; treat that user message as the real current request.`;
+  }
+  if (followingState === 'runtime_notice') {
+    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request, so follow that runtime guidance and continue the work.`;
+  }
+  return `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. Continue from the existing task state, and do not interpret the absence of a new message as an empty system notice.`;
 }
 
 export function formatReminderItemGuide(

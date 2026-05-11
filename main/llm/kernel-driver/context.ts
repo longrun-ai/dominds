@@ -5,31 +5,23 @@ export type DriveBaseContextParts = Readonly<{
   memories: readonly ChatMessage[];
   taskDocMsg?: ChatMessage;
   coursePrefixMsgs: readonly ChatMessage[];
-  dialogMsgsForContext: readonly ChatMessage[];
+  historicalDialogMsgsForContext: readonly ChatMessage[];
+  currentTurnDialogMsgsForContext: readonly ChatMessage[];
 }>;
 
-export type DriveEphemeralContextParts = Readonly<{
+export type DrivePostTurnContextParts = Readonly<{
   sideDialogResponseContextMsgs?: readonly ChatMessage[];
-  runtimeGuideMsgs?: readonly ChatMessage[];
 }>;
 
 export type DriveTailContextParts = Readonly<{
   renderedReminders: readonly ChatMessage[];
+  activeReplyObligationContext: readonly ChatMessage[];
+  runtimeGuideMsgs: readonly ChatMessage[];
 }>;
 
-export function buildDriveBaseContextMessages(parts: DriveBaseContextParts): ChatMessage[] {
-  return [
-    ...parts.prependedContextMessages,
-    ...parts.memories,
-    ...(parts.taskDocMsg ? [parts.taskDocMsg] : []),
-    ...parts.coursePrefixMsgs,
-    ...parts.dialogMsgsForContext,
-  ];
-}
-
-export function appendDriveEphemeralContext(
+export function appendDrivePostTurnContext(
   base: readonly ChatMessage[],
-  parts: DriveEphemeralContextParts,
+  parts: DrivePostTurnContextParts,
 ): ChatMessage[] {
   const next: ChatMessage[] = [...base];
   if (
@@ -38,15 +30,12 @@ export function appendDriveEphemeralContext(
   ) {
     next.push(...parts.sideDialogResponseContextMsgs);
   }
-  if (Array.isArray(parts.runtimeGuideMsgs) && parts.runtimeGuideMsgs.length > 0) {
-    next.push(...parts.runtimeGuideMsgs);
-  }
   return next;
 }
 
 export function assembleDriveContextMessages(args: {
   base: DriveBaseContextParts;
-  ephemeral: DriveEphemeralContextParts;
+  postTurn: DrivePostTurnContextParts;
   tail: DriveTailContextParts;
 }): ChatMessage[] {
   const baseMsgs = [
@@ -54,8 +43,11 @@ export function assembleDriveContextMessages(args: {
     ...args.base.memories,
     ...(args.base.taskDocMsg ? [args.base.taskDocMsg] : []),
     ...args.base.coursePrefixMsgs,
+    ...args.base.historicalDialogMsgsForContext,
     ...args.tail.renderedReminders,
-    ...args.base.dialogMsgsForContext,
+    ...args.tail.activeReplyObligationContext,
+    ...args.tail.runtimeGuideMsgs,
+    ...args.base.currentTurnDialogMsgsForContext,
   ];
-  return appendDriveEphemeralContext(baseMsgs, args.ephemeral);
+  return appendDrivePostTurnContext(baseMsgs, args.postTurn);
 }

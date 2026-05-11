@@ -48,7 +48,7 @@ async function main(): Promise<void> {
           {
             type: 'environment_msg',
             role: 'user',
-            content: formatReminderContextFooter('zh'),
+            content: formatReminderContextFooter('zh', 'user_message'),
           },
         ]
       : [];
@@ -109,7 +109,8 @@ async function main(): Promise<void> {
       memories: [],
       taskDocMsg: undefined,
       coursePrefixMsgs: [],
-      dialogMsgsForContext: [
+      historicalDialogMsgsForContext: [],
+      currentTurnDialogMsgsForContext: [
         {
           type: 'prompting_msg',
           role: 'user',
@@ -120,9 +121,11 @@ async function main(): Promise<void> {
         },
       ],
     },
-    ephemeral: {},
+    postTurn: {},
     tail: {
       renderedReminders,
+      activeReplyObligationContext: [],
+      runtimeGuideMsgs: [],
     },
   });
 

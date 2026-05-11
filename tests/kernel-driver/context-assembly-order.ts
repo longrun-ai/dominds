@@ -32,22 +32,43 @@ async function main(): Promise<void> {
         memories: [{ type: 'environment_msg', role: 'user', content: 'mem' }],
         taskDocMsg: { type: 'environment_msg', role: 'user', content: 'taskdoc' },
         coursePrefixMsgs: [{ type: 'environment_msg', role: 'user', content: 'course' }],
-        dialogMsgsForContext: [
+        historicalDialogMsgsForContext: [
           {
             type: 'prompting_msg',
             role: 'user',
             genseq: 1,
+            msgId: 'u0',
+            grammar: 'markdown',
+            content: 'historical-user',
+          },
+          { type: 'saying_msg', role: 'assistant', genseq: 1, content: 'historical-assistant' },
+        ],
+        currentTurnDialogMsgsForContext: [
+          {
+            type: 'prompting_msg',
+            role: 'user',
+            genseq: 2,
             msgId: 'u1',
             grammar: 'markdown',
             content: 'latest-user',
           },
         ],
       },
-      ephemeral: {},
+      postTurn: {
+        sideDialogResponseContextMsgs: [
+          { type: 'environment_msg', role: 'user', content: 'side-response' },
+        ],
+      },
       tail: {
         renderedReminders: [
           { type: 'environment_msg', role: 'user', content: 'reminder-1' },
           { type: 'environment_msg', role: 'user', content: 'reminder-2' },
+        ],
+        activeReplyObligationContext: [
+          { type: 'environment_msg', role: 'user', content: 'reply-obligation' },
+        ],
+        runtimeGuideMsgs: [
+          { type: 'transient_guide_msg', role: 'assistant', content: 'runtime-guide' },
         ],
       },
     });
@@ -59,11 +80,16 @@ async function main(): Promise<void> {
         'env:mem',
         'env:taskdoc',
         'env:course',
+        'prompting:historical-user',
+        'saying_msg:historical-assistant',
         'env:reminder-1',
         'env:reminder-2',
+        'env:reply-obligation',
+        'guide:runtime-guide',
         'prompting:latest-user',
+        'env:side-response',
       ],
-      'reminder context should be inserted before real dialog messages',
+      'dynamic runtime context should preserve historical prefix cache and sit before current turn',
     );
   }
 
@@ -74,11 +100,14 @@ async function main(): Promise<void> {
         memories: [],
         taskDocMsg: undefined,
         coursePrefixMsgs: [],
-        dialogMsgsForContext: [],
+        historicalDialogMsgsForContext: [],
+        currentTurnDialogMsgsForContext: [],
       },
-      ephemeral: {},
+      postTurn: {},
       tail: {
         renderedReminders: [{ type: 'environment_msg', role: 'user', content: 'reminder-only' }],
+        activeReplyObligationContext: [],
+        runtimeGuideMsgs: [],
       },
     });
 
@@ -92,15 +121,62 @@ async function main(): Promise<void> {
   {
     const result = assembleDriveContextMessages({
       base: {
+        prependedContextMessages: [{ type: 'environment_msg', role: 'user', content: 'prep' }],
+        memories: [],
+        taskDocMsg: undefined,
+        coursePrefixMsgs: [],
+        historicalDialogMsgsForContext: [
+          {
+            type: 'prompting_msg',
+            role: 'user',
+            genseq: 1,
+            msgId: 'u0',
+            grammar: 'markdown',
+            content: 'historical-user',
+          },
+        ],
+        currentTurnDialogMsgsForContext: [],
+      },
+      postTurn: {},
+      tail: {
+        renderedReminders: [{ type: 'environment_msg', role: 'user', content: 'reminder-only' }],
+        activeReplyObligationContext: [
+          { type: 'environment_msg', role: 'user', content: 'reply-obligation' },
+        ],
+        runtimeGuideMsgs: [
+          { type: 'transient_guide_msg', role: 'assistant', content: 'runtime-guide' },
+        ],
+      },
+    });
+
+    assertOrder(
+      result,
+      [
+        'env:prep',
+        'prompting:historical-user',
+        'env:reminder-only',
+        'env:reply-obligation',
+        'guide:runtime-guide',
+      ],
+      'tool-followup dynamic context should append after historical cache prefix when no current turn follows',
+    );
+  }
+
+  {
+    const result = assembleDriveContextMessages({
+      base: {
         prependedContextMessages: [],
         memories: [],
         taskDocMsg: undefined,
         coursePrefixMsgs: [],
-        dialogMsgsForContext: [],
+        historicalDialogMsgsForContext: [],
+        currentTurnDialogMsgsForContext: [],
       },
-      ephemeral: {},
+      postTurn: {},
       tail: {
         renderedReminders: [],
+        activeReplyObligationContext: [],
+        runtimeGuideMsgs: [],
       },
     });
     assertOrder(result, [], 'empty tail should leave context unchanged');
