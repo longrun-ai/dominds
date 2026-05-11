@@ -581,6 +581,7 @@ providers:
         context_window: '204K'
       glm-5.1:
         name: GLM-5.1
+        optimal_max_tokens: 180000
         supports_thinking: true
         default_thinking: true
         supports_image_input: false
@@ -590,6 +591,7 @@ providers:
         context_window: '256K'
       glm-4.7:
         name: GLM-4.7
+        optimal_max_tokens: 180000
         supports_thinking: true
         default_thinking: false
         supports_image_input: false
