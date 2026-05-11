@@ -452,6 +452,8 @@ flowchart TD
 
 5. **支线对话响应供应**：支线对话通过持久化将响应写入*当前诉请者*的上下文（不是回调）。对于 TYPE B，每次诉请都会用最新的诉请者 + tellaskInfo 更新支线对话的 `assignmentFromAsker`，因此响应被路由到最近的诉请者（主线或支线对话）。这支持分离操作、复用和崩溃恢复。
 
+   TYPE B 长线诉请更新的确认边界必须谨慎区分：pending 状态与 `asker-stack.jsonl` 更新，只表示运行时已接受/登记新要求；只有支线 driver 实际消费 `registered_assignment_update` up-next、写入可见更新气泡和 assignment anchor 后，才表示目标支线已收到并开始处理更新。`registered_assignment_update` up-next 是运行态调度状态，不是持久化 redo log；不要为了“更新气泡”即时可重放而新增严格持久队列。后端进程重启后的业务自愈依赖 loud facts 与足够上下文（pending reminder、asker stack 最新 assignment、旧 call 是否缺少终态、目标支线是否缺少 assignment anchor），让 LLM 自主决定重发、修正或等待，而不是追求技术层面绝不丢内存队列。
+
 6. **支线对话注册表**：已注册的支线对话（TYPE B 长线诉请）在主线对话作用域的注册表中跟踪。注册表在 `clear_mind` 操作中持续存在，并在主线加载时重建。
 
 7. **状态保留契约**：
@@ -1290,7 +1292,9 @@ sequenceDiagram
 
 call-site 呼应不变量：每个 `tellask` 发起点的 `callId`，后续都必须在诉请者对话历史里留下同
 `callId` 的呼应点。正常支线回复、跨程 carryover、已注册会话被更新后的替代通知都可以结束这次
-call；不能静默删除或覆盖 pending 轮次。
+call；不能静默删除或覆盖 pending 轮次。已注册会话被更新时，替代通知的文案不能在目标支线实际消费
+更新前宣称“更新已送达/目标支线正在按新要求处理”；在此之前只能表达“旧轮已被新要求登记替换，等待
+目标支线在安全边界消费更新”。
 
 WebUI 外链不变量：生成 `/dl/*` URL 时必须在业务现场显式写出目标语义，避免复用泛化 deep-link
 helper。`/dl/callsite` 只表示诉请者对话里的发起气泡：`selfId/course` 是诉请者对话坐标，`callId`

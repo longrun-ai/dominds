@@ -1377,6 +1377,10 @@ export abstract class Dialog {
       throw new Error('Prompt is required to queue registered assignment update');
     }
 
+    // This is runtime scheduling state, not a durable redo log. Persisted business facts already
+    // record the latest assignment in the asker stack and pending records; if the process dies
+    // before this prompt is consumed, recovery should surface those facts loudly for the LLM to
+    // decide the next action. Do not add persistence here just to make the queued bubble replayable.
     if (existing?.kind !== 'registered_assignment_update') {
       const created: DialogQueuedRegisteredAssignmentUpdateState = {
         kind: 'registered_assignment_update',

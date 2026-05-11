@@ -73,12 +73,14 @@ export function formatRegisteredTellaskTellaskerUpdateNotice(language: LanguageC
   if (language === 'zh') {
     return [
       prefix,
-      '刚才那轮诉请不用再等了；对方接下来会按你刚更新的要求继续处理，后续请以最新要求为准。',
+      '刚才那轮诉请已被你后续发出的新要求取代；运行时已登记这次更新。',
+      '如果目标支线正忙，更新会在下一次安全推进边界进入目标支线；请把目标支线里的更新气泡作为可见确认点。',
     ].join('\n');
   }
   return [
     prefix,
-    'You no longer need to wait on that earlier request. The teammate will continue under your updated request, so treat the latest request as the one now in effect.',
+    'That earlier request has been superseded by your later updated request; runtime has registered the update.',
+    'If the target Side Dialog is busy, the update will enter it at the next safe drive boundary. Use the target Side Dialog update bubble as the visible confirmation point.',
   ].join('\n');
 }
 

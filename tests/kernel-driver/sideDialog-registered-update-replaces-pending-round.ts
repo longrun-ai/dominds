@@ -286,7 +286,7 @@ async function main(): Promise<void> {
     assert.equal(
       replacedRoundNotice.content.includes(formatRegisteredTellaskTellaskerUpdateNotice(language)),
       true,
-      'replacement notice should explain that the earlier tellask no longer needs waiting',
+      'replacement notice should explain that the earlier tellask was superseded and the update was registered',
     );
     const replacementRoute = replacedRoundNotice.route;
     assert.ok(replacementRoute, 'replacement notice should keep the callee dialog route');
@@ -294,12 +294,12 @@ async function main(): Promise<void> {
     assert.equal(
       replacementRoute.calleeCourse,
       undefined,
-      'replacement notice must not link to the old assignment genseq',
+      'replacement notice itself must not deep-link to an assignment genseq',
     );
     assert.equal(
       replacementRoute.calleeGenseq,
       undefined,
-      'replacement notice must wait for the new assignment anchor before deep-linking to a genseq',
+      'replacement notice relies on the replacement call-site link to upgrade after the new assignment anchor',
     );
 
     const supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({

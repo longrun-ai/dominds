@@ -2915,7 +2915,7 @@ export class DomindsDialogContainer extends HTMLElement {
           : 'failed'
         : state === 'superseded'
           ? this.uiLanguage === 'zh'
-            ? '已更新'
+            ? '已替换'
             : 'superseded'
           : '';
     const baseText =
@@ -3033,8 +3033,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingCallTimingById.delete(callId);
     const extraNote =
       this.uiLanguage === 'zh'
-        ? '该轮诉请已被较新的要求替代'
-        : 'This tellask round was superseded by a newer request';
+        ? '该轮诉请已被较新的要求替代；更新已登记'
+        : 'This tellask round was superseded; the update is registered';
     this.renderCallTiming(section, 'superseded', startedAtMs, endedAtMs, extraNote);
     if (this.pendingCallTimingById.size === 0) {
       this.stopCallTimingTicker();
@@ -3761,7 +3761,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const titleLeftHtml =
       visualKind === 'superseded_notice'
         ? `<span class="teammate-kind-label">${this.escapeHtml(
-            this.uiLanguage === 'zh' ? '诉请已更新' : 'Tellask updated',
+            this.uiLanguage === 'zh' ? '旧诉请已替换' : 'Tellask superseded',
           )}</span>
            <span class="teammate-meta">
              <span class="tellasker-name">${safeTellaskerLabel}</span>

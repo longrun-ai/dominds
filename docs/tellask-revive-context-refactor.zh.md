@@ -418,6 +418,16 @@ replace pending 不是 silent overwrite，也不是 failed-result fallback。它
 
 这样既保留“抽掉旧义务”的业务语义，也让持久层维持 append/truncate-only，不做 YAML 数组整体覆盖。
 
+**更新投递确认边界（已定案）**：
+
+- `registered_assignment_update` 的 up-next 队列是运行时调度状态，不是严格持久化 redo log。不要为了让“更新气泡”即时可重放，把这条队列升级成新的持久事务日志。
+- 诉请者侧反馈必须区分两种事实：
+  - **更新已登记 / 已排队**：pending record 与 asker stack 已按新诉请更新，支线后续应按最新 assignment 推进；这只说明运行时接受了更新。
+  - **目标支线已实际收到并开始处理更新**：支线 driver 已消费 up-next，写入可见的更新 assignment 气泡与 assignment anchor；只有这个事实才能支撑“目标支线已经收到/正在按新要求处理”的主线反馈。
+- 如果支线正忙，更新 prompt 可以留在内存 up-next 中等待安全边界异步消费。主线不应在消费前渲染“已送达目标支线”语义的气泡；最多表达“旧轮已被新诉请登记替换，目标支线尚待消费更新”。
+- 后端进程意外退出时，不追求技术角度严格自愈不丢 up-next。业务自愈边界是：LLM 能看到足够事实（pending reminder、asker stack 最新 assignment、旧 call 是否缺少终态、目标支线是否缺少 assignment anchor），从而自主判断是否需要重发/修正/继续等待。
+- 因此，维护者修复这类时序问题时，优先做真实状态反馈与 loud diagnostics，不要把 up-next 队列泛化成持久化 redo log。
+
 ### 7.3 Reply tool 与 direct fallback
 
 `replyTellask*` 是精确回贴路径；direct fallback 是过渡兼容路径。
@@ -576,6 +586,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
   - replace pending 从 stack 中抽调旧 frame，再把新 obligation 压栈顶；
   - 原 call site 只出现 pointer，不出现真实回复正文；
   - Type B registered update 压栈、先回复新诉请、再恢复旧诉请；
+  - Type B registered update 在支线消费更新前，主线不得宣称目标支线已收到/正在处理更新；
   - 重启恢复后 pending 与 arrival fact 一致。
 
 ## 9. 已定案问题
@@ -589,4 +600,5 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 5. 旧 pending record 缺少 `callSiteCourse` / `callSiteGenseq` 不迁移、不隔离兼容、不 fallback。旧 `.dialogs/` 可丢弃；新 validator 直接要求必填，缺失即 loud fail / quarantine。
 6. reply obligation 是栈，不是槽。root 与 side dialog 统一使用 `asker-stack.jsonl` 持久化 `AskerDialogStackFrame`，文件只允许 append/truncate。LLM context 从栈顶注入当前义务，而不是扫描历史 JSONL 对话。
 7. replace pending 是特殊栈操作：抽调旧 frame，再把新 obligation 压到栈顶；找不到旧 frame 必须 loud fail，不能静默 fallback 成普通 push。
-8. 实现术语升级为 `MainDialog` / `SideDialog` / `askerDialog` / `assignmentFromAsker` / `askerStack`。旧 `supdialog` 术语退出实现代码与文档；用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”。
+8. Type B registered update 的 up-next 队列保持运行态内存调度，不升级为持久化 redo log；主线反馈必须等目标支线实际消费更新并写入 assignment anchor 后，才表达“目标支线已收到/开始处理更新”。
+9. 实现术语升级为 `MainDialog` / `SideDialog` / `askerDialog` / `assignmentFromAsker` / `askerStack`。旧 `supdialog` 术语退出实现代码与文档；用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”。

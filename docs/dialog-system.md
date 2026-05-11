@@ -327,9 +327,11 @@ This makes Type B sideDialogs reusable across multiple Tellask sites without los
 **Updated Tellask While an Earlier Round Is Still Waiting (normative)**:
 
 - For a registered Side Dialog (`same agentId!sessionSlug`), runtime maintains one current waiting tellasker round.
-- If a newer TYPE B Tellask arrives before the earlier round replies, runtime immediately closes the earlier waiting round with a system-generated failed Tellask result. The wording must describe the conversation fact in business terms, not protocol jargon.
+- If a newer TYPE B Tellask arrives before the earlier round replies, runtime updates pending state and the sideDialog asker stack to the newer round. The earlier call-site still needs a same-`callId` correspondence point, but UI/LLM wording must not claim the target Side Dialog has already received the update until the Side Dialog actually consumes the update prompt.
 - The tellaskee is not force-stopped. Instead, its next runtime prompt explains that the work request has been updated, explicitly says not to send a standalone acknowledgement, and includes the latest full assignment.
 - Delivery of that updated assignment prompt is queued in-order at the next safe turn boundary. Runtime must not reject the update merely because another normal queued prompt already exists; queued prompts are ordered work, not a single overwrite slot.
+- The `registered_assignment_update` up-next item is runtime scheduling state, not a durable redo log. Do not make this queue a new persistence protocol merely to make the update bubble immediately replayable.
+- Business self-healing after a backend restart comes from loud facts and sufficient context: pending reminders, asker-stack assignment state, missing old-call terminal facts, and missing assignment anchors should let the LLM decide whether to resend, correct, or wait. It is not a goal to guarantee that every in-memory queued update survives process death.
 - A Side Dialog reply produced before that updated assignment prompt is rendered locally MUST NOT be delivered to the tellasker as the newer round's result.
 
 **Key Characteristics**:
@@ -1291,8 +1293,10 @@ sequenceDiagram
   alt registry hit
     Reg-->>Driver: existing sideDialog selfId
     opt earlier round still waiting
-      Driver-->>Tellasker: close earlier waiting round with system-generated business notice
       Driver->>Side: queue update notice + latest full assignment
+      Driver-->>Tellasker: report earlier round superseded and update registered
+      Side-->>Driver: later consumes update prompt and writes assignment anchor
+      Driver-->>Tellasker: upgrade call-site link to the concrete assignment bubble
     end
     Driver->>Side: restore + drive
   else registry miss

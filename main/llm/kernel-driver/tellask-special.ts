@@ -2324,6 +2324,13 @@ async function executeTellaskCall(
             mainDialog,
             result.previousPendingOwnerId,
           );
+          // Design boundary:
+          // A registered-assignment update is accepted once pending state + asker stack are updated,
+          // but the tellaskee has not necessarily consumed the runtime update prompt yet. Do not
+          // phrase this replacement notice as "delivered to / being handled by the Side Dialog"
+          // unless an assignment anchor for the new call is known; phrase it as superseded +
+          // registered instead. The up-next prompt remains runtime scheduling state, not a durable
+          // redo log.
           await finishRegisteredTellaskReplacement({
             ownerDialog: previousPendingOwner,
             sideDialog: result.sideDialog,
@@ -2375,6 +2382,10 @@ async function executeTellaskCall(
           let queuedIntoActiveLoop = false;
           let queuedRuntimePrompt = false;
           try {
+            // Keep registered assignment updates as in-memory up-next scheduling. This deliberately
+            // avoids turning the queue into a persistence/redo-log protocol: backend restart
+            // recovery should expose loud facts for the LLM to reason from, not pretend this
+            // runtime prompt was durably delivered to the tellaskee before it is consumed.
             result.sideDialog.queueRegisteredAssignmentUpdatePrompt({
               prompt: resumePrompt.content,
               msgId: resumePrompt.msgId,
