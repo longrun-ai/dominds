@@ -54,11 +54,6 @@ async function main(): Promise<void> {
           },
         ],
       },
-      postTurn: {
-        sideDialogResponseContextMsgs: [
-          { type: 'environment_msg', role: 'user', content: 'side-response' },
-        ],
-      },
       tail: {
         renderedReminders: [
           { type: 'environment_msg', role: 'user', content: 'reminder-1' },
@@ -87,7 +82,6 @@ async function main(): Promise<void> {
         'env:reply-obligation',
         'guide:runtime-guide',
         'prompting:latest-user',
-        'env:side-response',
       ],
       'dynamic runtime context should preserve historical prefix cache and sit before current turn',
     );
@@ -103,7 +97,6 @@ async function main(): Promise<void> {
         historicalDialogMsgsForContext: [],
         currentTurnDialogMsgsForContext: [],
       },
-      postTurn: {},
       tail: {
         renderedReminders: [{ type: 'environment_msg', role: 'user', content: 'reminder-only' }],
         activeReplyObligationContext: [],
@@ -137,7 +130,6 @@ async function main(): Promise<void> {
         ],
         currentTurnDialogMsgsForContext: [],
       },
-      postTurn: {},
       tail: {
         renderedReminders: [{ type: 'environment_msg', role: 'user', content: 'reminder-only' }],
         activeReplyObligationContext: [
@@ -172,7 +164,6 @@ async function main(): Promise<void> {
         historicalDialogMsgsForContext: [],
         currentTurnDialogMsgsForContext: [],
       },
-      postTurn: {},
       tail: {
         renderedReminders: [],
         activeReplyObligationContext: [],

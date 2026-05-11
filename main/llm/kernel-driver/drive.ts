@@ -2488,7 +2488,6 @@ export async function driveDialogStreamCore(
               historicalDialogMsgsForContext: splitDialogMsgs.historicalDialogMsgsForContext,
               currentTurnDialogMsgsForContext: splitDialogMsgs.currentTurnDialogMsgsForContext,
             },
-            postTurn: {},
             tail: {
               renderedReminders: reminderContextBlock,
               activeReplyObligationContext,

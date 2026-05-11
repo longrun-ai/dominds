@@ -9,36 +9,17 @@ export type DriveBaseContextParts = Readonly<{
   currentTurnDialogMsgsForContext: readonly ChatMessage[];
 }>;
 
-export type DrivePostTurnContextParts = Readonly<{
-  sideDialogResponseContextMsgs?: readonly ChatMessage[];
-}>;
-
 export type DriveTailContextParts = Readonly<{
   renderedReminders: readonly ChatMessage[];
   activeReplyObligationContext: readonly ChatMessage[];
   runtimeGuideMsgs: readonly ChatMessage[];
 }>;
 
-export function appendDrivePostTurnContext(
-  base: readonly ChatMessage[],
-  parts: DrivePostTurnContextParts,
-): ChatMessage[] {
-  const next: ChatMessage[] = [...base];
-  if (
-    Array.isArray(parts.sideDialogResponseContextMsgs) &&
-    parts.sideDialogResponseContextMsgs.length > 0
-  ) {
-    next.push(...parts.sideDialogResponseContextMsgs);
-  }
-  return next;
-}
-
 export function assembleDriveContextMessages(args: {
   base: DriveBaseContextParts;
-  postTurn: DrivePostTurnContextParts;
   tail: DriveTailContextParts;
 }): ChatMessage[] {
-  const baseMsgs = [
+  return [
     ...args.base.prependedContextMessages,
     ...args.base.memories,
     ...(args.base.taskDocMsg ? [args.base.taskDocMsg] : []),
@@ -49,5 +30,4 @@ export function assembleDriveContextMessages(args: {
     ...args.tail.runtimeGuideMsgs,
     ...args.base.currentTurnDialogMsgsForContext,
   ];
-  return appendDrivePostTurnContext(baseMsgs, args.postTurn);
 }

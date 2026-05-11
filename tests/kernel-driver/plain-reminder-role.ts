@@ -121,7 +121,6 @@ async function main(): Promise<void> {
         },
       ],
     },
-    postTurn: {},
     tail: {
       renderedReminders,
       activeReplyObligationContext: [],
