@@ -5,6 +5,7 @@ import type { AddressInfo } from 'net';
 import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
 import { LlmConfig } from '../../main/llm/client';
 import { OpenAiCompatibleGen } from '../../main/llm/gen/openai-compatible';
+import { DOMINDS_RUNNING_VERSION } from '../../main/server/dominds-running-version';
 import { Team } from '../../main/team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../../main/tool';
 
@@ -32,7 +33,7 @@ function makeProvider(baseUrl: string): ProviderConfig {
   return {
     name: 'Kimi Code Test',
     apiType: 'openai-compatible',
-    apiQuirks: ['kimi-code'],
+    apiQuirks: ['kimi-code', 'kimi-cli-cloak'],
     baseUrl,
     apiKeyEnvVar: 'KIMI_CODE_API_KEY',
     models: {
@@ -174,8 +175,7 @@ async function testKimiCodeAutoThinkingPayload(): Promise<void> {
   const request = await captureKimiCodeRequest({ thinking: 'auto' });
   assert.equal(request.method, 'POST');
   assert.equal(request.url, '/coding/v1/chat/completions');
-  assert.match(request.userAgent ?? '', /^Dominds\/[^ ]+$/);
-  assert.equal(request.userAgent?.startsWith('KimiCLI/'), false);
+  assert.equal(request.userAgent, `KimiCLI/Dominds/${DOMINDS_RUNNING_VERSION}`);
   assert.equal(request.userAgent?.startsWith('OpenAI/JS'), false);
   assert.equal(request.body.model, 'kimi-for-coding');
   assert.equal(request.body.prompt_cache_key, 'dialog-self:c3');

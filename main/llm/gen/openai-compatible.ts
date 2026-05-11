@@ -94,7 +94,6 @@ type OpenAiCompatibleChatExtraParams = {
 const KIMI_CODE_API_QUIRK = 'kimi-code';
 const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 const KIMI_CLI_CLOAK_API_QUIRK = 'kimi-cli-cloak';
-const KIMI_CLI_USER_AGENT = 'KimiCLI/1.41.0';
 const DISABLE_ASSISTANT_TOOL_CALL_REASONING_CONTENT_API_QUIRK =
   'disable-assistant-tool-call-reasoning-content';
 const JSON_SCHEMA_COMBINATOR_KEYS = new Set([
@@ -738,7 +737,7 @@ function createOpenAiCompatibleClient(args: {
   };
   if (isKimiCliCloakProvider(args.providerConfig)) {
     options.defaultHeaders = {
-      'User-Agent': KIMI_CLI_USER_AGENT,
+      'User-Agent': `KimiCLI/Dominds/${DOMINDS_RUNNING_VERSION}`,
     };
   } else if (isKimiCodeProvider(args.providerConfig)) {
     options.defaultHeaders = {
