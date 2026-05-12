@@ -82,7 +82,7 @@ type RuntimeReplyReminderPrompt = Readonly<{
   prompt: string;
   msgId: string;
   grammar?: KernelDriverPrompt['grammar'];
-  userLanguageCode?: string;
+  userLanguageCode?: KernelDriverPrompt['userLanguageCode'];
   runControl?: undefined;
   origin: 'runtime';
   tellaskReplyDirective: KernelDriverRuntimeReplyPrompt['tellaskReplyDirective'];
@@ -94,7 +94,7 @@ type RuntimeSideDialogReplyReminderPrompt = Readonly<{
   prompt: string;
   msgId: string;
   grammar?: KernelDriverPrompt['grammar'];
-  userLanguageCode?: string;
+  userLanguageCode?: KernelDriverPrompt['userLanguageCode'];
   runControl?: undefined;
   origin: 'runtime';
   tellaskReplyDirective: KernelDriverRuntimeSideDialogPrompt['tellaskReplyDirective'];
@@ -102,10 +102,39 @@ type RuntimeSideDialogReplyReminderPrompt = Readonly<{
   sideDialogReplyTarget: KernelDriverRuntimeSideDialogPrompt['sideDialogReplyTarget'];
 }>;
 
-type UpNextPrompt =
+type UpNextPrompt = DialogQueuedPromptState;
+
+type FollowUpPrompt =
   | DialogQueuedPromptState
   | RuntimeReplyReminderPrompt
   | RuntimeSideDialogReplyReminderPrompt;
+
+async function queueReplyReminderFollowUp(args: {
+  dialog: Dialog;
+  followUp: RuntimeReplyReminderPrompt | RuntimeSideDialogReplyReminderPrompt;
+}): Promise<void> {
+  if (args.followUp.kind === 'runtime_sideDialog_reply_reminder') {
+    await args.dialog.queueRuntimeSideDialogPrompt({
+      prompt: args.followUp.prompt,
+      msgId: args.followUp.msgId,
+      grammar: args.followUp.grammar ?? 'markdown',
+      userLanguageCode: args.followUp.userLanguageCode,
+      tellaskReplyDirective: args.followUp.tellaskReplyDirective,
+      skipTaskdoc: args.followUp.skipTaskdoc,
+      sideDialogReplyTarget: args.followUp.sideDialogReplyTarget,
+    });
+    return;
+  }
+
+  await args.dialog.queueRuntimeReplyPrompt({
+    prompt: args.followUp.prompt,
+    msgId: args.followUp.msgId,
+    grammar: args.followUp.grammar ?? 'markdown',
+    userLanguageCode: args.followUp.userLanguageCode,
+    tellaskReplyDirective: args.followUp.tellaskReplyDirective,
+    skipTaskdoc: args.followUp.skipTaskdoc,
+  });
+}
 
 function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return typeof prompt?.content === 'string' && isReplyToolReminderPromptContent(prompt.content);
@@ -835,7 +864,7 @@ export async function executeDriveRound(args: {
   let activeRunPrimed = false;
   let ownsActiveRun = false;
   let interruptedBySignal = false;
-  let followUp: UpNextPrompt | undefined;
+  let followUp: FollowUpPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
   let sideDialogReplyTarget: SideDialogReplyTarget | undefined;
   let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined;
@@ -1463,6 +1492,20 @@ export async function executeDriveRound(args: {
       }
 
       if (followUp) {
+        if (
+          followUp.kind === 'runtime_reply_reminder' ||
+          followUp.kind === 'runtime_sideDialog_reply_reminder'
+        ) {
+          await queueReplyReminderFollowUp({ dialog, followUp });
+          args.scheduleDrive(dialog, {
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_follow_up',
+              reason: 'follow_up_prompt',
+            },
+          });
+          return driveResult;
+        }
         args.scheduleDrive(dialog, {
           waitInQue: true,
           driveOptions: {
@@ -1496,9 +1539,7 @@ export async function executeDriveRound(args: {
               case 'registered_assignment_update':
               case 'new_course_runtime_guide':
               case 'new_course_runtime_reply':
-              case 'new_course_runtime_sideDialog':
-              case 'runtime_reply_reminder':
-              case 'runtime_sideDialog_reply_reminder': {
+              case 'new_course_runtime_sideDialog': {
                 const runtimeCommon = {
                   ...common,
                   origin: 'runtime' as const,
@@ -1508,8 +1549,7 @@ export async function executeDriveRound(args: {
                 };
                 if (
                   followUp.kind === 'registered_assignment_update' ||
-                  followUp.kind === 'new_course_runtime_sideDialog' ||
-                  followUp.kind === 'runtime_sideDialog_reply_reminder'
+                  followUp.kind === 'new_course_runtime_sideDialog'
                 ) {
                   const prompt: KernelDriverRuntimeSideDialogPrompt = {
                     ...runtimeCommon,
@@ -1518,10 +1558,7 @@ export async function executeDriveRound(args: {
                   };
                   return prompt;
                 }
-                if (
-                  followUp.kind === 'new_course_runtime_reply' ||
-                  followUp.kind === 'runtime_reply_reminder'
-                ) {
+                if (followUp.kind === 'new_course_runtime_reply') {
                   const prompt: KernelDriverRuntimeReplyPrompt = {
                     ...runtimeCommon,
                     tellaskReplyDirective: followUp.tellaskReplyDirective,

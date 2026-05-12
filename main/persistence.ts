@@ -3137,6 +3137,28 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, courseUpdateEvt);
   }
 
+  public async persistPendingRuntimePrompt(
+    dialog: Dialog,
+    prompt: DialogRuntimePrompt,
+  ): Promise<void> {
+    if (prompt.origin !== 'runtime') {
+      throw new Error(
+        `persistPendingRuntimePrompt invariant violation: pending prompt must have runtime origin for dialog=${dialog.id.valueOf()}`,
+      );
+    }
+    await DialogPersistence.mutateDialogLatest(
+      dialog.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          needsDrive: true,
+          pendingCourseStartPrompt: prompt,
+        },
+      }),
+      dialog.status,
+    );
+  }
+
   /**
    * Persist reminder state (exceptional overwrite pattern)
    * Note: Event emission is handled by processReminderUpdates() in Dialog

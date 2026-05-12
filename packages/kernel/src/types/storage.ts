@@ -139,6 +139,11 @@ export interface DialogLatestFile {
   executionMarker?: DialogExecutionMarker;
   fbrState?: DialogFbrState;
   deferredReplyReassertion?: DialogDeferredReplyReassertion;
+  // FIXME(next major): this field name is historical. It now stores any durable runtime prompt
+  // that must survive restart and be consumed before ordinary no-prompt driving, including
+  // reply-tool reminders after a tellaskee directly replies instead of calling reply*. Rename the
+  // persisted schema to something like `pendingRuntimePrompt` only in a major migration, together
+  // with display-state wording, restore logic, diagnostics, and old latest.yaml compatibility.
   pendingCourseStartPrompt?: DialogPendingCourseStartPrompt;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;

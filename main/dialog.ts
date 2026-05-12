@@ -24,6 +24,8 @@ import type {
 } from '@longrun-ai/kernel/types/dialog';
 import type {
   DialogQueuedDeferredQ4HAnswerState,
+  DialogQueuedNewCourseRuntimeReplyState,
+  DialogQueuedNewCourseRuntimeSideDialogState,
   DialogQueuedPromptState,
   DialogQueuedRegisteredAssignmentUpdateState,
   DialogQueuedUserGenerationBoundaryState,
@@ -1415,6 +1417,96 @@ export abstract class Dialog {
     return merged;
   }
 
+  private async persistPendingRuntimePrompt(prompt: DialogRuntimePrompt): Promise<void> {
+    await this.dlgStore.persistPendingRuntimePrompt(this, prompt);
+  }
+
+  private runtimePromptCommon(options: {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+  }): {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    origin: 'runtime';
+    runControl: undefined;
+  } {
+    const trimmed = options.prompt.trim();
+    if (!trimmed) {
+      throw new Error('Prompt is required to queue runtime prompt');
+    }
+    return {
+      prompt: trimmed,
+      msgId: options.msgId,
+      grammar: options.grammar,
+      userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+      origin: 'runtime',
+      runControl: undefined,
+    };
+  }
+
+  public async queueRuntimeReplyPrompt(options: {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    tellaskReplyDirective: TellaskReplyDirective;
+    skipTaskdoc?: boolean;
+  }): Promise<DialogQueuedPromptState> {
+    const common = this.runtimePromptCommon(options);
+    const created: DialogQueuedNewCourseRuntimeReplyState = {
+      ...common,
+      kind: 'new_course_runtime_reply',
+      tellaskReplyDirective: options.tellaskReplyDirective,
+      skipTaskdoc: options.skipTaskdoc,
+    };
+    this.enqueueQueuedPromptState(created);
+    await this.persistPendingRuntimePrompt({
+      content: created.prompt,
+      msgId: created.msgId,
+      grammar: created.grammar ?? 'markdown',
+      userLanguageCode: created.userLanguageCode,
+      origin: 'runtime',
+      tellaskReplyDirective: created.tellaskReplyDirective,
+      skipTaskdoc: created.skipTaskdoc,
+    });
+    return created;
+  }
+
+  public async queueRuntimeSideDialogPrompt(options: {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    tellaskReplyDirective: TellaskReplyDirective;
+    skipTaskdoc?: boolean;
+    sideDialogReplyTarget: DialogSideDialogReplyTarget;
+  }): Promise<DialogQueuedPromptState> {
+    const common = this.runtimePromptCommon(options);
+    const created: DialogQueuedNewCourseRuntimeSideDialogState = {
+      ...common,
+      kind: 'new_course_runtime_sideDialog',
+      tellaskReplyDirective: options.tellaskReplyDirective,
+      skipTaskdoc: options.skipTaskdoc,
+      sideDialogReplyTarget: options.sideDialogReplyTarget,
+    };
+    this.enqueueQueuedPromptState(created);
+    await this.persistPendingRuntimePrompt({
+      content: created.prompt,
+      msgId: created.msgId,
+      grammar: created.grammar ?? 'markdown',
+      userLanguageCode: created.userLanguageCode,
+      origin: 'runtime',
+      tellaskReplyDirective: created.tellaskReplyDirective,
+      skipTaskdoc: created.skipTaskdoc,
+      sideDialogReplyTarget: created.sideDialogReplyTarget,
+    });
+    return created;
+  }
+
   public hasUpNext(): boolean {
     return this._upNextQueue.length > 0;
   }
@@ -2759,6 +2851,11 @@ export abstract class DialogStore {
   public async startNewCourse(
     _dialog: Dialog,
     _newCoursePrompt: DialogRuntimePrompt,
+  ): Promise<void> {}
+
+  public async persistPendingRuntimePrompt(
+    _dialog: Dialog,
+    _prompt: DialogRuntimePrompt,
   ): Promise<void> {}
 
   /**
