@@ -372,13 +372,12 @@ function blockerDisplayState(args: {
   return undefined;
 }
 
-function normalizeSideDialogIdleWhileReplyObligationPending(
+async function normalizeSideDialogIdleWhileReplyObligationPending(
   dialogId: DialogID,
   status: DialogStatusKind,
   previous: DialogLatestFile,
   latest: DialogLatestFile,
   askerStackState: DialogAskerStackState | null,
-  blockerState: DialogLatestFile['displayState'] | undefined,
   context: Readonly<{
     trigger: string;
     mutationKind: DialogLatestMutation['kind'];
@@ -386,7 +385,7 @@ function normalizeSideDialogIdleWhileReplyObligationPending(
     latestSource: 'staged' | 'disk' | 'default_bootstrap';
     latestWriteBackKey: string;
   }>,
-): DialogLatestFile {
+): Promise<DialogLatestFile> {
   if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
     return latest;
   }
@@ -396,6 +395,10 @@ function normalizeSideDialogIdleWhileReplyObligationPending(
   if (!hasActiveReplyObligationInAskerStackState(askerStackState)) {
     return latest;
   }
+  const blockerState = blockerDisplayState({
+    hasQ4H: (await DialogPersistence.loadQuestions4HumanState(dialogId, status)).length > 0,
+    hasSideDialogs: (await DialogPersistence.loadPendingSideDialogs(dialogId, status)).length > 0,
+  });
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
   const healedDisplayState = blockerState ?? pendingReplyObligationDisplayState();
   const healedExecutionMarker =
@@ -8337,14 +8340,6 @@ export class DialogPersistence {
         status === 'running' && dialogId.selfId !== dialogId.rootId
           ? await this.loadSideDialogAskerStackState(dialogId, status)
           : null;
-      const blockedProjection =
-        status === 'running' && dialogId.selfId !== dialogId.rootId
-          ? blockerDisplayState({
-              hasQ4H: (await this.loadQuestions4HumanState(dialogId, status)).length > 0,
-              hasSideDialogs: (await this.loadPendingSideDialogs(dialogId, status)).length > 0,
-            })
-          : undefined;
-
       const mutation = mutator(existing);
       const mutationContext = {
         trigger: 'mutateDialogLatest',
@@ -8361,13 +8356,12 @@ export class DialogPersistence {
 
       let updated: DialogLatestFile;
       if (mutation.kind === 'noop') {
-        updated = normalizeSideDialogIdleWhileReplyObligationPending(
+        updated = await normalizeSideDialogIdleWhileReplyObligationPending(
           dialogId,
           status,
           existing,
           existing,
           askerStackState,
-          blockedProjection,
           mutationContext,
         );
         if (updated === existing) {
@@ -8396,13 +8390,12 @@ export class DialogPersistence {
         updated,
         mutationContext,
       );
-      updated = normalizeSideDialogIdleWhileReplyObligationPending(
+      updated = await normalizeSideDialogIdleWhileReplyObligationPending(
         dialogId,
         status,
         existing,
         updated,
         askerStackState,
-        blockedProjection,
         mutationContext,
       );
 
