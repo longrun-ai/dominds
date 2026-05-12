@@ -124,6 +124,22 @@ function pendingReplyObligationDisplayState(): DialogDisplayState {
   };
 }
 
+function blockerDisplayState(args: {
+  hasQ4H: boolean;
+  hasSideDialogs: boolean;
+}): DialogDisplayState | undefined {
+  if (args.hasQ4H && args.hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
+  }
+  if (args.hasQ4H) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
+  }
+  if (args.hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
+  }
+  return undefined;
+}
+
 async function hasSideDialogFinalResponseAnchor(
   dialogId: DialogID,
   latest: DialogLatestFile,
@@ -164,6 +180,13 @@ async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
   if (!(await hasActiveSideDialogReplyObligation(dialogId))) {
     return displayState;
   }
+  const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
+  const blocked = blockerDisplayState({
+    hasQ4H: q4h.length > 0,
+    hasSideDialogs: pendingSideDialogs.length > 0,
+  });
+  const healedDisplayState = blocked ?? pendingReplyObligationDisplayState();
   log.warn(
     'Prevented sideDialog with active reply obligation from entering idle display state',
     new Error('sideDialog idle display-state invariant violation'),
@@ -171,9 +194,10 @@ async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
       dialogId: dialogId.valueOf(),
       rootId: dialogId.rootId,
       selfId: dialogId.selfId,
+      healedDisplayState,
     },
   );
-  return pendingReplyObligationDisplayState();
+  return healedDisplayState;
 }
 
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
@@ -559,7 +583,10 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
   ) {
     return { kind: 'dead', reason: latest.executionMarker.reason };
   }
-  if (latest?.executionMarker?.kind === 'interrupted') {
+  if (
+    latest?.executionMarker?.kind === 'interrupted' &&
+    latest.executionMarker.reason.kind !== 'pending_reply_obligation'
+  ) {
     return {
       kind: 'stopped',
       reason: latest.executionMarker.reason,
@@ -573,21 +600,14 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: true,
     };
   }
-  if (await hasActiveSideDialogReplyObligation(dlg.id)) {
-    return pendingReplyObligationDisplayState();
-  }
-
   const hasQ4H = await dlg.hasPendingQ4H();
   const hasSideDialogs = await dlg.hasPendingSideDialogs();
-
-  if (hasQ4H && hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
+  const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
+  if (blocked) {
+    return blocked;
   }
-  if (hasQ4H) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
+  if (await hasActiveSideDialogReplyObligation(dlg.id)) {
+    return pendingReplyObligationDisplayState();
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -608,7 +628,10 @@ async function computeIdleDisplayStateFromPersistence(
   ) {
     return { kind: 'dead', reason: latest.executionMarker.reason };
   }
-  if (latest?.executionMarker?.kind === 'interrupted') {
+  if (
+    latest?.executionMarker?.kind === 'interrupted' &&
+    latest.executionMarker.reason.kind !== 'pending_reply_obligation'
+  ) {
     return {
       kind: 'stopped',
       reason: latest.executionMarker.reason,
@@ -622,26 +645,19 @@ async function computeIdleDisplayStateFromPersistence(
       continueEnabled: true,
     };
   }
+  const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
+  const hasQ4H = q4h.length > 0;
+  const hasSideDialogs = pendingSideDialogs.length > 0;
+  const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
+  if (blocked) {
+    return blocked;
+  }
   if (await hasActiveSideDialogReplyObligation(dialogId)) {
     return pendingReplyObligationDisplayState();
   }
   if (latest && (await hasSideDialogFinalResponseAnchor(dialogId, latest))) {
     return { kind: 'idle_waiting_user' };
-  }
-
-  const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
-  const hasQ4H = q4h.length > 0;
-  const hasSideDialogs = pendingSideDialogs.length > 0;
-
-  if (hasQ4H && hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
-  }
-  if (hasQ4H) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -760,28 +776,24 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         continueEnabled: true,
       };
     }
+    const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
+    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
+    const hasQ4H = q4h.length > 0;
+    const hasSideDialogs = pendingSideDialogs.length > 0;
+    const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
+    if (blocked) {
+      return blocked;
+    }
     if (await hasActiveSideDialogReplyObligation(dialogId)) {
       return pendingReplyObligationDisplayState();
     }
     if (await hasSideDialogFinalResponseAnchor(dialogId, latest)) {
       return { kind: 'idle_waiting_user' };
     }
-
-    const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
-    const hasQ4H = q4h.length > 0;
-    const hasSideDialogs = pendingSideDialogs.length > 0;
-
-    if (hasQ4H && hasSideDialogs) {
-      return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
-    }
-    if (hasQ4H) {
-      return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-    }
-    if (hasSideDialogs) {
-      return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
-    }
-    if (latest.executionMarker?.kind === 'interrupted') {
+    if (
+      latest.executionMarker?.kind === 'interrupted' &&
+      latest.executionMarker.reason.kind !== 'pending_reply_obligation'
+    ) {
       return {
         kind: 'stopped',
         reason: latest.executionMarker.reason,

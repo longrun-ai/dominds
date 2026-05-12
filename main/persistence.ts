@@ -356,12 +356,29 @@ function hasActiveReplyObligationInAskerStackState(state: DialogAskerStackState 
   return top?.tellaskReplyObligation !== undefined;
 }
 
+function blockerDisplayState(args: {
+  hasQ4H: boolean;
+  hasSideDialogs: boolean;
+}): DialogLatestFile['displayState'] | undefined {
+  if (args.hasQ4H && args.hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
+  }
+  if (args.hasQ4H) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
+  }
+  if (args.hasSideDialogs) {
+    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
+  }
+  return undefined;
+}
+
 function normalizeSideDialogIdleWhileReplyObligationPending(
   dialogId: DialogID,
   status: DialogStatusKind,
   previous: DialogLatestFile,
   latest: DialogLatestFile,
   askerStackState: DialogAskerStackState | null,
+  blockerState: DialogLatestFile['displayState'] | undefined,
   context: Readonly<{
     trigger: string;
     mutationKind: DialogLatestMutation['kind'];
@@ -380,10 +397,11 @@ function normalizeSideDialogIdleWhileReplyObligationPending(
     return latest;
   }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
-  const healedDisplayState = pendingReplyObligationDisplayState();
-  const healedExecutionMarker = pendingReplyObligationExecutionMarker();
+  const healedDisplayState = blockerState ?? pendingReplyObligationDisplayState();
+  const healedExecutionMarker =
+    healedDisplayState.kind === 'stopped' ? pendingReplyObligationExecutionMarker() : undefined;
   emitInvariantWarning(
-    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing to pending_reply_obligation',
+    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
     {
       trigger: context.trigger,
       mutationKind: context.mutationKind,
@@ -395,6 +413,10 @@ function normalizeSideDialogIdleWhileReplyObligationPending(
       selfId: dialogId.selfId,
       status,
       targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
+      blockedByQ4H:
+        blockerState?.kind === 'blocked' && blockerState.reason.kind !== 'waiting_for_sideDialogs',
+      blockedBySideDialogs:
+        blockerState?.kind === 'blocked' && blockerState.reason.kind !== 'needs_human_input',
       before: summarizeLatestProjectionState(previous),
       afterBeforeHealing: summarizeLatestProjectionState(latest),
       healedTo: {
@@ -408,7 +430,7 @@ function normalizeSideDialogIdleWhileReplyObligationPending(
     ...latest,
     lastModified: formatUnifiedTimestamp(new Date()),
     displayState: healedDisplayState,
-    executionMarker: healedExecutionMarker,
+    executionMarker: healedDisplayState.kind === 'stopped' ? healedExecutionMarker : undefined,
   };
 }
 const quarantiningMainDialogs = new Set<string>();
@@ -8315,6 +8337,13 @@ export class DialogPersistence {
         status === 'running' && dialogId.selfId !== dialogId.rootId
           ? await this.loadSideDialogAskerStackState(dialogId, status)
           : null;
+      const blockedProjection =
+        status === 'running' && dialogId.selfId !== dialogId.rootId
+          ? blockerDisplayState({
+              hasQ4H: (await this.loadQuestions4HumanState(dialogId, status)).length > 0,
+              hasSideDialogs: (await this.loadPendingSideDialogs(dialogId, status)).length > 0,
+            })
+          : undefined;
 
       const mutation = mutator(existing);
       const mutationContext = {
@@ -8338,6 +8367,7 @@ export class DialogPersistence {
           existing,
           existing,
           askerStackState,
+          blockedProjection,
           mutationContext,
         );
         if (updated === existing) {
@@ -8372,6 +8402,7 @@ export class DialogPersistence {
         existing,
         updated,
         askerStackState,
+        blockedProjection,
         mutationContext,
       );
 

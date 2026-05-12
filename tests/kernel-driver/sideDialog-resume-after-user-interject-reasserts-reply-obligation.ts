@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 
 import { toCallSiteCourseNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { getRunControlCountsSnapshot } from '../../main/dialog-display-state';
+import {
+  getRunControlCountsSnapshot,
+  refreshRunControlProjectionFromPersistenceFacts,
+  setDialogDisplayState,
+} from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
@@ -197,8 +201,27 @@ async function main(): Promise<void> {
     const countsWhileInterjectionPaused = await getRunControlCountsSnapshot();
     assert.equal(
       countsWhileInterjectionPaused.resumable,
-      1,
-      'interjection-paused dialogs should count as resumable even while blocker facts still remain',
+      2,
+      'interjection-paused parent and pending-reply nested sideDialog should both count as resumable',
+    );
+    await setDialogDisplayState(sideDialog.id, { kind: 'idle_waiting_user' });
+    const latestAfterAttemptedIdleWhileNestedPending = await DialogPersistence.loadDialogLatest(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.deepEqual(
+      latestAfterAttemptedIdleWhileNestedPending?.displayState,
+      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
+      'active reply obligation must not mask the nested sideDialog blocker when a sideDialog attempts to idle',
+    );
+    const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
+      sideDialog.id,
+      'pending_sideDialogs_changed',
+    );
+    assert.deepEqual(
+      refreshedWhileNestedPending?.displayState,
+      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
+      'run-control refresh should show the true nested sideDialog blocker ahead of pending_reply_obligation',
     );
 
     await driveDialogStream(
@@ -283,8 +306,8 @@ async function main(): Promise<void> {
     const countsAfterContinueWhileBlocked = await getRunControlCountsSnapshot();
     assert.equal(
       countsAfterContinueWhileBlocked.resumable,
-      0,
-      'once Continue exits the temporary interjection pause, the dialog should no longer count as resumable while truly blocked',
+      1,
+      'once Continue exits the temporary interjection pause, only the nested pending-reply sideDialog should remain resumable',
     );
 
     await driveDialogStream(
