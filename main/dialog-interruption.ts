@@ -24,6 +24,7 @@ export function isInterruptionReasonManualResumeEligible(
     case 'emergency_stop':
     case 'server_restart':
     case 'pending_course_start':
+    case 'pending_reply_obligation':
     case 'fork_continue_ready':
     case 'system_stop':
     case 'llm_retry_stopped':
@@ -40,6 +41,7 @@ export function doesInterruptionReasonRequireExplicitResume(
 ): boolean {
   switch (reason.kind) {
     case 'pending_course_start':
+    case 'pending_reply_obligation':
       return false;
     case 'user_stop':
     case 'emergency_stop':

@@ -1,3 +1,4 @@
+import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
@@ -451,6 +452,92 @@ async function main(): Promise<void> {
       'utf-8',
     );
 
+    // Dialog K: pending_reply_obligation is an auto-resumable interrupted marker like
+    // pending_course_start. Restart reconciliation must preserve the in-flight drive and clear the
+    // marker instead of turning it into a manual server_restart stop.
+    const kRoot = 'dlg-k';
+    const kSide = 'side-k';
+    const kRootId = new DialogID(kRoot);
+    const kSideId = new DialogID(kSide, kRoot);
+    const kSideDir = path.join(tmpRoot, '.dialogs', 'run', kRoot, 'sideDialogs', kSide);
+    const kCreatedAt = new Date().toISOString();
+    const kAssignment: SideDialogAssignmentFromAsker = {
+      callName: 'tellask',
+      mentionList: ['@pangu'],
+      tellaskContent: 'Recover pending reply obligation after restart',
+      originMemberId: 'tester',
+      askerDialogId: kRoot,
+      callId: 'call-side-k',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
+      collectiveTargets: ['pangu'],
+    };
+    await DialogPersistence.saveMainDialogMetadata(
+      kRootId,
+      {
+        id: kRoot,
+        agentId: 'tester',
+        taskDocPath: 'plans/interruption-resumption-k.tsk',
+        createdAt: kCreatedAt,
+      },
+      'running',
+    );
+    await DialogPersistence.mutateDialogLatest(kRootId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: kCreatedAt,
+        status: 'active',
+        generating: false,
+        displayState: { kind: 'idle_waiting_user' },
+      },
+    }));
+    await DialogPersistence.ensureSideDialogDirectory(kSideId, 'running');
+    await DialogPersistence.saveSideDialogMetadata(
+      kSideId,
+      {
+        id: kSide,
+        agentId: 'pangu',
+        taskDocPath: 'plans/interruption-resumption-k.tsk',
+        createdAt: kCreatedAt,
+      },
+      'running',
+    );
+    await DialogPersistence.saveSideDialogAskerStackState(
+      kSideId,
+      {
+        askerStack: [
+          {
+            kind: 'asker_dialog_stack_frame',
+            askerDialogId: kRoot,
+            assignmentFromAsker: kAssignment,
+            tellaskReplyObligation: {
+              expectedReplyCallName: 'replyTellask',
+              targetDialogId: kRoot,
+              targetCallId: kAssignment.callId,
+              tellaskContent: kAssignment.tellaskContent,
+            },
+          },
+        ],
+      },
+      'running',
+    );
+    await writeYaml(path.join(kSideDir, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: kCreatedAt,
+      status: 'active',
+      generating: true,
+      displayState: {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      executionMarker: {
+        kind: 'interrupted',
+        reason: { kind: 'pending_reply_obligation' },
+      },
+    });
+
     await getRunControlCountsSnapshot();
     const latestJAfterSnapshot = await DialogPersistence.loadDialogLatest(
       new DialogID(jSide, jRoot),
@@ -481,6 +568,21 @@ async function main(): Promise<void> {
     assert.equal(latestA.displayState.kind, 'proceeding');
     assert.equal(latestA.executionMarker, undefined);
     assert.equal(globalDialogRegistry.get(aRoot), undefined);
+
+    const latestK = await DialogPersistence.loadDialogLatest(new DialogID(kSide, kRoot), 'running');
+    assert.ok(latestK, 'latest.yaml for dlg-k sideDialog should exist');
+    assert.equal(
+      latestK.generating,
+      true,
+      'pending_reply_obligation interrupted generation should remain recoverable after restart',
+    );
+    assert.equal(
+      latestK.needsDrive,
+      true,
+      'pending_reply_obligation interrupted generation should be queued for recovery',
+    );
+    assert.deepEqual(latestK.displayState, { kind: 'proceeding' });
+    assert.equal(latestK.executionMarker, undefined);
 
     await recoverProceedingDrivesAfterRestart();
     const recoveredA = globalDialogRegistry.get(aRoot);
@@ -615,6 +717,7 @@ async function main(): Promise<void> {
       'stale sideDialog interruption projection should clear even when needsDrive is already false',
     );
     assert.equal(latestJProjectionOnly.executionMarker, undefined);
+
     const latestJBlockedProjection = await DialogPersistence.loadDialogLatest(
       new DialogID(jBlockedProjectionSide, jRoot),
       'running',

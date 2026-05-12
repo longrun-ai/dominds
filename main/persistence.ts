@@ -36,6 +36,7 @@ import type {
   WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
+  DialogDisplayState,
   DialogInterruptionReason,
   DialogLlmRetryRecoveryAction,
 } from '@longrun-ai/kernel/types/display-state';
@@ -347,6 +348,67 @@ function normalizeGeneratingDisplayStateMismatch(
     ...latest,
     displayState: healedDisplayState,
     executionMarker: hasInterruptedExecutionMarker ? undefined : latest.executionMarker,
+  };
+}
+
+function hasActiveReplyObligationInAskerStackState(state: DialogAskerStackState | null): boolean {
+  const top = state?.askerStack[state.askerStack.length - 1];
+  return top?.tellaskReplyObligation !== undefined;
+}
+
+function normalizeSideDialogIdleWhileReplyObligationPending(
+  dialogId: DialogID,
+  status: DialogStatusKind,
+  previous: DialogLatestFile,
+  latest: DialogLatestFile,
+  askerStackState: DialogAskerStackState | null,
+  context: Readonly<{
+    trigger: string;
+    mutationKind: DialogLatestMutation['kind'];
+    patchSummary: Record<string, unknown> | null;
+    latestSource: 'staged' | 'disk' | 'default_bootstrap';
+    latestWriteBackKey: string;
+  }>,
+): DialogLatestFile {
+  if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
+    return latest;
+  }
+  if (latest.displayState?.kind !== 'idle_waiting_user') {
+    return latest;
+  }
+  if (!hasActiveReplyObligationInAskerStackState(askerStackState)) {
+    return latest;
+  }
+  const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
+  const healedDisplayState = pendingReplyObligationDisplayState();
+  const healedExecutionMarker = pendingReplyObligationExecutionMarker();
+  emitInvariantWarning(
+    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing to pending_reply_obligation',
+    {
+      trigger: context.trigger,
+      mutationKind: context.mutationKind,
+      latestSource: context.latestSource,
+      latestWriteBackKey: context.latestWriteBackKey,
+      patchSummary: context.patchSummary,
+      dialogId: dialogId.valueOf(),
+      rootId: dialogId.rootId,
+      selfId: dialogId.selfId,
+      status,
+      targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
+      before: summarizeLatestProjectionState(previous),
+      afterBeforeHealing: summarizeLatestProjectionState(latest),
+      healedTo: {
+        displayState: healedDisplayState,
+        executionMarker: healedExecutionMarker,
+      },
+      callStack: captureInvariantWarningStack(),
+    },
+  );
+  return {
+    ...latest,
+    lastModified: formatUnifiedTimestamp(new Date()),
+    displayState: healedDisplayState,
+    executionMarker: healedExecutionMarker,
   };
 }
 const quarantiningMainDialogs = new Set<string>();
@@ -717,6 +779,8 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
       return { kind: 'server_restart' };
     case 'pending_course_start':
       return { kind: 'pending_course_start' };
+    case 'pending_reply_obligation':
+      return { kind: 'pending_reply_obligation' };
     case 'fork_continue_ready':
       return { kind: 'fork_continue_ready' };
     case 'system_stop': {
@@ -745,6 +809,21 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
     default:
       return null;
   }
+}
+
+function pendingReplyObligationDisplayState(): Extract<DialogDisplayState, { kind: 'stopped' }> {
+  return {
+    kind: 'stopped',
+    reason: { kind: 'pending_reply_obligation' },
+    continueEnabled: true,
+  } satisfies DialogDisplayState;
+}
+
+function pendingReplyObligationExecutionMarker(): DialogLatestFile['executionMarker'] {
+  return {
+    kind: 'interrupted',
+    reason: { kind: 'pending_reply_obligation' },
+  } satisfies DialogLatestFile['executionMarker'];
 }
 
 function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
@@ -2141,6 +2220,7 @@ export class DiskFileDialogStore extends DialogStore {
       },
     };
     await this.appendEvent(askerDialog, parentCourse, sideDialogCreatedRecord);
+    const initialSideDialogDisplayState = pendingReplyObligationDisplayState();
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
@@ -2152,7 +2232,8 @@ export class DiskFileDialogStore extends DialogStore {
         messageCount: 0,
         functionCallCount: 0,
         sideDialogCount: 0,
-        displayState: { kind: 'idle_waiting_user' },
+        displayState: initialSideDialogDisplayState,
+        executionMarker: pendingReplyObligationExecutionMarker(),
         disableDiligencePush: false,
       },
     }));
@@ -2194,7 +2275,7 @@ export class DiskFileDialogStore extends DialogStore {
         currentCourse: 1,
         createdAt: nowTs,
         lastModified: nowTs,
-        displayState: { kind: 'idle_waiting_user' },
+        displayState: initialSideDialogDisplayState,
         sessionSlug: options.sessionSlug,
         assignmentFromAsker: {
           callName: options.callName,
@@ -8230,12 +8311,38 @@ export class DialogPersistence {
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
       };
+      const askerStackState =
+        status === 'running' && dialogId.selfId !== dialogId.rootId
+          ? await this.loadSideDialogAskerStackState(dialogId, status)
+          : null;
 
       const mutation = mutator(existing);
+      const mutationContext = {
+        trigger: 'mutateDialogLatest',
+        mutationKind: mutation.kind,
+        patchSummary:
+          mutation.kind === 'patch'
+            ? summarizeLatestMutationPatch(mutation.patch)
+            : mutation.kind === 'replace'
+              ? summarizeLatestProjectionState(mutation.next)
+              : null,
+        latestSource: staged ? 'staged' : latestFromDisk ? 'disk' : 'default_bootstrap',
+        latestWriteBackKey: key,
+      } as const;
 
       let updated: DialogLatestFile;
       if (mutation.kind === 'noop') {
-        return existing;
+        updated = normalizeSideDialogIdleWhileReplyObligationPending(
+          dialogId,
+          status,
+          existing,
+          existing,
+          askerStackState,
+          mutationContext,
+        );
+        if (updated === existing) {
+          return existing;
+        }
       } else if (mutation.kind === 'replace') {
         updated = {
           ...mutation.next,
@@ -8252,18 +8359,21 @@ export class DialogPersistence {
         throw new Error(`Unhandled dialog latest mutation: ${String(_exhaustive)}`);
       }
 
-      updated = normalizeGeneratingDisplayStateMismatch(dialogId, status, existing, updated, {
-        trigger: 'mutateDialogLatest',
-        mutationKind: mutation.kind,
-        patchSummary:
-          mutation.kind === 'patch'
-            ? summarizeLatestMutationPatch(mutation.patch)
-            : mutation.kind === 'replace'
-              ? summarizeLatestProjectionState(mutation.next)
-              : null,
-        latestSource: staged ? 'staged' : latestFromDisk ? 'disk' : 'default_bootstrap',
-        latestWriteBackKey: key,
-      });
+      updated = normalizeGeneratingDisplayStateMismatch(
+        dialogId,
+        status,
+        existing,
+        updated,
+        mutationContext,
+      );
+      updated = normalizeSideDialogIdleWhileReplyObligationPending(
+        dialogId,
+        status,
+        existing,
+        updated,
+        askerStackState,
+        mutationContext,
+      );
 
       this.assertMainDialogWriteBackNotCanceled(
         effectiveCancellationToken,

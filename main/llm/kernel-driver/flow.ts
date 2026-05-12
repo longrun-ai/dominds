@@ -109,6 +109,32 @@ type FollowUpPrompt =
   | RuntimeReplyReminderPrompt
   | RuntimeSideDialogReplyReminderPrompt;
 
+function buildRuntimeReplyReminderFollowUp(args: {
+  directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
+  prompt: string;
+  language: 'zh' | 'en';
+  sideDialogReplyTarget?: SideDialogReplyTarget;
+}): RuntimeReplyReminderPrompt | RuntimeSideDialogReplyReminderPrompt {
+  const common = {
+    prompt: args.prompt,
+    msgId: generateShortId(),
+    grammar: 'markdown' as const,
+    origin: 'runtime' as const,
+    userLanguageCode: args.language,
+    tellaskReplyDirective: args.directive,
+  };
+  return args.sideDialogReplyTarget === undefined
+    ? {
+        kind: 'runtime_reply_reminder',
+        ...common,
+      }
+    : {
+        kind: 'runtime_sideDialog_reply_reminder',
+        ...common,
+        sideDialogReplyTarget: args.sideDialogReplyTarget,
+      };
+}
+
 async function queueReplyReminderFollowUp(args: {
   dialog: Dialog;
   followUp: RuntimeReplyReminderPrompt | RuntimeSideDialogReplyReminderPrompt;
@@ -364,6 +390,110 @@ async function loadPendingDiagnosticsSnapshot(args: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+async function hasAssistantOutputAfterAssignmentAnchor(args: {
+  dialog: SideDialog;
+  callId: string;
+}): Promise<boolean> {
+  const events = await DialogPersistence.loadCourseEvents(
+    args.dialog.id,
+    args.dialog.currentCourse,
+    args.dialog.status,
+  );
+  let assignmentGenseq: number | undefined;
+  for (const event of events) {
+    if (
+      event.type === 'tellask_anchor_record' &&
+      event.anchorRole === 'assignment' &&
+      event.callId === args.callId
+    ) {
+      assignmentGenseq = event.genseq;
+      continue;
+    }
+    if (
+      assignmentGenseq !== undefined &&
+      (event.type === 'agent_thought_record' || event.type === 'agent_words_record') &&
+      event.genseq >= assignmentGenseq &&
+      event.content.trim() !== ''
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function resolveStrandedSideDialogReplyReminderFollowUp(args: {
+  dialog: SideDialog;
+}): Promise<RuntimeSideDialogReplyReminderPrompt | undefined> {
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  const displayState = latest?.displayState;
+  const isRecoverableProjection =
+    displayState?.kind === 'idle_waiting_user' ||
+    (displayState?.kind === 'stopped' && displayState.reason.kind === 'pending_reply_obligation');
+  if (
+    !latest ||
+    !isRecoverableProjection ||
+    latest.pendingCourseStartPrompt !== undefined ||
+    latest.executionMarker?.kind === 'dead'
+  ) {
+    return undefined;
+  }
+
+  const directive = await loadActiveTellaskReplyDirective(args.dialog);
+  if (!directive) {
+    return undefined;
+  }
+
+  const ownerDialogId = directive.targetDialogId.trim();
+  if (ownerDialogId === '') {
+    throw new Error(
+      `stranded sideDialog reply recovery invariant violation: empty targetDialogId ` +
+        `(dialogId=${args.dialog.id.valueOf()}, targetCallId=${directive.targetCallId})`,
+    );
+  }
+  const pending = await DialogPersistence.loadPendingSideDialogs(
+    new DialogID(ownerDialogId, args.dialog.id.rootId),
+    args.dialog.status,
+  );
+  const pendingRecord = pending.find(
+    (record) =>
+      record.sideDialogId === args.dialog.id.selfId && record.callId === directive.targetCallId,
+  );
+  if (!pendingRecord) {
+    return undefined;
+  }
+  if (
+    !(await hasAssistantOutputAfterAssignmentAnchor({
+      dialog: args.dialog,
+      callId: pendingRecord.callId,
+    }))
+  ) {
+    return undefined;
+  }
+
+  const language = getWorkLanguage();
+  const sideDialogReplyTarget: SideDialogReplyTarget = {
+    ownerDialogId,
+    callType: pendingRecord.callType,
+    callId: pendingRecord.callId,
+    callSiteCourse: pendingRecord.callSiteCourse,
+    callSiteGenseq: pendingRecord.callSiteGenseq,
+  };
+  return {
+    kind: 'runtime_sideDialog_reply_reminder',
+    prompt: await buildReplyToolReminderPrompt({
+      dlg: args.dialog,
+      directive,
+      language,
+    }),
+    msgId: generateShortId(),
+    grammar: 'markdown',
+    origin: 'runtime',
+    userLanguageCode: language,
+    tellaskReplyDirective: directive,
+    sideDialogReplyTarget,
+  };
 }
 
 async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<void> {
@@ -630,6 +760,9 @@ async function inspectNoPromptSideDialogDrive(args: {
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
+  const pendingReplyObligationResumeAllowed =
+    latest?.executionMarker?.kind === 'interrupted' &&
+    latest.executionMarker.reason.kind === 'pending_reply_obligation';
   if (lastEvent?.type === 'tellask_anchor_record' && lastEvent.anchorRole === 'response') {
     return {
       shouldReject: true,
@@ -643,7 +776,8 @@ async function inspectNoPromptSideDialogDrive(args: {
   if (
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
-    !supplyResponseParentReviveAllowed
+    !supplyResponseParentReviveAllowed &&
+    !pendingReplyObligationResumeAllowed
   ) {
     return {
       shouldReject: true,
@@ -968,6 +1102,33 @@ export async function executeDriveRound(args: {
     // suspended by pending Q4H or sideDialogs. This prevents duplicate generations when
     // multiple wake-ups race around the same sideDialog completion boundary.
     if (!humanPrompt) {
+      if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
+        const strandedReplyReminder = await resolveStrandedSideDialogReplyReminderFollowUp({
+          dialog,
+        });
+        if (strandedReplyReminder !== undefined) {
+          await queueReplyReminderFollowUp({ dialog, followUp: strandedReplyReminder });
+          args.scheduleDrive(dialog, {
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_follow_up',
+              reason: 'follow_up_prompt',
+            },
+          });
+          log.warn(
+            'kernel-driver recovered stranded sideDialog reply obligation by queueing reply reminder',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              targetCallId: strandedReplyReminder.tellaskReplyDirective.targetCallId,
+              targetOwnerDialogId: strandedReplyReminder.sideDialogReplyTarget.ownerDialogId,
+            },
+          );
+          return;
+        }
+      }
       if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
         try {
           const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
@@ -1317,35 +1478,16 @@ export async function executeDriveRound(args: {
               } else {
                 if (!activePromptWasReplyToolReminder) {
                   const language = getWorkLanguage();
-                  followUp =
-                    sideDialogReplyTarget === undefined
-                      ? {
-                          kind: 'runtime_reply_reminder',
-                          prompt: await buildReplyToolReminderPrompt({
-                            dlg: dialog,
-                            directive: activeTellaskReplyDirective,
-                            language,
-                          }),
-                          msgId: generateShortId(),
-                          grammar: 'markdown',
-                          origin: 'runtime',
-                          userLanguageCode: language,
-                          tellaskReplyDirective: activeTellaskReplyDirective,
-                        }
-                      : {
-                          kind: 'runtime_sideDialog_reply_reminder',
-                          prompt: await buildReplyToolReminderPrompt({
-                            dlg: dialog,
-                            directive: activeTellaskReplyDirective,
-                            language,
-                          }),
-                          msgId: generateShortId(),
-                          grammar: 'markdown',
-                          origin: 'runtime',
-                          userLanguageCode: language,
-                          tellaskReplyDirective: activeTellaskReplyDirective,
-                          sideDialogReplyTarget,
-                        };
+                  followUp = buildRuntimeReplyReminderFollowUp({
+                    directive: activeTellaskReplyDirective,
+                    prompt: await buildReplyToolReminderPrompt({
+                      dlg: dialog,
+                      directive: activeTellaskReplyDirective,
+                      language,
+                    }),
+                    language,
+                    sideDialogReplyTarget,
+                  });
                   log.debug(
                     'kernel-driver queued sideDialog replyTellask reminder after plain reply',
                     undefined,

@@ -252,6 +252,7 @@ export type UiStrings = {
   stoppedByEmergencyStop: string;
   interruptedByServerRestart: string;
   pendingCourseStartReady: string;
+  pendingReplyObligation: string;
   forkContinueReady: string;
   runMarkerResumed: string;
   runMarkerInterrupted: string;
@@ -669,6 +670,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       stoppedByEmergencyStop: '已被紧急停止终止',
       interruptedByServerRestart: '因服务器重启而中断',
       pendingCourseStartReady: '换程启动已就绪，可继续推进',
+      pendingReplyObligation: '仍有待完成的回贴义务，可继续推进',
       forkContinueReady: '已创建继续分支，可继续推进',
       runMarkerResumed: '已继续',
       runMarkerInterrupted: '已停止',
@@ -1101,6 +1103,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     stoppedByEmergencyStop: 'Stopped by emergency stop',
     interruptedByServerRestart: 'Interrupted by server restart',
     pendingCourseStartReady: 'A new course is ready to continue',
+    pendingReplyObligation: 'An inter-dialog reply obligation is still pending',
     forkContinueReady: 'A continuation fork is ready to proceed',
     runMarkerResumed: 'Resumed',
     runMarkerInterrupted: 'Stopped',

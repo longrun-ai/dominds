@@ -34,6 +34,7 @@ export type DialogInterruptionReason =
   | { kind: 'emergency_stop' }
   | { kind: 'server_restart' }
   | { kind: 'pending_course_start' }
+  | { kind: 'pending_reply_obligation' }
   | { kind: 'fork_continue_ready' }
   | { kind: 'system_stop'; detail: string; i18nStopReason?: DialogDisplayTextI18n }
   | DialogLlmRetryExhaustedReason;

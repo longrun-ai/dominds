@@ -116,6 +116,14 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
+function pendingReplyObligationDisplayState(): DialogDisplayState {
+  return {
+    kind: 'stopped',
+    reason: { kind: 'pending_reply_obligation' },
+    continueEnabled: true,
+  };
+}
+
 async function hasSideDialogFinalResponseAnchor(
   dialogId: DialogID,
   latest: DialogLatestFile,
@@ -133,6 +141,39 @@ async function hasSideDialogFinalResponseAnchor(
     }
   }
   return false;
+}
+
+async function hasActiveSideDialogReplyObligation(dialogId: DialogID): Promise<boolean> {
+  if (dialogId.selfId === dialogId.rootId) {
+    return false;
+  }
+  const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dialogId,
+    'running',
+  );
+  return activeObligation !== undefined;
+}
+
+async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
+  dialogId: DialogID,
+  displayState: DialogDisplayState,
+): Promise<DialogDisplayState> {
+  if (displayState.kind !== 'idle_waiting_user') {
+    return displayState;
+  }
+  if (!(await hasActiveSideDialogReplyObligation(dialogId))) {
+    return displayState;
+  }
+  log.warn(
+    'Prevented sideDialog with active reply obligation from entering idle display state',
+    new Error('sideDialog idle display-state invariant violation'),
+    {
+      dialogId: dialogId.valueOf(),
+      rootId: dialogId.rootId,
+      selfId: dialogId.selfId,
+    },
+  );
+  return pendingReplyObligationDisplayState();
 }
 
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
@@ -401,6 +442,10 @@ export async function setDialogDisplayState(
   dialogId: DialogID,
   displayState: DialogDisplayState,
 ): Promise<void> {
+  displayState = await coerceIdleDisplayStateForActiveSideDialogReplyObligation(
+    dialogId,
+    displayState,
+  );
   if (displayState.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
       'Rejecting dead displayState for main dialog (main dialogs must not be dead)',
@@ -528,6 +573,9 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: true,
     };
   }
+  if (await hasActiveSideDialogReplyObligation(dlg.id)) {
+    return pendingReplyObligationDisplayState();
+  }
 
   const hasQ4H = await dlg.hasPendingQ4H();
   const hasSideDialogs = await dlg.hasPendingSideDialogs();
@@ -573,6 +621,9 @@ async function computeIdleDisplayStateFromPersistence(
       reason: { kind: 'pending_course_start' },
       continueEnabled: true,
     };
+  }
+  if (await hasActiveSideDialogReplyObligation(dialogId)) {
+    return pendingReplyObligationDisplayState();
   }
   if (latest && (await hasSideDialogFinalResponseAnchor(dialogId, latest))) {
     return { kind: 'idle_waiting_user' };
@@ -709,6 +760,9 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         continueEnabled: true,
       };
     }
+    if (await hasActiveSideDialogReplyObligation(dialogId)) {
+      return pendingReplyObligationDisplayState();
+    }
     if (await hasSideDialogFinalResponseAnchor(dialogId, latest)) {
       return { kind: 'idle_waiting_user' };
     }
@@ -789,7 +843,11 @@ export function isRecoverableGeneratingLatest(latest: DialogLatestFile | null): 
   if (marker.kind === 'dead') {
     return false;
   }
-  return marker.kind !== 'interrupted' || marker.reason.kind === 'pending_course_start';
+  return (
+    marker.kind !== 'interrupted' ||
+    marker.reason.kind === 'pending_course_start' ||
+    marker.reason.kind === 'pending_reply_obligation'
+  );
 }
 
 export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
@@ -867,7 +925,8 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&
-              existingMarker.reason.kind === 'pending_course_start'
+              (existingMarker.reason.kind === 'pending_course_start' ||
+                existingMarker.reason.kind === 'pending_reply_obligation')
                 ? undefined
                 : existingMarker,
           },

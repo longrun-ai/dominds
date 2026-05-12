@@ -9551,6 +9551,8 @@ export class DomindsApp extends HTMLElement {
         return t.interruptedByServerRestart;
       case 'pending_course_start':
         return t.pendingCourseStartReady;
+      case 'pending_reply_obligation':
+        return t.pendingReplyObligation;
       case 'fork_continue_ready':
         return t.forkContinueReady;
       case 'llm_retry_stopped':
