@@ -43,6 +43,7 @@ import {
   type LlmBatchResult,
   type LlmFailureDisposition,
   type LlmGenerator,
+  type LlmInvalidFuncCall,
   type LlmRequestContext,
   type LlmStreamReceiver,
   type LlmStreamResult,
@@ -1892,6 +1893,30 @@ function throwOpenAiCompatibleMalformedBatchToolCall(detail: string): never {
   throw error;
 }
 
+function buildInvalidStreamedToolFunctionNameCall(state: ActiveFuncCall): LlmInvalidFuncCall {
+  return {
+    provider: 'openai-compatible',
+    callId: state.callId,
+    detail: `OPENAI-COMPATIBLE missing streamed tool function name for callId=${state.callId}`,
+    toolCallIndex: state.index,
+    rawArgumentsText: state.argsJson,
+  };
+}
+
+function buildInvalidToolFunctionNameCall(args: {
+  callId: string;
+  toolCallIndex: number;
+  rawArgumentsText: string;
+}): LlmInvalidFuncCall {
+  return {
+    provider: 'openai-compatible',
+    callId: args.callId,
+    detail: `OPENAI-COMPATIBLE missing tool function name for callId=${args.callId}`,
+    toolCallIndex: args.toolCallIndex,
+    rawArgumentsText: args.rawArgumentsText,
+  };
+}
+
 async function maybeEmitFuncCall(
   state: ActiveFuncCall,
   receiver: LlmStreamReceiver,
@@ -1902,17 +1927,32 @@ async function maybeEmitFuncCall(
     state.callId = synthesizeCallId(genseq, state.index);
   }
   if (state.name.trim().length === 0) {
-    const detail = `OPENAI-COMPATIBLE missing streamed tool function name for callId=${state.callId}`;
+    if (state.argsJson.trim().length === 0) {
+      log.warn('OPENAI-COMPATIBLE ignored empty streamed tool call placeholder', undefined, {
+        callId: state.callId,
+        index: state.index,
+      });
+      state.emitted = true;
+      return;
+    }
+    const invalidCall = buildInvalidStreamedToolFunctionNameCall(state);
+    const detail = invalidCall.detail;
     log.error(detail, new Error('openai_compatible_missing_tool_call_name'), {
       callId: state.callId,
+      index: state.index,
     });
-    if (receiver.streamError) {
-      await receiver.streamError(detail);
+    if (!receiver.invalidFuncCall) {
+      if (receiver.streamError) {
+        await receiver.streamError(detail);
+      }
+      throw buildOpenAiCompatibleStreamError({
+        detail,
+        kind: 'invalid_tool_call',
+      });
     }
-    throw buildOpenAiCompatibleStreamError({
-      detail,
-      kind: 'invalid_tool_call',
-    });
+    state.emitted = true;
+    await receiver.invalidFuncCall(invalidCall);
+    return;
   }
   state.emitted = true;
   const args = state.argsJson.trim().length > 0 ? state.argsJson : '{}';
@@ -2150,26 +2190,28 @@ export async function consumeOpenAiCompatibleChatCompletionStreamForTest(args: {
   });
 }
 
-function chatCompletionToChatMessages(response: ChatCompletion, genseq: number): ChatMessage[] {
-  const out: ChatMessage[] = [];
+function chatCompletionToBatchOutputs(response: ChatCompletion, genseq: number): LlmBatchOutput[] {
+  const outputs: LlmBatchOutput[] = [];
   const choice = response.choices && response.choices.length > 0 ? response.choices[0] : undefined;
   const msg = choice ? choice.message : undefined;
-  if (!msg) return out;
+  if (!msg) return outputs;
 
   const reasoningContent = extractReasoningContentField(msg as unknown);
   if (reasoningContent && reasoningContent.length > 0) {
-    out.push({
+    const message: ChatMessage = {
       type: 'thinking_msg',
       role: 'assistant',
       genseq,
       content: reasoningContent,
       reasoning: buildReasoningPayloadFromText(reasoningContent),
-    });
+    };
+    outputs.push({ kind: 'message', message });
   }
 
   const content = typeof msg.content === 'string' ? msg.content : null;
   if (content && content.length > 0) {
-    out.push({ type: 'saying_msg', role: 'assistant', genseq, content });
+    const message: ChatMessage = { type: 'saying_msg', role: 'assistant', genseq, content };
+    outputs.push({ kind: 'message', message });
   }
 
   const toolCalls = msg.tool_calls;
@@ -2191,21 +2233,43 @@ function chatCompletionToChatMessages(response: ChatCompletion, genseq: number):
       const name = typeof call.function?.name === 'string' ? call.function.name : '';
       const args = typeof call.function?.arguments === 'string' ? call.function.arguments : '';
       if (name.trim().length === 0) {
-        throwOpenAiCompatibleMalformedBatchToolCall(
-          `missing tool function name for callId=${callId}`,
-        );
+        const invalidCall = buildInvalidToolFunctionNameCall({
+          callId,
+          toolCallIndex: index,
+          rawArgumentsText: args,
+        });
+        log.error(invalidCall.detail, new Error('openai_compatible_missing_tool_call_name'), {
+          callId,
+          index,
+        });
+        outputs.push({ kind: 'invalid_func_call', call: invalidCall });
+        continue;
       }
-      out.push({
+      const message: ChatMessage = {
         type: 'func_call_msg',
         role: 'assistant',
         genseq,
         id: callId,
         name,
         arguments: args,
-      });
+      };
+      outputs.push({ kind: 'message', message });
     }
   }
 
+  return outputs;
+}
+
+function batchOutputsToChatMessages(outputs: ReadonlyArray<LlmBatchOutput>): ChatMessage[] {
+  return outputs
+    .filter((output): output is Extract<LlmBatchOutput, { kind: 'message' }> => {
+      return output.kind === 'message';
+    })
+    .map((output) => output.message);
+}
+
+function chatCompletionToChatMessages(response: ChatCompletion, genseq: number): ChatMessage[] {
+  const out = batchOutputsToChatMessages(chatCompletionToBatchOutputs(response, genseq));
   return out;
 }
 
@@ -2214,6 +2278,13 @@ export function chatCompletionToChatMessagesForTest(
   genseq: number,
 ): ChatMessage[] {
   return chatCompletionToChatMessages(response, genseq);
+}
+
+export function chatCompletionToBatchOutputsForTest(
+  response: ChatCompletion,
+  genseq: number,
+): LlmBatchOutput[] {
+  return chatCompletionToBatchOutputs(response, genseq);
 }
 
 export class OpenAiCompatibleGen implements LlmGenerator {
@@ -2408,7 +2479,16 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       const response = await client.chat.completions.create(payload, {
         ...(abortSignal ? { signal: abortSignal } : {}),
       });
-      const messagesOut = chatCompletionToChatMessages(response, genseq);
+      const batchOutputs = chatCompletionToBatchOutputs(response, genseq);
+      const messagesOut = batchOutputsToChatMessages(batchOutputs);
+      const orderedOutputs: LlmBatchOutput[] =
+        outputs.length > 0
+          ? [
+              ...outputs,
+              ...messagesOut.map((message): LlmBatchOutput => ({ kind: 'message', message })),
+              ...batchOutputs.filter((output) => output.kind !== 'message'),
+            ]
+          : batchOutputs;
       const usage: LlmUsageStats = response.usage
         ? tryExtractChatUsage(response.usage)
         : ({ kind: 'unavailable' } satisfies LlmUsageStats);
@@ -2418,7 +2498,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
           : undefined;
       return {
         messages: messagesOut,
-        ...(outputs.length > 0 ? { outputs } : {}),
+        ...(orderedOutputs.length > 0 ? { outputs: orderedOutputs } : {}),
         usage,
         ...(model ? { llmGenModel: model } : {}),
       };

@@ -2575,13 +2575,19 @@ export class AnthropicGen implements LlmGenerator {
       totalTokens: promptTokens + completionTokens,
     };
 
+    const messages = anthropicToChatMessages(
+      response,
+      genseq,
+      forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+    );
+    const orderedOutputs: LlmBatchOutput[] =
+      outputs.length > 0
+        ? [...outputs, ...messages.map((message): LlmBatchOutput => ({ kind: 'message', message }))]
+        : [];
+
     return {
-      messages: anthropicToChatMessages(
-        response,
-        genseq,
-        forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
-      ),
-      ...(outputs.length > 0 ? { outputs } : {}),
+      messages,
+      ...(orderedOutputs.length > 0 ? { outputs: orderedOutputs } : {}),
       usage,
       llmGenModel: returnedModel,
     };

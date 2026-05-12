@@ -3062,10 +3062,20 @@ export class DiskFileDialogStore extends DialogStore {
    * Emit stream error for current generation lifecycle (uses active genseq when present)
    */
   public async streamError(dialog: Dialog, error: string): Promise<void> {
-    log.error(`Dialog stream error '${error}'`, new Error(), { dialog });
-
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeqOrUndefined;
+    log.error(`Dialog stream error '${error}'`, new Error(), {
+      dialogId: dialog.id.valueOf(),
+      rootId: dialog.id.rootId,
+      selfId: dialog.id.selfId,
+      course,
+      genseq,
+      agentId: dialog.agentId,
+      dialogClass: dialog.constructor.name,
+      status: dialog.status,
+      activeGeneration: dialog.hasActiveGeneration,
+      dialogSnapshot: dialog,
+    });
 
     // Enhanced stream error event with better error classification
     const streamErrorEvent: StreamErrorEvent = {

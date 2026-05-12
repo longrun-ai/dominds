@@ -9,6 +9,7 @@ import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
 import type { LlmStreamReceiver } from '../../main/llm/gen';
 import {
   buildOpenAiCompatibleExtraParamsForTest,
+  chatCompletionToBatchOutputsForTest,
   chatCompletionToChatMessagesForTest,
   consumeOpenAiCompatibleChatCompletionStreamForTest,
   OpenAiCompatibleGen,
@@ -74,6 +75,21 @@ function makeReceiver(events: string[], streamErrors: string[]): LlmStreamReceiv
     },
     streamError: async (detail) => {
       streamErrors.push(detail);
+    },
+  };
+}
+
+function makeReceiverWithInvalidFuncCalls(
+  events: string[],
+  streamErrors: string[],
+  invalidFuncCalls: string[],
+): LlmStreamReceiver {
+  return {
+    ...makeReceiver(events, streamErrors),
+    invalidFuncCall: async (call) => {
+      invalidFuncCalls.push(
+        `${call.provider}:${call.callId}:${String(call.toolCallIndex)}:${call.rawArgumentsText ?? ''}`,
+      );
     },
   };
 }
@@ -206,6 +222,116 @@ async function testMissingToolCallIdIsSynthesized(): Promise<void> {
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
+async function testEmptyStreamedToolCallPlaceholderIsIgnored(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const receiver = makeReceiver(events, streamErrors);
+
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          tool_calls: [
+            {
+              index: 2,
+              type: 'function',
+              function: {},
+            },
+          ],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]),
+    receiver,
+    genseq: 67,
+  });
+
+  assert(events.length === 0, `unexpected empty placeholder events: ${events.join('|')}`);
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
+async function testStreamedToolCallWithArgumentsMissingNameIsLoud(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const invalidFuncCalls: string[] = [];
+  const receiver = makeReceiverWithInvalidFuncCalls(events, streamErrors, invalidFuncCalls);
+
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          tool_calls: [
+            {
+              index: 2,
+              type: 'function',
+              function: { arguments: '{}' },
+            },
+          ],
+        },
+        finishReason: 'tool_calls',
+      }),
+    ]),
+    receiver,
+    genseq: 67,
+  });
+
+  assert(events.length === 0, `unexpected missing-name events: ${events.join('|')}`);
+  assert(
+    invalidFuncCalls.join('|') === 'openai-compatible:toolcall_67_2:2:{}',
+    `unexpected invalid func calls: ${invalidFuncCalls.join('|')}`,
+  );
+  assert(
+    streamErrors.length === 0,
+    `provider should leave stream_error_evt emission to invalidFuncCall receiver, got: ${streamErrors.join('|')}`,
+  );
+}
+
+async function testStreamedToolCallMissingNameWithoutRecoveryHookThrows(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const receiver = makeReceiver(events, streamErrors);
+  let caught = false;
+
+  try {
+    await consumeOpenAiCompatibleChatCompletionStreamForTest({
+      stream: stream([
+        chunk({
+          delta: {
+            tool_calls: [
+              {
+                index: 2,
+                type: 'function',
+                function: { arguments: '{}' },
+              },
+            ],
+          },
+          finishReason: 'tool_calls',
+        }),
+      ]),
+      receiver,
+      genseq: 67,
+    });
+  } catch (error: unknown) {
+    caught = true;
+    const message = error instanceof Error ? error.message : String(error);
+    assert(
+      message.includes(
+        'OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2',
+      ),
+      `unexpected missing-name throw: ${message}`,
+    );
+  }
+
+  assert(caught, 'expected missing streamed tool name without recovery hook to throw');
+  assert(events.length === 0, `unexpected missing-name events: ${events.join('|')}`);
+  assert(
+    streamErrors
+      .join('|')
+      .includes('OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2'),
+    `expected fallback stream error for missing tool name, got: ${streamErrors.join('|')}`,
+  );
+}
+
 async function testInvalidToolArgumentsPassThroughToToolCall(): Promise<void> {
   const events: string[] = [];
   const streamErrors: string[] = [];
@@ -298,31 +424,26 @@ function testBatchToolCallsUseOpenAiCompatibleRules(): void {
 }
 
 function testBatchToolCallMissingNameIsLoud(): void {
-  let caught = false;
-  try {
-    chatCompletionToChatMessagesForTest(
-      completion({
-        toolCalls: [
-          {
-            index: 0,
-            id: 'call-1',
-            type: 'function',
-            function: { name: '', arguments: '{}' },
-          },
-        ],
-      }),
-      13,
-    );
-  } catch (error: unknown) {
-    caught = true;
-    const message = error instanceof Error ? error.message : String(error);
-    assert(
-      message.includes('OPENAI-COMPATIBLE malformed batch tool call'),
-      `unexpected batch tool call error: ${message}`,
-    );
-    assert(message.includes('missing tool function name'), `unexpected detail: ${message}`);
-  }
-  assert(caught, 'expected missing batch tool function name to throw');
+  const outputs = chatCompletionToBatchOutputsForTest(
+    completion({
+      toolCalls: [
+        {
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: { name: '', arguments: '{}' },
+        },
+      ],
+    }),
+    13,
+  );
+  const invalid = outputs.find((output) => output.kind === 'invalid_func_call');
+  assert(invalid !== undefined, 'expected missing batch tool function name to be surfaced loudly');
+  assert(
+    invalid.call.detail === 'OPENAI-COMPATIBLE missing tool function name for callId=call-1',
+    `unexpected invalid batch tool call detail: ${invalid.call.detail}`,
+  );
+  assert(invalid.call.rawArgumentsText === '{}', 'expected raw arguments to be preserved');
 }
 
 function requireProvider(provider: ProviderConfig | undefined): ProviderConfig {
@@ -653,6 +774,9 @@ async function main(): Promise<void> {
   await testGenericAllowsSegmentAlternation();
   await testMissingToolCallTypeIsTolerated();
   await testMissingToolCallIdIsSynthesized();
+  await testEmptyStreamedToolCallPlaceholderIsIgnored();
+  await testStreamedToolCallWithArgumentsMissingNameIsLoud();
+  await testStreamedToolCallMissingNameWithoutRecoveryHookThrows();
   await testInvalidToolArgumentsPassThroughToToolCall();
   testBatchToolCallsUseOpenAiCompatibleRules();
   testBatchToolCallMissingNameIsLoud();

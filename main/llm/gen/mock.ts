@@ -76,8 +76,10 @@ import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';
 import {
   LlmStreamErrorEmittedError,
+  type LlmBatchOutput,
   type LlmBatchResult,
   type LlmGenerator,
+  type LlmInvalidFuncCall,
   type LlmRequestContext,
   type LlmStreamReceiver,
   type LlmStreamResult,
@@ -109,6 +111,11 @@ interface MockResponse {
     name: string;
     arguments?: unknown;
   }>;
+
+  /**
+   * Optional malformed provider/tool-call payloads surfaced through the runtime recovery path.
+   */
+  invalidFuncCalls?: ReadonlyArray<LlmInvalidFuncCall>;
 
   /**
    * Optional extra matcher: every string in this list must be present in at least
@@ -639,6 +646,10 @@ responses:
           : `mock_func_${String(i + 1)}_${call.name}`;
       await receiver.funcCall(callId, call.name, this.normalizeFuncCallArgs(call.arguments));
     }
+    const invalidFuncCalls = matched?.invalidFuncCalls ?? [];
+    for (const call of invalidFuncCalls) {
+      await receiver.invalidFuncCall?.(call);
+    }
 
     return { usage, llmGenModel: modelName };
   }
@@ -766,16 +777,30 @@ responses:
             arguments: this.normalizeFuncCallArgs(call.arguments),
           };
         }) ?? [];
+      const invalidFuncCalls = matched?.invalidFuncCalls ?? [];
+      const invalidFuncCallOutputs: LlmBatchOutput[] = invalidFuncCalls.map((call) => ({
+        kind: 'invalid_func_call',
+        call,
+      }));
+      const messages =
+        thinking !== undefined
+          ? saying
+            ? [thinking, saying, ...funcMsgs]
+            : [thinking, ...funcMsgs]
+          : saying
+            ? [saying, ...funcMsgs]
+            : [...funcMsgs];
 
       return {
-        messages:
-          thinking !== undefined
-            ? saying
-              ? [thinking, saying, ...funcMsgs]
-              : [thinking, ...funcMsgs]
-            : saying
-              ? [saying, ...funcMsgs]
-              : [...funcMsgs],
+        messages,
+        ...(invalidFuncCallOutputs.length > 0
+          ? {
+              outputs: [
+                ...messages.map((message): LlmBatchOutput => ({ kind: 'message', message })),
+                ...invalidFuncCallOutputs,
+              ],
+            }
+          : {}),
         usage,
         llmGenModel: modelName,
       };

@@ -7,6 +7,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { assertGlobalDialogEventBroadcasterInstalled } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, MainDialog } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
+import type { LlmInvalidFuncCall } from '../../main/llm/gen';
 import type {
   KernelDriverDriveOptions,
   KernelDriverUserPrompt,
@@ -37,6 +38,7 @@ export type MockEntry = {
     name: string;
     arguments?: unknown;
   }>;
+  invalidFuncCalls?: ReadonlyArray<LlmInvalidFuncCall>;
   contextContains?: ReadonlyArray<string>;
 };
 
@@ -59,6 +61,7 @@ export async function writeStandardMinds(
     memberToolsets?: ReadonlyArray<string>;
     memberTools?: ReadonlyArray<string>;
     diligencePushMax?: number;
+    streaming?: boolean;
     providerApiType?: string;
     providerApiQuirks?: ReadonlyArray<string>;
   },
@@ -94,6 +97,9 @@ export async function writeStandardMinds(
     '    model: default',
     `    diligence-push-max: ${String(options?.diligencePushMax ?? 2)}`,
   ];
+  if (options?.streaming !== undefined) {
+    teamLines.push(`    streaming: ${String(options.streaming)}`);
+  }
   if (options?.memberToolsets && options.memberToolsets.length > 0) {
     const quoted = options.memberToolsets.map((v) => JSON.stringify(v)).join(', ');
     teamLines.push(`    toolsets: [${quoted}]`);

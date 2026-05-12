@@ -28,6 +28,7 @@ export class LlmStreamErrorEmittedError extends Error {
 
 export type LlmBatchOutput =
   | { kind: 'message'; message: ChatMessage }
+  | { kind: 'invalid_func_call'; call: LlmInvalidFuncCall }
   | { kind: 'web_search_call'; call: LlmWebSearchCall }
   | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall }
   | { kind: 'tool_result_image_ingest'; ingest: ToolResultImageIngest }
@@ -167,6 +168,15 @@ export type OpenAiResponsesNativeToolCall =
   | OpenAiResponsesNonCustomNativeToolCall
   | OpenAiResponsesCustomToolCall;
 
+export type LlmInvalidFuncCall = Readonly<{
+  provider: string;
+  callId: string;
+  detail: string;
+  toolCallIndex?: number;
+  rawFunctionName?: string;
+  rawArgumentsText?: string;
+}>;
+
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
   thinkingChunk: (chunk: string) => Promise<void>;
@@ -180,6 +190,7 @@ export interface LlmStreamReceiver {
     args: string,
     ids?: { rawCallId?: string; effectiveCallId?: string },
   ) => Promise<void>;
+  invalidFuncCall?: (call: LlmInvalidFuncCall) => Promise<void>;
   webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
   nativeToolCall?: (call: OpenAiResponsesNativeToolCall) => Promise<void>;
   toolResultImageIngest?: (ingest: ToolResultImageIngest) => Promise<void>;

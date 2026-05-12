@@ -78,6 +78,7 @@ import {
   LlmStreamErrorEmittedError,
   type LlmBatchOutput,
   type LlmBatchResult,
+  type LlmInvalidFuncCall,
   type LlmStreamReceiver,
   type LlmWebSearchCall,
   type OpenAiResponsesNativeToolCall,
@@ -367,6 +368,10 @@ async function persistAndEmitRuntimeGuide(dlg: Dialog, content: string): Promise
     role: 'assistant',
     content,
   });
+  await persistAndPostRuntimeGuide(dlg, content);
+}
+
+async function persistAndPostRuntimeGuide(dlg: Dialog, content: string): Promise<void> {
   await DialogPersistence.persistRuntimeGuide(dlg, content, dlg.activeGenSeq);
   postDialogEvent(dlg, {
     type: 'runtime_guide_evt',
@@ -478,6 +483,9 @@ function hasMeaningfulBatchOutput(batch: Pick<LlmBatchResult, 'messages' | 'outp
       }
       if (output.kind === 'user_image_ingest') {
         continue;
+      }
+      if (output.kind === 'invalid_func_call') {
+        return true;
       }
       if (output.kind !== 'message') {
         return true;
@@ -1211,6 +1219,93 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
   await dlg.sayingStart();
   await dlg.sayingChunk(content);
   await dlg.sayingFinish();
+}
+
+function formatInvalidFuncCallRuntimeGuide(
+  language: 'zh' | 'en',
+  call: LlmInvalidFuncCall,
+): string {
+  const rawName =
+    call.rawFunctionName !== undefined && call.rawFunctionName.trim() !== ''
+      ? call.rawFunctionName.trim()
+      : '<missing>';
+  const rawArguments =
+    call.rawArgumentsText !== undefined && call.rawArgumentsText.trim() !== ''
+      ? call.rawArgumentsText
+      : '<empty>';
+  const indexLine =
+    call.toolCallIndex === undefined ? undefined : `- toolCallIndex: ${String(call.toolCallIndex)}`;
+  if (language === 'en') {
+    return [
+      '[Runtime notice] The previous model output contained an invalid tool-call payload that could not be represented as a normal provider tool call in the next generation context.',
+      '',
+      `- provider: ${call.provider}`,
+      `- callId: ${call.callId}`,
+      `- problem: ${call.detail}`,
+      `- rawFunctionName: ${rawName}`,
+      `- rawArgumentsText:`,
+      '```json',
+      rawArguments,
+      '```',
+      ...(indexLine === undefined ? [] : [indexLine]),
+      '',
+      'Treat that payload as failed. Do not assume the tool ran. Continue from the current task, and if a tool call is still needed, emit a new valid tool call with a non-empty function name and valid arguments.',
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
+  }
+  return [
+    '[运行时提示] 上一轮模型输出包含一个无效工具调用载荷，无法按正常 provider tool call 形态进入下一轮生成上下文。',
+    '',
+    `- provider: ${call.provider}`,
+    `- callId: ${call.callId}`,
+    `- 问题: ${call.detail}`,
+    `- rawFunctionName: ${rawName}`,
+    `- rawArgumentsText:`,
+    '```json',
+    rawArguments,
+    '```',
+    ...(indexLine === undefined ? [] : [indexLine]),
+    '',
+    '请把该载荷视为调用失败，不要假设工具已经执行。继续当前任务；如果仍需要调用工具，请重新发起一个函数名非空、参数有效的新工具调用。',
+  ]
+    .filter((line) => line.length > 0)
+    .join('\n');
+}
+
+async function persistInvalidFuncCallRuntimeGuide(args: {
+  dlg: Dialog;
+  call: LlmInvalidFuncCall;
+  source: 'streamed' | 'batch';
+  newMsgs: ChatMessage[];
+  emitStreamError: boolean;
+}): Promise<void> {
+  const { dlg, call } = args;
+  const sourceText = args.source === 'streamed' ? 'streamed' : 'batch';
+  log.error(
+    `kernel-driver received invalid ${sourceText} function call payload`,
+    new Error(`kernel_driver_invalid_${sourceText}_function_call_payload`),
+    {
+      rootId: dlg.id.rootId,
+      selfId: dlg.id.selfId,
+      course: dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+      genseq: dlg.activeGenSeq,
+      callId: call.callId,
+      provider: call.provider,
+      detail: call.detail,
+      toolCallIndex: call.toolCallIndex,
+    },
+  );
+  if (args.emitStreamError) {
+    await dlg.streamError(call.detail);
+  }
+  const content = formatInvalidFuncCallRuntimeGuide(getWorkLanguage(), call);
+  args.newMsgs.push({
+    type: 'transient_guide_msg',
+    role: 'assistant',
+    content,
+  });
+  await persistAndPostRuntimeGuide(dlg, content);
 }
 
 type RoutedFunctionResult = {
@@ -2499,6 +2594,7 @@ export async function driveDialogStreamCore(
           const streamedFuncCalls: FuncCallMsg[] = [];
           let sawWebSearchSideChannelOutput = false;
           let sawNativeToolSideChannelOutput = false;
+          let invalidFuncCallCount = 0;
 
           const streamOrBatch = async (): Promise<{
             usage: LlmUsageStats;
@@ -2529,6 +2625,7 @@ export async function driveDialogStreamCore(
 
               sawWebSearchSideChannelOutput = false;
               sawNativeToolSideChannelOutput = false;
+              invalidFuncCallCount = 0;
               streamedFuncCalls.length = 0;
               newMsgs.length = 0;
             };
@@ -2651,6 +2748,7 @@ export async function driveDialogStreamCore(
               sawWebSearchSideChannelOutput = false;
               sawNativeToolSideChannelOutput = false;
               streamedFuncCalls.length = 0;
+              invalidFuncCallCount = 0;
               newMsgs.length = 0;
             };
 
@@ -2779,6 +2877,17 @@ export async function driveDialogStreamCore(
                   arguments: argsStr,
                 });
               },
+              invalidFuncCall: async (call) => {
+                throwIfAborted(abortSignal, dlg);
+                invalidFuncCallCount += 1;
+                await persistInvalidFuncCallRuntimeGuide({
+                  dlg,
+                  call,
+                  source: 'streamed',
+                  newMsgs,
+                  emitStreamError: true,
+                });
+              },
               webSearchCall: async (call) => {
                 throwIfAborted(abortSignal, dlg);
                 sawWebSearchSideChannelOutput = true;
@@ -2834,6 +2943,7 @@ export async function driveDialogStreamCore(
                 sawWebSearchSideChannelOutput = false;
                 sawNativeToolSideChannelOutput = false;
                 streamedFuncCalls.length = 0;
+                invalidFuncCallCount = 0;
                 newMsgs.length = 0;
                 const promptCacheKey = prepareLlmRequestContextKey();
                 const streamResult = await llmGen.genToReceiver(
@@ -2863,6 +2973,7 @@ export async function driveDialogStreamCore(
                 if (
                   !hasFinishedMessageContent &&
                   !hasFunctionCall &&
+                  invalidFuncCallCount === 0 &&
                   !sawWebSearchSideChannelOutput &&
                   !sawNativeToolSideChannelOutput
                 ) {
@@ -2934,6 +3045,17 @@ export async function driveDialogStreamCore(
                 if (msg.type === 'func_call_msg') {
                   streamedFuncCalls.push(msg);
                 }
+                break;
+              }
+              case 'invalid_func_call': {
+                invalidFuncCallCount += 1;
+                await persistInvalidFuncCallRuntimeGuide({
+                  dlg,
+                  call: output.call,
+                  source: 'batch',
+                  newMsgs,
+                  emitStreamError: true,
+                });
                 break;
               }
               case 'web_search_call': {
@@ -3174,7 +3296,9 @@ export async function driveDialogStreamCore(
           // meaningful output, but they are not transcript/context inputs and therefore must not
           // trigger another immediate generation round by themselves.
           const shouldStartImmediatePostToolGeneration =
-            routed.hasImmediateFollowupToolCalls || routed.tellaskToolOutputs.length > 0;
+            routed.hasImmediateFollowupToolCalls ||
+            routed.tellaskToolOutputs.length > 0 ||
+            invalidFuncCallCount > 0;
           if (!shouldStartImmediatePostToolGeneration) {
             const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
               dlg,

@@ -154,6 +154,211 @@ async function main(): Promise<void> {
       'expected the next model round to see the function failure and recover',
     );
 
+    const invalidPayloadTrigger =
+      'Provider emits a streamed tool-call payload with arguments but no function name.';
+    const invalidPayloadRecovery =
+      'I saw the invalid provider tool-call payload notice and continued without assuming the tool ran.';
+    const invalidPayloadDetail =
+      'OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2';
+
+    await writeMockDb(tmpRoot, [
+      {
+        message: invalidPayloadTrigger,
+        role: 'user',
+        response: '',
+        omitDefaultThinking: true,
+        invalidFuncCalls: [
+          {
+            provider: 'openai-compatible',
+            callId: 'toolcall_67_2',
+            detail: invalidPayloadDetail,
+            toolCallIndex: 2,
+            rawArgumentsText: '{}',
+          },
+        ],
+      },
+      {
+        message: invalidPayloadTrigger,
+        role: 'user',
+        response: invalidPayloadRecovery,
+        contextContains: [invalidPayloadDetail, 'rawArgumentsText'],
+      },
+    ]);
+
+    const invalidPayloadDlg = await createMainDialog('tester');
+    invalidPayloadDlg.disableDiligencePush = true;
+    const invalidPayloadCh = dialogEventRegistry.createSubChan(invalidPayloadDlg.id);
+
+    await driveDialogStream(
+      invalidPayloadDlg,
+      makeUserPrompt(
+        invalidPayloadTrigger,
+        'kernel-driver-invalid-provider-tool-call-payload-feedback',
+      ),
+      true,
+    );
+
+    const invalidPayloadEvents = await collectEvents(invalidPayloadCh, 500);
+    assert.ok(
+      invalidPayloadEvents.some(
+        (event) => event.type === 'stream_error_evt' && event.error === invalidPayloadDetail,
+      ),
+      'expected invalid provider tool-call payload to emit stream_error_evt',
+    );
+    const invalidPayloadGuides = invalidPayloadDlg.msgs.filter(
+      (msg) => msg.type === 'transient_guide_msg' && msg.content.includes(invalidPayloadDetail),
+    );
+    assert.equal(
+      invalidPayloadGuides.length,
+      1,
+      'expected invalid provider tool-call payload to persist one runtime guide',
+    );
+    const invalidPayloadSayings = invalidPayloadDlg.msgs.filter(
+      (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
+    );
+    assert.equal(
+      invalidPayloadSayings[invalidPayloadSayings.length - 1]?.content,
+      invalidPayloadRecovery,
+      'invalid provider tool-call payload should trigger same-drive recovery instead of stopping',
+    );
+
+    const invalidPayloadWithSayingTrigger =
+      'Provider emits assistant text before an invalid streamed tool-call payload.';
+    const invalidPayloadPrelude = 'I will try a provider tool call now.';
+    const invalidPayloadWithSayingRecovery =
+      'I saw the invalid provider payload after my previous text and continued in order.';
+    const invalidPayloadWithSayingDetail =
+      'OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_68_1';
+
+    await writeMockDb(tmpRoot, [
+      {
+        message: invalidPayloadWithSayingTrigger,
+        role: 'user',
+        response: invalidPayloadPrelude,
+        omitDefaultThinking: true,
+        invalidFuncCalls: [
+          {
+            provider: 'openai-compatible',
+            callId: 'toolcall_68_1',
+            detail: invalidPayloadWithSayingDetail,
+            toolCallIndex: 1,
+            rawArgumentsText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        message: invalidPayloadWithSayingTrigger,
+        role: 'user',
+        response: invalidPayloadWithSayingRecovery,
+        contextContains: [invalidPayloadWithSayingDetail, invalidPayloadPrelude],
+      },
+    ]);
+
+    const invalidPayloadWithSayingDlg = await createMainDialog('tester');
+    invalidPayloadWithSayingDlg.disableDiligencePush = true;
+
+    await driveDialogStream(
+      invalidPayloadWithSayingDlg,
+      makeUserPrompt(
+        invalidPayloadWithSayingTrigger,
+        'kernel-driver-invalid-provider-tool-call-payload-after-saying-feedback',
+      ),
+      true,
+    );
+
+    const preludeIndex = invalidPayloadWithSayingDlg.msgs.findIndex(
+      (msg) => msg.type === 'saying_msg' && msg.content === invalidPayloadPrelude,
+    );
+    const guideIndex = invalidPayloadWithSayingDlg.msgs.findIndex(
+      (msg) =>
+        msg.type === 'transient_guide_msg' && msg.content.includes(invalidPayloadWithSayingDetail),
+    );
+    assert.ok(preludeIndex >= 0, 'expected assistant prelude before invalid payload guide');
+    assert.ok(guideIndex >= 0, 'expected runtime guide for invalid payload after assistant text');
+    assert.ok(
+      preludeIndex < guideIndex,
+      'runtime guide should remain after earlier assistant text in dialog memory',
+    );
+    const invalidPayloadWithSayingSayings = invalidPayloadWithSayingDlg.msgs.filter(
+      (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
+    );
+    assert.equal(
+      invalidPayloadWithSayingSayings[invalidPayloadWithSayingSayings.length - 1]?.content,
+      invalidPayloadWithSayingRecovery,
+      'invalid provider payload after assistant text should still recover in same drive',
+    );
+
+    await writeStandardMinds(tmpRoot, { memberTools: ['env_get'], streaming: false });
+    const invalidBatchPayloadTrigger =
+      'Provider emits a batch tool-call payload with arguments but no function name.';
+    const invalidBatchPayloadRecovery =
+      'I saw the invalid batch provider payload notice and continued without assuming the tool ran.';
+    const invalidBatchPayloadDetail =
+      'OPENAI-COMPATIBLE missing tool function name for callId=batch-missing-name';
+
+    await writeMockDb(tmpRoot, [
+      {
+        message: invalidBatchPayloadTrigger,
+        role: 'user',
+        response: '',
+        omitDefaultThinking: true,
+        invalidFuncCalls: [
+          {
+            provider: 'openai-compatible',
+            callId: 'batch-missing-name',
+            detail: invalidBatchPayloadDetail,
+            toolCallIndex: 0,
+            rawArgumentsText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        message: invalidBatchPayloadTrigger,
+        role: 'user',
+        response: invalidBatchPayloadRecovery,
+        contextContains: [invalidBatchPayloadDetail, 'rawArgumentsText'],
+      },
+    ]);
+
+    const invalidBatchPayloadDlg = await createMainDialog('tester');
+    invalidBatchPayloadDlg.disableDiligencePush = true;
+    const invalidBatchPayloadCh = dialogEventRegistry.createSubChan(invalidBatchPayloadDlg.id);
+
+    await driveDialogStream(
+      invalidBatchPayloadDlg,
+      makeUserPrompt(
+        invalidBatchPayloadTrigger,
+        'kernel-driver-invalid-batch-provider-tool-call-payload-feedback',
+      ),
+      true,
+    );
+
+    const invalidBatchPayloadEvents = await collectEvents(invalidBatchPayloadCh, 500);
+    assert.ok(
+      invalidBatchPayloadEvents.some(
+        (event) => event.type === 'stream_error_evt' && event.error === invalidBatchPayloadDetail,
+      ),
+      'expected invalid batch provider tool-call payload to emit stream_error_evt',
+    );
+    const invalidBatchPayloadGuides = invalidBatchPayloadDlg.msgs.filter(
+      (msg) =>
+        msg.type === 'transient_guide_msg' && msg.content.includes(invalidBatchPayloadDetail),
+    );
+    assert.equal(
+      invalidBatchPayloadGuides.length,
+      1,
+      'expected invalid batch provider tool-call payload to persist one runtime guide',
+    );
+    const invalidBatchPayloadSayings = invalidBatchPayloadDlg.msgs.filter(
+      (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
+    );
+    assert.equal(
+      invalidBatchPayloadSayings[invalidBatchPayloadSayings.length - 1]?.content,
+      invalidBatchPayloadRecovery,
+      'invalid batch provider payload should trigger same-drive recovery instead of stopping',
+    );
+    await writeStandardMinds(tmpRoot, { memberTools: ['env_get'] });
+
     const replyTrigger =
       'Call replyTellaskSessionless, but the first special-function arguments are malformed JSON.';
     const badReplyArguments = '{"replyContent":';

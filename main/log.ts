@@ -106,6 +106,42 @@ const DETAIL_INSPECT_PROFILES: ReadonlyArray<DetailInspectProfile> = [
   },
 ];
 
+const LOG_KEY_PRIORITY = new Map<string, number>(
+  [
+    'rootId',
+    'selfId',
+    'dialogId',
+    'course',
+    'genseq',
+    'callId',
+    'questionId',
+    'agentId',
+    'toolName',
+    'provider',
+    'model',
+    'dialogClass',
+    'status',
+    'error',
+    'detail',
+    'message',
+    'code',
+    'name',
+    'type',
+  ].map((key, index) => [key, index]),
+);
+
+function compareLogObjectKeys(left: string, right: string): number {
+  const leftPriority = LOG_KEY_PRIORITY.get(left);
+  const rightPriority = LOG_KEY_PRIORITY.get(right);
+  if (leftPriority !== undefined || rightPriority !== undefined) {
+    return (leftPriority ?? Number.MAX_SAFE_INTEGER) - (rightPriority ?? Number.MAX_SAFE_INTEGER);
+  }
+  const leftInternal = left.startsWith('_') || left.startsWith('__');
+  const rightInternal = right.startsWith('_') || right.startsWith('__');
+  if (leftInternal !== rightInternal) return leftInternal ? 1 : -1;
+  return left.localeCompare(right);
+}
+
 type TruncateResult = Readonly<{
   text: string;
   truncated: boolean;
@@ -308,7 +344,7 @@ function pruneForLog(
     }
 
     const source = value as Record<string, unknown>;
-    const allKeys = Object.keys(source).sort();
+    const allKeys = Object.keys(source).sort(compareLogObjectKeys);
     const visibleKeys = allKeys.slice(0, profile.maxObjectKeys);
     const ctorName = getConstructorName(value);
     const reduced: Record<string, unknown> = {};
@@ -352,7 +388,7 @@ function inspectAdaptive(value: unknown, maxChars: number): DetailRenderResult {
       depth: null,
       breakLength: 120,
       compact: false,
-      sorted: true,
+      sorted: false,
       maxArrayLength: profile.maxArrayItems,
       maxStringLength: profile.maxStringLength,
     });
