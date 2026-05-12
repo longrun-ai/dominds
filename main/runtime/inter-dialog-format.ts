@@ -379,11 +379,11 @@ export function formatTellaskResponseContent(input: TellaskResponseFormatInput):
     input.deliveryMode === 'direct_fallback'
       ? input.directFallbackSource === 'thinking_only'
         ? language === 'zh'
-          ? '> 系统提示：本次回贴未调用 replyTellask* 工具，且模型仅产出 thinking；Dominds 已将该 thinking 内容按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
-          : '> System note: this reply did not use a replyTellask* tool, and the model only produced thinking. Dominds delivered that thinking content via direct-reply fallback and kept this marker for traceability.\n\n'
+          ? '> 系统提示：本次回贴未调用 replyTellask* 工具，且模型仅产出 thinking；在确认本轮没有待续推工具调用后，Dominds 已通过 direct-reply fallback 临时过渡兜底投递该 thinking 内容。此路径不是正式回复机制，保留本标记仅用于追踪。\n\n'
+          : '> System note: this reply did not use a replyTellask* tool, and the model only produced thinking. After confirming that no tool call in this round was waiting for auto-continuation, Dominds delivered that thinking content through direct-reply fallback as a temporary transition safeguard. This path is not the formal reply mechanism; this marker is kept only for traceability.\n\n'
         : language === 'zh'
-          ? '> 系统提示：本次回贴未调用 replyTellask* 工具，Dominds 已按 direct-reply fallback 投递，并保留此标记便于追踪。\n\n'
-          : '> System note: this reply did not use a replyTellask* tool. Dominds delivered it via direct-reply fallback and kept this marker for traceability.\n\n'
+          ? '> 系统提示：本次回贴未调用 replyTellask* 工具；在确认本轮没有待续推工具调用后，Dominds 已通过 direct-reply fallback 临时过渡兜底投递。此路径不是正式回复机制，保留本标记仅用于追踪。\n\n'
+          : '> System note: this reply did not use a replyTellask* tool. After confirming that no tool call in this round was waiting for auto-continuation, Dominds delivered it through direct-reply fallback as a temporary transition safeguard. This path is not the formal reply mechanism; this marker is kept only for traceability.\n\n'
       : '';
 
   if (isFbr) {

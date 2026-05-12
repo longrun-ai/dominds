@@ -36,7 +36,7 @@
 - 看见哪一个 `reply*` 被 runtime 暴露，就调用哪一个；不要自行改选别的 reply 变体
 - assignment 头部若已点名 reply 函数名，以那个名字为准
 - `replyContent` 只放最终交付正文，不要再包一层“我现在调用了 replyXXX”
-- 如果你直接输出普通文本而没调 reply 工具，runtime 可能插入一条 `role=user` 的 runtime reminder 纠正你
+- 如果你直接产出最终回贴内容而没调 reply 工具，runtime 可能插入一条 `role=user` 的 runtime reminder 纠正你；不要依赖 direct-reply fallback，它只是运行时临时过渡兜底，不是正式回复机制
 
 ### 1. add_reminder
 

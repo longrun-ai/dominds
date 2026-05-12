@@ -212,6 +212,10 @@ function resolveDirectFallbackResponse(args: {
     };
   }
 
+  // Thinking-only output is intentionally a fallback candidate: some providers/models can finish a
+  // Side Dialog with useful content in thinking and no public saying. This helper only extracts the
+  // candidate; callers below must still reject it when a same-round function/tellask call needs
+  // auto-continuation, when the dialog is suspended, or when another follow-up prompt is queued.
   if (
     args.driveResult.lastAssistantThinkingContent !== null &&
     args.driveResult.lastAssistantThinkingContent.trim() !== ''
@@ -1436,8 +1440,10 @@ export async function executeDriveRound(args: {
             driveResult.lastFunctionCallGenseq > 0 &&
             directFallbackResponse.responseGenseq <= driveResult.lastFunctionCallGenseq;
           if (hasInProgressFunctionCall) {
-            // Any function call means execution is still in-progress. Only supply when the tellaskee
-            // has produced a newer assistant saying after the latest function call.
+            // A candidate direct fallback, including thinking-only output, must be newer than the
+            // latest same-round function/tellask call. Otherwise the call is still the active move
+            // and may auto-continue; the candidate is merely pre-tool reasoning/progress, not final
+            // tellasker delivery.
             log.debug(
               'kernel-driver skip sideDialog response supply because latest assistant output is not after function calls',
               undefined,
@@ -1588,6 +1594,8 @@ export async function executeDriveRound(args: {
           Number.isFinite(driveResult.lastFunctionCallGenseq) &&
           driveResult.lastFunctionCallGenseq > 0 &&
           directFallbackResponse.responseGenseq <= driveResult.lastFunctionCallGenseq;
+        // Same rule as Side Dialog final delivery: direct fallback is allowed only after the
+        // candidate content is known to be post-tool and no same-round call is waiting to continue.
         if (!hasInProgressFunctionCall) {
           if (!activePromptWasReplyToolReminder) {
             const language = getWorkLanguage();

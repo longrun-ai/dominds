@@ -103,7 +103,7 @@
 - 当前支线已经完成，且当前 assignment 明确要求 `replyTellask`：调用 `replyTellask({ replyContent })`
 - 当前支线已经完成，且当前 assignment 明确要求 `replyTellaskSessionless`：调用 `replyTellaskSessionless({ replyContent })`
 - 当前是在回复一条诉请者发来的 `tellaskBack` 续诉请，且 runtime 暴露了 `replyTellaskBack`：调用 `replyTellaskBack({ replyContent })`
-- 普通文本不是跨对话完成交付通道；如果你直接输出正文而没调 reply 工具，runtime 可能临时插入一条 `role=user` 的提醒要求你改用正确的 reply 函数
+- 普通文本不是跨对话完成交付通道；如果你直接产出可作为最终回贴的内容而没调 reply 工具，runtime 可能临时插入一条 `role=user` 的提醒要求你改用正确的 reply 函数。不要依赖 direct-reply fallback；它只是运行时临时过渡兜底，不是正式回复机制
 
 ### 心智负担最小化规则
 

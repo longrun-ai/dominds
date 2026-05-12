@@ -93,7 +93,7 @@ function main(): void {
   });
   assert.match(askBackReminder, /@pangu 的【回问诉请】还在等你的回复/u);
   assert.match(askBackReminder, /请现在调用 `replyTellaskBack\(\{ replyContent \}\)` 完成回复/u);
-  assert.match(askBackReminder, /你刚才已经写了正文，但还没调用 `replyTellaskBack`/u);
+  assert.match(askBackReminder, /你刚才已经产出了可作为回贴的内容，但还没调用 `replyTellaskBack`/u);
 
   const askBackReassertion = buildReplyObligationReassertionText({
     language: 'en',

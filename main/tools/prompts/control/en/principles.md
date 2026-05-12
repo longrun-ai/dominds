@@ -103,7 +103,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - If the current Side Dialog is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`
 - If the current Side Dialog is complete and the assignment header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
 - If you are answering a tellasker `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
-- Plain text is not the normal completion channel for inter-dialog delivery; if you emit plain text instead of the reply tool, runtime may temporarily inject a `role=user` reminder telling you to use the correct reply function
+- Plain text is not the completion channel for inter-dialog delivery; if you produce final deliverable content instead of the reply tool, runtime may temporarily inject a `role=user` reminder telling you to use the correct reply function. Do not rely on direct-reply fallback; it is only a temporary runtime transition safeguard, not the formal reply mechanism
 
 ### Low-Burden Rule
 

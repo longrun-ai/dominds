@@ -178,7 +178,7 @@ function buildSideDialogTellaskerReplyMarkerRules(language: LanguageCode): strin
       '- 当前支线未完成时，不要默认直接 `tellaskBack`。先判断当前团队规程/SOP/职责卡能否明确负责人：若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人；只有当必须向诉请者补充需求、做业务裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
       '- 是否存在“待你收口的跨对话回复义务”、以及精确该调用哪个 reply 函数，均由运行时程序化判断；运行时会在 assignment 或最新 runtime/user 提示里直接点名。',
       '- 若运行时点名了精确 reply 函数名，你只需调用那个被点名的函数；不要自己判断 `reply*` 变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
-      `- 只有在运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。`,
+      `- 正式完成路径：只有在运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。不要依赖 direct-reply fallback；它只是运行时临时过渡兜底，不是正式回复机制。`,
       '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，就直接继续当前本地对话；不要凭记忆再次调用 `reply*`。',
       '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应使用运行时当前点名的精确 reply 函数，不要使用 `tellaskBack` 或 `tellask`。',
       '- 例外：FBR 支线为工具禁用模式（不得调用 `tellaskBack`）；其回贴标记（`' +
@@ -193,7 +193,7 @@ function buildSideDialogTellaskerReplyMarkerRules(language: LanguageCode): strin
       '- If the current Side Dialog is unfinished, do not default to `tellaskBack`. First judge whether current team SOP / role ownership already identifies the responsible executor: if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must provide clarification, business decision, acceptance-criteria confirmation, missing input, or when existing SOP cannot determine ownership. Put concrete questions in `tellaskContent`.',
       '- Runtime programmatically decides whether there is an active inter-dialog reply obligation for you, and which exact reply function name applies; runtime will state that directly in the assignment or the latest runtime/user prompt.',
       '- If runtime names an exact reply function, call that named function and do not choose a `reply*` variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
-      `- Only replies sent through the exact reply function currently named by runtime are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}.`,
+      `- Formal completion path: only replies sent through the exact reply function currently named by runtime are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}. Do not rely on direct-reply fallback; it is only a temporary runtime transition safeguard, not the formal reply mechanism.`,
       '- If runtime explicitly tells you there is no active inter-dialog reply obligation right now, just continue the current local conversation; do not call `reply*` again from memory.',
       '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, use the exact reply function currently named by runtime instead of `tellaskBack` or `tellask`.',
       '- Exception: FBR Side Dialog is tool-less (no \`tellaskBack\`); its reply markers (`' +
@@ -221,7 +221,7 @@ function buildTellaskReplyMarkerScopePolicy(
           '- `tellaskBack` 只允许用于回问诉请者；仅当必须向诉请者补需求/澄清/裁决/缺失输入，或现有团队规程无法明确判责时才使用。禁止用 `tellaskBack` 发送最终结果。',
           '- 当前支线未完成时，不得把“阻塞/不确定”机械等同于 `tellaskBack`；若团队规程/SOP/职责卡已明确负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，不得发普通文本中间汇报。',
           `- ${buildSideDialogCompletionRule('zh')}`,
-          `- 仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}。`,
+          `- 正式完成路径中，仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}；不要依赖 direct-reply fallback，它只是运行时临时过渡兜底，不是正式回复机制。`,
           '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
         ],
         en: [
@@ -230,7 +230,7 @@ function buildTellaskReplyMarkerScopePolicy(
           '- `tellaskBack` is only for asking the tellasker back; use it only when tellasker clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
           '- If the current Side Dialog is unfinished, do not mechanically map “blocked / uncertain” to `tellaskBack`; when team SOP / role ownership already identifies the responsible owner, directly use `tellask` / `tellaskSessionless` for that owner instead of posting a plain-text progress update.',
           `- ${buildSideDialogCompletionRule('en')}`,
-          `- Runtime marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function.`,
+          `- In the formal completion path, runtime marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function; do not rely on direct-reply fallback, which is only a temporary runtime transition safeguard, not the formal reply mechanism.`,
           '- If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
         ],
       }),

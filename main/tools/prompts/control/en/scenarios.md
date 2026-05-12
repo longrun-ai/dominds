@@ -68,7 +68,7 @@ replyTellask({
 
 ### Key Points
 
-- Do not replace this with a plain final message
+- Do not replace this with a plain final message; direct-reply fallback is only a temporary runtime transition safeguard, not a valid planned completion method
 - Put the final deliverable body directly in `replyContent`
 - If the header says `replyTellaskSessionless`, use the same shape with that exact function name
 

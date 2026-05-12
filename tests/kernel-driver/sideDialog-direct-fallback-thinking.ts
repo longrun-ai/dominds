@@ -141,6 +141,31 @@ async function main(): Promise<void> {
       language,
     });
 
+    const triggerThinkingThenTellask =
+      'Start side dialog that thinks and delegates in the same round.';
+    const thinkingThenTellaskCallId = 'root-call-coder-thinking-then-tellask';
+    const thinkingThenTellaskBody =
+      'Please investigate, delegate one subtask, and do not reply yet.';
+    const thinkingThenTellaskMentionList = ['@coder'];
+    const thinkingThenTellaskPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'coder',
+        mentionList: thinkingThenTellaskMentionList,
+        tellaskContent: thinkingThenTellaskBody,
+        language,
+        collectiveTargets: ['coder'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
+      language,
+    });
+    const nestedThinkingTellaskCallId = 'coder-call-pangu-thinking-then-tellask';
+    const nestedThinkingTellaskBody =
+      'Please inspect the delegated subtask before I produce the final tellasker reply.';
+    const thinkingThenTellaskText =
+      'I need a downstream inspection before I can produce the final reply.';
+
     const triggerFirstThinkingOnly = 'Start first-turn thinking-only reply reminder side dialog.';
     const firstThinkingOnlyCallId = 'root-call-coder-first-thinking-only';
     const firstThinkingOnlyBody =
@@ -299,6 +324,38 @@ async function main(): Promise<void> {
         message: expectedSayingWinsMirror,
         role: 'tool',
         response: 'Root received saying fallback.',
+      },
+      {
+        message: triggerThinkingThenTellask,
+        role: 'user',
+        response: 'Starting thinking-then-tellask side dialog.',
+        funcCalls: [
+          {
+            id: thinkingThenTellaskCallId,
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'coder',
+              tellaskContent: thinkingThenTellaskBody,
+            },
+          },
+        ],
+      },
+      {
+        message: thinkingThenTellaskPrompt,
+        role: 'user',
+        response: '',
+        thinkingResponse: thinkingThenTellaskText,
+        omitDefaultThinking: true,
+        funcCalls: [
+          {
+            id: nestedThinkingTellaskCallId,
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'pangu',
+              tellaskContent: nestedThinkingTellaskBody,
+            },
+          },
+        ],
       },
     ]);
 
@@ -659,6 +716,75 @@ async function main(): Promise<void> {
     assert.equal(sayingWinsResult.content, expectedSayingWinsMirror);
     assert.match(sayingWinsResult.content, /Public answer: 4/u);
     assert.doesNotMatch(sayingWinsResult.content, /Hidden calculation says 999/u);
+
+    const scheduledThinkingThenTellaskDrives: ScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        root,
+        makeUserPrompt(
+          triggerThinkingThenTellask,
+          'kernel-driver-sideDialog-thinking-then-tellask',
+        ),
+        true,
+        makeDriveOptions({ suppressDiligencePush: true }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.ok(dialog instanceof SideDialog, 'expected only sideDialog follow-up scheduling');
+        scheduledThinkingThenTellaskDrives.push({ dialog, options });
+      },
+      driveDialog: async () => {},
+    });
+
+    const thinkingThenTellaskSideDialog = root
+      .getAllDialogs()
+      .find(
+        (dialog): dialog is SideDialog =>
+          dialog instanceof SideDialog &&
+          dialog.assignmentFromAsker.callId === thinkingThenTellaskCallId,
+      );
+    assert.ok(thinkingThenTellaskSideDialog, 'expected thinking-then-tellask side dialog to exist');
+    assert.equal(
+      scheduledThinkingThenTellaskDrives.length,
+      1,
+      'root drive should schedule the thinking-then-tellask side dialog once',
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        thinkingThenTellaskSideDialog,
+        scheduledThinkingThenTellaskDrives[0].options.humanPrompt,
+        scheduledThinkingThenTellaskDrives[0].options.waitInQue,
+        scheduledThinkingThenTellaskDrives[0].options.driveOptions,
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.ok(dialog instanceof SideDialog, 'expected nested sideDialog follow-up scheduling');
+        scheduledThinkingThenTellaskDrives.push({ dialog, options });
+      },
+      driveDialog: async () => {},
+    });
+
+    assert.equal(
+      findTellaskResult(root.msgs, thinkingThenTellaskCallId),
+      undefined,
+      'thinking plus same-round tellask must not direct-fallback to the upstream tellasker',
+    );
+    assert.equal(
+      thinkingThenTellaskSideDialog.peekUpNext(),
+      undefined,
+      'thinking plus same-round tellask must not queue a reply reminder while delegated work is pending',
+    );
+    const pendingNested = await DialogPersistence.loadPendingSideDialogs(
+      thinkingThenTellaskSideDialog.id,
+      thinkingThenTellaskSideDialog.status,
+    );
+    assert.equal(
+      pendingNested.length,
+      1,
+      'thinking plus same-round tellask should leave the side dialog waiting on delegated work',
+    );
+    assert.equal(pendingNested[0]?.callId, nestedThinkingTellaskCallId);
   });
 
   console.log('kernel-driver sideDialog-direct-fallback-thinking: PASS');

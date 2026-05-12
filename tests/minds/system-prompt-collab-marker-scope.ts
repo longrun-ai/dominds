@@ -139,7 +139,7 @@ function main(): void {
   assert.ok(zhSideDialog.includes(buildSideDialogCompletionRule('zh')));
   assert.ok(
     zhSideDialog.includes(
-      `仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${zhMarkers.finalCompleted}。`,
+      `正式完成路径中，仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${zhMarkers.finalCompleted}`,
     ),
   );
   assert.ok(
@@ -177,7 +177,7 @@ function main(): void {
   assert.ok(enSideDialog.includes(buildSideDialogCompletionRule('en')));
   assert.ok(
     enSideDialog.includes(
-      `Runtime marks ${enMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function.`,
+      `In the formal completion path, runtime marks ${enMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function`,
     ),
   );
   assert.ok(

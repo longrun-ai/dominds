@@ -67,7 +67,7 @@ replyTellask({
 
 ### 关键点
 
-- 不要再发一条普通最终消息代替
+- 不要再发一条普通最终消息代替；direct-reply fallback 只是运行时临时过渡兜底，不是可规划使用的收口方式
 - `replyContent` 直接放最终交付正文
 - 若 assignment 头部写的是 `replyTellaskSessionless`，则同结构替换函数名
 

@@ -171,18 +171,18 @@ export function buildReplyToolReminderText(args: {
     ? [
         prefix,
         '',
-        `你刚才已经写了正文，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
+        `你刚才已经产出了可作为回贴的内容，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
         '',
         buildReplyToolReminderLine(args),
-        '如果你再次直接输出最终消息而仍不调用该工具，运行时会按 direct-reply fallback 投递，并在 UI/传递正文中明确标注。',
+        '不要依赖 direct-reply fallback；它只是运行时临时过渡兜底，不是正式回复机制。请现在调用正确的 reply 工具完成回复。',
       ].join('\n')
     : [
         prefix,
         '',
-        `You already wrote the reply body, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
+        `You already produced content that can be delivered as the reply, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
         '',
         buildReplyToolReminderLine(args),
-        'If you still emit a plain final message without the tool, runtime will deliver it via direct-reply fallback and label that path explicitly in UI and transfer text.',
+        'Do not rely on direct-reply fallback; it is only a temporary runtime transition safeguard, not the formal reply mechanism. Call the correct reply tool now.',
       ].join('\n');
 }
 

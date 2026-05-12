@@ -36,7 +36,7 @@ The **tool descriptions themselves** for these functions intentionally stay mini
 - Call whichever `reply*` runtime currently exposes; do not switch to another reply variant by yourself
 - If the assignment header explicitly names a reply function, follow that exact name
 - Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"
-- If you emit plain text instead of the reply tool, runtime may inject a temporary `role=user` reminder telling you to use the correct reply function
+- If you produce final deliverable content instead of the reply tool, runtime may inject a temporary `role=user` reminder telling you to use the correct reply function; do not rely on direct-reply fallback, which is only a temporary runtime transition safeguard, not the formal reply mechanism
 
 ### 1. add_reminder
 
