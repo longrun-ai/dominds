@@ -19,6 +19,10 @@ async function main() {
     'Expected zh reminder context guide to explain runtime-added context projection',
   );
   assert(
+    zhContextGuide.includes('它们都不是用户的新诉求/指令'),
+    'Expected zh reminder context guide to clarify reminders are not new user requests/instructions',
+  );
+  assert(
     zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
@@ -28,12 +32,20 @@ async function main() {
     'Expected zh reminder context footer to scope the warning to the reminder block',
   );
   assert(
-    zhContextFooter.includes('并非用户指令'),
-    'Expected zh reminder context footer to warn that the block is not user instruction',
+    zhContextFooter.includes('并非用户诉求/指令'),
+    'Expected zh reminder context footer to warn that the block is not a user request/instruction',
   );
   assert(
-    zhContextFooter.includes('本轮提醒项块之后会接着出现本轮新的用户消息'),
+    zhContextFooter.includes('后续消息是用户的新诉求/指令，不是提醒项投影'),
     'Expected zh reminder context footer to explicitly identify following user message',
+  );
+  assert(
+    zhContextFooter.includes('提醒项块说明到此为止，不得外溢到那条消息'),
+    'Expected zh reminder context footer to prevent reminder-block guidance from spilling onto the real user message',
+  );
+  assert(
+    zhContextFooter.includes('若它要求更新你的职责、偏好或心智资产，应照常落实'),
+    'Expected zh reminder context footer to preserve real user-message obligations after the reminder block',
   );
   const zhAutoContinueFooter = formatReminderContextFooter('zh', 'none');
   assert(
@@ -243,6 +255,10 @@ async function main() {
     'Expected en reminder context guide to explain runtime-added context projection',
   );
   assert(
+    enContextGuide.includes('not new user requests/instructions'),
+    'Expected en reminder context guide to clarify reminders are not new user requests/instructions',
+  );
+  assert(
     enContextGuide.includes(
       'the user sees these reminders through a separate Reminder widget/panel item',
     ),
@@ -256,12 +272,22 @@ async function main() {
     'Expected en reminder context footer to scope the warning to the reminder block',
   );
   assert(
-    enContextFooter.includes('not user instructions'),
-    'Expected en reminder context footer to warn that the block is not user instruction',
+    enContextFooter.includes('not user requests/instructions'),
+    'Expected en reminder context footer to warn that the block is not a user request/instruction',
   );
   assert(
-    enContextFooter.includes('A new user message for this round follows this reminder block'),
+    enContextFooter.includes(
+      'the following message is a new user request/instruction, not a reminder projection',
+    ),
     'Expected en reminder context footer to explicitly identify following user message',
+  );
+  assert(
+    enContextFooter.includes('must not spill over onto that message'),
+    'Expected en reminder context footer to prevent reminder-block guidance from spilling onto the real user message',
+  );
+  assert(
+    enContextFooter.includes('responsibilities, preferences, or mind assets'),
+    'Expected en reminder context footer to preserve real user-message obligations after the reminder block',
   );
   const enAutoContinueFooter = formatReminderContextFooter('en', 'none');
   assert(
@@ -276,6 +302,10 @@ async function main() {
   assert(
     enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
     'Expected en reminder context footer to explicitly identify following runtime notice',
+  );
+  assert(
+    enRuntimeFooter.includes('not a new user request/instruction'),
+    'Expected en runtime reminder footer to clarify runtime notices are not new user requests/instructions',
   );
 
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');

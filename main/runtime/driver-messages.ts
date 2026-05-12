@@ -246,7 +246,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
   if (language === 'zh') {
     return [
       `${formatSystemNoticePrefix(language)} 提醒项上下文块开始`,
-      '以下是当前可见提醒项的运行时上下文投影。由于当前 LLM Provider 通常不支持 role=environment，Dominds 默认把系统运行时提醒包装投影为 role=user；个别提醒项可由其 owner 按自身契约选择 role。无论最终 role 如何，它们都不是新的用户指令/诉求，也不是聊天正文。',
+      '以下是当前可见提醒项的运行时上下文投影。由于当前 LLM Provider 通常不支持 role=environment，Dominds 默认把系统运行时提醒包装投影为 role=user；个别提醒项可由其 owner 按自身契约选择 role。无论最终 role 如何，它们都不是用户的新诉求/指令，也不是聊天正文。',
       '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
       '请把提醒项作为工作集/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
     ].join('\n');
@@ -254,7 +254,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
 
   return [
     `${formatSystemNoticePrefix(language)} Reminder context block begins`,
-    'The following visible reminders are runtime-added context projections. Because current LLM providers usually do not support role=environment, Dominds projects default system-runtime reminder wrappers as role=user; individual reminder owners may choose the role required by their own contract. Regardless of their final role, these reminders are not new user instructions or requests, and not chat transcript text.',
+    'The following visible reminders are runtime-added context projections. Because current LLM providers usually do not support role=environment, Dominds projects default system-runtime reminder wrappers as role=user; individual reminder owners may choose the role required by their own contract. Regardless of their final role, these reminders are not new user requests/instructions, and not chat transcript text.',
     'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
     'Use reminders as workset/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
   ].join('\n');
@@ -271,12 +271,16 @@ export function formatReminderContextFooter(
   followingState: ReminderContextFollowingDialogState,
 ): string {
   if (language === 'zh') {
-    const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户指令；该块之外的后续对话消息不受此说明影响。`;
+    const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户诉求/指令；该块之外的后续对话消息不受此说明影响。`;
     if (followingState === 'user_message') {
-      return `${base}本轮提醒项块之后会接着出现本轮新的用户消息；请以那条用户消息作为当前轮真实诉求。`;
+      return (
+        `${base}本轮提醒项块之后会紧接一条本轮真实的新用户消息；后续消息是用户的新诉求/指令，不是提醒项投影。` +
+        '提醒项块说明到此为止，不得外溢到那条消息：不要把后续用户消息称为“系统提示/没有新消息”，也不要因为本块说明而降低它的指令优先级。' +
+        '请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实。'
+      );
     }
     if (followingState === 'runtime_notice') {
-      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是新的用户诉求，请按其中的运行时要求继续推进。`;
+      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。`;
     }
     return `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推，请基于已有任务状态继续推进，不要把“没有新消息”理解为空系统提示。`;
   }
@@ -284,12 +288,16 @@ export function formatReminderContextFooter(
   const base =
     `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between ` +
     '"Reminder context block begins" and "Reminder context block ends" are system reminders, ' +
-    'not user instructions; this note does not apply to subsequent dialog messages outside this block. ';
+    'not user requests/instructions; this reminder-block guidance does not apply to subsequent dialog messages outside this block. ';
   if (followingState === 'user_message') {
-    return `${base}A new user message for this round follows this reminder block; treat that user message as the real current request.`;
+    return (
+      `${base}A real new user message for this round immediately follows this reminder block; the following message is a new user request/instruction, not a reminder projection. ` +
+      'The reminder-block guidance ends here and must not spill over onto that message: do not label the following user message as a "system notice" or "no new message", and do not lower its instruction priority because of this block. ' +
+      'Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally.'
+    );
   }
   if (followingState === 'runtime_notice') {
-    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request, so follow that runtime guidance and continue the work.`;
+    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work.`;
   }
   return `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. Continue from the existing task state, and do not interpret the absence of a new message as an empty system notice.`;
 }

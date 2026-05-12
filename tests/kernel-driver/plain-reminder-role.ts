@@ -99,8 +99,12 @@ async function main(): Promise<void> {
     'Expected reminder block to include a single footer after reminder items',
   );
   assert.ok(
-    renderedReminders[2]?.content.includes('之间的提醒项均为系统提醒，并非用户指令'),
-    'Expected reminder block footer to scope the non-user-instruction warning to the block',
+    renderedReminders[2]?.content.includes('之间的提醒项均为系统提醒，并非用户诉求/指令'),
+    'Expected reminder block footer to scope the non-user-request/instruction warning to the block',
+  );
+  assert.ok(
+    renderedReminders[2]?.content.includes('后续消息是用户的新诉求/指令，不是提醒项投影'),
+    'Expected reminder block footer to explicitly preserve the following real user message as a user request/instruction',
   );
 
   const context = assembleDriveContextMessages({
@@ -132,6 +136,11 @@ async function main(): Promise<void> {
     context.slice(0, 4).map((msg) => `${msg.type}:${msg.role}`),
     ['environment_msg:user', 'environment_msg:user', 'environment_msg:user', 'prompting_msg:user'],
     'Expected reminder context block to precede the real user message',
+  );
+  assert.equal(
+    context[3]?.type === 'prompting_msg' ? context[3].content : undefined,
+    '用户问题',
+    'Expected the real user message to remain a prompting message immediately after the reminder block',
   );
 
   console.log('plain-reminder-role: PASS');
