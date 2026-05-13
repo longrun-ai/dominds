@@ -24,6 +24,7 @@ import type {
   DialogExecutionMarker,
   DialogLatestFile,
   PersistedDialogRecord,
+  TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -143,9 +144,9 @@ function blockerDisplayState(args: {
 async function hasSideDialogFinalResponseAnchor(
   dialogId: DialogID,
   latest: DialogLatestFile,
-): Promise<boolean> {
+): Promise<{ callId: string } | undefined> {
   if (dialogId.selfId === dialogId.rootId) {
-    return false;
+    return undefined;
   }
   const rawCourse = latest.currentCourse;
   const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
@@ -153,10 +154,10 @@ async function hasSideDialogFinalResponseAnchor(
   for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
     const event = courseEvents[index];
     if (event.type === 'tellask_anchor_record') {
-      return isSideDialogResponseAnchor(event);
+      return isSideDialogResponseAnchor(event) ? { callId: event.callId } : undefined;
     }
   }
-  return false;
+  return undefined;
 }
 
 async function hasActiveSideDialogReplyObligation(dialogId: DialogID): Promise<boolean> {
@@ -170,6 +171,60 @@ async function hasActiveSideDialogReplyObligation(dialogId: DialogID): Promise<b
   return activeObligation !== undefined;
 }
 
+type SideDialogFinalResponseClosure =
+  | Readonly<{
+      kind: 'no_final_response';
+    }>
+  | Readonly<{
+      kind: 'closed_without_active_reply_obligation';
+      callId: string;
+    }>
+  | Readonly<{
+      kind: 'closed_with_matching_reply_obligation';
+      callId: string;
+      activeReplyObligation: TellaskReplyDirective;
+    }>
+  | Readonly<{
+      kind: 'blocked_by_different_reply_obligation';
+      callId: string;
+      activeReplyObligation: TellaskReplyDirective;
+    }>;
+
+async function resolveSideDialogFinalResponseClosure(args: {
+  dialogId: DialogID;
+  latest: DialogLatestFile | null | undefined;
+}): Promise<SideDialogFinalResponseClosure> {
+  if (!args.latest) {
+    return { kind: 'no_final_response' };
+  }
+  const finalResponseAnchor = await hasSideDialogFinalResponseAnchor(args.dialogId, args.latest);
+  if (!finalResponseAnchor) {
+    return { kind: 'no_final_response' };
+  }
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    args.dialogId,
+    'running',
+  );
+  if (activeReplyObligation === undefined) {
+    return {
+      kind: 'closed_without_active_reply_obligation',
+      callId: finalResponseAnchor.callId,
+    };
+  }
+  if (activeReplyObligation.targetCallId === finalResponseAnchor.callId) {
+    return {
+      kind: 'closed_with_matching_reply_obligation',
+      callId: finalResponseAnchor.callId,
+      activeReplyObligation,
+    };
+  }
+  return {
+    kind: 'blocked_by_different_reply_obligation',
+    callId: finalResponseAnchor.callId,
+    activeReplyObligation,
+  };
+}
+
 async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
   dialogId: DialogID,
   displayState: DialogDisplayState,
@@ -178,6 +233,15 @@ async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
     return displayState;
   }
   if (!(await hasActiveSideDialogReplyObligation(dialogId))) {
+    return displayState;
+  }
+  const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+  const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
+  if (finalResponseClosure.kind === 'closed_with_matching_reply_obligation') {
+    await DialogPersistence.setActiveTellaskReplyObligation(dialogId, undefined, 'running');
+    return displayState;
+  }
+  if (finalResponseClosure.kind === 'closed_without_active_reply_obligation') {
     return displayState;
   }
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
@@ -606,6 +670,16 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
   if (blocked) {
     return blocked;
   }
+  const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
+    dialogId: dlg.id,
+    latest,
+  });
+  if (
+    finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
+    finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
+  ) {
+    return { kind: 'idle_waiting_user' };
+  }
   if (await hasActiveSideDialogReplyObligation(dlg.id)) {
     return pendingReplyObligationDisplayState();
   }
@@ -653,11 +727,15 @@ async function computeIdleDisplayStateFromPersistence(
   if (blocked) {
     return blocked;
   }
+  const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
+  if (
+    finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
+    finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
+  ) {
+    return { kind: 'idle_waiting_user' };
+  }
   if (await hasActiveSideDialogReplyObligation(dialogId)) {
     return pendingReplyObligationDisplayState();
-  }
-  if (latest && (await hasSideDialogFinalResponseAnchor(dialogId, latest))) {
-    return { kind: 'idle_waiting_user' };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -682,13 +760,32 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
   if (args.latest.pendingCourseStartPrompt) {
     return args.latest;
   }
-  if (!(await hasSideDialogFinalResponseAnchor(args.dialogId, args.latest))) {
-    return args.latest;
+  const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
+    dialogId: args.dialogId,
+    latest: args.latest,
+  });
+  switch (finalResponseClosure.kind) {
+    case 'no_final_response':
+    case 'blocked_by_different_reply_obligation':
+      return args.latest;
+    case 'closed_without_active_reply_obligation':
+      break;
+    case 'closed_with_matching_reply_obligation':
+      await DialogPersistence.setActiveTellaskReplyObligation(args.dialogId, undefined, 'running');
+      break;
+    default: {
+      const _exhaustive: never = finalResponseClosure;
+      throw new Error(`Unhandled final response closure kind: ${String(_exhaustive)}`);
+    }
   }
+  const clearedReplyObligation =
+    finalResponseClosure.kind === 'closed_with_matching_reply_obligation';
 
   log.warn('Healing stale sideDialog run-control flags after final response anchor', undefined, {
     dialogId: args.dialogId.valueOf(),
     trigger: args.trigger,
+    responseCallId: finalResponseClosure.callId,
+    clearedReplyObligation,
     previousGenerating: args.latest.generating ?? null,
     previousNeedsDrive: args.latest.needsDrive ?? null,
     previousDisplayState: args.latest.displayState ?? null,
@@ -784,11 +881,15 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     if (blocked) {
       return blocked;
     }
+    const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
+    if (
+      finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
+      finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
+    ) {
+      return { kind: 'idle_waiting_user' };
+    }
     if (await hasActiveSideDialogReplyObligation(dialogId)) {
       return pendingReplyObligationDisplayState();
-    }
-    if (await hasSideDialogFinalResponseAnchor(dialogId, latest)) {
-      return { kind: 'idle_waiting_user' };
     }
     if (
       latest.executionMarker?.kind === 'interrupted' &&

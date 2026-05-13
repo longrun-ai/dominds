@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { refreshRunControlProjectionFromPersistenceFacts } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
@@ -200,6 +201,99 @@ async function main(): Promise<void> {
       'stale queued auto-drive should clear stale final-response interruption projection',
     );
     assert.equal(latestAfter?.executionMarker, undefined);
+
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      sideDialog.id,
+      {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: dlg.id.selfId,
+        targetCallId: 'root-call-pangu-sticky',
+        tellaskContent: tellaskBody,
+      },
+      sideDialog.status,
+    );
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_reply_obligation' },
+          continueEnabled: true,
+        },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: { kind: 'pending_reply_obligation' },
+        },
+      },
+    }));
+
+    const healedAfterRestart = await refreshRunControlProjectionFromPersistenceFacts(
+      sideDialog.id,
+      'run_control_snapshot',
+    );
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(sideDialog.id, sideDialog.status),
+      undefined,
+      'final-response heal should clear stale active reply obligation matching the response anchor callId',
+    );
+    assert.deepEqual(
+      healedAfterRestart?.displayState,
+      { kind: 'idle_waiting_user' },
+      'final-response heal should not leave a stale Continue button after clearing reply obligation',
+    );
+    assert.equal(
+      healedAfterRestart?.executionMarker,
+      undefined,
+      'final-response heal should clear stale pending-reply execution marker',
+    );
+
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      sideDialog.id,
+      {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: dlg.id.selfId,
+        targetCallId: 'different-active-reply-call',
+        tellaskContent: 'A distinct active reply must not be cleared by final-response healing.',
+      },
+      sideDialog.status,
+    );
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_reply_obligation' },
+          continueEnabled: true,
+        },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: { kind: 'pending_reply_obligation' },
+        },
+      },
+    }));
+
+    const preservedAfterMismatchedHeal = await refreshRunControlProjectionFromPersistenceFacts(
+      sideDialog.id,
+      'run_control_snapshot',
+    );
+    const preservedObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.equal(
+      preservedObligation?.targetCallId,
+      'different-active-reply-call',
+      'final-response heal must not clear an active reply obligation for another callId',
+    );
+    assert.deepEqual(
+      preservedAfterMismatchedHeal?.displayState,
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'mismatched active reply obligation should keep the sideDialog resumable',
+    );
   });
 
   console.log('kernel-driver sideDialog-no-empty-autodrive-after-final-response: PASS');
