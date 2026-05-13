@@ -788,6 +788,11 @@ function parseDialogLlmRetryRecoveryAction(value: unknown): DialogLlmRetryRecove
       return { kind: 'none' };
     case 'diligence_push_once':
       return { kind: 'diligence_push_once' };
+    case 'runtime_prompt_once': {
+      const content = value.content;
+      if (typeof content !== 'string' || content.trim() === '') return null;
+      return { kind: 'runtime_prompt_once', content };
+    }
     default:
       return null;
   }

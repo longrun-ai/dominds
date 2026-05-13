@@ -1905,6 +1905,19 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
   suppressDiligencePushForDrive: boolean;
   reason: DialogLlmRetryExhaustedReason;
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
+  if (args.reason.recoveryAction.kind === 'runtime_prompt_once') {
+    const language = args.dlg.getLastUserLanguageCode();
+    return {
+      kind: 'continue',
+      prompt: {
+        content: args.reason.recoveryAction.content,
+        msgId: generateShortId(),
+        grammar: 'markdown',
+        origin: 'runtime',
+        userLanguageCode: language,
+      },
+    };
+  }
   if (args.reason.recoveryAction.kind !== 'diligence_push_once') {
     return { kind: 'break' };
   }

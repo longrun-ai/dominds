@@ -7,6 +7,7 @@ import { Dialog, DialogID } from '../../main/dialog';
 import { dialogEventRegistry } from '../../main/evt-registry';
 import {
   createLlmFailureQuirkHandlerSession,
+  KIMI_CODE_API_QUIRK,
   type LlmFailureSummary,
   VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
   XCODE_BEST_STREAM_INTERNAL_ERROR_CODE,
@@ -79,11 +80,34 @@ function buildVolcengineInvalidParameterProviderConfig(): ProviderConfig {
   };
 }
 
+function buildKimiCodeProviderConfig(): ProviderConfig {
+  return {
+    name: 'Kimi Code - test',
+    apiType: 'openai-compatible',
+    apiQuirks: KIMI_CODE_API_QUIRK,
+    baseUrl: 'https://api.kimi.com/coding/v1',
+    apiKeyEnvVar: 'KIMI_CODE_TEST_API_KEY',
+    models: {
+      test: {
+        name: 'Kimi For Coding',
+      },
+    },
+  };
+}
+
 function makeFailure(code: string, message: string): LlmFailureSummary {
   return {
     kind: 'retriable',
     code,
     message,
+  };
+}
+
+function makeKimiCodeHighRiskError(): { status: number; code: string; message: string } {
+  return {
+    status: 400,
+    code: 'OPENAI_COMPATIBLE_REJECTED_REQUEST',
+    message: '400 The request was rejected because it was considered high risk',
   };
 }
 
@@ -759,6 +783,184 @@ function verifyVolcengineInvalidParameterQuirkDoesNotGeneralizeAll400s(): void {
     }).kind,
     'default',
     'Expected unrelated InvalidParameter 400 to remain rejected',
+  );
+}
+
+function verifyKimiCodeHighRiskQuirkOffersTwoRuntimePromptRecoveries(): void {
+  const providerConfig = buildKimiCodeProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected Kimi Code quirk handler session');
+
+  const error = makeKimiCodeHighRiskError();
+  const recoveryContents = new Set<string>();
+  for (let index = 0; index < 2; index += 1) {
+    const handling = session.onFailure({
+      provider: 'kimi-code',
+      providerConfig,
+      failure: {
+        kind: 'rejected',
+        status: error.status,
+        code: error.code,
+        message: error.message,
+      },
+      error,
+    });
+    assert.equal(handling.kind, 'give_up');
+    if (handling.kind !== 'give_up') {
+      throw new Error(`Expected give_up, got ${handling.kind}`);
+    }
+    assert.equal(handling.recoveryAction?.kind, 'runtime_prompt_once');
+    if (handling.recoveryAction?.kind !== 'runtime_prompt_once') {
+      throw new Error(`Expected runtime_prompt_once, got ${handling.recoveryAction?.kind}`);
+    }
+    assert.match(handling.recoveryAction.content, /正常|复核|开发|风险/u);
+    recoveryContents.add(handling.recoveryAction.content);
+    session.onRecoveryActionUsed?.({
+      action: handling.recoveryAction,
+      sourceQuirk: KIMI_CODE_API_QUIRK,
+    });
+  }
+
+  const finalHandling = session.onFailure({
+    provider: 'kimi-code',
+    providerConfig,
+    failure: {
+      kind: 'rejected',
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    },
+    error,
+  });
+  assert.equal(finalHandling.kind, 'give_up');
+  if (finalHandling.kind !== 'give_up') {
+    throw new Error(`Expected give_up, got ${finalHandling.kind}`);
+  }
+  assert.equal(finalHandling.recoveryAction?.kind, 'none');
+  assert.equal(recoveryContents.size, 2, 'Expected the two recovery prompts not to repeat');
+}
+
+function verifyKimiCodeHighRiskQuirkOnlyHandlesRejected400HighRisk(): void {
+  const providerConfig = buildKimiCodeProviderConfig();
+  const session = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(session, 'Expected Kimi Code quirk handler session');
+
+  assert.equal(
+    session.onFailure({
+      provider: 'kimi-code',
+      providerConfig,
+      failure: {
+        kind: 'rejected',
+        status: 429,
+        code: 'rate_limit_exceeded',
+        message: '429 The request was rejected because it was considered high risk',
+      },
+      error: {
+        status: 429,
+        code: 'rate_limit_exceeded',
+        message: '429 The request was rejected because it was considered high risk',
+      },
+    }).kind,
+    'default',
+    'Expected 429 to keep normal rate-limit handling precedence',
+  );
+
+  assert.equal(
+    session.onFailure({
+      provider: 'kimi-code',
+      providerConfig,
+      failure: {
+        kind: 'rejected',
+        status: 400,
+        code: 'context_length_exceeded',
+        message: '400 context length exceeded',
+      },
+      error: {
+        status: 400,
+        code: 'context_length_exceeded',
+        message: '400 context length exceeded',
+      },
+    }).kind,
+    'default',
+    'Expected non-high-risk 400 to remain default rejected handling',
+  );
+
+  assert.equal(
+    session.onFailure({
+      provider: 'kimi-code',
+      providerConfig,
+      failure: {
+        kind: 'retriable',
+        status: 400,
+        code: 'OPENAI_COMPATIBLE_REJECTED_REQUEST',
+        message: '400 The request was rejected because it was considered high risk',
+      },
+      error: makeKimiCodeHighRiskError(),
+    }).kind,
+    'default',
+    'Expected non-rejected high-risk-looking 400 to remain default handling',
+  );
+}
+
+async function verifyRuntimeKimiCodeHighRiskRecoveryStopsAfterTwoRuntimePrompts(): Promise<void> {
+  const providerConfig = buildKimiCodeProviderConfig();
+  const dialog = buildFakeDialog('zh');
+  const retryEventsPromise = readRetryEvents(dialog.id, 1);
+  const quirkFailureHandlerSession = createLlmFailureQuirkHandlerSession(providerConfig);
+  assert.ok(quirkFailureHandlerSession, 'Expected Kimi Code quirk handler session');
+  let attempts = 0;
+  const recoveryPrompts: string[] = [];
+
+  for (let index = 0; index < 3; index += 1) {
+    await assert.rejects(
+      async () =>
+        runLlmRequestWithRetry({
+          dlg: dialog,
+          provider: 'kimi-code',
+          modelId: 'test',
+          providerConfig,
+          quirkFailureHandlerSession,
+          aggressiveRetryMaxRetries: 0,
+          retryInitialDelayMs: 0,
+          retryConservativeDelayMs: 0,
+          retryBackoffMultiplier: 1,
+          retryMaxDelayMs: 0,
+          classifyFailure: classifyOpenAiLikeFailure,
+          canRetry: () => true,
+          onRetryStopped: async (reason) => {
+            if (reason.recoveryAction.kind === 'runtime_prompt_once') {
+              recoveryPrompts.push(reason.recoveryAction.content);
+              return 'continue';
+            }
+            return 'stop';
+          },
+          doRequest: async () => {
+            attempts += 1;
+            throw makeKimiCodeHighRiskError();
+          },
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof LlmRetryStoppedError);
+        if (!(error instanceof LlmRetryStoppedError)) {
+          return false;
+        }
+        assert.match(error.message, /high risk/u);
+        assert.equal(error.reason.recoveryAction.kind, index < 2 ? 'runtime_prompt_once' : 'none');
+        return true;
+      },
+    );
+  }
+
+  assert.equal(attempts, 3);
+  assert.equal(recoveryPrompts.length, 2);
+  assert.equal(new Set(recoveryPrompts).size, 2);
+  for (const prompt of recoveryPrompts) {
+    assert.match(prompt, /正常|复核|开发|风险/u);
+  }
+  const retryEvents = await retryEventsPromise;
+  assert.deepEqual(
+    retryEvents.map((event) => event.phase),
+    ['stopped'],
   );
 }
 
@@ -1881,6 +2083,9 @@ async function main(): Promise<void> {
   verifyVolcengineInvalidParameterQuirkUsesAggressiveRetry();
   verifyVolcengineInvalidParameterQuirkStaysOutOfRateLimit();
   verifyVolcengineInvalidParameterQuirkDoesNotGeneralizeAll400s();
+  verifyKimiCodeHighRiskQuirkOffersTwoRuntimePromptRecoveries();
+  verifyKimiCodeHighRiskQuirkOnlyHandlesRejected400HighRisk();
+  await verifyRuntimeKimiCodeHighRiskRecoveryStopsAfterTwoRuntimePrompts();
   await verifyRuntimeVolcengineInvalidParameterQuirkRetriesRejectedFailure();
   await verifySameContextEmptyResponseQuirkResetsOnContextChange();
   await verifySameContextEmptyResponseRecoveryClosesLoopAcrossContextChange();

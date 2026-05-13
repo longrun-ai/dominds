@@ -1105,6 +1105,9 @@ export async function runLlmRequestWithRetry<T>(params: {
             errorText: detail,
           },
         });
+      }
+
+      if (failure.kind === 'rejected' && handledFailure.handling.kind !== 'give_up') {
         let streamErrorEmitted = false;
         try {
           await params.dlg.streamError(detail);
@@ -1183,7 +1186,7 @@ export async function runLlmRequestWithRetry<T>(params: {
               reason: interruptionReason,
             });
           }
-          log.warn('LLM retriable failure stopped retry flow', undefined, {
+          log.warn('LLM failure stopped retry flow', undefined, {
             provider: params.provider,
             dialogId: params.dlg.id.valueOf(),
             rootId: params.dlg.id.rootId,

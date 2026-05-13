@@ -35,7 +35,7 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import { DOMINDS_RUNNING_VERSION } from '../../server/dominds-running-version';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import { normalizeProviderApiQuirks } from '../api-quirks';
+import { KIMI_CODE_API_QUIRK, normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ModelInfo, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
@@ -92,7 +92,6 @@ type OpenAiCompatibleChatExtraParams = {
   prompt_cache_key?: string;
 };
 
-const KIMI_CODE_API_QUIRK = 'kimi-code';
 const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 const KIMI_CLI_CLOAK_API_QUIRK = 'kimi-cli-cloak';
 const DISABLE_ASSISTANT_TOOL_CALL_REASONING_CONTENT_API_QUIRK =

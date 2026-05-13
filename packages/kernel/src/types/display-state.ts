@@ -20,7 +20,10 @@ export type DialogRetryDisplay = {
  * - This is intentionally compositional metadata, not a global policy switch and not a generic
  *   "always auto-recover" flag.
  */
-export type DialogLlmRetryRecoveryAction = { kind: 'none' } | { kind: 'diligence_push_once' };
+export type DialogLlmRetryRecoveryAction =
+  | { kind: 'none' }
+  | { kind: 'diligence_push_once' }
+  | { kind: 'runtime_prompt_once'; content: string };
 
 export type DialogLlmRetryExhaustedReason = {
   kind: 'llm_retry_stopped';
