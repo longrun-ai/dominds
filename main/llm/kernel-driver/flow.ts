@@ -9,6 +9,7 @@ import { DialogID, SideDialog, type Dialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
   clearActiveRun,
+  computeIdleDisplayState,
   createActiveRun,
   getActiveRunSignal,
   getStopRequestedReason,
@@ -1002,6 +1003,7 @@ export async function executeDriveRound(args: {
   let activeRunPrimed = false;
   let ownsActiveRun = false;
   let interruptedBySignal = false;
+  let shouldRefreshDisplayStateAfterActiveRunCleared = false;
   let followUp: FollowUpPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
   let sideDialogReplyTarget: SideDialogReplyTarget | undefined;
@@ -1421,12 +1423,22 @@ export async function executeDriveRound(args: {
           resolveDirectFallbackResponse({ driveResult, dialog }) !== undefined)
       ) {
         if (driveResult.fbrConclusion) {
-          await supplySideDialogResponseToAssignedAskerIfPendingV2({
+          const suppliedFbrConclusion = await supplySideDialogResponseToAssignedAskerIfPendingV2({
             sideDialog: dialog,
             responseText: driveResult.fbrConclusion.responseText,
             responseGenseq: driveResult.fbrConclusion.responseGenseq,
+            replyResolution: {
+              callId: driveResult.fbrConclusion.replyResolutionCallId,
+              replyCallName: 'replyTellaskSessionless',
+            },
             scheduleDrive: args.scheduleDrive,
           });
+          if (!suppliedFbrConclusion) {
+            throw new Error(
+              `FBR conclusion delivery invariant violation: no pending asker target for dialog=${dialog.id.valueOf()}`,
+            );
+          }
+          shouldRefreshDisplayStateAfterActiveRunCleared = true;
         } else {
           const directFallbackResponse = resolveDirectFallbackResponse({ driveResult, dialog });
           if (directFallbackResponse === undefined) {
@@ -1775,6 +1787,17 @@ export async function executeDriveRound(args: {
   } finally {
     if (activeRunPrimed && ownsActiveRun) {
       clearActiveRun(dialog.id);
+    }
+    if (shouldRefreshDisplayStateAfterActiveRunCleared && !hasActiveRun(dialog.id)) {
+      try {
+        await setDialogDisplayState(dialog.id, await computeIdleDisplayState(dialog));
+      } catch (error: unknown) {
+        log.warn('kernel-driver failed to refresh display state after FBR auto-delivery', error, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+        });
+      }
     }
     release();
     maybeStartIdleReminderWake(

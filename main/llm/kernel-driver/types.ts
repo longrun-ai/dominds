@@ -171,6 +171,7 @@ export type KernelDriverCoreResult = {
   fbrConclusion?: {
     responseText: string;
     responseGenseq: number;
+    replyResolutionCallId: string;
   };
 };
 

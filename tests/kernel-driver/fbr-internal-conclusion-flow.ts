@@ -361,6 +361,42 @@ async function main(): Promise<void> {
         !successTellaskResult.content.includes('收到全量回帖后请提炼'),
       'main dialog must no longer receive raw all-round FBR dumps or tellasker distill instructions',
     );
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(
+        successSideDialog.id,
+        successSideDialog.status,
+      ),
+      undefined,
+      'successful FBR conclusion auto-delivery must clear the sideDialog reply obligation',
+    );
+    const successLatest = await DialogPersistence.loadDialogLatest(
+      successSideDialog.id,
+      successSideDialog.status,
+    );
+    assert.deepEqual(
+      successLatest?.displayState,
+      { kind: 'idle_waiting_user' },
+      'successful FBR conclusion auto-delivery should return the sideDialog display state to idle',
+    );
+    assert.equal(
+      successLatest?.executionMarker,
+      undefined,
+      'successful FBR conclusion auto-delivery should clear the pending-reply execution marker',
+    );
+    const successEvents = await DialogPersistence.loadCourseEvents(
+      successSideDialog.id,
+      successSideDialog.currentCourse,
+      successSideDialog.status,
+    );
+    assert.ok(
+      successEvents.some(
+        (event) =>
+          event.type === 'tellask_reply_resolution_record' &&
+          event.targetCallId === 'fbr-success-call' &&
+          event.replyCallName === 'replyTellaskSessionless',
+      ),
+      'successful FBR conclusion auto-delivery must persist a reply resolution record',
+    );
 
     const fallbackRoot = await createMainDialog('tester');
     fallbackRoot.disableDiligencePush = true;
@@ -419,6 +455,42 @@ async function main(): Promise<void> {
     assert.ok(
       fallbackTellaskResult.content.includes(fallbackFinalContent),
       'root should receive the runtime-generated unreasonable-situation conclusion',
+    );
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(
+        fallbackSideDialog.id,
+        fallbackSideDialog.status,
+      ),
+      undefined,
+      'fallback FBR conclusion auto-delivery must clear the sideDialog reply obligation',
+    );
+    const fallbackLatest = await DialogPersistence.loadDialogLatest(
+      fallbackSideDialog.id,
+      fallbackSideDialog.status,
+    );
+    assert.deepEqual(
+      fallbackLatest?.displayState,
+      { kind: 'idle_waiting_user' },
+      'fallback FBR conclusion auto-delivery should return the sideDialog display state to idle',
+    );
+    assert.equal(
+      fallbackLatest?.executionMarker,
+      undefined,
+      'fallback FBR conclusion auto-delivery should clear the pending-reply execution marker',
+    );
+    const fallbackEvents = await DialogPersistence.loadCourseEvents(
+      fallbackSideDialog.id,
+      fallbackSideDialog.currentCourse,
+      fallbackSideDialog.status,
+    );
+    assert.ok(
+      fallbackEvents.some(
+        (event) =>
+          event.type === 'tellask_reply_resolution_record' &&
+          event.targetCallId === 'fbr-fallback-call' &&
+          event.replyCallName === 'replyTellaskSessionless',
+      ),
+      'fallback FBR conclusion auto-delivery must persist a reply resolution record',
     );
   });
 

@@ -2032,6 +2032,7 @@ export async function driveDialogStreamCore(
     | {
         responseText: string;
         responseGenseq: number;
+        replyResolutionCallId: string;
       }
     | undefined;
   let pubRemindersVer = dlg.remindersVer;
@@ -3144,6 +3145,7 @@ export async function driveDialogStreamCore(
                 finalizationAttempts: persistedFbrState.effort,
               }),
               responseGenseq: genseq,
+              replyResolutionCallId: `fbr-conclusion-${generateShortId()}`,
             };
             if (!isFbrSideDialog(dlg)) {
               throw new Error(
@@ -3202,6 +3204,7 @@ export async function driveDialogStreamCore(
                 fbrConclusion = {
                   responseText: inspection.content,
                   responseGenseq: inspection.genseq,
+                  replyResolutionCallId: `fbr-conclusion-${inspection.callId}`,
                 };
                 if (!isFbrSideDialog(dlg)) {
                   throw new Error(
@@ -3245,6 +3248,7 @@ export async function driveDialogStreamCore(
                 lastFunctionCallGenseq ??
                 dlg.activeGenSeqOrUndefined ??
                 1,
+              replyResolutionCallId: `fbr-conclusion-${generateShortId()}`,
             };
             if (!isFbrSideDialog(dlg)) {
               throw new Error(
