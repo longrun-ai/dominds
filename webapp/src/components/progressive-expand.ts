@@ -182,8 +182,7 @@ class DownwardProgressiveExpandableComponent {
 
   private readonly boundOnDoubleClick = (event: MouseEvent): void => {
     event.preventDefault();
-    this.cancelPendingClickCommit();
-    this.expandForDoubleClick();
+    // The click handler owns the delayed double-click commit so a third click can still land.
   };
 
   private expandOneStep(): void {
@@ -471,8 +470,7 @@ class UpwardProgressiveExpandableComponent {
 
   private readonly boundOnDoubleClick = (event: MouseEvent): void => {
     event.preventDefault();
-    this.cancelPendingClickCommit();
-    this.expandForDoubleClick();
+    // The click handler owns the delayed double-click commit so a third click can still land.
   };
 
   constructor(options: ProgressiveExpandableComponentOptions) {
