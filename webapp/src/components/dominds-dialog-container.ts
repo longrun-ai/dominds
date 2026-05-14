@@ -1365,12 +1365,11 @@ export class DomindsDialogContainer extends HTMLElement {
   ): void {
     const encryptedContent = reasoning?.encrypted_content;
     const hasEncryptedContent = typeof encryptedContent === 'string' && encryptedContent.length > 0;
-    const metadata = reasoning?.metadata;
-    const hasMetadata =
-      metadata?.itemId !== undefined ||
-      metadata?.itemType !== undefined ||
-      metadata?.status !== undefined;
-    if (!hasEncryptedContent && !hasMetadata) {
+    const metadataStatus = reasoning?.metadata?.status;
+    const visibleMetadataStatus =
+      metadataStatus !== undefined && metadataStatus !== 'completed' ? metadataStatus : undefined;
+    const hasVisibleMetadata = visibleMetadataStatus !== undefined;
+    if (!hasEncryptedContent && !hasVisibleMetadata) {
       return;
     }
     const thinkingSection = this.thinkingSection;
@@ -1387,24 +1386,20 @@ export class DomindsDialogContainer extends HTMLElement {
     const contentCount = reasoning?.content?.length ?? 0;
     const byteCount = hasEncryptedContent ? new TextEncoder().encode(encryptedContent).length : 0;
     const rows: Array<[string, string]> = [];
-    rows.push([
-      t.thinkingEncryptedPresentLabel,
-      hasEncryptedContent ? t.thinkingEncryptedPresentYes : t.thinkingEncryptedPresentNo,
-    ]);
     if (hasEncryptedContent) {
-      rows.push([t.thinkingEncryptedCharsLabel, String(encryptedContent.length)]);
-      rows.push([t.thinkingEncryptedBytesLabel, String(byteCount)]);
+      rows.push([
+        t.thinkingEncryptedSizeLabel,
+        `${encryptedContent.length} ${t.thinkingEncryptedCharsUnit} / ${byteCount} ${t.thinkingEncryptedBytesUnit}`,
+      ]);
     }
-    rows.push([t.thinkingEncryptedSummaryItemsLabel, String(summaryCount)]);
-    rows.push([t.thinkingEncryptedContentItemsLabel, String(contentCount)]);
-    if (metadata?.itemId) {
-      rows.push([t.thinkingEncryptedItemIdLabel, metadata.itemId]);
+    if (summaryCount > 0) {
+      rows.push([t.thinkingEncryptedSummaryItemsLabel, String(summaryCount)]);
     }
-    if (metadata?.itemType) {
-      rows.push([t.thinkingEncryptedItemTypeLabel, metadata.itemType]);
+    if (contentCount > 0) {
+      rows.push([t.thinkingEncryptedContentItemsLabel, String(contentCount)]);
     }
-    if (metadata?.status) {
-      rows.push([t.thinkingEncryptedStatusLabel, metadata.status]);
+    if (visibleMetadataStatus !== undefined) {
+      rows.push([t.thinkingEncryptedStatusLabel, visibleMetadataStatus]);
     }
 
     const panel = document.createElement('div');
@@ -1414,7 +1409,6 @@ export class DomindsDialogContainer extends HTMLElement {
         <span class="thinking-reasoning-icon icon-mask" aria-hidden="true"></span>
         <span class="thinking-reasoning-title">${this.escapeHtml(t.thinkingDetailsTitle)}</span>
       </div>
-      <div class="thinking-reasoning-description">${this.escapeHtml(t.thinkingDetailsDescription)}</div>
       <dl class="thinking-reasoning-meta">
         ${rows
           .map(
@@ -6182,9 +6176,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .thinking-reasoning-panel {
         display: flex;
-        flex-direction: column;
-        gap: 5px;
-        padding: 7px 8px;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+        padding: 5px 7px;
         border-radius: 6px;
         border: 1px solid color-mix(in srgb, var(--dominds-primary, #007acc) 28%, transparent);
         background: color-mix(in srgb, var(--dominds-thinking-bg, #f1f5f9) 82%, var(--dominds-bg, #ffffff) 18%);
@@ -6197,6 +6192,7 @@ export class DomindsDialogContainer extends HTMLElement {
         align-items: center;
         gap: 6px;
         min-width: 0;
+        flex: 0 0 auto;
       }
 
       .thinking-reasoning-icon {
@@ -6212,25 +6208,23 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-fg-primary, #1e293b);
       }
 
-      .thinking-reasoning-description {
-        font-size: var(--dominds-font-size-sm, 11px);
-        line-height: var(--dominds-line-height-dense, 1.4);
-        color: var(--dominds-fg-muted, #64748b);
-      }
-
       .thinking-reasoning-meta {
-        display: grid;
-        gap: 3px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
         margin: 0;
         font-size: var(--dominds-font-size-sm, 11px);
+        line-height: var(--dominds-line-height-dense, 1.4);
+        flex: 1 1 220px;
+        min-width: 0;
       }
 
       .thinking-reasoning-meta-row {
-        display: grid;
-        grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
-        gap: 8px;
+        display: inline-flex;
+        gap: 4px;
         align-items: baseline;
         min-width: 0;
+        max-width: 100%;
       }
 
       .thinking-reasoning-meta dt {
