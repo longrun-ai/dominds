@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import type { DomindsAppReminderRenderedMessage } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppHostToolResult,
   DomindsAppReminderApplyResult,
@@ -7,7 +8,6 @@ import type {
 } from '@longrun-ai/kernel/app-json';
 import type { AppsHostClient, EnabledAppForHost } from '../../main/apps-host/client';
 import { DialogStore, MainDialog } from '../../main/dialog';
-import type { ChatMessage } from '../../main/llm/client';
 import { materializeReminder } from '../../main/tool';
 import {
   applyAppReminderRequests,
@@ -56,6 +56,7 @@ async function main(): Promise<void> {
   const registryName = buildAppReminderOwnerRegistryName(appId, ownerRef);
 
   let applyCalls = 0;
+  let renderCalls = 0;
   const fakeClient: AppsHostClient = {
     callTool: async (): Promise<DomindsAppHostToolResult> => {
       throw new Error('callTool should not be used in this test');
@@ -79,8 +80,9 @@ async function main(): Promise<void> {
     updateReminder: async () => {
       throw new Error('updateReminder should not be used in this test');
     },
-    renderReminder: async (): Promise<ChatMessage> => {
-      throw new Error('renderReminder should not be used in this test');
+    renderReminder: async (): Promise<DomindsAppReminderRenderedMessage> => {
+      renderCalls += 1;
+      return { content: 'app rendered reminder content' };
     },
     shutdown: async (): Promise<void> => {},
   };
@@ -120,6 +122,17 @@ async function main(): Promise<void> {
     assert.equal(dlg.reminders.length, 1);
     assert.equal(dlg.reminders[0]?.content, 'updated by app');
     assert.equal(dlg.reminders[0]?.renderMode, 'plain');
+
+    const reminder = dlg.reminders[0];
+    assert.ok(reminder, 'Expected updated reminder to remain present');
+    const rendered = await owner.renderReminder(dlg, reminder);
+    assert.equal(renderCalls, 1);
+    assert.equal(rendered.type, 'environment_msg');
+    assert.match(
+      rendered.content,
+      /This state is system-maintained; do not copy, rewrite, or separately maintain it in manual reminders/,
+    );
+    assert.match(rendered.content, /app rendered reminder content/);
   } finally {
     unregisterAppReminderOwnersForApps({ appIds: [appId] });
   }

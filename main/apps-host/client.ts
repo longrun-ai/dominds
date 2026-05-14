@@ -9,6 +9,7 @@ import type {
   DomindsAppReminderOwnerApplyContext,
   DomindsAppReminderOwnerRenderContext,
   DomindsAppReminderOwnerUpdateContext,
+  DomindsAppReminderRenderedMessage,
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
 } from '@longrun-ai/kernel/app-host-contract';
@@ -20,7 +21,6 @@ import type {
   DomindsAppReminderApplyRequest,
   DomindsAppReminderApplyResult,
 } from '@longrun-ai/kernel/app-json';
-import type { ChatMessage } from '../llm/client';
 import { createLogger } from '../log';
 import type { ToolArguments } from '../tool';
 import type {
@@ -179,7 +179,7 @@ export type AppsHostClient = Readonly<{
     appId: string,
     ownerRef: string,
     ctx: DomindsAppReminderOwnerRenderContext,
-  ) => Promise<ChatMessage>;
+  ) => Promise<DomindsAppReminderRenderedMessage>;
   shutdown: () => Promise<void>;
 }>;
 
@@ -216,7 +216,7 @@ type PendingReminderUpdateCall = Readonly<{
 }>;
 
 type PendingReminderRenderCall = Readonly<{
-  resolve: (out: ChatMessage) => void;
+  resolve: (out: DomindsAppReminderRenderedMessage) => void;
   reject: (err: Error) => void;
   timeout: NodeJS.Timeout;
 }>;
@@ -566,7 +566,7 @@ export async function startAppsHost(params: {
       ownerRef,
       ctx,
     };
-    return await new Promise<ChatMessage>((resolve, reject) => {
+    return await new Promise<DomindsAppReminderRenderedMessage>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingReminderRenders.delete(callId);
         reject(

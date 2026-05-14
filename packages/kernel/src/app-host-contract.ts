@@ -6,7 +6,6 @@ import type {
   DomindsAppReminderApplyResult,
   DomindsAppReminderState,
 } from './app-json';
-import type { ChatMessage } from './types/chat-message';
 import type { LanguageCode } from './types/language';
 
 export type DomindsAppRunControlContext = Readonly<{
@@ -125,6 +124,10 @@ export type DomindsAppReminderOwnerRenderContext = Readonly<{
   workLanguage: LanguageCode;
 }>;
 
+export type DomindsAppReminderRenderedMessage = Readonly<{
+  content: string;
+}>;
+
 export type DomindsAppDynamicToolsetsContext = Readonly<{
   memberId: string;
   taskDocPath: string;
@@ -142,7 +145,11 @@ export type DomindsAppReminderOwnerHandler = Readonly<{
   updateReminder: (
     ctx: DomindsAppReminderOwnerUpdateContext,
   ) => Promise<DomindsAppHostReminderUpdateResult>;
-  renderReminder: (ctx: DomindsAppReminderOwnerRenderContext) => Promise<ChatMessage>;
+  // Kernel wraps rendered reminder content as an environment reminder before LLM injection.
+  // Return reminder text only; do not use this hook for dialog actions.
+  renderReminder: (
+    ctx: DomindsAppReminderOwnerRenderContext,
+  ) => Promise<DomindsAppReminderRenderedMessage>;
 }>;
 
 export type DomindsAppDynamicToolsetsHandler = (

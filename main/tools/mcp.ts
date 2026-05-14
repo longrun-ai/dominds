@@ -12,7 +12,10 @@ import {
   requestMcpServerDisable,
   requestMcpServerRestart,
 } from '../mcp/supervisor';
-import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import {
+  formatAutoMaintainedReminderManualMirrorBan,
+  formatSystemNoticePrefix,
+} from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import type {
@@ -254,8 +257,8 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
         role: 'user',
         content:
           workLanguage === 'zh'
-            ? `${prefix} MCP 工具集租约提醒 [${reminder.id}]\n你正在查看系统维护的 MCP 租约状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-            : `${prefix} MCP toolset lease reminder [${reminder.id}]\nYou are looking at system-maintained MCP lease state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
+            ? `${prefix} MCP 工具集租约提醒 [${reminder.id}]\n这是系统自动维护的 MCP 租约状态，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(workLanguage)}\n\n${reminder.content}`
+            : `${prefix} MCP toolset lease reminder [${reminder.id}]\nThis is system-maintained MCP lease state, not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(workLanguage)}\n\n${reminder.content}`,
       };
     }
 
@@ -269,6 +272,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
               `${prefix} MCP 工具集租约 [${reminder.id}]: \`${serverId}\``,
               '',
               `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；当前对话持有一个 MCP 运行时实例（HTTP 连接或 stdio 进程）。`,
+              formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
               `当你确认近期不再需要这个运行时实例时，请释放它，以停止/回收底层 MCP 进程或连接：`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
@@ -279,6 +283,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
               `${prefix} MCP toolset lease [${reminder.id}]: \`${serverId}\``,
               '',
               `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and the current dialog holds one MCP runtime instance for it (an HTTP connection or stdio process).`,
+              formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
               `When you are confident you will not need this runtime instance soon, release it to stop the underlying MCP process/connection:`,
               `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,

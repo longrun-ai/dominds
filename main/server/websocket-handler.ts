@@ -844,8 +844,8 @@ async function handleDeclareSideDialogDead(
     note === ''
       ? responseText
       : getWorkLanguage() === 'zh'
-        ? `${responseText}\n\n使用者补充（来自输入框）：\n${note}`
-        : `${responseText}\n\nUser note (from the input box):\n${note}`;
+        ? `${responseText}\n\n人类用户补充：\n${note}`
+        : `${responseText}\n\nHuman user note:\n${note}`;
 
   await supplyResponseToAskerDialog(
     parentDialog,

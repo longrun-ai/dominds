@@ -16,7 +16,10 @@ import path from 'path';
 import { promisify } from 'util';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
-import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import {
+  formatAutoMaintainedReminderManualMirrorBan,
+  formatSystemNoticePrefix,
+} from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadAgentSharedReminders, mutateAgentSharedReminders } from '../shared-reminders';
 import { Team } from '../team';
@@ -826,7 +829,7 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
   if (language === 'zh') {
     return {
       daemonStarted: (pid, timeoutSeconds, command) =>
-        `🟢 ${command} 已转入后台持续运行（PID: ${pid}）\n该进程在 ${timeoutSeconds} 秒内未完成，现已作为守护进程继续执行。你将看到同一条生命周期提醒持续刷新：系统维护 / 实时真源 / 不可删除。\n\n需要时可使用 stop_daemon({"pid": ${pid}}) 终止该进程。`,
+        `🟢 ${command} 已转入后台持续运行（PID: ${pid}）\n该进程在 ${timeoutSeconds} 秒内未完成，现已作为守护进程继续执行。你将看到同一条生命周期提醒持续刷新：系统维护 / 实时真源 / 不可删除。${formatAutoMaintainedReminderManualMirrorBan(language)}\n\n需要时可使用 stop_daemon({"pid": ${pid}}) 终止该进程。`,
       commandCompleted: (exitCode, scrollNotice) =>
         `✅ 命令已完成（退出码：${exitCode ?? 'unknown'}）${scrollNotice}\n\n`,
       scrolledLinesNotice: (lines) => `\n⚠️  执行期间有 ${lines} 行已滚出可视范围`,
@@ -844,7 +847,7 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
 
   return {
     daemonStarted: (pid, timeoutSeconds, command) =>
-      `🟢 ${command} is now running in the background (PID: ${pid})\nThe process did not finish within ${timeoutSeconds} seconds and has transitioned into a daemon. You will see the same lifecycle reminder keep updating: system-maintained / live source of truth / not deletable.\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
+      `🟢 ${command} is now running in the background (PID: ${pid})\nThe process did not finish within ${timeoutSeconds} seconds and has transitioned into a daemon. You will see the same lifecycle reminder keep updating: system-maintained / live source of truth / not deletable. ${formatAutoMaintainedReminderManualMirrorBan(language)}\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
     commandCompleted: (exitCode, scrollNotice) =>
       `✅ Command completed (exit code: ${exitCode ?? 'unknown'})${scrollNotice}\n\n`,
     scrolledLinesNotice: (lines) => `\n⚠️  ${lines} lines scrolled out of view during execution`,
@@ -1503,8 +1506,8 @@ ${formatRunnerBackedDaemonStatusDetails(daemon, language)}`;
 
 function formatRunnerRecoveryError(pid: number, errorText: string, language: LanguageCode): string {
   return language === 'zh'
-    ? `⚠️ 守护进程 ${pid} 的 runner 恢复失败：${errorText}`
-    : `⚠️ Failed to recover runner for daemon ${pid}: ${errorText}`;
+    ? `⚠️ 守护进程 ${pid} 的 runner 恢复失败：${errorText}\n这是系统维护的后台进程状态。${formatAutoMaintainedReminderManualMirrorBan(language)}`
+    : `⚠️ Failed to recover runner for daemon ${pid}: ${errorText}\nThis is system-maintained background-process state. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
 }
 
 // JSON Schema for shell_cmd parameters
@@ -1826,11 +1829,13 @@ export const shellCmdReminderOwner: ReminderOwner = {
         content:
           language === 'zh'
             ? `${prefix} 后台进程生命周期提醒 [${reminder.id}]
-当前运行环境中有一条系统维护的后台进程状态提醒。请把它当成环境信号，不要当成你自己写的工作便签。若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒在进程运行期间会自动更新；进程结束后会保留终态，等待你确认后手动删除。
+当前运行环境中有一条系统维护的后台进程状态提醒。请把它当成环境信号，不要当成你自己写的工作便签。
+${formatAutoMaintainedReminderManualMirrorBan(language)}
+若它没有实质改变你的判断/计划/风险，则禁止做任何用户可见回应（禁止写“静默吸收”“已收到”等占位语句）；只有它实际影响后续动作时，才在下一条有实质内容的回复中体现相关事实。该提醒在进程运行期间会自动更新；进程结束后会保留终态，等待你确认后手动删除。
 ---
 ${reminder.content}`
             : `${prefix} Background process lifecycle reminder [${reminder.id}]
-The current runtime environment has a system-maintained background-process state reminder. Treat it as an environment signal, not as your self-authored work note. If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like "silently noted" or "received"); only reflect it inside the next substantive reply when it actually affects the next action. This reminder auto-updates while the process is running; after exit it keeps the terminal state until you delete it manually.
+The current runtime environment has a system-maintained background-process state reminder. Treat it as an environment signal, not as your self-authored work note. ${formatAutoMaintainedReminderManualMirrorBan(language)} If it does not materially change your judgment/plan/risk, make no user-visible reply at all (do not send filler like "silently noted" or "received"); only reflect it inside the next substantive reply when it actually affects the next action. This reminder auto-updates while the process is running; after exit it keeps the terminal state until you delete it manually.
 ---
 ${reminder.content}`,
       };
@@ -1856,11 +1861,13 @@ ${reminder.content}`,
           content:
             language === 'zh'
               ? `${prefix} 守护进程生命周期提醒 [${reminder.id}] - ${exitedSummary}｜PID ${pid}
-当前运行环境中 daemon 已退出。若需要再核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
+当前运行环境中 daemon 已退出。
+${formatAutoMaintainedReminderManualMirrorBan(language)}
+若需要再核对最后 stdout/stderr，可先按需调用 get_daemon_output({ "pid": ${pid} })；若该调用已不可用，则以下是最后一次已知快照。确认已知悉后，请手动删除这条提醒。
 ---
 ${reminder.content}`
               : `${prefix} Daemon lifecycle reminder [${reminder.id}] - ${exitedSummary} | PID ${pid}
-The current runtime environment shows that this daemon has exited. If you still need to inspect the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
+The current runtime environment shows that this daemon has exited. ${formatAutoMaintainedReminderManualMirrorBan(language)} If you still need to inspect the final stdout/stderr, first call get_daemon_output({ "pid": ${pid} }) if it is still available; otherwise use the last known snapshot below. After you have acknowledged the exit, delete this reminder manually.
 ---
 ${reminder.content}`,
         };
@@ -1871,9 +1878,9 @@ ${reminder.content}`,
         content:
           language === 'zh'
             ? `${prefix} 进程生命周期提醒 [${reminder.id}] - 后台进程已结束（PID ${pid}）
-当前运行环境中该后台进程的生命周期已经结束，当前不再运行。`
+当前运行环境中该后台进程的生命周期已经结束，当前不再运行。${formatAutoMaintainedReminderManualMirrorBan(language)}`
             : `${prefix} Process lifecycle reminder [${reminder.id}] - daemon terminated (PID ${pid})
-The current runtime environment shows that this daemon process has finished its lifecycle and is no longer running.`,
+The current runtime environment shows that this daemon process has finished its lifecycle and is no longer running. ${formatAutoMaintainedReminderManualMirrorBan(language)}`,
       };
     }
 
@@ -1904,12 +1911,14 @@ The current runtime environment shows that this daemon process has finished its 
       content:
         language === 'zh'
           ? `🔄 ${prefix} 守护进程生命周期提醒 [${reminder.id}] - ${runningSummary}｜PID ${pid}，已运行 ${uptimeStr}
-当前运行环境中 daemon 仍在运行。这是系统维护的状态提醒，不是默认需要单独汇报的事项。若下面的信息没有实质改变你的判断、计划、风险，且不需要调用守护进程相关工具，则禁止做任何用户可见回应；若它有实质影响，只在下一条有实质内容的回复中体现，禁止单独发送“静默吸收”“已收到”等占位语句。
+当前运行环境中 daemon 仍在运行。这是系统维护的状态提醒，不是默认需要单独汇报的事项。
+${formatAutoMaintainedReminderManualMirrorBan(language)}
+若下面的信息没有实质改变你的判断、计划、风险，且不需要调用守护进程相关工具，则禁止做任何用户可见回应；若它有实质影响，只在下一条有实质内容的回复中体现，禁止单独发送“静默吸收”“已收到”等占位语句。
 
 **状态快照：**
 ${statusInfo}`
           : `🔄 ${prefix} Daemon lifecycle reminder [${reminder.id}] - ${runningSummary} | PID ${pid}, uptime: ${uptimeStr}
-The current runtime environment shows that this daemon is still running. This is a system-maintained state reminder and not something that normally deserves a standalone mention. If the information below does not materially change your judgment, plan, risk, or require a daemon-management action, make no user-visible reply at all; if it does matter, reflect it only inside the next substantive reply instead of sending filler like "silently noted" or "received".
+The current runtime environment shows that this daemon is still running. This is a system-maintained state reminder and not something that normally deserves a standalone mention. ${formatAutoMaintainedReminderManualMirrorBan(language)} If the information below does not materially change your judgment, plan, risk, or require a daemon-management action, make no user-visible reply at all; if it does matter, reflect it only inside the next substantive reply instead of sending filler like "silently noted" or "received".
 
 **State snapshot:**
 ${statusInfo}`,

@@ -3,7 +3,10 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { DialogPersistence } from '../persistence';
-import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import {
+  formatAutoMaintainedReminderManualMirrorBan,
+  formatSystemNoticePrefix,
+} from '../runtime/driver-messages';
 import { getTellaskKindLabel } from '../runtime/tellask-labels';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
@@ -59,14 +62,14 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
 
 function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '不要手改这条系统提醒。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
-    : 'Do not hand-edit this system reminder. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the tellaskee can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Side Dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
+    ? '不要手改这条系统提醒。诉请更改通道：只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
+    : 'Do not hand-edit this system reminder. Tellask change path: only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the tellaskee can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Side Dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
 function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '这条系统提醒不可删除。若要改变某一路诉请，只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
-    : 'This system reminder is not deletable. If you need to change one tellask, only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the tellaskee can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Side Dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
+    ? '这条系统提醒不可删除。诉请更改通道：只有长线诉请（`tellask` + `sessionSlug`）才能更新那一路诉请的“任务安排”：复用同一 `sessionSlug` 再发 `tellask`，让对应主理人按最新安排自行最终回复并自然结束。一次性诉请（`tellaskSessionless`）没有这个通道；新开一个 `tellaskSessionless` 只会再创建新的瞬态支线，不能要求旧主理人停止。其余情况等待系统按真实诉请状态自动刷新。'
+    : 'This system reminder is not deletable. Tellask change path: only a sessioned tellask (`tellask` + `sessionSlug`) can be updated in place: send another `tellask` with the same `sessionSlug` so the tellaskee can finish naturally under the latest assignment. A one-shot tellask (`tellaskSessionless`) has no such channel; another `tellaskSessionless` only creates a new transient Side Dialog and cannot tell the earlier owner to stop. Otherwise wait for system refresh from real tellask state.';
 }
 
 function callKindLabel(language: LanguageCode, view: PendingSideDialogView): string {
@@ -302,23 +305,13 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
   async renderReminder(_dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
     const language = getWorkLanguage();
     const prefix = formatSystemNoticePrefix(language);
-    if (reminder.owner !== pendingTellaskReminderOwner) {
-      return {
-        type: 'environment_msg',
-        role: 'user',
-        content:
-          language === 'zh'
-            ? `${prefix} 自动维护诉请状态提醒 [${reminder.id}]\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-            : `${prefix} Auto-maintained tellask status reminder [${reminder.id}]\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
-      };
-    }
     return {
       type: 'environment_msg',
       role: 'user',
       content:
         language === 'zh'
-          ? `${prefix} 自动维护诉请状态提醒 [${reminder.id}]\n你正在查看系统自动维护的诉请状态，不要把它当成你自己写的工作便签。\n\n${reminder.content}`
-          : `${prefix} Auto-maintained tellask status reminder [${reminder.id}]\nYou are looking at system-maintained tellask state. Do not treat it as a self-authored work note.\n\n${reminder.content}`,
+          ? `${prefix} 自动维护诉请状态提醒 [${reminder.id}]\n这是系统自动维护的诉请状态，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}\n\n${reminder.content}`
+          : `${prefix} Auto-maintained tellask status reminder [${reminder.id}]\nThis is system-maintained tellask state, not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}\n\n${reminder.content}`,
     };
   },
 };

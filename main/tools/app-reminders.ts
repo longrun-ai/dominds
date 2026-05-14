@@ -1,3 +1,4 @@
+import type { DomindsAppReminderRenderedMessage } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppReminderApplyRequest,
   DomindsAppReminderOwnerJson,
@@ -9,7 +10,10 @@ import type { Dialog } from '../dialog';
 import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
 import { log } from '../log';
-import { formatReminderItemGuide } from '../runtime/driver-messages';
+import {
+  formatAutoMaintainedReminderManualMirrorBan,
+  formatReminderItemGuide,
+} from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadAgentSharedReminders } from '../shared-reminders';
 import {
@@ -226,6 +230,23 @@ function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
   };
 }
 
+function formatAppReminderWrapperPrelude(language: ReturnType<typeof getWorkLanguage>): string {
+  return language === 'zh'
+    ? `这是 app 自动维护的状态提醒，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}`
+    : `This is app-maintained state, not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
+}
+
+function wrapAppRenderedReminder(
+  message: DomindsAppReminderRenderedMessage,
+  language: ReturnType<typeof getWorkLanguage>,
+): ChatMessage {
+  return {
+    type: 'environment_msg',
+    role: 'user',
+    content: `${formatAppReminderWrapperPrelude(language)}\n\n${message.content}`,
+  };
+}
+
 async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
   await dlg.dlgStore.persistReminders(dlg, dlg.reminders);
   const sharedReminders = await loadAgentSharedReminders(dlg.agentId);
@@ -292,12 +313,14 @@ function createAppReminderOwner(params: {
       }
       try {
         const client = await resolveHostClient();
-        return await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
+        const language = getWorkLanguage();
+        const rendered = await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
           dialogId: dlg.id.selfId,
           reminder: toReminderState(reminder),
           reminderId: reminder.id,
-          workLanguage: getWorkLanguage(),
+          workLanguage: language,
         });
+        return wrapAppRenderedReminder(rendered, language);
       } catch (error: unknown) {
         log.warn('App reminder render failed; using generic reminder rendering', error, {
           appId: descriptor.appId,

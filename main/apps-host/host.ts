@@ -4,6 +4,15 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 import type {
+  CreateDomindsAppFn,
+  DomindsAppHostInstance,
+  DomindsAppHostStartResult,
+  DomindsAppReminderOwnerHandler,
+  DomindsAppReminderRenderedMessage,
+  DomindsAppRunControlBlock,
+  DomindsAppRunControlResult,
+} from '@longrun-ai/kernel/app-host-contract';
+import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppDialogTargetRef,
   DomindsAppHostReminderUpdateResult,
@@ -12,19 +21,9 @@ import type {
   DomindsAppReminderApplyResult,
   DomindsAppReminderState,
 } from '@longrun-ai/kernel/app-json';
-import type { ChatMessage } from '../llm/client';
+import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import { createLogger } from '../log';
 import type { JsonValue } from '../tool';
-
-import type {
-  CreateDomindsAppFn,
-  DomindsAppHostInstance,
-  DomindsAppHostStartResult,
-  DomindsAppReminderOwnerHandler,
-  DomindsAppRunControlBlock,
-  DomindsAppRunControlResult,
-} from '@longrun-ai/kernel/app-host-contract';
-import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import {
   parseAppsHostMessageFromKernel,
   type AppsHostKernelInitMessage,
@@ -223,10 +222,9 @@ function isReminderUpdateResult(value: unknown): value is DomindsAppHostReminder
   return updatedMeta === undefined || isJsonValue(updatedMeta);
 }
 
-function isChatMessage(value: unknown): value is ChatMessage {
+function isReminderRenderedMessage(value: unknown): value is DomindsAppReminderRenderedMessage {
   if (!isRecord(value)) return false;
-  if (typeof value['type'] !== 'string') return false;
-  if (typeof value['role'] !== 'string') return false;
+  if (typeof value['content'] !== 'string') return false;
   return true;
 }
 
@@ -790,12 +788,12 @@ process.on('message', (raw: unknown) => {
         }
         try {
           const message = await found.fn.renderReminder(msg.ctx);
-          if (!isChatMessage(message)) {
+          if (!isReminderRenderedMessage(message)) {
             send({
               type: 'reminder_render_result',
               callId: msg.callId,
               ok: false,
-              errorText: `Invalid reminder render result shape: ${msg.appId}/${msg.ownerRef}`,
+              errorText: `Invalid reminder render result shape: ${msg.appId}/${msg.ownerRef}; expected { content: string }`,
             });
             return;
           }

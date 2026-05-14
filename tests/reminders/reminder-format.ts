@@ -202,9 +202,9 @@ async function main() {
   );
   assert(
     zhMetaControlledUpdate.includes(
-      '如果你已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "rem07abc" })',
+      '清理噪音时可删除：delete_reminder({ "reminder_id": "rem07abc" })',
     ),
-    'Expected zh zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
+    'Expected zh zero-inflight pending-tellask guide to use noise-cleanup delete path wording',
   );
 
   const zhPendingActiveGuard = formatReminderItemGuide('zh', 'rem08abc', '进行中诉请内容\n', {
@@ -332,8 +332,8 @@ async function main() {
     'Expected en reminder guide to omit action section labels',
   );
   assert(
-    en.includes('If you need to update this reminder'),
-    'Expected en reminder guide to use conditional update wording',
+    en.includes('Update path: update_reminder'),
+    'Expected en reminder guide to present update action as a path',
   );
 
   const enPersonal = formatReminderItemGuide('en', 'rem09abc', 'Remember the deploy command\n', {
@@ -352,8 +352,8 @@ async function main() {
     meta: { manager: { tool: 'some_tool' } },
   });
   assert(
-    enToolManaged.includes('managed by tool some_tool'),
-    'Expected en tool-managed reminder to mention management tool',
+    enToolManaged.includes('Change path: use some_tool; do not use update_reminder.'),
+    'Expected en tool-managed reminder to mention management tool in the change path',
   );
   assert(
     enToolManaged.includes('do not explicitly acknowledge, restate, or summarize it'),
@@ -446,7 +446,7 @@ async function main() {
   );
   assert(
     enMetaControlledUpdate.includes(
-      'If you have confirmed this is only noise cleanup and not an action step, you may run: delete_reminder({ "reminder_id": "rem07abc" })',
+      'Noise cleanup delete path: delete_reminder({ "reminder_id": "rem07abc" })',
     ),
     'Expected en zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
   );

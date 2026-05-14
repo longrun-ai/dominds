@@ -4,6 +4,12 @@ export function formatSystemNoticePrefix(language: LanguageCode): string {
   return language === 'zh' ? '【系统提示】' : '[System notice]';
 }
 
+export function formatAutoMaintainedReminderManualMirrorBan(language: LanguageCode): string {
+  return language === 'zh'
+    ? '这条状态由系统维护；禁止把它抄进、改写进、或同步维护到你手工创建的提醒项里。'
+    : 'This state is system-maintained; do not copy, rewrite, or separately maintain it in manual reminders.';
+}
+
 export function formatCurrentUserLanguagePreference(
   workingLanguage: LanguageCode,
   uiLanguage: LanguageCode,
@@ -348,15 +354,15 @@ export function formatReminderItemGuide(
   const deleteInstruction =
     language === 'zh'
       ? deleteAltInstruction
-        ? `如果你要删除这条提醒项，不能用 delete_reminder；请执行：${deleteAltInstruction}`
+        ? `删除通道：不要用 delete_reminder；请执行：${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `如果你已确认这里只是清理噪音、并非要推进动作，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `如果你要删除这条提醒项，可执行：delete_reminder({ "reminder_id": "${reminderId}" })`
+          ? `清理噪音时可删除：delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `删除通道：delete_reminder({ "reminder_id": "${reminderId}" })`
       : deleteAltInstruction
-        ? `If you need to delete this reminder, do not use delete_reminder; run: ${deleteAltInstruction}`
+        ? `Delete path: do not use delete_reminder; run: ${deleteAltInstruction}`
         : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `If you have confirmed this is only noise cleanup and not an action step, you may run: delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `If you need to delete this reminder, run: delete_reminder({ "reminder_id": "${reminderId}" })`;
+          ? `Noise cleanup delete path: delete_reminder({ "reminder_id": "${reminderId}" })`
+          : `Delete path: delete_reminder({ "reminder_id": "${reminderId}" })`;
   const projectionNote = formatReminderItemProjectionNote(language);
   const enProjectionPrefix = `${projectionNote} `;
   const systemPrefix = formatSystemNoticePrefix(language);
@@ -368,12 +374,13 @@ export function formatReminderItemGuide(
         `${systemPrefix} 提醒项 [${reminderId}]（工具状态）`,
         '',
         `${projectionNote}当前运行环境中有一条由工具 ${managementTool} 管理的状态提醒项。请把它当作环境/工具状态参考，不要当作你自己写的工作便签。`,
+        formatAutoMaintainedReminderManualMirrorBan(language),
         '',
         '默认不要在对外回复里专门确认、复述或总结它；只有它实际改变你的判断、计划或风险时，才提炼真正相关的部分。',
         '',
-        `这条提醒项由工具 ${managementTool} 管理；如果你要调整它，就用 ${managementTool}（不要用 update_reminder）。`,
+        `调整通道：使用 ${managementTool}；不要用 update_reminder。`,
         '',
-        `如果你要更新这条提醒项，可执行：${updateInstructionSafe}`,
+        `更新通道：${updateInstructionSafe}`,
         deleteInstruction,
         '',
         '---',
@@ -385,8 +392,9 @@ export function formatReminderItemGuide(
         `${systemPrefix} 提醒项 [${reminderId}]`,
         '',
         `${projectionNote}当前运行环境中有一条带有 meta 控制更新规则的提醒项。请把它当作状态参考，不要用 update_reminder 直接改写内容。`,
+        formatAutoMaintainedReminderManualMirrorBan(language),
         '',
-        `如果你要更新这条提醒项，不能用 update_reminder；请按此处理：${updateInstruction}`,
+        `更新通道：不要用 update_reminder；请按此处理：${updateInstruction}`,
         deleteInstruction,
         '',
         '---',
@@ -433,11 +441,13 @@ export function formatReminderItemGuide(
 
 ${enProjectionPrefix}The current runtime environment has a tool-managed state reminder from ${managementTool}. Treat it as environment/tool state, not as your self-authored work note.
 
+${formatAutoMaintainedReminderManualMirrorBan(language)}
+
 By default, do not explicitly acknowledge, restate, or summarize it in your outward reply; only extract the parts that materially change your current judgment, plan, or risk.
 
-This reminder is managed by tool ${managementTool}; if you need to change it, use ${managementTool} instead of update_reminder.
+Change path: use ${managementTool}; do not use update_reminder.
 
-If you need to update this reminder, run: ${updateInstructionSafe}
+Update path: ${updateInstructionSafe}
 ${deleteInstruction}
 ---
 ${content}`;
@@ -447,7 +457,9 @@ ${content}`;
 
 ${enProjectionPrefix}The current runtime environment has a reminder with a meta-controlled update path. Treat it as state/reference, and do not rewrite it directly with update_reminder.
 
-If you need to update this reminder, do not use update_reminder; follow instead: ${updateInstruction}
+${formatAutoMaintainedReminderManualMirrorBan(language)}
+
+Update path: do not use update_reminder; follow instead: ${updateInstruction}
 ${deleteInstruction}
 ---
 ${content}`;
@@ -459,7 +471,7 @@ ${enProjectionPrefix}You set a continuation reminder so the runtime system can r
 
 Keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
 
-If you need to update this package, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
+Update path: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;
@@ -478,7 +490,7 @@ ${
     : 'Keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.'
 }
 
-If you need to update this reminder, run: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
+Update path: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}
 ---
 ${content}`;

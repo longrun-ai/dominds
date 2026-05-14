@@ -1,4 +1,7 @@
-import type { DomindsAppRunControlResult } from '@longrun-ai/kernel/app-host-contract';
+import type {
+  DomindsAppReminderRenderedMessage,
+  DomindsAppRunControlResult,
+} from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppHostReminderUpdateResult,
@@ -8,7 +11,6 @@ import type {
   DomindsAppReminderState,
 } from '@longrun-ai/kernel/app-json';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
-import type { ChatMessage } from '../llm/client';
 import type { ToolArguments, ToolCallOutput } from '../tool';
 
 export type AppsHostKernelInitMessage = Readonly<{
@@ -200,7 +202,10 @@ export type AppsHostReminderRenderResultMessage = Readonly<
   {
     type: 'reminder_render_result';
     callId: string;
-  } & (Readonly<{ ok: true; message: ChatMessage }> | Readonly<{ ok: false; errorText: string }>)
+  } & (
+    | Readonly<{ ok: true; message: DomindsAppReminderRenderedMessage }>
+    | Readonly<{ ok: false; errorText: string }>
+  )
 >;
 
 export type AppsHostRunControlResultMessage = Readonly<
