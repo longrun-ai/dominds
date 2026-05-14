@@ -15,6 +15,12 @@ export type ProgressiveExpandableComponentOptions = Readonly<{
   target: HTMLElement;
   footer: HTMLElement;
   button: HTMLButtonElement;
+  // Direction classes are creation-time state, not setup-time repair work.
+  // The caller must create markup with exactly one of `${base}-down` / `${base}-up`
+  // on each directed element; the component constructor validates that invariant.
+  footerDirectionClassBase?: string;
+  buttonDirectionClassBase?: string;
+  iconDirectionClassBase?: string;
   stepParent?: HTMLElement | null;
   label: Readonly<{ text: string; title: string }>;
   state?: ProgressiveExpandState;
@@ -25,6 +31,57 @@ export type ProgressiveExpandableComponentOptions = Readonly<{
 }>;
 
 type ProgressiveExpandGrowthReason = ProgressiveExpandContentGrownDetail['reason'];
+type ProgressiveExpandDirection = 'down' | 'up';
+type ProgressiveExpandDirectedElementRole = 'footer' | 'button' | 'icon';
+
+function getSingleProgressiveExpandIcon(
+  button: HTMLButtonElement,
+  iconClassBase: string,
+): HTMLElement {
+  const elements = button.getElementsByClassName(iconClassBase);
+  const element = elements.item(0);
+  if (elements.length === 1 && element instanceof HTMLElement) {
+    return element;
+  }
+  throw new Error(
+    `Progressive expand button must contain exactly one ${iconClassBase} icon element`,
+  );
+}
+
+function assertProgressiveExpandDirectionClass(
+  element: HTMLElement,
+  classBase: string,
+  direction: ProgressiveExpandDirection,
+  role: ProgressiveExpandDirectedElementRole,
+): void {
+  const oppositeDirection: ProgressiveExpandDirection = direction === 'down' ? 'up' : 'down';
+  const expectedClassName = `${classBase}-${direction}`;
+  const oppositeClassName = `${classBase}-${oppositeDirection}`;
+  if (
+    element.classList.contains(expectedClassName) &&
+    !element.classList.contains(oppositeClassName)
+  ) {
+    return;
+  }
+  throw new Error(
+    `Progressive expand ${role} must be created with exactly one ${classBase}-{down,up} direction class matching ${direction}`,
+  );
+}
+
+function assertProgressiveExpandDirectionClasses(
+  options: ProgressiveExpandableComponentOptions,
+  direction: ProgressiveExpandDirection,
+): void {
+  const footerClassBase = options.footerDirectionClassBase ?? 'progressive-expand-footer';
+  const buttonClassBase = options.buttonDirectionClassBase ?? 'progressive-expand-btn';
+  const iconClassBase = options.iconDirectionClassBase ?? 'progressive-expand-icon';
+
+  assertProgressiveExpandDirectionClass(options.footer, footerClassBase, direction, 'footer');
+  assertProgressiveExpandDirectionClass(options.button, buttonClassBase, direction, 'button');
+
+  const icon = getSingleProgressiveExpandIcon(options.button, iconClassBase);
+  assertProgressiveExpandDirectionClass(icon, iconClassBase, direction, 'icon');
+}
 
 function getProgressiveExpandGrowthReason(event: Event): ProgressiveExpandGrowthReason | null {
   if (!(event instanceof CustomEvent)) return null;
@@ -154,6 +211,7 @@ class DownwardProgressiveExpandableComponent {
   }
 
   constructor(options: ProgressiveExpandableComponentOptions) {
+    assertProgressiveExpandDirectionClasses(options, 'down');
     this.target = options.target;
     this.footer = options.footer;
     this.button = options.button;
@@ -418,6 +476,7 @@ class UpwardProgressiveExpandableComponent {
   };
 
   constructor(options: ProgressiveExpandableComponentOptions) {
+    assertProgressiveExpandDirectionClasses(options, 'up');
     this.target = options.target;
     this.footer = options.footer;
     this.button = options.button;
@@ -672,6 +731,8 @@ class UpwardProgressiveExpandableComponent {
 export function setupDownwardProgressiveExpandBehavior(
   options: ProgressiveExpandableComponentOptions,
 ): () => void {
+  // One-time behavior initializer: callers create the directed markup; the component constructor
+  // validates it and this function only returns the matching cleanup hook.
   const component = new DownwardProgressiveExpandableComponent(options);
   return () => {
     component.cleanup();
@@ -681,6 +742,8 @@ export function setupDownwardProgressiveExpandBehavior(
 export function setupUpwardProgressiveExpandBehavior(
   options: ProgressiveExpandableComponentOptions,
 ): () => void {
+  // One-time behavior initializer: callers create the directed markup; the component constructor
+  // validates it and this function only returns the matching cleanup hook.
   const component = new UpwardProgressiveExpandableComponent(options);
   return () => {
     component.cleanup();

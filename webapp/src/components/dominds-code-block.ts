@@ -195,26 +195,25 @@ export class DomindsCodeBlock extends HTMLElement {
             position: relative;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
             padding: 0;
             margin-top: 0;
             height: 3px;
             min-height: 3px;
             overflow: visible;
-            border-top: 1px solid var(--code-expand-border);
             background: transparent;
+          }
+          .code-expand-footer-down {
+            align-items: flex-start;
+            border-top: 1px solid var(--code-expand-border);
           }
           .code-expand-footer.is-hidden {
             display: none;
           }
           .code-expand-btn {
             position: relative;
-            transform: translateY(calc(-1 * var(--code-expand-tab-height)));
             width: 30px;
             height: var(--code-expand-tab-height);
-            border-radius: 12px 12px 0 0;
             border: 1px solid var(--code-expand-border);
-            border-bottom: 0;
             background: var(--code-expand-tab-bg);
             color: var(--dominds-muted, var(--color-fg-tertiary, #616161));
             cursor: pointer;
@@ -225,6 +224,11 @@ export class DomindsCodeBlock extends HTMLElement {
               background 0.2s ease,
               border-color 0.2s ease,
               color 0.2s ease;
+          }
+          .code-expand-btn-down {
+            transform: translateY(calc(-1 * var(--code-expand-tab-height)));
+            border-bottom: 0;
+            border-radius: 12px 12px 0 0;
           }
           .code-expand-btn:hover {
             border-color: var(--dominds-primary, var(--color-accent-primary, #005fb8));
@@ -242,8 +246,10 @@ export class DomindsCodeBlock extends HTMLElement {
           .code-expand-icon {
             width: 15px;
             height: 15px;
+          }
+          .code-expand-icon-down {
+            animation: progressive-expand-flash-down 2.2s ease-in-out infinite;
             --icon-mask: ${ICON_MASK_URLS.chevronsDown};
-            animation: progressive-expand-flash 2.2s ease-in-out infinite;
           }
           .code-expand-btn:hover .code-expand-icon,
           .code-expand-btn:focus-visible .code-expand-icon {
@@ -254,7 +260,7 @@ export class DomindsCodeBlock extends HTMLElement {
             background: transparent;
             color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
           }
-          @keyframes progressive-expand-flash {
+          @keyframes progressive-expand-flash-down {
             0%,
             100% {
               opacity: 0.5;
@@ -276,9 +282,9 @@ export class DomindsCodeBlock extends HTMLElement {
             <button class="copy-btn" title="Copy code" aria-label="Copy code"><span class="icon-mask" aria-hidden="true"></span></button>
           </div>
           <pre><code class="hljs language-${languageClassToken}">${highlighted}</code></pre>
-          <div class="code-expand-footer is-hidden">
-            <button type="button" class="code-expand-btn">
-              <span class="code-expand-icon icon-mask" aria-hidden="true"></span>
+          <div class="code-expand-footer code-expand-footer-down is-hidden">
+            <button type="button" class="code-expand-btn code-expand-btn-down">
+              <span class="code-expand-icon code-expand-icon-down icon-mask" aria-hidden="true"></span>
             </button>
           </div>
         </div>
@@ -316,6 +322,9 @@ export class DomindsCodeBlock extends HTMLElement {
       target,
       footer,
       button,
+      footerDirectionClassBase: 'code-expand-footer',
+      buttonDirectionClassBase: 'code-expand-btn',
+      iconDirectionClassBase: 'code-expand-icon',
       stepParent,
       label: getProgressiveExpandLabel(language),
       // Code blocks can keep growing while streaming output arrives. Observe only the code block

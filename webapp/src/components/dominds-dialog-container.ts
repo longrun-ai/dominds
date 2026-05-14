@@ -3039,9 +3039,6 @@ export class DomindsDialogContainer extends HTMLElement {
   }): void {
     const { target, footer, button, stepParent } = options;
     const label = getProgressiveExpandLabel(this.uiLanguage);
-    button.innerHTML = `
-      <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
-    `;
     const previousCleanup = this.progressiveExpandCleanupByTarget.get(target);
     if (previousCleanup !== undefined) {
       previousCleanup();
@@ -3075,9 +3072,6 @@ export class DomindsDialogContainer extends HTMLElement {
   }): void {
     const { target, footer, button, stepParent } = options;
     const label = getProgressiveExpandLabel(this.uiLanguage);
-    button.innerHTML = `
-      <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
-    `;
     const previousCleanup = this.progressiveExpandCleanupByTarget.get(target);
     if (previousCleanup !== undefined) {
       previousCleanup();
@@ -3843,8 +3837,10 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
         <div class="bubble-body">
           <div class="teammate-content"></div>
-          <div class="teammate-expand-footer progressive-expand-footer is-hidden">
-            <button type="button" class="teammate-expand-btn progressive-expand-btn"></button>
+          <div class="teammate-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden">
+            <button type="button" class="teammate-expand-btn progressive-expand-btn progressive-expand-btn-down">
+              <span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -4180,8 +4176,10 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
         <div class="bubble-body">
           <div class="teammate-content"></div>
-          <div class="teammate-expand-footer progressive-expand-footer is-hidden">
-            <button type="button" class="teammate-expand-btn progressive-expand-btn"></button>
+          <div class="teammate-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden">
+            <button type="button" class="teammate-expand-btn progressive-expand-btn progressive-expand-btn-down">
+              <span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -4292,8 +4290,10 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
         <div class="bubble-body">
           <div class="ui-only-markdown-content"></div>
-          <div class="ui-only-markdown-expand-footer progressive-expand-footer is-hidden">
-            <button type="button" class="ui-only-markdown-expand-btn progressive-expand-btn"></button>
+          <div class="ui-only-markdown-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden">
+            <button type="button" class="ui-only-markdown-expand-btn progressive-expand-btn progressive-expand-btn-down">
+              <span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -4978,8 +4978,10 @@ export class DomindsDialogContainer extends HTMLElement {
         <span class="section-icon icon-mask dc-icon-brain" aria-hidden="true"></span>
         <span class="section-title">${this.escapeHtml(t.thinkingSectionTitle)}</span>
       </div>
-      <div class="thinking-expand-footer progressive-expand-footer is-hidden">
-        <button type="button" class="thinking-expand-btn progressive-expand-btn"></button>
+      <div class="thinking-expand-footer progressive-expand-footer progressive-expand-footer-up is-hidden">
+        <button type="button" class="thinking-expand-btn progressive-expand-btn progressive-expand-btn-up">
+          <span class="progressive-expand-icon progressive-expand-icon-up icon-mask" aria-hidden="true"></span>
+        </button>
       </div>
       <div class="thinking-content"></div>
     `;
@@ -5042,8 +5044,10 @@ export class DomindsDialogContainer extends HTMLElement {
       <div class="calling-content">
         <div class="calling-body"></div>
       </div>
-      <div class="calling-expand-footer progressive-expand-footer is-hidden">
-        <button type="button" class="calling-expand-btn progressive-expand-btn"></button>
+      <div class="calling-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden">
+        <button type="button" class="calling-expand-btn progressive-expand-btn progressive-expand-btn-down">
+          <span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>
+        </button>
       </div>
     `;
     return el;
@@ -5183,10 +5187,13 @@ export class DomindsDialogContainer extends HTMLElement {
     argsWrap.className = 'func-call-arguments-wrap';
     const argsExpandFooter = document.createElement('div');
     argsExpandFooter.className =
-      'func-call-arguments-expand-footer progressive-expand-footer is-hidden';
+      'func-call-arguments-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden';
     const argsExpandBtn = document.createElement('button');
     argsExpandBtn.type = 'button';
-    argsExpandBtn.className = 'func-call-arguments-expand-btn progressive-expand-btn';
+    argsExpandBtn.className =
+      'func-call-arguments-expand-btn progressive-expand-btn progressive-expand-btn-down';
+    argsExpandBtn.innerHTML =
+      '<span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>';
     argsExpandFooter.appendChild(argsExpandBtn);
     argsWrap.append(argsEl, argsExpandFooter);
 
@@ -5197,10 +5204,13 @@ export class DomindsDialogContainer extends HTMLElement {
     resultWrap.className = 'func-call-result-wrap';
     const resultExpandFooter = document.createElement('div');
     resultExpandFooter.className =
-      'func-call-result-expand-footer progressive-expand-footer is-hidden';
+      'func-call-result-expand-footer progressive-expand-footer progressive-expand-footer-down is-hidden';
     const resultExpandBtn = document.createElement('button');
     resultExpandBtn.type = 'button';
-    resultExpandBtn.className = 'func-call-result-expand-btn progressive-expand-btn';
+    resultExpandBtn.className =
+      'func-call-result-expand-btn progressive-expand-btn progressive-expand-btn-down';
+    resultExpandBtn.innerHTML =
+      '<span class="progressive-expand-icon progressive-expand-icon-down icon-mask" aria-hidden="true"></span>';
     resultExpandFooter.appendChild(resultExpandBtn);
     resultWrap.append(resultEl, resultExpandFooter);
 
@@ -6236,9 +6246,7 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 0;
         height: 3px;
         min-height: 3px;
-        border-top: 1px solid var(--progressive-expand-border);
         display: flex;
-        align-items: flex-start;
         justify-content: center;
         overflow: visible;
       }
@@ -6247,14 +6255,22 @@ export class DomindsDialogContainer extends HTMLElement {
         display: none;
       }
 
+      .progressive-expand-footer-down {
+        border-top: 1px solid var(--progressive-expand-border);
+        align-items: flex-start;
+      }
+
+      .progressive-expand-footer-up {
+        border-top: 0;
+        border-bottom: 1px solid var(--progressive-expand-border);
+        align-items: flex-end;
+      }
+
       .progressive-expand-btn {
         position: relative;
-        transform: translateY(calc(-1 * var(--progressive-expand-tab-height)));
         border: 1px solid var(--progressive-expand-border);
-        border-bottom: 0;
         background: var(--progressive-expand-tab-bg);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        border-radius: 12px 12px 0 0;
         width: 30px;
         height: var(--progressive-expand-tab-height);
         padding: 0;
@@ -6264,13 +6280,13 @@ export class DomindsDialogContainer extends HTMLElement {
         justify-content: center;
       }
 
-      .thinking-expand-footer {
-        border-top: 0;
-        border-bottom: 1px solid var(--progressive-expand-border);
-        align-items: flex-end;
+      .progressive-expand-btn-down {
+        transform: translateY(calc(-1 * var(--progressive-expand-tab-height)));
+        border-bottom: 0;
+        border-radius: 12px 12px 0 0;
       }
 
-      .thinking-expand-footer .progressive-expand-btn {
+      .progressive-expand-btn-up {
         transform: translateY(var(--progressive-expand-tab-height));
         border-top: 0;
         border-bottom: 1px solid var(--progressive-expand-border);
@@ -6290,13 +6306,17 @@ export class DomindsDialogContainer extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        animation: progressive-expand-flash 2.2s ease-in-out infinite;
         width: 15px;
         height: 15px;
+      }
+
+      .progressive-expand-icon-down {
+        animation: progressive-expand-flash-down 2.2s ease-in-out infinite;
         --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 
-      .thinking-expand-footer .progressive-expand-icon {
+      .progressive-expand-icon-up {
+        animation: progressive-expand-flash-up 2.2s ease-in-out infinite;
         --icon-mask: ${ICON_MASK_URLS.chevronsUp};
       }
 
@@ -6365,7 +6385,7 @@ export class DomindsDialogContainer extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.scrollDown};
       }
 
-      @keyframes progressive-expand-flash {
+      @keyframes progressive-expand-flash-down {
         0%,
         72%,
         100% {
@@ -6373,6 +6393,17 @@ export class DomindsDialogContainer extends HTMLElement {
         }
         82% {
           transform: translateY(0.5px);
+        }
+      }
+
+      @keyframes progressive-expand-flash-up {
+        0%,
+        72%,
+        100% {
+          transform: translateY(0);
+        }
+        82% {
+          transform: translateY(-0.5px);
         }
       }
 

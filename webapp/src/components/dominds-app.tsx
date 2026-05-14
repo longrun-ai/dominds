@@ -6146,11 +6146,14 @@ export class DomindsApp extends HTMLElement {
         padding: 0;
         height: 3px;
         min-height: 3px;
-        border-top: 1px solid var(--rem-item-expand-border);
         display: flex;
-        align-items: flex-start;
         justify-content: center;
         overflow: visible;
+      }
+
+      .rem-item-expand-footer-down {
+        border-top: 1px solid var(--rem-item-expand-border);
+        align-items: flex-start;
       }
 
       .rem-item-expand-footer.is-hidden {
@@ -6159,12 +6162,9 @@ export class DomindsApp extends HTMLElement {
 
       .rem-item-expand-btn {
         position: relative;
-        transform: translateY(calc(-1 * var(--rem-item-expand-tab-height)));
         border: 1px solid var(--rem-item-expand-border);
-        border-bottom: 0;
         background: var(--rem-item-expand-tab-bg);
         color: var(--dominds-fg, #475569);
-        border-radius: 12px 12px 0 0;
         width: 30px;
         height: var(--rem-item-expand-tab-height);
         padding: 0;
@@ -6172,6 +6172,12 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+      }
+
+      .rem-item-expand-btn-down {
+        transform: translateY(calc(-1 * var(--rem-item-expand-tab-height)));
+        border-bottom: 0;
+        border-radius: 12px 12px 0 0;
       }
 
       .rem-item-expand-btn:hover {
@@ -6187,9 +6193,12 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        animation: progressive-expand-flash 2.2s ease-in-out infinite;
         width: 15px;
         height: 15px;
+      }
+
+      .rem-item-expand-icon-down {
+        animation: progressive-expand-flash-down 2.2s ease-in-out infinite;
         --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 
@@ -6311,7 +6320,7 @@ export class DomindsApp extends HTMLElement {
         background: color-mix(in srgb, var(--dominds-hover) 65%, var(--dominds-bg) 35%);
       }
 
-      @keyframes progressive-expand-flash {
+      @keyframes progressive-expand-flash-down {
         0%, 100% { opacity: 0.46; transform: translateY(0); }
         50% { opacity: 1; transform: translateY(1px); }
       }
@@ -12289,14 +12298,14 @@ export class DomindsApp extends HTMLElement {
       return [
         '<div class="rem-item-body">',
         `<div class="rem-item-content rem-item-content-expandable">${this.renderReminderPlainHtml(content)}</div>`,
-        '<div class="rem-item-expand-footer is-hidden"><button type="button" class="rem-item-expand-btn"><span class="rem-item-expand-icon icon-mask" aria-hidden="true"></span></button></div>',
+        '<div class="rem-item-expand-footer rem-item-expand-footer-down is-hidden"><button type="button" class="rem-item-expand-btn rem-item-expand-btn-down"><span class="rem-item-expand-icon rem-item-expand-icon-down icon-mask" aria-hidden="true"></span></button></div>',
         '</div>',
       ].join('');
     }
     return [
       '<div class="rem-item-body">',
       `<div class="rem-item-content rem-item-content-markdown rem-item-content-expandable markdown-content">${renderDomindsMarkdown(content, { kind: 'chat' })}</div>`,
-      '<div class="rem-item-expand-footer is-hidden"><button type="button" class="rem-item-expand-btn"><span class="rem-item-expand-icon icon-mask" aria-hidden="true"></span></button></div>',
+      '<div class="rem-item-expand-footer rem-item-expand-footer-down is-hidden"><button type="button" class="rem-item-expand-btn rem-item-expand-btn-down"><span class="rem-item-expand-icon rem-item-expand-icon-down icon-mask" aria-hidden="true"></span></button></div>',
       '</div>',
     ].join('');
   }
@@ -12441,6 +12450,9 @@ export class DomindsApp extends HTMLElement {
       target,
       footer,
       button,
+      footerDirectionClassBase: 'rem-item-expand-footer',
+      buttonDirectionClassBase: 'rem-item-expand-btn',
+      iconDirectionClassBase: 'rem-item-expand-icon',
       stepParent: widgetContent,
       label: getProgressiveExpandLabel(this.uiLanguage),
       // Reminder bodies can become long after first paint when a nested code block is expanded.
