@@ -20,6 +20,7 @@ import type {
   CallSiteGenseqNo,
   DialogCourseNumber,
   FuncResultContentItem,
+  ReasoningPayload,
   SideDialogAssignmentFromAsker,
   ToolResultImageArtifact,
   ToolResultImageDisposition,
@@ -142,6 +143,7 @@ export type ThinkingChunkEvent = LlmGenDlgEvent & {
 
 export type ThinkingFinishEvent = LlmGenDlgEvent & {
   type: 'thinking_finish_evt';
+  reasoning?: ReasoningPayload;
 };
 
 export type SayingStartEvent = LlmGenDlgEvent & {

@@ -589,9 +589,50 @@ function parseOptionalReasoningPayload(
     throw new Error(`${context}.reasoning.encrypted_content must be a string when provided`);
   }
 
+  const metadataRaw = value['metadata'];
+  let metadata: ReasoningPayload['metadata'];
+  if (metadataRaw !== undefined) {
+    if (!isRecord(metadataRaw)) {
+      throw new Error(`${context}.reasoning.metadata must be an object when provided`);
+    }
+    const itemIdRaw = metadataRaw['itemId'];
+    if (itemIdRaw !== undefined && typeof itemIdRaw !== 'string') {
+      throw new Error(`${context}.reasoning.metadata.itemId must be a string when provided`);
+    }
+    const itemTypeRaw = metadataRaw['itemType'];
+    if (itemTypeRaw !== undefined && itemTypeRaw !== 'reasoning') {
+      throw new Error(`${context}.reasoning.metadata.itemType must be 'reasoning' when provided`);
+    }
+    const statusRaw = metadataRaw['status'];
+    if (
+      statusRaw !== undefined &&
+      statusRaw !== 'in_progress' &&
+      statusRaw !== 'completed' &&
+      statusRaw !== 'incomplete'
+    ) {
+      throw new Error(
+        `${context}.reasoning.metadata.status must be in_progress|completed|incomplete when provided`,
+      );
+    }
+    metadata = {};
+    if (typeof itemIdRaw === 'string') metadata.itemId = itemIdRaw;
+    if (itemTypeRaw === 'reasoning') metadata.itemType = itemTypeRaw;
+    if (statusRaw === 'in_progress' || statusRaw === 'completed' || statusRaw === 'incomplete') {
+      metadata.status = statusRaw;
+    }
+    if (
+      metadata.itemId === undefined &&
+      metadata.itemType === undefined &&
+      metadata.status === undefined
+    ) {
+      metadata = undefined;
+    }
+  }
+
   const reasoning: ReasoningPayload = { summary };
   if (content !== undefined) reasoning.content = content;
   if (typeof encryptedContentRaw === 'string') reasoning.encrypted_content = encryptedContentRaw;
+  if (metadata !== undefined) reasoning.metadata = metadata;
   return reasoning;
 }
 
@@ -2247,8 +2288,8 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         role: 'assistant',
         genseq: record.genseq,
         content: record.content,
-        reasoning: record.reasoning,
-        provider_data: record.provider_data,
+        ...(record.reasoning !== undefined ? { reasoning: record.reasoning } : {}),
+        ...(record.provider_data !== undefined ? { provider_data: record.provider_data } : {}),
       };
     case 'agent_words_record':
       return {

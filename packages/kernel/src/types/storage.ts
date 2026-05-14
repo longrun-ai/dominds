@@ -34,6 +34,11 @@ export interface ReasoningPayload {
   summary: ReasoningSummaryItem[];
   content?: ReasoningContentItem[];
   encrypted_content?: string;
+  metadata?: {
+    itemId?: string;
+    itemType?: 'reasoning';
+    status?: 'in_progress' | 'completed' | 'incomplete';
+  };
 }
 
 export type FuncResultContentItem =

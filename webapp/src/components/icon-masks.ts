@@ -27,6 +27,7 @@ import historyUrl from '../assets/icons/history.svg';
 import infoUrl from '../assets/icons/info.svg';
 import insertDownUrl from '../assets/icons/insert-down.svg';
 import linkUrl from '../assets/icons/link.svg';
+import lockUrl from '../assets/icons/lock.svg';
 import pinUrl from '../assets/icons/pin.svg';
 import playUrl from '../assets/icons/play.svg';
 import plusCircleUrl from '../assets/icons/plus-circle.svg';
@@ -81,6 +82,7 @@ export const ICON_MASK_URLS = {
   close: asMaskUrl(closeUrl),
   arrowUp: asMaskUrl(arrowUpUrl),
   link: asMaskUrl(linkUrl),
+  lock: asMaskUrl(lockUrl),
   crosshair: asMaskUrl(crosshairUrl),
   send: asMaskUrl(sendUrl),
   queueNow: asMaskUrl(queueNowUrl),

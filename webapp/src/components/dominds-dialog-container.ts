@@ -19,6 +19,7 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
+import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import {
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
@@ -140,6 +141,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private generationBubble?: HTMLElement;
   private thinkingSection?: HTMLElement;
   private activeThinkingMarkdownSegment?: DomindsMarkdownSection;
+  private activeThinkingHasVisibleContent = false;
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
   private pendingThinkingChunkBuffer = '';
@@ -1122,6 +1124,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
     this.activeThinkingMarkdownSegment = undefined;
+    this.activeThinkingHasVisibleContent = false;
     this.markdownSection = undefined;
     this.callingSection = undefined;
     this.currentCourse = course;
@@ -1158,6 +1161,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
     this.activeThinkingMarkdownSegment = undefined;
+    this.activeThinkingHasVisibleContent = false;
     this.markdownSection = undefined;
     this.callingSection = undefined;
     this.currentCourse = undefined;
@@ -1229,6 +1233,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.activeThinkingMarkdownSegment ?? this.createThinkingMarkdownSegment(section);
     this.activeThinkingMarkdownSegment = markdownSection;
     markdownSection.appendChunk(this.pendingThinkingChunkBuffer);
+    this.activeThinkingHasVisibleContent = true;
     this.pendingThinkingChunkBuffer = '';
     this.emitProgressiveExpandContentGrowth(markdownSection);
     this.scrollToBottom();
@@ -1290,9 +1295,13 @@ export class DomindsDialogContainer extends HTMLElement {
       console.warn('thinking_finish_evt received without active thinking section, skipping');
       return;
     }
+    if (!this.activeThinkingHasVisibleContent) {
+      thinkingSection.classList.add('empty');
+    }
     thinkingSection.classList.add('completed');
     this.completeActiveThinkingMarkdownSegment();
     this.thinkingSection = undefined;
+    this.activeThinkingHasVisibleContent = false;
   }
 
   private completeMarkdownSection(): void {
@@ -1306,6 +1315,11 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private completeActiveThinkingMarkdownSegment(): void {
     if (!this.activeThinkingMarkdownSegment) return;
+    if (this.activeThinkingMarkdownSegment.getRawMarkdown().trim().length === 0) {
+      this.activeThinkingMarkdownSegment.remove();
+      this.activeThinkingMarkdownSegment = undefined;
+      return;
+    }
     this.activeThinkingMarkdownSegment.classList.add('completed');
     this.activeThinkingMarkdownSegment = undefined;
   }
@@ -1324,11 +1338,15 @@ export class DomindsDialogContainer extends HTMLElement {
     this.completeActiveThinkingMarkdownSegment();
   }
 
-  private requestImmediateThinkingChunkFlushForFinish(genseq: number): boolean {
+  private requestImmediateThinkingChunkFlushForFinish(
+    genseq: number,
+    reasoning: ReasoningPayload | undefined,
+  ): boolean {
     this.clearPendingThinkingChunkFlushTimer();
     if (this.pendingThinkingChunkBuffer.length < 1) return false;
     this.clearPendingThinkingChunkFlushRaf();
     this.flushPendingThinkingChunks();
+    this.appendReasoningPayloadPanel(genseq, reasoning);
     this.completeThinkingSection(genseq);
     return true;
   }
@@ -1339,6 +1357,81 @@ export class DomindsDialogContainer extends HTMLElement {
       throw new Error('thinking-section missing thinking-content');
     }
     return contentEl;
+  }
+
+  private appendReasoningPayloadPanel(
+    genseq: number,
+    reasoning: ReasoningPayload | undefined,
+  ): void {
+    const encryptedContent = reasoning?.encrypted_content;
+    const hasEncryptedContent = typeof encryptedContent === 'string' && encryptedContent.length > 0;
+    const metadata = reasoning?.metadata;
+    const hasMetadata =
+      metadata?.itemId !== undefined ||
+      metadata?.itemType !== undefined ||
+      metadata?.status !== undefined;
+    if (!hasEncryptedContent && !hasMetadata) {
+      return;
+    }
+    const thinkingSection = this.thinkingSection;
+    if (!thinkingSection || thinkingSection.getAttribute('data-genseq') !== String(genseq)) {
+      return;
+    }
+    if (thinkingSection.querySelector('.thinking-reasoning-panel')) {
+      return;
+    }
+
+    const contentEl = this.getThinkingContentElement(thinkingSection);
+    const t = getUiStrings(this.uiLanguage);
+    const summaryCount = reasoning?.summary.length ?? 0;
+    const contentCount = reasoning?.content?.length ?? 0;
+    const byteCount = hasEncryptedContent ? new TextEncoder().encode(encryptedContent).length : 0;
+    const rows: Array<[string, string]> = [];
+    rows.push([
+      t.thinkingEncryptedPresentLabel,
+      hasEncryptedContent ? t.thinkingEncryptedPresentYes : t.thinkingEncryptedPresentNo,
+    ]);
+    if (hasEncryptedContent) {
+      rows.push([t.thinkingEncryptedCharsLabel, String(encryptedContent.length)]);
+      rows.push([t.thinkingEncryptedBytesLabel, String(byteCount)]);
+    }
+    rows.push([t.thinkingEncryptedSummaryItemsLabel, String(summaryCount)]);
+    rows.push([t.thinkingEncryptedContentItemsLabel, String(contentCount)]);
+    if (metadata?.itemId) {
+      rows.push([t.thinkingEncryptedItemIdLabel, metadata.itemId]);
+    }
+    if (metadata?.itemType) {
+      rows.push([t.thinkingEncryptedItemTypeLabel, metadata.itemType]);
+    }
+    if (metadata?.status) {
+      rows.push([t.thinkingEncryptedStatusLabel, metadata.status]);
+    }
+
+    const panel = document.createElement('div');
+    panel.className = 'thinking-reasoning-panel';
+    panel.innerHTML = `
+      <div class="thinking-reasoning-header">
+        <span class="thinking-reasoning-icon icon-mask" aria-hidden="true"></span>
+        <span class="thinking-reasoning-title">${this.escapeHtml(t.thinkingDetailsTitle)}</span>
+      </div>
+      <div class="thinking-reasoning-description">${this.escapeHtml(t.thinkingDetailsDescription)}</div>
+      <dl class="thinking-reasoning-meta">
+        ${rows
+          .map(
+            ([label, value]) => `
+              <div class="thinking-reasoning-meta-row">
+                <dt>${this.escapeHtml(label)}</dt>
+                <dd>${this.escapeHtml(value)}</dd>
+              </div>
+            `,
+          )
+          .join('')}
+      </dl>
+    `;
+    contentEl.appendChild(panel);
+    this.activeThinkingHasVisibleContent = true;
+    this.emitProgressiveExpandContentGrowth(contentEl);
+    this.scrollToBottom();
   }
 
   private cleanupAllProgressiveExpands(): void {
@@ -1594,7 +1687,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleThinkingChunk(event.genseq, event.chunk, event.timestamp);
         break;
       case 'thinking_finish_evt':
-        this.handleThinkingFinish(event.genseq);
+        this.handleThinkingFinish(event.genseq, event.reasoning);
         break;
 
       // Saying events, delimit substreams (markdown/codeblock/calling) derived from the same saying stream
@@ -1762,6 +1855,7 @@ export class DomindsDialogContainer extends HTMLElement {
       existingBubble.setAttribute('data-finalized', 'true');
       this.thinkingSection = undefined;
       this.activeThinkingMarkdownSegment = undefined;
+      this.activeThinkingHasVisibleContent = false;
       this.markdownSection = undefined;
       this.callingSection = undefined;
       this.generationBubble = undefined;
@@ -2130,6 +2224,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (finalizingActiveBubble) {
       this.thinkingSection = undefined;
       this.activeThinkingMarkdownSegment = undefined;
+      this.activeThinkingHasVisibleContent = false;
       this.markdownSection = undefined;
       this.callingSection = undefined;
       this.generationBubble = undefined;
@@ -2157,6 +2252,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.generationBubble = targetBubble;
         this.thinkingSection = undefined;
         this.activeThinkingMarkdownSegment = undefined;
+        this.activeThinkingHasVisibleContent = false;
         this.markdownSection = undefined;
         this.callingSection = undefined;
       }
@@ -2229,6 +2325,7 @@ export class DomindsDialogContainer extends HTMLElement {
     thinkingSection.setAttribute('data-genseq', String(genseq));
     this.thinkingSection = thinkingSection;
     this.activeThinkingMarkdownSegment = this.createThinkingMarkdownSegment(thinkingSection);
+    this.activeThinkingHasVisibleContent = false;
     this.pendingThinkingChunkBuffer = '';
     this.clearPendingThinkingChunkFlushTimer();
     this.clearPendingThinkingChunkFlushRaf();
@@ -2268,7 +2365,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingThinkingChunkBuffer += chunk;
     this.scheduleThinkingChunkFlush();
   }
-  private handleThinkingFinish(genseq: number): void {
+  private handleThinkingFinish(genseq: number, reasoning: ReasoningPayload | undefined): void {
     if (
       this.generationBubble &&
       this.generationBubble.getAttribute('data-seq') !== String(genseq) &&
@@ -2280,7 +2377,8 @@ export class DomindsDialogContainer extends HTMLElement {
       });
       return;
     }
-    if (this.requestImmediateThinkingChunkFlushForFinish(genseq)) return;
+    if (this.requestImmediateThinkingChunkFlushForFinish(genseq, reasoning)) return;
+    this.appendReasoningPayloadPanel(genseq, reasoning);
     this.completeThinkingSection(genseq);
   }
 
@@ -6080,6 +6178,72 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .thinking-content > .markdown-section .markdown-content > :last-child {
         margin-bottom: 0;
+      }
+
+      .thinking-reasoning-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 7px 8px;
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--dominds-primary, #007acc) 28%, transparent);
+        background: color-mix(in srgb, var(--dominds-thinking-bg, #f1f5f9) 82%, var(--dominds-bg, #ffffff) 18%);
+        color: var(--dominds-fg, #475569);
+        min-width: 0;
+      }
+
+      .thinking-reasoning-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .thinking-reasoning-icon {
+        --icon-mask: ${ICON_MASK_URLS.lock};
+        width: 13px;
+        height: 13px;
+        color: var(--dominds-primary, #007acc);
+      }
+
+      .thinking-reasoning-title {
+        font-weight: 600;
+        font-size: var(--dominds-font-size-md, 12px);
+        color: var(--dominds-fg-primary, #1e293b);
+      }
+
+      .thinking-reasoning-description {
+        font-size: var(--dominds-font-size-sm, 11px);
+        line-height: var(--dominds-line-height-dense, 1.4);
+        color: var(--dominds-fg-muted, #64748b);
+      }
+
+      .thinking-reasoning-meta {
+        display: grid;
+        gap: 3px;
+        margin: 0;
+        font-size: var(--dominds-font-size-sm, 11px);
+      }
+
+      .thinking-reasoning-meta-row {
+        display: grid;
+        grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+        gap: 8px;
+        align-items: baseline;
+        min-width: 0;
+      }
+
+      .thinking-reasoning-meta dt {
+        color: var(--dominds-fg-muted, #64748b);
+        font-weight: 500;
+      }
+
+      .thinking-reasoning-meta dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+        color: var(--dominds-fg, #475569);
       }
 
       .markdown-content,

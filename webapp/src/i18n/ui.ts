@@ -216,6 +216,18 @@ export type UiStrings = {
   toastHistoryClearTitle: string;
   toastHistoryEmpty: string;
   thinkingSectionTitle: string;
+  thinkingDetailsTitle: string;
+  thinkingDetailsDescription: string;
+  thinkingEncryptedPresentLabel: string;
+  thinkingEncryptedPresentYes: string;
+  thinkingEncryptedPresentNo: string;
+  thinkingEncryptedCharsLabel: string;
+  thinkingEncryptedBytesLabel: string;
+  thinkingEncryptedSummaryItemsLabel: string;
+  thinkingEncryptedContentItemsLabel: string;
+  thinkingEncryptedItemIdLabel: string;
+  thinkingEncryptedItemTypeLabel: string;
+  thinkingEncryptedStatusLabel: string;
   teamMgmtManualTabTitle: string;
   snippetsTabTitle: string;
   domindsDocsTabTitle: string;
@@ -633,6 +645,19 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toastHistoryClearTitle: '清空通知历史',
       toastHistoryEmpty: '暂无通知。',
       thinkingSectionTitle: '思考中',
+      thinkingDetailsTitle: '思考详情',
+      thinkingDetailsDescription:
+        '本段思考包含模型返回的 reasoning 元信息；若存在加密载荷，界面会保留但无法解密明文。',
+      thinkingEncryptedPresentLabel: '加密载荷',
+      thinkingEncryptedPresentYes: '存在',
+      thinkingEncryptedPresentNo: '无',
+      thinkingEncryptedCharsLabel: '加密字符数',
+      thinkingEncryptedBytesLabel: 'UTF-8 字节数',
+      thinkingEncryptedSummaryItemsLabel: '摘要条目',
+      thinkingEncryptedContentItemsLabel: '明文条目',
+      thinkingEncryptedItemIdLabel: 'Reasoning ID',
+      thinkingEncryptedItemTypeLabel: '类型',
+      thinkingEncryptedStatusLabel: '状态',
       teamMgmtManualTabTitle: '团队管理手册',
       snippetsTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
@@ -1066,6 +1091,19 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toastHistoryClearTitle: 'Clear notification history',
     toastHistoryEmpty: 'No notifications yet.',
     thinkingSectionTitle: 'Thinking',
+    thinkingDetailsTitle: 'Reasoning details',
+    thinkingDetailsDescription:
+      'This reasoning segment includes model-provided reasoning metadata. Encrypted payloads are preserved but cannot be decrypted by the UI.',
+    thinkingEncryptedPresentLabel: 'Encrypted payload',
+    thinkingEncryptedPresentYes: 'Present',
+    thinkingEncryptedPresentNo: 'None',
+    thinkingEncryptedCharsLabel: 'Encrypted characters',
+    thinkingEncryptedBytesLabel: 'UTF-8 bytes',
+    thinkingEncryptedSummaryItemsLabel: 'Summary items',
+    thinkingEncryptedContentItemsLabel: 'Plain content items',
+    thinkingEncryptedItemIdLabel: 'Reasoning ID',
+    thinkingEncryptedItemTypeLabel: 'Type',
+    thinkingEncryptedStatusLabel: 'Status',
     teamMgmtManualTabTitle: 'Team Manual',
     snippetsTabTitle: 'Snippets',
     domindsDocsTabTitle: 'Dominds Docs',

@@ -43,6 +43,7 @@
     "persistence-tellask-result-duplicate-callid-loud": "pnpm run rtws -- -C script-rtws persistence/tellask-result-duplicate-callid-loud.ts",
     "persistence-tellask-result-requires-canonical-fields": "pnpm run rtws -- -C script-rtws persistence/tellask-result-requires-canonical-fields.ts",
     "persistence-ui-only-markdown-replay-event": "pnpm run rtws -- -C script-rtws persistence/ui-only-markdown-replay-event.ts",
+    "persistence-thinking-reasoning-replay-event": "pnpm run rtws -- -C script-rtws persistence/thinking-reasoning-replay-event.ts",
     "recovery-reply-special-after-restart": "pnpm run rtws -- -C script-rtws recovery/reply-special-after-restart.ts",
     "interruption-resumption": "tsx interruption-resumption.ts",
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-sideDialog-dedupe.ts",

@@ -335,7 +335,26 @@ function extractReasoningPayload(item: ChatGptReasoningItem): ReasoningPayload {
   const reasoning: ReasoningPayload = { summary };
   if (content && content.length > 0) reasoning.content = content;
   if (encrypted) reasoning.encrypted_content = encrypted;
+  const hasReasoningData =
+    summary.length > 0 || (content?.length ?? 0) > 0 || encrypted !== undefined;
+  if (hasReasoningData) {
+    reasoning.metadata = {
+      itemType: item.type,
+    };
+    if (typeof item.id === 'string' && item.id.length > 0) {
+      reasoning.metadata.itemId = item.id;
+    }
+  }
   return reasoning;
+}
+
+function hasReasoningPayloadSignals(payload: ReasoningPayload): boolean {
+  return (
+    payload.summary.length > 0 ||
+    (payload.content?.length ?? 0) > 0 ||
+    (payload.encrypted_content?.length ?? 0) > 0 ||
+    payload.metadata !== undefined
+  );
 }
 
 function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefined {
@@ -1171,7 +1190,7 @@ export class CodexGen implements LlmGenerator {
                     : sawReasoningDeltaWithoutItemId;
                 if (!sawReasoningDelta) {
                   const text = extractReasoningText(event.item);
-                  if (text.length > 0) {
+                  if (text.length > 0 || hasReasoningPayloadSignals(payloadFromItem)) {
                     if (activeStream === 'saying') {
                       const detail =
                         'CODEX stream overlap violation: received reasoning while saying stream still active';
@@ -1191,22 +1210,23 @@ export class CodexGen implements LlmGenerator {
                       await receiver.thinkingStart();
                       activeStream = 'thinking';
                     }
-                    currentThinkingContent += text;
-                    await receiver.thinkingChunk(text);
-                    await receiver.thinkingFinish(
-                      payloadFromItem ?? buildReasoningPayloadFromText(currentThinkingContent),
-                    );
+                    if (text.length > 0) {
+                      currentThinkingContent += text;
+                      await receiver.thinkingChunk(text);
+                    }
+                    await receiver.thinkingFinish(payloadFromItem);
                     thinkingStarted = false;
                     currentThinkingContent = '';
                     if (activeStream === 'thinking') activeStream = 'idle';
                   }
                 } else if (thinkingStarted) {
-                  await receiver.thinkingFinish(
-                    payloadFromItem ?? buildReasoningPayloadFromText(currentThinkingContent),
-                  );
+                  await receiver.thinkingFinish(payloadFromItem);
                   thinkingStarted = false;
                   currentThinkingContent = '';
                   if (activeStream === 'thinking') activeStream = 'idle';
+                } else if (hasReasoningPayloadSignals(payloadFromItem)) {
+                  await receiver.thinkingStart();
+                  await receiver.thinkingFinish(payloadFromItem);
                 }
                 return;
               }

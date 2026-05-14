@@ -2660,6 +2660,7 @@ export class DiskFileDialogStore extends DialogStore {
   private sayingContent: string = '';
   private thinkingContent: string = '';
   private thinkingReasoning: ReasoningPayload | undefined = undefined;
+  private thinkingStarted = false;
 
   public async sayingStart(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -2710,6 +2711,7 @@ export class DiskFileDialogStore extends DialogStore {
     // Reset thinking content tracker
     this.thinkingContent = '';
     this.thinkingReasoning = undefined;
+    this.thinkingStarted = true;
     const thinkingStartEvt: ThinkingStartEvent = {
       type: 'thinking_start_evt',
       course,
@@ -2734,13 +2736,13 @@ export class DiskFileDialogStore extends DialogStore {
     // Persist thinking content as a message event
     if (reasoning) this.thinkingReasoning = reasoning;
     const thinkingContent = this.thinkingContent;
-    if (thinkingContent || this.thinkingReasoning) {
+    if (this.thinkingStarted || thinkingContent || this.thinkingReasoning) {
       const thinkingMessageEvent: AgentThoughtRecord = {
         ts: formatUnifiedTimestamp(new Date()),
         type: 'agent_thought_record',
         genseq: dialog.activeGenSeq,
         content: thinkingContent,
-        reasoning: this.thinkingReasoning,
+        ...(this.thinkingReasoning !== undefined ? { reasoning: this.thinkingReasoning } : {}),
       };
       await this.appendEvent(dialog, course, thinkingMessageEvent);
     }
@@ -2748,8 +2750,10 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'thinking_finish_evt',
       course,
       genseq: dialog.activeGenSeq,
+      ...(this.thinkingReasoning !== undefined ? { reasoning: this.thinkingReasoning } : {}),
     };
     postDialogEvent(dialog, thinkingFinishEvt);
+    this.thinkingStarted = false;
   }
 
   public async markdownStart(dialog: Dialog): Promise<void> {
@@ -3383,8 +3387,8 @@ export class DiskFileDialogStore extends DialogStore {
             type: 'agent_thought_record',
             genseq,
             content: content || '',
-            reasoning,
-            provider_data,
+            ...(reasoning !== undefined ? { reasoning } : {}),
+            ...(provider_data !== undefined ? { provider_data } : {}),
           }
         : {
             ts: formatUnifiedTimestamp(new Date()),
@@ -4089,46 +4093,28 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'agent_thought_record': {
-        // Replay thinking content as thinking events
+        // Replay persisted thinking records as substream boundaries, with chunks when content exists.
         const content = event.content || '';
-        if (content) {
-          // Start thinking phase
-          const thinkingStartEvent = {
-            type: 'thinking_start_evt',
-            course,
-            genseq: event.genseq,
-            dialog: {
-              selfId: dialog.id.selfId,
-              rootId: dialog.id.rootId,
-            },
-            timestamp: event.ts,
-          };
+        const thinkingStartEvent = {
+          type: 'thinking_start_evt',
+          course,
+          genseq: event.genseq,
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
 
-          if (ws.readyState === 1) {
-            ws.send(JSON.stringify(thinkingStartEvent));
-          }
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(thinkingStartEvent));
+        }
 
-          const thinkingChunks = this.createOptimalChunks(content);
-          for (const chunk of thinkingChunks) {
-            const thinkingChunkEvent = {
-              type: 'thinking_chunk_evt',
-              chunk,
-              course,
-              genseq: event.genseq,
-              dialog: {
-                selfId: dialog.id.selfId,
-                rootId: dialog.id.rootId,
-              },
-              timestamp: event.ts,
-            };
-            if (ws.readyState === 1) {
-              ws.send(JSON.stringify(thinkingChunkEvent));
-            }
-          }
-
-          // Finish thinking phase
-          const thinkingFinishEvent = {
-            type: 'thinking_finish_evt',
+        const thinkingChunks = this.createOptimalChunks(content);
+        for (const chunk of thinkingChunks) {
+          const thinkingChunkEvent = {
+            type: 'thinking_chunk_evt',
+            chunk,
             course,
             genseq: event.genseq,
             dialog: {
@@ -4138,8 +4124,23 @@ export class DiskFileDialogStore extends DialogStore {
             timestamp: event.ts,
           };
           if (ws.readyState === 1) {
-            ws.send(JSON.stringify(thinkingFinishEvent));
+            ws.send(JSON.stringify(thinkingChunkEvent));
           }
+        }
+
+        const thinkingFinishEvent = {
+          type: 'thinking_finish_evt',
+          course,
+          genseq: event.genseq,
+          ...(event.reasoning !== undefined ? { reasoning: event.reasoning } : {}),
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(thinkingFinishEvent));
         }
         break;
       }
@@ -8859,8 +8860,8 @@ export class DialogPersistence {
             role: 'assistant',
             genseq: event.genseq,
             content: event.content,
-            reasoning: event.reasoning,
-            provider_data: event.provider_data,
+            ...(event.reasoning !== undefined ? { reasoning: event.reasoning } : {}),
+            ...(event.provider_data !== undefined ? { provider_data: event.provider_data } : {}),
           });
           break;
         }

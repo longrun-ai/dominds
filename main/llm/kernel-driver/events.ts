@@ -6,10 +6,13 @@ export async function emitThinkingEvents(
   content: string,
   reasoning?: ReasoningPayload,
 ): Promise<void> {
-  if (!content.trim()) return undefined;
+  const hasContent = content.trim().length > 0;
+  if (!hasContent && reasoning === undefined) return;
 
   await dlg.thinkingStart();
-  await dlg.thinkingChunk(content);
+  if (hasContent) {
+    await dlg.thinkingChunk(content);
+  }
   await dlg.thinkingFinish(reasoning);
 }
 
