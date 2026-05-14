@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 
 import { refreshRunControlProjectionFromPersistenceFacts } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
+import type { KernelDriverRuntimeSideDialogPrompt } from '../../main/llm/kernel-driver/types';
+import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import {
   formatAssignmentFromAskerDialog,
   formatTellaskResponseContent,
 } from '../../main/runtime/inter-dialog-format';
+import { isReplyToolReminderPromptContent } from '../../main/runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
@@ -21,6 +25,12 @@ import {
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
+
+type CapturedScheduledDrive = Readonly<{
+  dialogSelfId: string;
+  hasHumanPrompt: boolean;
+  reason: string;
+}>;
 
 function findLastMeaningfulTailEvent(
   events: Awaited<ReturnType<typeof DialogPersistence.loadCourseEvents>>,
@@ -37,6 +47,22 @@ function findLastMeaningfulTailEvent(
     return event;
   }
   return events[events.length - 1];
+}
+
+async function waitForCapturedDrive(
+  captured: CapturedScheduledDrive[],
+  timeoutMs: number,
+): Promise<CapturedScheduledDrive> {
+  await waitFor(
+    async () => captured.length > 0,
+    timeoutMs,
+    'sideDialog reply-obligation follow-up to be scheduled',
+  );
+  const first = captured[0];
+  if (!first) {
+    throw new Error('captured scheduled drive disappeared after wait');
+  }
+  return first;
 }
 
 async function main(): Promise<void> {
@@ -293,6 +319,154 @@ async function main(): Promise<void> {
         continueEnabled: true,
       },
       'mismatched active reply obligation should keep the sideDialog resumable',
+    );
+
+    const sessionlessRoot = await createMainDialog('tester');
+    sessionlessRoot.disableDiligencePush = true;
+    const sessionlessRequest = 'Clean up duplicate source files and continue validation.';
+    const sessionlessSideDialog = await sessionlessRoot.createSideDialog(
+      'pangu',
+      ['@pangu'],
+      sessionlessRequest,
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: 'tester',
+        askerDialogId: sessionlessRoot.id.selfId,
+        callId: 'sessionless-cleanup-call',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        collectiveTargets: ['pangu'],
+      },
+    );
+    await DialogPersistence.savePendingSideDialogs(sessionlessRoot.id, [
+      {
+        sideDialogId: sessionlessSideDialog.id.selfId,
+        createdAt: new Date().toISOString(),
+        callName: 'tellaskSessionless',
+        mentionList: ['@pangu'],
+        tellaskContent: sessionlessRequest,
+        targetAgentId: 'pangu',
+        callId: 'sessionless-cleanup-call',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        callType: 'C',
+      },
+    ]);
+    const sessionlessPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'pangu',
+        mentionList: ['@pangu'],
+        tellaskContent: sessionlessRequest,
+        language,
+        collectiveTargets: ['pangu'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
+      language,
+    });
+    await writeMockDb(tmpRoot, [
+      {
+        message: sessionlessPrompt,
+        role: 'user',
+        response: 'Still trying selectors.',
+        funcCalls: [
+          {
+            id: 'sessionless-invalid-env-get',
+            name: 'env_get',
+            arguments: { key: 'not-valid-key' },
+          },
+        ],
+      },
+      {
+        message:
+          'Invalid arguments: Error: env_get.key must be a valid environment variable name matching /^[A-Za-z_][A-Za-z0-9_]*$/',
+        role: 'tool',
+        response: '',
+        thinkingResponse: 'I tried several selectors and still have work to do before replying.',
+      },
+    ]);
+
+    const capturedScheduledDrives: CapturedScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        sessionlessSideDialog,
+        {
+          content: sessionlessPrompt,
+          msgId: 'side-dialog-sessionless-reply-assignment',
+          grammar: 'markdown',
+          origin: 'runtime',
+          tellaskReplyDirective: {
+            expectedReplyCallName: 'replyTellaskSessionless',
+            targetDialogId: sessionlessRoot.id.selfId,
+            targetCallId: 'sessionless-cleanup-call',
+            tellaskContent: sessionlessRequest,
+          },
+          sideDialogReplyTarget: {
+            ownerDialogId: sessionlessRoot.id.selfId,
+            callType: 'C',
+            callId: 'sessionless-cleanup-call',
+            callSiteCourse: 1,
+            callSiteGenseq: 1,
+          },
+        } satisfies KernelDriverRuntimeSideDialogPrompt,
+        true,
+        makeDriveOptions({
+          suppressDiligencePush: true,
+          source: 'kernel_driver_sideDialog_init',
+          reason: 'sessionless_reply_tail_probe',
+        }),
+      ],
+      scheduleDrive: (scheduledDialog, options) => {
+        capturedScheduledDrives.push({
+          dialogSelfId: scheduledDialog.id.selfId,
+          hasHumanPrompt: options.humanPrompt !== undefined,
+          reason: options.driveOptions?.reason ?? '',
+        });
+      },
+      driveDialog: async () => {
+        throw new Error('test does not use nested driveDialog invocations');
+      },
+    });
+
+    const scheduled = await waitForCapturedDrive(capturedScheduledDrives, 3_000);
+    assert.equal(
+      scheduled.dialogSelfId,
+      sessionlessSideDialog.id.selfId,
+      'sideDialog reply obligation should schedule the same dialog',
+    );
+    assert.equal(
+      scheduled.hasHumanPrompt,
+      false,
+      'reply-obligation follow-up should be queued onto the dialog instead of passed as a fresh user prompt',
+    );
+    assert.equal(scheduled.reason, 'follow_up_prompt');
+    const queuedReplyReminder = sessionlessSideDialog.peekUpNext();
+    assert.equal(
+      queuedReplyReminder?.kind,
+      'new_course_runtime_sideDialog',
+      'reply-obligation tail resolution should persist a sideDialog runtime prompt',
+    );
+    assert.equal(
+      queuedReplyReminder?.tellaskReplyDirective.targetCallId,
+      'sessionless-cleanup-call',
+      'queued reply reminder should carry the active reply obligation',
+    );
+    assert.equal(
+      queuedReplyReminder?.sideDialogReplyTarget.callId,
+      'sessionless-cleanup-call',
+      'queued reply reminder should target the pending tellask call',
+    );
+    assert.equal(
+      isReplyToolReminderPromptContent(queuedReplyReminder?.prompt ?? ''),
+      true,
+      'post-tool thinking-only reply candidate should use the normal reply reminder path',
+    );
+    assert.equal(
+      sessionlessSideDialog.hasUpNext(),
+      true,
+      'reply-obligation follow-up should continue the normal business state machine without manual Continue',
     );
   });
 

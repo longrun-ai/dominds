@@ -77,13 +77,15 @@ idle" path. In that recovery-only case, pending sideDialogs do not veto the sing
 injection, because the deadlock may happen in a function-result-driven generation round right after
 the main dialog has already registered an in-flight tellask/sideDialog.
 
-Side Dialogs may also use this recovery path, but only when an active reply obligation still exists.
-If no active reply obligation exists, runtime does not inject a push and leaves the retry-stopped
-state for a human to handle. The Side Dialog recovery template does not read rtws diligence files;
-it uses a built-in bilingual template containing the current time, the current Tellask goal, and the
-single runtime-confirmed `replyTellask*` tool (for example
-`replyTellaskSessionless({ replyContent })`). The LLM must not guess the reply variant. Q4H remains
-a hard blocker.
+Side Dialogs may also use this recovery path, but only for provider/API retry-stopped deadlock
+recovery while an active reply obligation still exists. This is not a general mechanism for keeping
+Side Dialogs active. Normal Side Dialog continuation must come from ordinary business state: tool
+results, Q4H, downstream Side Dialog blockers, or queued runtime/user prompts. If no active reply
+obligation exists, runtime does not inject a push and leaves the retry-stopped state for a human to
+handle. The Side Dialog recovery template does not read rtws diligence files; it uses a built-in
+bilingual template containing the current time, the current Tellask goal, and the single
+runtime-confirmed `replyTellask*` tool (for example `replyTellaskSessionless({ replyContent })`).
+The LLM must not guess the reply variant. Q4H remains a hard blocker.
 
 ### Action
 

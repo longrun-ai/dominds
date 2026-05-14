@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 
-import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, SideDialog } from '../../main/dialog';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
@@ -209,20 +207,6 @@ async function main(): Promise<void> {
       deliveryMode: 'direct_fallback',
       directFallbackSource: 'saying',
       language,
-    });
-
-    const strandedCallId = 'root-call-coder-stranded-idle';
-    const strandedBody =
-      'Please recover this stranded idle side dialog and remind it to use replyTellaskSessionless.';
-    const strandedReplyReminder = buildReplyToolReminderText({
-      language,
-      directive: {
-        expectedReplyCallName: 'replyTellaskSessionless',
-        targetDialogId: '',
-        targetCallId: strandedCallId,
-        tellaskContent: strandedBody,
-      },
-      replyTargetAgentId: 'tester',
     });
 
     await writeMockDb(tmpRoot, [
@@ -507,21 +491,29 @@ async function main(): Promise<void> {
     );
     root = restoredRoot;
 
-    const strandedSideDialog = await root.createSideDialog('coder', ['@coder'], strandedBody, {
-      callName: 'tellaskSessionless',
-      originMemberId: 'tester',
-      askerDialogId: root.id.selfId,
-      callId: strandedCallId,
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      collectiveTargets: ['coder'],
-    });
-    const initialStrandedLatest = await DialogPersistence.loadDialogLatest(
-      strandedSideDialog.id,
-      strandedSideDialog.status,
+    const guardedPendingReplyCallId = 'root-call-coder-guarded-pending-reply';
+    const guardedPendingReplyBody =
+      'Please keep this active reply obligation explicit until normal business progress resolves it.';
+    const guardedPendingReplySideDialog = await root.createSideDialog(
+      'coder',
+      ['@coder'],
+      guardedPendingReplyBody,
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: 'tester',
+        askerDialogId: root.id.selfId,
+        callId: guardedPendingReplyCallId,
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        collectiveTargets: ['coder'],
+      },
+    );
+    const initialGuardedPendingReplyLatest = await DialogPersistence.loadDialogLatest(
+      guardedPendingReplySideDialog.id,
+      guardedPendingReplySideDialog.status,
     );
     assert.deepEqual(
-      initialStrandedLatest?.displayState,
+      initialGuardedPendingReplyLatest?.displayState,
       {
         kind: 'stopped',
         reason: { kind: 'pending_reply_obligation' },
@@ -530,17 +522,17 @@ async function main(): Promise<void> {
       'new sideDialogs with active reply obligations must not be born idle',
     );
     assert.deepEqual(
-      initialStrandedLatest?.executionMarker,
+      initialGuardedPendingReplyLatest?.executionMarker,
       {
         kind: 'interrupted',
         reason: { kind: 'pending_reply_obligation' },
       },
       'new sideDialogs with active reply obligations should persist a non-idle execution marker',
     );
-    await setDialogDisplayState(strandedSideDialog.id, { kind: 'idle_waiting_user' });
+    await setDialogDisplayState(guardedPendingReplySideDialog.id, { kind: 'idle_waiting_user' });
     const latestAfterAttemptedIdle = await DialogPersistence.loadDialogLatest(
-      strandedSideDialog.id,
-      strandedSideDialog.status,
+      guardedPendingReplySideDialog.id,
+      guardedPendingReplySideDialog.status,
     );
     assert.deepEqual(
       latestAfterAttemptedIdle?.displayState,
@@ -552,7 +544,7 @@ async function main(): Promise<void> {
       'display-state writer must reject idle while a sideDialog reply obligation is active',
     );
     await DialogPersistence.mutateDialogLatest(
-      strandedSideDialog.id,
+      guardedPendingReplySideDialog.id,
       () => ({
         kind: 'patch',
         patch: {
@@ -560,11 +552,11 @@ async function main(): Promise<void> {
           executionMarker: undefined,
         },
       }),
-      strandedSideDialog.status,
+      guardedPendingReplySideDialog.status,
     );
     const latestAfterDirectIdleMutation = await DialogPersistence.loadDialogLatest(
-      strandedSideDialog.id,
-      strandedSideDialog.status,
+      guardedPendingReplySideDialog.id,
+      guardedPendingReplySideDialog.status,
     );
     assert.deepEqual(
       latestAfterDirectIdleMutation?.displayState,
@@ -582,101 +574,6 @@ async function main(): Promise<void> {
         reason: { kind: 'pending_reply_obligation' },
       },
       'latest.yaml mutation guard must preserve a resumable pending-reply execution marker',
-    );
-    await DialogPersistence.appendPendingSideDialog(root.id, {
-      sideDialogId: strandedSideDialog.id.selfId,
-      createdAt: formatUnifiedTimestamp(new Date()),
-      callName: 'tellaskSessionless',
-      mentionList: ['@coder'],
-      tellaskContent: strandedBody,
-      targetAgentId: 'coder',
-      callId: strandedCallId,
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      callType: 'C',
-    });
-    await strandedSideDialog.persistUserMessage(
-      'Original stranded assignment prompt.',
-      'stranded-assignment-prompt',
-      'markdown',
-      'runtime',
-      language,
-      undefined,
-      {
-        expectedReplyCallName: 'replyTellaskSessionless',
-        targetDialogId: root.id.selfId,
-        targetCallId: strandedCallId,
-        tellaskContent: strandedBody,
-      },
-    );
-    await DialogPersistence.appendEvent(
-      strandedSideDialog.id,
-      strandedSideDialog.currentCourse,
-      {
-        ts: formatUnifiedTimestamp(new Date()),
-        type: 'tellask_anchor_record',
-        anchorRole: 'assignment',
-        callId: strandedCallId,
-        genseq: strandedSideDialog.activeGenSeqOrUndefined ?? 1,
-        ...toRootGenerationAnchor({
-          rootCourse: root.currentCourse,
-          rootGenseq: root.activeGenSeqOrUndefined ?? 1,
-        }),
-      },
-      strandedSideDialog.status,
-    );
-    await strandedSideDialog.persistAgentMessage(
-      'I produced local output but forgot the reply tool.',
-      strandedSideDialog.activeGenSeqOrUndefined ?? 1,
-      'thinking_msg',
-    );
-    assert.equal(
-      strandedSideDialog.peekUpNext(),
-      undefined,
-      'test setup should model an idle sideDialog with no queued reminder',
-    );
-
-    const scheduledStrandedDrives: ScheduledDrive[] = [];
-    await executeDriveRound({
-      runtime: createKernelDriverRuntimeState(),
-      driveArgs: [
-        strandedSideDialog,
-        undefined,
-        true,
-        makeDriveOptions({
-          source: 'kernel_driver_follow_up',
-          reason: 'follow_up_prompt',
-          suppressDiligencePush: true,
-        }),
-      ],
-      scheduleDrive: (dialog, options) => {
-        assert.equal(dialog, strandedSideDialog);
-        scheduledStrandedDrives.push({ dialog: strandedSideDialog, options });
-      },
-      driveDialog: async () => {},
-    });
-
-    assert.equal(
-      scheduledStrandedDrives.length,
-      1,
-      'stranded idle sideDialog should be revived by scheduling a reply reminder drive',
-    );
-    const strandedQueuedReminder = strandedSideDialog.peekUpNext();
-    assert.equal(
-      strandedQueuedReminder?.kind,
-      'new_course_runtime_sideDialog',
-      'stranded idle sideDialog should persist a sideDialog reply reminder',
-    );
-    assert.equal(strandedQueuedReminder.prompt, strandedReplyReminder);
-    assert.equal(strandedQueuedReminder.sideDialogReplyTarget.callId, strandedCallId);
-    const strandedLatest = await DialogPersistence.loadDialogLatest(
-      strandedSideDialog.id,
-      strandedSideDialog.status,
-    );
-    assert.equal(
-      strandedLatest?.pendingCourseStartPrompt?.msgId,
-      strandedQueuedReminder.msgId,
-      'recovered stranded reply reminder should be durable',
     );
 
     await driveDialogStream(
@@ -715,7 +612,7 @@ async function main(): Promise<void> {
     assert.ok(sayingWinsResult, 'expected saying direct fallback result');
     assert.equal(sayingWinsResult.content, expectedSayingWinsMirror);
     assert.match(sayingWinsResult.content, /Public answer: 4/u);
-    assert.doesNotMatch(sayingWinsResult.content, /Hidden calculation says 999/u);
+    assert.doesNotMatch(sayingWinsResult.content, /999/u);
 
     const scheduledThinkingThenTellaskDrives: ScheduledDrive[] = [];
     await executeDriveRound({
@@ -730,7 +627,7 @@ async function main(): Promise<void> {
         makeDriveOptions({ suppressDiligencePush: true }),
       ],
       scheduleDrive: (dialog, options) => {
-        assert.ok(dialog instanceof SideDialog, 'expected only sideDialog follow-up scheduling');
+        assert.ok(dialog instanceof SideDialog, 'expected sideDialog scheduling');
         scheduledThinkingThenTellaskDrives.push({ dialog, options });
       },
       driveDialog: async () => {},

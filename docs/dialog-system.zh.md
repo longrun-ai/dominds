@@ -239,6 +239,9 @@ flowchart TD
 **支线交付规则（规范）**：
 
 - 只有当所有目标完成时，支线对话才可直接正常回复诉请者。
+- 支线对话没有独立的活性维持状态。支线继续推进，是因为正常业务状态仍未完成：工具结果需要处理、Q4H 待答、下游支线待回贴，或已有显式 runtime/user prompt 排队。不要新增只为维持活跃而存在的旁路。
+- 回复义务的尾部处理是一条很小的状态机：运行时到达未挂起的尾部后，只检查本次 drive 产出的最新非空 assistant generation 候选；同一 generation 同时存在 saying/thinking 时优先取公开 saying。若支线仍欠 `replyTellask*`，并且已经产出候选内容但没有调用精确 reply 工具，运行时只排队一次 reply-tool reminder；如果模型在 reminder 后仍只产出 thinking/saying，运行时会有意通过 direct-reply fallback 投递该内容，并显式标注 fallback。
+- 运行时不得通过回扫历史消息文本来推断这个尾部状态。历史上下文属于模型和 UI；调度状态必须由当前 drive result、active reply obligation、pending blocker 索引或 queued prompt 等显式状态携带。
 - 若目标尚未完成，不要默认直接 `tellaskBack`；应先按团队规程 / SOP / 职责卡判断能否明确负责人，若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人。
 - 只有当必须由诉请者补充需求、澄清目标、做业务裁决、确认验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者再继续。
 - **FBR 例外**：FBR 支线对话禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`），只能列出缺口与阻塞原因并直接回复。
