@@ -10,6 +10,7 @@ import checkUrl from '../assets/icons/check.svg';
 import chevronLeftUrl from '../assets/icons/chevron-left.svg';
 import chevronRightUrl from '../assets/icons/chevron-right.svg';
 import chevronsDownUrl from '../assets/icons/chevrons-down.svg';
+import chevronsUpUrl from '../assets/icons/chevrons-up.svg';
 import circleUrl from '../assets/icons/circle.svg';
 import closeUrl from '../assets/icons/close.svg';
 import collapseStripUrl from '../assets/icons/collapse-strip.svg';
@@ -55,6 +56,7 @@ export const ICON_MASK_URLS = {
   chevronLeft: asMaskUrl(chevronLeftUrl),
   chevronRight: asMaskUrl(chevronRightUrl),
   chevronsDown: asMaskUrl(chevronsDownUrl),
+  chevronsUp: asMaskUrl(chevronsUpUrl),
   plus: asMaskUrl(plusUrl),
   plusCircle: asMaskUrl(plusCircleUrl),
   refresh: asMaskUrl(refreshUrl),

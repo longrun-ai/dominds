@@ -124,7 +124,10 @@ import { DomindsTeamMembers } from './dominds-team-members.js';
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
-import { getProgressiveExpandLabel, setupProgressiveExpandBehavior } from './progressive-expand';
+import {
+  getProgressiveExpandLabel,
+  setupDownwardProgressiveExpandBehavior,
+} from './progressive-expand';
 import './running-dialog-list.js';
 import { RunningDialogList } from './running-dialog-list.js';
 
@@ -12434,7 +12437,7 @@ export class DomindsApp extends HTMLElement {
     const footer = item.querySelector('.rem-item-expand-footer') as HTMLElement | null;
     const button = item.querySelector('.rem-item-expand-btn') as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
-    const cleanup = setupProgressiveExpandBehavior({
+    const cleanup = setupDownwardProgressiveExpandBehavior({
       target,
       footer,
       button,

@@ -1,4 +1,4 @@
-import { dispatchDomindsEvent } from './dom-events';
+import { dispatchDomindsEvent, type ProgressiveExpandContentGrownDetail } from './dom-events';
 
 export const PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX = 120;
 export const PROGRESSIVE_EXPAND_STEP_PARENT_RATIO = 1 / 3;
@@ -11,7 +11,7 @@ export type ProgressiveExpandState =
   | { kind: 'partial'; maxHeightPx: number }
   | { kind: 'full' };
 
-type ProgressiveExpandableComponentOptions = Readonly<{
+export type ProgressiveExpandableComponentOptions = Readonly<{
   target: HTMLElement;
   footer: HTMLElement;
   button: HTMLButtonElement;
@@ -23,6 +23,17 @@ type ProgressiveExpandableComponentOptions = Readonly<{
   onStateChange?: (state: ProgressiveExpandState) => void;
   onAfterExpand?: () => void;
 }>;
+
+type ProgressiveExpandGrowthReason = ProgressiveExpandContentGrownDetail['reason'];
+
+function getProgressiveExpandGrowthReason(event: Event): ProgressiveExpandGrowthReason | null {
+  if (!(event instanceof CustomEvent)) return null;
+  const detail: unknown = event.detail;
+  if (typeof detail !== 'object' || detail === null) return null;
+  const reason = (detail as { reason?: unknown }).reason;
+  if (reason === 'expand-step' || reason === 'content-growth') return reason;
+  return null;
+}
 
 function sameProgressiveExpandState(
   left: ProgressiveExpandState,
@@ -72,7 +83,7 @@ export function getProgressiveExpandLabel(language: string): Readonly<{
     : { text: 'Show more', title: 'Show more' };
 }
 
-export class ProgressiveExpandableComponent {
+class DownwardProgressiveExpandableComponent {
   private readonly target: HTMLElement;
   private readonly footer: HTMLElement;
   private readonly button: HTMLButtonElement;
@@ -87,8 +98,8 @@ export class ProgressiveExpandableComponent {
   private pendingClickCommitTimeout: number | null = null;
 
   private readonly boundOnNestedGrowth = (event: Event): void => {
-    if (!(event instanceof CustomEvent)) return;
     if (event.type !== 'progressive-expand-content-grown') return;
+    if (getProgressiveExpandGrowthReason(event) === null) return;
     if (event.target === this.target) return;
     if (this.currentState.kind === 'full') return;
     requestAnimationFrame(() => {
@@ -194,7 +205,9 @@ export class ProgressiveExpandableComponent {
   private updateState(nextState: ProgressiveExpandState): void {
     if (sameProgressiveExpandState(this.currentState, nextState)) return;
     this.currentState = nextState;
-    this.onStateChange?.(nextState);
+    if (this.onStateChange !== undefined) {
+      this.onStateChange(nextState);
+    }
   }
 
   private collapseToHeight(heightPx: number): void {
@@ -245,7 +258,9 @@ export class ProgressiveExpandableComponent {
   }
 
   private disconnectOverflowObserver(): void {
-    this.overflowObserver?.disconnect();
+    if (this.overflowObserver !== null) {
+      this.overflowObserver.disconnect();
+    }
     this.overflowObserver = null;
   }
 
@@ -275,7 +290,9 @@ export class ProgressiveExpandableComponent {
       if (!this.target.isConnected) return;
       this.refreshExpandFooter();
       this.emitContentGrown('expand-step');
-      this.onAfterExpand?.();
+      if (this.onAfterExpand !== undefined) {
+        this.onAfterExpand();
+      }
     });
   }
 
@@ -351,10 +368,320 @@ export class ProgressiveExpandableComponent {
   }
 }
 
-export function setupProgressiveExpandBehavior(
+class UpwardProgressiveExpandableComponent {
+  private readonly target: HTMLElement;
+  private readonly footer: HTMLElement;
+  private readonly button: HTMLButtonElement;
+  private readonly stepParent: HTMLElement | null;
+  private readonly label: Readonly<{ text: string; title: string }>;
+  private readonly observeTargetUntilOverflow: boolean;
+  private readonly isContentComplete: () => boolean;
+  private readonly onStateChange?: (state: ProgressiveExpandState) => void;
+  private readonly onAfterExpand?: () => void;
+  private currentState: ProgressiveExpandState;
+  private overflowObserver: ResizeObserver | null = null;
+  private pendingClickCommitTimeout: number | null = null;
+
+  private readonly boundOnGrowth = (event: Event): void => {
+    if (event.type !== 'progressive-expand-content-grown') return;
+    const reason = getProgressiveExpandGrowthReason(event);
+    if (reason === null) return;
+    if (this.currentState.kind === 'full') return;
+    requestAnimationFrame(() => {
+      this.refreshExpandFooter();
+      if (reason === 'content-growth') {
+        this.alignCollapsedContentToNewest();
+      }
+    });
+  };
+
+  private readonly boundOnClick = (event: MouseEvent): void => {
+    this.cancelPendingClickCommit();
+    if (event.detail >= 3) {
+      this.autoExpandFromNowOn();
+      this.queueAfterExpansionEffects();
+      return;
+    }
+
+    const clickAction =
+      event.detail <= 1 ? () => this.expandOneStepTowardOlder() : () => this.expandForDoubleClick();
+    this.pendingClickCommitTimeout = window.setTimeout(() => {
+      this.pendingClickCommitTimeout = null;
+      clickAction();
+    }, PROGRESSIVE_EXPAND_CLICK_COMMIT_DELAY_MS);
+  };
+
+  private readonly boundOnDoubleClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    this.cancelPendingClickCommit();
+    this.expandForDoubleClick();
+  };
+
+  constructor(options: ProgressiveExpandableComponentOptions) {
+    this.target = options.target;
+    this.footer = options.footer;
+    this.button = options.button;
+    this.stepParent = options.stepParent ?? null;
+    this.label = options.label;
+    this.observeTargetUntilOverflow = options.observeTargetUntilOverflow === true;
+    this.isContentComplete = options.isContentComplete ?? (() => true);
+    this.onStateChange = options.onStateChange;
+    this.onAfterExpand = options.onAfterExpand;
+    this.currentState = options.state ?? { kind: 'initial' };
+
+    this.button.setAttribute('aria-label', this.label.text);
+    this.button.title = this.label.title;
+    this.button.addEventListener('click', this.boundOnClick);
+    this.button.addEventListener('dblclick', this.boundOnDoubleClick);
+    this.target.addEventListener(
+      'progressive-expand-content-grown',
+      this.boundOnGrowth as EventListener,
+    );
+
+    this.applyCurrentState();
+    this.attachOverflowObserverIfNeeded();
+    this.refreshExpandFooter();
+    requestAnimationFrame(() => {
+      this.refreshExpandFooter();
+      this.alignCollapsedContentToNewest();
+    });
+  }
+
+  public cleanup(): void {
+    this.cancelPendingClickCommit();
+    this.disconnectOverflowObserver();
+    this.button.removeEventListener('click', this.boundOnClick);
+    this.button.removeEventListener('dblclick', this.boundOnDoubleClick);
+    this.target.removeEventListener(
+      'progressive-expand-content-grown',
+      this.boundOnGrowth as EventListener,
+    );
+  }
+
+  private emitContentGrown(reason: 'expand-step' | 'content-growth'): void {
+    dispatchDomindsEvent(
+      this.target,
+      'progressive-expand-content-grown',
+      { reason },
+      { bubbles: true, composed: true },
+    );
+  }
+
+  private updateState(nextState: ProgressiveExpandState): void {
+    if (sameProgressiveExpandState(this.currentState, nextState)) return;
+    this.currentState = nextState;
+    if (this.onStateChange !== undefined) {
+      this.onStateChange(nextState);
+    }
+  }
+
+  private cancelPendingClickCommit(): void {
+    if (this.pendingClickCommitTimeout === null) return;
+    window.clearTimeout(this.pendingClickCommitTimeout);
+    this.pendingClickCommitTimeout = null;
+  }
+
+  private collapseToHeight(heightPx: number): void {
+    this.target.style.maxHeight = `${Math.max(PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX, heightPx)}px`;
+    this.target.style.overflowY = 'hidden';
+    this.alignCollapsedContentToNewest();
+  }
+
+  private collapseToInitial(): void {
+    this.collapseToHeight(PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX);
+  }
+
+  private showCurrentContentFully(): void {
+    this.target.style.maxHeight = 'none';
+    this.target.style.overflowY = 'visible';
+  }
+
+  private alignCollapsedContentToNewest(): void {
+    requestAnimationFrame(() => {
+      if (!this.target.isConnected) return;
+      if (this.currentState.kind === 'full') return;
+      this.target.scrollTop = Math.max(0, this.target.scrollHeight - this.target.clientHeight);
+    });
+  }
+
+  private measureFooterLayoutHeightPx(): number {
+    const wasHidden = this.footer.classList.contains('is-hidden');
+    const previousVisibility = this.footer.style.visibility;
+    const previousPointerEvents = this.footer.style.pointerEvents;
+    if (wasHidden) {
+      this.footer.style.visibility = 'hidden';
+      this.footer.style.pointerEvents = 'none';
+      this.footer.classList.remove('is-hidden');
+    }
+    const heightPx = Math.max(0, Math.ceil(this.footer.offsetHeight));
+    if (wasHidden) {
+      this.footer.classList.add('is-hidden');
+      this.footer.style.visibility = previousVisibility;
+      this.footer.style.pointerEvents = previousPointerEvents;
+    }
+    return heightPx;
+  }
+
+  private shouldShowExpandFooter(visibleTargetHeightPx: number): boolean {
+    const hiddenContentHeightPx = this.target.scrollHeight - visibleTargetHeightPx;
+    if (hiddenContentHeightPx <= PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX) return false;
+    return (
+      hiddenContentHeightPx >
+      this.measureFooterLayoutHeightPx() + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX
+    );
+  }
+
+  private disconnectOverflowObserver(): void {
+    if (this.overflowObserver !== null) {
+      this.overflowObserver.disconnect();
+    }
+    this.overflowObserver = null;
+  }
+
+  private autoExpandFromNowOn(): void {
+    this.showCurrentContentFully();
+    this.footer.classList.add('is-hidden');
+    this.disconnectOverflowObserver();
+    this.updateState({ kind: 'full' });
+  }
+
+  private expandOneStepTowardOlder(): void {
+    if (this.currentState.kind === 'full') {
+      return;
+    }
+    const stepPx = computeProgressiveExpandStepPx(this.stepParent);
+    const currentMaxHeightPx =
+      this.currentState.kind === 'partial'
+        ? Math.max(this.currentState.maxHeightPx, this.target.clientHeight)
+        : Math.max(this.target.clientHeight, PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX);
+    const nextMaxHeightPx = currentMaxHeightPx + stepPx;
+    this.collapseToHeight(nextMaxHeightPx);
+    this.updateState({ kind: 'partial', maxHeightPx: nextMaxHeightPx });
+    this.queueAfterExpansionEffects();
+  }
+
+  private expandForDoubleClick(): void {
+    if (this.isContentComplete()) {
+      this.autoExpandFromNowOn();
+      this.queueAfterExpansionEffects();
+      return;
+    }
+    this.expandToCurrentMaximum();
+  }
+
+  private expandToCurrentMaximum(): void {
+    if (this.currentState.kind === 'full') {
+      return;
+    }
+    const currentMaxHeightPx = Math.max(
+      this.target.scrollHeight + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX,
+      this.target.clientHeight,
+      PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX,
+    );
+    this.collapseToHeight(currentMaxHeightPx);
+    this.updateState({ kind: 'partial', maxHeightPx: currentMaxHeightPx });
+    this.queueAfterExpansionEffects();
+  }
+
+  private queueAfterExpansionEffects(): void {
+    requestAnimationFrame(() => {
+      if (!this.target.isConnected) return;
+      this.refreshExpandFooter();
+      this.alignCollapsedContentToNewest();
+      this.emitContentGrown('expand-step');
+      if (this.onAfterExpand !== undefined) {
+        this.onAfterExpand();
+      }
+    });
+  }
+
+  private applyCurrentState(): void {
+    switch (this.currentState.kind) {
+      case 'initial':
+        this.collapseToInitial();
+        return;
+      case 'partial':
+        this.collapseToHeight(this.currentState.maxHeightPx);
+        return;
+      case 'full':
+        this.autoExpandFromNowOn();
+        return;
+    }
+  }
+
+  private attachOverflowObserverIfNeeded(): void {
+    if (
+      !this.observeTargetUntilOverflow ||
+      this.currentState.kind === 'full' ||
+      typeof ResizeObserver === 'undefined'
+    ) {
+      this.disconnectOverflowObserver();
+      return;
+    }
+    if (this.overflowObserver !== null) return;
+    this.overflowObserver = new ResizeObserver(() => {
+      this.refreshExpandFooter();
+      this.alignCollapsedContentToNewest();
+      this.emitContentGrown('content-growth');
+    });
+    this.overflowObserver.observe(this.target);
+  }
+
+  private refreshExpandFooter(): void {
+    if (!this.target.isConnected) return;
+    if (this.currentState.kind === 'initial') {
+      if (this.shouldShowExpandFooter(PROGRESSIVE_EXPAND_INITIAL_MAX_HEIGHT_PX)) {
+        this.collapseToInitial();
+        this.footer.classList.remove('is-hidden');
+        this.disconnectOverflowObserver();
+        return;
+      }
+      this.footer.classList.add('is-hidden');
+      this.showCurrentContentFully();
+      this.attachOverflowObserverIfNeeded();
+      return;
+    }
+    if (this.currentState.kind === 'full') {
+      this.showCurrentContentFully();
+      this.footer.classList.add('is-hidden');
+      return;
+    }
+    if (this.shouldShowExpandFooter(this.target.clientHeight)) {
+      this.footer.classList.remove('is-hidden');
+      this.disconnectOverflowObserver();
+      this.alignCollapsedContentToNewest();
+      return;
+    }
+    this.footer.classList.add('is-hidden');
+    this.ensurePartialOverflowObserverSlack();
+    this.attachOverflowObserverIfNeeded();
+  }
+
+  private ensurePartialOverflowObserverSlack(): void {
+    if (this.currentState.kind !== 'partial') return;
+    const nextMaxHeightPx = Math.max(
+      this.currentState.maxHeightPx,
+      this.target.scrollHeight + PROGRESSIVE_EXPAND_OVERFLOW_OBSERVER_SLACK_PX,
+    );
+    if (nextMaxHeightPx === this.currentState.maxHeightPx) return;
+    this.collapseToHeight(nextMaxHeightPx);
+    this.updateState({ kind: 'partial', maxHeightPx: nextMaxHeightPx });
+  }
+}
+
+export function setupDownwardProgressiveExpandBehavior(
   options: ProgressiveExpandableComponentOptions,
 ): () => void {
-  const component = new ProgressiveExpandableComponent(options);
+  const component = new DownwardProgressiveExpandableComponent(options);
+  return () => {
+    component.cleanup();
+  };
+}
+
+export function setupUpwardProgressiveExpandBehavior(
+  options: ProgressiveExpandableComponentOptions,
+): () => void {
+  const component = new UpwardProgressiveExpandableComponent(options);
   return () => {
     component.cleanup();
   };

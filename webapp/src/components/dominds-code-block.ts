@@ -3,7 +3,7 @@ import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 import {
   getProgressiveExpandLabel,
   resolveProgressiveExpandStepParent,
-  setupProgressiveExpandBehavior,
+  setupDownwardProgressiveExpandBehavior,
   type ProgressiveExpandState,
 } from './progressive-expand';
 
@@ -312,7 +312,7 @@ export class DomindsCodeBlock extends HTMLElement {
     const stepParent = resolveProgressiveExpandStepParent(this);
     const language = this.closest('[lang]')?.getAttribute('lang') ?? 'en';
     this.progressiveExpandCleanup?.();
-    this.progressiveExpandCleanup = setupProgressiveExpandBehavior({
+    this.progressiveExpandCleanup = setupDownwardProgressiveExpandBehavior({
       target,
       footer,
       button,

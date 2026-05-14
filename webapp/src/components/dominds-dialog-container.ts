@@ -48,7 +48,8 @@ import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 import {
   getProgressiveExpandLabel,
   resolveProgressiveExpandStepParent,
-  setupProgressiveExpandBehavior,
+  setupDownwardProgressiveExpandBehavior,
+  setupUpwardProgressiveExpandBehavior,
 } from './progressive-expand';
 
 type DialogContext = DialogIdent & {
@@ -141,8 +142,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private activeThinkingMarkdownSegment?: DomindsMarkdownSection;
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
-  private lastCompletedThinkingSection?: HTMLElement;
-  private lastCompletedThinkingGenseq?: number;
   private pendingThinkingChunkBuffer = '';
   private pendingThinkingChunkFlushTimer: number | null = null;
   private pendingThinkingChunkFlushRaf: number | null = null;
@@ -1117,6 +1116,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearViewportPanel();
+    this.cleanupAllProgressiveExpands();
     this.resetPendingStreamChunkFlush();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
@@ -1124,8 +1124,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.activeThinkingMarkdownSegment = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
-    this.lastCompletedThinkingSection = undefined;
-    this.lastCompletedThinkingGenseq = undefined;
     this.currentCourse = course;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
@@ -1150,10 +1148,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Clean up current state and DOM content
   private cleanup(): void {
-    for (const cleanup of this.progressiveExpandCleanupByTarget.values()) {
-      cleanup();
-    }
-    this.progressiveExpandCleanupByTarget.clear();
+    this.cleanupAllProgressiveExpands();
     this.resetPendingStreamChunkFlush();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
@@ -1165,8 +1160,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.activeThinkingMarkdownSegment = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
-    this.lastCompletedThinkingSection = undefined;
-    this.lastCompletedThinkingGenseq = undefined;
     this.currentCourse = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
@@ -1237,6 +1230,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.activeThinkingMarkdownSegment = markdownSection;
     markdownSection.appendChunk(this.pendingThinkingChunkBuffer);
     this.pendingThinkingChunkBuffer = '';
+    this.emitProgressiveExpandContentGrowth(markdownSection);
     this.scrollToBottom();
   }
 
@@ -1297,8 +1291,6 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     thinkingSection.classList.add('completed');
-    this.lastCompletedThinkingSection = thinkingSection;
-    this.lastCompletedThinkingGenseq = genseq;
     this.completeActiveThinkingMarkdownSegment();
     this.thinkingSection = undefined;
   }
@@ -1341,17 +1333,36 @@ export class DomindsDialogContainer extends HTMLElement {
     return true;
   }
 
-  private clearLastCompletedThinkingSection(): void {
-    this.lastCompletedThinkingSection = undefined;
-    this.lastCompletedThinkingGenseq = undefined;
-  }
-
   private getThinkingContentElement(thinkingSection: HTMLElement): HTMLElement {
     const contentEl = thinkingSection.querySelector('.thinking-content');
     if (!(contentEl instanceof HTMLElement)) {
       throw new Error('thinking-section missing thinking-content');
     }
     return contentEl;
+  }
+
+  private cleanupAllProgressiveExpands(): void {
+    for (const cleanup of this.progressiveExpandCleanupByTarget.values()) {
+      cleanup();
+    }
+    this.progressiveExpandCleanupByTarget.clear();
+  }
+
+  private cleanupDisconnectedProgressiveExpands(): void {
+    for (const [target, cleanup] of this.progressiveExpandCleanupByTarget.entries()) {
+      if (target.isConnected) continue;
+      cleanup();
+      this.progressiveExpandCleanupByTarget.delete(target);
+    }
+  }
+
+  private emitProgressiveExpandContentGrowth(target: HTMLElement): void {
+    dispatchDomindsEvent(
+      target,
+      'progressive-expand-content-grown',
+      { reason: 'content-growth' },
+      { bubbles: true, composed: true },
+    );
   }
 
   private getFuncCallAppendTarget(genseq: number, bubble: HTMLElement): HTMLElement {
@@ -1361,20 +1372,7 @@ export class DomindsDialogContainer extends HTMLElement {
       activeThinkingSection.getAttribute('data-genseq') === String(genseq)
     ) {
       this.closeActiveThinkingMarkdownSegment(genseq);
-      return this.getThinkingContentElement(activeThinkingSection);
     }
-
-    const completedThinkingSection = this.lastCompletedThinkingSection;
-    if (
-      completedThinkingSection &&
-      completedThinkingSection.isConnected &&
-      this.lastCompletedThinkingGenseq === genseq &&
-      completedThinkingSection.closest('.generation-bubble') === bubble
-    ) {
-      return this.getThinkingContentElement(completedThinkingSection);
-    }
-
-    this.clearLastCompletedThinkingSection();
     return (bubble.querySelector('.bubble-body') as HTMLElement | null) ?? bubble;
   }
 
@@ -1766,7 +1764,6 @@ export class DomindsDialogContainer extends HTMLElement {
       this.activeThinkingMarkdownSegment = undefined;
       this.markdownSection = undefined;
       this.callingSection = undefined;
-      this.clearLastCompletedThinkingSection();
       this.generationBubble = undefined;
     };
 
@@ -2135,7 +2132,6 @@ export class DomindsDialogContainer extends HTMLElement {
       this.activeThinkingMarkdownSegment = undefined;
       this.markdownSection = undefined;
       this.callingSection = undefined;
-      this.clearLastCompletedThinkingSection();
       this.generationBubble = undefined;
       // Clear previousDialog since we've completed the generation for that dialog
       this.previousDialog = undefined;
@@ -2163,7 +2159,6 @@ export class DomindsDialogContainer extends HTMLElement {
         this.activeThinkingMarkdownSegment = undefined;
         this.markdownSection = undefined;
         this.callingSection = undefined;
-        this.clearLastCompletedThinkingSection();
       }
     }
 
@@ -2226,23 +2221,14 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    const existingSection = this.lastCompletedThinkingSection;
-    const thinkingSection =
-      existingSection &&
-      existingSection.isConnected &&
-      this.lastCompletedThinkingGenseq === genseq &&
-      existingSection.closest('.generation-bubble') === bubble
-        ? existingSection
-        : this.createThinkingSection();
-    if (!thinkingSection.isConnected) {
-      const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
-      (body || bubble).appendChild(thinkingSection);
-    }
+    const thinkingSection = this.createThinkingSection();
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
+    (body || bubble).appendChild(thinkingSection);
+    this.setupThinkingProgressiveExpand(thinkingSection);
     thinkingSection.classList.remove('completed');
     thinkingSection.setAttribute('data-genseq', String(genseq));
     this.thinkingSection = thinkingSection;
     this.activeThinkingMarkdownSegment = this.createThinkingMarkdownSegment(thinkingSection);
-    this.clearLastCompletedThinkingSection();
     this.pendingThinkingChunkBuffer = '';
     this.clearPendingThinkingChunkFlushTimer();
     this.clearPendingThinkingChunkFlushRaf();
@@ -2315,7 +2301,6 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     // Create and append markdown section directly
     this.closeActiveThinkingMarkdownSegment(genseq);
-    this.clearLastCompletedThinkingSection();
     const markdownSection = this.createMarkdownSection();
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(markdownSection);
@@ -2434,6 +2419,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const appendTarget = this.getFuncCallAppendTarget(genseq, bubble);
     appendTarget.appendChild(funcCallSection);
     this.setupFuncCallArgsProgressiveExpand(funcCallSection);
+    this.emitProgressiveExpandContentGrowth(funcCallSection);
     this.scrollToBottom();
   }
 
@@ -2473,6 +2459,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionBySeq.set(event.genseq, section);
 
     this.renderWebSearchSection(section, event);
+    this.emitProgressiveExpandContentGrowth(section);
     this.scrollToBottom();
   }
 
@@ -2534,6 +2521,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.nativeToolSectionBySeq.set(event.genseq, section);
 
     this.renderNativeToolSection(section, event);
+    this.emitProgressiveExpandContentGrowth(section);
     this.scrollToBottom();
   }
 
@@ -2664,6 +2652,7 @@ export class DomindsDialogContainer extends HTMLElement {
     //   old assistant-side DOM behind would duplicate sections when the retried stream re-renders.
     if (!body.querySelector('.user-response-divider')) {
       body.replaceChildren();
+      this.cleanupDisconnectedProgressiveExpands();
       return;
     }
 
@@ -2678,6 +2667,7 @@ export class DomindsDialogContainer extends HTMLElement {
         child.remove();
       }
     }
+    this.cleanupDisconnectedProgressiveExpands();
   }
 
   private compactWebSearchItemId(itemId: string): string {
@@ -3041,7 +3031,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  private setupProgressiveExpand(options: {
+  private setupDownwardProgressiveExpand(options: {
     target: HTMLElement;
     footer: HTMLElement;
     button: HTMLButtonElement;
@@ -3053,8 +3043,10 @@ export class DomindsDialogContainer extends HTMLElement {
       <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
     `;
     const previousCleanup = this.progressiveExpandCleanupByTarget.get(target);
-    previousCleanup?.();
-    const cleanup = setupProgressiveExpandBehavior({
+    if (previousCleanup !== undefined) {
+      previousCleanup();
+    }
+    const cleanup = setupDownwardProgressiveExpandBehavior({
       target,
       footer,
       button,
@@ -3062,6 +3054,40 @@ export class DomindsDialogContainer extends HTMLElement {
       label,
       // Dialog blocks can still grow after first render while content streams in. Observe only
       // the target itself while its expand footer is hidden.
+      observeTargetUntilOverflow: true,
+      isContentComplete: () => {
+        const bubble = target.closest('.generation-bubble');
+        if (!(bubble instanceof HTMLElement)) return true;
+        return bubble.dataset.finalized === 'true' || bubble.classList.contains('completed');
+      },
+      onAfterExpand: () => {
+        this.scrollToBottom();
+      },
+    });
+    this.progressiveExpandCleanupByTarget.set(target, cleanup);
+  }
+
+  private setupUpwardProgressiveExpand(options: {
+    target: HTMLElement;
+    footer: HTMLElement;
+    button: HTMLButtonElement;
+    stepParent: HTMLElement | null;
+  }): void {
+    const { target, footer, button, stepParent } = options;
+    const label = getProgressiveExpandLabel(this.uiLanguage);
+    button.innerHTML = `
+      <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
+    `;
+    const previousCleanup = this.progressiveExpandCleanupByTarget.get(target);
+    if (previousCleanup !== undefined) {
+      previousCleanup();
+    }
+    const cleanup = setupUpwardProgressiveExpandBehavior({
+      target,
+      footer,
+      button,
+      stepParent,
+      label,
       observeTargetUntilOverflow: true,
       isContentComplete: () => {
         const bubble = target.closest('.generation-bubble');
@@ -3083,12 +3109,21 @@ export class DomindsDialogContainer extends HTMLElement {
     // Main dialog progressive expansion is keyed to the explicitly marked dialog viewport parent.
     // We never infer a step parent from whichever ancestor happens to scroll today.
     const stepParent = resolveProgressiveExpandStepParent(section);
-    this.setupProgressiveExpand({
+    this.setupDownwardProgressiveExpand({
       target: content,
       footer,
       button,
       stepParent,
     });
+  }
+
+  private setupThinkingProgressiveExpand(section: HTMLElement): void {
+    const target = section.querySelector('.thinking-content') as HTMLElement | null;
+    const footer = section.querySelector('.thinking-expand-footer') as HTMLElement | null;
+    const button = section.querySelector('.thinking-expand-btn') as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    const stepParent = resolveProgressiveExpandStepParent(section);
+    this.setupUpwardProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupFuncCallArgsProgressiveExpand(section: HTMLElement): void {
@@ -3101,7 +3136,7 @@ export class DomindsDialogContainer extends HTMLElement {
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
     const stepParent = resolveProgressiveExpandStepParent(section);
-    this.setupProgressiveExpand({ target, footer, button, stepParent });
+    this.setupDownwardProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupFuncCallResultProgressiveExpand(section: HTMLElement): void {
@@ -3112,7 +3147,7 @@ export class DomindsDialogContainer extends HTMLElement {
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
     const stepParent = resolveProgressiveExpandStepParent(section);
-    this.setupProgressiveExpand({ target, footer, button, stepParent });
+    this.setupDownwardProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupTellaskResponseProgressiveExpand(section: HTMLElement): void {
@@ -3121,7 +3156,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const button = section.querySelector('.teammate-expand-btn') as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
     const stepParent = resolveProgressiveExpandStepParent(section);
-    this.setupProgressiveExpand({ target, footer, button, stepParent });
+    this.setupDownwardProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private setupUiOnlyMarkdownProgressiveExpand(section: HTMLElement): void {
@@ -3132,7 +3167,7 @@ export class DomindsDialogContainer extends HTMLElement {
     ) as HTMLButtonElement | null;
     if (!target || !footer || !button) return;
     const stepParent = resolveProgressiveExpandStepParent(section);
-    this.setupProgressiveExpand({ target, footer, button, stepParent });
+    this.setupDownwardProgressiveExpand({ target, footer, button, stepParent });
   }
 
   private handleToolCallStart(
@@ -3376,6 +3411,9 @@ export class DomindsDialogContainer extends HTMLElement {
             img,
             placeholder,
             endpoint: this.buildDialogArtifactEndpoint(item),
+            onSettled: () => {
+              this.emitProgressiveExpandContentGrowth(funcCallSection);
+            },
           });
           continue;
         }
@@ -3413,6 +3451,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const funcCallSection = this.findFuncCallSection(event.genseq, funcId);
     if (funcCallSection) {
       this.renderFuncResultIntoSection(event, funcCallSection);
+      this.emitProgressiveExpandContentGrowth(funcCallSection);
       this.scrollToBottom();
       return;
     }
@@ -4655,6 +4694,7 @@ export class DomindsDialogContainer extends HTMLElement {
     img: HTMLImageElement;
     placeholder: HTMLElement;
     endpoint: string;
+    onSettled?: () => void;
   }): void {
     const api = getApiClient();
     void (async () => {
@@ -4664,15 +4704,19 @@ export class DomindsDialogContainer extends HTMLElement {
           args.placeholder.textContent = response.error
             ? `Failed to load image: ${response.error}`
             : 'Failed to load image';
+          if (args.onSettled !== undefined) {
+            args.onSettled();
+          }
           return;
         }
         const objectUrl = URL.createObjectURL(response.data);
-        args.img.src = objectUrl;
-        args.placeholder.remove();
         args.img.addEventListener(
           'load',
           () => {
             URL.revokeObjectURL(objectUrl);
+            if (args.onSettled !== undefined) {
+              args.onSettled();
+            }
           },
           { once: true },
         );
@@ -4680,13 +4724,21 @@ export class DomindsDialogContainer extends HTMLElement {
           'error',
           () => {
             URL.revokeObjectURL(objectUrl);
+            if (args.onSettled !== undefined) {
+              args.onSettled();
+            }
           },
           { once: true },
         );
+        args.img.src = objectUrl;
+        args.placeholder.remove();
       } catch (err) {
         args.placeholder.textContent = `Failed to load image: ${
           err instanceof Error ? err.message : String(err)
         }`;
+        if (args.onSettled !== undefined) {
+          args.onSettled();
+        }
       }
     })();
   }
@@ -4925,6 +4977,9 @@ export class DomindsDialogContainer extends HTMLElement {
       <div class="section-header">
         <span class="section-icon icon-mask dc-icon-brain" aria-hidden="true"></span>
         <span class="section-title">${this.escapeHtml(t.thinkingSectionTitle)}</span>
+      </div>
+      <div class="thinking-expand-footer progressive-expand-footer is-hidden">
+        <button type="button" class="thinking-expand-btn progressive-expand-btn"></button>
       </div>
       <div class="thinking-content"></div>
     `;
@@ -6209,6 +6264,19 @@ export class DomindsDialogContainer extends HTMLElement {
         justify-content: center;
       }
 
+      .thinking-expand-footer {
+        border-top: 0;
+        border-bottom: 1px solid var(--progressive-expand-border);
+        align-items: flex-end;
+      }
+
+      .thinking-expand-footer .progressive-expand-btn {
+        transform: translateY(var(--progressive-expand-tab-height));
+        border-top: 0;
+        border-bottom: 1px solid var(--progressive-expand-border);
+        border-radius: 0 0 12px 12px;
+      }
+
       .progressive-expand-btn:hover {
         background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9));
       }
@@ -6226,6 +6294,10 @@ export class DomindsDialogContainer extends HTMLElement {
         width: 15px;
         height: 15px;
         --icon-mask: ${ICON_MASK_URLS.chevronsDown};
+      }
+
+      .thinking-expand-footer .progressive-expand-icon {
+        --icon-mask: ${ICON_MASK_URLS.chevronsUp};
       }
 
       .progressive-expand-btn:hover .progressive-expand-icon,
