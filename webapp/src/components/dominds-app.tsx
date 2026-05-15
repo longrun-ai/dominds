@@ -3055,15 +3055,21 @@ export class DomindsApp extends HTMLElement {
 	        display: inline-flex;
 	        align-items: center;
 	        gap: 4px;
-	        padding: 2px 6px;
+	        min-height: 18px;
+	        padding: 2px 7px;
 	        border-radius: 999px;
 	        border: 1px solid transparent;
 	        background: transparent;
 	        color: var(--dominds-muted, #666666);
-	        font-size: 9px;
-	        font-weight: 550;
+	        font-size: 10px;
+	        font-weight: 650;
 	        line-height: 1;
 	        cursor: default;
+	        transition:
+	          background-color var(--transition-fast, 0.15s ease-in-out),
+	          border-color var(--transition-fast, 0.15s ease-in-out),
+	          color var(--transition-fast, 0.15s ease-in-out),
+	          box-shadow var(--transition-fast, 0.15s ease-in-out);
 	      }
 
       .dominds-version:disabled {
@@ -3072,13 +3078,15 @@ export class DomindsApp extends HTMLElement {
 
       .dominds-version[data-actionable='true'] {
         cursor: pointer;
-        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 18%, transparent);
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 10%, transparent);
-        color: var(--dominds-primary, #007acc);
+        border-color: var(--dominds-warning-border, #e6d2b4);
+        background: var(--dominds-warning-bg, #fff4e5);
+        color: var(--dominds-warning, #bb8009);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--dominds-warning, #bb8009) 14%, transparent) inset;
       }
 
       .dominds-version[data-actionable='true']:hover {
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 16%, transparent);
+        border-color: color-mix(in srgb, var(--dominds-warning, #bb8009) 42%, var(--dominds-warning-border, #e6d2b4));
+        background: color-mix(in srgb, var(--dominds-warning, #bb8009) 16%, var(--dominds-warning-bg, #fff4e5));
       }
 
       .dominds-version-text,
@@ -3088,12 +3096,17 @@ export class DomindsApp extends HTMLElement {
         line-height: 1;
       }
 
+      .dominds-version-text {
+        transform-origin: center bottom;
+      }
+
       .dominds-version-icon {
         width: 10px;
         height: 10px;
+        opacity: 0.9;
       }
 
-      @keyframes domindsVersionDoubleBounce {
+      @keyframes domindsVersionNumberDoubleBounce {
         0%, 72%, 100% {
           transform: translateY(0) scale(1);
         }
@@ -3111,8 +3124,8 @@ export class DomindsApp extends HTMLElement {
         }
       }
 
-      .dominds-version[data-attention='true'] .dominds-version-icon {
-        animation: domindsVersionDoubleBounce 8s ease-in-out infinite;
+      .dominds-version[data-attention='true'] .dominds-version-text {
+        animation: domindsVersionNumberDoubleBounce 8s ease-in-out infinite;
       }
 
 	      .rtws-indicator {
