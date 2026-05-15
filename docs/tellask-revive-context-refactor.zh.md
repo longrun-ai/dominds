@@ -1,5 +1,7 @@
 # Tellask 回复续驱与上下文重构草案
 
+> Superseded note（2026-05）：本文是早期设计草案，仍保留 `wait-group` / `revive entitlement` 等历史术语。当前准则以 `tellask-background-continuation-refactor.zh.md` 为准：运行时使用 dispatch batch / result-arrival 语义，不把 caller pending callee 误建模为“等待组”或暂停条件。
+
 > 状态：Draft / 讨论记录  
 > 日期：2026-04-21  
 > 语义基准：中文为准；英文文档待方案稳定后再补。
