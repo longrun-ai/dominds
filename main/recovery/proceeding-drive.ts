@@ -1,5 +1,5 @@
 import { Dialog, DialogID } from '../dialog';
-import { isRecoverableGeneratingLatest } from '../dialog-display-state';
+import { getRecoverableGenerationRunState } from '../dialog-display-state';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
 import { driveDialogStream } from '../llm/kernel-driver';
@@ -72,7 +72,7 @@ export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
       continue;
     }
 
-    if (!isRecoverableGeneratingLatest(latest)) {
+    if (getRecoverableGenerationRunState(latest) === undefined) {
       continue;
     }
 

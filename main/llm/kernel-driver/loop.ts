@@ -1,4 +1,8 @@
-import { getStopRequestedReason, hasActiveRun } from '../../dialog-display-state';
+import {
+  getRecoverableGenerationRunState,
+  getStopRequestedReason,
+  hasActiveRun,
+} from '../../dialog-display-state';
 import { globalDialogRegistry, type DriveTriggerEvent } from '../../dialog-global-registry';
 import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
 import { log } from '../../log';
@@ -60,7 +64,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      const resumeInProgressGeneration = latest?.generating === true;
+      const resumeInProgressGeneration = getRecoverableGenerationRunState(latest) !== undefined;
       if (!resumeInProgressGeneration && !(await mainDialog.canDrive())) {
         continue;
       }

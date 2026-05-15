@@ -561,9 +561,11 @@ type GenerationRunState =
 
 注意：`DialogLatestFile` 当前没有保存 active genseq 是需要偿还的技术债。迁移脚本可以从 durable event stream 一次性补齐 `generationRunState`；目标运行路径不能每次重启都扫描历史来推导 latest generation closure。
 
-#### 5.2 closed generation 不进入 proceeding recovery
+#### 5.2 closed / missing generation state 不进入 proceeding recovery
 
-`isRecoverableGeneratingLatest(latest)` 不应只看 latest。替换为 async helper：
+`generating=true` 是投影，不是恢复事实。当前代码已把 open-generation recovery 的判定收敛到 `getRecoverableGenerationRunState(latest)`：只有 `generationRunState.kind === 'open'` 且 interruption marker 允许自动恢复时，才写入 `open_generation_recovery` trigger 并进入 proceeding recovery。
+
+目标态仍可把该 helper 扩展为带诊断返回值的 decision helper：
 
 ```ts
 async function resolveRecoverableGenerationAfterRestart(
@@ -574,9 +576,9 @@ async function resolveRecoverableGenerationAfterRestart(
 
 规则：
 
-- latest.generating !== true：不 recover proceeding。
-- latest.generating === true 但 `generationRunState.kind === 'closed'`：不 recover proceeding；清 stale generating，并按状态快照投影 displayState。
-- latest.generating === true 且 `generationRunState.kind === 'open'`：recover proceeding。
+- `generationRunState.kind === 'open'`：recover proceeding。
+- `generationRunState.kind === 'closed'`：不 recover proceeding；清 stale generating，并按状态快照投影 displayState。
+- `generationRunState` 缺失：不 recover proceeding；清 stale generating，并按 server restart / user wait / explicit interruption 等状态快照投影 displayState；不扫描历史补猜。
 - latest.generating 与 `generationRunState` 冲突：发 loud diagnostic，停止该 dialog 的 unsafe recovery；迁移/repair 工具可以离线修复，runtime 不回扫补猜。
 
 返回结构携带诊断字段，便于日志与测试断言：
@@ -676,7 +678,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 
 - 移除/改名 `blockerDisplayState()` 这类以 blocker 命名的投影；pending sideDialogs 不再映射为 `waiting_for_sideDialogs`。
 - `computeIdleDisplayStateFromPersistence()` 对任意 dialog 使用 next-step facts、background facts、completion obligations 分层投影。
-- `isRecoverableGeneratingLatest()` 替换为读取 `generationRunState` 的 recovery decision；调用方不能只凭 latest 判断 open generation，也不能回扫历史补猜。
+- `getRecoverableGenerationRunState()` 已只读取 `generationRunState.kind === 'open'`；后续可扩展为结构化 recovery decision。调用方不能只凭 `generating=true` 判断 open generation，也不能回扫历史补猜。
 - restart reconciliation 在 patch latest 时同时处理 `generating`、`needsDrive`、`displayState`、`executionMarker`，避免留下 stale queued 状态。
 
 ### `main/llm/kernel-driver/drive.ts`
@@ -877,7 +879,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - dispatch batch 仍主要通过 pending sideDialog records 表达，没有独立 dispatch-batch state 文件；crash recovery 尚未完整覆盖 batch member resolved/final 状态。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。
-- restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；closed/stale generation projection 仍需继续收敛。
+- restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底，但 generation recovery decision 仍需补齐结构化诊断返回。
 - `revive entitlement` / `wait_group_resolved` 等内部命名仍是迁移遗留，后续应收敛到 result-arrival / dispatch-batch 语义。
 - runtime 读路径仍存在少量历史事件读取；下一阶段必须把常态业务判定改为只读状态快照和显式 pending records，历史回扫只留给离线 migration/repair。
 

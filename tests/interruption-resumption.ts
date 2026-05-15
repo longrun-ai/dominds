@@ -254,6 +254,18 @@ async function main(): Promise<void> {
       },
     });
 
+    // Dialog L: generating=true alone is only a projection. Without an open generationRunState,
+    // restart recovery must stop instead of auto-driving or scanning history to guess.
+    const lRoot = 'dlg-l';
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'dialog.yaml'), { id: lRoot });
+    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'latest.yaml'), {
+      currentCourse: 1,
+      lastModified: new Date().toISOString(),
+      status: 'active',
+      generating: true,
+      displayState: { kind: 'proceeding' },
+    });
+
     // Dialog C: malformed q4h detail must not affect run-control recovery once userWait is the
     // durable suspension fact. Q4H detail consumers still fail loudly when they need the payload.
     const cRoot = 'dlg-c';
@@ -765,6 +777,15 @@ async function main(): Promise<void> {
     assert.equal(latestI.displayState.reason.kind, 'user_stop');
     assert.equal(latestI.executionMarker?.kind, 'interrupted');
     assert.equal(latestI.executionMarker.reason.kind, 'user_stop');
+
+    const latestL = await DialogPersistence.loadDialogLatest(new DialogID(lRoot), 'running');
+    assert.ok(latestL, 'latest.yaml for dlg-l should exist');
+    assert.equal(latestL.generating, false);
+    assert.equal(latestL.displayState?.kind, 'stopped');
+    assert.equal(latestL.displayState?.reason.kind, 'server_restart');
+    assert.equal(latestL.executionMarker?.kind, 'interrupted');
+    assert.equal(latestL.executionMarker.reason.kind, 'server_restart');
+    assert.equal(latestL.nextStep, undefined);
 
     const latestC = await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running');
     assert.ok(latestC, 'latest.yaml for dlg-c should remain readable');

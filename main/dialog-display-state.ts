@@ -22,6 +22,7 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import type {
   DialogExecutionMarker,
+  DialogGenerationRunState,
   DialogLatestFile,
   TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
@@ -899,29 +900,30 @@ async function computeIdleDisplayStateForReconciliation(
   }
 }
 
-export function isRecoverableGeneratingLatest(latest: DialogLatestFile | null): boolean {
+export function getRecoverableGenerationRunState(
+  latest: DialogLatestFile | null,
+): DialogGenerationRunState | undefined {
   if (!latest) {
-    return false;
+    return undefined;
   }
-  if (latest.generationRunState !== undefined) {
-    if (latest.generationRunState.kind !== 'open') {
-      return false;
-    }
-  } else if (latest.generating !== true) {
-    return false;
+  if (latest.generationRunState?.kind !== 'open') {
+    return undefined;
   }
   const marker = latest.executionMarker;
   if (!marker) {
-    return true;
+    return latest.generationRunState;
   }
   if (marker.kind === 'dead') {
-    return false;
+    return undefined;
   }
-  return (
+  if (
     marker.kind !== 'interrupted' ||
     marker.reason.kind === 'pending_runtime_prompt' ||
     marker.reason.kind === 'pending_reply_obligation'
-  );
+  ) {
+    return latest.generationRunState;
+  }
+  return undefined;
 }
 
 export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
@@ -990,15 +992,9 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       }
     }
 
-    if (isRecoverableGeneratingLatest(latest)) {
+    const recoverableGenerationRunState = getRecoverableGenerationRunState(latest);
+    if (recoverableGenerationRunState !== undefined) {
       try {
-        const generationRunState = latest.generationRunState;
-        if (generationRunState === undefined || generationRunState.kind !== 'open') {
-          throw new Error(
-            `display-state recovery invariant violation: missing open generation state ` +
-              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
-          );
-        }
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',
           patch: {
@@ -1008,13 +1004,13 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
                 ...(latest.nextStep?.triggers ?? []).filter(
                   (trigger) =>
                     trigger.triggerId !==
-                    `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+                    `open-generation-recovery:${dialogId.selfId}:${recoverableGenerationRunState.course}:${recoverableGenerationRunState.genseq}`,
                 ),
                 {
-                  triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+                  triggerId: `open-generation-recovery:${dialogId.selfId}:${recoverableGenerationRunState.course}:${recoverableGenerationRunState.genseq}`,
                   kind: 'open_generation_recovery',
-                  course: generationRunState.course,
-                  genseq: generationRunState.genseq,
+                  course: recoverableGenerationRunState.course,
+                  genseq: recoverableGenerationRunState.genseq,
                 },
               ],
             },
