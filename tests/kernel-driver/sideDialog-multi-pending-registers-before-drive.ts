@@ -83,7 +83,7 @@ async function main(): Promise<void> {
         (record) =>
           record.callSiteCourse === root.currentCourse && record.callSiteGenseq === genseq,
       ),
-      'same assistant round pending records must share the same wait-group coordinates',
+      'same assistant round pending records must share the same dispatch-batch coordinates',
     );
 
     await root.notifyGeneratingFinish();

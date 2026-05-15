@@ -880,7 +880,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 - dispatch batch 仍主要通过 pending sideDialog records 表达，没有独立 dispatch-batch state 文件；crash recovery 尚未完整覆盖 batch member resolved/final 状态。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。
 - restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底，但 generation recovery decision 仍需补齐结构化诊断返回。
-- `revive entitlement` / `wait_group_resolved` 等内部命名仍是迁移遗留，后续应收敛到 result-arrival / dispatch-batch 语义。
+- runtime reason / error 已收敛到 result-arrival / dispatch-batch 语义；旧 `tellask-revive-context-refactor` 文档仍保留 wait-group 历史表述，后续应单独刷新或标记为 superseded。
 - runtime 读路径仍存在少量历史事件读取；下一阶段必须把常态业务判定改为只读状态快照和显式 pending records，历史回扫只留给离线 migration/repair。
 
 移除 WIP 标记的条件：

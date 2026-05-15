@@ -313,16 +313,15 @@ export async function supplyResponseToAskerDialog(args: {
         parentDialog.status,
       );
 
-      const sameWaitGroupPending =
+      const sameDispatchBatchPending =
         pendingRecord === undefined
           ? []
           : filteredPending.filter(
-              (pending) =>
-                pending.dispatchBatchId === pendingRecord.dispatchBatchId,
+              (pending) => pending.dispatchBatchId === pendingRecord.dispatchBatchId,
             );
       const hasQ4H = await parentDialog.hasPendingQ4H();
       const shouldRevive =
-        pendingRecord !== undefined && !hasQ4H && sameWaitGroupPending.length === 0;
+        pendingRecord !== undefined && !hasQ4H && sameDispatchBatchPending.length === 0;
       if (shouldRevive && pendingRecord !== undefined) {
         await DialogPersistence.upsertNextStepTrigger(
           parentDialog.id,
@@ -691,13 +690,13 @@ export async function supplyResponseToAskerDialog(args: {
 
       if (result.callSiteCourse === undefined || result.callSiteGenseq === undefined) {
         throw new Error(
-          `sideDialog revive entitlement invariant violation: missing wait-group coordinates ` +
+          `sideDialog result-arrival invariant violation: missing dispatch batch coordinates ` +
             `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
       if (result.dispatchBatchId === undefined) {
         throw new Error(
-          `sideDialog revive entitlement invariant violation: missing dispatchBatchId ` +
+          `sideDialog result-arrival invariant violation: missing dispatchBatchId ` +
             `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
@@ -718,7 +717,7 @@ export async function supplyResponseToAskerDialog(args: {
             triggerCallId: resolvedCallId,
           },
           source: 'kernel_driver_supply_response_parent_revive',
-          reason: `wait_group_resolved:type_${callType}:c${result.callSiteCourse}:g${result.callSiteGenseq}`,
+          reason: `dispatch_batch_resolved:type_${callType}:c${result.callSiteCourse}:g${result.callSiteGenseq}`,
         },
       });
     }
