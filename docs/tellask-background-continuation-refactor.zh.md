@@ -968,7 +968,7 @@ UI 业务状态投影结论：
 - `mainline_diligence` trigger 已在 Diligence prompt 注入前写入；Diligence 仍只作用于主线，触发条件只看预算，pending tellask 只作为 prompt context 数量。
 - `active-callees.json` 已开始作为运行判定源：tellask 派发时写入 batch/callee，callee 回贴时按 batch 完整性生成 `result_arrival` trigger；direct-fallback 作为 callee completion memo 进入同一 batch，不新增独立 trigger。pending-sideDialogs 仍暂存 UI/reminder 细节和部分回贴展示字段，后续需继续收敛为完全从 active-callees/background projection 派生。
 - `generationRunState` 已记录 open/closed 的 course/genseq/timestamp、open phase 与 `acceptedTriggerIds`；`finishRecordId` 和 last-tool-round 分类不进入 `generationRunState`，由 event log 与 `followup` trigger 分别承载。
-- restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底，但 generation recovery decision 仍需补齐结构化诊断返回。
+- restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底。`generating=true` 但缺少 `generationRunState` 的 dialog 已进入 `malformed/`，不再静默停成 server_restart；generation recovery decision 仍需补齐结构化诊断返回。
 - runtime reason / error 已收敛到 result-arrival / dispatch-batch 语义；旧 `tellask-revive-context-refactor` 文档仍保留 wait-group 历史表述，后续应单独刷新或标记为 superseded。
 - runtime 读路径仍存在少量历史事件读取；后续必须把常态业务判定改为只读状态快照和显式 pending records。缺少必要元信息或结构不合法时转移到 `malformed/`，不在 runtime 或自动 repair 中回扫历史补齐。
 

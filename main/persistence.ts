@@ -6247,6 +6247,15 @@ export class DialogPersistence {
     }
   }
 
+  static async quarantineMalformedRuntimeState(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+    reason: string,
+    detail: string,
+  ): Promise<void> {
+    await this.quarantineMalformedDialog(dialogId, status, reason, new Error(detail));
+  }
+
   private static async rethrowAfterQuarantiningDialogPersistenceProblem(
     dialogId: DialogID,
     status: DialogStatusKind,

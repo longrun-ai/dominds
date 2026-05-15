@@ -240,8 +240,8 @@ async function main(): Promise<void> {
       updatedAt: new Date().toISOString(),
     });
 
-    // Dialog I: generating=true is not enough for automatic recovery when an explicit
-    // non-restart interruption marker says the drive must be manually resumed.
+    // Dialog I: generating=true without generationRunState is malformed even when an explicit
+    // non-restart interruption marker is present; runtime must not scan history to guess.
     const iRoot = 'dlg-i';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'dialog.yaml'), { id: iRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'latest.yaml'), {
@@ -256,8 +256,8 @@ async function main(): Promise<void> {
       },
     });
 
-    // Dialog L: generating=true alone is only a projection. Without an open generationRunState,
-    // restart recovery must stop instead of auto-driving or scanning history to guess.
+    // Dialog L: generating=true alone is only a projection. Without generationRunState,
+    // restart recovery must quarantine instead of auto-driving or scanning history to guess.
     const lRoot = 'dlg-l';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'dialog.yaml'), { id: lRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'latest.yaml'), {
@@ -773,23 +773,11 @@ async function main(): Promise<void> {
     assert.equal(latestB.displayState.kind, 'blocked');
     assert.equal(latestB.displayState.reason.kind, 'needs_human_input');
 
-    const latestI = await DialogPersistence.loadDialogLatest(new DialogID(iRoot), 'running');
-    assert.ok(latestI, 'latest.yaml for dlg-i should exist');
-    assert.equal(latestI.generating, false);
-    assert.ok(latestI.displayState);
-    assert.equal(latestI.displayState.kind, 'stopped');
-    assert.equal(latestI.displayState.reason.kind, 'user_stop');
-    assert.equal(latestI.executionMarker?.kind, 'interrupted');
-    assert.equal(latestI.executionMarker.reason.kind, 'user_stop');
+    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'run', iRoot)));
+    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', iRoot));
 
-    const latestL = await DialogPersistence.loadDialogLatest(new DialogID(lRoot), 'running');
-    assert.ok(latestL, 'latest.yaml for dlg-l should exist');
-    assert.equal(latestL.generating, false);
-    assert.equal(latestL.displayState?.kind, 'stopped');
-    assert.equal(latestL.displayState?.reason.kind, 'server_restart');
-    assert.equal(latestL.executionMarker?.kind, 'interrupted');
-    assert.equal(latestL.executionMarker.reason.kind, 'server_restart');
-    assert.equal(latestL.nextStep, undefined);
+    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'run', lRoot)));
+    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', lRoot));
 
     const latestC = await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running');
     assert.ok(latestC, 'latest.yaml for dlg-c should remain readable');
