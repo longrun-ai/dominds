@@ -275,12 +275,11 @@ async function loadFreshSuspensionStatusFromPersistence(dialog: Dialog): Promise
   canDrive: boolean;
 }> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
-    dialog.id,
-    dialog.status,
-  );
+  const activeCallees = await DialogPersistence.loadActiveCallees(dialog.id, dialog.status);
   const hasQ4H = latest?.userWait?.kind === 'awaiting_user_answer';
-  const hasSideDialogs = pendingSideDialogs.length > 0;
+  const hasSideDialogs = activeCallees.batches.some((batch) =>
+    batch.callees.some((callee) => callee.status === 'pending'),
+  );
   return {
     q4h: hasQ4H,
     backgroundCalleeDialogs: hasSideDialogs,

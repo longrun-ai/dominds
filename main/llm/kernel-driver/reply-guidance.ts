@@ -310,12 +310,11 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
     return true;
   }
   // Use strict persistence reads here. This branch changes business behavior, so a read failure
-  // must loud-fail the round instead of being silently treated as "pending sideDialogs exist".
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
-    args.dlg.id,
-    args.dlg.status,
+  // must loud-fail the round instead of being silently treated as "pending callees exist".
+  const activeCallees = await DialogPersistence.loadActiveCallees(args.dlg.id, args.dlg.status);
+  return activeCallees.batches.some((batch) =>
+    batch.callees.some((callee) => callee.status === 'pending'),
   );
-  return pendingSideDialogs.length > 0;
 }
 
 export async function resolvePromptReplyGuidance(args: {
