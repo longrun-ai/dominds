@@ -35,9 +35,10 @@ These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `dili
 
 Important addition:
 
-- Only `Tellask Session` has an assignment-update channel.
-- `Fresh Tellask` has no such channel; another `tellaskSessionless` only creates another transient Side Dialog and does not affect or tell the earlier owner to stop.
+- Only `Tellask Session` can continue the same task and update that task.
+- `Fresh Tellask` cannot continue or change an earlier task; another `tellaskSessionless` is another independent task and does not affect or stop the earlier task.
 - If later correction, earlier wrap-up, or scope change may be needed, do not choose `Fresh Tellask`; use `tellask` with `sessionSlug` from the start.
+- Do not treat an agent teammate like a human coworker who can only handle one conversation at a time. Same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task.
 
 ### 2.2 What `Tellask Session` really means
 
@@ -139,6 +140,7 @@ For teammate Tellasks (non-`freshBootsReasoning({ tellaskContent: "..." })`), al
 Hard rule:
 
 - You can only claim “waiting for result” if there is an explicit pending Tellask and known acceptance evidence.
+- If several independent tasks should go to the same teammate, do not queue them: send separate `tellaskSessionless` calls, or use different `sessionSlug` values with `tellask`.
 
 ### 4.2 Always continue via explicit re-Tellask
 

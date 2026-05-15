@@ -396,8 +396,8 @@ Result (second call):
 
 - **No registry lookup** - always creates a new sideDialog
 - **Not registered** - no persistence across Tellasks
-- **No assignment-update channel** - once emitted, it cannot be updated in place like Type B
-- Another `tellaskSessionless` creates **another new transient sideDialog**; it does not update, stop, or tell the earlier Type C Side Dialog to stop
+- Cannot continue or change the earlier task like Type B can
+- Another `tellaskSessionless` is another independent task; it does not update or stop the earlier Type C task
 - If later correction, scope change, or earlier wrap-up may be needed, choose Type B `tellask` with `sessionSlug` from the start
 - The sideDialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability

@@ -98,6 +98,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 ### Decision Rules
 
 - If the current Side Dialog is unfinished, first judge whether team SOP / role ownership already identifies the responsible owner; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner
+- Do not treat an agent teammate like a human coworker who can only handle one conversation at a time. Same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task
 - Call `tellaskBack({ tellaskContent })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership
 - If a human must personally perform login / GUI / captcha / high-risk authorization: call `askHuman({ tellaskContent })`
 - If the current Side Dialog is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`

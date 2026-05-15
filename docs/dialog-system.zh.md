@@ -379,8 +379,8 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 
 - **无注册表查找** - 总是创建新的支线对话
 - **不注册** - 在各次诉请之间不持久化
-- **无任务安排更新通道** - 发出后不能像 TYPE B 那样就地更新同一路诉请要求
-- 再次发起 `tellaskSessionless` 只会创建**另一条新的瞬态支线对话**，不会更新、更不会要求先前那条 TYPE C 支线停止
+- 不能像 TYPE B 那样接着同一件事说、更新同一件正在做的事
+- 再次发起 `tellaskSessionless` 是另一件独立任务，不会更新、更不会要求先前那条 TYPE C 任务停止
 - 若你后续可能需要改要求、纠偏或提前收口，应该从一开始就选择带 `sessionSlug` 的 TYPE B `tellask`
 - 支线对话本身一般是“完整能力”的；但 `freshBootsReasoning({ tellaskContent: "..." })` FBR 是特例：无工具且禁止任何诉请（见 `fbr.zh.md`）。
 - 与 TYPE B 的唯一区别：无注册表查找/恢复能力

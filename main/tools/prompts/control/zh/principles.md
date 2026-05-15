@@ -98,6 +98,7 @@
 ### 决策规则
 
 - 当前支线未完成时，先判断团队规程 / SOP / 职责卡能否明确负责人；若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人
+- 不要把智能体队友当成真人同事：祂不会因为你又发一条诉请而被打扰。同一个队友 + 同一个 `sessionSlug` = 接着同一件事说，并更新那件正在做的事；`tellaskSessionless` 或不同 `sessionSlug` = 另一件独立任务
 - 只有当必须向诉请者补需求、澄清目标、裁决取舍、确认验收口径、提供缺失输入，或现有规程无法明确判责时：调用 `tellaskBack({ tellaskContent })`
 - 需要人类亲自登录 / GUI / 验证码 / 高风险授权时：调用 `askHuman({ tellaskContent })`
 - 当前支线已经完成，且当前 assignment 明确要求 `replyTellask`：调用 `replyTellask({ replyContent })`

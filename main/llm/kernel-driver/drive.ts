@@ -639,7 +639,8 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellask',
-    description: 'Create or resume a teammate Side Dialog with sessionSlug.',
+    description:
+      'Ask a teammate to work on a task. Same targetAgentId + same sessionSlug continues the same task and updates it; a different sessionSlug is another independent task and will not affect other work for that teammate.',
     parameters: {
       type: 'object',
       properties: {
@@ -658,7 +659,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'tellaskSessionless',
     description:
-      'Create a one-shot teammate Side Dialog with no assignment-update channel; later tellaskSessionless calls create new dialogs rather than updating or stopping this one.',
+      'Ask a teammate to do a one-shot independent task. It does not update, affect, or stop earlier tasks.',
     parameters: {
       type: 'object',
       properties: {
