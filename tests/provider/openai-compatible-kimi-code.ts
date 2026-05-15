@@ -182,7 +182,7 @@ async function testKimiCodeAutoThinkingPayload(): Promise<void> {
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'thinking'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'reasoning_effort'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'tool_choice'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'parallel_tool_calls'), false);
+  assert.equal(request.body.parallel_tool_calls, true);
 }
 
 async function testKimiCodeThinkingHighPayload(): Promise<void> {

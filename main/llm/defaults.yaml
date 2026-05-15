@@ -484,6 +484,9 @@ providers:
           min: 0
           max: 1
           description: Nucleus sampling parameter.
+        parallel_tool_calls:
+          type: boolean
+          description: Allow the model to emit parallel tool calls.
     models:
       kimi-for-coding:
         name: Kimi For Coding

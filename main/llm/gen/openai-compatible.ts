@@ -181,7 +181,6 @@ function resolveOpenAiCompatibleParallelToolCalls(args: {
   if (args.openAiParams.parallel_tool_calls !== undefined) {
     return args.openAiParams.parallel_tool_calls;
   }
-  if (isKimiCodeProvider(args.providerConfig)) return undefined;
   return true;
 }
 
