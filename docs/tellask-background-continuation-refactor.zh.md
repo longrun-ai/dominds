@@ -156,7 +156,14 @@ type NextStepTriggerState = {
 };
 ```
 
-`needsDrive=true` 只是 `triggers.length > 0` 的投影，表示“有未消费的新事实”，不等价于“此刻允许启动 drive”。backend loop / run-control 必须同时读取 user wait 等先决等待事实；只有先决等待为空时，未消费 trigger 才能进入 runnable drive。触发源被消费后必须从 `triggers` 删除，避免崩溃重启后重复执行；不保留长期 consumed trigger 账本。
+`needsDrive=true` 只是 `triggers.length > 0` 的投影，表示“有未消费的新事实”，不等价于“此刻允许启动 drive”。backend loop / run-control 必须同时读取 user wait 等先决等待事实；只有先决等待为空时，未消费 trigger 才能进入 runnable drive。
+
+`nextStep.triggers` 是一次性铃声，不是业务事实账本：
+
+- trigger 只携带稳定引用，不复制业务事实；真实账本在对应状态文件中，例如 `active-callees.json`、`replyDelivery`、`pendingRuntimePrompt`、`generationRunState`。
+- 消费点是对应业务事实已成功注入或处理，而不是 drive start。若启动 drive 后崩溃但事实尚未处理，trigger 仍应保留以便重启后重试。
+- 消费后直接从 `triggers` 删除；不保留 consumed tombstone。审计、排查和历史追溯使用 event log 与业务状态，不让运行态文件累积历史触发记录。
+- 幂等防重由业务状态承担：例如 `active-callees.json` batch 消费后删除、`replyDelivery.status/toolResultStatus` 防重复交付、`pendingRuntimePrompt.msgId` 防重复 prompt、`generationRunState` 防 closed generation 再恢复。
 
 `userWait` 使用独立状态表达先决等待：
 
@@ -896,7 +903,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`，但 registry 仍是内存唤醒投影，trigger 的逐项消费语义还没有完全统一。
+- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`。目标态已决策为：trigger 是一次性铃声，事实处理成功后消费，消费后删除且不留 tombstone，只携带稳定引用。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - dispatch batch 仍主要通过 pending sideDialog records 表达；目标态已决策为 caller 目录下 `active-callees.json`，文件内容不重复记录自身 caller id，batch 使用稳定 `batchId`，result-arrival 消费后删除 batch。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。
