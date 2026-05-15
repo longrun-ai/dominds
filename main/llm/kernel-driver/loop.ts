@@ -19,7 +19,7 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
   };
 }
 
-async function driveQueuedDialogsOnce(): Promise<void> {
+export async function driveQueuedDialogsOnce(): Promise<void> {
   const dialogsToDrive = globalDialogRegistry.getDialogsNeedingDrive();
   for (const mainDialog of dialogsToDrive) {
     try {

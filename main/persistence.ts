@@ -61,6 +61,7 @@ import type {
   DialogReplyDeliveryState,
   DialogSideDialogFinalResponseState,
   DialogSideDialogReplyTarget,
+  DialogUserWaitState,
   FuncCallRecord,
   FuncResultRecord,
   HumanQuestion,
@@ -203,6 +204,7 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     executionMarker: latest.executionMarker ?? null,
     generationRunState: latest.generationRunState ?? null,
     nextStepTriggerCount: latest.nextStep?.triggers.length ?? 0,
+    userWait: latest.userWait ?? null,
     replyDelivery: latest.replyDelivery ?? null,
     latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
@@ -245,6 +247,7 @@ function summarizeLatestMutationPatch(
     executionMarker: patch.executionMarker ?? null,
     generationRunState: patch.generationRunState ?? null,
     nextStepTriggerCount: patch.nextStep?.triggers.length ?? null,
+    userWait: patch.userWait ?? null,
     replyDelivery: patch.replyDelivery ?? null,
     latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
@@ -1847,6 +1850,27 @@ function parseDialogNextStepTriggerState(value: unknown): DialogNextStepTriggerS
   return { triggers };
 }
 
+function parseDialogUserWaitState(value: unknown): DialogUserWaitState | null {
+  if (!isRecord(value)) return null;
+  if (value.kind !== 'awaiting_user_answer') return null;
+  if (typeof value.questionId !== 'string' || value.questionId.trim() === '') return null;
+  if (typeof value.callId !== 'string' || value.callId.trim() === '') return null;
+  const course = parsePositiveIntegerField(value.course);
+  if (course === null) return null;
+  const genseq =
+    value.genseq === undefined ? undefined : parseNonNegativeIntegerField(value.genseq);
+  if (genseq === null) return null;
+  if (typeof value.askedAt !== 'string') return null;
+  return {
+    kind: 'awaiting_user_answer',
+    questionId: value.questionId,
+    callId: value.callId,
+    course: toDialogCourseNumber(course),
+    ...(genseq === undefined ? {} : { genseq: toCallSiteGenseqNo(genseq) }),
+    askedAt: value.askedAt,
+  };
+}
+
 function parseDialogReplyDeliveryState(value: unknown): DialogReplyDeliveryState | null {
   if (!isRecord(value)) return null;
   if (typeof value.replyDeliveryId !== 'string' || value.replyDeliveryId.trim() === '') return null;
@@ -1999,6 +2023,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     nextStepRaw === undefined ? undefined : parseDialogNextStepTriggerState(nextStepRaw);
   if (nextStep === null) return null;
 
+  const userWaitRaw = (value as Record<string, unknown>).userWait;
+  const userWait: DialogUserWaitState | null | undefined =
+    userWaitRaw === undefined ? undefined : parseDialogUserWaitState(userWaitRaw);
+  if (userWait === null) return null;
+
   const replyDeliveryRaw = (value as Record<string, unknown>).replyDelivery;
   const replyDelivery: DialogReplyDeliveryState | null | undefined =
     replyDeliveryRaw === undefined ? undefined : parseDialogReplyDeliveryState(replyDeliveryRaw);
@@ -2128,6 +2157,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     executionMarker,
     generationRunState,
     nextStep,
+    userWait,
     replyDelivery,
     latestAssignmentAnchor,
     sideDialogFinalResponse,
@@ -3933,6 +3963,11 @@ export class DiskFileDialogStore extends DialogStore {
    */
   public async updateQuestions4Human(dialog: Dialog, questions: HumanQuestion[]): Promise<void> {
     await DialogPersistence._saveQuestions4HumanState(this.dialogId, questions);
+    await DialogPersistence.syncUserWaitFromQuestions4HumanState(
+      this.dialogId,
+      questions,
+      dialog.status,
+    );
     await DialogPersistence.appendQuestions4HumanReconciledRecord(
       this.dialogId,
       questions,
@@ -3949,6 +3984,13 @@ export class DiskFileDialogStore extends DialogStore {
     status: DialogStatusKind,
   ): Promise<HumanQuestion[]> {
     return await DialogPersistence.loadQuestions4HumanState(dialogId, status);
+  }
+
+  public async loadDialogLatest(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<DialogLatestFile | null> {
+    return await DialogPersistence.loadDialogLatest(dialogId, status);
   }
 
   public async loadDialogMetadata(
@@ -5333,6 +5375,23 @@ function buildReplyDeliveryId(dialogId: DialogID, replyCallId: string): string {
 
 function buildReplyDeliveryRecoveryTriggerId(replyDeliveryId: string): string {
   return `reply-delivery-recovery:${replyDeliveryId}`;
+}
+
+function buildUserWaitStateFromQuestion(question: HumanQuestion): DialogUserWaitState {
+  const callId = question.callId.trim();
+  if (callId === '') {
+    throw new Error(`Q4H user-wait invariant violation: empty callId for ${question.id}`);
+  }
+  return {
+    kind: 'awaiting_user_answer',
+    questionId: question.id,
+    callId,
+    course: toDialogCourseNumber(question.callSiteRef.course),
+    ...(question.callSiteRef.callSiteGenseq === undefined
+      ? {}
+      : { genseq: question.callSiteRef.callSiteGenseq }),
+    askedAt: question.askedAt,
+  };
 }
 
 type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
@@ -6822,6 +6881,29 @@ export class DialogPersistence {
     );
   }
 
+  static async syncUserWaitFromQuestions4HumanState(
+    dialogId: DialogID,
+    questions: readonly HumanQuestion[],
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    if (questions.length > 1) {
+      throw new Error(
+        `Q4H user-wait invariant violation: multiple pending questions ` +
+          `(dialog=${dialogId.valueOf()} status=${status} count=${questions.length})`,
+      );
+    }
+    const userWait =
+      questions.length === 0 ? undefined : buildUserWaitStateFromQuestion(questions[0]);
+    await this.mutateDialogLatest(
+      dialogId,
+      () => ({
+        kind: 'patch',
+        patch: { userWait },
+      }),
+      status,
+    );
+  }
+
   /**
    * Load questions for human state
    */
@@ -7006,6 +7088,16 @@ export class DialogPersistence {
       },
       status,
     );
+    await this.mutateDialogLatest(
+      dialogId,
+      () => ({
+        kind: 'patch',
+        patch: {
+          userWait: buildUserWaitStateFromQuestion(question),
+        },
+      }),
+      status,
+    );
   }
 
   static async removeQuestion4HumanState(
@@ -7022,6 +7114,22 @@ export class DialogPersistence {
       () => ({ kind: 'remove', questionId }),
       status,
     );
+    if (out.removedQuestion !== undefined) {
+      await this.mutateDialogLatest(
+        dialogId,
+        (previous) => ({
+          kind: 'patch',
+          patch: {
+            userWait:
+              previous.userWait?.kind === 'awaiting_user_answer' &&
+              previous.userWait.questionId === questionId
+                ? undefined
+                : previous.userWait,
+          },
+        }),
+        status,
+      );
+    }
     return {
       found: typeof out.removedQuestion !== 'undefined',
       remainingQuestions: out.questions,
@@ -7252,6 +7360,7 @@ export class DialogPersistence {
         () => ({ kind: 'clear' }),
         status,
       );
+      await this.syncUserWaitFromQuestions4HumanState(dialogId, [], status);
       const existingQuestions = previousQuestions;
 
       // Emit q4h_answered events for each removed question

@@ -14,7 +14,7 @@ import {
 } from '../main/dialog-display-state';
 import { globalDialogRegistry } from '../main/dialog-global-registry';
 import { driveDialogStream } from '../main/llm/kernel-driver';
-import { runBackendDriver } from '../main/llm/kernel-driver/loop';
+import { driveQueuedDialogsOnce } from '../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../main/persistence';
 import { recoverProceedingDrivesAfterRestart } from '../main/recovery/proceeding-drive';
 import { formatAssignmentFromAskerDialog } from '../main/runtime/inter-dialog-format';
@@ -80,6 +80,12 @@ async function main(): Promise<void> {
       kind: 'patch',
       patch: {
         generating: true,
+        generationRunState: {
+          kind: 'open',
+          course: 1,
+          genseq: 1,
+          startedAt: new Date().toISOString(),
+        },
         displayState: { kind: 'proceeding' },
         disableDiligencePush: true,
       },
@@ -110,6 +116,7 @@ async function main(): Promise<void> {
       {
         sideDialogId: 'sub-a',
         createdAt: new Date().toISOString(),
+        dispatchBatchId: `dispatch:${aRoot}:${aRoot}:c1:g1`,
         callName: 'tellask',
         mentionList: ['@worker'],
         tellaskContent: 'Still pending while the root generation was in flight',
@@ -210,6 +217,13 @@ async function main(): Promise<void> {
       generating: false,
       needsDrive: true,
       displayState: { kind: 'proceeding' },
+      userWait: {
+        kind: 'awaiting_user_answer',
+        questionId: 'q1',
+        callId: 'call-q1',
+        course: 1,
+        askedAt: new Date().toISOString(),
+      },
     });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'q4h.yaml'), {
       questions: [
@@ -240,7 +254,8 @@ async function main(): Promise<void> {
       },
     });
 
-    // Dialog C: malformed q4h should quarantine only itself instead of aborting the whole rebuild.
+    // Dialog C: malformed q4h detail must not affect run-control recovery once userWait is the
+    // durable suspension fact. Q4H detail consumers still fail loudly when they need the payload.
     const cRoot = 'dlg-c';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'dialog.yaml'), { id: cRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'latest.yaml'), {
@@ -293,6 +308,7 @@ async function main(): Promise<void> {
           {
             sideDialogId: 'sub-e',
             createdAt: new Date().toISOString(),
+            dispatchBatchId: `dispatch:${eRoot}:${eRoot}:c1:g1`,
             callName: 'tellask',
             mentionList: ['@worker'],
             tellaskContent: 'Keep going',
@@ -621,6 +637,12 @@ async function main(): Promise<void> {
       lastModified: kCreatedAt,
       status: 'active',
       generating: true,
+      generationRunState: {
+        kind: 'open',
+        course: 1,
+        genseq: 1,
+        startedAt: kCreatedAt,
+      },
       displayState: {
         kind: 'stopped',
         reason: { kind: 'pending_reply_obligation' },
@@ -686,7 +708,7 @@ async function main(): Promise<void> {
       true,
       'restart recovery should enqueue dlg-a for backend drive',
     );
-    void runBackendDriver();
+    await driveQueuedDialogsOnce();
     await waitFor(
       async () =>
         lastAssistantSaying(recoveredA) ===
@@ -721,6 +743,12 @@ async function main(): Promise<void> {
       ),
       'sideDialog restart recovery should deliver replyTellask back to root',
     );
+    await waitForAllDialogsUnlocked(sideRoot, 3_000);
+    await waitFor(
+      () => globalDialogRegistry.isMarkedNeedingDrive(kRoot) === false,
+      3_000,
+      'pending-reply-obligation sideDialog restart recovery should drain before cwd restore',
+    );
 
     const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
     assert.ok(latestB, 'latest.yaml for dlg-b should exist');
@@ -738,8 +766,11 @@ async function main(): Promise<void> {
     assert.equal(latestI.executionMarker?.kind, 'interrupted');
     assert.equal(latestI.executionMarker.reason.kind, 'user_stop');
 
-    assert.equal(await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running'), null);
-    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot));
+    const latestC = await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running');
+    assert.ok(latestC, 'latest.yaml for dlg-c should remain readable');
+    assert.equal(latestC.displayState?.kind, 'stopped');
+    assert.equal(latestC.displayState?.reason.kind, 'server_restart');
+    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot)));
 
     const latestD = await DialogPersistence.loadDialogLatest(new DialogID(dRoot), 'running');
     assert.ok(latestD, 'latest.yaml for dlg-d should exist');

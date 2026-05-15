@@ -274,12 +274,12 @@ async function loadFreshSuspensionStatusFromPersistence(dialog: Dialog): Promise
   backgroundCalleeDialogs: boolean;
   canDrive: boolean;
 }> {
-  const q4h = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
   const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
     dialog.id,
     dialog.status,
   );
-  const hasQ4H = q4h.length > 0;
+  const hasQ4H = latest?.userWait?.kind === 'awaiting_user_answer';
   const hasSideDialogs = pendingSideDialogs.length > 0;
   return {
     q4h: hasQ4H,

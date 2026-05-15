@@ -211,8 +211,9 @@ async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
   if (finalResponseClosure.kind === 'closed_without_active_reply_obligation') {
     return displayState;
   }
-  const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+  const q4hSuspension = q4hSuspensionDisplayState(
+    latest?.userWait?.kind === 'awaiting_user_answer',
+  );
   const healedDisplayState = q4hSuspension ?? pendingReplyObligationDisplayState();
   log.warn(
     'Prevented sideDialog with active reply obligation from entering idle display state',
@@ -289,8 +290,7 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
         if (isUserInterjectionPauseStopReason(latest.executionMarker.reason)) {
           resumable++;
         } else {
-          const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-          if (q4h.length === 0) {
+          if (latest.userWait?.kind !== 'awaiting_user_answer') {
             resumable++;
           }
         }
@@ -623,8 +623,9 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: true,
     };
   }
-  const hasQ4H = await dlg.hasPendingQ4H();
-  const q4hSuspension = q4hSuspensionDisplayState(hasQ4H);
+  const q4hSuspension = q4hSuspensionDisplayState(
+    latest?.userWait?.kind === 'awaiting_user_answer',
+  );
   if (q4hSuspension) {
     return q4hSuspension;
   }
@@ -677,8 +678,9 @@ async function computeIdleDisplayStateFromPersistence(
       continueEnabled: true,
     };
   }
-  const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+  const q4hSuspension = q4hSuspensionDisplayState(
+    latest?.userWait?.kind === 'awaiting_user_answer',
+  );
   if (q4hSuspension) {
     return q4hSuspension;
   }
@@ -827,8 +829,9 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         continueEnabled: true,
       };
     }
-    const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-    const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+    const q4hSuspension = q4hSuspensionDisplayState(
+      latest.userWait?.kind === 'awaiting_user_answer',
+    );
     if (q4hSuspension) {
       return q4hSuspension;
     }
@@ -996,19 +999,25 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
               `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
           );
         }
-        await DialogPersistence.upsertNextStepTrigger(
-          dialogId,
-          {
-            triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
-            kind: 'open_generation_recovery',
-            course: generationRunState.course,
-            genseq: generationRunState.genseq,
-          },
-          'running',
-        );
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',
           patch: {
+            needsDrive: true,
+            nextStep: {
+              triggers: [
+                ...(latest.nextStep?.triggers ?? []).filter(
+                  (trigger) =>
+                    trigger.triggerId !==
+                    `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+                ),
+                {
+                  triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+                  kind: 'open_generation_recovery',
+                  course: generationRunState.course,
+                  genseq: generationRunState.genseq,
+                },
+              ],
+            },
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&

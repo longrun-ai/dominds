@@ -45,6 +45,7 @@ import type {
   CallSiteCourseNo,
   CallSiteGenseqNo,
   DialogAskerStackState,
+  DialogLatestFile,
   DialogMetadataFile,
   HumanQuestion,
   ProviderData,
@@ -573,18 +574,17 @@ export abstract class Dialog {
 
   /**
    * Check if dialog has pending Q4H questions.
-   * Queries persistence for current questions4Human state.
+   * Reads the dialog latest user-wait state; q4h.yaml remains the detailed question payload store.
    */
   public async hasPendingQ4H(): Promise<boolean> {
     try {
-      const questions = await this.dlgStore.loadQuestions4Human(this.id, this.status);
-      return questions.length > 0;
+      const latest = await this.dlgStore.loadDialogLatest(this.id, this.status);
+      return latest?.userWait?.kind === 'awaiting_user_answer';
     } catch (err) {
-      log.warn('Failed to load Q4H state for pending check', undefined, {
+      log.error('Failed to load Q4H state for pending check', err, {
         dialogId: this.id.selfId,
-        error: err,
       });
-      return true;
+      throw err;
     }
   }
 
@@ -2664,6 +2664,13 @@ export abstract class DialogStore {
     _status: 'running' | 'completed' | 'archived',
   ): Promise<HumanQuestion[]> {
     return [];
+  }
+
+  public async loadDialogLatest(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<DialogLatestFile | null> {
+    return null;
   }
 
   public async loadDialogMetadata(

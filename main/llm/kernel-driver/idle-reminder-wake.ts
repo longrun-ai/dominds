@@ -198,8 +198,7 @@ async function loadFreshIdleWakeEligibility(dialog: Dialog): Promise<boolean> {
   if (latest.displayState?.kind !== 'idle_waiting_user') return false;
   if (latest.executionMarker?.kind === 'dead') return false;
   if (latest.executionMarker?.kind === 'interrupted') return false;
-  const q4h = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
-  if (q4h.length > 0) return false;
+  if (latest.userWait?.kind === 'awaiting_user_answer') return false;
   return true;
 }
 

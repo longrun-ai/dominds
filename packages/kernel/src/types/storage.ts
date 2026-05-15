@@ -183,6 +183,15 @@ export type DialogNextStepTriggerState = Readonly<{
   triggers: readonly DialogNextStepTrigger[];
 }>;
 
+export type DialogUserWaitState = Readonly<{
+  kind: 'awaiting_user_answer';
+  questionId: string;
+  callId: string;
+  course: DialogCourseNumber;
+  genseq?: CallSiteGenseqNo;
+  askedAt: string;
+}>;
+
 export type DialogReplyDeliveryState = Readonly<{
   replyDeliveryId: string;
   status: 'pending' | 'delivered';
@@ -210,6 +219,7 @@ export interface DialogLatestFile {
   executionMarker?: DialogExecutionMarker;
   generationRunState?: DialogGenerationRunState;
   nextStep?: DialogNextStepTriggerState;
+  userWait?: DialogUserWaitState;
   replyDelivery?: DialogReplyDeliveryState;
   latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;

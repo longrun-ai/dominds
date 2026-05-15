@@ -158,6 +158,19 @@ type NextStepTriggerState = {
 
 `needsDrive=true` 只是 `triggers.length > 0` 的投影，表示“有未消费的新事实”，不等价于“此刻允许启动 drive”。backend loop / run-control 必须同时读取 user wait 等先决等待事实；只有先决等待为空时，未消费 trigger 才能进入 runnable drive。触发源被消费后必须从 `triggers` 删除，避免崩溃重启后重复执行；不保留长期 consumed trigger 账本。
 
+`userWait` 使用独立状态表达先决等待：
+
+```ts
+type UserWaitState = {
+  kind: 'awaiting_user_answer';
+  questionId: string;
+  callId: string;
+  course: number;
+  genseq?: number;
+  askedAt: string;
+};
+```
+
 `userWait.kind === 'awaiting_user_answer'` 是先决等待事实，不是 trigger。等待用户期间到达的 `result_arrival` 等新事实仍要写入 `NextStepTriggerState`，但 backend driver 不能越过 user wait 自动启动；用户回答到达并清除 user wait 后，再按未消费 trigger 继续处理。
 
 迁移期可以写一次性 reconciler 从历史事件补齐这些字段，但补齐完成后，线上运行路径不得继续依赖回扫。
@@ -861,7 +874,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 仍属 WIP，不能视为本重构完成：
 
 - `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，但 registry 与 trigger 消费还没有完全统一。
-- `DialogUserWaitState` 尚未落地；Q4H/askHuman 等用户等待事实仍主要读取现有 Q4H 状态。
+- `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - dispatch batch 仍主要通过 pending sideDialog records 表达，没有独立 dispatch-batch state 文件；crash recovery 尚未完整覆盖 batch member resolved/final 状态。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。
 - restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；closed/stale generation projection 仍需继续收敛。
