@@ -1,19 +1,21 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import * as readline from 'node:readline/promises';
-import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import {
   assertTarballContentsMatch,
   packAndVerifyPublicPackage,
   packPublishedPackageVersion,
+  readTarballPackageJson,
 } from './verify-packed-public-package.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspaceRootAbs = path.resolve(__dirname, '..');
 const npmRegistryUrl = 'https://registry.npmjs.org/';
+const releasePackDirAbs = path.join(workspaceRootAbs, '.release-pack');
 
 const publicPackages = [
   {
@@ -36,7 +38,7 @@ const publicPackages = [
 
 function usage() {
   console.log(`Usage:
-  node ./scripts/publish-public-packages.mjs [--dry-run] [--tag <tag>] [--otp <otp>] [extra npm publish args]
+  node ./scripts/publish-public-packages.mjs [--dry-run] [--tag <tag>] [extra npm publish args]
 
 Behavior:
   - Non-dry-run publish checks npm login up front and can prompt to run npm login interactively
@@ -44,7 +46,8 @@ Behavior:
   - Skips packages whose exact local version already exists on npm
   - Fails fast if a local version is behind the highest published version
   - Verifies each non-dry-run publish reached the registry before continuing
-  - When multiple packages need publishing, omit --otp so the script prompts for a fresh OTP right before each publish after the build/pack checks complete`);
+  - Reuses a previously prepared .release-pack tarball for the same package@version after failed publish attempts
+  - Uses npm browser authentication at publish time so npm can reuse its short-lived 2FA approval window`);
 }
 
 function normalizeJsonValue(value) {
@@ -65,6 +68,10 @@ function readPackageJson(packageRootAbs) {
   return JSON.parse(readFileSync(packageJsonAbs, 'utf8'));
 }
 
+function readJsonFile(fileAbs) {
+  return JSON.parse(readFileSync(fileAbs, 'utf8'));
+}
+
 function getPackageScript(packageJson, scriptName) {
   const scripts = packageJson.scripts;
   if (typeof scripts !== 'object' || scripts === null || Array.isArray(scripts)) {
@@ -78,10 +85,8 @@ function readExecErrorText(error) {
   if (!(error instanceof Error)) {
     return '';
   }
-  const stdout =
-    'stdout' in error && typeof error.stdout === 'string' ? error.stdout : '';
-  const stderr =
-    'stderr' in error && typeof error.stderr === 'string' ? error.stderr : '';
+  const stdout = 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : '';
+  const stderr = 'stderr' in error && typeof error.stderr === 'string' ? error.stderr : '';
   return `${stdout}\n${stderr}`;
 }
 
@@ -101,6 +106,33 @@ function buildDirectNpmEnv() {
   }
   env.NODE_OPTIONS = '';
   return env;
+}
+
+function getGitOutput(args) {
+  return execFileSync('git', ['-C', workspaceRootAbs, ...args], {
+    cwd: workspaceRootAbs,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      NODE_OPTIONS: '',
+    },
+    stdio: 'pipe',
+  });
+}
+
+function getCurrentGitHead() {
+  return getGitOutput(['rev-parse', 'HEAD']).trim();
+}
+
+function assertCleanWorktree() {
+  const status = getGitOutput(['status', '--porcelain=v1', '--untracked-files=all']).trim();
+  if (status !== '') {
+    throw new Error(
+      `Public release requires a clean dominds git worktree before build/pack/publish.\n` +
+        `Commit or discard local changes first.\n` +
+        status,
+    );
+  }
 }
 
 function parseSemver(versionText) {
@@ -181,8 +213,7 @@ async function ensureNpmLogin() {
 
   const loginCommand = `npm login --registry ${npmRegistryUrl}`;
   const missingLoginMessage =
-    `npm login is required before publishing public packages.\n` +
-    `Run: ${loginCommand}`;
+    `npm login is required before publishing public packages.\n` + `Run: ${loginCommand}`;
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error(missingLoginMessage);
@@ -195,7 +226,9 @@ async function ensureNpmLogin() {
   });
   try {
     const answer = (
-      await rl.question(`No npm login found for ${npmRegistryUrl}. Run "${loginCommand}" now? [Y/n] `)
+      await rl.question(
+        `No npm login found for ${npmRegistryUrl}. Run "${loginCommand}" now? [Y/n] `,
+      )
     )
       .trim()
       .toLowerCase();
@@ -236,7 +269,7 @@ function hasExactPublishedVersion(packageName, version) {
 
 function getHighestPublishedVersion(packageName) {
   const versions = getPublishedVersions(packageName);
-  return versions.length === 0 ? null : versions.at(-1) ?? null;
+  return versions.length === 0 ? null : (versions.at(-1) ?? null);
 }
 
 function shouldPublishPackage(pkg) {
@@ -264,6 +297,100 @@ function shouldPublishPackage(pkg) {
         ? `publish: ${pkg.packageName}@${pkg.localVersion} has never been published`
         : `publish: ${pkg.packageName}@${pkg.localVersion} is newer than npm ${highestPublishedVersion}`,
   };
+}
+
+function releasePackFileName(pkg) {
+  const safePackageName = pkg.packageName.replace(/^@/, '').replaceAll('/', '-');
+  return `${safePackageName}-${pkg.localVersion}.tgz`;
+}
+
+function getPreparedReleaseTarballAbs(pkg) {
+  return path.join(releasePackDirAbs, releasePackFileName(pkg));
+}
+
+function getPreparedReleaseMetadataAbs(pkg) {
+  return `${getPreparedReleaseTarballAbs(pkg)}.json`;
+}
+
+function assertPreparedTarballMatchesPackage(pkg, tarballAbs) {
+  const packedPackageJson = readTarballPackageJson(tarballAbs);
+  if (packedPackageJson.name !== pkg.packageName) {
+    throw new Error(
+      `Prepared tarball ${tarballAbs} declares package ${String(packedPackageJson.name)}, expected ${pkg.packageName}.`,
+    );
+  }
+  if (packedPackageJson.version !== pkg.localVersion) {
+    throw new Error(
+      `Prepared tarball ${tarballAbs} declares version ${String(packedPackageJson.version)}, expected ${pkg.localVersion}.`,
+    );
+  }
+}
+
+function removePreparedReleaseTarball(pkg) {
+  const preparedTarballAbs = getPreparedReleaseTarballAbs(pkg);
+  const preparedMetadataAbs = getPreparedReleaseMetadataAbs(pkg);
+  rmSync(preparedTarballAbs, { force: true });
+  rmSync(preparedMetadataAbs, { force: true });
+}
+
+function prepareReleaseTarball(pkg) {
+  const preparedTarballAbs = getPreparedReleaseTarballAbs(pkg);
+  const preparedMetadataAbs = getPreparedReleaseMetadataAbs(pkg);
+  const gitHead = getCurrentGitHead();
+  if (existsSync(preparedTarballAbs)) {
+    assertPreparedTarballMatchesPackage(pkg, preparedTarballAbs);
+    if (!existsSync(preparedMetadataAbs)) {
+      console.log(
+        `Prepared release tarball is missing metadata; rebuilding: ${preparedTarballAbs}`,
+      );
+      removePreparedReleaseTarball(pkg);
+      return prepareReleaseTarball(pkg);
+    }
+    const metadata = readJsonFile(preparedMetadataAbs);
+    if (
+      metadata.packageName !== pkg.packageName ||
+      metadata.version !== pkg.localVersion ||
+      metadata.gitHead !== gitHead
+    ) {
+      console.log(`Prepared release tarball is stale; rebuilding: ${preparedTarballAbs}`);
+      removePreparedReleaseTarball(pkg);
+      return prepareReleaseTarball(pkg);
+    }
+    console.log(`Reusing prepared release tarball: ${preparedTarballAbs}`);
+    return {
+      tarballAbs: preparedTarballAbs,
+      reused: true,
+    };
+  }
+
+  runPrepublishOnly(pkg);
+  const packed = packAndVerifyPublicPackage(pkg.packageRootAbs);
+  try {
+    assertPreparedTarballMatchesPackage(pkg, packed.tarballAbs);
+    mkdirSync(releasePackDirAbs, { recursive: true });
+    copyFileSync(packed.tarballAbs, preparedTarballAbs);
+    writeFileSync(
+      preparedMetadataAbs,
+      `${JSON.stringify(
+        {
+          packageName: pkg.packageName,
+          version: pkg.localVersion,
+          gitHead,
+          tarballFileName: path.basename(preparedTarballAbs),
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    console.log(`Prepared release tarball: ${preparedTarballAbs}`);
+    return {
+      tarballAbs: preparedTarballAbs,
+      reused: false,
+    };
+  } finally {
+    packed.cleanup();
+  }
 }
 
 function verifySkippedExactVersionPackageMatchesRegistry(pkg) {
@@ -302,12 +429,16 @@ async function verifyPublished(packageName, version) {
 }
 
 function runNpmPublishTarball(pkg, tarballAbs, passThroughArgs) {
-  execFileSync('npm', ['publish', tarballAbs, '--access', 'public', ...passThroughArgs], {
-    cwd: pkg.packageRootAbs,
-    encoding: 'utf8',
-    env: buildDirectNpmEnv(),
-    stdio: 'inherit',
-  });
+  execFileSync(
+    'npm',
+    ['publish', tarballAbs, '--access', 'public', '--auth-type', 'web', ...passThroughArgs],
+    {
+      cwd: pkg.packageRootAbs,
+      encoding: 'utf8',
+      env: buildDirectNpmEnv(),
+      stdio: 'inherit',
+    },
+  );
 }
 
 function runPrepublishOnly(pkg) {
@@ -349,23 +480,24 @@ function collectWorkspacePackages() {
 
 function parseCliArgs(args) {
   const publishArgs = [];
-  let otp = null;
   let dryRun = false;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === '--otp') {
-      const next = args[i + 1];
-      if (!next || next.startsWith('-')) {
-        throw new Error('--otp requires a value.');
-      }
-      otp = next;
-      i += 1;
-      continue;
+      throw new Error(
+        '--otp is intentionally not accepted by the managed public release flow because build/pack checks can outlive npm OTP validity. Re-run in an interactive terminal without --otp; npm browser authentication opens immediately before each publish and can reuse its short-lived 2FA approval window.',
+      );
     }
     if (arg.startsWith('--otp=')) {
-      otp = arg.slice('--otp='.length);
-      continue;
+      throw new Error(
+        '--otp is intentionally not accepted by the managed public release flow because build/pack checks can outlive npm OTP validity. Re-run in an interactive terminal without --otp; npm browser authentication opens immediately before each publish and can reuse its short-lived 2FA approval window.',
+      );
+    }
+    if (arg === '--auth-type' || arg.startsWith('--auth-type=')) {
+      throw new Error(
+        '--auth-type is managed by the public release flow. The script uses npm browser authentication so publish-time 2FA can reuse npm short-lived approval.',
+      );
     }
     if (arg === '--dry-run') {
       dryRun = true;
@@ -375,31 +507,8 @@ function parseCliArgs(args) {
 
   return {
     dryRun,
-    otp,
     publishArgs,
   };
-}
-
-async function promptForOtp(packageName) {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      `2FA is required for ${packageName}. Re-run in an interactive terminal without --otp so the script can prompt before each publish.`,
-    );
-  }
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true,
-  });
-  try {
-    const otp = (await rl.question(`Enter npm OTP for ${packageName}: `)).trim();
-    if (otp === '') {
-      throw new Error(`Publishing aborted: OTP is required for ${packageName}.`);
-    }
-    return otp;
-  } finally {
-    rl.close();
-  }
 }
 
 async function main() {
@@ -409,6 +518,7 @@ async function main() {
     return;
   }
   const cli = parseCliArgs(args);
+  assertCleanWorktree();
   if (!cli.dryRun) {
     await ensureNpmLogin();
   }
@@ -426,7 +536,9 @@ async function main() {
 
   for (const item of plan) {
     if (!item.publish && item.exactVersionExists) {
-      console.log(`Verifying skipped exact-version package matches npm: ${item.packageName}@${item.localVersion}`);
+      console.log(
+        `Verifying skipped exact-version package matches npm: ${item.packageName}@${item.localVersion}`,
+      );
       verifySkippedExactVersionPackageMatchesRegistry(item);
     }
   }
@@ -437,29 +549,15 @@ async function main() {
     return;
   }
 
-  if (!cli.dryRun && cli.otp !== null && toPublish.length > 1) {
-    throw new Error(
-      'A single --otp value is unsafe when multiple packages need publishing because it may expire mid-release. Re-run without --otp so the script can prompt for a fresh OTP before each package.',
-    );
-  }
-
   for (const pkg of toPublish) {
     console.log(`\n==> ${pkg.packageName}@${pkg.localVersion}`);
-    runPrepublishOnly(pkg);
-    const packed = packAndVerifyPublicPackage(pkg.packageRootAbs);
-    try {
-      const publishArgs = [...cli.publishArgs];
-      if (!cli.dryRun) {
-        const otp = cli.otp ?? (await promptForOtp(pkg.packageName));
-        publishArgs.push('--otp', otp);
-      }
-      runNpmPublishTarball(pkg, packed.tarballAbs, publishArgs);
-    } finally {
-      packed.cleanup();
-    }
+    const prepared = prepareReleaseTarball(pkg);
+    const publishArgs = [...cli.publishArgs];
+    runNpmPublishTarball(pkg, prepared.tarballAbs, publishArgs);
     if (!cli.dryRun) {
       await verifyPublished(pkg.packageName, pkg.localVersion);
       console.log(`Verified ${pkg.packageName}@${pkg.localVersion} on npm.`);
+      removePreparedReleaseTarball(pkg);
     }
   }
 }

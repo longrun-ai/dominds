@@ -49,6 +49,21 @@ async function assertPublishScriptFailsBeforePlanWhenNpmLoginMissing(
     await fs.mkdir(fakeBinAbs, { recursive: true });
 
     await writeExecutable(
+      path.join(fakeBinAbs, 'git'),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '-C' && args[2] === 'status') {
+  process.exit(0);
+}
+if (args[0] === '-C' && args[2] === 'rev-parse') {
+  process.stdout.write('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n');
+  process.exit(0);
+}
+process.stderr.write('unexpected git invocation: ' + args.join(' ') + '\\n');
+process.exit(2);
+`,
+    );
+    await writeExecutable(
       path.join(fakeBinAbs, 'npm'),
       `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -135,6 +150,216 @@ process.exit(99);
   }
 }
 
+async function assertPublishScriptRejectsPresetOtp(domindsRootAbs: string): Promise<void> {
+  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-public-publish-otp-'));
+  try {
+    const fakeBinAbs = path.join(tempRootAbs, 'bin');
+    await fs.mkdir(fakeBinAbs, { recursive: true });
+
+    await writeExecutable(
+      path.join(fakeBinAbs, 'npm'),
+      `#!/usr/bin/env node
+process.stderr.write('managed release flow must reject --otp before npm runs\\n');
+process.exit(99);
+`,
+    );
+    await writeExecutable(
+      path.join(fakeBinAbs, 'pnpm'),
+      `#!/usr/bin/env node
+process.stderr.write('managed release flow must reject --otp before pnpm runs\\n');
+process.exit(99);
+`,
+    );
+
+    const result = spawnSync(
+      'node',
+      [path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'), '--otp', '123456'],
+      {
+        cwd: domindsRootAbs,
+        encoding: 'utf-8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinAbs}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
+      },
+    );
+
+    assert.notEqual(
+      result.status,
+      0,
+      'Publish script must reject a preset OTP before release work begins.',
+    );
+    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    assert.match(
+      combinedOutput,
+      /--otp is intentionally not accepted by the managed public release flow/,
+      'Publish script must explain why preset OTP values are unsafe.',
+    );
+    assert.match(
+      combinedOutput,
+      /npm browser authentication opens immediately before each publish/,
+      'Publish script must direct users toward publish-time browser authentication.',
+    );
+    assert.doesNotMatch(
+      combinedOutput,
+      /managed release flow must reject --otp before npm runs/,
+      'Publish script must reject preset OTP before invoking npm.',
+    );
+    assert.doesNotMatch(
+      combinedOutput,
+      /managed release flow must reject --otp before pnpm runs/,
+      'Publish script must reject preset OTP before invoking pnpm.',
+    );
+  } finally {
+    await fs.rm(tempRootAbs, { recursive: true, force: true });
+  }
+}
+
+async function assertPublishScriptRequiresCleanWorktree(domindsRootAbs: string): Promise<void> {
+  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-public-publish-clean-'));
+  try {
+    const fakeBinAbs = path.join(tempRootAbs, 'bin');
+    await fs.mkdir(fakeBinAbs, { recursive: true });
+
+    await writeExecutable(
+      path.join(fakeBinAbs, 'git'),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === '-C' && args[2] === 'status') {
+  process.stdout.write(' M scripts/publish-public-packages.mjs\\n');
+  process.exit(0);
+}
+if (args[0] === '-C' && args[2] === 'rev-parse') {
+  process.stdout.write('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n');
+  process.exit(0);
+}
+process.stderr.write('unexpected git invocation: ' + args.join(' ') + '\\n');
+process.exit(2);
+`,
+    );
+    await writeExecutable(
+      path.join(fakeBinAbs, 'npm'),
+      `#!/usr/bin/env node
+process.stderr.write('managed release flow must reject dirty worktrees before npm runs\\n');
+process.exit(99);
+`,
+    );
+    await writeExecutable(
+      path.join(fakeBinAbs, 'pnpm'),
+      `#!/usr/bin/env node
+process.stderr.write('managed release flow must reject dirty worktrees before pnpm runs\\n');
+process.exit(99);
+`,
+    );
+
+    const result = spawnSync(
+      'node',
+      [path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs')],
+      {
+        cwd: domindsRootAbs,
+        encoding: 'utf-8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinAbs}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
+      },
+    );
+
+    assert.notEqual(result.status, 0, 'Publish script must reject dirty worktrees.');
+    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    assert.match(
+      combinedOutput,
+      /Public release requires a clean dominds git worktree/,
+      'Publish script must explain the clean-worktree requirement.',
+    );
+    assert.match(
+      combinedOutput,
+      /M scripts\/publish-public-packages\.mjs/,
+      'Publish script must include git status details for dirty worktrees.',
+    );
+    assert.doesNotMatch(
+      combinedOutput,
+      /managed release flow must reject dirty worktrees before npm runs/,
+      'Publish script must reject dirty worktrees before invoking npm.',
+    );
+    assert.doesNotMatch(
+      combinedOutput,
+      /managed release flow must reject dirty worktrees before pnpm runs/,
+      'Publish script must reject dirty worktrees before invoking pnpm.',
+    );
+  } finally {
+    await fs.rm(tempRootAbs, { recursive: true, force: true });
+  }
+}
+
+async function assertPublishScriptUsesBrowserPublishAuth(domindsRootAbs: string): Promise<void> {
+  const scriptSource = await fs.readFile(
+    path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'),
+    'utf-8',
+  );
+  assert.match(
+    scriptSource,
+    /'--auth-type', 'web'/,
+    'Managed publish must use npm browser authentication so npm can reuse its short-lived 2FA approval window.',
+  );
+  assert.doesNotMatch(
+    scriptSource,
+    /Enter npm OTP/,
+    'Managed publish must not prompt for raw OTP values itself.',
+  );
+  assert.match(
+    scriptSource,
+    /arg === '--auth-type' \|\| arg\.startsWith\('--auth-type='\)/,
+    'Managed publish must reject caller-provided auth-type overrides.',
+  );
+}
+
+async function assertPublishScriptKeepsReusablePreparedTarballs(
+  domindsRootAbs: string,
+): Promise<void> {
+  const scriptSource = await fs.readFile(
+    path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'),
+    'utf-8',
+  );
+  assert.match(
+    scriptSource,
+    /const releasePackDirAbs = path\.join\(workspaceRootAbs, '\.release-pack'\)/,
+    'Managed publish must keep prepared release tarballs in the workspace cache directory.',
+  );
+  assert.match(
+    scriptSource,
+    /function prepareReleaseTarball\(pkg\)/,
+    'Managed publish must prepare tarballs through a reusable release-pack path.',
+  );
+  assert.match(
+    scriptSource,
+    /Reusing prepared release tarball/,
+    'Managed publish must reuse an already prepared tarball after a failed publish attempt.',
+  );
+  assert.match(
+    scriptSource,
+    /metadata\.gitHead !== gitHead/,
+    'Managed publish must reject stale prepared tarballs when the release commit changed.',
+  );
+  assert.match(
+    scriptSource,
+    /function assertCleanWorktree\(\)/,
+    'Managed publish must require a clean worktree before building and publishing.',
+  );
+  assert.match(
+    scriptSource,
+    /removePreparedReleaseTarball\(pkg\)/,
+    'Managed publish must clean the prepared tarball after registry verification succeeds.',
+  );
+
+  const gitignore = await fs.readFile(path.join(domindsRootAbs, '.gitignore'), 'utf-8');
+  assert.match(
+    gitignore,
+    /^\.release-pack\/$/m,
+    'Prepared release tarball cache must be gitignored.',
+  );
+}
+
 async function main(): Promise<void> {
   const domindsRootAbs = path.resolve(__dirname, '..');
   await assertPrepublishOnly(
@@ -159,6 +384,10 @@ async function main(): Promise<void> {
     true,
     'dominds root package must keep the public publish script in scripts/.',
   );
+  await assertPublishScriptRejectsPresetOtp(domindsRootAbs);
+  await assertPublishScriptUsesBrowserPublishAuth(domindsRootAbs);
+  await assertPublishScriptKeepsReusablePreparedTarballs(domindsRootAbs);
+  await assertPublishScriptRequiresCleanWorktree(domindsRootAbs);
   await assertPublishScriptFailsBeforePlanWhenNpmLoginMissing(domindsRootAbs);
   await assertPrepublishOnly(
     path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
