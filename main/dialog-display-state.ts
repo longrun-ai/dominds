@@ -996,23 +996,19 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
               `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
           );
         }
-        await DialogPersistence.mutateDialogLatest(dialogId, (previous) => ({
+        await DialogPersistence.upsertNextStepTrigger(
+          dialogId,
+          {
+            triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+            kind: 'open_generation_recovery',
+            course: generationRunState.course,
+            genseq: generationRunState.genseq,
+          },
+          'running',
+        );
+        await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',
           patch: {
-            needsDrive: true,
-            nextStep: {
-              triggers: [
-                ...(previous.nextStep?.triggers.filter(
-                  (trigger) => trigger.kind !== 'open_generation_recovery',
-                ) ?? []),
-                {
-                  triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
-                  kind: 'open_generation_recovery',
-                  course: generationRunState.course,
-                  genseq: generationRunState.genseq,
-                },
-              ],
-            },
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&

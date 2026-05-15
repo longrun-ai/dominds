@@ -162,9 +162,9 @@ async function runPostListenStartup(params: {
   // are surfaced as blocked/resumable from durable facts.
   await reconcileDisplayStatesAfterRestart();
   if (params.token.canceled) return;
-  await recoverProceedingDrivesAfterRestart();
-  if (params.token.canceled) return;
   await recoverPendingReplyTellaskCallsAfterRestart();
+  if (params.token.canceled) return;
+  await recoverProceedingDrivesAfterRestart();
 
   if (params.token.canceled) return;
   // Tests may opt out so the process can shut down cleanly without a driver stop API.

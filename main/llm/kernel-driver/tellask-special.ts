@@ -1346,7 +1346,7 @@ async function reviveDialogIfUnblocked(
     return;
   }
   if (dialog instanceof MainDialog) {
-    await DialogPersistence.setNeedsDrive(dialog.id, true, dialog.status);
+    await DialogPersistence.setBackendQueueDrive(dialog.id, true, reason, dialog.status);
   }
   callbacks.scheduleDrive(dialog, {
     waitInQue: true,

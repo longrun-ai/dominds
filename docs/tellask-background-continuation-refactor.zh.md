@@ -135,6 +135,7 @@ next-step trigger 使用显式 union，而不是裸 boolean：
 type NextStepTrigger =
   | { triggerId: string; kind: 'user_input'; course: number; genseq: number }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: number }
+  | { triggerId: string; kind: 'backend_queue'; reason: string; course: number }
   | {
       triggerId: string;
       kind: 'mainline_diligence';
@@ -617,7 +618,7 @@ type RestartGenerationRecoveryDecision =
 4. recover genuinely open generations from generationRunState
 5. start backend driver
 
-当前顺序是 proceeding recovery 早于 reply recovery，重构时按上面的启动顺序调整。
+当前实现已把 reply recovery 调整到 proceeding/open-generation recovery 之前；closed/stale generation projection 仍需继续收敛为更明确的 decision helper。
 
 #### 5.5 restart 后 `needsDrive` 的收敛规则
 
@@ -635,7 +636,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 当前 `supplyResponseToAskerDialog()`：
 
 - 移除 pending record。
-- 若同 dispatch batch 已无 pending 且无 Q4H，则 `setNeedsDrive(true)`。
+- 若同 dispatch batch 已无 pending 且无 Q4H，则写入 `result_arrival` trigger，并由 backend/直接调度路径启动等待方处理新事实。
 - schedule 等待方 drive，带当前实现所需的 `noPromptSideDialogResumeEntitlement`。
 
 保留原则：
@@ -852,18 +853,18 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 第二阶段已落地：
 
 - `generationRunState` 已写入 `latest.yaml`：generation start 标记 `open`，generation finish 标记 `closed`；restart open-generation recovery 开始写入 `open_generation_recovery` trigger。
-- `NextStepTriggerState` 已开始落地：`queued_prompt` legacy projection、`result_arrival`、`open_generation_recovery`、`reply_delivery_recovery` 已有 durable trigger 形态；`needsDrive` 正在收敛为 trigger projection。
+- `NextStepTriggerState` 已开始落地：`queued_prompt`、`backend_queue`、`result_arrival`、`open_generation_recovery`、`reply_delivery_recovery` 已有 durable trigger 形态；`needsDrive` 正在收敛为 trigger projection。
 - durable `dispatchBatchId` 已写入 pending sideDialog record；callee 回贴后按同一派发批次是否全部完成生成 `result_arrival` trigger。
 - `replyDelivery` 已落地：有效的 `replyTellask*` 工具调用会记录 pending delivery 的 reply callId、genseq、content、target dialog/callId；成功交付后标记 delivered，工具结果回写后标记 `toolResultStatus=recorded` 并移除 recovery trigger。
 - `reply-special` restart recovery 已改为读取 `latest.replyDelivery`，不再扫描当前 course events 查找 call-without-result。
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 boolean / registry 双投影；部分入口仍调用 `setNeedsDrive()` legacy queued-prompt bridge，尚未完全由显式 trigger API 表达。
+- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，但 registry 与 trigger 消费还没有完全统一。
 - `DialogUserWaitState` 尚未落地；Q4H/askHuman 等用户等待事实仍主要读取现有 Q4H 状态。
 - dispatch batch 仍主要通过 pending sideDialog records 表达，没有独立 dispatch-batch state 文件；crash recovery 尚未完整覆盖 batch member resolved/final 状态。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。
-- restart 顺序尚未调整到文档目标的完整顺序，closed/stale generation projection 与 reply recovery/open-generation recovery 仍需继续收敛。
+- restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；closed/stale generation projection 仍需继续收敛。
 - `revive entitlement` / `wait_group_resolved` 等内部命名仍是迁移遗留，后续应收敛到 result-arrival / dispatch-batch 语义。
 - runtime 读路径仍存在少量历史事件读取；下一阶段必须把常态业务判定改为只读状态快照和显式 pending records，历史回扫只留给离线 migration/repair。
 

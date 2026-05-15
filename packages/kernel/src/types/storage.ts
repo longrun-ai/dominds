@@ -157,6 +157,7 @@ export type DialogLatestAssignmentAnchorState = Readonly<{
 export type DialogNextStepTrigger = Readonly<
   | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
+  | { triggerId: string; kind: 'backend_queue'; reason: string; course: DialogCourseNumber }
   | {
       triggerId: string;
       kind: 'mainline_diligence';

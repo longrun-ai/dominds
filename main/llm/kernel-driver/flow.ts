@@ -380,7 +380,12 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
     return;
   }
   try {
-    await DialogPersistence.setNeedsDrive(dialog.id, false, dialog.status);
+    await DialogPersistence.setBackendQueueDrive(
+      dialog.id,
+      false,
+      'root_idle_after_consuming_deferred_queue',
+      dialog.status,
+    );
   } catch (error: unknown) {
     log.error('kernel-driver failed to persist consumed deferred root queue cleanup', error, {
       dialogId: dialog.id.valueOf(),

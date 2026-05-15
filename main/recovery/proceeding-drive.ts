@@ -29,27 +29,14 @@ async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
         `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId})`,
     );
   }
-  await DialogPersistence.mutateDialogLatest(
+  await DialogPersistence.upsertNextStepTrigger(
     dialog.id,
-    (previous) => ({
-      kind: 'patch',
-      patch: {
-        needsDrive: true,
-        nextStep: {
-          triggers: [
-            ...(previous.nextStep?.triggers.filter(
-              (trigger) => trigger.kind !== 'open_generation_recovery',
-            ) ?? []),
-            {
-              triggerId: `open-generation-recovery:${dialog.id.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
-              kind: 'open_generation_recovery',
-              course: generationRunState.course,
-              genseq: generationRunState.genseq,
-            },
-          ],
-        },
-      },
-    }),
+    {
+      triggerId: `open-generation-recovery:${dialog.id.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+      kind: 'open_generation_recovery',
+      course: generationRunState.course,
+      genseq: generationRunState.genseq,
+    },
     dialog.status,
   );
   globalDialogRegistry.markNeedsDrive(dialog.id.rootId, {

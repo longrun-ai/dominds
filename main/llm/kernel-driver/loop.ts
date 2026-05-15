@@ -36,7 +36,14 @@ async function driveQueuedDialogsOnce(): Promise<void> {
             ? 'execution_marker_blocked:interrupted'
             : `stop_requested:${stopRequested}`,
         });
-        await DialogPersistence.setNeedsDrive(mainDialog.id, false, mainDialog.status);
+        await DialogPersistence.setBackendQueueDrive(
+          mainDialog.id,
+          false,
+          interruptedRequiresExplicitResume
+            ? 'execution_marker_blocked_interrupted'
+            : `stop_requested_${stopRequested}`,
+          mainDialog.status,
+        );
         continue;
       }
 
@@ -71,13 +78,23 @@ async function driveQueuedDialogsOnce(): Promise<void> {
           source: 'kernel_driver_backend_loop',
           reason: mainDialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_suspended',
         });
-        await DialogPersistence.setNeedsDrive(mainDialog.id, true, mainDialog.status);
+        await DialogPersistence.setBackendQueueDrive(
+          mainDialog.id,
+          true,
+          mainDialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_suspended',
+          mainDialog.status,
+        );
       } else {
         globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: 'post_drive_idle',
         });
-        await DialogPersistence.setNeedsDrive(mainDialog.id, false, mainDialog.status);
+        await DialogPersistence.setBackendQueueDrive(
+          mainDialog.id,
+          false,
+          'post_drive_idle',
+          mainDialog.status,
+        );
       }
       const lastTrigger = globalDialogRegistry.getLastDriveTrigger(mainDialog.id.rootId);
       const lastTriggerAgeMs =

@@ -323,35 +323,15 @@ export async function supplyResponseToAskerDialog(args: {
       const hasQ4H = await parentDialog.hasPendingQ4H();
       const shouldRevive =
         pendingRecord !== undefined && !hasQ4H && sameWaitGroupPending.length === 0;
-      if (shouldRevive && parentDialog instanceof MainDialog) {
-        await DialogPersistence.setNeedsDrive(parentDialog.id, true, parentDialog.status);
-      }
       if (shouldRevive && pendingRecord !== undefined) {
-        await DialogPersistence.mutateDialogLatest(
+        await DialogPersistence.upsertNextStepTrigger(
           parentDialog.id,
-          (previous) => ({
-            kind: 'patch',
-            patch: {
-              nextStep: {
-                triggers: [
-                  ...(previous.nextStep?.triggers.filter(
-                    (trigger) =>
-                      !(
-                        trigger.kind === 'result_arrival' &&
-                        trigger.dispatchBatchId === pendingRecord.dispatchBatchId
-                      ),
-                  ) ?? []),
-                  {
-                    triggerId: `result-arrival:${pendingRecord.dispatchBatchId}`,
-                    kind: 'result_arrival',
-                    dispatchBatchId: pendingRecord.dispatchBatchId,
-                    ownerDialogId: parentDialog.id.selfId,
-                  },
-                ],
-              },
-              needsDrive: true,
-            },
-          }),
+          {
+            triggerId: `result-arrival:${pendingRecord.dispatchBatchId}`,
+            kind: 'result_arrival',
+            dispatchBatchId: pendingRecord.dispatchBatchId,
+            ownerDialogId: parentDialog.id.selfId,
+          },
           parentDialog.status,
         );
       }

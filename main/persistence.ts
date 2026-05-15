@@ -1756,6 +1756,18 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         course: toDialogCourseNumber(course),
       };
     }
+    case 'backend_queue': {
+      const course = parsePositiveIntegerField(value.course);
+      if (course === null || typeof value.reason !== 'string' || value.reason.trim() === '') {
+        return null;
+      }
+      return {
+        triggerId: value.triggerId,
+        kind: 'backend_queue',
+        reason: value.reason,
+        course: toDialogCourseNumber(course),
+      };
+    }
     case 'mainline_diligence': {
       const pendingTellaskCount = parseNonNegativeIntegerField(value.pendingTellaskCount);
       if (
@@ -3531,11 +3543,17 @@ export class DiskFileDialogStore extends DialogStore {
     await this.persistReminders(dialog, dialog.reminders || []);
 
     // Update latest.yaml with new course (lastModified is set by persistence layer)
-    await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
+    await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => ({
       kind: 'patch',
       patch: {
         currentCourse: newCourse,
         needsDrive: true,
+        nextStep: upsertNextStepTrigger(previous.nextStep, {
+          triggerId: `queued-prompt:${newCoursePrompt.msgId}`,
+          kind: 'queued_prompt',
+          promptId: newCoursePrompt.msgId,
+          course: toDialogCourseNumber(newCourse),
+        }),
         ...(isGenerationActive
           ? {}
           : {
@@ -3573,10 +3591,16 @@ export class DiskFileDialogStore extends DialogStore {
     }
     await DialogPersistence.mutateDialogLatest(
       dialog.id,
-      () => ({
+      (previous) => ({
         kind: 'patch',
         patch: {
           needsDrive: true,
+          nextStep: upsertNextStepTrigger(previous.nextStep, {
+            triggerId: `queued-prompt:${prompt.msgId}`,
+            kind: 'queued_prompt',
+            promptId: prompt.msgId,
+            course: toDialogCourseNumber(dialog.currentCourse),
+          }),
           pendingRuntimePrompt: prompt,
         },
       }),
@@ -9068,18 +9092,86 @@ export class DialogPersistence {
     needsDrive: boolean,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
+    await this.setBackendQueueDrive(
+      dialogId,
+      needsDrive,
+      needsDrive ? 'legacy_set_needs_drive' : 'legacy_clear_needs_drive',
+      status,
+    );
+  }
+
+  static async setBackendQueueDrive(
+    dialogId: DialogID,
+    queued: boolean,
+    reason: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    const normalizedReason = reason.trim();
+    if (normalizedReason === '') {
+      throw new Error(
+        `setBackendQueueDrive invariant violation: empty reason for dialog=${dialogId.valueOf()}`,
+      );
+    }
+    const triggerId = `backend-queue:${dialogId.selfId}`;
+    if (queued) {
+      await this.upsertNextStepTrigger(
+        dialogId,
+        {
+          triggerId,
+          kind: 'backend_queue',
+          reason: normalizedReason,
+          course: toDialogCourseNumber(1),
+        },
+        status,
+      );
+      return;
+    }
+    await this.removeNextStepTriggers(
+      dialogId,
+      (trigger) =>
+        (trigger.kind === 'backend_queue' && trigger.triggerId === triggerId) ||
+        (trigger.kind === 'queued_prompt' && trigger.promptId === 'legacy-needs-drive'),
+      status,
+    );
+  }
+
+  static async upsertNextStepTrigger(
+    dialogId: DialogID,
+    trigger: DialogNextStepTrigger,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
     await this.mutateDialogLatest(
       dialogId,
       (previous) => {
-        const triggerId = `legacy-needs-drive:${dialogId.selfId}`;
-        const nextStep = needsDrive
-          ? upsertNextStepTrigger(previous.nextStep, {
-              triggerId,
-              kind: 'queued_prompt',
-              promptId: 'legacy-needs-drive',
-              course: toDialogCourseNumber(previous.currentCourse),
-            })
-          : removeNextStepTrigger(previous.nextStep, (trigger) => trigger.triggerId === triggerId);
+        const normalizedTrigger =
+          trigger.kind === 'backend_queue'
+            ? {
+                ...trigger,
+                course: toDialogCourseNumber(previous.currentCourse),
+              }
+            : trigger;
+        const nextStep = upsertNextStepTrigger(previous.nextStep, normalizedTrigger);
+        return {
+          kind: 'patch',
+          patch: {
+            needsDrive: true,
+            nextStep,
+          },
+        };
+      },
+      status,
+    );
+  }
+
+  static async removeNextStepTriggers(
+    dialogId: DialogID,
+    predicate: (trigger: DialogNextStepTrigger) => boolean,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const nextStep = removeNextStepTrigger(previous.nextStep, predicate);
         return {
           kind: 'patch',
           patch: {
@@ -9118,6 +9210,10 @@ export class DialogPersistence {
         if (!pending || pending.msgId !== normalizedMsgId) {
           return { kind: 'noop' };
         }
+        const nextStep = removeNextStepTrigger(
+          previous.nextStep,
+          (trigger) => trigger.kind === 'queued_prompt' && trigger.promptId === normalizedMsgId,
+        );
         const previousDisplayState = previous.displayState;
         const displayState =
           previousDisplayState?.kind === 'stopped' &&
@@ -9134,7 +9230,8 @@ export class DialogPersistence {
                     previous: summarizeLatestProjectionState(previous),
                     intendedPatch: summarizeLatestMutationPatch({
                       pendingRuntimePrompt: undefined,
-                      needsDrive: false,
+                      needsDrive: nextStep !== undefined,
+                      nextStep,
                       displayState: { kind: 'proceeding' },
                       executionMarker:
                         previous.executionMarker?.kind === 'interrupted' &&
@@ -9156,7 +9253,8 @@ export class DialogPersistence {
           kind: 'patch',
           patch: {
             pendingRuntimePrompt: undefined,
-            needsDrive: false,
+            needsDrive: nextStep !== undefined,
+            nextStep,
             displayState,
             executionMarker:
               previous.executionMarker?.kind === 'interrupted' &&
