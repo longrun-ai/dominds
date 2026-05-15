@@ -56,6 +56,22 @@ async function main(): Promise<void> {
       3_000,
       'background tellask pending record to be persisted',
     );
+    const activeCallees = await DialogPersistence.loadActiveCallees(root.id, root.status);
+    assert.equal(
+      activeCallees.batches.length,
+      1,
+      'background tellask should create one active batch',
+    );
+    assert.equal(
+      activeCallees.batches[0]?.callees.length,
+      1,
+      'single tellask dispatch batch should contain one callee',
+    );
+    assert.equal(
+      activeCallees.batches[0]?.callees[0]?.callId,
+      'background-dispatch-only',
+      'active callee batch should preserve the dispatched call id',
+    );
 
     const events = await DialogPersistence.loadCourseEvents(
       root.id,

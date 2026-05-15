@@ -44,6 +44,10 @@ import type { DialogRuntimePrompt } from '@longrun-ai/kernel/types/drive-intent'
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
+  ActiveCalleeBatch,
+  ActiveCalleeCompletion,
+  ActiveCalleeRecord,
+  ActiveCalleesFile,
   AgentThoughtRecord,
   AgentWordsRecord,
   AskerDialogStackFrame,
@@ -52,10 +56,12 @@ import type {
   DialogAskerStackState,
   DialogDeferredReplyReassertion,
   DialogFbrState,
+  DialogFollowupReason,
   DialogGenerationRunState,
   DialogLatestFile,
   DialogMetadataFile,
   DialogNextStepTrigger,
+  DialogNextStepTriggerDraft,
   DialogNextStepTriggerState,
   DialogPendingRuntimePrompt,
   DialogReplyDeliveryState,
@@ -1706,42 +1712,105 @@ function parseDialogGenerationRunState(value: unknown): DialogGenerationRunState
   if (value.kind === 'open') {
     const course = parsePositiveIntegerField(value.course);
     const genseq = parseNonNegativeIntegerField(value.genseq);
-    if (course === null || genseq === null || typeof value.startedAt !== 'string') return null;
+    if (
+      course === null ||
+      genseq === null ||
+      typeof value.openedAt !== 'string' ||
+      (value.phase !== 'streaming' &&
+        value.phase !== 'tool_round' &&
+        value.phase !== 'finishing') ||
+      !Array.isArray(value.acceptedTriggerIds) ||
+      !value.acceptedTriggerIds.every((entry) => typeof entry === 'string' && entry.trim() !== '')
+    ) {
+      return null;
+    }
     if (value.msgId !== undefined && typeof value.msgId !== 'string') return null;
     return {
       kind: 'open',
       course: toDialogCourseNumber(course),
       genseq: toCallSiteGenseqNo(genseq),
-      startedAt: value.startedAt,
+      phase: value.phase,
+      acceptedTriggerIds: value.acceptedTriggerIds,
+      openedAt: value.openedAt,
       ...(value.msgId === undefined ? {} : { msgId: value.msgId }),
     };
   }
   if (value.kind === 'closed') {
     const course = parsePositiveIntegerField(value.course);
     const genseq = parseNonNegativeIntegerField(value.genseq);
-    if (course === null || genseq === null || typeof value.finishedAt !== 'string') return null;
-    if (value.startedAt !== undefined && typeof value.startedAt !== 'string') return null;
+    if (course === null || genseq === null || typeof value.closedAt !== 'string') return null;
     return {
       kind: 'closed',
       course: toDialogCourseNumber(course),
       genseq: toCallSiteGenseqNo(genseq),
-      ...(value.startedAt === undefined ? {} : { startedAt: value.startedAt }),
-      finishedAt: value.finishedAt,
+      closedAt: value.closedAt,
     };
   }
   return null;
 }
 
+function parseStringArrayField(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (!value.every((entry) => typeof entry === 'string' && entry.trim() !== '')) return null;
+  return value;
+}
+
+function parseDialogFollowupReason(value: unknown): DialogFollowupReason | null {
+  if (!isRecord(value)) return null;
+  switch (value.kind) {
+    case 'ordinary_tool_result': {
+      const callIds = parseStringArrayField(value.callIds);
+      return callIds === null ? null : { kind: 'ordinary_tool_result', callIds };
+    }
+    case 'invalid_tool_recovery': {
+      const callIds = parseStringArrayField(value.callIds);
+      return callIds === null ? null : { kind: 'invalid_tool_recovery', callIds };
+    }
+    case 'reply_delivery_result':
+      if (
+        typeof value.replyDeliveryId !== 'string' ||
+        value.replyDeliveryId.trim() === '' ||
+        typeof value.replyCallId !== 'string' ||
+        value.replyCallId.trim() === ''
+      ) {
+        return null;
+      }
+      return {
+        kind: 'reply_delivery_result',
+        replyDeliveryId: value.replyDeliveryId,
+        replyCallId: value.replyCallId,
+      };
+    case 'result_arrival':
+      if (typeof value.batchId !== 'string' || value.batchId.trim() === '') {
+        return null;
+      }
+      return { kind: 'result_arrival', batchId: value.batchId };
+    case 'runtime_guidance':
+      if (typeof value.msgId !== 'string' || value.msgId.trim() === '') return null;
+      return { kind: 'runtime_guidance', msgId: value.msgId };
+    default:
+      return null;
+  }
+}
+
 function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | null {
   if (!isRecord(value)) return null;
   if (typeof value.triggerId !== 'string' || value.triggerId.trim() === '') return null;
+  if (typeof value.createdAt !== 'string' || value.createdAt.trim() === '') return null;
+  const seq = parsePositiveIntegerField(value.seq);
+  if (seq === null) return null;
+  const base = {
+    triggerId: value.triggerId,
+    createdAt: value.createdAt,
+    seq,
+  };
   switch (value.kind) {
     case 'user_input': {
       const course = parsePositiveIntegerField(value.course);
       const genseq = parseNonNegativeIntegerField(value.genseq);
       if (course === null || genseq === null) return null;
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'user_input',
         course: toDialogCourseNumber(course),
         genseq: toCallSiteGenseqNo(genseq),
@@ -1753,7 +1822,7 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         return null;
       }
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'queued_prompt',
         promptId: value.promptId,
         course: toDialogCourseNumber(course),
@@ -1765,10 +1834,31 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         return null;
       }
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'backend_queue',
         reason: value.reason,
         course: toDialogCourseNumber(course),
+      };
+    }
+    case 'followup': {
+      if (!isRecord(value.sourceGeneration) || !Array.isArray(value.reasons)) return null;
+      const course = parsePositiveIntegerField(value.sourceGeneration.course);
+      const genseq = parseNonNegativeIntegerField(value.sourceGeneration.genseq);
+      if (course === null || genseq === null) return null;
+      const reasons: DialogFollowupReason[] = [];
+      for (const rawReason of value.reasons) {
+        const reason = parseDialogFollowupReason(rawReason);
+        if (reason === null) return null;
+        reasons.push(reason);
+      }
+      return {
+        ...base,
+        kind: 'followup',
+        sourceGeneration: {
+          course: toDialogCourseNumber(course),
+          genseq: toCallSiteGenseqNo(genseq),
+        },
+        reasons,
       };
     }
     case 'mainline_diligence': {
@@ -1781,26 +1871,20 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         return null;
       }
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'mainline_diligence',
         diligenceId: value.diligenceId,
         pendingTellaskCount,
       };
     }
     case 'result_arrival': {
-      if (
-        typeof value.dispatchBatchId !== 'string' ||
-        value.dispatchBatchId.trim() === '' ||
-        typeof value.ownerDialogId !== 'string' ||
-        value.ownerDialogId.trim() === ''
-      ) {
+      if (typeof value.batchId !== 'string' || value.batchId.trim() === '') {
         return null;
       }
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'result_arrival',
-        dispatchBatchId: value.dispatchBatchId,
-        ownerDialogId: value.ownerDialogId,
+        batchId: value.batchId,
       };
     }
     case 'open_generation_recovery': {
@@ -1808,7 +1892,7 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
       const genseq = parseNonNegativeIntegerField(value.genseq);
       if (course === null || genseq === null) return null;
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'open_generation_recovery',
         course: toDialogCourseNumber(course),
         genseq: toCallSiteGenseqNo(genseq),
@@ -1824,7 +1908,7 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         return null;
       }
       return {
-        triggerId: value.triggerId,
+        ...base,
         kind: 'reply_delivery_recovery',
         replyDeliveryId: value.replyDeliveryId,
         targetDialogId: value.targetDialogId,
@@ -1837,17 +1921,22 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
 
 function parseDialogNextStepTriggerState(value: unknown): DialogNextStepTriggerState | null {
   if (!isRecord(value)) return null;
+  const nextSeq = parsePositiveIntegerField(value.nextSeq);
+  if (nextSeq === null) return null;
   if (!Array.isArray(value.triggers)) return null;
   const triggers: DialogNextStepTrigger[] = [];
   const seen = new Set<string>();
+  const seenSeq = new Set<number>();
   for (const raw of value.triggers) {
     const trigger = parseDialogNextStepTrigger(raw);
     if (trigger === null) return null;
     if (seen.has(trigger.triggerId)) return null;
+    if (seenSeq.has(trigger.seq) || trigger.seq >= nextSeq) return null;
     seen.add(trigger.triggerId);
+    seenSeq.add(trigger.seq);
     triggers.push(trigger);
   }
-  return { triggers };
+  return { nextSeq, triggers };
 }
 
 function parseDialogUserWaitState(value: unknown): DialogUserWaitState | null {
@@ -2907,6 +2996,7 @@ export class DiskFileDialogStore extends DialogStore {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
     const startedAt = formatUnifiedTimestamp(new Date());
+    let acceptedTriggers: DialogNextStepTrigger[] = [];
     try {
       const ev: PersistedDialogRecord = {
         ts: startedAt,
@@ -2928,22 +3018,54 @@ export class DiskFileDialogStore extends DialogStore {
       postDialogEvent(dialog, genStartEvt);
 
       // Update generating flag in latest.yaml
-      await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
-        kind: 'patch',
-        patch: {
-          generating: true,
-          generationRunState: {
-            kind: 'open',
-            course: toDialogCourseNumber(course),
-            genseq: toCallSiteGenseqNo(genseq),
-            startedAt,
-            ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
+      await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
+        acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep?.triggers ?? []);
+        const acceptedTriggerIds = acceptedTriggers.map((trigger) => trigger.triggerId);
+        const nextStep =
+          acceptedTriggerIds.length === 0
+            ? previous.nextStep
+            : removeNextStepTrigger(previous.nextStep, (trigger) =>
+                acceptedTriggerIds.includes(trigger.triggerId),
+              );
+        return {
+          kind: 'patch',
+          patch: {
+            generating: true,
+            needsDrive: nextStepHasTriggers(nextStep),
+            nextStep,
+            generationRunState: {
+              kind: 'open',
+              course: toDialogCourseNumber(course),
+              genseq: toCallSiteGenseqNo(genseq),
+              phase: 'streaming',
+              acceptedTriggerIds,
+              openedAt: startedAt,
+              ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
+            },
           },
-        },
-      }));
+        };
+      });
+      for (const trigger of acceptedTriggers) {
+        if (trigger.kind === 'result_arrival') {
+          await DialogPersistence.removeActiveCalleeBatch(this.dialogId, trigger.batchId);
+        }
+      }
     } catch (err) {
       log.warn('Failed to persist gen_start event', err);
     }
+  }
+
+  private getResultArrivalBatchIdsFromAcceptedTriggers(
+    triggerIds: readonly string[],
+  ): readonly string[] {
+    const batchIds: string[] = [];
+    for (const triggerId of triggerIds) {
+      const prefix = 'result-arrival:';
+      if (triggerId.startsWith(prefix) && triggerId.length > prefix.length) {
+        batchIds.push(triggerId.slice(prefix.length));
+      }
+    }
+    return batchIds;
   }
 
   /**
@@ -2960,6 +3082,7 @@ export class DiskFileDialogStore extends DialogStore {
       throw new Error('Missing active genseq for notifyGeneratingFinish');
     }
     const finishedAt = formatUnifiedTimestamp(new Date());
+    let acceptedTriggerIds: readonly string[] = [];
     try {
       const ev: PersistedDialogRecord = {
         ts: finishedAt,
@@ -2990,18 +3113,27 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       // Update generating flag in latest.yaml
-      await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
-        kind: 'patch',
-        patch: {
-          generating: false,
-          generationRunState: {
-            kind: 'closed',
-            course: toDialogCourseNumber(course),
-            genseq: toCallSiteGenseqNo(genseq),
-            finishedAt,
+      await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
+        acceptedTriggerIds =
+          previous.generationRunState?.kind === 'open'
+            ? previous.generationRunState.acceptedTriggerIds
+            : [];
+        return {
+          kind: 'patch',
+          patch: {
+            generating: false,
+            generationRunState: {
+              kind: 'closed',
+              course: toDialogCourseNumber(course),
+              genseq: toCallSiteGenseqNo(genseq),
+              closedAt: finishedAt,
+            },
           },
-        },
-      }));
+        };
+      });
+      for (const batchId of this.getResultArrivalBatchIdsFromAcceptedTriggers(acceptedTriggerIds)) {
+        await DialogPersistence.removeActiveCalleeBatch(this.dialogId, batchId);
+      }
     } catch (err) {
       log.warn('Failed to persist gen_finish event', err);
     }
@@ -5351,22 +5483,66 @@ type PendingSideDialogsMutateOutcome = {
   removedRecords: PendingSideDialogStateRecord[];
 };
 
+type ActiveCalleeResolveOutcome = Readonly<{
+  batchId: string;
+  callSiteCourse: CallSiteCourseNo;
+  callSiteGenseq: CallSiteGenseqNo;
+  batchCompleted: boolean;
+  resolvedCallIds: readonly string[];
+}>;
+
 function removeNextStepTrigger(
   state: DialogNextStepTriggerState | undefined,
   predicate: (trigger: DialogNextStepTrigger) => boolean,
 ): DialogNextStepTriggerState | undefined {
   const previous = state?.triggers ?? [];
   const triggers = previous.filter((trigger) => !predicate(trigger));
-  return triggers.length === 0 ? undefined : { triggers };
+  if (state === undefined && triggers.length === 0) return undefined;
+  return { nextSeq: state?.nextSeq ?? 1, triggers };
 }
 
 function upsertNextStepTrigger(
   state: DialogNextStepTriggerState | undefined,
-  trigger: DialogNextStepTrigger,
+  trigger: DialogNextStepTriggerDraft,
 ): DialogNextStepTriggerState {
   const previous = state?.triggers ?? [];
+  const existing = previous.find((entry) => entry.triggerId === trigger.triggerId);
+  const nextSeq = state?.nextSeq ?? 1;
+  const normalizedTrigger: DialogNextStepTrigger =
+    existing === undefined
+      ? {
+          ...trigger,
+          createdAt:
+            typeof trigger.createdAt === 'string' && trigger.createdAt.trim() !== ''
+              ? trigger.createdAt
+              : formatUnifiedTimestamp(new Date()),
+          seq: nextSeq,
+        }
+      : {
+          ...trigger,
+          createdAt: existing.createdAt,
+          seq: existing.seq,
+        };
   const triggers = previous.filter((entry) => entry.triggerId !== trigger.triggerId);
-  return { triggers: [...triggers, trigger] };
+  return {
+    nextSeq: existing === undefined ? nextSeq + 1 : nextSeq,
+    triggers: [...triggers, normalizedTrigger],
+  };
+}
+
+function nextStepHasTriggers(state: DialogNextStepTriggerState | undefined): boolean {
+  return (state?.triggers.length ?? 0) > 0;
+}
+
+function sortNextStepTriggersForConsumption(
+  triggers: readonly DialogNextStepTrigger[],
+): DialogNextStepTrigger[] {
+  return [...triggers].sort((left, right) => {
+    if (left.seq !== right.seq) return left.seq - right.seq;
+    const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+    if (createdAtOrder !== 0) return createdAtOrder;
+    return left.triggerId.localeCompare(right.triggerId);
+  });
 }
 
 function buildReplyDeliveryId(dialogId: DialogID, replyCallId: string): string {
@@ -5451,6 +5627,8 @@ export class DialogPersistence {
     PendingSideDialogsWriteBackEntry
   > = new Map();
 
+  private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
+
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly mainDialogWriteBackCancelGenerations: Map<string, number> = new Map();
 
@@ -5494,6 +5672,14 @@ export class DialogPersistence {
     return created;
   }
 
+  private static getActiveCalleesMutex(key: string): AsyncFifoMutex {
+    const existing = this.activeCalleesMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.activeCalleesMutexes.set(key, created);
+    return created;
+  }
+
   private static getLatestWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
@@ -5509,6 +5695,10 @@ export class DialogPersistence {
     status: DialogStatusKind,
   ): string {
     return `${this.getDialogsRootDir()}|${status}|${mainDialogId.valueOf()}|pending-sideDialogs`;
+  }
+
+  private static getActiveCalleesKey(dialogId: DialogID, status: DialogStatusKind): string {
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|active-callees`;
   }
 
   private static getMainDialogWriteBackCancelScopeKey(
@@ -5961,6 +6151,11 @@ export class DialogPersistence {
     for (const key of this.pendingSideDialogsWriteBackMutexes.keys()) {
       if (matchesMainDialogKey(key)) {
         this.pendingSideDialogsWriteBackMutexes.delete(key);
+      }
+    }
+    for (const key of this.activeCalleesMutexes.keys()) {
+      if (matchesMainDialogKey(key)) {
+        this.activeCalleesMutexes.delete(key);
       }
     }
 
@@ -7427,8 +7622,8 @@ export class DialogPersistence {
     if (!isRecord(value)) return false;
     if (typeof value.sideDialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
-    if (typeof value.dispatchBatchId !== 'string') return false;
-    if (value.dispatchBatchId.trim() === '') return false;
+    if (typeof value.batchId !== 'string') return false;
+    if (value.batchId.trim() === '') return false;
     if (
       value.callName !== 'tellask' &&
       value.callName !== 'tellaskSessionless' &&
@@ -7460,6 +7655,87 @@ export class DialogPersistence {
     if ('sessionSlug' in value) {
       const sessionSlug = value.sessionSlug;
       if (sessionSlug !== undefined && typeof sessionSlug !== 'string') return false;
+    }
+    return true;
+  }
+
+  private static isActiveCalleeCompletion(value: unknown): value is ActiveCalleeCompletion {
+    if (!isRecord(value)) return false;
+    if (value.kind === 'reply_tool') {
+      return typeof value.resultRecordId === 'string' && value.resultRecordId.trim() !== '';
+    }
+    if (value.kind === 'direct_fallback') {
+      return (
+        typeof value.memo === 'string' &&
+        value.memo.trim() !== '' &&
+        typeof value.resultRecordId === 'string' &&
+        value.resultRecordId.trim() !== ''
+      );
+    }
+    return false;
+  }
+
+  private static isActiveCalleeRecord(value: unknown): value is ActiveCalleeRecord {
+    if (!isRecord(value)) return false;
+    if (typeof value.callId !== 'string' || value.callId.trim() === '') return false;
+    if (typeof value.dialogId !== 'string' || value.dialogId.trim() === '') return false;
+    if (
+      value.callName !== 'tellask' &&
+      value.callName !== 'tellaskSessionless' &&
+      value.callName !== 'tellaskBack' &&
+      value.callName !== 'freshBootsReasoning'
+    ) {
+      return false;
+    }
+    if (value.status !== 'pending' && value.status !== 'resolved' && value.status !== 'final') {
+      return false;
+    }
+    if (typeof value.createdAt !== 'string' || value.createdAt.trim() === '') return false;
+    if (value.resolvedAt !== undefined && typeof value.resolvedAt !== 'string') return false;
+    if (value.completion !== undefined && !this.isActiveCalleeCompletion(value.completion)) {
+      return false;
+    }
+    if (value.status === 'pending' && value.completion !== undefined) return false;
+    if (value.status !== 'pending' && value.completion === undefined) return false;
+    return true;
+  }
+
+  private static isActiveCalleeBatch(value: unknown): value is ActiveCalleeBatch {
+    if (!isRecord(value)) return false;
+    if (typeof value.batchId !== 'string' || value.batchId.trim() === '') return false;
+    if (!isRecord(value.callSite)) return false;
+    if (typeof value.callSite.course !== 'number') return false;
+    if (!Number.isInteger(value.callSite.course) || value.callSite.course <= 0) return false;
+    if (typeof value.callSite.genseq !== 'number') return false;
+    if (!Number.isInteger(value.callSite.genseq) || value.callSite.genseq <= 0) return false;
+    if (value.status !== 'open' && value.status !== 'resolved') return false;
+    if (!Array.isArray(value.callees)) return false;
+    if (!value.callees.every((callee) => this.isActiveCalleeRecord(callee))) return false;
+    if (value.callees.length === 0) return false;
+    if (typeof value.createdAt !== 'string' || value.createdAt.trim() === '') return false;
+    if (value.resolvedAt !== undefined && typeof value.resolvedAt !== 'string') return false;
+    const seenCallIds = new Set<string>();
+    for (const callee of value.callees) {
+      if (seenCallIds.has(callee.callId)) return false;
+      seenCallIds.add(callee.callId);
+    }
+    if (
+      value.status === 'resolved' &&
+      (value.resolvedAt === undefined ||
+        value.callees.some((callee) => callee.status === 'pending'))
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  private static isActiveCalleesFile(value: unknown): value is ActiveCalleesFile {
+    if (!isRecord(value) || !Array.isArray(value.batches)) return false;
+    if (!value.batches.every((batch) => this.isActiveCalleeBatch(batch))) return false;
+    const seenBatchIds = new Set<string>();
+    for (const batch of value.batches) {
+      if (seenBatchIds.has(batch.batchId)) return false;
+      seenBatchIds.add(batch.batchId);
     }
     return true;
   }
@@ -7634,6 +7910,7 @@ export class DialogPersistence {
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
+    await this.upsertActiveCalleeFromPendingRecord(mainDialogId, record, status);
     await this.mutatePendingSideDialogs(
       mainDialogId,
       () => ({ kind: 'append', record }),
@@ -7665,6 +7942,295 @@ export class DialogPersistence {
       mainDialogId,
       () => ({ kind: 'clear' }),
       rootAnchor,
+      status,
+    );
+  }
+
+  private static async loadActiveCalleesFromDisk(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<ActiveCalleesFile> {
+    const dialogPath = this.getDialogResponsesPath(dialogId, status);
+    const filePath = path.join(dialogPath, 'active-callees.json');
+    try {
+      const content = await readPersistenceTextFile({
+        filePath,
+        source: 'active_callees',
+        format: 'json',
+      });
+      const parsed: unknown = parsePersistenceJson({
+        content,
+        filePath,
+        source: 'active_callees',
+      });
+      if (!this.isActiveCalleesFile(parsed)) {
+        throw buildInvalidPersistenceFileError({
+          source: 'active_callees',
+          format: 'json',
+          filePath,
+        });
+      }
+      return parsed;
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') return { batches: [] };
+      throw error;
+    }
+  }
+
+  static async loadActiveCallees(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<ActiveCalleesFile> {
+    try {
+      return await this.loadActiveCalleesFromDisk(dialogId, status);
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadActiveCallees',
+        error,
+      );
+      throw new Error('unreachable after loadActiveCallees persistence rethrow');
+    }
+  }
+
+  private static async writeActiveCalleesToDisk(
+    dialogId: DialogID,
+    file: ActiveCalleesFile,
+    status: DialogStatusKind,
+  ): Promise<void> {
+    const dialogPath = this.getDialogResponsesPath(dialogId, status);
+    const filePath = path.join(dialogPath, 'active-callees.json');
+    if (file.batches.length === 0) {
+      await fs.promises.rm(filePath, { force: true });
+      return;
+    }
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+    const jsonContent = JSON.stringify(file, null, 2);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    await this.renameWithRetry(tempFile, filePath, 5);
+  }
+
+  static async mutateActiveCallees(
+    dialogId: DialogID,
+    mutator: (previous: ActiveCalleesFile) => ActiveCalleesFile,
+    status: DialogStatusKind = 'running',
+  ): Promise<ActiveCalleesFile> {
+    const key = this.getActiveCalleesKey(dialogId, status);
+    const mutex = this.getActiveCalleesMutex(key);
+    const release = await mutex.acquire();
+    try {
+      const previous = await this.loadActiveCalleesFromDisk(dialogId, status);
+      const next = mutator(previous);
+      if (!this.isActiveCalleesFile(next)) {
+        throw new Error(
+          `active-callees write invariant violation: malformed next state ` +
+            `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, status=${status})`,
+        );
+      }
+      await this.writeActiveCalleesToDisk(dialogId, next, status);
+      return next;
+    } finally {
+      release();
+    }
+  }
+
+  static async upsertActiveCalleeFromPendingRecord(
+    dialogId: DialogID,
+    record: PendingSideDialogStateRecord,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateActiveCallees(
+      dialogId,
+      (previous) => {
+        const existingBatch = previous.batches.find((batch) => batch.batchId === record.batchId);
+        const callee: ActiveCalleeRecord = {
+          callId: record.callId,
+          dialogId: record.sideDialogId,
+          callName: record.callName,
+          status: 'pending',
+          createdAt: record.createdAt,
+        };
+        if (existingBatch === undefined) {
+          return {
+            batches: [
+              ...previous.batches,
+              {
+                batchId: record.batchId,
+                callSite: {
+                  course: record.callSiteCourse,
+                  genseq: record.callSiteGenseq,
+                },
+                status: 'open',
+                callees: [callee],
+                createdAt: record.createdAt,
+              },
+            ],
+          };
+        }
+        if (
+          existingBatch.callSite.course !== record.callSiteCourse ||
+          existingBatch.callSite.genseq !== record.callSiteGenseq
+        ) {
+          throw new Error(
+            `active-callees batch call-site invariant violation ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId})`,
+          );
+        }
+        if (existingBatch.status !== 'open') {
+          throw new Error(
+            `active-callees append invariant violation: batch is not open ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId})`,
+          );
+        }
+        const existingCallee = existingBatch.callees.find(
+          (entry) => entry.callId === record.callId,
+        );
+        if (existingCallee !== undefined) {
+          if (
+            existingCallee.dialogId !== record.sideDialogId ||
+            existingCallee.callName !== record.callName
+          ) {
+            throw new Error(
+              `active-callees duplicate call invariant violation ` +
+                `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId}, callId=${record.callId})`,
+            );
+          }
+          return previous;
+        }
+        return {
+          batches: previous.batches.map((batch) =>
+            batch.batchId === record.batchId
+              ? { ...batch, callees: [...batch.callees, callee] }
+              : batch,
+          ),
+        };
+      },
+      status,
+    );
+  }
+
+  static async resolveActiveCallee(
+    dialogId: DialogID,
+    args: Readonly<{
+      batchId: string;
+      callId: string;
+      sideDialogId: string;
+      deliveryMode: 'reply_tool' | 'direct_fallback';
+      directFallbackSource?: 'saying' | 'thinking_only';
+    }>,
+    status: DialogStatusKind = 'running',
+  ): Promise<ActiveCalleeResolveOutcome> {
+    const resolvedAt = formatUnifiedTimestamp(new Date());
+    let outcome: ActiveCalleeResolveOutcome | undefined;
+    await this.mutateActiveCallees(
+      dialogId,
+      (previous) => {
+        const batch = previous.batches.find((entry) => entry.batchId === args.batchId);
+        if (batch === undefined) {
+          throw new Error(
+            `active-callees resolve invariant violation: missing batch ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId})`,
+          );
+        }
+        const callee = batch.callees.find((entry) => entry.callId === args.callId);
+        if (callee === undefined) {
+          throw new Error(
+            `active-callees resolve invariant violation: missing callee ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId})`,
+          );
+        }
+        if (callee.dialogId !== args.sideDialogId) {
+          throw new Error(
+            `active-callees resolve invariant violation: callee dialog mismatch ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId}, expected=${callee.dialogId}, actual=${args.sideDialogId})`,
+          );
+        }
+        const completion: ActiveCalleeCompletion =
+          args.deliveryMode === 'direct_fallback'
+            ? {
+                kind: 'direct_fallback',
+                memo: `direct-fallback:${args.directFallbackSource ?? 'unknown'}`,
+                resultRecordId: `tellask-result:${args.callId}`,
+              }
+            : { kind: 'reply_tool', resultRecordId: `tellask-result:${args.callId}` };
+        const nextCallees = batch.callees.map((entry) =>
+          entry.callId === args.callId
+            ? { ...entry, status: 'final' as const, completion, resolvedAt }
+            : entry,
+        );
+        const batchCompleted = nextCallees.every((entry) => entry.status !== 'pending');
+        const nextBatch: ActiveCalleeBatch = {
+          ...batch,
+          status: batchCompleted ? 'resolved' : 'open',
+          callees: nextCallees,
+          ...(batchCompleted ? { resolvedAt } : {}),
+        };
+        outcome = {
+          batchId: batch.batchId,
+          callSiteCourse: batch.callSite.course,
+          callSiteGenseq: batch.callSite.genseq,
+          batchCompleted,
+          resolvedCallIds: nextCallees
+            .filter((entry) => entry.status !== 'pending')
+            .map((entry) => entry.callId),
+        };
+        return {
+          batches: previous.batches.map((entry) =>
+            entry.batchId === batch.batchId ? nextBatch : entry,
+          ),
+        };
+      },
+      status,
+    );
+    if (outcome === undefined) {
+      throw new Error(
+        `active-callees resolve invariant violation: missing mutation outcome ` +
+          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId})`,
+      );
+    }
+    return outcome;
+  }
+
+  static async removeActiveCallee(
+    dialogId: DialogID,
+    args: Readonly<{ batchId: string; callId: string }>,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateActiveCallees(
+      dialogId,
+      (previous) => {
+        const batches: ActiveCalleeBatch[] = [];
+        for (const batch of previous.batches) {
+          if (batch.batchId !== args.batchId) {
+            batches.push(batch);
+            continue;
+          }
+          const callees = batch.callees.filter((callee) => callee.callId !== args.callId);
+          if (callees.length > 0) {
+            batches.push({ ...batch, callees });
+          }
+        }
+        return { batches };
+      },
+      status,
+    );
+  }
+
+  static async removeActiveCalleeBatch(
+    dialogId: DialogID,
+    batchId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateActiveCallees(
+      dialogId,
+      (previous) => ({
+        batches: previous.batches.filter((batch) => batch.batchId !== batchId),
+      }),
       status,
     );
   }
@@ -8596,7 +9162,7 @@ export class DialogPersistence {
               deliveredAt,
             },
             nextStep,
-            needsDrive: nextStep !== undefined,
+            needsDrive: nextStepHasTriggers(nextStep),
           },
         };
       },
@@ -9246,7 +9812,7 @@ export class DialogPersistence {
 
   static async upsertNextStepTrigger(
     dialogId: DialogID,
-    trigger: DialogNextStepTrigger,
+    trigger: DialogNextStepTriggerDraft,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutateDialogLatest(
@@ -9284,7 +9850,7 @@ export class DialogPersistence {
         return {
           kind: 'patch',
           patch: {
-            needsDrive: nextStep !== undefined,
+            needsDrive: nextStepHasTriggers(nextStep),
             nextStep,
           },
         };
@@ -9347,7 +9913,7 @@ export class DialogPersistence {
                     previous: summarizeLatestProjectionState(previous),
                     intendedPatch: summarizeLatestMutationPatch({
                       pendingRuntimePrompt: undefined,
-                      needsDrive: nextStep !== undefined,
+                      needsDrive: nextStepHasTriggers(nextStep),
                       nextStep,
                       displayState: { kind: 'proceeding' },
                       executionMarker:
@@ -9370,7 +9936,7 @@ export class DialogPersistence {
           kind: 'patch',
           patch: {
             pendingRuntimePrompt: undefined,
-            needsDrive: nextStep !== undefined,
+            needsDrive: nextStepHasTriggers(nextStep),
             nextStep,
             displayState,
             executionMarker:

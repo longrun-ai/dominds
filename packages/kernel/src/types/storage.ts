@@ -136,15 +136,16 @@ export type DialogGenerationRunState = Readonly<
       kind: 'open';
       course: DialogCourseNumber;
       genseq: CallSiteGenseqNo;
-      startedAt: string;
+      phase: 'streaming' | 'tool_round' | 'finishing';
+      acceptedTriggerIds: readonly string[];
+      openedAt: string;
       msgId?: string;
     }
   | {
       kind: 'closed';
       course: DialogCourseNumber;
       genseq: CallSiteGenseqNo;
-      startedAt?: string;
-      finishedAt: string;
+      closedAt: string;
     }
 >;
 
@@ -154,17 +155,31 @@ export type DialogLatestAssignmentAnchorState = Readonly<{
   assignmentGenseq: AssignmentGenerationSeqNumber;
 }>;
 
-export type DialogNextStepTrigger = Readonly<
+export type DialogFollowupReason = Readonly<
+  | { kind: 'ordinary_tool_result'; callIds: readonly string[] }
+  | { kind: 'invalid_tool_recovery'; callIds: readonly string[] }
+  | { kind: 'reply_delivery_result'; replyDeliveryId: string; replyCallId: string }
+  | { kind: 'result_arrival'; batchId: string }
+  | { kind: 'runtime_guidance'; msgId: string }
+>;
+
+export type DialogNextStepTriggerPayload = Readonly<
   | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
   | { triggerId: string; kind: 'backend_queue'; reason: string; course: DialogCourseNumber }
+  | {
+      triggerId: string;
+      kind: 'followup';
+      sourceGeneration: { course: DialogCourseNumber; genseq: CallSiteGenseqNo };
+      reasons: readonly DialogFollowupReason[];
+    }
   | {
       triggerId: string;
       kind: 'mainline_diligence';
       diligenceId: string;
       pendingTellaskCount: number;
     }
-  | { triggerId: string; kind: 'result_arrival'; dispatchBatchId: string; ownerDialogId: string }
+  | { triggerId: string; kind: 'result_arrival'; batchId: string }
   | {
       triggerId: string;
       kind: 'open_generation_recovery';
@@ -179,7 +194,19 @@ export type DialogNextStepTrigger = Readonly<
     }
 >;
 
+export type DialogNextStepTriggerDraft = Readonly<
+  DialogNextStepTriggerPayload & { createdAt?: string }
+>;
+
+export type DialogNextStepTrigger = Readonly<
+  DialogNextStepTriggerPayload & {
+    createdAt: string;
+    seq: number;
+  }
+>;
+
 export type DialogNextStepTriggerState = Readonly<{
+  nextSeq: number;
   triggers: readonly DialogNextStepTrigger[];
 }>;
 
@@ -407,7 +434,7 @@ export interface ReminderSnapshotItem {
 export interface PendingSideDialogStateRecord {
   sideDialogId: string;
   createdAt: string;
-  dispatchBatchId: string;
+  batchId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;
@@ -417,6 +444,34 @@ export interface PendingSideDialogStateRecord {
   callSiteGenseq: CallSiteGenseqNo;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
+}
+
+export type ActiveCalleeCompletion = Readonly<
+  | { kind: 'reply_tool'; resultRecordId: string }
+  | { kind: 'direct_fallback'; memo: string; resultRecordId: string }
+>;
+
+export interface ActiveCalleeRecord {
+  callId: string;
+  dialogId: string;
+  callName: 'tellask' | 'tellaskSessionless' | 'tellaskBack' | 'freshBootsReasoning';
+  status: 'pending' | 'resolved' | 'final';
+  completion?: ActiveCalleeCompletion;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface ActiveCalleeBatch {
+  batchId: string;
+  callSite: { course: CallSiteCourseNo; genseq: CallSiteGenseqNo };
+  status: 'open' | 'resolved';
+  callees: ActiveCalleeRecord[];
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface ActiveCalleesFile {
+  batches: ActiveCalleeBatch[];
 }
 
 export interface SideDialogRegistryStateRecord {

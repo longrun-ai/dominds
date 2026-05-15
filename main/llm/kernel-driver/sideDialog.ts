@@ -313,23 +313,30 @@ export async function supplyResponseToAskerDialog(args: {
         parentDialog.status,
       );
 
-      const sameDispatchBatchPending =
+      const activeCalleeOutcome =
         pendingRecord === undefined
-          ? []
-          : filteredPending.filter(
-              (pending) => pending.dispatchBatchId === pendingRecord.dispatchBatchId,
+          ? undefined
+          : await DialogPersistence.resolveActiveCallee(
+              parentDialog.id,
+              {
+                batchId: pendingRecord.batchId,
+                callId: pendingRecord.callId,
+                sideDialogId: sideDialogId.selfId,
+                deliveryMode,
+                directFallbackSource,
+              },
+              parentDialog.status,
             );
       const hasQ4H = await parentDialog.hasPendingQ4H();
-      const shouldRevive =
-        pendingRecord !== undefined && !hasQ4H && sameDispatchBatchPending.length === 0;
-      if (shouldRevive && pendingRecord !== undefined) {
+      const batchCompleted = activeCalleeOutcome?.batchCompleted === true;
+      const shouldRevive = batchCompleted && !hasQ4H;
+      if (batchCompleted && activeCalleeOutcome !== undefined) {
         await DialogPersistence.upsertNextStepTrigger(
           parentDialog.id,
           {
-            triggerId: `result-arrival:${pendingRecord.dispatchBatchId}`,
+            triggerId: `result-arrival:${activeCalleeOutcome.batchId}`,
             kind: 'result_arrival',
-            dispatchBatchId: pendingRecord.dispatchBatchId,
-            ownerDialogId: parentDialog.id.selfId,
+            batchId: activeCalleeOutcome.batchId,
           },
           parentDialog.status,
         );
@@ -343,10 +350,10 @@ export async function supplyResponseToAskerDialog(args: {
         originMemberId,
         sessionSlug,
         callId: pendingRecord?.callId,
-        callSiteCourse: pendingRecord?.callSiteCourse,
-        callSiteGenseq: pendingRecord?.callSiteGenseq,
-        dispatchBatchId: pendingRecord?.dispatchBatchId,
-        resolvedCallIds: pendingRecord ? [pendingRecord.callId] : [],
+        callSiteCourse: activeCalleeOutcome?.callSiteCourse ?? pendingRecord?.callSiteCourse,
+        callSiteGenseq: activeCalleeOutcome?.callSiteGenseq ?? pendingRecord?.callSiteGenseq,
+        batchId: activeCalleeOutcome?.batchId ?? pendingRecord?.batchId,
+        resolvedCallIds: activeCalleeOutcome?.resolvedCallIds ?? [],
         askerCourse:
           pendingRecord?.callSiteCourse !== undefined
             ? toAskerCourseNumber(pendingRecord.callSiteCourse)
@@ -694,9 +701,9 @@ export async function supplyResponseToAskerDialog(args: {
             `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
-      if (result.dispatchBatchId === undefined) {
+      if (result.batchId === undefined) {
         throw new Error(
-          `sideDialog result-arrival invariant violation: missing dispatchBatchId ` +
+          `sideDialog result-arrival invariant violation: missing batchId ` +
             `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
@@ -712,7 +719,7 @@ export async function supplyResponseToAskerDialog(args: {
             callId: resolvedCallId,
             callSiteCourse: result.callSiteCourse,
             callSiteGenseq: result.callSiteGenseq,
-            dispatchBatchId: result.dispatchBatchId,
+            batchId: result.batchId,
             resolvedCallIds: result.resolvedCallIds,
             triggerCallId: resolvedCallId,
           },

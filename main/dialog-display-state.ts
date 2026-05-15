@@ -902,7 +902,7 @@ async function computeIdleDisplayStateForReconciliation(
 
 export function getRecoverableGenerationRunState(
   latest: DialogLatestFile | null,
-): DialogGenerationRunState | undefined {
+): Extract<DialogGenerationRunState, { kind: 'open' }> | undefined {
   if (!latest) {
     return undefined;
   }
@@ -995,25 +995,21 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
     const recoverableGenerationRunState = getRecoverableGenerationRunState(latest);
     if (recoverableGenerationRunState !== undefined) {
       try {
+        await DialogPersistence.upsertNextStepTrigger(
+          dialogId,
+          {
+            triggerId: `open-generation-recovery:${dialogId.selfId}:${recoverableGenerationRunState.course}:${recoverableGenerationRunState.genseq}`,
+            kind: 'open_generation_recovery',
+            course: recoverableGenerationRunState.course,
+            genseq: recoverableGenerationRunState.genseq,
+            createdAt: recoverableGenerationRunState.openedAt,
+          },
+          'running',
+        );
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',
           patch: {
             needsDrive: true,
-            nextStep: {
-              triggers: [
-                ...(latest.nextStep?.triggers ?? []).filter(
-                  (trigger) =>
-                    trigger.triggerId !==
-                    `open-generation-recovery:${dialogId.selfId}:${recoverableGenerationRunState.course}:${recoverableGenerationRunState.genseq}`,
-                ),
-                {
-                  triggerId: `open-generation-recovery:${dialogId.selfId}:${recoverableGenerationRunState.course}:${recoverableGenerationRunState.genseq}`,
-                  kind: 'open_generation_recovery',
-                  course: recoverableGenerationRunState.course,
-                  genseq: recoverableGenerationRunState.genseq,
-                },
-              ],
-            },
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&

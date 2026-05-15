@@ -36,6 +36,7 @@ async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
       kind: 'open_generation_recovery',
       course: generationRunState.course,
       genseq: generationRunState.genseq,
+      createdAt: generationRunState.openedAt,
     },
     dialog.status,
   );

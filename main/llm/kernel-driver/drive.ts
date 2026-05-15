@@ -10,8 +10,11 @@ import {
   toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
+  toCallSiteGenseqNo,
+  toDialogCourseNumber,
   toRootGenerationAnchor,
   type DialogFbrState,
+  type DialogFollowupReason,
   type TellaskAnchorRecord,
   type TellaskCalleeRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -1314,6 +1317,8 @@ async function persistInvalidFuncCallRuntimeGuide(args: {
 type RoutedFunctionResult = {
   hasImmediateFollowupToolCalls: boolean;
   hasImmediateTellaskOutputs: boolean;
+  immediateFollowupCallIds: readonly string[];
+  immediateTellaskOutputCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
@@ -1321,6 +1326,49 @@ type RoutedFunctionResult = {
 
 function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
   return tool?.followupMode ?? 'immediate';
+}
+
+async function upsertImmediateFollowupTrigger(args: {
+  dlg: Dialog;
+  routed: RoutedFunctionResult;
+  invalidFuncCallCount: number;
+  streamedFuncCalls: readonly FuncCallMsg[];
+}): Promise<void> {
+  const reasons: DialogFollowupReason[] = [];
+  if (args.routed.immediateFollowupCallIds.length > 0) {
+    reasons.push({
+      kind: 'ordinary_tool_result',
+      callIds: args.routed.immediateFollowupCallIds,
+    });
+  }
+  if (args.routed.immediateTellaskOutputCallIds.length > 0) {
+    reasons.push({
+      kind: 'reply_delivery_result',
+      replyDeliveryId: `reply-delivery:${args.dlg.id.rootId}:${args.dlg.id.selfId}:${args.routed.immediateTellaskOutputCallIds.join('+')}`,
+      replyCallId: args.routed.immediateTellaskOutputCallIds[0]!,
+    });
+  }
+  if (args.invalidFuncCallCount > 0) {
+    const callIds = args.streamedFuncCalls.map((call) => call.id);
+    reasons.push({
+      kind: 'invalid_tool_recovery',
+      callIds: callIds.length > 0 ? callIds : [`invalid-tool:${args.invalidFuncCallCount}`],
+    });
+  }
+  if (reasons.length === 0) {
+    return;
+  }
+  const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  const genseq = args.dlg.activeGenSeq;
+  await DialogPersistence.upsertNextStepTrigger(args.dlg.id, {
+    triggerId: `followup:c${String(course)}:g${String(genseq)}`,
+    kind: 'followup',
+    sourceGeneration: {
+      course: toDialogCourseNumber(course),
+      genseq: toCallSiteGenseqNo(genseq),
+    },
+    reasons,
+  });
 }
 
 function shouldImmediatelyFollowUpSuccessfulToolResult(tool: FuncTool | undefined): boolean {
@@ -1684,6 +1732,8 @@ async function executeFunctionRound(args: {
     return {
       hasImmediateFollowupToolCalls: false,
       hasImmediateTellaskOutputs: false,
+      immediateFollowupCallIds: [],
+      immediateTellaskOutputCallIds: [],
       shouldStopAfterReplyTool: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
@@ -1734,7 +1784,8 @@ async function executeFunctionRound(args: {
   const genericOutcomeByCallId = new Map(
     genericExecutions.map((execution) => [execution.result.id, execution.outcome] as const),
   );
-  const hasImmediateFollowupToolCalls = tellaskRound.normalCalls.some((call) => {
+  const immediateFollowupCallIds: string[] = [];
+  for (const call of tellaskRound.normalCalls) {
     const tool = funcToolByName.get(call.name);
     const outcome = genericOutcomeByCallId.get(call.id);
     if (outcome === undefined) {
@@ -1742,8 +1793,11 @@ async function executeFunctionRound(args: {
         `kernel-driver function outcome invariant violation: missing outcome for call id '${call.id}' (${call.name})`,
       );
     }
-    return shouldImmediatelyFollowUpToolOutcome(tool, outcome);
-  });
+    if (shouldImmediatelyFollowUpToolOutcome(tool, outcome)) {
+      immediateFollowupCallIds.push(call.id);
+    }
+  }
+  const hasImmediateFollowupToolCalls = immediateFollowupCallIds.length > 0;
 
   const resultByCallId = new Map<string, FuncResultMsg>();
   const register = (result: FuncResultMsg): void => {
@@ -1810,6 +1864,8 @@ async function executeFunctionRound(args: {
     hasImmediateFollowupToolCalls:
       hasImmediateFollowupToolCalls || tellaskRound.hasInvalidTellaskCalls,
     hasImmediateTellaskOutputs: tellaskRound.hasImmediateTellaskOutputs,
+    immediateFollowupCallIds,
+    immediateTellaskOutputCallIds: tellaskRound.immediateTellaskOutputCallIds,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
@@ -1890,6 +1946,16 @@ async function maybeContinueWithDiligencePrompt(args: {
   }
 
   if (prepared.kind === 'prompt') {
+    const pendingTellaskCount =
+      dlg instanceof MainDialog
+        ? (await DialogPersistence.loadPendingSideDialogs(dlg.id, dlg.status)).length
+        : 0;
+    await DialogPersistence.upsertNextStepTrigger(dlg.id, {
+      triggerId: `mainline-diligence:${prepared.prompt.msgId}`,
+      kind: 'mainline_diligence',
+      diligenceId: prepared.prompt.msgId,
+      pendingTellaskCount,
+    });
     return { kind: 'continue', prompt: prepared.prompt };
   }
 
@@ -3342,6 +3408,12 @@ export async function driveDialogStreamCore(
             break;
           }
           if (shouldStartImmediatePostToolGeneration) {
+            await upsertImmediateFollowupTrigger({
+              dlg,
+              routed,
+              invalidFuncCallCount,
+              streamedFuncCalls,
+            });
             resolvingImmediateToolResultForUserPrompt =
               currentGenerationBelongsToUserPrompt ||
               currentGenerationBelongsToUserToolChain ||

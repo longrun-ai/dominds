@@ -941,7 +941,7 @@ UI 业务状态投影结论：
 
 ## WIP 状态（阶段性提交标记）
 
-本提交进入第二阶段状态机落地，但仍不是完整终态。WIP 标记保留到下一次完整状态机提交完成后再移除。
+本提交已进入第三阶段状态机落地，但仍不是完整终态。WIP 标记保留到下一次完整状态机提交完成后再移除。
 
 第一阶段已落地：
 
@@ -956,19 +956,21 @@ UI 业务状态投影结论：
 
 - `generationRunState` 已写入 `latest.yaml`：generation start 标记 `open`，generation finish 标记 `closed`；restart open-generation recovery 开始写入 `open_generation_recovery` trigger。
 - `NextStepTriggerState` 已开始落地：`queued_prompt`、`backend_queue`、`result_arrival`、`open_generation_recovery`、`reply_delivery_recovery` 已有 durable trigger 形态；`needsDrive` 正在收敛为 trigger projection。
-- durable `dispatchBatchId` 已写入 pending sideDialog record；callee 回贴后按同一派发批次是否全部完成生成 `result_arrival` trigger。目标态已更新为 `active-callees.json` + `batchId`，并移除 pending-sideDialogs 作为运行判定源。
+- durable `batchId` 已写入 pending sideDialog record；callee 回贴后按同一派发批次是否全部完成生成 `result_arrival` trigger。目标态已更新为 `active-callees.json` + `batchId`，并移除 pending-sideDialogs 作为运行判定源。
 - `replyDelivery` 已落地：有效的 `replyTellask*` 工具调用会记录 pending delivery 的 reply callId、genseq、content、target dialog/callId；成功交付后标记 delivered，工具结果回写后标记 `toolResultStatus=recorded` 并移除 recovery trigger。
 - `reply-special` restart recovery 已改为读取 `latest.replyDelivery`，不再扫描当前 course events 查找 call-without-result。
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`。目标态已决策为：trigger 是一次性铃声，事实处理成功后消费，消费后删除且不留 tombstone；`followup` trigger 直接携带最小原因集合，不另开 `followup.json`。
+- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`。trigger 已有 dialog-local `seq/nextSeq` 到达顺序；generation start 会把已正式交给本轮上下文的 trigger 写入 `generationRunState.open.acceptedTriggerIds` 并消费 trigger，不保留 consumed tombstone。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
-- dispatch batch 仍主要通过 pending sideDialog records 表达；目标态已决策为 caller 目录下 `active-callees.json`，文件内容不重复记录自身 caller id，batch 使用稳定 `batchId`，result-arrival 消费后删除 batch。
-- `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase/acceptedTriggerIds；`finishRecordId` 和 last-tool-round 分类不再进入 `generationRunState`，由 event log 与 `followup` trigger 分别承载。
+- `followup` trigger 已落地为 `nextStep` 变体：普通 immediate tool result、invalid tool recovery、有效 tellask/reply 结果会写入最小原因集合，不另开 `followup.json`；下一轮 gen start durable handoff 后消费。
+- `mainline_diligence` trigger 已在 Diligence prompt 注入前写入；Diligence 仍只作用于主线，触发条件只看预算，pending tellask 只作为 prompt context 数量。
+- `active-callees.json` 已开始作为运行判定源：tellask 派发时写入 batch/callee，callee 回贴时按 batch 完整性生成 `result_arrival` trigger；direct-fallback 作为 callee completion memo 进入同一 batch，不新增独立 trigger。pending-sideDialogs 仍暂存 UI/reminder 细节和部分回贴展示字段，后续需继续收敛为完全从 active-callees/background projection 派生。
+- `generationRunState` 已记录 open/closed 的 course/genseq/timestamp、open phase 与 `acceptedTriggerIds`；`finishRecordId` 和 last-tool-round 分类不进入 `generationRunState`，由 event log 与 `followup` trigger 分别承载。
 - restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底，但 generation recovery decision 仍需补齐结构化诊断返回。
 - runtime reason / error 已收敛到 result-arrival / dispatch-batch 语义；旧 `tellask-revive-context-refactor` 文档仍保留 wait-group 历史表述，后续应单独刷新或标记为 superseded。
-- runtime 读路径仍存在少量历史事件读取；下一阶段必须把常态业务判定改为只读状态快照和显式 pending records。缺少必要元信息或结构不合法时转移到 `malformed/`，不在 runtime 或自动 repair 中回扫历史补齐。
+- runtime 读路径仍存在少量历史事件读取；后续必须把常态业务判定改为只读状态快照和显式 pending records。缺少必要元信息或结构不合法时转移到 `malformed/`，不在 runtime 或自动 repair 中回扫历史补齐。
 
 移除 WIP 标记的条件：
 

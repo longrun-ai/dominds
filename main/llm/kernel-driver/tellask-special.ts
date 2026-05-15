@@ -1421,7 +1421,7 @@ async function executeTellaskCall(
     );
   }
   const callSiteGenseq = toCallSiteGenseqNo(dlg.activeGenSeqOrUndefined);
-  const dispatchBatchId = `dispatch:${dlg.id.rootId}:${dlg.id.selfId}:c${String(callSiteCourse)}:g${String(callSiteGenseq)}`;
+  const batchId = `dispatch:${dlg.id.rootId}:${dlg.id.selfId}:c${String(callSiteCourse)}:g${String(callSiteGenseq)}`;
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
   const isFreshBootsCall = callName === 'freshBootsReasoning';
@@ -1705,7 +1705,7 @@ async function executeTellaskCall(
       const pendingRecord: PendingSideDialogStateRecord = {
         sideDialogId: sub.id.selfId,
         createdAt: formatUnifiedTimestamp(new Date()),
-        dispatchBatchId,
+        batchId,
         callName: sideDialogCallName,
         mentionList,
         tellaskContent: body,
@@ -2092,7 +2092,7 @@ async function executeTellaskCall(
                 const pendingRecord: PendingSideDialogStateRecord = {
                   sideDialogId: existing.id.selfId,
                   createdAt: formatUnifiedTimestamp(new Date()),
-                  dispatchBatchId,
+                  batchId,
                   callName: sideDialogCallName,
                   mentionList,
                   tellaskContent: body,
@@ -2155,6 +2155,25 @@ async function executeTellaskCall(
                     undefined,
                     pendingOwner.status,
                   );
+                  if (replacedPending !== undefined) {
+                    const previousOwnerId =
+                      previousAssignment.askerDialogId === pendingOwner.id.selfId
+                        ? pendingOwner.id
+                        : new DialogID(previousAssignment.askerDialogId, mainDialog.id.rootId);
+                    await DialogPersistence.removeActiveCallee(
+                      previousOwnerId,
+                      {
+                        batchId: replacedPending.batchId,
+                        callId: replacedPending.callId,
+                      },
+                      pendingOwner.status,
+                    );
+                  }
+                  await DialogPersistence.upsertActiveCalleeFromPendingRecord(
+                    pendingOwner.id,
+                    pendingRecord,
+                    pendingOwner.status,
+                  );
 
                   await updateSideDialogAssignment(existing, assignment, {
                     replacePendingCallId: previousAssignment.callId,
@@ -2203,7 +2222,7 @@ async function executeTellaskCall(
               const pendingRecord: PendingSideDialogStateRecord = {
                 sideDialogId: created.id.selfId,
                 createdAt: formatUnifiedTimestamp(new Date()),
-                dispatchBatchId,
+                batchId,
                 callName: sideDialogCallName,
                 mentionList,
                 tellaskContent: body,
@@ -2424,7 +2443,7 @@ async function executeTellaskCall(
         const pendingRecord: PendingSideDialogStateRecord = {
           sideDialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
-          dispatchBatchId,
+          batchId,
           callName: sideDialogCallName,
           mentionList,
           tellaskContent: body,
@@ -3000,6 +3019,7 @@ export type TellaskFunctionRoundResult = Readonly<{
   handledCallIds: readonly string[];
   hasInvalidTellaskCalls: boolean;
   hasImmediateTellaskOutputs: boolean;
+  immediateTellaskOutputCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
 }>;
 
@@ -3211,6 +3231,7 @@ export async function processTellaskFunctionRound(args: {
   const tellaskFuncResults: FuncResultMsg[] = [];
   const tellaskFuncResultByCallId = new Map<string, FuncResultMsg>();
   const tellaskToolOutputs: ChatMessage[] = [];
+  const immediateTellaskOutputCallIds: string[] = [];
   let hasImmediateTellaskOutputs = false;
   for (const output of tellaskExecution.toolOutputs) {
     if (output.type === 'func_result_msg') {
@@ -3218,6 +3239,7 @@ export async function processTellaskFunctionRound(args: {
       tellaskFuncResultByCallId.set(result.id, result);
       tellaskFuncResults.push(result);
       hasImmediateTellaskOutputs = true;
+      immediateTellaskOutputCallIds.push(result.id);
       continue;
     }
     if (output.type === 'tellask_result_msg') {
@@ -3246,6 +3268,7 @@ export async function processTellaskFunctionRound(args: {
         tellaskFuncResultByCallId.set(callId, result);
         tellaskFuncResults.push(result);
         hasImmediateTellaskOutputs = true;
+        immediateTellaskOutputCallIds.push(callId);
       }
       continue;
     }
@@ -3284,6 +3307,7 @@ export async function processTellaskFunctionRound(args: {
     handledCallIds: orderedValidCalls.map(({ call }) => call.callId),
     hasInvalidTellaskCalls: orderedInvalidCalls.length > 0,
     hasImmediateTellaskOutputs,
+    immediateTellaskOutputCallIds,
     shouldStopAfterReplyTool:
       orderedInvalidCalls.length === 0 && tellaskExecution.successfulReplyCallIds.length > 0,
   };

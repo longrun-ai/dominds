@@ -61,7 +61,7 @@ export type KernelDriverDriveOptions = Readonly<{
         callId?: string;
         callSiteCourse: number;
         callSiteGenseq: number;
-        dispatchBatchId: string;
+        batchId: string;
         resolvedCallIds?: readonly string[];
         triggerCallId?: string;
       }>;
