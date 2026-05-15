@@ -131,10 +131,69 @@ export type DialogSideDialogReplyTarget = Readonly<{
 
 export type DialogPendingRuntimePrompt = DialogRuntimePrompt;
 
+export type DialogGenerationRunState = Readonly<
+  | {
+      kind: 'open';
+      course: DialogCourseNumber;
+      genseq: CallSiteGenseqNo;
+      startedAt: string;
+      msgId?: string;
+    }
+  | {
+      kind: 'closed';
+      course: DialogCourseNumber;
+      genseq: CallSiteGenseqNo;
+      startedAt?: string;
+      finishedAt: string;
+    }
+>;
+
 export type DialogLatestAssignmentAnchorState = Readonly<{
   callId: string;
   assignmentCourse: AssignmentCourseNumber;
   assignmentGenseq: AssignmentGenerationSeqNumber;
+}>;
+
+export type DialogNextStepTrigger = Readonly<
+  | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
+  | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
+  | {
+      triggerId: string;
+      kind: 'mainline_diligence';
+      diligenceId: string;
+      pendingTellaskCount: number;
+    }
+  | { triggerId: string; kind: 'result_arrival'; dispatchBatchId: string; ownerDialogId: string }
+  | {
+      triggerId: string;
+      kind: 'open_generation_recovery';
+      course: DialogCourseNumber;
+      genseq: CallSiteGenseqNo;
+    }
+  | {
+      triggerId: string;
+      kind: 'reply_delivery_recovery';
+      replyDeliveryId: string;
+      targetDialogId: string;
+    }
+>;
+
+export type DialogNextStepTriggerState = Readonly<{
+  triggers: readonly DialogNextStepTrigger[];
+}>;
+
+export type DialogReplyDeliveryState = Readonly<{
+  replyDeliveryId: string;
+  status: 'pending' | 'delivered';
+  toolResultStatus: 'pending' | 'recorded';
+  expectedReplyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
+  targetDialogId: string;
+  targetCallId: string;
+  replyCallId: string;
+  replyGenseq: CallSiteGenseqNo;
+  replyContent: string;
+  createdAt: string;
+  deliveredAt?: string;
 }>;
 
 export interface DialogLatestFile {
@@ -148,6 +207,9 @@ export interface DialogLatestFile {
   needsDrive?: boolean;
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
+  generationRunState?: DialogGenerationRunState;
+  nextStep?: DialogNextStepTriggerState;
+  replyDelivery?: DialogReplyDeliveryState;
   latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
@@ -334,6 +396,7 @@ export interface ReminderSnapshotItem {
 export interface PendingSideDialogStateRecord {
   sideDialogId: string;
   createdAt: string;
+  dispatchBatchId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   mentionList?: string[];
   tellaskContent: string;

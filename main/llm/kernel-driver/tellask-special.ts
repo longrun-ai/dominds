@@ -7,10 +7,10 @@ import {
   toRootGenerationAnchor,
   type CallSiteCourseNo,
   type CallSiteGenseqNo,
+  type DialogReplyDeliveryState,
   type HumanQuestion,
   type PendingSideDialogStateRecord,
   type TellaskCalleeRecord,
-  type TellaskCallRecord,
   type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
@@ -248,8 +248,6 @@ type ReplyTellaskExecutionResult = Readonly<{
   delivered: boolean;
 }>;
 
-type ReplyTellaskCallRecord = TellaskCallRecord & { name: ReplyTellaskCallName };
-
 type TellaskBackReplyDeliveryResult = Readonly<
   | {
       kind: 'delivered';
@@ -398,40 +396,6 @@ async function hasPersistedTellaskResultRecord(dialog: Dialog, callId: string): 
   return false;
 }
 
-function isReplyTellaskCallRecord(record: TellaskCallRecord): record is ReplyTellaskCallRecord {
-  return isReplyTellaskCallName(record.name);
-}
-
-function parseReplyTellaskCallRecord(record: ReplyTellaskCallRecord): {
-  callId: string;
-  callName: ReplyTellaskCallName;
-  replyContent: string;
-} {
-  const parsed = parseTellaskCall({
-    type: 'func_call_msg',
-    role: 'assistant',
-    genseq: record.genseq,
-    id: record.id,
-    name: record.name,
-    arguments: record.rawArgumentsText,
-  });
-  if (!parsed.ok) {
-    throw new Error(
-      `reply recovery invariant violation: invalid persisted raw arguments for ${record.name} (callId=${record.id})`,
-    );
-  }
-  switch (parsed.value.callName) {
-    case 'replyTellask':
-    case 'replyTellaskSessionless':
-    case 'replyTellaskBack':
-      return parsed.value;
-    default:
-      throw new Error(
-        `reply recovery invariant violation: unexpected persisted call type ${parsed.value.callName} (callId=${record.id})`,
-      );
-  }
-}
-
 function formatReplyRecoveryFailureResult(args: {
   callName: ReplyTellaskCallName;
   errorText: string;
@@ -441,123 +405,104 @@ function formatReplyRecoveryFailureResult(args: {
     : `Recovery retry for \`${args.callName}\` failed: ${args.errorText}`;
 }
 
-export async function recoverPendingReplyTellaskCalls(args: {
+export async function recoverPendingReplyDelivery(args: {
   dlg: Dialog;
+  replyDelivery: DialogReplyDeliveryState;
   callbacks: KernelDriverDriveCallbacks;
 }): Promise<number> {
-  if (args.dlg.status !== 'running') {
+  if (
+    args.dlg.status !== 'running' ||
+    (args.replyDelivery.status !== 'pending' && args.replyDelivery.toolResultStatus !== 'pending')
+  ) {
     return 0;
   }
+  const call: Extract<ExecutableValidTellaskCall, { callName: ReplyTellaskCallName }> = (() => {
+    switch (args.replyDelivery.expectedReplyCallName) {
+      case 'replyTellask':
+        return {
+          callId: args.replyDelivery.replyCallId,
+          callName: 'replyTellask',
+          replyContent: args.replyDelivery.replyContent,
+        };
+      case 'replyTellaskSessionless':
+        return {
+          callId: args.replyDelivery.replyCallId,
+          callName: 'replyTellaskSessionless',
+          replyContent: args.replyDelivery.replyContent,
+        };
+      case 'replyTellaskBack':
+        return {
+          callId: args.replyDelivery.replyCallId,
+          callName: 'replyTellaskBack',
+          replyContent: args.replyDelivery.replyContent,
+        };
+    }
+  })();
 
-  const events = await DialogPersistence.loadCourseEvents(
-    args.dlg.id,
-    args.dlg.currentCourse,
-    args.dlg.status,
-  );
-  const funcResultIds = new Set<string>();
-  const resolvedReplyCallIds = new Set<string>();
-  const replyCalls: ReplyTellaskCallRecord[] = [];
-
-  for (const event of events) {
-    if (event.type === 'func_result_record' || event.type === 'tellask_result_record') {
-      const callId = event.type === 'func_result_record' ? event.id.trim() : event.callId.trim();
-      if (callId !== '') {
-        funcResultIds.add(callId);
+  try {
+    const execution =
+      args.replyDelivery.status === 'delivered'
+        ? ({
+            messages: [
+              {
+                type: 'func_result_msg',
+                role: 'tool',
+                genseq: args.replyDelivery.replyGenseq,
+                id: args.replyDelivery.replyCallId,
+                name: args.replyDelivery.expectedReplyCallName,
+                content: formatReplyFuncResult({
+                  replyCallName: args.replyDelivery.expectedReplyCallName,
+                  replyContent: args.replyDelivery.replyContent,
+                }),
+              },
+            ],
+            delivered: false,
+          } satisfies ReplyTellaskExecutionResult)
+        : await executeReplyTellaskCall({
+            dlg: args.dlg,
+            call,
+            callbacks: args.callbacks,
+          });
+    for (const message of execution.messages) {
+      if (message.type !== 'func_result_msg') {
+        throw new Error(
+          `reply recovery invariant violation: unexpected message type ${message.type}`,
+        );
       }
-      continue;
-    }
-    if (event.type === 'tellask_reply_resolution_record') {
-      const callId = event.callId.trim();
-      if (callId !== '') {
-        resolvedReplyCallIds.add(callId);
-      }
-      continue;
-    }
-    if (event.type !== 'tellask_call_record') {
-      continue;
-    }
-    if (!isReplyTellaskCallRecord(event)) {
-      continue;
-    }
-    replyCalls.push(event);
-  }
-
-  let recoveredCount = 0;
-  for (const call of replyCalls) {
-    const callId = call.id.trim();
-    if (callId === '' || funcResultIds.has(callId)) {
-      continue;
-    }
-    const parsedCall = parseReplyTellaskCallRecord(call);
-
-    if (resolvedReplyCallIds.has(callId)) {
       await args.dlg.receiveFuncResult({
         type: 'func_result_msg',
         role: 'tool',
-        genseq: call.genseq,
-        id: call.id,
-        name: call.name,
-        content: formatReplyFuncResult({
-          replyCallName: call.name,
-          replyContent: parsedCall.replyContent,
-        }),
+        genseq: args.replyDelivery.replyGenseq,
+        id: message.id,
+        name: message.name,
+        content: message.content,
+        contentItems: message.contentItems,
       });
-      funcResultIds.add(callId);
-      recoveredCount += 1;
-      continue;
     }
-
-    try {
-      const execution = await executeReplyTellaskCall({
-        dlg: args.dlg,
-        call: parsedCall,
-        callbacks: args.callbacks,
-      });
-      for (const message of execution.messages) {
-        if (message.type !== 'func_result_msg') {
-          throw new Error(
-            `reply recovery invariant violation: unexpected message type ${message.type}`,
-          );
-        }
-        await args.dlg.receiveFuncResult({
-          type: 'func_result_msg',
-          role: 'tool',
-          genseq: call.genseq,
-          id: message.id,
-          name: message.name,
-          content: message.content,
-          contentItems: message.contentItems,
-        });
-      }
-      funcResultIds.add(callId);
-      recoveredCount += 1;
-    } catch (err) {
-      const errorText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      log.error('Failed to recover pending replyTellask* call after restart', err, {
-        rootId: args.dlg.id.rootId,
-        selfId: args.dlg.id.selfId,
-        course: args.dlg.currentCourse,
-        genseq: call.genseq,
-        callId: call.id,
-        toolName: call.name,
-      });
-      await args.dlg.receiveFuncResult({
-        type: 'func_result_msg',
-        role: 'tool',
-        genseq: call.genseq,
-        id: call.id,
-        name: call.name,
-        content: formatReplyRecoveryFailureResult({
-          callName: call.name,
-          errorText,
-        }),
-      });
-      funcResultIds.add(callId);
-      recoveredCount += 1;
-    }
+  } catch (err) {
+    const errorText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    log.error('Failed to recover pending replyTellask* delivery after restart', err, {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      course: args.dlg.currentCourse,
+      genseq: args.replyDelivery.replyGenseq,
+      callId: args.replyDelivery.replyCallId,
+      toolName: args.replyDelivery.expectedReplyCallName,
+      replyDeliveryId: args.replyDelivery.replyDeliveryId,
+    });
+    await args.dlg.receiveFuncResult({
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: args.replyDelivery.replyGenseq,
+      id: args.replyDelivery.replyCallId,
+      name: args.replyDelivery.expectedReplyCallName,
+      content: formatReplyRecoveryFailureResult({
+        callName: args.replyDelivery.expectedReplyCallName,
+        errorText,
+      }),
+    });
   }
-
-  return recoveredCount;
+  return 1;
 }
 
 function parseFuncCallArgsObject(call: FuncCallMsg):
@@ -1476,6 +1421,7 @@ async function executeTellaskCall(
     );
   }
   const callSiteGenseq = toCallSiteGenseqNo(dlg.activeGenSeqOrUndefined);
+  const dispatchBatchId = `dispatch:${dlg.id.rootId}:${dlg.id.selfId}:c${String(callSiteCourse)}:g${String(callSiteGenseq)}`;
   const parseResult = options.parseResult;
   const normalizedMentionList = mentionList ?? [];
   const isFreshBootsCall = callName === 'freshBootsReasoning';
@@ -1759,6 +1705,7 @@ async function executeTellaskCall(
       const pendingRecord: PendingSideDialogStateRecord = {
         sideDialogId: sub.id.selfId,
         createdAt: formatUnifiedTimestamp(new Date()),
+        dispatchBatchId,
         callName: sideDialogCallName,
         mentionList,
         tellaskContent: body,
@@ -2145,6 +2092,7 @@ async function executeTellaskCall(
                 const pendingRecord: PendingSideDialogStateRecord = {
                   sideDialogId: existing.id.selfId,
                   createdAt: formatUnifiedTimestamp(new Date()),
+                  dispatchBatchId,
                   callName: sideDialogCallName,
                   mentionList,
                   tellaskContent: body,
@@ -2255,6 +2203,7 @@ async function executeTellaskCall(
               const pendingRecord: PendingSideDialogStateRecord = {
                 sideDialogId: created.id.selfId,
                 createdAt: formatUnifiedTimestamp(new Date()),
+                dispatchBatchId,
                 callName: sideDialogCallName,
                 mentionList,
                 tellaskContent: body,
@@ -2475,6 +2424,7 @@ async function executeTellaskCall(
         const pendingRecord: PendingSideDialogStateRecord = {
           sideDialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
+          dispatchBatchId,
           callName: sideDialogCallName,
           mentionList,
           tellaskContent: body,

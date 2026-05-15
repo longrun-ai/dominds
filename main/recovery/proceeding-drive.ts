@@ -21,7 +21,37 @@ async function restoreDialogForProceedingDrive(dialogId: DialogID): Promise<Dial
 }
 
 async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
-  await DialogPersistence.setNeedsDrive(dialog.id, true, dialog.status);
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  const generationRunState = latest?.generationRunState;
+  if (!generationRunState || generationRunState.kind !== 'open') {
+    throw new Error(
+      `proceeding-drive recovery invariant violation: missing open generation state ` +
+        `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId})`,
+    );
+  }
+  await DialogPersistence.mutateDialogLatest(
+    dialog.id,
+    (previous) => ({
+      kind: 'patch',
+      patch: {
+        needsDrive: true,
+        nextStep: {
+          triggers: [
+            ...(previous.nextStep?.triggers.filter(
+              (trigger) => trigger.kind !== 'open_generation_recovery',
+            ) ?? []),
+            {
+              triggerId: `open-generation-recovery:${dialog.id.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+              kind: 'open_generation_recovery',
+              course: generationRunState.course,
+              genseq: generationRunState.genseq,
+            },
+          ],
+        },
+      },
+    }),
+    dialog.status,
+  );
   globalDialogRegistry.markNeedsDrive(dialog.id.rootId, {
     source: 'restart_recovery',
     reason: 'persisted_drive_in_progress',

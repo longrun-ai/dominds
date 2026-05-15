@@ -1,7 +1,7 @@
 import { Dialog, DialogID } from '../dialog';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
 import { driveDialogStream } from '../llm/kernel-driver';
-import { recoverPendingReplyTellaskCalls } from '../llm/kernel-driver/tellask-special';
+import { recoverPendingReplyDelivery } from '../llm/kernel-driver/tellask-special';
 import type {
   KernelDriverDriveCallOptions,
   KernelDriverDriveResult,
@@ -33,17 +33,28 @@ export async function recoverPendingReplyTellaskCallsForDialog(dialog: Dialog): 
   // dead-sideDialog remediation). Those flows are allowed to have side effects and may legitimately
   // unblock downstream dialogs, so reply recovery keeps normal immediate drive behavior here.
   // Pure read/display flows must not call into this helper.
-  const recoveryPromise = recoverPendingReplyTellaskCalls({
-    dlg: dialog,
-    callbacks: {
-      scheduleDrive: (scheduledDialog, options) => {
-        void dispatchDrive(scheduledDialog, options);
+  const recoveryPromise = (async () => {
+    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+    const replyDelivery = latest?.replyDelivery;
+    if (
+      !replyDelivery ||
+      (replyDelivery.status !== 'pending' && replyDelivery.toolResultStatus !== 'pending')
+    ) {
+      return 0;
+    }
+    return await recoverPendingReplyDelivery({
+      dlg: dialog,
+      replyDelivery,
+      callbacks: {
+        scheduleDrive: (scheduledDialog, options) => {
+          void dispatchDrive(scheduledDialog, options);
+        },
+        driveDialog: async (scheduledDialog, options) => {
+          return await dispatchDrive(scheduledDialog, options);
+        },
       },
-      driveDialog: async (scheduledDialog, options) => {
-        return await dispatchDrive(scheduledDialog, options);
-      },
-    },
-  });
+    });
+  })();
   inFlightReplyRecoveryByDialog.set(dialogKey, recoveryPromise);
 
   try {
@@ -57,34 +68,10 @@ export async function recoverPendingReplyTellaskCallsForDialog(dialog: Dialog): 
 
 async function dialogNeedsReplyRecovery(dialogId: DialogID): Promise<boolean> {
   const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
-  if (!latest) {
-    return false;
-  }
-  const currentCourse = Math.floor(latest.currentCourse);
-  const events = await DialogPersistence.loadCourseEvents(dialogId, currentCourse, 'running');
-  const funcResultIds = new Set<string>();
-  for (const event of events) {
-    if (event.type === 'func_result_record' || event.type === 'tellask_result_record') {
-      const callId = event.type === 'func_result_record' ? event.id.trim() : event.callId.trim();
-      if (callId !== '') {
-        funcResultIds.add(callId);
-      }
-      continue;
-    }
-  }
-  return events.some((event) => {
-    if (event.type !== 'tellask_call_record') {
-      return false;
-    }
-    if (
-      event.name !== 'replyTellask' &&
-      event.name !== 'replyTellaskSessionless' &&
-      event.name !== 'replyTellaskBack'
-    ) {
-      return false;
-    }
-    return !funcResultIds.has(event.id.trim());
-  });
+  return (
+    latest?.replyDelivery?.status === 'pending' ||
+    latest?.replyDelivery?.toolResultStatus === 'pending'
+  );
 }
 
 export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<void> {
@@ -109,7 +96,7 @@ export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<voi
       }
       await recoverPendingReplyTellaskCallsForDialog(dialog);
     } catch (err) {
-      log.error('Failed to recover pending replyTellask* call during restart scan', err, {
+      log.error('Failed to recover pending replyTellask* delivery during restart recovery', err, {
         rootId: dialogId.rootId,
         selfId: dialogId.selfId,
       });

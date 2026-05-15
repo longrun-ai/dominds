@@ -52,9 +52,13 @@ import type {
   DialogAskerStackState,
   DialogDeferredReplyReassertion,
   DialogFbrState,
+  DialogGenerationRunState,
   DialogLatestFile,
   DialogMetadataFile,
+  DialogNextStepTrigger,
+  DialogNextStepTriggerState,
   DialogPendingRuntimePrompt,
+  DialogReplyDeliveryState,
   DialogSideDialogFinalResponseState,
   DialogSideDialogReplyTarget,
   FuncCallRecord,
@@ -197,6 +201,9 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     diligencePushRemainingBudget: latest.diligencePushRemainingBudget ?? null,
     displayState: latest.displayState ?? null,
     executionMarker: latest.executionMarker ?? null,
+    generationRunState: latest.generationRunState ?? null,
+    nextStepTriggerCount: latest.nextStep?.triggers.length ?? 0,
+    replyDelivery: latest.replyDelivery ?? null,
     latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
     pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
@@ -236,6 +243,9 @@ function summarizeLatestMutationPatch(
     diligencePushRemainingBudget: patch.diligencePushRemainingBudget ?? null,
     displayState: patch.displayState ?? null,
     executionMarker: patch.executionMarker ?? null,
+    generationRunState: patch.generationRunState ?? null,
+    nextStepTriggerCount: patch.nextStep?.triggers.length ?? null,
+    replyDelivery: patch.replyDelivery ?? null,
     latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
     pendingRuntimePromptMsgId: patch.pendingRuntimePrompt?.msgId ?? null,
@@ -977,6 +987,29 @@ function buildTellaskCallRecord(args: {
   };
 }
 
+function parseTellaskReplyCallContent(
+  record: TellaskCallRecord,
+): { ok: true; replyContent: string } | { ok: false; error: string } {
+  if (!isReplyTellaskCallRecordName(record.name)) {
+    return { ok: false, error: `unsupported reply call name '${record.name}'` };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.rawArgumentsText || '{}');
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `arguments must be valid JSON: ${message}` };
+  }
+  if (!isRecord(parsed)) {
+    return { ok: false, error: 'arguments must be a JSON object' };
+  }
+  const replyContent = parsed.replyContent;
+  if (typeof replyContent !== 'string' || replyContent.trim() === '') {
+    return { ok: false, error: "field 'replyContent' must be a non-empty string" };
+  }
+  return { ok: true, replyContent };
+}
+
 function buildTellaskResultRecord(result: TellaskResultMsg): TellaskResultRecord {
   if (!isTellaskBusinessCallName(result.callName)) {
     throw new Error(
@@ -1653,6 +1686,190 @@ function parseDialogPendingRuntimePrompt(value: unknown): DialogPendingRuntimePr
   };
 }
 
+function parsePositiveIntegerField(value: unknown): number | null {
+  if (typeof value !== 'number') return null;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return null;
+  return value;
+}
+
+function parseNonNegativeIntegerField(value: unknown): number | null {
+  if (typeof value !== 'number') return null;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) return null;
+  return value;
+}
+
+function parseDialogGenerationRunState(value: unknown): DialogGenerationRunState | null {
+  if (!isRecord(value)) return null;
+  if (value.kind === 'open') {
+    const course = parsePositiveIntegerField(value.course);
+    const genseq = parseNonNegativeIntegerField(value.genseq);
+    if (course === null || genseq === null || typeof value.startedAt !== 'string') return null;
+    if (value.msgId !== undefined && typeof value.msgId !== 'string') return null;
+    return {
+      kind: 'open',
+      course: toDialogCourseNumber(course),
+      genseq: toCallSiteGenseqNo(genseq),
+      startedAt: value.startedAt,
+      ...(value.msgId === undefined ? {} : { msgId: value.msgId }),
+    };
+  }
+  if (value.kind === 'closed') {
+    const course = parsePositiveIntegerField(value.course);
+    const genseq = parseNonNegativeIntegerField(value.genseq);
+    if (course === null || genseq === null || typeof value.finishedAt !== 'string') return null;
+    if (value.startedAt !== undefined && typeof value.startedAt !== 'string') return null;
+    return {
+      kind: 'closed',
+      course: toDialogCourseNumber(course),
+      genseq: toCallSiteGenseqNo(genseq),
+      ...(value.startedAt === undefined ? {} : { startedAt: value.startedAt }),
+      finishedAt: value.finishedAt,
+    };
+  }
+  return null;
+}
+
+function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.triggerId !== 'string' || value.triggerId.trim() === '') return null;
+  switch (value.kind) {
+    case 'user_input': {
+      const course = parsePositiveIntegerField(value.course);
+      const genseq = parseNonNegativeIntegerField(value.genseq);
+      if (course === null || genseq === null) return null;
+      return {
+        triggerId: value.triggerId,
+        kind: 'user_input',
+        course: toDialogCourseNumber(course),
+        genseq: toCallSiteGenseqNo(genseq),
+      };
+    }
+    case 'queued_prompt': {
+      const course = parsePositiveIntegerField(value.course);
+      if (course === null || typeof value.promptId !== 'string' || value.promptId.trim() === '') {
+        return null;
+      }
+      return {
+        triggerId: value.triggerId,
+        kind: 'queued_prompt',
+        promptId: value.promptId,
+        course: toDialogCourseNumber(course),
+      };
+    }
+    case 'mainline_diligence': {
+      const pendingTellaskCount = parseNonNegativeIntegerField(value.pendingTellaskCount);
+      if (
+        pendingTellaskCount === null ||
+        typeof value.diligenceId !== 'string' ||
+        value.diligenceId.trim() === ''
+      ) {
+        return null;
+      }
+      return {
+        triggerId: value.triggerId,
+        kind: 'mainline_diligence',
+        diligenceId: value.diligenceId,
+        pendingTellaskCount,
+      };
+    }
+    case 'result_arrival': {
+      if (
+        typeof value.dispatchBatchId !== 'string' ||
+        value.dispatchBatchId.trim() === '' ||
+        typeof value.ownerDialogId !== 'string' ||
+        value.ownerDialogId.trim() === ''
+      ) {
+        return null;
+      }
+      return {
+        triggerId: value.triggerId,
+        kind: 'result_arrival',
+        dispatchBatchId: value.dispatchBatchId,
+        ownerDialogId: value.ownerDialogId,
+      };
+    }
+    case 'open_generation_recovery': {
+      const course = parsePositiveIntegerField(value.course);
+      const genseq = parseNonNegativeIntegerField(value.genseq);
+      if (course === null || genseq === null) return null;
+      return {
+        triggerId: value.triggerId,
+        kind: 'open_generation_recovery',
+        course: toDialogCourseNumber(course),
+        genseq: toCallSiteGenseqNo(genseq),
+      };
+    }
+    case 'reply_delivery_recovery': {
+      if (
+        typeof value.replyDeliveryId !== 'string' ||
+        value.replyDeliveryId.trim() === '' ||
+        typeof value.targetDialogId !== 'string' ||
+        value.targetDialogId.trim() === ''
+      ) {
+        return null;
+      }
+      return {
+        triggerId: value.triggerId,
+        kind: 'reply_delivery_recovery',
+        replyDeliveryId: value.replyDeliveryId,
+        targetDialogId: value.targetDialogId,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function parseDialogNextStepTriggerState(value: unknown): DialogNextStepTriggerState | null {
+  if (!isRecord(value)) return null;
+  if (!Array.isArray(value.triggers)) return null;
+  const triggers: DialogNextStepTrigger[] = [];
+  const seen = new Set<string>();
+  for (const raw of value.triggers) {
+    const trigger = parseDialogNextStepTrigger(raw);
+    if (trigger === null) return null;
+    if (seen.has(trigger.triggerId)) return null;
+    seen.add(trigger.triggerId);
+    triggers.push(trigger);
+  }
+  return { triggers };
+}
+
+function parseDialogReplyDeliveryState(value: unknown): DialogReplyDeliveryState | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.replyDeliveryId !== 'string' || value.replyDeliveryId.trim() === '') return null;
+  if (value.status !== 'pending' && value.status !== 'delivered') return null;
+  if (value.toolResultStatus !== 'pending' && value.toolResultStatus !== 'recorded') return null;
+  if (
+    value.expectedReplyCallName !== 'replyTellask' &&
+    value.expectedReplyCallName !== 'replyTellaskSessionless' &&
+    value.expectedReplyCallName !== 'replyTellaskBack'
+  ) {
+    return null;
+  }
+  if (typeof value.targetDialogId !== 'string' || value.targetDialogId.trim() === '') return null;
+  if (typeof value.targetCallId !== 'string' || value.targetCallId.trim() === '') return null;
+  if (typeof value.replyCallId !== 'string' || value.replyCallId.trim() === '') return null;
+  const replyGenseq = parsePositiveIntegerField(value.replyGenseq);
+  if (replyGenseq === null) return null;
+  if (typeof value.replyContent !== 'string') return null;
+  if (typeof value.createdAt !== 'string') return null;
+  if (value.deliveredAt !== undefined && typeof value.deliveredAt !== 'string') return null;
+  return {
+    replyDeliveryId: value.replyDeliveryId,
+    status: value.status,
+    toolResultStatus: value.toolResultStatus,
+    expectedReplyCallName: value.expectedReplyCallName,
+    targetDialogId: value.targetDialogId,
+    targetCallId: value.targetCallId,
+    replyCallId: value.replyCallId,
+    replyGenseq: toCallSiteGenseqNo(replyGenseq),
+    replyContent: value.replyContent,
+    createdAt: value.createdAt,
+    ...(value.deliveredAt === undefined ? {} : { deliveredAt: value.deliveredAt }),
+  };
+}
+
 function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (!isRecord(value)) return null;
 
@@ -1757,6 +1974,23 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     }
   })();
   if (executionMarker === null) return null;
+
+  const generationRunStateRaw = (value as Record<string, unknown>).generationRunState;
+  const generationRunState: DialogGenerationRunState | null | undefined =
+    generationRunStateRaw === undefined
+      ? undefined
+      : parseDialogGenerationRunState(generationRunStateRaw);
+  if (generationRunState === null) return null;
+
+  const nextStepRaw = (value as Record<string, unknown>).nextStep;
+  const nextStep: DialogNextStepTriggerState | null | undefined =
+    nextStepRaw === undefined ? undefined : parseDialogNextStepTriggerState(nextStepRaw);
+  if (nextStep === null) return null;
+
+  const replyDeliveryRaw = (value as Record<string, unknown>).replyDelivery;
+  const replyDelivery: DialogReplyDeliveryState | null | undefined =
+    replyDeliveryRaw === undefined ? undefined : parseDialogReplyDeliveryState(replyDeliveryRaw);
+  if (replyDelivery === null) return null;
 
   const sideDialogFinalResponseRaw = (value as Record<string, unknown>).sideDialogFinalResponse;
   const sideDialogFinalResponse: DialogSideDialogFinalResponseState | null | undefined = (() => {
@@ -1880,6 +2114,9 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     needsDrive: value.needsDrive,
     displayState,
     executionMarker,
+    generationRunState,
+    nextStep,
+    replyDelivery,
     latestAssignmentAnchor,
     sideDialogFinalResponse,
     fbrState,
@@ -2389,6 +2626,11 @@ export class DiskFileDialogStore extends DialogStore {
     }
     const funcResultRecord = buildFuncResultRecord(funcResult, genseq);
     await this.appendEvent(dialog, course, funcResultRecord);
+    await DialogPersistence.markReplyDeliveryToolResultRecorded(
+      dialog.id,
+      funcResult.id,
+      dialog.status,
+    );
 
     // Send event to frontend
     if (
@@ -2622,9 +2864,10 @@ export class DiskFileDialogStore extends DialogStore {
   public async notifyGeneratingStart(dialog: Dialog, msgId?: string): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
+    const startedAt = formatUnifiedTimestamp(new Date());
     try {
       const ev: PersistedDialogRecord = {
-        ts: formatUnifiedTimestamp(new Date()),
+        ts: startedAt,
         type: 'gen_start_record',
         genseq: genseq,
       };
@@ -2645,7 +2888,16 @@ export class DiskFileDialogStore extends DialogStore {
       // Update generating flag in latest.yaml
       await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
         kind: 'patch',
-        patch: { generating: true },
+        patch: {
+          generating: true,
+          generationRunState: {
+            kind: 'open',
+            course: toDialogCourseNumber(course),
+            genseq: toCallSiteGenseqNo(genseq),
+            startedAt,
+            ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
+          },
+        },
       }));
     } catch (err) {
       log.warn('Failed to persist gen_start event', err);
@@ -2665,9 +2917,10 @@ export class DiskFileDialogStore extends DialogStore {
     if (genseq === undefined) {
       throw new Error('Missing active genseq for notifyGeneratingFinish');
     }
+    const finishedAt = formatUnifiedTimestamp(new Date());
     try {
       const ev: PersistedDialogRecord = {
-        ts: formatUnifiedTimestamp(new Date()),
+        ts: finishedAt,
         type: 'gen_finish_record',
         genseq: genseq,
         contextHealth,
@@ -2697,7 +2950,15 @@ export class DiskFileDialogStore extends DialogStore {
       // Update generating flag in latest.yaml
       await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
         kind: 'patch',
-        patch: { generating: false },
+        patch: {
+          generating: false,
+          generationRunState: {
+            kind: 'closed',
+            course: toDialogCourseNumber(course),
+            genseq: toCallSiteGenseqNo(genseq),
+            finishedAt,
+          },
+        },
       }));
     } catch (err) {
       log.warn('Failed to persist gen_finish event', err);
@@ -3414,6 +3675,12 @@ export class DiskFileDialogStore extends DialogStore {
     if (activeObligation?.targetCallId === payload.targetCallId) {
       await DialogPersistence.setActiveTellaskReplyObligation(dialog.id, undefined, dialog.status);
     }
+    await DialogPersistence.markReplyDeliveryDelivered(
+      dialog.id,
+      payload.callId,
+      record.ts,
+      dialog.status,
+    );
   }
 
   /**
@@ -3566,6 +3833,61 @@ export class DiskFileDialogStore extends DialogStore {
     });
 
     await this.appendEvent(dialog, course, tellaskCallEvent);
+
+    if (isReplyTellaskCallRecordName(name)) {
+      const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+        dialog.id,
+        dialog.status,
+      );
+      const parsed = parseTellaskReplyCallContent(tellaskCallEvent);
+      if (
+        activeReplyObligation &&
+        activeReplyObligation.expectedReplyCallName === name &&
+        parsed.ok
+      ) {
+        const replyDeliveryId = buildReplyDeliveryId(dialog.id, id);
+        await DialogPersistence.mutateDialogLatest(
+          dialog.id,
+          (previous) => {
+            const existingPending = previous.replyDelivery;
+            if (
+              existingPending &&
+              existingPending.status === 'pending' &&
+              existingPending.replyCallId !== id
+            ) {
+              throw new Error(
+                `persistTellaskCall invariant violation: duplicate pending reply delivery ` +
+                  `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, existing=${existingPending.replyCallId}, incoming=${id})`,
+              );
+            }
+            return {
+              kind: 'patch',
+              patch: {
+                replyDelivery: {
+                  replyDeliveryId,
+                  status: 'pending',
+                  toolResultStatus: 'pending',
+                  expectedReplyCallName: name,
+                  targetDialogId: activeReplyObligation.targetDialogId,
+                  targetCallId: activeReplyObligation.targetCallId,
+                  replyCallId: id,
+                  replyGenseq: toCallSiteGenseqNo(genseq),
+                  replyContent: parsed.replyContent,
+                  createdAt: tellaskCallEvent.ts,
+                },
+                nextStep: upsertNextStepTrigger(previous.nextStep, {
+                  triggerId: buildReplyDeliveryRecoveryTriggerId(replyDeliveryId),
+                  kind: 'reply_delivery_recovery',
+                  replyDeliveryId,
+                  targetDialogId: activeReplyObligation.targetDialogId,
+                }),
+              },
+            };
+          },
+          dialog.status,
+        );
+      }
+    }
 
     if (tellaskCallEvent.deliveryMode === 'func_call_requested') {
       const funcCallEvt: FuncCallStartEvent = {
@@ -4962,6 +5284,32 @@ type PendingSideDialogsMutateOutcome = {
   records: PendingSideDialogStateRecord[];
   removedRecords: PendingSideDialogStateRecord[];
 };
+
+function removeNextStepTrigger(
+  state: DialogNextStepTriggerState | undefined,
+  predicate: (trigger: DialogNextStepTrigger) => boolean,
+): DialogNextStepTriggerState | undefined {
+  const previous = state?.triggers ?? [];
+  const triggers = previous.filter((trigger) => !predicate(trigger));
+  return triggers.length === 0 ? undefined : { triggers };
+}
+
+function upsertNextStepTrigger(
+  state: DialogNextStepTriggerState | undefined,
+  trigger: DialogNextStepTrigger,
+): DialogNextStepTriggerState {
+  const previous = state?.triggers ?? [];
+  const triggers = previous.filter((entry) => entry.triggerId !== trigger.triggerId);
+  return { triggers: [...triggers, trigger] };
+}
+
+function buildReplyDeliveryId(dialogId: DialogID, replyCallId: string): string {
+  return `reply-delivery:${dialogId.rootId}:${dialogId.selfId}:${replyCallId}`;
+}
+
+function buildReplyDeliveryRecoveryTriggerId(replyDeliveryId: string): string {
+  return `reply-delivery-recovery:${replyDeliveryId}`;
+}
 
 type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
   currentCourse?: number;
@@ -6946,6 +7294,8 @@ export class DialogPersistence {
     if (!isRecord(value)) return false;
     if (typeof value.sideDialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
+    if (typeof value.dispatchBatchId !== 'string') return false;
+    if (value.dispatchBatchId.trim() === '') return false;
     if (
       value.callName !== 'tellask' &&
       value.callName !== 'tellaskSessionless' &&
@@ -8085,6 +8435,68 @@ export class DialogPersistence {
       .tellaskReplyObligation;
   }
 
+  static async markReplyDeliveryDelivered(
+    dialogId: DialogID,
+    replyCallId: string,
+    deliveredAt: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const replyDelivery = previous.replyDelivery;
+        if (!replyDelivery || replyDelivery.replyCallId !== replyCallId) {
+          return { kind: 'noop' };
+        }
+        const nextStep = removeNextStepTrigger(
+          previous.nextStep,
+          (trigger) =>
+            trigger.kind === 'reply_delivery_recovery' &&
+            trigger.replyDeliveryId === replyDelivery.replyDeliveryId,
+        );
+        return {
+          kind: 'patch',
+          patch: {
+            replyDelivery: {
+              ...replyDelivery,
+              status: 'delivered',
+              deliveredAt,
+            },
+            nextStep,
+            needsDrive: nextStep !== undefined,
+          },
+        };
+      },
+      status,
+    );
+  }
+
+  static async markReplyDeliveryToolResultRecorded(
+    dialogId: DialogID,
+    replyCallId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const replyDelivery = previous.replyDelivery;
+        if (!replyDelivery || replyDelivery.replyCallId !== replyCallId) {
+          return { kind: 'noop' };
+        }
+        return {
+          kind: 'patch',
+          patch: {
+            replyDelivery: {
+              ...replyDelivery,
+              toolResultStatus: 'recorded',
+            },
+          },
+        };
+      },
+      status,
+    );
+  }
+
   private static async requireSideDialogAskerStackState(
     dialogId: DialogID,
     status: DialogStatusKind,
@@ -8658,7 +9070,24 @@ export class DialogPersistence {
   ): Promise<void> {
     await this.mutateDialogLatest(
       dialogId,
-      () => ({ kind: 'patch', patch: { needsDrive } }),
+      (previous) => {
+        const triggerId = `legacy-needs-drive:${dialogId.selfId}`;
+        const nextStep = needsDrive
+          ? upsertNextStepTrigger(previous.nextStep, {
+              triggerId,
+              kind: 'queued_prompt',
+              promptId: 'legacy-needs-drive',
+              course: toDialogCourseNumber(previous.currentCourse),
+            })
+          : removeNextStepTrigger(previous.nextStep, (trigger) => trigger.triggerId === triggerId);
+        return {
+          kind: 'patch',
+          patch: {
+            needsDrive: nextStep !== undefined,
+            nextStep,
+          },
+        };
+      },
       status,
     );
   }

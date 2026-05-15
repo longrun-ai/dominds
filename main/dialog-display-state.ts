@@ -897,7 +897,14 @@ async function computeIdleDisplayStateForReconciliation(
 }
 
 export function isRecoverableGeneratingLatest(latest: DialogLatestFile | null): boolean {
-  if (latest?.generating !== true) {
+  if (!latest) {
+    return false;
+  }
+  if (latest.generationRunState !== undefined) {
+    if (latest.generationRunState.kind !== 'open') {
+      return false;
+    }
+  } else if (latest.generating !== true) {
     return false;
   }
   const marker = latest.executionMarker;
@@ -982,10 +989,30 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
 
     if (isRecoverableGeneratingLatest(latest)) {
       try {
-        await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+        const generationRunState = latest.generationRunState;
+        if (generationRunState === undefined || generationRunState.kind !== 'open') {
+          throw new Error(
+            `display-state recovery invariant violation: missing open generation state ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
+          );
+        }
+        await DialogPersistence.mutateDialogLatest(dialogId, (previous) => ({
           kind: 'patch',
           patch: {
             needsDrive: true,
+            nextStep: {
+              triggers: [
+                ...(previous.nextStep?.triggers.filter(
+                  (trigger) => trigger.kind !== 'open_generation_recovery',
+                ) ?? []),
+                {
+                  triggerId: `open-generation-recovery:${dialogId.selfId}:${generationRunState.course}:${generationRunState.genseq}`,
+                  kind: 'open_generation_recovery',
+                  course: generationRunState.course,
+                  genseq: generationRunState.genseq,
+                },
+              ],
+            },
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&
