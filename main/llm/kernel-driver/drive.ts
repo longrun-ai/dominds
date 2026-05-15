@@ -1946,10 +1946,15 @@ async function maybeContinueWithDiligencePrompt(args: {
   }
 
   if (prepared.kind === 'prompt') {
-    const pendingTellaskCount =
+    const activeCallees =
       dlg instanceof MainDialog
-        ? (await DialogPersistence.loadPendingSideDialogs(dlg.id, dlg.status)).length
-        : 0;
+        ? await DialogPersistence.loadActiveCallees(dlg.id, dlg.status)
+        : { batches: [] };
+    const pendingTellaskCount = activeCallees.batches.reduce(
+      (count, batch) =>
+        count + batch.callees.filter((callee) => callee.status === 'pending').length,
+      0,
+    );
     await DialogPersistence.upsertNextStepTrigger(dlg.id, {
       triggerId: `mainline-diligence:${prepared.prompt.msgId}`,
       kind: 'mainline_diligence',

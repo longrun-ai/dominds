@@ -17,7 +17,6 @@ import type {
   DialogLatestFile,
   DialogMetadataFile,
   MainDialogMetadataFile,
-  PendingSideDialogStateRecord,
   SideDialogAssignmentFromAsker,
 } from '@longrun-ai/kernel/types/storage';
 import type {
@@ -218,11 +217,14 @@ type BackgroundCalleeDialogSummary = Readonly<{
 }>;
 
 function summarizeBackgroundCalleeDialogs(
-  pending: readonly PendingSideDialogStateRecord[],
+  activeCallees: Awaited<ReturnType<typeof DialogPersistence.loadActiveCallees>>,
 ): BackgroundCalleeDialogSummary {
+  const pendingCallees = activeCallees.batches.flatMap((batch) =>
+    batch.callees.filter((callee) => callee.status === 'pending'),
+  );
   return {
-    backgroundCalleeDialogCount: pending.length,
-    backgroundFreshBootsReasoningCalleeCount: pending.filter(
+    backgroundCalleeDialogCount: pendingCallees.length,
+    backgroundFreshBootsReasoningCalleeCount: pendingCallees.filter(
       (entry) => entry.callName === 'freshBootsReasoning',
     ).length,
   };
@@ -233,23 +235,19 @@ async function loadBackgroundCalleeDialogSummary(
   status: PersistableDialogStatus,
 ): Promise<BackgroundCalleeDialogSummary> {
   try {
-    // Pending-sideDialogs is also lazy-loaded per dialog. A malformed queue should quarantine just
+    // Active callees are lazy-loaded per dialog. A malformed queue should quarantine just
     // that dialog and degrade this derived badge state to empty instead of taking down the
     // surrounding list or hierarchy response.
-    const pending = await DialogPersistence.loadPendingSideDialogs(dialogId, status);
-    return summarizeBackgroundCalleeDialogs(pending);
+    const activeCallees = await DialogPersistence.loadActiveCallees(dialogId, status);
+    return summarizeBackgroundCalleeDialogs(activeCallees);
   } catch (error: unknown) {
     if (!findDomindsPersistenceFileError(error)) {
       throw error;
     }
-    log.warn(
-      'loadBackgroundCalleeDialogSummary: pending-sideDialogs quarantined during lookup',
-      error,
-      {
-        dialogId: dialogId.valueOf(),
-        status,
-      },
-    );
+    log.warn('loadBackgroundCalleeDialogSummary: active-callees quarantined during lookup', error, {
+      dialogId: dialogId.valueOf(),
+      status,
+    });
     return { backgroundCalleeDialogCount: 0, backgroundFreshBootsReasoningCalleeCount: 0 };
   }
 }

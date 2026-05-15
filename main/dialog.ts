@@ -40,6 +40,7 @@ import type {
 } from '@longrun-ai/kernel/types/drive-intent';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
+  ActiveCalleesFile,
   CalleeCourseNumber,
   CalleeGenerationSeqNumber,
   CallSiteCourseNo,
@@ -593,10 +594,12 @@ export abstract class Dialog {
    */
   public async hasPendingSideDialogs(): Promise<boolean> {
     try {
-      const pending = await this.dlgStore.loadPendingSideDialogs(this.id, this.status);
-      return pending.length > 0;
+      const activeCallees = await this.dlgStore.loadActiveCallees(this.id, this.status);
+      return activeCallees.batches.some((batch) =>
+        batch.callees.some((callee) => callee.status === 'pending'),
+      );
     } catch (err) {
-      log.warn('Failed to load pending sideDialogs for pending check', undefined, {
+      log.warn('Failed to load active callees for pending check', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -2692,6 +2695,13 @@ export abstract class DialogStore {
     _status: 'running' | 'completed' | 'archived',
   ): Promise<PendingSideDialog[]> {
     return [];
+  }
+
+  public async loadActiveCallees(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<ActiveCalleesFile> {
+    return { batches: [] };
   }
 
   public async saveSideDialogRegistry(

@@ -4159,6 +4159,13 @@ export class DiskFileDialogStore extends DialogStore {
     }));
   }
 
+  public async loadActiveCallees(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<ActiveCalleesFile> {
+    return await DialogPersistence.loadActiveCallees(dialogId, status);
+  }
+
   public async saveSideDialogRegistry(
     dialog: MainDialog,
     mainDialogId: DialogID,
