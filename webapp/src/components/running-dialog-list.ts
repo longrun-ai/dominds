@@ -72,9 +72,8 @@ export class RunningDialogList extends HTMLElement {
     'state-proceeding-stop',
     'state-stopped',
     'state-blocked-q4h',
-    'state-blocked-sideDialogs',
-    'state-blocked-both',
-    'state-blocked-fbr',
+    'state-background-callee',
+    'state-background-fbr',
   ];
 
   constructor() {
@@ -172,7 +171,11 @@ export class RunningDialogList extends HTMLElement {
     next.selfId = existing.selfId;
 
     this.applyDialogDataAttributes(entry.el, next);
-    if (patch.displayState !== undefined || patch.waitingForFreshBootsReasoning !== undefined) {
+    if (
+      patch.displayState !== undefined ||
+      patch.backgroundCalleeDialogCount !== undefined ||
+      patch.backgroundFreshBootsReasoningCalleeCount !== undefined
+    ) {
       this.updateDisplayStateForEntry(entry.el, next);
     }
     if (patch.lastModified !== undefined) {
@@ -224,14 +227,8 @@ export class RunningDialogList extends HTMLElement {
     return this.dialogKey(rootId, selfId);
   }
 
-  private isWaitingForFreshBootsReasoning(dialog: ApiMainDialogResponse): boolean {
-    if (dialog.waitingForFreshBootsReasoning !== true) return false;
-    const displayState = dialog.displayState;
-    if (!displayState || displayState.kind !== 'blocked') return false;
-    return (
-      displayState.reason.kind === 'waiting_for_sideDialogs' ||
-      displayState.reason.kind === 'needs_human_input_and_sideDialogs'
-    );
+  private getPositiveInt(value: number | undefined): number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0;
   }
 
   private renderRunBadge(
@@ -245,7 +242,10 @@ export class RunningDialogList extends HTMLElement {
   private renderRunBadges(dialog: ApiMainDialogResponse): string {
     const t = getUiStrings(this.props.uiLanguage);
     const visualState = runControlVisualStateFromDisplayState(dialog.displayState);
-    const waitingForFreshBootsReasoning = this.isWaitingForFreshBootsReasoning(dialog);
+    const backgroundCalleeDialogCount = this.getPositiveInt(dialog.backgroundCalleeDialogCount);
+    const backgroundFreshBootsReasoningCalleeCount = this.getPositiveInt(
+      dialog.backgroundFreshBootsReasoningCalleeCount,
+    );
     const badges: string[] = [];
 
     switch (visualState.kind) {
@@ -269,33 +269,26 @@ export class RunningDialogList extends HTMLElement {
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         break;
-      case 'blocked_sideDialogs':
-        badges.push(
-          waitingForFreshBootsReasoning
-            ? this.renderRunBadge(
-                'blocked blocked-fbr',
-                t.runBadgeWaitingFbrTitle,
-                'run-badge-fbr-icon',
-              )
-            : this.renderRunBadge('blocked blocked-sideDialogs', t.runBadgeWaitingSideDialogsTitle),
-        );
-        break;
-      case 'blocked_both':
-        badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
-        badges.push(
-          waitingForFreshBootsReasoning
-            ? this.renderRunBadge(
-                'blocked blocked-fbr',
-                t.runBadgeWaitingFbrTitle,
-                'run-badge-fbr-icon',
-              )
-            : this.renderRunBadge('blocked blocked-sideDialogs', t.runBadgeWaitingSideDialogsTitle),
-        );
-        break;
       default: {
         const _exhaustive: never = visualState;
         throw new Error(`Unhandled RunControlVisualState: ${String(_exhaustive)}`);
       }
+    }
+    if (backgroundFreshBootsReasoningCalleeCount > 0) {
+      badges.push(
+        this.renderRunBadge(
+          'background background-fbr',
+          t.runBadgeBackgroundFbrCalleeTitle,
+          'run-badge-fbr-icon',
+        ),
+      );
+    }
+    const nonFbrBackgroundCalleeCount =
+      backgroundCalleeDialogCount - backgroundFreshBootsReasoningCalleeCount;
+    if (nonFbrBackgroundCalleeCount > 0) {
+      badges.push(
+        this.renderRunBadge('background background-callee', t.runBadgeBackgroundCalleeTitle),
+      );
     }
 
     if (badges.length === 0) return '';
@@ -308,8 +301,14 @@ export class RunningDialogList extends HTMLElement {
     if (suffix) {
       classes.push(suffix);
     }
-    if (this.isWaitingForFreshBootsReasoning(dialog)) {
-      classes.push('state-blocked-fbr');
+    if (this.getPositiveInt(dialog.backgroundFreshBootsReasoningCalleeCount) > 0) {
+      classes.push('state-background-fbr');
+    }
+    if (
+      this.getPositiveInt(dialog.backgroundCalleeDialogCount) >
+      this.getPositiveInt(dialog.backgroundFreshBootsReasoningCalleeCount)
+    ) {
+      classes.push('state-background-callee');
     }
     return classes.length > 0 ? ` ${classes.join(' ')}` : '';
   }
@@ -1841,9 +1840,9 @@ export class RunningDialogList extends HTMLElement {
         );
       }
 
-      .run-badge.blocked-sideDialogs {
+      .run-badge.background-callee {
         --run-badge-bg: var(
-          --dominds-run-badge-waiting-sideDialogs-bg,
+          --dominds-run-badge-background-callee-bg,
           color-mix(
             in srgb,
             var(--dominds-fg, #0f172a) 92%,
@@ -1851,18 +1850,18 @@ export class RunningDialogList extends HTMLElement {
           )
         );
         --run-badge-color: var(
-          --dominds-run-badge-waiting-sideDialogs-fg,
+          --dominds-run-badge-background-callee-fg,
           var(--dominds-info, #005fb8)
         );
         --run-badge-border: var(
-          --dominds-run-badge-waiting-sideDialogs-border,
+          --dominds-run-badge-background-callee-border,
           var(--dominds-info-border, transparent)
         );
       }
 
-      .run-badge.blocked-fbr {
+      .run-badge.background-fbr {
         --run-badge-bg: var(
-          --dominds-run-badge-waiting-fbr-bg,
+          --dominds-run-badge-background-fbr-bg,
           color-mix(
             in srgb,
             var(--dominds-fg, #0f172a) 92%,
@@ -1870,10 +1869,10 @@ export class RunningDialogList extends HTMLElement {
           )
         );
         --run-badge-color: var(
-          --dominds-run-badge-waiting-fbr-fg,
+          --dominds-run-badge-background-fbr-fg,
           var(--dominds-run-badge-fbr-accent, #8b5cf6)
         );
-        --run-badge-border: var(--dominds-run-badge-waiting-fbr-border, transparent);
+        --run-badge-border: var(--dominds-run-badge-background-fbr-border, transparent);
       }
 
       .run-badge.proceeding .run-badge-icon {
@@ -1888,11 +1887,11 @@ export class RunningDialogList extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.helpCircle};
       }
 
-      .run-badge.blocked-sideDialogs .run-badge-icon {
+      .run-badge.background-callee .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.call};
       }
 
-      .run-badge.blocked-fbr .run-badge-fbr-icon {
+      .run-badge.background-fbr .run-badge-fbr-icon {
         --icon-mask: ${ICON_MASK_URLS.brain};
       }
 

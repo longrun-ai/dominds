@@ -134,14 +134,21 @@ async function main(): Promise<void> {
     assert.equal(
       assistantSayings[assistantSayings.length - 1]?.content,
       followUpAnswer,
-      'follow-up assistant round should complete before the dialog suspends on pending sideDialogs',
+      'follow-up assistant round should complete while the pending tellask remains background work',
     );
 
     const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
     assert.equal(
       pendingSideDialogs.length,
       1,
-      'expected the tellask-created sideDialog to remain pending after the follow-up round suspends',
+      'expected the tellask-created sideDialog to remain pending after the follow-up round',
+    );
+
+    const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+    assert.notEqual(
+      latest?.displayState?.kind === 'blocked' ? latest.displayState.reason.kind : 'not_blocked',
+      'waiting_for_sideDialogs',
+      'pending tellask must not project the caller dialog into waiting_for_sideDialogs',
     );
   });
 

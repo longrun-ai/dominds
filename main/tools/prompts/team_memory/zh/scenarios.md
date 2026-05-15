@@ -103,7 +103,7 @@ add_team_memory({
 add_team_memory({
   path: 'team/glossary/dialog-terms',
   content:
-    '## 对话术语\n\n- 用户面向文案优先使用：主线对话 / 支线对话\n- 实现上下文可使用：main dialog / sideDialog / askerDialog\n- 不要把实现术语直接裸露到用户可见 copy',
+    '## 对话术语\n\n- 生命周期、导航、归档、差遣牒职责：主线对话 / 支线对话\n- 诉请链路、回贴、结果到达、继续推进：诉请者 / 被诉请者\n- 实现上下文可使用：main dialog / sideDialog / askerDialog\n- 不要把实现术语直接裸露到用户可见 copy',
 });
 ```
 

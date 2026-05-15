@@ -118,7 +118,7 @@ async function main(): Promise<void> {
         status: 'active',
         generating: true,
         displayState: { kind: 'idle_waiting_user' },
-        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_course_start' } },
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_runtime_prompt' } },
       },
     }));
     const healedGenerating = await DialogPersistence.loadDialogLatest(dialogId);
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
       reason: { kind: 'declared_by_user' },
     });
 
-    // Invariant 6: clearing a pending course-start prompt must not regress a live generating round
+    // Invariant 6: clearing a pending runtime prompt must not regress a live generating round
     // back to idle if a newer write has already reasserted proceeding.
     await DialogPersistence.mutateDialogLatest(dialogId, () => ({
       kind: 'replace',
@@ -162,28 +162,28 @@ async function main(): Promise<void> {
         generating: true,
         displayState: {
           kind: 'stopped',
-          reason: { kind: 'pending_course_start' },
+          reason: { kind: 'pending_runtime_prompt' },
           continueEnabled: true,
         },
-        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_course_start' } },
-        pendingCourseStartPrompt: {
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_runtime_prompt' } },
+        pendingRuntimePrompt: {
           content: 'resume current round',
-          msgId: 'pending-course-start-msg',
+          msgId: 'pending-runtime-prompt-msg',
           grammar: 'markdown',
           origin: 'runtime',
         },
       },
     }));
-    await DialogPersistence.clearPendingCourseStartPrompt(dialogId, 'pending-course-start-msg');
-    const clearedPendingCourseStart = await DialogPersistence.loadDialogLatest(dialogId);
-    assert.ok(clearedPendingCourseStart, 'Expected latest after clearing pending course-start');
-    assert.equal(clearedPendingCourseStart.generating, true);
-    assert.deepEqual(clearedPendingCourseStart.displayState, { kind: 'proceeding' });
-    assert.equal(clearedPendingCourseStart.pendingCourseStartPrompt, undefined);
-    assert.equal(clearedPendingCourseStart.executionMarker, undefined);
+    await DialogPersistence.clearPendingRuntimePrompt(dialogId, 'pending-runtime-prompt-msg');
+    const clearedPendingRuntimePrompt = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(clearedPendingRuntimePrompt, 'Expected latest after clearing pending runtime-prompt');
+    assert.equal(clearedPendingRuntimePrompt.generating, true);
+    assert.deepEqual(clearedPendingRuntimePrompt.displayState, { kind: 'proceeding' });
+    assert.equal(clearedPendingRuntimePrompt.pendingRuntimePrompt, undefined);
+    assert.equal(clearedPendingRuntimePrompt.executionMarker, undefined);
 
     // Invariant 7: startNewCourse during an active generation must only queue the pending prompt;
-    // it must not regress the live round into pending_course_start before the generation finishes.
+    // it must not regress the live round into pending_runtime_prompt before the generation finishes.
     const activeDialogId = new DialogID('71/6b/eb9d1270');
     const activeMetadata: MainDialogMetadataFile = {
       id: activeDialogId.selfId,
@@ -217,7 +217,7 @@ async function main(): Promise<void> {
     await activeDialog.notifyGeneratingStart('active-course-msg');
     await activeStore.startNewCourse(activeDialog, {
       content: 'continue in course two after current generation',
-      msgId: 'pending-active-course-start-msg',
+      msgId: 'pending-active-runtime-prompt-msg',
       grammar: 'markdown',
       origin: 'runtime',
       userLanguageCode: 'en',
@@ -231,8 +231,8 @@ async function main(): Promise<void> {
     assert.deepEqual(latestDuringActiveGeneration.displayState, { kind: 'proceeding' });
     assert.equal(latestDuringActiveGeneration.executionMarker, undefined);
     assert.equal(
-      latestDuringActiveGeneration.pendingCourseStartPrompt?.msgId,
-      'pending-active-course-start-msg',
+      latestDuringActiveGeneration.pendingRuntimePrompt?.msgId,
+      'pending-active-runtime-prompt-msg',
     );
 
     // Invariant 8: a finished generation must not keep poisoning later startNewCourse writes.
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
     await settledDialog.notifyGeneratingFinish();
     await settledStore.startNewCourse(settledDialog, {
       content: 'continue in course two after the previous generation already finished',
-      msgId: 'pending-settled-course-start-msg',
+      msgId: 'pending-settled-runtime-prompt-msg',
       grammar: 'markdown',
       origin: 'runtime',
       userLanguageCode: 'en',
@@ -285,16 +285,16 @@ async function main(): Promise<void> {
     assert.equal(latestAfterSettledGeneration.generating, false);
     assert.deepEqual(latestAfterSettledGeneration.displayState, {
       kind: 'stopped',
-      reason: { kind: 'pending_course_start' },
+      reason: { kind: 'pending_runtime_prompt' },
       continueEnabled: true,
     });
     assert.deepEqual(latestAfterSettledGeneration.executionMarker, {
       kind: 'interrupted',
-      reason: { kind: 'pending_course_start' },
+      reason: { kind: 'pending_runtime_prompt' },
     });
     assert.equal(
-      latestAfterSettledGeneration.pendingCourseStartPrompt?.msgId,
-      'pending-settled-course-start-msg',
+      latestAfterSettledGeneration.pendingRuntimePrompt?.msgId,
+      'pending-settled-runtime-prompt-msg',
     );
   });
 }

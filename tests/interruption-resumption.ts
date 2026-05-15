@@ -1,4 +1,5 @@
 import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
@@ -33,6 +34,32 @@ import {
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, yaml.stringify(value), 'utf-8');
+}
+
+async function writeSideDialogAskerStack(args: {
+  sideDialogId: DialogID;
+  assignment: SideDialogAssignmentFromAsker;
+}): Promise<void> {
+  await DialogPersistence.saveSideDialogAskerStackState(
+    args.sideDialogId,
+    {
+      askerStack: [
+        {
+          kind: 'asker_dialog_stack_frame',
+          askerDialogId: args.assignment.askerDialogId,
+          assignmentFromAsker: args.assignment,
+          tellaskReplyObligation: {
+            expectedReplyCallName:
+              args.assignment.callName === 'tellask' ? 'replyTellask' : 'replyTellaskSessionless',
+            targetDialogId: args.assignment.askerDialogId,
+            targetCallId: args.assignment.callId,
+            tellaskContent: args.assignment.tellaskContent,
+          },
+        },
+      ],
+    },
+    'running',
+  );
 }
 
 async function main(): Promise<void> {
@@ -240,7 +267,8 @@ async function main(): Promise<void> {
       generating: false,
     });
 
-    // Dialog E: stale stopped projection should self-heal to blocked when pending sideDialogs exist.
+    // Dialog E: stale stopped projection should keep the explicit interruption when only
+    // background callee dialogs remain pending.
     const eRoot = 'dlg-e';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'dialog.yaml'), { id: eRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'latest.yaml'), {
@@ -282,8 +310,8 @@ async function main(): Promise<void> {
       'utf-8',
     );
 
-    // Dialog F: stale blocked projection should self-heal back to stopped when interruption remains
-    // but the underlying blockers are already gone.
+    // Dialog F: stale Q4H projection should self-heal back to stopped when interruption remains
+    // but the underlying Q4H suspension is already gone.
     const fRoot = 'dlg-f';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'dialog.yaml'), { id: fRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'latest.yaml'), {
@@ -291,7 +319,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
+      displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
       executionMarker: {
         kind: 'interrupted',
         reason: { kind: 'system_stop', detail: 'upstream failed' },
@@ -317,7 +345,40 @@ async function main(): Promise<void> {
     const jRoot = 'dlg-j';
     const jSide = 'side-j';
     const jProjectionOnlySide = 'side-j-projection-only';
-    const jBlockedProjectionSide = 'side-j-blocked-projection';
+    const jQ4hProjectionSide = 'side-j-q4h-projection';
+    const jSideAssignment: SideDialogAssignmentFromAsker = {
+      callName: 'tellask',
+      mentionList: ['@pangu'],
+      tellaskContent: 'Finalize stale generated side dialog J.',
+      originMemberId: 'tester',
+      askerDialogId: jRoot,
+      callId: 'call-side-j',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['pangu'],
+    };
+    const jProjectionOnlyAssignment: SideDialogAssignmentFromAsker = {
+      callName: 'tellask',
+      mentionList: ['@pangu'],
+      tellaskContent: 'Finalize stale projection-only side dialog J.',
+      originMemberId: 'tester',
+      askerDialogId: jRoot,
+      callId: 'call-side-j-projection-only',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['pangu'],
+    };
+    const jQ4hProjectionAssignment: SideDialogAssignmentFromAsker = {
+      callName: 'tellask',
+      mentionList: ['@pangu'],
+      tellaskContent: 'Finalize stale q4h-projection side dialog J.',
+      originMemberId: 'tester',
+      askerDialogId: jRoot,
+      callId: 'call-side-j-q4h-projection',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['pangu'],
+    };
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'dialog.yaml'), { id: jRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'latest.yaml'), {
       currentCourse: 1,
@@ -328,6 +389,10 @@ async function main(): Promise<void> {
     });
     const jSideDir = path.join(tmpRoot, '.dialogs', 'run', jRoot, 'sideDialogs', jSide);
     await writeYaml(path.join(jSideDir, 'dialog.yaml'), { id: jSide });
+    await writeSideDialogAskerStack({
+      sideDialogId: new DialogID(jSide, jRoot),
+      assignment: jSideAssignment,
+    });
     await writeYaml(path.join(jSideDir, 'latest.yaml'), {
       currentCourse: 1,
       lastModified: new Date().toISOString(),
@@ -342,6 +407,13 @@ async function main(): Promise<void> {
       executionMarker: {
         kind: 'interrupted',
         reason: { kind: 'server_restart' },
+      },
+      sideDialogFinalResponse: {
+        callId: 'call-side-j',
+        responseCourse: 1,
+        responseGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
       },
     });
     await fs.writeFile(
@@ -382,6 +454,10 @@ async function main(): Promise<void> {
       jProjectionOnlySide,
     );
     await writeYaml(path.join(jProjectionOnlySideDir, 'dialog.yaml'), { id: jProjectionOnlySide });
+    await writeSideDialogAskerStack({
+      sideDialogId: new DialogID(jProjectionOnlySide, jRoot),
+      assignment: jProjectionOnlyAssignment,
+    });
     await writeYaml(path.join(jProjectionOnlySideDir, 'latest.yaml'), {
       currentCourse: 1,
       lastModified: new Date().toISOString(),
@@ -396,6 +472,13 @@ async function main(): Promise<void> {
       executionMarker: {
         kind: 'interrupted',
         reason: { kind: 'server_restart' },
+      },
+      sideDialogFinalResponse: {
+        callId: 'call-side-j-projection-only',
+        responseCourse: 1,
+        responseGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
       },
     });
     await fs.writeFile(
@@ -415,32 +498,43 @@ async function main(): Promise<void> {
       })}\n`,
       'utf-8',
     );
-    const jBlockedProjectionSideDir = path.join(
+    const jQ4hProjectionSideDir = path.join(
       tmpRoot,
       '.dialogs',
       'run',
       jRoot,
       'sideDialogs',
-      jBlockedProjectionSide,
+      jQ4hProjectionSide,
     );
-    await writeYaml(path.join(jBlockedProjectionSideDir, 'dialog.yaml'), {
-      id: jBlockedProjectionSide,
+    await writeYaml(path.join(jQ4hProjectionSideDir, 'dialog.yaml'), {
+      id: jQ4hProjectionSide,
     });
-    await writeYaml(path.join(jBlockedProjectionSideDir, 'latest.yaml'), {
+    await writeSideDialogAskerStack({
+      sideDialogId: new DialogID(jQ4hProjectionSide, jRoot),
+      assignment: jQ4hProjectionAssignment,
+    });
+    await writeYaml(path.join(jQ4hProjectionSideDir, 'latest.yaml'), {
       currentCourse: 1,
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
       needsDrive: false,
-      displayState: { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
+      displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
+      sideDialogFinalResponse: {
+        callId: 'call-side-j-q4h-projection',
+        responseCourse: 1,
+        responseGenseq: 3,
+        askerDialogId: jRoot,
+        askerCourse: 1,
+      },
     });
     await fs.writeFile(
-      path.join(jBlockedProjectionSideDir, 'course-001.jsonl'),
+      path.join(jQ4hProjectionSideDir, 'course-001.jsonl'),
       `${JSON.stringify({
         ts: new Date().toISOString(),
         type: 'tellask_anchor_record',
         anchorRole: 'response',
-        callId: 'call-side-j-blocked-projection',
+        callId: 'call-side-j-q4h-projection',
         genseq: 3,
         rootCourse: 1,
         rootGenseq: 3,
@@ -453,7 +547,7 @@ async function main(): Promise<void> {
     );
 
     // Dialog K: pending_reply_obligation is an auto-resumable interrupted marker like
-    // pending_course_start. Restart reconciliation must preserve the in-flight drive and clear the
+    // pending_runtime_prompt. Restart reconciliation must preserve the in-flight drive and clear the
     // marker instead of turning it into a manual server_restart stop.
     const kRoot = 'dlg-k';
     const kSide = 'side-k';
@@ -606,7 +700,7 @@ async function main(): Promise<void> {
       'running',
     );
     assert.equal(latestAAfterDrive?.generating, false);
-    assert.equal(latestAAfterDrive?.displayState?.kind, 'blocked');
+    assert.deepEqual(latestAAfterDrive?.displayState, { kind: 'idle_waiting_user' });
 
     await waitFor(
       async () =>
@@ -658,9 +752,10 @@ async function main(): Promise<void> {
     );
     assert.ok(healedE, 'latest.yaml for dlg-e should exist');
     assert.ok(healedE.displayState);
-    assert.equal(healedE.displayState.kind, 'blocked');
-    assert.equal(healedE.displayState.reason.kind, 'waiting_for_sideDialogs');
-    assert.equal(healedE.executionMarker, undefined);
+    assert.equal(healedE.displayState.kind, 'stopped');
+    assert.equal(healedE.displayState.reason.kind, 'system_stop');
+    assert.equal(healedE.displayState.continueEnabled, true);
+    assert.equal(healedE.executionMarker?.kind, 'interrupted');
 
     const healedF = await refreshRunControlProjectionFromPersistenceFacts(
       new DialogID(fRoot),
@@ -718,18 +813,15 @@ async function main(): Promise<void> {
     );
     assert.equal(latestJProjectionOnly.executionMarker, undefined);
 
-    const latestJBlockedProjection = await DialogPersistence.loadDialogLatest(
-      new DialogID(jBlockedProjectionSide, jRoot),
+    const latestJQ4hProjection = await DialogPersistence.loadDialogLatest(
+      new DialogID(jQ4hProjectionSide, jRoot),
       'running',
     );
-    assert.ok(
-      latestJBlockedProjection,
-      'latest.yaml for dlg-j blocked-projection sideDialog should exist',
-    );
+    assert.ok(latestJQ4hProjection, 'latest.yaml for dlg-j q4h-projection sideDialog should exist');
     assert.deepEqual(
-      latestJBlockedProjection.displayState,
+      latestJQ4hProjection.displayState,
       { kind: 'idle_waiting_user' },
-      'finalized sideDialog should not retain stale blocked projection after restart',
+      'finalized sideDialog should not retain stale Q4H projection after restart',
     );
 
     const hRoot = 'dlg-h';

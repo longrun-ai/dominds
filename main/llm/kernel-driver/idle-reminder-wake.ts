@@ -200,11 +200,7 @@ async function loadFreshIdleWakeEligibility(dialog: Dialog): Promise<boolean> {
   if (latest.executionMarker?.kind === 'interrupted') return false;
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
   if (q4h.length > 0) return false;
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
-    dialog.id,
-    dialog.status,
-  );
-  return pendingSideDialogs.length === 0;
+  return true;
 }
 
 function collectWakeCapableReminders(

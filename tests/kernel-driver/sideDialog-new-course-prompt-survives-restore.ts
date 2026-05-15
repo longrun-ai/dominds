@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     const latestBeforeRestore = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
     assert.ok(latestBeforeRestore, 'sideDialog latest.yaml should exist before restore');
     assert.equal(
-      latestBeforeRestore.pendingCourseStartPrompt?.tellaskReplyDirective?.targetCallId,
+      latestBeforeRestore.pendingRuntimePrompt?.tellaskReplyDirective?.targetCallId,
       callId,
       'latest.yaml should durably remember the rebound reply target before restore',
     );
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       latestBeforeRestore.displayState,
       {
         kind: 'stopped',
-        reason: { kind: 'pending_course_start' },
+        reason: { kind: 'pending_runtime_prompt' },
         continueEnabled: true,
       },
       'startNewCourse should persist a stopped/resumable state for the durable pending prompt',
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
       latestBeforeRestore.executionMarker,
       {
         kind: 'interrupted',
-        reason: { kind: 'pending_course_start' },
+        reason: { kind: 'pending_runtime_prompt' },
       },
       'startNewCourse should persist an interrupted marker for the durable pending prompt',
     );
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     assert.ok(restoredQueuedPrompt, 'restore should rehydrate the pending new-course prompt');
     assert.equal(
       restoredQueuedPrompt.msgId,
-      latestBeforeRestore.pendingCourseStartPrompt?.msgId,
+      latestBeforeRestore.pendingRuntimePrompt?.msgId,
       'restored queue should reuse the durable msgId so the round stays idempotent across restart',
     );
     assert.equal(
@@ -158,19 +158,19 @@ async function main(): Promise<void> {
     const latestAfterDrive = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
     assert.ok(latestAfterDrive, 'sideDialog latest.yaml should still exist after restored drive');
     assert.equal(
-      latestAfterDrive.pendingCourseStartPrompt,
+      latestAfterDrive.pendingRuntimePrompt,
       undefined,
       'pending new-course prompt should clear once the restored round is persisted',
     );
     assert.equal(
       latestAfterDrive.needsDrive,
       false,
-      'sideDialog latest.yaml should clear needsDrive once the restored pending course-start prompt is consumed',
+      'sideDialog latest.yaml should clear needsDrive once the restored pending runtime prompt is consumed',
     );
     assert.equal(
       latestAfterDrive.executionMarker,
       undefined,
-      'sideDialog latest.yaml should clear the pending-course-start interruption marker after drive resumes',
+      'sideDialog latest.yaml should clear the pending-runtime-prompt interruption marker after drive resumes',
     );
 
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(sideDialog.id, 2, 'running');

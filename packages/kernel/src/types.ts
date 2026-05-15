@@ -49,7 +49,8 @@ export interface ApiMainDialogResponse {
   askerDialogId?: string;
   sessionSlug?: string;
   assignmentFromAsker?: AssignmentFromAsker;
-  waitingForFreshBootsReasoning?: boolean;
+  backgroundCalleeDialogCount?: number;
+  backgroundFreshBootsReasoningCalleeCount?: number;
   sideDialogCount?: number;
 }
 
@@ -66,7 +67,8 @@ export interface ApiSideDialogResponse {
   displayState?: DialogDisplayState;
   sessionSlug?: string;
   assignmentFromAsker?: AssignmentFromAsker;
-  waitingForFreshBootsReasoning?: boolean;
+  backgroundCalleeDialogCount?: number;
+  backgroundFreshBootsReasoningCalleeCount?: number;
 }
 
 export interface ApiDialogListSideDialogNode {
@@ -83,7 +85,8 @@ export interface ApiDialogListSideDialogNode {
   displayState?: DialogDisplayState;
   sessionSlug?: string;
   assignmentFromAsker?: AssignmentFromAsker;
-  waitingForFreshBootsReasoning?: boolean;
+  backgroundCalleeDialogCount?: number;
+  backgroundFreshBootsReasoningCalleeCount?: number;
 }
 
 export interface ApiDialogListSideDialogNodeResponse {
@@ -104,7 +107,8 @@ export interface ApiDialogHierarchyResponse {
       lastModified: string;
       sideDialogCount: number;
       displayState?: DialogDisplayState;
-      waitingForFreshBootsReasoning?: boolean;
+      backgroundCalleeDialogCount?: number;
+      backgroundFreshBootsReasoningCalleeCount?: number;
     };
     sideDialogs: ApiSideDialogResponse[];
   };
@@ -149,7 +153,6 @@ export type ApiForkDialogAction =
   | {
       kind: 'restore_pending';
       pendingQ4H: boolean;
-      pendingSideDialogs: boolean;
     }
   | {
       kind: 'auto_continue';

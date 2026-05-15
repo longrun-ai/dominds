@@ -23,7 +23,6 @@ import type {
 import type {
   DialogExecutionMarker,
   DialogLatestFile,
-  PersistedDialogRecord,
   TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
@@ -109,10 +108,6 @@ function isSameDisplayState(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function isSideDialogResponseAnchor(record: PersistedDialogRecord | undefined): boolean {
-  return record?.type === 'tellask_anchor_record' && record.anchorRole === 'response';
-}
-
 function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): boolean {
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
@@ -125,37 +120,9 @@ function pendingReplyObligationDisplayState(): DialogDisplayState {
   };
 }
 
-function blockerDisplayState(args: {
-  hasQ4H: boolean;
-  hasSideDialogs: boolean;
-}): DialogDisplayState | undefined {
-  if (args.hasQ4H && args.hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
-  }
-  if (args.hasQ4H) {
+function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
+  if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (args.hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
-  }
-  return undefined;
-}
-
-async function hasSideDialogFinalResponseAnchor(
-  dialogId: DialogID,
-  latest: DialogLatestFile,
-): Promise<{ callId: string } | undefined> {
-  if (dialogId.selfId === dialogId.rootId) {
-    return undefined;
-  }
-  const rawCourse = latest.currentCourse;
-  const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
-  const courseEvents = await DialogPersistence.loadCourseEvents(dialogId, currentCourse, 'running');
-  for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
-    const event = courseEvents[index];
-    if (event.type === 'tellask_anchor_record') {
-      return isSideDialogResponseAnchor(event) ? { callId: event.callId } : undefined;
-    }
   }
   return undefined;
 }
@@ -197,7 +164,7 @@ async function resolveSideDialogFinalResponseClosure(args: {
   if (!args.latest) {
     return { kind: 'no_final_response' };
   }
-  const finalResponseAnchor = await hasSideDialogFinalResponseAnchor(args.dialogId, args.latest);
+  const finalResponseAnchor = args.latest.sideDialogFinalResponse;
   if (!finalResponseAnchor) {
     return { kind: 'no_final_response' };
   }
@@ -245,12 +212,8 @@ async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
     return displayState;
   }
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
-  const blocked = blockerDisplayState({
-    hasQ4H: q4h.length > 0,
-    hasSideDialogs: pendingSideDialogs.length > 0,
-  });
-  const healedDisplayState = blocked ?? pendingReplyObligationDisplayState();
+  const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+  const healedDisplayState = q4hSuspension ?? pendingReplyObligationDisplayState();
   log.warn(
     'Prevented sideDialog with active reply obligation from entering idle display state',
     new Error('sideDialog idle display-state invariant violation'),
@@ -319,19 +282,15 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
         isStoppedReasonResumable(latest.executionMarker.reason)
       ) {
         // Keep run-control counts aligned with actual Continue affordance:
-        // - ordinary interrupted dialogs count as resumable only when no blocker remains
-        // - interjection-paused dialogs still count as resumable even if blocker facts remain,
+        // - ordinary interrupted dialogs count as resumable only when no Q4H suspension remains
+        // - interjection-paused dialogs still count as resumable even if Q4H remains,
         //   because the intended UX is that Continue exits the temporary paused projection
         //   and re-evaluates the original task from fresh facts
         if (isUserInterjectionPauseStopReason(latest.executionMarker.reason)) {
           resumable++;
         } else {
           const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-          const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
-            dialogId,
-            'running',
-          );
-          if (q4h.length === 0 && pendingSideDialogs.length === 0) {
+          if (q4h.length === 0) {
             resumable++;
           }
         }
@@ -657,18 +616,17 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
     };
   }
-  if (latest?.pendingCourseStartPrompt) {
+  if (latest?.pendingRuntimePrompt) {
     return {
       kind: 'stopped',
-      reason: { kind: 'pending_course_start' },
+      reason: { kind: 'pending_runtime_prompt' },
       continueEnabled: true,
     };
   }
   const hasQ4H = await dlg.hasPendingQ4H();
-  const hasSideDialogs = await dlg.hasPendingSideDialogs();
-  const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
-  if (blocked) {
-    return blocked;
+  const q4hSuspension = q4hSuspensionDisplayState(hasQ4H);
+  if (q4hSuspension) {
+    return q4hSuspension;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
     dialogId: dlg.id,
@@ -712,20 +670,17 @@ async function computeIdleDisplayStateFromPersistence(
       continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
     };
   }
-  if (latest?.pendingCourseStartPrompt) {
+  if (latest?.pendingRuntimePrompt) {
     return {
       kind: 'stopped',
-      reason: { kind: 'pending_course_start' },
+      reason: { kind: 'pending_runtime_prompt' },
       continueEnabled: true,
     };
   }
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
-  const hasQ4H = q4h.length > 0;
-  const hasSideDialogs = pendingSideDialogs.length > 0;
-  const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
-  if (blocked) {
-    return blocked;
+  const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+  if (q4hSuspension) {
+    return q4hSuspension;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
   if (
@@ -757,7 +712,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
   if (args.latest.executionMarker?.kind === 'dead') {
     return args.latest;
   }
-  if (args.latest.pendingCourseStartPrompt) {
+  if (args.latest.pendingRuntimePrompt) {
     return args.latest;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
@@ -849,16 +804,15 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     ) {
       // WARNING:
       // This is the one place where the projection intentionally preserves the paused-interjection
-      // stopped state ahead of the current blocker facts. That is not a bug: after a user
+      // stopped state ahead of the current suspension facts. That is not a bug: after a user
       // interjection we want the UI to keep showing "original task paused; click Continue" even if
-      // the underlying dialog is still waiting on Q4H/sideDialogs.
+      // the underlying dialog is still waiting on Q4H.
       //
-      // The true source-of-truth decision about what Continue should do next lives in
-      // `flow.ts`'s resume path, which performs a fresh fact scan at resume time and then either:
-      // - restores `blocked`, or
-      // - keeps driving immediately.
+      // The true source-of-truth decision about what Continue should do next lives in `flow.ts`'s
+      // resume path, which performs a fresh fact scan at resume time and then either restores the
+      // Q4H suspension projection or keeps driving immediately.
       //
-      // Do not "heal" this branch away by prioritizing blocker facts here; that would collapse the
+      // Do not "heal" this branch away by prioritizing suspension facts here; that would collapse the
       // temporary interjection UX and make repeated interjection turns revert too early.
       return {
         kind: 'stopped',
@@ -866,20 +820,17 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         continueEnabled: isStoppedReasonResumable(latest.executionMarker.reason),
       };
     }
-    if (latest.pendingCourseStartPrompt) {
+    if (latest.pendingRuntimePrompt) {
       return {
         kind: 'stopped',
-        reason: { kind: 'pending_course_start' },
+        reason: { kind: 'pending_runtime_prompt' },
         continueEnabled: true,
       };
     }
     const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
-    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(dialogId, 'running');
-    const hasQ4H = q4h.length > 0;
-    const hasSideDialogs = pendingSideDialogs.length > 0;
-    const blocked = blockerDisplayState({ hasQ4H, hasSideDialogs });
-    if (blocked) {
-      return blocked;
+    const q4hSuspension = q4hSuspensionDisplayState(q4h.length > 0);
+    if (q4hSuspension) {
+      return q4hSuspension;
     }
     const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
     if (
@@ -958,7 +909,7 @@ export function isRecoverableGeneratingLatest(latest: DialogLatestFile | null): 
   }
   return (
     marker.kind !== 'interrupted' ||
-    marker.reason.kind === 'pending_course_start' ||
+    marker.reason.kind === 'pending_runtime_prompt' ||
     marker.reason.kind === 'pending_reply_obligation'
   );
 }
@@ -1038,7 +989,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&
-              (existingMarker.reason.kind === 'pending_course_start' ||
+              (existingMarker.reason.kind === 'pending_runtime_prompt' ||
                 existingMarker.reason.kind === 'pending_reply_obligation')
                 ? undefined
                 : existingMarker,

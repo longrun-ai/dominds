@@ -143,23 +143,6 @@ function buildCurrentSideDialogAssignmentDirective(
   }
 }
 
-async function hasCurrentCourseHumanPromptRecord(args: {
-  dlg: Dialog;
-  msgId: string;
-}): Promise<boolean> {
-  const events = await DialogPersistence.loadCourseEvents(
-    args.dlg.id,
-    args.dlg.currentCourse,
-    args.dlg.status,
-  );
-  for (const event of events) {
-    if (event.type === 'human_text_record' && event.msgId === args.msgId) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
@@ -175,16 +158,14 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
     return undefined;
   }
-  if (
-    await hasCurrentCourseHumanPromptRecord({
-      dlg: args.dlg,
-      msgId: args.prompt.msgId,
-    })
-  ) {
-    return undefined;
-  }
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
   if (!latest) {
+    return undefined;
+  }
+  if (latest.pendingRuntimePrompt?.msgId !== args.prompt.msgId) {
+    return undefined;
+  }
+  if (latest.sideDialogFinalResponse?.callId === currentAssignmentDirective.targetCallId.trim()) {
     return undefined;
   }
   const targetCallId = currentAssignmentDirective.targetCallId.trim();
@@ -213,12 +194,8 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
   ) {
     return undefined;
   }
-  if (
-    await hasCurrentCourseHumanPromptRecord({
-      dlg: args.dlg,
-      msgId: prompt.msgId,
-    })
-  ) {
+  const promptLatest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  if (promptLatest?.pendingRuntimePrompt?.msgId !== prompt.msgId) {
     return undefined;
   }
   const mainDialog =
@@ -367,17 +344,17 @@ export async function resolvePromptReplyGuidance(args: {
     dlg: args.dlg,
     prompt,
   });
-  const persistedPendingCourseStartDirective =
+  const persistedPendingRuntimePromptDirective =
     prompt !== undefined &&
-    latest?.pendingCourseStartPrompt?.msgId === prompt.msgId &&
-    latest.pendingCourseStartPrompt.origin === 'runtime'
-      ? latest.pendingCourseStartPrompt.tellaskReplyDirective
+    latest?.pendingRuntimePrompt?.msgId === prompt.msgId &&
+    latest.pendingRuntimePrompt.origin === 'runtime'
+      ? latest.pendingRuntimePrompt.tellaskReplyDirective
       : undefined;
   const persistedActiveReplyObligation = await loadActiveTellaskReplyDirective(args.dlg);
   const persistedActiveReplyDirective =
     persistedCurrentSideDialogAssignmentDirective ??
     persistedPendingAskBackReplyDirective ??
-    persistedPendingCourseStartDirective ??
+    persistedPendingRuntimePromptDirective ??
     persistedActiveReplyObligation;
   const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
     ? false

@@ -82,11 +82,11 @@ async function driveQueuedDialogsOnce(): Promise<void> {
       const lastTrigger = globalDialogRegistry.getLastDriveTrigger(mainDialog.id.rootId);
       const lastTriggerAgeMs =
         lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
-      if (status.sideDialogs) {
-        log.debug(`Dialog ${mainDialog.id.rootId} suspended, waiting for sideDialogs`, undefined, {
+      if (status.backgroundCalleeDialogs) {
+        log.debug(`Dialog ${mainDialog.id.rootId} has background callee dialogs`, undefined, {
           rootId: mainDialog.id.rootId,
           waitingQ4H: status.q4h,
-          waitingSideDialogs: status.sideDialogs,
+          backgroundCalleeDialogs: status.backgroundCalleeDialogs,
           hasQueuedUpNext: mainDialog.hasUpNext(),
           lastDriveTrigger: lastTrigger
             ? {
@@ -106,7 +106,7 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         log.debug(`Dialog ${mainDialog.id.rootId} awaiting Q4H answer`, undefined, {
           rootId: mainDialog.id.rootId,
           waitingQ4H: status.q4h,
-          waitingSideDialogs: status.sideDialogs,
+          backgroundCalleeDialogs: status.backgroundCalleeDialogs,
           hasQueuedUpNext: mainDialog.hasUpNext(),
           lastDriveTrigger: lastTrigger
             ? {

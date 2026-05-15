@@ -102,13 +102,6 @@ type NewCourseHook = (args: {
   runControl?: DialogRunControlSpec;
 }) => Promise<NewCourseHookResult>;
 
-export type DialogSuspensionStatusOptions = Readonly<{
-  // Some foreground rounds legitimately continue even while tellask-created sideDialogs are still
-  // pending. Today that includes certain ordinary post-tool rounds and provider-quirk deadlock
-  // recovery injections. Callers must opt into that allowance explicitly.
-  allowPendingSideDialogs?: boolean;
-}>;
-
 export class DialogID {
   public readonly selfId: string;
   public readonly rootId: string;
@@ -210,7 +203,7 @@ export interface DialogInitParams {
     createdAt?: string;
     updatedAt?: string;
     contextHealth?: ContextHealthSnapshot;
-    pendingCourseStartPrompt?: DialogRuntimePrompt;
+    pendingRuntimePrompt?: DialogRuntimePrompt;
   };
 }
 
@@ -436,8 +429,8 @@ export abstract class Dialog {
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
     this._lastContextHealthGenseq = undefined;
-    if (initialState?.pendingCourseStartPrompt) {
-      this.setNewCourseStartPrompt(initialState.pendingCourseStartPrompt);
+    if (initialState?.pendingRuntimePrompt) {
+      this.setPendingRuntimePrompt(initialState.pendingRuntimePrompt);
     }
     this.resetCourseLanguageNotice();
   }
@@ -612,30 +605,30 @@ export abstract class Dialog {
   }
 
   /**
-   * Check if dialog can be driven (not suspended for Q4H or sideDialogs).
+   * Check if dialog can be driven.
+   *
+   * Pending tellask sideDialogs are background callee work: they are observable, but they must not
+   * block the caller dialog from continuing when some other concrete drive source exists.
    */
-  public async canDrive(options?: DialogSuspensionStatusOptions): Promise<boolean> {
-    const suspension = await this.getSuspensionStatus(options);
+  public async canDrive(): Promise<boolean> {
+    const suspension = await this.getSuspensionStatus();
     return suspension.canDrive;
   }
 
   /**
    * Get suspension status for logging/debugging.
    */
-  public async getSuspensionStatus(options?: DialogSuspensionStatusOptions): Promise<{
+  public async getSuspensionStatus(): Promise<{
     q4h: boolean;
-    sideDialogs: boolean;
-    blockingSideDialogs: boolean;
+    backgroundCalleeDialogs: boolean;
     canDrive: boolean;
   }> {
     const hasQ4H = await this.hasPendingQ4H();
-    const hasSideDialogs = await this.hasPendingSideDialogs();
-    const blockingSideDialogs = hasSideDialogs && options?.allowPendingSideDialogs !== true;
+    const hasBackgroundCalleeDialogs = await this.hasPendingSideDialogs();
     return {
       q4h: hasQ4H,
-      sideDialogs: hasSideDialogs,
-      blockingSideDialogs,
-      canDrive: !hasQ4H && !blockingSideDialogs,
+      backgroundCalleeDialogs: hasBackgroundCalleeDialogs,
+      canDrive: !hasQ4H,
     };
   }
 
@@ -1113,7 +1106,7 @@ export abstract class Dialog {
     );
   }
 
-  private setNewCourseStartPrompt(prompt: string | DialogRuntimePrompt): DialogRuntimePrompt {
+  private setPendingRuntimePrompt(prompt: string | DialogRuntimePrompt): DialogRuntimePrompt {
     const prepared: DialogRuntimePrompt =
       typeof prompt === 'string'
         ? {
@@ -1629,7 +1622,7 @@ export abstract class Dialog {
     this._updatedAt = formatUnifiedTimestamp(new Date());
     this.resetCourseLanguageNotice();
 
-    const normalized = this.setNewCourseStartPrompt(nextPrompt);
+    const normalized = this.setPendingRuntimePrompt(nextPrompt);
     if (options?.skipEnqueueIntent !== true) {
       this._driveIntents.length = 0;
       this._driveIntents.push({

@@ -68,6 +68,9 @@
 - EN: These are **Tellask roles**, not hierarchy; the tellasker may or may not be the structural askerDialog.
 - ZH: 这是一次诉请的**角色关系**，不是层级关系；诉请者可能是也可能不是结构上的 askerDialog。
 
+- EN: Use **Main Dialog / Side Dialog** for lifecycle, navigation, archival, Taskdoc ownership, and storage topology. Use **tellasker/tellaskee** or **caller/callee** for who asked whom, who owes a reply, result arrival, and continuation decisions.
+- ZH: **主线对话 / 支线对话**只用于生命周期、导航、归档、差遣牒职责与存储拓扑。表达“谁诉请谁、谁欠回贴、结果到达、是否继续推进”时，使用**诉请者/被诉请者**或 **caller/callee**。
+
 - EN (cross-reference): In implementation-facing docs/code, the standard class/concept names are `MainDialog` / `main dialog` for **Main Dialog**, and `SideDialog` / `sideDialog` for **Side Dialog**. `rootId` remains a structural identifier field, not the user-facing term.
 - ZH（交叉说明）: 在系统实现语境（文档/代码）中，标准类名/概念名是 **MainDialog / main dialog（主线对话）** 与 **SideDialog / sideDialog（支线对话）**。`rootId` 仍是结构标识字段，不是对外术语。
 

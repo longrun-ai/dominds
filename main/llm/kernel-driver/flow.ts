@@ -265,50 +265,13 @@ async function buildReplyToolReminderPrompt(args: {
   });
 }
 
-function entitlementAllowsPendingSideDialog(args: {
-  pending: { callSiteCourse: number; callSiteGenseq: number };
-  driveOptions: KernelDriverDriveOptions | undefined;
-  dialog: Dialog;
-}): boolean {
-  const entitlement = args.driveOptions?.noPromptSideDialogResumeEntitlement;
-  if (
-    args.driveOptions?.source !== 'kernel_driver_supply_response_parent_revive' ||
-    entitlement?.ownerDialogId !== args.dialog.id.selfId
-  ) {
-    return false;
-  }
-  if (entitlement.reason === 'reply_tellask_back_delivered') {
-    return true;
-  }
-  if (entitlement.reason === 'replaced_pending_sideDialog_reply') {
-    return false;
-  }
-  if (entitlement.reason !== 'resolved_pending_sideDialog_reply') {
-    return false;
-  }
-  if (!isPositiveInteger(entitlement.callSiteCourse)) {
-    return false;
-  }
-  if (!isPositiveInteger(entitlement.callSiteGenseq)) {
-    return false;
-  }
-  return (
-    args.pending.callSiteCourse !== entitlement.callSiteCourse ||
-    args.pending.callSiteGenseq !== entitlement.callSiteGenseq
-  );
-}
-
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
-async function loadFreshSuspensionStatusFromPersistence(
-  dialog: Dialog,
-  driveOptions?: KernelDriverDriveOptions,
-): Promise<{
+async function loadFreshSuspensionStatusFromPersistence(dialog: Dialog): Promise<{
   q4h: boolean;
-  sideDialogs: boolean;
-  blockingSideDialogs: boolean;
+  backgroundCalleeDialogs: boolean;
   canDrive: boolean;
 }> {
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
@@ -318,29 +281,22 @@ async function loadFreshSuspensionStatusFromPersistence(
   );
   const hasQ4H = q4h.length > 0;
   const hasSideDialogs = pendingSideDialogs.length > 0;
-  const blockingSideDialogs = pendingSideDialogs.some(
-    (pending) => !entitlementAllowsPendingSideDialog({ pending, driveOptions, dialog }),
-  );
   return {
     q4h: hasQ4H,
-    sideDialogs: hasSideDialogs,
-    blockingSideDialogs,
-    canDrive: !hasQ4H && !blockingSideDialogs,
+    backgroundCalleeDialogs: hasSideDialogs,
+    canDrive: !hasQ4H,
   };
 }
 
 function buildDisplayStateFromSuspensionStatus(args: {
   q4h: boolean;
-  sideDialogs: boolean;
+  backgroundCalleeDialogs: boolean;
 }): DialogDisplayState {
-  if (args.q4h && args.sideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
+  if (args.q4h && args.backgroundCalleeDialogs) {
+    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
   if (args.q4h) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (args.sideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -454,7 +410,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
       latest.executionMarker?.kind !== 'interrupted' &&
       !isNonIdleDisplayProjection(latest.displayState)) ||
     latest.executionMarker?.kind === 'dead' ||
-    latest.pendingCourseStartPrompt
+    latest.pendingRuntimePrompt
   ) {
     return {
       cleared: false,
@@ -617,12 +573,7 @@ async function inspectNoPromptSideDialogDrive(args: {
       source: KernelDriverDriveSource;
       displayState: DialogDisplayState | undefined;
       currentCourse: number;
-      lastEvent:
-        | {
-            type: string;
-            anchorRole?: 'assignment' | 'response';
-          }
-        | undefined;
+      sideDialogFinalResponseCallId: string | undefined;
     }
   | {
       shouldReject: true;
@@ -632,12 +583,7 @@ async function inspectNoPromptSideDialogDrive(args: {
         | 'missing_explicit_interrupted_resume_entitlement';
       displayState: DialogDisplayState | undefined;
       currentCourse: number;
-      lastEvent:
-        | {
-            type: string;
-            anchorRole?: 'assignment' | 'response';
-          }
-        | undefined;
+      sideDialogFinalResponseCallId: string | undefined;
     }
 > {
   const source = resolveDriveRequestSource(undefined, args.driveOptions);
@@ -645,24 +591,7 @@ async function inspectNoPromptSideDialogDrive(args: {
   const displayState = latest?.displayState;
   const rawCourse = latest?.currentCourse ?? args.dialog.currentCourse;
   const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
-  const courseEvents = await DialogPersistence.loadCourseEvents(
-    args.dialog.id,
-    currentCourse,
-    args.dialog.status,
-  );
-  const rawLastTellaskAnchor = (() => {
-    for (let index = courseEvents.length - 1; index >= 0; index -= 1) {
-      const event = courseEvents[index];
-      if (event.type === 'tellask_anchor_record') {
-        return event;
-      }
-    }
-    return undefined;
-  })();
-  const lastEvent =
-    rawLastTellaskAnchor === undefined
-      ? undefined
-      : { type: rawLastTellaskAnchor.type, anchorRole: rawLastTellaskAnchor.anchorRole };
+  const sideDialogFinalResponseCallId = latest?.sideDialogFinalResponse?.callId;
 
   const explicitInterruptedResumeAllowed =
     args.driveOptions?.allowResumeFromInterrupted === true &&
@@ -671,24 +600,20 @@ async function inspectNoPromptSideDialogDrive(args: {
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
-  const pendingReplyObligationResumeAllowed =
-    latest?.executionMarker?.kind === 'interrupted' &&
-    latest.executionMarker.reason.kind === 'pending_reply_obligation';
-  if (lastEvent?.type === 'tellask_anchor_record' && lastEvent.anchorRole === 'response') {
+  if (sideDialogFinalResponseCallId !== undefined) {
     return {
       shouldReject: true,
       source,
       rejection: 'finalized_after_response_anchor',
       displayState,
       currentCourse,
-      lastEvent,
+      sideDialogFinalResponseCallId,
     };
   }
   if (
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
-    !supplyResponseParentReviveAllowed &&
-    !pendingReplyObligationResumeAllowed
+    !supplyResponseParentReviveAllowed
   ) {
     return {
       shouldReject: true,
@@ -696,7 +621,7 @@ async function inspectNoPromptSideDialogDrive(args: {
       rejection: 'missing_explicit_interrupted_resume_entitlement',
       displayState,
       currentCourse,
-      lastEvent,
+      sideDialogFinalResponseCallId,
     };
   }
   return {
@@ -704,7 +629,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     source,
     displayState,
     currentCourse,
-    lastEvent,
+    sideDialogFinalResponseCallId,
   };
 }
 
@@ -956,7 +881,7 @@ export async function executeDriveRound(args: {
               allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
               displayState: inspection.displayState ?? null,
               currentCourse: inspection.currentCourse,
-              lastEvent: inspection.lastEvent ?? null,
+              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
               clearedStaleRunControl: cleanup.cleared,
               previousGenerating: cleanup.previousGenerating,
               previousNeedsDrive: cleanup.previousNeedsDrive,
@@ -1010,9 +935,9 @@ export async function executeDriveRound(args: {
       );
     }
 
-    // Queued/auto drive (without fresh human input) must not proceed while dialog is
-    // suspended by pending Q4H or sideDialogs. This prevents duplicate generations when
-    // multiple wake-ups race around the same sideDialog completion boundary.
+    // Queued/auto drive (without fresh human input) must not proceed while dialog is suspended by
+    // Q4H. SideDialogs have an extra no-prompt entitlement gate below so background wake-ups cannot
+    // duplicate final-response or reply-obligation work.
     if (!humanPrompt) {
       if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
         try {
@@ -1028,7 +953,7 @@ export async function executeDriveRound(args: {
               allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
               displayState: inspection.displayState ?? null,
               currentCourse: inspection.currentCourse,
-              lastEvent: inspection.lastEvent ?? null,
+              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
               waitInQue,
             });
             return;
@@ -1052,21 +977,19 @@ export async function executeDriveRound(args: {
       // drive". We must re-read the fresh persistence facts first because there are three distinct
       // true-source cases behind the same visible resumption panel:
       // - no active reply obligation / not suspended anymore -> continue real driving now
-      // - active reply obligation + suspended -> restore true blocked state
+      // - active reply obligation + suspended -> restore the true suspension state
       // - active reply obligation + still proceeding entitlement (for example queued upNext) ->
       //   continue real driving now
       //
       // Do not refactor this branch using only `displayState` or only the previous interrupted
-      // marker. The correct behavior emerges from combining fresh blocker facts, queued prompt
+      // marker. The correct behavior emerges from combining fresh suspension facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
       const hasEntitledParentRevive = hasParentReviveEntitlement(dialog, driveOptions);
       const suspension = resumeFromInterjectionPause
-        ? await loadFreshSuspensionStatusFromPersistence(dialog, driveOptions)
+        ? await loadFreshSuspensionStatusFromPersistence(dialog)
         : hasEntitledParentRevive
-          ? await loadFreshSuspensionStatusFromPersistence(dialog, driveOptions)
-          : await dialog.getSuspensionStatus({
-              allowPendingSideDialogs: driveOptions?.resumeInProgressGeneration === true,
-            });
+          ? await loadFreshSuspensionStatusFromPersistence(dialog)
+          : await dialog.getSuspensionStatus();
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
       const queuedSideDialogPromptCanResume =
         dialog instanceof SideDialog && queuedPrompt !== undefined;
@@ -1074,7 +997,7 @@ export async function executeDriveRound(args: {
         if (resumeFromInterjectionPause) {
           const restoredState = buildDisplayStateFromSuspensionStatus({
             q4h: suspension.q4h,
-            sideDialogs: suspension.sideDialogs,
+            backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
           });
           await setDialogDisplayState(dialog.id, restoredState);
           await maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(dialog);
@@ -1085,7 +1008,7 @@ export async function executeDriveRound(args: {
               dialogId: dialog.id.valueOf(),
               restoredState,
               waitingQ4H: suspension.q4h,
-              waitingSideDialogs: suspension.sideDialogs,
+              backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
             },
           );
           return;
@@ -1100,7 +1023,7 @@ export async function executeDriveRound(args: {
           waitInQue,
           hasQueuedUpNext: dialog.hasUpNext(),
           waitingQ4H: suspension.q4h,
-          waitingSideDialogs: suspension.sideDialogs,
+          backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,
@@ -1125,7 +1048,7 @@ export async function executeDriveRound(args: {
           {
             dialogId: dialog.id.valueOf(),
             waitingQ4H: suspension.q4h,
-            waitingSideDialogs: suspension.sideDialogs,
+            backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
             hasQueuedUpNext: dialog.hasUpNext(),
             queuedSideDialogPromptCanResume,
           },
@@ -1357,7 +1280,7 @@ export async function executeDriveRound(args: {
                   rootId: dialog.id.rootId,
                   selfId: dialog.id.selfId,
                   waitingQ4H: suspension.q4h,
-                  waitingSideDialogs: suspension.sideDialogs,
+                  backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
                   hasFollowUp,
                 },
               );

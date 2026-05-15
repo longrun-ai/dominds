@@ -11,15 +11,13 @@ import type {
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { Dialog, MainDialog, SideDialog } from '../../dialog';
+import { Dialog, MainDialog } from '../../dialog';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
-import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
 import {
   formatDiligenceAutoContinuePrompt,
   formatQ4HDiligencePushBudgetExhausted,
-  formatSideDialogDiligenceAutoContinuePrompt,
 } from '../../runtime/driver-messages';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { FuncTool, ToolArguments } from '../../tool';
@@ -38,12 +36,7 @@ import {
   type LlmRetryStrategy,
 } from '../gen';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
-import type {
-  KernelDriverDiligencePrompt,
-  KernelDriverPrompt,
-  KernelDriverRuntimeReplyPrompt,
-  KernelDriverRuntimeSideDialogPrompt,
-} from './types';
+import type { KernelDriverDiligencePrompt, KernelDriverPrompt } from './types';
 
 export class LlmRetryStoppedError extends Error {
   public readonly reason: DialogLlmRetryExhaustedReason;
@@ -154,101 +147,6 @@ function normalizeDiligenceRemainingBudget(remainingBudget: number): number {
     : 0;
 }
 
-async function maybePrepareSideDialogDiligenceRecoveryPrompt(options: {
-  dlg: SideDialog;
-  remainingBudget: number;
-  suppressDiligencePush?: boolean;
-  ignoreBudgetExhaustion?: boolean;
-}): Promise<DiligencePromptPreparation> {
-  if (options.ignoreBudgetExhaustion !== true) {
-    return { kind: 'disabled', nextRemainingBudget: 0 };
-  }
-  if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {
-    return {
-      kind: 'disabled',
-      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
-    };
-  }
-  const assignment = options.dlg.assignmentFromAsker;
-  const activeReplyDirective = await DialogPersistence.loadActiveTellaskReplyObligation(
-    options.dlg.id,
-    options.dlg.status,
-  );
-  if (!activeReplyDirective) {
-    return { kind: 'disabled', nextRemainingBudget: 0 };
-  }
-  const activeTargetCallId = activeReplyDirective.targetCallId.trim();
-  const activeTargetDialogId = activeReplyDirective.targetDialogId.trim();
-  const assignmentCallId = assignment.callId.trim();
-  const assignmentAskerDialogId = assignment.askerDialogId.trim();
-  if (
-    activeTargetCallId === '' ||
-    activeTargetDialogId === '' ||
-    assignmentCallId === '' ||
-    assignmentAskerDialogId === ''
-  ) {
-    throw new Error(
-      `sideDialog diligence recovery invariant violation: empty reply/assignment correlation field for ${options.dlg.id.valueOf()}`,
-    );
-  }
-  const activeMatchesAssignment =
-    activeTargetDialogId === assignmentAskerDialogId &&
-    activeTargetCallId === assignmentCallId &&
-    activeReplyDirective.tellaskContent === assignment.tellaskContent;
-  const activeReplyToolMatchesAssignment =
-    (activeReplyDirective.expectedReplyCallName === 'replyTellask' &&
-      assignment.callName === 'tellask') ||
-    (activeReplyDirective.expectedReplyCallName === 'replyTellaskSessionless' &&
-      (assignment.callName === 'tellaskSessionless' ||
-        assignment.callName === 'freshBootsReasoning'));
-  if (
-    activeReplyDirective.expectedReplyCallName !== 'replyTellaskBack' &&
-    (!activeMatchesAssignment || !activeReplyToolMatchesAssignment)
-  ) {
-    throw new Error(
-      `sideDialog diligence recovery invariant violation: active reply obligation does not match current assignment for ${options.dlg.id.valueOf()}`,
-    );
-  }
-  const variant = (Math.floor(Math.random() * 3) % 3) as 0 | 1 | 2;
-  const commonPrompt = {
-    content: formatSideDialogDiligenceAutoContinuePrompt(getWorkLanguage(), {
-      now: new Date(),
-      tellaskContent: activeReplyDirective.tellaskContent,
-      replyToolName: activeReplyDirective.expectedReplyCallName,
-      variant,
-    }),
-    msgId: generateShortId(),
-    grammar: 'markdown' as const,
-    origin: 'runtime' as const,
-    tellaskReplyDirective: activeReplyDirective,
-  };
-  if (activeReplyDirective.expectedReplyCallName === 'replyTellaskBack') {
-    const prompt: KernelDriverRuntimeReplyPrompt = commonPrompt;
-    return {
-      kind: 'prompt',
-      prompt,
-      maxInjectCount: 0,
-      nextRemainingBudget: 0,
-    };
-  }
-  const prompt: KernelDriverRuntimeSideDialogPrompt = {
-    ...commonPrompt,
-    sideDialogReplyTarget: {
-      ownerDialogId: assignment.askerDialogId,
-      callType: assignment.callName === 'tellask' ? 'B' : 'C',
-      callId: assignment.callId,
-      callSiteCourse: assignment.callSiteCourse,
-      callSiteGenseq: assignment.callSiteGenseq,
-    },
-  };
-  return {
-    kind: 'prompt',
-    prompt,
-    maxInjectCount: 0,
-    nextRemainingBudget: 0,
-  };
-}
-
 export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
   remainingBudget: number;
@@ -257,18 +155,10 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   ignoreBudgetExhaustion?: boolean;
 }): Promise<DiligencePromptPreparation> {
   if (!(options.dlg instanceof MainDialog)) {
-    if (!(options.dlg instanceof SideDialog)) {
-      return {
-        kind: 'disabled',
-        nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
-      };
-    }
-    return await maybePrepareSideDialogDiligenceRecoveryPrompt({
-      dlg: options.dlg,
-      remainingBudget: options.remainingBudget,
-      suppressDiligencePush: options.suppressDiligencePush,
-      ignoreBudgetExhaustion: options.ignoreBudgetExhaustion,
-    });
+    return {
+      kind: 'disabled',
+      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+    };
   }
 
   if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {

@@ -36,16 +36,13 @@ export type DialogInterruptionReason =
   | { kind: 'user_stop' }
   | { kind: 'emergency_stop' }
   | { kind: 'server_restart' }
-  | { kind: 'pending_course_start' }
+  | { kind: 'pending_runtime_prompt' }
   | { kind: 'pending_reply_obligation' }
   | { kind: 'fork_continue_ready' }
   | { kind: 'system_stop'; detail: string; i18nStopReason?: DialogDisplayTextI18n }
   | DialogLlmRetryExhaustedReason;
 
-export type DialogBlockedReason =
-  | { kind: 'needs_human_input' }
-  | { kind: 'waiting_for_sideDialogs' }
-  | { kind: 'needs_human_input_and_sideDialogs' };
+export type DialogBlockedReason = { kind: 'needs_human_input' };
 
 export type DialogDeadReason = { kind: 'declared_by_user' } | { kind: 'system'; detail: string };
 

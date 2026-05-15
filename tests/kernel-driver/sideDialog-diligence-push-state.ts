@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     assert.equal(
       noActiveReplyPush.kind,
       'disabled',
-      'sideDialog recovery push must give up when there is no active reply obligation',
+      'sideDialog must not prepare a Diligence Push prompt without an active reply obligation',
     );
 
     const replyDirective = {
@@ -137,33 +137,10 @@ async function main(): Promise<void> {
       diligencePushMax: 0,
       ignoreBudgetExhaustion: true,
     });
-    assert.equal(activeReplyPush.kind, 'prompt');
-    if (activeReplyPush.kind !== 'prompt') {
-      throw new Error(`Expected sideDialog recovery prompt, got ${activeReplyPush.kind}`);
-    }
-    assert.equal(activeReplyPush.prompt.origin, 'runtime');
-    assert.deepEqual(activeReplyPush.prompt.tellaskReplyDirective, replyDirective);
-    assert.match(activeReplyPush.prompt.content, /replyTellask\(\{ replyContent \}\)/);
-    assert.match(activeReplyPush.prompt.content, /Check the side-dialog Diligence Push state\./);
-    assert.doesNotMatch(activeReplyPush.prompt.content, /replyTellaskSessionless/);
-
-    const wrongReplyDirective = {
-      ...replyDirective,
-      expectedReplyCallName: 'replyTellaskSessionless' as const,
-    };
-    await DialogPersistence.setActiveTellaskReplyObligation(
-      restoredSideDialog.id,
-      wrongReplyDirective,
-      restoredSideDialog.status,
-    );
-    await assert.rejects(
-      maybePrepareDiligenceAutoContinuePrompt({
-        dlg: restoredSideDialog,
-        remainingBudget: 0,
-        diligencePushMax: 0,
-        ignoreBudgetExhaustion: true,
-      }),
-      /active reply obligation does not match current assignment/,
+    assert.equal(
+      activeReplyPush.kind,
+      'disabled',
+      'sideDialog must not prepare a Diligence Push prompt even with an active reply obligation',
     );
 
     const askBackDirective = {
@@ -183,15 +160,11 @@ async function main(): Promise<void> {
       diligencePushMax: 0,
       ignoreBudgetExhaustion: true,
     });
-    assert.equal(askBackPush.kind, 'prompt');
-    if (askBackPush.kind !== 'prompt') {
-      throw new Error(`Expected ask-back recovery prompt, got ${askBackPush.kind}`);
-    }
-    assert.equal(askBackPush.prompt.origin, 'runtime');
-    assert.deepEqual(askBackPush.prompt.tellaskReplyDirective, askBackDirective);
-    assert.equal(askBackPush.prompt.sideDialogReplyTarget, undefined);
-    assert.match(askBackPush.prompt.content, /replyTellaskBack\(\{ replyContent \}\)/);
-    assert.match(askBackPush.prompt.content, /Answer the ask-back clarification\./);
+    assert.equal(
+      askBackPush.kind,
+      'disabled',
+      'tellaskBack reply obligations also must not receive Side Dialog Diligence Push prompts',
+    );
   });
 
   console.log('kernel-driver sideDialog-diligence-push-state: PASS');

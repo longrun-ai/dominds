@@ -371,12 +371,12 @@ function buildResumeIneligibleMessage(
 } {
   // WARNING:
   // `resume_dialog` eligibility is intentionally based on the freshly healed projection, not on a
-  // naive local check of raw blocker facts. In particular, the paused-interjection stopped state
+  // naive local check of raw suspension facts. In particular, the paused-interjection stopped state
   // must remain resumable here so the user can explicitly press Continue even while the underlying
-  // dialog may still be blocked.
+  // dialog may still be suspended by Q4H.
   //
   // The actual outcome of that Continue attempt is decided later in `flow.ts` from fresh facts:
-  // it may restore `blocked`, or it may immediately continue driving. Do not reinterpret a
+  // it may restore Q4H suspension, or it may immediately continue driving. Do not reinterpret a
   // resumable stopped state here as "guaranteed to run now".
   const state = latest?.displayState;
   if (!state) {
@@ -387,33 +387,11 @@ function buildResumeIneligibleMessage(
   }
   switch (state.kind) {
     case 'blocked':
-      switch (state.reason.kind) {
-        case 'needs_human_input_and_sideDialogs':
-          return {
-            reason: 'needs_human_input_and_sideDialogs',
-            message:
-              'Fresh state scan shows this dialog is waiting for both human input and Side Dialogs, so it cannot resume yet.',
-          };
-        case 'needs_human_input':
-          return {
-            reason: 'needs_human_input',
-            message:
-              'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
-          };
-        case 'waiting_for_sideDialogs':
-          return {
-            reason: 'waiting_for_sideDialogs',
-            message:
-              'Fresh state scan shows this dialog is waiting for Side Dialogs, so it cannot resume yet.',
-          };
-        default: {
-          const _exhaustive: never = state.reason;
-          return {
-            reason: 'missing',
-            message: `Dialog is not currently eligible for resumption: ${String(_exhaustive)}`,
-          };
-        }
-      }
+      return {
+        reason: 'needs_human_input',
+        message:
+          'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
+      };
     case 'idle_waiting_user':
       return {
         reason: 'idle_waiting_user',
@@ -2200,32 +2178,6 @@ async function handleReceiveHumanReply(
       selfId: dialogId,
     };
     postDialogEvent(dialog, answeredEvent);
-
-    const hasPendingSideDialogs = await dialog.hasPendingSideDialogs();
-    if (hasPendingSideDialogs) {
-      // This queued item is only the post-answer continuation input that resumes the suspended
-      // round after sideDialogs settle. The human answer fact has already been persisted above as
-      // askHuman tellask result/carryover and must not be reinterpreted as a new user prompt.
-      dialog.queueDeferredQ4HAnswerPrompt({
-        prompt: effectivePrompt.content,
-        msgId: effectivePrompt.msgId,
-        grammar: effectivePrompt.grammar,
-        contentItems,
-        userLanguageCode: effectivePrompt.userLanguageCode,
-        q4hAnswerCallId: askHumanCallId,
-      });
-      log.debug(
-        'Deferred post-Q4H continuation input until pending sideDialogs resolve',
-        undefined,
-        {
-          rootId: dialog.id.rootId,
-          selfId: dialog.id.selfId,
-          questionId,
-          msgId: effectivePrompt.msgId,
-        },
-      );
-      return;
-    }
 
     // Resume the dialog after the answer has been materialized as askHuman tellask result/carryover.
     // The continuation input carries correlation only; it does not persist another user prompt fact.

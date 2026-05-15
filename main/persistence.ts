@@ -54,7 +54,8 @@ import type {
   DialogFbrState,
   DialogLatestFile,
   DialogMetadataFile,
-  DialogPendingCourseStartPrompt,
+  DialogPendingRuntimePrompt,
+  DialogSideDialogFinalResponseState,
   DialogSideDialogReplyTarget,
   FuncCallRecord,
   FuncResultRecord,
@@ -94,6 +95,9 @@ import type {
   WebSearchCallRecord,
 } from '@longrun-ai/kernel/types/storage';
 import {
+  toAskerCourseNumber,
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toCallSiteCourseNo,
@@ -193,20 +197,21 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     diligencePushRemainingBudget: latest.diligencePushRemainingBudget ?? null,
     displayState: latest.displayState ?? null,
     executionMarker: latest.executionMarker ?? null,
-    pendingCourseStartPromptMsgId: latest.pendingCourseStartPrompt?.msgId ?? null,
-    pendingCourseStartPromptOrigin: latest.pendingCourseStartPrompt?.origin ?? null,
-    pendingCourseStartPromptGrammar: latest.pendingCourseStartPrompt?.grammar ?? null,
-    pendingCourseStartPromptUserLanguageCode:
-      latest.pendingCourseStartPrompt?.userLanguageCode ?? null,
-    pendingCourseStartPromptContentLength: latest.pendingCourseStartPrompt?.content.length ?? null,
-    pendingCourseStartPromptReplyTargetCallId:
-      latest.pendingCourseStartPrompt?.sideDialogReplyTarget?.callId ?? null,
-    pendingCourseStartPromptReplyTargetOwnerDialogId:
-      latest.pendingCourseStartPrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
-    pendingCourseStartPromptExpectedReplyCallName:
-      latest.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
-    pendingCourseStartPromptTargetCallId:
-      latest.pendingCourseStartPrompt?.tellaskReplyDirective?.targetCallId ?? null,
+    latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
+    sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
+    pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
+    pendingRuntimePromptOrigin: latest.pendingRuntimePrompt?.origin ?? null,
+    pendingRuntimePromptGrammar: latest.pendingRuntimePrompt?.grammar ?? null,
+    pendingRuntimePromptUserLanguageCode: latest.pendingRuntimePrompt?.userLanguageCode ?? null,
+    pendingRuntimePromptContentLength: latest.pendingRuntimePrompt?.content.length ?? null,
+    pendingRuntimePromptReplyTargetCallId:
+      latest.pendingRuntimePrompt?.sideDialogReplyTarget?.callId ?? null,
+    pendingRuntimePromptReplyTargetOwnerDialogId:
+      latest.pendingRuntimePrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
+    pendingRuntimePromptExpectedReplyCallName:
+      latest.pendingRuntimePrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
+    pendingRuntimePromptTargetCallId:
+      latest.pendingRuntimePrompt?.tellaskReplyDirective?.targetCallId ?? null,
   };
 }
 
@@ -231,20 +236,21 @@ function summarizeLatestMutationPatch(
     diligencePushRemainingBudget: patch.diligencePushRemainingBudget ?? null,
     displayState: patch.displayState ?? null,
     executionMarker: patch.executionMarker ?? null,
-    pendingCourseStartPromptMsgId: patch.pendingCourseStartPrompt?.msgId ?? null,
-    pendingCourseStartPromptOrigin: patch.pendingCourseStartPrompt?.origin ?? null,
-    pendingCourseStartPromptGrammar: patch.pendingCourseStartPrompt?.grammar ?? null,
-    pendingCourseStartPromptUserLanguageCode:
-      patch.pendingCourseStartPrompt?.userLanguageCode ?? null,
-    pendingCourseStartPromptContentLength: patch.pendingCourseStartPrompt?.content.length ?? null,
-    pendingCourseStartPromptReplyTargetOwnerDialogId:
-      patch.pendingCourseStartPrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
-    pendingCourseStartPromptReplyTargetCallId:
-      patch.pendingCourseStartPrompt?.sideDialogReplyTarget?.callId ?? null,
-    pendingCourseStartPromptExpectedReplyCallName:
-      patch.pendingCourseStartPrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
-    pendingCourseStartPromptTargetCallId:
-      patch.pendingCourseStartPrompt?.tellaskReplyDirective?.targetCallId ?? null,
+    latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
+    sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
+    pendingRuntimePromptMsgId: patch.pendingRuntimePrompt?.msgId ?? null,
+    pendingRuntimePromptOrigin: patch.pendingRuntimePrompt?.origin ?? null,
+    pendingRuntimePromptGrammar: patch.pendingRuntimePrompt?.grammar ?? null,
+    pendingRuntimePromptUserLanguageCode: patch.pendingRuntimePrompt?.userLanguageCode ?? null,
+    pendingRuntimePromptContentLength: patch.pendingRuntimePrompt?.content.length ?? null,
+    pendingRuntimePromptReplyTargetOwnerDialogId:
+      patch.pendingRuntimePrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
+    pendingRuntimePromptReplyTargetCallId:
+      patch.pendingRuntimePrompt?.sideDialogReplyTarget?.callId ?? null,
+    pendingRuntimePromptExpectedReplyCallName:
+      patch.pendingRuntimePrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
+    pendingRuntimePromptTargetCallId:
+      patch.pendingRuntimePrompt?.tellaskReplyDirective?.targetCallId ?? null,
   };
 }
 
@@ -356,18 +362,9 @@ function hasActiveReplyObligationInAskerStackState(state: DialogAskerStackState 
   return top?.tellaskReplyObligation !== undefined;
 }
 
-function blockerDisplayState(args: {
-  hasQ4H: boolean;
-  hasSideDialogs: boolean;
-}): DialogLatestFile['displayState'] | undefined {
-  if (args.hasQ4H && args.hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
-  }
-  if (args.hasQ4H) {
+function q4hSuspensionDisplayState(hasQ4H: boolean): DialogLatestFile['displayState'] | undefined {
+  if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (args.hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return undefined;
 }
@@ -395,12 +392,11 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   if (!hasActiveReplyObligationInAskerStackState(askerStackState)) {
     return latest;
   }
-  const blockerState = blockerDisplayState({
-    hasQ4H: (await DialogPersistence.loadQuestions4HumanState(dialogId, status)).length > 0,
-    hasSideDialogs: (await DialogPersistence.loadPendingSideDialogs(dialogId, status)).length > 0,
-  });
+  const q4hSuspensionState = q4hSuspensionDisplayState(
+    (await DialogPersistence.loadQuestions4HumanState(dialogId, status)).length > 0,
+  );
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
-  const healedDisplayState = blockerState ?? pendingReplyObligationDisplayState();
+  const healedDisplayState = q4hSuspensionState ?? pendingReplyObligationDisplayState();
   const healedExecutionMarker =
     healedDisplayState.kind === 'stopped' ? pendingReplyObligationExecutionMarker() : undefined;
   emitInvariantWarning(
@@ -416,10 +412,7 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
       selfId: dialogId.selfId,
       status,
       targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
-      blockedByQ4H:
-        blockerState?.kind === 'blocked' && blockerState.reason.kind !== 'waiting_for_sideDialogs',
-      blockedBySideDialogs:
-        blockerState?.kind === 'blocked' && blockerState.reason.kind !== 'needs_human_input',
+      suspendedByQ4H: q4hSuspensionState?.kind === 'blocked',
       before: summarizeLatestProjectionState(previous),
       afterBeforeHealing: summarizeLatestProjectionState(latest),
       healedTo: {
@@ -807,8 +800,8 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
       return { kind: 'emergency_stop' };
     case 'server_restart':
       return { kind: 'server_restart' };
-    case 'pending_course_start':
-      return { kind: 'pending_course_start' };
+    case 'pending_runtime_prompt':
+      return { kind: 'pending_runtime_prompt' };
     case 'pending_reply_obligation':
       return { kind: 'pending_reply_obligation' };
     case 'fork_continue_ready':
@@ -1579,9 +1572,7 @@ function parseDialogSideDialogReplyTarget(value: unknown): DialogSideDialogReply
   };
 }
 
-function parseDialogPendingCourseStartPrompt(
-  value: unknown,
-): DialogPendingCourseStartPrompt | null {
+function parseDialogPendingRuntimePrompt(value: unknown): DialogPendingRuntimePrompt | null {
   if (!isRecord(value)) return null;
   if (typeof value.content !== 'string' || typeof value.msgId !== 'string') {
     return null;
@@ -1713,13 +1704,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       switch (reason.kind) {
         case 'needs_human_input':
           return { kind: 'blocked', reason: { kind: 'needs_human_input' } } as const;
-        case 'waiting_for_sideDialogs':
-          return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } } as const;
-        case 'needs_human_input_and_sideDialogs':
-          return {
-            kind: 'blocked',
-            reason: { kind: 'needs_human_input_and_sideDialogs' },
-          } as const;
         default:
           return null;
       }
@@ -1774,6 +1758,57 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (executionMarker === null) return null;
 
+  const sideDialogFinalResponseRaw = (value as Record<string, unknown>).sideDialogFinalResponse;
+  const sideDialogFinalResponse: DialogSideDialogFinalResponseState | null | undefined = (() => {
+    if (sideDialogFinalResponseRaw === undefined) return undefined;
+    if (!isRecord(sideDialogFinalResponseRaw)) return null;
+    const callId = sideDialogFinalResponseRaw.callId;
+    const responseCourse = sideDialogFinalResponseRaw.responseCourse;
+    const responseGenseq = sideDialogFinalResponseRaw.responseGenseq;
+    const askerDialogId = sideDialogFinalResponseRaw.askerDialogId;
+    const askerCourse = sideDialogFinalResponseRaw.askerCourse;
+    if (
+      typeof callId !== 'string' ||
+      typeof responseCourse !== 'number' ||
+      typeof responseGenseq !== 'number' ||
+      typeof askerDialogId !== 'string' ||
+      typeof askerCourse !== 'number'
+    ) {
+      return null;
+    }
+    return {
+      callId,
+      responseCourse: toDialogCourseNumber(responseCourse),
+      responseGenseq: toCalleeGenerationSeqNumber(responseGenseq),
+      askerDialogId,
+      askerCourse: toAskerCourseNumber(askerCourse),
+    };
+  })();
+  if (sideDialogFinalResponse === null) return null;
+
+  const latestAssignmentAnchorRaw = (value as Record<string, unknown>).latestAssignmentAnchor;
+  const latestAssignmentAnchor: DialogLatestFile['latestAssignmentAnchor'] | null | undefined =
+    (() => {
+      if (latestAssignmentAnchorRaw === undefined) return undefined;
+      if (!isRecord(latestAssignmentAnchorRaw)) return null;
+      const callId = latestAssignmentAnchorRaw.callId;
+      const assignmentCourse = latestAssignmentAnchorRaw.assignmentCourse;
+      const assignmentGenseq = latestAssignmentAnchorRaw.assignmentGenseq;
+      if (
+        typeof callId !== 'string' ||
+        typeof assignmentCourse !== 'number' ||
+        typeof assignmentGenseq !== 'number'
+      ) {
+        return null;
+      }
+      return {
+        callId,
+        assignmentCourse: toAssignmentCourseNumber(assignmentCourse),
+        assignmentGenseq: toAssignmentGenerationSeqNumber(assignmentGenseq),
+      };
+    })();
+  if (latestAssignmentAnchor === null) return null;
+
   const fbrStateRaw = (value as Record<string, unknown>).fbrState;
   const fbrState: DialogFbrState | null | undefined = (() => {
     if (fbrStateRaw === undefined) return undefined;
@@ -1827,12 +1862,12 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (deferredReplyReassertion === null) return null;
 
-  const pendingCourseStartPromptRaw = (value as Record<string, unknown>).pendingCourseStartPrompt;
-  const pendingCourseStartPrompt: DialogPendingCourseStartPrompt | null | undefined = (() => {
-    if (pendingCourseStartPromptRaw === undefined) return undefined;
-    return parseDialogPendingCourseStartPrompt(pendingCourseStartPromptRaw);
+  const pendingRuntimePromptRaw = (value as Record<string, unknown>).pendingRuntimePrompt;
+  const pendingRuntimePrompt: DialogPendingRuntimePrompt | null | undefined = (() => {
+    if (pendingRuntimePromptRaw === undefined) return undefined;
+    return parseDialogPendingRuntimePrompt(pendingRuntimePromptRaw);
   })();
-  if (pendingCourseStartPrompt === null) return null;
+  if (pendingRuntimePrompt === null) return null;
 
   return {
     currentCourse,
@@ -1845,9 +1880,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     needsDrive: value.needsDrive,
     displayState,
     executionMarker,
+    latestAssignmentAnchor,
+    sideDialogFinalResponse,
     fbrState,
     deferredReplyReassertion,
-    pendingCourseStartPrompt,
+    pendingRuntimePrompt,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };
@@ -2273,6 +2310,14 @@ export class DiskFileDialogStore extends DialogStore {
       mainDialog.id,
       rootStatus,
     );
+    const parentBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+      askerDialog.id,
+      askerDialog.status,
+    );
+    const parentBackgroundCalleeDialogCount = parentBackgroundCalleeDialogs.length;
+    const parentBackgroundFreshBootsReasoningCalleeCount = parentBackgroundCalleeDialogs.filter(
+      (entry) => entry.callName === 'freshBootsReasoning',
+    ).length;
 
     const sideDialogCreatedEvt: SideDialogEvent = {
       type: 'sideDialog_created_evt',
@@ -2295,6 +2340,8 @@ export class DiskFileDialogStore extends DialogStore {
       mentionList,
       tellaskContent,
       rootSideDialogCount,
+      parentBackgroundCalleeDialogCount,
+      parentBackgroundFreshBootsReasoningCalleeCount,
       sideDialogNode: {
         selfId: sideDialogId.selfId,
         rootId: sideDialogId.rootId,
@@ -2318,6 +2365,8 @@ export class DiskFileDialogStore extends DialogStore {
           callSiteGenseq: options.callSiteGenseq,
           effectiveFbrEffort: options.effectiveFbrEffort,
         },
+        backgroundCalleeDialogCount: 0,
+        backgroundFreshBootsReasoningCalleeCount: 0,
       },
     };
     // Post sideDialog_created_evt to PARENT's PubChan so frontend can receive it
@@ -3231,15 +3280,15 @@ export class DiskFileDialogStore extends DialogStore {
           : {
               displayState: {
                 kind: 'stopped',
-                reason: { kind: 'pending_course_start' },
+                reason: { kind: 'pending_runtime_prompt' },
                 continueEnabled: true,
               } as const,
               executionMarker: {
                 kind: 'interrupted',
-                reason: { kind: 'pending_course_start' },
+                reason: { kind: 'pending_runtime_prompt' },
               } as const,
             }),
-        pendingCourseStartPrompt: newCoursePrompt,
+        pendingRuntimePrompt: newCoursePrompt,
       },
     }));
 
@@ -3267,7 +3316,7 @@ export class DiskFileDialogStore extends DialogStore {
         kind: 'patch',
         patch: {
           needsDrive: true,
-          pendingCourseStartPrompt: prompt,
+          pendingRuntimePrompt: prompt,
         },
       }),
       dialog.status,
@@ -4652,6 +4701,23 @@ export class DiskFileDialogStore extends DialogStore {
           new DialogID(sideDialogId.rootId),
           persistedStatus,
         );
+        const parentDialogId = new DialogID(dialog.id.selfId, dialog.id.rootId);
+        const parentBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+          parentDialogId,
+          persistedStatus,
+        );
+        const parentBackgroundCalleeDialogCount = parentBackgroundCalleeDialogs.length;
+        const parentBackgroundFreshBootsReasoningCalleeCount = parentBackgroundCalleeDialogs.filter(
+          (entry) => entry.callName === 'freshBootsReasoning',
+        ).length;
+        const sideBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+          sideDialogId,
+          persistedStatus,
+        );
+        const backgroundCalleeDialogCount = sideBackgroundCalleeDialogs.length;
+        const backgroundFreshBootsReasoningCalleeCount = sideBackgroundCalleeDialogs.filter(
+          (entry) => entry.callName === 'freshBootsReasoning',
+        ).length;
 
         const sideDialogCreatedEvent: SideDialogEvent = {
           type: 'sideDialog_created_evt',
@@ -4674,6 +4740,8 @@ export class DiskFileDialogStore extends DialogStore {
           mentionList: event.mentionList,
           tellaskContent: event.tellaskContent,
           rootSideDialogCount,
+          parentBackgroundCalleeDialogCount,
+          parentBackgroundFreshBootsReasoningCalleeCount,
           sideDialogNode: {
             selfId: sideMeta.id,
             rootId: sideDialogId.rootId,
@@ -4687,6 +4755,8 @@ export class DiskFileDialogStore extends DialogStore {
             displayState: sideLatest?.displayState,
             sessionSlug: sideMeta.sessionSlug,
             assignmentFromAsker,
+            backgroundCalleeDialogCount,
+            backgroundFreshBootsReasoningCalleeCount,
           },
           timestamp: event.ts,
         };
@@ -8601,7 +8671,7 @@ export class DialogPersistence {
     return latest?.needsDrive === true;
   }
 
-  static async clearPendingCourseStartPrompt(
+  static async clearPendingRuntimePrompt(
     dialogId: DialogID,
     msgId: string,
     status: DialogStatusKind = 'running',
@@ -8609,44 +8679,44 @@ export class DialogPersistence {
     const normalizedMsgId = msgId.trim();
     if (normalizedMsgId === '') {
       throw new Error(
-        `clearPendingCourseStartPrompt invariant violation: empty msgId for dialog=${dialogId.valueOf()}`,
+        `clearPendingRuntimePrompt invariant violation: empty msgId for dialog=${dialogId.valueOf()}`,
       );
     }
     await this.mutateDialogLatest(
       dialogId,
       (previous) => {
-        const pending = previous.pendingCourseStartPrompt;
+        const pending = previous.pendingRuntimePrompt;
         if (!pending || pending.msgId !== normalizedMsgId) {
           return { kind: 'noop' };
         }
         const previousDisplayState = previous.displayState;
         const displayState =
           previousDisplayState?.kind === 'stopped' &&
-          previousDisplayState.reason.kind === 'pending_course_start'
+          previousDisplayState.reason.kind === 'pending_runtime_prompt'
             ? previous.generating === true
               ? (() => {
                   const warningDetails: Record<string, unknown> = {
-                    trigger: 'clearPendingCourseStartPrompt',
+                    trigger: 'clearPendingRuntimePrompt',
                     dialogId: dialogId.valueOf(),
                     rootId: dialogId.rootId,
                     selfId: dialogId.selfId,
                     status,
-                    pendingCourseStartMsgId: normalizedMsgId,
+                    pendingRuntimePromptMsgId: normalizedMsgId,
                     previous: summarizeLatestProjectionState(previous),
                     intendedPatch: summarizeLatestMutationPatch({
-                      pendingCourseStartPrompt: undefined,
+                      pendingRuntimePrompt: undefined,
                       needsDrive: false,
                       displayState: { kind: 'proceeding' },
                       executionMarker:
                         previous.executionMarker?.kind === 'interrupted' &&
-                        previous.executionMarker.reason.kind === 'pending_course_start'
+                        previous.executionMarker.reason.kind === 'pending_runtime_prompt'
                           ? undefined
                           : previous.executionMarker,
                     }),
                     callStack: captureInvariantWarningStack(),
                   };
                   emitInvariantWarning(
-                    'clearPendingCourseStartPrompt invariant warning: generating dialog still projected as pending_course_start; healing displayState to proceeding',
+                    'clearPendingRuntimePrompt invariant warning: generating dialog still projected as pending_runtime_prompt; healing displayState to proceeding',
                     warningDetails,
                   );
                   return { kind: 'proceeding' } as const;
@@ -8656,12 +8726,12 @@ export class DialogPersistence {
         return {
           kind: 'patch',
           patch: {
-            pendingCourseStartPrompt: undefined,
+            pendingRuntimePrompt: undefined,
             needsDrive: false,
             displayState,
             executionMarker:
               previous.executionMarker?.kind === 'interrupted' &&
-              previous.executionMarker.reason.kind === 'pending_course_start'
+              previous.executionMarker.reason.kind === 'pending_runtime_prompt'
                 ? undefined
                 : previous.executionMarker,
           },

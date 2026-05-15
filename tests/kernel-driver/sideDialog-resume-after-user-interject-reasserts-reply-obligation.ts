@@ -44,9 +44,6 @@ async function main(): Promise<void> {
     const interjectResponse = 'Handled the local interruption only.';
     const followupInterjectPrompt = 'One more temporary question before we resume the main task.';
     const followupInterjectResponse = 'Handled the follow-up interruption locally as well.';
-    const secondCycleInterjectPrompt =
-      'Pause again after Continue; I still want one more temporary local answer.';
-    const secondCycleInterjectResponse = 'Handled the second-cycle interruption locally too.';
     const fallbackResponse = 'Nested work is back, and I am still sending a plain final answer.';
 
     const sideDialog = await root.createSideDialog(
@@ -99,11 +96,6 @@ async function main(): Promise<void> {
         message: replyReminderPrompt,
         role: 'user',
         response: fallbackResponse,
-      },
-      {
-        message: secondCycleInterjectPrompt,
-        role: 'user',
-        response: secondCycleInterjectResponse,
       },
     ]);
 
@@ -211,8 +203,8 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       latestAfterAttemptedIdleWhileNestedPending?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
-      'active reply obligation must not mask the nested sideDialog blocker when a sideDialog attempts to idle',
+      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
+      'active reply obligation should pause the sideDialog while nested pending work remains background state',
     );
     const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
       sideDialog.id,
@@ -220,8 +212,8 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       refreshedWhileNestedPending?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
-      'run-control refresh should show the true nested sideDialog blocker ahead of pending_reply_obligation',
+      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
+      'run-control refresh should keep pending_reply_obligation ahead of background nested work',
     );
 
     await driveDialogStream(
@@ -257,158 +249,38 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
-    const latestAfterContinueWhileBlocked = await DialogPersistence.loadDialogLatest(
+    const latestAfterContinue = await DialogPersistence.loadDialogLatest(
       sideDialog.id,
       sideDialog.status,
     );
-    assert.deepEqual(
-      latestAfterContinueWhileBlocked?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } },
-      'Continue should exit the temporary interjection stop and restore the true blocked state when nested work is still pending',
-    );
-    const eventsAfterContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
+    const eventsAfterContinue = await DialogPersistence.loadCourseEvents(
       sideDialog.id,
       sideDialog.currentCourse,
       sideDialog.status,
     );
-    const surfacedRuntimeGuides = eventsAfterContinueWhileBlocked.filter(
+    const consumedReassertionPrompts = eventsAfterContinue.filter(
       (
         event,
-      ): event is Extract<
-        (typeof eventsAfterContinueWhileBlocked)[number],
-        { type: 'runtime_guide_record' }
-      > => event.type === 'runtime_guide_record' && event.content === reassertionPrompt,
+      ): event is Extract<(typeof eventsAfterContinue)[number], { type: 'human_text_record' }> =>
+        event.type === 'human_text_record' &&
+        event.origin === 'runtime' &&
+        event.content === reassertionPrompt,
     );
     assert.equal(
-      surfacedRuntimeGuides.length,
+      consumedReassertionPrompts.length,
       1,
-      'Continue while still blocked should immediately surface the reply reassertion guide exactly once',
-    );
-    assert.equal(
-      surfacedRuntimeGuides[0]?.rootCourse,
-      1,
-      'surfaced sideDialog runtime guide must keep a root course anchor',
-    );
-    assert.equal(
-      typeof surfacedRuntimeGuides[0]?.rootGenseq,
-      'number',
-      'surfaced sideDialog runtime guide must keep a root generation anchor',
+      'Continue should consume one reassertion runtime prompt',
     );
     assert.deepEqual(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: assignmentDirective,
-        resumeGuideSurfaced: true,
-      },
-      'blocked Continue should mark the deferred reply reassertion as already surfaced',
-    );
-    const countsAfterContinueWhileBlocked = await getRunControlCountsSnapshot();
-    assert.equal(
-      countsAfterContinueWhileBlocked.resumable,
-      1,
-      'once Continue exits the temporary interjection pause, only the nested pending-reply sideDialog should remain resumable',
-    );
-
-    await driveDialogStream(
-      sideDialog,
-      makeUserPrompt(secondCycleInterjectPrompt, 'sideDialog-user-interject-second-cycle', {
-        userLanguageCode: 'en',
-      }),
-      true,
-      makeDriveOptions({
-        suppressDiligencePush: true,
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
-    assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: assignmentDirective,
-      },
-      'a new interjection after blocked Continue should suppress the restored reply obligation again instead of staying latched in surfaced state',
-    );
-
-    await driveDialogStream(
-      sideDialog,
       undefined,
-      true,
-      makeDriveOptions({
-        allowResumeFromInterrupted: true,
-        source: 'ws_resume_dialog',
-        reason: 'resume_dialog',
-        suppressDiligencePush: true,
-      }),
+      'direct Continue should consume the deferred reply reassertion once it is delivered as a runtime prompt',
     );
-    await waitForAllDialogsUnlocked(root, 2_000);
-
-    const eventsAfterSecondContinueWhileBlocked = await DialogPersistence.loadCourseEvents(
-      sideDialog.id,
-      sideDialog.currentCourse,
-      sideDialog.status,
-    );
-    const surfacedRuntimeGuidesAfterSecondContinue = eventsAfterSecondContinueWhileBlocked.filter(
-      (
-        event,
-      ): event is Extract<
-        (typeof eventsAfterSecondContinueWhileBlocked)[number],
-        { type: 'runtime_guide_record' }
-      > => event.type === 'runtime_guide_record' && event.content === reassertionPrompt,
-    );
-    assert.equal(
-      surfacedRuntimeGuidesAfterSecondContinue.length,
-      2,
-      'each blocked Continue after a fresh interjection should surface a fresh reply reassertion guide',
-    );
-    assert.ok(
-      surfacedRuntimeGuidesAfterSecondContinue.every(
-        (event) => event.rootCourse === 1 && typeof event.rootGenseq === 'number',
-      ),
-      'every surfaced sideDialog runtime guide must keep root anchors',
-    );
-    assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: assignmentDirective,
-        resumeGuideSurfaced: true,
-      },
-      'the second blocked Continue should mark the reassertion as surfaced again',
-    );
-
-    await DialogPersistence.removePendingSideDialog(
-      sideDialog.id,
-      nestedSideDialog.id.selfId,
-      undefined,
-      sideDialog.status,
-    );
-
-    await driveDialogStream(
-      sideDialog,
-      undefined,
-      true,
-      makeDriveOptions({
-        source: 'kernel_driver_supply_response_parent_revive',
-        reason: 'nested_sideDialog_resolved',
-        suppressDiligencePush: true,
-        noPromptSideDialogResumeEntitlement: {
-          ownerDialogId: sideDialog.id.selfId,
-          reason: 'resolved_pending_sideDialog_reply',
-          sideDialogId: nestedSideDialog.id.selfId,
-          callType: 'C',
-          callId: 'pangu-to-nuwa-call',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
 
     assert.equal(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       undefined,
-      'deferred reply reassertion should be consumed on resume',
+      'deferred reply reassertion should be consumed on direct Continue',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
@@ -416,7 +288,7 @@ async function main(): Promise<void> {
       sideDialog.currentCourse,
       sideDialog.status,
     );
-    const repeatedReassertionPrompt = events.find(
+    const reassertionPromptsAfterContinue = events.filter(
       (event): event is Extract<(typeof events)[number], { type: 'human_text_record' }> =>
         event.type === 'human_text_record' &&
         event.msgId !== 'sideDialog-runtime-assignment' &&
@@ -424,9 +296,9 @@ async function main(): Promise<void> {
         event.content === reassertionPrompt,
     );
     assert.equal(
-      repeatedReassertionPrompt,
-      undefined,
-      'actual resume should not synthesize a second runtime human prompt once blocked Continue already injected the guide into dialog history',
+      reassertionPromptsAfterContinue.length,
+      1,
+      'later processing should not synthesize another reassertion prompt after Continue already consumed one',
     );
     const surfacedGuidesAfterResume = events.filter(
       (event): event is Extract<(typeof events)[number], { type: 'runtime_guide_record' }> =>
@@ -434,8 +306,8 @@ async function main(): Promise<void> {
     );
     assert.equal(
       surfacedGuidesAfterResume.length,
-      2,
-      'actual resume should not emit any duplicate reassertion guide beyond the two blocked-Continue surfacings',
+      0,
+      'direct Continue should use runtime prompts rather than blocked-Continue guide surfacing',
     );
 
     const replyReminderEvent = events.find(
@@ -448,7 +320,7 @@ async function main(): Promise<void> {
       replyReminderEvent === undefined ? -1 : events.indexOf(replyReminderEvent);
     assert.ok(
       replyReminderIndex >= 0,
-      'first plain answer after parent-revive resume should queue and consume one replyTellask reminder before fallback',
+      'first plain answer after direct Continue should queue and consume one replyTellask reminder before fallback',
     );
     assert.deepEqual(
       replyReminderEvent?.tellaskReplyDirective,
@@ -477,6 +349,15 @@ async function main(): Promise<void> {
       pendingAtRoot.length,
       0,
       'resumed reply should clear the parent pending side dialog',
+    );
+    const pendingAtSideDialog = await DialogPersistence.loadPendingSideDialogs(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.equal(
+      pendingAtSideDialog.length,
+      1,
+      'direct Continue should not consume the still-background nested side dialog',
     );
   });
 

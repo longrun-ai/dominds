@@ -24,10 +24,10 @@ async function main(): Promise<void> {
         callName: 'tellask',
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
-        callId: 'call-pending-course-start-resume-all',
+        callId: 'call-pending-runtime-prompt-resume-all',
         callSiteCourse: 1,
         callSiteGenseq: 1,
-        sessionSlug: 'pending-course-start-resume-all',
+        sessionSlug: 'pending-runtime-prompt-resume-all',
         collectiveTargets: ['pangu'],
       },
     );
@@ -40,11 +40,11 @@ async function main(): Promise<void> {
         mentionList: ['@pangu'],
         tellaskContent: 'Resume me after restart.',
         targetAgentId: 'pangu',
-        callId: 'call-pending-course-start-resume-all',
+        callId: 'call-pending-runtime-prompt-resume-all',
         callSiteCourse: 1,
         callSiteGenseq: 1,
         callType: 'B',
-        sessionSlug: 'pending-course-start-resume-all',
+        sessionSlug: 'pending-runtime-prompt-resume-all',
       },
     ]);
 
@@ -56,45 +56,45 @@ async function main(): Promise<void> {
     );
 
     const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
-    assert.ok(latest?.pendingCourseStartPrompt, 'expected durable pending course-start prompt');
+    assert.ok(latest?.pendingRuntimePrompt, 'expected durable pending runtime prompt');
     assert.deepEqual(
       latest?.displayState,
       {
         kind: 'stopped',
-        reason: { kind: 'pending_course_start' },
+        reason: { kind: 'pending_runtime_prompt' },
         continueEnabled: true,
       },
-      'pending course-start prompts should persist as stopped/resumable display state',
+      'pending runtime prompts should persist as stopped/resumable display state',
     );
     assert.deepEqual(
       latest?.executionMarker,
       {
         kind: 'interrupted',
-        reason: { kind: 'pending_course_start' },
+        reason: { kind: 'pending_runtime_prompt' },
       },
-      'pending course-start prompts should persist an interrupted execution marker',
+      'pending runtime prompts should persist an interrupted execution marker',
     );
     assert.equal(
       isDialogLatestResumable(latest),
       true,
-      'dialogs with a durable pending course-start prompt should be resumable for resume_all',
+      'dialogs with a durable pending runtime prompt should be resumable for resume_all',
     );
 
     const counts = await getRunControlCountsSnapshot();
     assert.equal(
       counts.resumable,
       1,
-      'run-control snapshot should count durable pending course-start prompts as resumable',
+      'run-control snapshot should count durable pending runtime prompts as resumable',
     );
   });
 
-  console.log('kernel-driver sideDialog-pending-course-start-counts-as-resumable: PASS');
+  console.log('kernel-driver sideDialog-pending-runtime-prompt-counts-as-resumable: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver sideDialog-pending-course-start-counts-as-resumable: FAIL\n${message}`,
+    `kernel-driver sideDialog-pending-runtime-prompt-counts-as-resumable: FAIL\n${message}`,
   );
   process.exit(1);
 });

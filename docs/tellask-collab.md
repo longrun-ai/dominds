@@ -53,9 +53,9 @@ Short version: a Tellask Session is a resumable thread, not autonomous backgroun
 For teammate Tellasks, the runtime lifecycle is:
 
 1. Tellask is emitted.
-2. Tellasker waits while Side Dialog runs.
-3. A response is supplied back.
-4. Tellasker resumes.
+2. The callee Side Dialog runs as background work; the caller may naturally idle or keep working from other concrete triggers.
+3. When the callee response is supplied back, that response becomes a new fact for the caller.
+4. The caller resumes only from that result-arrival fact, a queued prompt, user input, Diligence Push, or another explicit drive source.
 
 Critical operational fact:
 
@@ -66,7 +66,7 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 ### 2.4 Diligence Push boundary
 
-- Diligence Push helps the tellasker avoid going idle.
+- Diligence Push helps Main Dialogs avoid going idle.
 - It does not send teammate Tellasks on the agent’s behalf.
 - It is a pressure mechanism, not an execution orchestrator.
 

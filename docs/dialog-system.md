@@ -62,11 +62,11 @@ A **Q4H** is a pending question raised by a dialog (main or sideDialog) that req
 
 ### SideDialog Index (subdlg.yaml)
 
-A **subdlg.yaml** file indexes pending sideDialogs that an askerDialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
+A **subdlg.yaml** file indexes pending background callee dialogs for an askerDialog. Like `q4h.yaml`, it is an index file, not the source of truth:
 
-- The index tracks which sideDialog IDs the tellasker is waiting for
+- The index tracks which sideDialog IDs still owe a response to the caller
 - Actual sideDialog state is verified from disk (done/ directory)
-- Used by the backend coroutine for crash recovery and auto-revive
+- Used by the backend coroutine for crash recovery, observability, and result-arrival handling
 
 ### SideDialog Registry
 
@@ -113,13 +113,13 @@ Each Dialog object carries an exclusive mutex with an associated wait queue. Whe
 Backend coroutines drive dialogs using the following pattern:
 
 1. Scan the Global Registry to identify main dialogs needing driving
-2. For each candidate, check resumption conditions (Q4H answered, sideDialog completions received)
+2. For each candidate, check concrete drive sources (Q4H answered, queued prompt, result arrival, open generation recovery, etc.)
 3. Acquire the dialog's mutex before driving
-4. Execute the generation loop until suspension point or completion
+4. Execute the generation loop until it naturally idles, reaches Q4H, or completes
 5. Release the mutex
 6. Persist all state changes to storage
 
-The driving loop continues until a dialog suspends (awaiting Q4H or sideDialog) or completes. When conditions change (user answers Q4H, sideDialog finishes), the backend detects these via storage checks and resumes driving automatically.
+The driving loop continues until a dialog naturally idles, reaches Q4H, or completes. Pending sideDialogs are background callee work; they do not suspend the caller by themselves. When a user answers Q4H or a callee result arrives, the backend records that concrete fact and drives the affected dialog only from that fact.
 
 ### Frontend Integration
 
@@ -149,8 +149,8 @@ Missing broadcaster is therefore a runtime bootstrap invariant violation, not a 
 Dialog state is persisted to storage at key points:
 
 - After each message generation
-- On suspension (Q4H raised, sideDialog created)
-- On resumption (Q4H answered, sideDialog completed)
+- When Q4H is raised, a background callee dialog is created, or another observable fact changes
+- When Q4H is answered or a callee result arrives
 - On completion
 
 This ensures crash recovery and enables the backend to resume from any persisted state without depending on frontend state.
@@ -175,23 +175,23 @@ When a dialog still carries an inter-dialog reply obligation, but the user tempo
 After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence facts and decide which true-source case now applies. It must not infer the result purely from the visible `displayState`:
 
 - **Case 1: the dialog no longer has a reply obligation**
-  If there is also no blocker, the dialog should simply continue driving. If it has already become ordinary idle-waiting-user, then `resume_dialog` is no longer actually resumable.
-- **Case 2: the dialog still has a reply obligation and is still suspended**
-  Typical examples are pending Q4H or pending sideDialogs. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
+  If there is also no user-wait fact such as Q4H, the dialog should simply continue driving. If it has already become ordinary idle-waiting-user, then `resume_dialog` is no longer actually resumable.
+- **Case 2: the dialog still has a reply obligation and is waiting for user input**
+  The canonical example is pending Q4H. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
 - **Case 3: the dialog still has a reply obligation but is no longer suspended and is eligible to proceed**
-  For example, the blocker has disappeared, or a queued prompt provides a valid continuation path. In this case, `Continue` must not first fall back to an intermediate placeholder `blocked/idle` state; it should keep driving immediately.
+  For example, the Q4H/user-wait fact has disappeared, or a queued prompt provides a valid continuation path. In this case, `Continue` must not first fall back to an intermediate placeholder `blocked/idle` state; it should keep driving immediately.
 
 **This leads to two implementation constraints**:
 
 - `refreshRunControlProjectionFromPersistenceFacts()` MUST preserve the special "interjection handled; original task paused" `stopped` projection until the user explicitly clicks `Continue`; otherwise the UI collapses back to ordinary `blocked` too early and breaks multi-turn interjection UX. Conversely, when there is no parked original task, this paused projection should not be created at all.
 - The actual outcome of `Continue` MUST be decided in the resume drive path by re-reading fresh persistence facts. "Continue is clickable" does not mean "the dialog will definitely enter proceeding immediately".
 - If `Continue` reveals that the true state is still `blocked`, the reply-obligation reassertion copy should be materialized immediately as a runtime guide in both `dlg.msgs` and persisted course history, while also surfacing as a frontend bubble. That lets the later real resume path rely on ordinary context replay instead of synthesizing a second duplicate runtime prompt.
-- The run-control toolbar's `resumable` count should align with "manual Continue attempt is meaningful". Therefore an interjection-paused `stopped` dialog still counts as resumable even when underlying blocker facts remain, because the business meaning of `Continue` there is "exit the temporary paused projection and re-evaluate from source-of-truth facts".
+- The run-control toolbar's `resumable` count should align with "manual Continue attempt is meaningful". Therefore an interjection-paused `stopped` dialog still counts as resumable even when underlying user-wait facts remain, because the business meaning of `Continue` there is "exit the temporary paused projection and re-evaluate from source-of-truth facts".
 
 **Mental-model warning**:
 
 - Do not reason about this flow from `displayState.kind === 'stopped'` alone.
-- Do not reason about it from blocker facts alone and then wonder why the UI still shows `stopped`.
+- Do not reason about it from user-wait facts alone and then wonder why the UI still shows `stopped`.
 - Do not reason about it from `resume_dialog` eligibility alone and assume resumption always means immediate running.
 - Do not flatten every `origin === 'user'` prompt into "interjection"; a non-empty `q4hAnswerCallId` means askHuman answer continuation and follows a different semantic path.
 
@@ -225,10 +225,10 @@ flowchart TD
 
 **Behavior**:
 
-1. Current sideDialog **suspends**
+1. Current callee records the ask-back and waits for the tellasker's answer
 2. Driver switches to drive the **tellasker** (direct askerDialog for TYPE A; uses `sideDialog.askerDialog` reference)
 3. Tellasker response flows back to the sideDialog
-4. SideDialog **resumes** with tellasker's response in context
+4. Callee continues with the tellasker's response in context
 
 **Key Characteristics**:
 
@@ -241,9 +241,9 @@ flowchart TD
 
 - If a Side Dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
-- There is no separate technical state for keeping Side Dialogs active. A Side Dialog continues because normal business state still requires work: a tool result needs reaction, Q4H is pending, a downstream Side Dialog is pending, or an explicit runtime/user prompt is queued. Do not add a side path whose only purpose is to keep a dialog active.
+- There is no separate technical state for keeping Side Dialogs active. A Side Dialog continues because normal business state still requires work: a tool result needs reaction, Q4H is pending, a downstream callee reply is pending, or an explicit runtime/user prompt is queued. Do not add a side path whose only purpose is to keep a dialog active.
 - Reply-obligation tail handling is one small state machine: after runtime reaches a non-suspended tail, it inspects the newest non-empty assistant generation candidate produced by the current drive, preferring public saying over thinking when both exist on the same generation. If a Side Dialog still owes `replyTellask*` and has produced that candidate content without using the exact reply tool, runtime queues one reply-tool reminder. If the next answer to that reminder is still only thinking/saying, runtime intentionally delivers that content through direct-reply fallback and marks it as fallback.
-- Runtime must not infer this tail state by scanning historical message text. Historical context is for the model and the UI; scheduling state must be carried explicitly by the current drive result, active reply obligation, pending blocker indexes, or queued prompts.
+- Runtime must not infer this tail state by scanning historical message text. Historical context is for the model and the UI; scheduling state must be carried explicitly by the current drive result, active reply obligation, pending Q4H indexes, or queued prompts.
 - If the work is unfinished, do not default to `tellaskBack`; first use team SOP / role ownership to judge whether a responsible owner is already clear, and if yes for execution work, directly use `tellask` / `tellaskSessionless` for that owner.
 - Use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership.
 - **FBR exception**: FBR Side Dialogs forbid all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`); they must list missing context and return.
@@ -280,10 +280,10 @@ Tellasker: "orchestrator" (agentId)
 LLM emits: tellaskSessionless({ targetAgentId: "orchestrator", tellaskContent: "..." }) How should I handle the database migration?
 
 Result:
-- sub-001 suspends
+- sub-001 records the ask-back and waits for the tellasker's answer
 - Driver drives orchestrator with the question
 - orchestrator responds with guidance
-- sub-001 resumes with orchestrator's response
+- sub-001 continues with orchestrator's response
 ```
 
 ### TYPE B: Registered SideDialog Tellask (Type B / `Tellask Session` / Registered Session Tellask)
@@ -307,9 +307,9 @@ headline text is ignored for tellaskSession parsing.
 1. Check registry for existing sideDialog with key `agentId!sessionSlug`
 2. **If exists**: Resume the registered sideDialog
 3. **If not exists**: Create NEW sideDialog AND register it with key `agentId!sessionSlug`
-4. Tellasker **suspends** while sideDialog runs
-5. SideDialog response flows back to the tellasker
-6. Tellasker **resumes** with sideDialog's response
+4. Tellasker records a background callee fact; pending sideDialogs do not suspend the tellasker by themselves
+5. SideDialog response flows back to the tellasker as a result-arrival fact
+6. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push, or another explicit driving source
 
 **Current Tellasker Tracking (important for reuse):**
 
@@ -356,20 +356,18 @@ Result (first call):
 - Registry lookup: no "researcher!market-analysis" exists
 - Create new sideDialog "researcher!market-analysis"
 - Register it in main dialog's registry
-- orchestrator suspends
+- orchestrator records background callee work
 - Drive researcher sideDialog
-- Response flows back to orchestrator
-- orchestrator resumes
+- Response arrives back to orchestrator as a concrete fact
 
 LLM emits again: tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 Result (second call):
 - Registry lookup: "researcher!market-analysis" exists
 - Resume existing sideDialog
-- orchestrator suspends
+- orchestrator records background callee work
 - Drive existing researcher sideDialog from where it left off
-- Response flows back to orchestrator
-- orchestrator resumes
+- Response arrives back to orchestrator as a concrete fact
 ```
 
 ### TYPE C: Transient SideDialog Tellask (Type C / `Fresh Tellask` / One-shot Tellask)
@@ -384,13 +382,13 @@ Result (second call):
 
 **Behavior**:
 
-1. Current dialog **suspends**
+1. Current dialog records a background callee fact; pending sideDialogs do not suspend it by themselves
 2. Create **NEW sideDialog** with the specified agentId
 3. Drive the new sideDialog:
    - For general Type C, the sideDialog is full-fledged (TellaskBack, teammate Tellasks, tools per config).
    - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; no Tellasks).
-4. SideDialog response flows back to the tellasker
-5. Tellasker **resumes** with sideDialog's response
+4. SideDialog response flows back to the tellasker as a result-arrival fact
+5. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push, or another explicit driving source
 
 **Key Characteristics**:
 
@@ -411,19 +409,18 @@ Current dialog: orchestrator
 LLM emits: @code-reviewer Please review this PR
 
 Result:
-- orchestrator suspends
+- orchestrator records background callee work
 - Create NEW sideDialog with agentId "code-reviewer"
 - Drive the code-reviewer sideDialog (it can make its own Tellasks, tools, etc.)
-- code-reviewer completes with review findings
-- orchestrator resumes with review in context
+- code-reviewer completes; review findings arrive as a result-arrival fact
 
 LLM emits again: @code-reviewer Review this other PR
 
 Result:
-- orchestrator suspends
+- orchestrator records background callee work
 - Create ANOTHER NEW sideDialog (not the same as before!)
 - Drive the new code-reviewer sideDialog
-- orchestrator resumes with new review in context
+- the new review arrives as a result-arrival fact
 ```
 
 ### Comparison Summary
@@ -435,7 +432,7 @@ Result:
 | **Registry Lookup**         | No (uses `sideDialog.askerDialog`)           | Yes (`agentId!sessionSlug`)                                                              | No (never registered)                                                                     |
 | **Resumption**              | No (askerDialog not a sideDialog)            | Yes (lookup finds existing)                                                              | No (always new)                                                                           |
 | **Registration**            | Not applicable                               | Created AND registered                                                                   | Never registered                                                                          |
-| **Tellasker Behavior**      | SideDialog suspends                          | Tellasker suspends                                                                       | Tellasker suspends                                                                        |
+| **Tellasker Behavior**      | Callee waits for tellasker reply             | Records background callee fact                                                           | Records background callee fact                                                            |
 | **SideDialog Capabilities** | Full (TellaskBack, teammates, tools)         | Full (TellaskBack, teammates, tools)                                                     | Full (TellaskBack, teammates, tools)                                                      |
 | **Use Case**                | Clarification from tellasker (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)                                            | One-off independent task (`Fresh Tellask`)                                                |
 
@@ -663,7 +660,7 @@ sequenceDiagram
   participant Driver as driveDialogStream
 
   Asker->>Side: creates sideDialog (Type B or C)
-  Note over Asker: AskerDialog is blocked on pending sideDialogs
+  Note over Asker: AskerDialog records background callee work
 
   Side->>WS: emits askHuman({ tellaskContent: "..." }) question
   WS-->>UI: questions_count_update
@@ -672,7 +669,7 @@ sequenceDiagram
   UI->>WS: drive_dialog_by_user_answer(dialog=sideDialogId, questionId, content)
   WS->>Driver: driveDialogStream(sideDialog, human answer)
   Driver-->>Side: sideDialog resumes
-  Side-->>Asker: response supplied (clears pending-sideDialogs)
+  Side-->>Asker: response supplied (result-arrival fact; clears this pending callee)
 ```
 
 ### Q4H and Mental Clarity Operations
@@ -730,39 +727,38 @@ sequenceDiagram
   Asker->>Driver: create sideDialog (adds to pending list)
   Driver->>Side: drive sideDialog (detached execution)
   Side-->>Store: persist final response
-  Driver-->>Asker: supply response + clear pending-sideDialogs
-  opt Asker is root and now unblocked
-    Driver-->>Asker: set needsDrive=true (auto-revive)
+  Driver-->>Asker: supply result-arrival fact + clear pending callee
+  opt result arrival creates an explicit drive source
+    Driver-->>Asker: set needsDrive=true
   end
 ```
 
-### SideDialog Q4H and AskerDialog Revival
+### SideDialog Q4H and Tellasker Result Arrival
 
-When a sideDialog has raised Q4H and is waiting for human input, the askerDialog's auto-revival logic must handle this:
+When a sideDialog has raised Q4H and is waiting for human input, the tellasker's result-arrival logic must respect that no callee result exists yet:
 
 ```typescript
-// AskerDialog checks sideDialog completion status
-async function checkSideDialogRevival(askerDialog: Dialog): Promise<void> {
-  const pending = await loadPendingSideDialogs(askerDialog.id);
+// Tellasker checks callee completion status
+async function checkCalleeResultArrival(tellasker: Dialog): Promise<void> {
+  const pending = await loadPendingSideDialogs(tellasker.id);
 
   for (const p of pending) {
-    // Check if sideDialog has unresolved Q4H
+    // Check if callee has unresolved Q4H
     const sideDialogQ4H = await DialogPersistence.loadQuestions4HumanState(p.sideDialogId);
 
     if (sideDialogQ4H.length > 0) {
-      // SideDialog is waiting for human input
-      // Do NOT auto-revive - wait for human to answer Q4H
+      // Callee is waiting for human input; no result-arrival fact exists yet.
       log.debug(
-        `SideDialog ${p.sideDialogId} has ${sideDialogQ4H.length} Q4H, skipping auto-revive`,
+        `callee ${p.sideDialogId} has ${sideDialogQ4H.length} Q4H, skipping result arrival`,
       );
       continue;
     }
 
-    // SideDialog has no Q4H, check if it's done
+    // Callee has no Q4H, check if it's done
     const isDone = await isSideDialogCompleted(p.sideDialogId);
     if (isDone) {
-      // Incorporate response and auto-revive
-      await incorporateSideDialogResponse(askerDialog, p.sideDialogId);
+      // Incorporate response and schedule from this concrete fact.
+      await incorporateSideDialogResponse(tellasker, p.sideDialogId);
     }
   }
 }
@@ -1090,8 +1086,8 @@ An entire main dialog tree can be forked at the start of a chosen root generatio
 **Post-fork actions** (returned by backend to UI):
 
 - `draft_user_text`: if the target generation is a user message, prefill that text into the new dialog input and wait for user confirmation
-- `restore_pending`: if there were pending Q4H or pending sideDialogs before the cutoff, restore those blocking states in the new main dialog
-- `auto_continue`: if there is no pending blocker before the cutoff, initialize the new main dialog as `interrupted(system_stop: fork_dialog_continue)` and have UI immediately send `resume_dialog`
+- `restore_pending`: if there was pending Q4H before the cutoff, restore that user-wait state in the new main dialog; pending sideDialogs are copied as background callee facts, not blockers
+- `auto_continue`: if there is no pending Q4H or other user-wait fact before the cutoff, initialize the new main dialog as `interrupted(system_stop: fork_dialog_continue)` and have UI immediately send `resume_dialog`
 
 **Consistency requirements**:
 
@@ -1108,7 +1104,7 @@ An entire main dialog tree can be forked at the start of a chosen root generatio
 - Tasks are finished successfully
 - Agents explicitly mark them complete
 - AskerDialogs determine subtasks are no longer needed
-- All pending sideDialogs are complete AND all Q4H are answered
+- The responsible Dialog Responder determines no pending callee result or Q4H is still needed before completion
 
 **Registry on Completion**: When a main dialog completes, its registry moves with it to the `done/` directory and is preserved for potential restoration.
 
@@ -1236,7 +1232,7 @@ driven is derived from persisted facts:
 
 - Persisted status (API/index): `running | completed | archived`
 - Persisted `latest.yaml`: `status`, `needsDrive`, `generating`
-- Derived gates: `hasPendingQ4H()` and `hasPendingSideDialogs()`
+- Derived gates: `hasPendingQ4H()`; pending sideDialogs are background callee facts, not a drive gate
 
 **Persisted status lifecycle:**
 
@@ -1252,9 +1248,10 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-  A[status=running] --> B{canDrive?\\n(no pending Q4H\\n& no pending sideDialogs)}
-  B -- no --> S[Suspended\\n(waiting on Q4H and/or sideDialogs)]
-  S -->|Q4H answered\\nor sideDialog responses supplied| C{needsDrive?}
+  A[status=running] --> B{canDrive?\\n(no pending Q4H)}
+  B -- no --> S[Suspended\\n(waiting on Q4H)]
+  S -->|Q4H answered| C{needsDrive?}
+  R[result arrival] --> C
   B -- yes --> C{needsDrive?}
   C -- no --> I[Idle\\n(waiting for trigger)]
   C -- yes --> D[Drive loop\\n(generating=true while streaming)]
@@ -1307,9 +1304,9 @@ sequenceDiagram
     Driver->>Side: create + register + drive
   end
   Side-->>Driver: final response
-  Driver-->>Tellasker: supply response + clear pending-sideDialogs
-  opt Tellasker is the main dialog and now unblocked
-    Driver-->>Tellasker: set `needsDrive=true` (auto-revive scheduling)
+  Driver-->>Tellasker: supply result-arrival fact + clear pending callee
+  opt result arrival creates an explicit drive source
+    Driver-->>Tellasker: set `needsDrive=true`
   end
 ```
 
@@ -1371,7 +1368,7 @@ sequenceDiagram
   participant Driver as driveDialogStream
 
   Asker->>Side: create sideDialog (Type B or C)
-  Note over Asker,Side: AskerDialog becomes blocked on pending sideDialogs
+  Note over Asker,Side: AskerDialog records background callee work
   Side->>WS: emits askHuman({ tellaskContent: "..." }) question (Q4H)
   WS-->>UI: questions_count_update (global)
 
@@ -1381,10 +1378,10 @@ sequenceDiagram
   WS->>Side: clear q4h.yaml entry
   WS->>Driver: driveDialogStream(sideDialog, user answer)
   Driver-->>Side: sideDialog resumes and continues
-  Side-->>Asker: sideDialog response supplied to tellasker (clears pending-sideDialogs)
+  Side-->>Asker: sideDialog response supplied to tellasker (result-arrival fact; clears this pending callee)
 
-  opt Asker is the main dialog and now unblocked
-    Asker-->>Asker: set needsDrive=true (auto-revive)
+  opt Asker has a result-arrival drive source
+    Asker-->>Asker: set needsDrive=true (result-arrival handling)
   end
 ```
 
@@ -1426,7 +1423,7 @@ sequenceDiagram
   Asker->>Side: createSideDialog()
   Side->>Store: recordQuestionForHuman()
   Side-->>UI: questions_count_update (sideDialog)
-  Asker-->>Asker: suspended (waiting on Q4H/sideDialog)
+  Asker-->>Asker: records background callee work; only Q4H is a user-wait blocker
 
   User->>UI: select sideDialog Q4H
   User->>Asker: drive_dialog_by_user_answer(targetSideDialogId)
@@ -1435,7 +1432,7 @@ sequenceDiagram
   Side->>Store: clearQuestions4HumanState()
   Side-->>Side: driveDialogStream(answer)
   Side->>Store: write response.yaml
-  Side-->>Asker: supply response (resume root)
+  Side-->>Asker: supply result-arrival fact
 ```
 
 ### 3. Registered SideDialog Tellask (TYPE B / `Tellask Session` / Registered Session Tellask)
@@ -1449,14 +1446,14 @@ sequenceDiagram
   Main->>Store: lookup registry key "researcher!market"
   alt not found
     Main->>Store: create sideDialog + save registry.yaml
-    Main->>Side: drive (root suspended)
+    Main->>Side: drive (background callee work)
   else found
     Main->>Store: load sideDialog + update lastAccessed
-    Main->>Side: drive (root suspended)
+    Main->>Side: drive (background callee work)
   end
 
   Side->>Store: write response.yaml
-  Side-->>Main: supply response (root resumes)
+  Side-->>Main: supply result-arrival fact
 ```
 
 ### 4. Clarity Operations Preserve Registry

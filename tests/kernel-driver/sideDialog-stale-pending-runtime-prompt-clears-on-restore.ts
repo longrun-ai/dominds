@@ -22,8 +22,8 @@ async function main(): Promise<void> {
 
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
-    const tellaskContent = 'Clear stale pending course-start prompt after restore.';
-    const callId = 'call-stale-pending-course-start';
+    const tellaskContent = 'Clear stale pending runtime prompt after restore.';
+    const callId = 'call-stale-pending-runtime-prompt';
 
     const sideDialog = await root.createSideDialog('pangu', ['@pangu'], tellaskContent, {
       callName: 'tellask',
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
       callId,
       callSiteCourse: 1,
       callSiteGenseq: 1,
-      sessionSlug: 'stale-pending-course-start',
+      sessionSlug: 'stale-pending-runtime-prompt',
       collectiveTargets: ['pangu'],
     });
     sideDialog.disableDiligencePush = true;
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
         callSiteCourse: 1,
         callSiteGenseq: 1,
         callType: 'B',
-        sessionSlug: 'stale-pending-course-start',
+        sessionSlug: 'stale-pending-runtime-prompt',
       },
     ]);
 
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
       }),
     );
     const queuedPrompt = sideDialog.peekUpNext();
-    assert.ok(queuedPrompt, 'expected clear_mind to queue a pending course-start prompt');
+    assert.ok(queuedPrompt, 'expected clear_mind to queue a pending runtime prompt');
 
     await writeMockDb(tmpRoot, [
       {
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
       kind: 'patch',
       patch: {
         needsDrive: true,
-        pendingCourseStartPrompt: {
+        pendingRuntimePrompt: {
           content: queuedPrompt.prompt,
           msgId: queuedPrompt.msgId,
           grammar: 'markdown',
@@ -108,24 +108,24 @@ async function main(): Promise<void> {
     assert.equal(
       restoredSideDialog.peekUpNext(),
       undefined,
-      'restore should not requeue a stale course-start prompt that is already persisted in course events',
+      'restore should not requeue a stale runtime prompt that is already persisted in course events',
     );
 
     const latestAfterRestore = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
     assert.equal(
-      latestAfterRestore?.pendingCourseStartPrompt,
+      latestAfterRestore?.pendingRuntimePrompt,
       undefined,
-      'restore should clear the stale pending course-start prompt from latest.yaml',
+      'restore should clear the stale pending runtime prompt from latest.yaml',
     );
     assert.equal(
       latestAfterRestore?.needsDrive,
       false,
-      'restore should clear stale needsDrive when the pending course-start prompt is already persisted',
+      'restore should clear stale needsDrive when the pending runtime prompt is already persisted',
     );
     assert.equal(
       latestAfterRestore?.executionMarker,
       undefined,
-      'restore should clear the stale pending-course-start interruption marker as well',
+      'restore should clear the stale pending-runtime-prompt interruption marker as well',
     );
     assert.deepEqual(
       latestAfterRestore?.displayState,
@@ -134,13 +134,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver sideDialog-stale-pending-course-start-clears-on-restore: PASS');
+  console.log('kernel-driver sideDialog-stale-pending-runtime-prompt-clears-on-restore: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver sideDialog-stale-pending-course-start-clears-on-restore: FAIL\n${message}`,
+    `kernel-driver sideDialog-stale-pending-runtime-prompt-clears-on-restore: FAIL\n${message}`,
   );
   process.exit(1);
 });

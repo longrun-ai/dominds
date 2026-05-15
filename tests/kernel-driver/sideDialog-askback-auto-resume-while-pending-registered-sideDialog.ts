@@ -202,11 +202,8 @@ async function main(): Promise<void> {
     const latest = await DialogPersistence.loadDialogLatest(pangu.id, pangu.status);
     assert.deepEqual(
       latest?.displayState,
-      {
-        kind: 'blocked',
-        reason: { kind: 'waiting_for_sideDialogs' },
-      },
-      'after the auto-resume round, the tellasker should return to waiting on the nested registered side dialog',
+      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
+      'after the auto-resume round, the pending nested side dialog remains background work and the tellasker is only paused by its parent reply obligation',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
@@ -214,10 +211,25 @@ async function main(): Promise<void> {
       pangu.currentCourse,
       pangu.status,
     );
-    assert.equal(
-      events.filter((event) => event.type === 'gen_start_record').length,
-      2,
+    const generationStarts = events.filter((event) => event.type === 'gen_start_record');
+    assert.ok(
+      generationStarts.length >= 2,
       'the tellasker sideDialog should run a second generation round after replyTellaskBack lands',
+    );
+    assert.ok(
+      generationStarts.length <= 4,
+      'the reply reminder follow-up may start additional generations but must be rejected before duplicate reply delivery',
+    );
+    const replyResolutions = events.filter(
+      (event) =>
+        event.type === 'tellask_reply_resolution_record' &&
+        event.replyCallName === 'replyTellask' &&
+        event.targetCallId === 'root-call-pangu-main',
+    );
+    assert.equal(
+      replyResolutions.length,
+      0,
+      'background nested work should not cause implicit parent reply delivery during the ask-back auto-resume',
     );
   });
 

@@ -17,6 +17,7 @@ import type {
   DialogLatestFile,
   DialogMetadataFile,
   MainDialogMetadataFile,
+  PendingSideDialogStateRecord,
   SideDialogAssignmentFromAsker,
 } from '@longrun-ai/kernel/types/storage';
 import type {
@@ -211,29 +212,45 @@ async function loadDialogLatestForLookup(
   }
 }
 
-async function detectWaitingForFreshBootsReasoning(
+type BackgroundCalleeDialogSummary = Readonly<{
+  backgroundCalleeDialogCount: number;
+  backgroundFreshBootsReasoningCalleeCount: number;
+}>;
+
+function summarizeBackgroundCalleeDialogs(
+  pending: readonly PendingSideDialogStateRecord[],
+): BackgroundCalleeDialogSummary {
+  return {
+    backgroundCalleeDialogCount: pending.length,
+    backgroundFreshBootsReasoningCalleeCount: pending.filter(
+      (entry) => entry.callName === 'freshBootsReasoning',
+    ).length,
+  };
+}
+
+async function loadBackgroundCalleeDialogSummary(
   dialogId: DialogID,
   status: PersistableDialogStatus,
-): Promise<boolean> {
+): Promise<BackgroundCalleeDialogSummary> {
   try {
     // Pending-sideDialogs is also lazy-loaded per dialog. A malformed queue should quarantine just
-    // that dialog and degrade this derived flag to "unknown/false" instead of taking down the
+    // that dialog and degrade this derived badge state to empty instead of taking down the
     // surrounding list or hierarchy response.
     const pending = await DialogPersistence.loadPendingSideDialogs(dialogId, status);
-    return pending.some((entry) => entry.callName === 'freshBootsReasoning');
+    return summarizeBackgroundCalleeDialogs(pending);
   } catch (error: unknown) {
     if (!findDomindsPersistenceFileError(error)) {
       throw error;
     }
     log.warn(
-      'detectWaitingForFreshBootsReasoning: pending-sideDialogs quarantined during lookup',
+      'loadBackgroundCalleeDialogSummary: pending-sideDialogs quarantined during lookup',
       error,
       {
         dialogId: dialogId.valueOf(),
         status,
       },
     );
-    return false;
+    return { backgroundCalleeDialogCount: 0, backgroundFreshBootsReasoningCalleeCount: 0 };
   }
 }
 
@@ -2379,7 +2396,8 @@ async function handleGetDialogs(
       createdAt: string;
       lastModified: string;
       displayState?: DialogLatestFile['displayState'];
-      waitingForFreshBootsReasoning?: boolean;
+      backgroundCalleeDialogCount: number;
+      backgroundFreshBootsReasoningCalleeCount: number;
       sideDialogCount: number;
     }> = [];
 
@@ -2407,10 +2425,7 @@ async function handleGetDialogs(
       if (!rootStillExists) {
         continue;
       }
-      const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
-        dialogId,
-        status,
-      );
+      const backgroundSummary = await loadBackgroundCalleeDialogSummary(dialogId, status);
 
       const sideDialogCount = sideDialogCountByRootId.get(meta.id) ?? 0;
       if (!(await pathStillExistsForLookup(rootPath))) {
@@ -2426,7 +2441,7 @@ async function handleGetDialogs(
         createdAt: meta.createdAt,
         lastModified: latest?.lastModified || meta.createdAt,
         displayState: latest?.displayState,
-        waitingForFreshBootsReasoning,
+        ...backgroundSummary,
         sideDialogCount,
       });
     }
@@ -2505,10 +2520,7 @@ async function handleGetDialogHierarchy(
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
       displayState: rootLatest?.displayState,
-      waitingForFreshBootsReasoning: await detectWaitingForFreshBootsReasoning(
-        new DialogID(rootId),
-        status,
-      ),
+      ...(await loadBackgroundCalleeDialogSummary(new DialogID(rootId), status)),
     };
     if (!(await pathStillExistsForLookup(rootPath))) {
       respondJson(res, 404, {
@@ -2531,7 +2543,8 @@ async function handleGetDialogHierarchy(
       displayState?: DialogLatestFile['displayState'];
       sessionSlug?: string;
       assignmentFromAsker?: SideDialogAssignmentFromAsker;
-      waitingForFreshBootsReasoning?: boolean;
+      backgroundCalleeDialogCount: number;
+      backgroundFreshBootsReasoningCalleeCount: number;
     }> = [];
 
     const dialogIds = await DialogPersistence.listAllDialogIds(status);
@@ -2553,10 +2566,7 @@ async function handleGetDialogHierarchy(
         status,
         'handleGetDialogHierarchy:sideDialog',
       );
-      const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
-        dialogId,
-        status,
-      );
+      const backgroundSummary = await loadBackgroundCalleeDialogSummary(dialogId, status);
       const sideDialogPath = DialogPersistence.getSideDialogPath(dialogId, status);
       if (!(await pathStillExistsForLookup(sideDialogPath))) {
         continue;
@@ -2592,7 +2602,7 @@ async function handleGetDialogHierarchy(
         displayState: subLatest?.displayState,
         sessionSlug: meta.sessionSlug,
         assignmentFromAsker,
-        waitingForFreshBootsReasoning,
+        ...backgroundSummary,
       });
     }
 
@@ -2654,10 +2664,7 @@ async function handleGetDialogListSideDialogNode(
       status,
       'handleGetDialogListSideDialogNode',
     );
-    const waitingForFreshBootsReasoning = await detectWaitingForFreshBootsReasoning(
-      dialogId,
-      status,
-    );
+    const backgroundSummary = await loadBackgroundCalleeDialogSummary(dialogId, status);
     const rootSideDialogCount = await DialogPersistence.countAllSideDialogsUnderRoot(
       new DialogID(dialog.rootId),
       status,
@@ -2702,7 +2709,7 @@ async function handleGetDialogListSideDialogNode(
         displayState: latest?.displayState,
         sessionSlug: metadata.sessionSlug,
         assignmentFromAsker,
-        waitingForFreshBootsReasoning,
+        ...backgroundSummary,
       },
     });
     return true;

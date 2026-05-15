@@ -129,7 +129,13 @@ export type DialogSideDialogReplyTarget = Readonly<{
   callSiteGenseq: CallSiteGenseqNo;
 }>;
 
-export type DialogPendingCourseStartPrompt = DialogRuntimePrompt;
+export type DialogPendingRuntimePrompt = DialogRuntimePrompt;
+
+export type DialogLatestAssignmentAnchorState = Readonly<{
+  callId: string;
+  assignmentCourse: AssignmentCourseNumber;
+  assignmentGenseq: AssignmentGenerationSeqNumber;
+}>;
 
 export interface DialogLatestFile {
   currentCourse: number;
@@ -142,17 +148,24 @@ export interface DialogLatestFile {
   needsDrive?: boolean;
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
+  latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
+  sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
   deferredReplyReassertion?: DialogDeferredReplyReassertion;
-  // FIXME(next major): this field name is historical. It now stores any durable runtime prompt
-  // that must survive restart and be consumed before ordinary no-prompt driving, including
-  // reply-tool reminders after a tellaskee directly replies instead of calling reply*. Rename the
-  // persisted schema to something like `pendingRuntimePrompt` only in a major migration, together
-  // with display-state wording, restore logic, diagnostics, and old latest.yaml compatibility.
-  pendingCourseStartPrompt?: DialogPendingCourseStartPrompt;
+  // Durable runtime prompt that must survive restart and be consumed before ordinary no-prompt
+  // driving, including new-course prompts and reply-tool reminders after direct sideline replies.
+  pendingRuntimePrompt?: DialogPendingRuntimePrompt;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;
 }
+
+export type DialogSideDialogFinalResponseState = Readonly<{
+  callId: string;
+  responseCourse: DialogCourseNumber;
+  responseGenseq: CalleeGenerationSeqNumber;
+  askerDialogId: string;
+  askerCourse: AskerCourseNumber;
+}>;
 
 export type DialogExecutionMarker =
   | {

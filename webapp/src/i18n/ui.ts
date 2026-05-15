@@ -182,9 +182,7 @@ export type UiStrings = {
   resumeAllNoResumableToast: string;
   resumeDialogNotResumableToast: string;
   resumeRejectedResumptionPanelSummary: string;
-  resumeRejectedResumptionPanelWaitingSideDialogs: string;
   resumeRejectedResumptionPanelNeedsHumanInput: string;
-  resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs: string;
   resumeRejectedResumptionPanelIdleWaitingUser: string;
   resumeRejectedResumptionPanelAlreadyRunning: string;
   resumeRejectedResumptionPanelStoppedNotResumable: string;
@@ -258,7 +256,7 @@ export type UiStrings = {
   stoppedByYou: string;
   stoppedByEmergencyStop: string;
   interruptedByServerRestart: string;
-  pendingCourseStartReady: string;
+  pendingRuntimePromptReady: string;
   pendingReplyObligation: string;
   forkContinueReady: string;
   runMarkerResumed: string;
@@ -267,8 +265,8 @@ export type UiStrings = {
   runBadgeStoppedTitle: string;
   runBadgeRunningTitle: string;
   runBadgeWaitingHumanTitle: string;
-  runBadgeWaitingSideDialogsTitle: string;
-  runBadgeWaitingFbrTitle: string;
+  runBadgeBackgroundCalleeTitle: string;
+  runBadgeBackgroundFbrCalleeTitle: string;
 
   connectionConnected: string;
   connectionConnecting: string;
@@ -600,12 +598,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
         '已重新扫描对话真源：这个对话现在不能继续了。请先查看最新阻塞原因，或等待状态变化。',
       resumeRejectedResumptionPanelSummary:
         '已重新扫描对话真源：当前并不满足“继续”的条件。界面上刚才的恢复面板可能是过时投影；请先查看最新阻塞原因或等待状态变化。',
-      resumeRejectedResumptionPanelWaitingSideDialogs:
-        '已重新扫描对话真源：当前主线正在等待支线对话完成，因此现在不能继续。',
       resumeRejectedResumptionPanelNeedsHumanInput:
-        '已重新扫描对话真源：当前主线正在等待人类输入，因此现在不能继续。',
-      resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs:
-        '已重新扫描对话真源：当前主线同时在等待人类输入和支线对话，因此现在不能继续。',
+        '已重新扫描对话真源：当前对话正在等待人类输入，因此现在不能继续。',
       resumeRejectedResumptionPanelIdleWaitingUser:
         '已重新扫描对话真源：这个对话已经不再处于可继续的中断态，当前是在等待新的用户输入。',
       resumeRejectedResumptionPanelAlreadyRunning:
@@ -683,7 +677,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       stoppedByYou: '已由你停止',
       stoppedByEmergencyStop: '已被紧急停止终止',
       interruptedByServerRestart: '因服务器重启而中断',
-      pendingCourseStartReady: '换程启动已就绪，可继续推进',
+      pendingRuntimePromptReady: '运行时提示已就绪，可继续推进',
       pendingReplyObligation: '仍有待完成的回贴义务，可继续推进',
       forkContinueReady: '已创建继续分支，可继续推进',
       runMarkerResumed: '已继续',
@@ -692,8 +686,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       runBadgeStoppedTitle: '对话已停止',
       runBadgeRunningTitle: '正在运行',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
-      runBadgeWaitingSideDialogsTitle: '等待支线对话完成',
-      runBadgeWaitingFbrTitle: '等待 FBR 收口',
+      runBadgeBackgroundCalleeTitle: '后台被诉请对话进行中',
+      runBadgeBackgroundFbrCalleeTitle: '后台 FBR 被诉请对话进行中',
 
       connectionConnected: '已连接',
       connectionConnecting: '连接中',
@@ -1034,12 +1028,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'A fresh scan of the dialog facts shows this dialog is not resumable right now. Check the latest blocker or wait for the state to change.',
     resumeRejectedResumptionPanelSummary:
       'A fresh scan of the dialog facts shows it is not currently resumable. The resumption panel you just saw may have been stale; check the latest blocker or wait for the state to change.',
-    resumeRejectedResumptionPanelWaitingSideDialogs:
-      'A fresh scan of the dialog facts shows this Main Dialog is waiting for Side Dialogs, so it cannot resume yet.',
     resumeRejectedResumptionPanelNeedsHumanInput:
-      'A fresh scan of the dialog facts shows this Main Dialog is waiting for human input, so it cannot resume yet.',
-    resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs:
-      'A fresh scan of the dialog facts shows this Main Dialog is waiting for both human input and Side Dialogs, so it cannot resume yet.',
+      'A fresh scan of the dialog facts shows this dialog is waiting for human input, so it cannot resume yet.',
     resumeRejectedResumptionPanelIdleWaitingUser:
       'A fresh scan of the dialog facts shows this dialog is no longer interrupted and is now waiting for a new user input.',
     resumeRejectedResumptionPanelAlreadyRunning:
@@ -1123,7 +1113,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     stoppedByYou: 'Stopped by you',
     stoppedByEmergencyStop: 'Stopped by emergency stop',
     interruptedByServerRestart: 'Interrupted by server restart',
-    pendingCourseStartReady: 'A new course is ready to continue',
+    pendingRuntimePromptReady: 'A runtime prompt is ready to continue',
     pendingReplyObligation: 'An inter-dialog reply obligation is still pending',
     forkContinueReady: 'A continuation fork is ready to proceed',
     runMarkerResumed: 'Resumed',
@@ -1132,8 +1122,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runBadgeStoppedTitle: 'Stopped',
     runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
-    runBadgeWaitingSideDialogsTitle: 'Waiting for Side Dialogs',
-    runBadgeWaitingFbrTitle: 'Waiting for FBR',
+    runBadgeBackgroundCalleeTitle: 'Background callee dialog in progress',
+    runBadgeBackgroundFbrCalleeTitle: 'Background FBR callee dialog in progress',
 
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting',

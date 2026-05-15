@@ -6,6 +6,8 @@ import type {
   DialogLlmRetryExhaustedReason,
 } from '@longrun-ai/kernel/types/display-state';
 import {
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toRootGenerationAnchor,
@@ -1311,6 +1313,7 @@ async function persistInvalidFuncCallRuntimeGuide(args: {
 
 type RoutedFunctionResult = {
   hasImmediateFollowupToolCalls: boolean;
+  hasImmediateTellaskOutputs: boolean;
   shouldStopAfterReplyTool: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
@@ -1680,6 +1683,7 @@ async function executeFunctionRound(args: {
   if (args.funcCalls.length === 0) {
     return {
       hasImmediateFollowupToolCalls: false,
+      hasImmediateTellaskOutputs: false,
       shouldStopAfterReplyTool: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
@@ -1805,6 +1809,7 @@ async function executeFunctionRound(args: {
   return {
     hasImmediateFollowupToolCalls:
       hasImmediateFollowupToolCalls || tellaskRound.hasInvalidTellaskCalls,
+    hasImmediateTellaskOutputs: tellaskRound.hasImmediateTellaskOutputs,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
@@ -1835,20 +1840,11 @@ async function maybeContinueWithDiligencePrompt(args: {
   dlg: Dialog;
   team: Team;
   suppressDiligencePushForDrive: boolean;
-  allowPendingSideDialogs?: boolean;
   ignoreBudgetExhaustion?: boolean;
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
-  const {
-    dlg,
-    team,
-    suppressDiligencePushForDrive,
-    allowPendingSideDialogs,
-    ignoreBudgetExhaustion,
-  } = args;
+  const { dlg, team, suppressDiligencePushForDrive, ignoreBudgetExhaustion } = args;
 
-  const suspension = await dlg.getSuspensionStatus({
-    allowPendingSideDialogs: allowPendingSideDialogs === true,
-  });
+  const suspension = await dlg.getSuspensionStatus();
   if (!suspension.canDrive) {
     if (suspension.q4h && dlg instanceof MainDialog) {
       await preserveDiligenceBudgetAcrossQ4H(dlg);
@@ -1926,14 +1922,6 @@ async function maybePrepareRetryStoppedRecoveryPrompt(args: {
     dlg: args.dlg,
     team: args.team,
     suppressDiligencePushForDrive: args.suppressDiligencePushForDrive,
-    // `diligence_push_once` is a provider-quirk deadlock breaker rather than the ordinary
-    // "dialog is about to go idle" auto-continue path. In practice this can happen in a
-    // function-result-driven generation round right after the main dialog has already registered
-    // a pending tellask/sideDialog, or after the normal Diligence Push budget has been exhausted.
-    // Keep Q4H / explicit disable as hard blockers, but do not let pending sideDialogs or the
-    // ordinary keep-going budget veto this one-time recovery injection or the same-context
-    // deadlock cannot be broken.
-    allowPendingSideDialogs: true,
     ignoreBudgetExhaustion: true,
   });
 }
@@ -2455,7 +2443,7 @@ export async function driveDialogStreamCore(
                 replyGuidance.persistedTellaskReplyDirective,
                 currentPrompt.contentItems,
               );
-              await DialogPersistence.clearPendingCourseStartPrompt(
+              await DialogPersistence.clearPendingRuntimePrompt(
                 dlg.id,
                 currentPrompt.msgId,
                 dlg.status,
@@ -2517,6 +2505,20 @@ export async function driveDialogStreamCore(
               };
               const course = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
               await DialogPersistence.appendEvent(dlg.id, course, record, dlg.status);
+              await DialogPersistence.mutateDialogLatest(
+                dlg.id,
+                () => ({
+                  kind: 'patch',
+                  patch: {
+                    latestAssignmentAnchor: {
+                      callId: normalizedCallId,
+                      assignmentCourse: toAssignmentCourseNumber(course),
+                      assignmentGenseq: toAssignmentGenerationSeqNumber(dlg.activeGenSeq),
+                    },
+                  },
+                }),
+                dlg.status,
+              );
               if (dlg instanceof SideDialog) {
                 const ownerDialogId = new DialogID(replyTarget.ownerDialogId, dlg.id.rootId);
                 const ownerDialogStatus =
@@ -3299,11 +3301,9 @@ export async function driveDialogStreamCore(
             pubRemindersVer = dlg.remindersVer;
           }
 
-          // Tool execution may have created pending Q4H/sideDialogs mid-round. Respect the
-          // dialog's actual suspension state here so auto-continue is decided in one place.
-          const suspensionAfterToolRound = await dlg.getSuspensionStatus({
-            allowPendingSideDialogs: routed.hasImmediateFollowupToolCalls,
-          });
+          // Tool execution may have created pending Q4H mid-round. Pending tellask sideDialogs are
+          // background work, so only Q4H can suspend this same-drive continuation point.
+          const suspensionAfterToolRound = await dlg.getSuspensionStatus();
           if (!suspensionAfterToolRound.canDrive) {
             await preserveDiligenceBudgetAcrossQ4H(dlg);
             break;
@@ -3315,7 +3315,7 @@ export async function driveDialogStreamCore(
           // trigger another immediate generation round by themselves.
           const shouldStartImmediatePostToolGeneration =
             routed.hasImmediateFollowupToolCalls ||
-            routed.tellaskToolOutputs.length > 0 ||
+            routed.hasImmediateTellaskOutputs ||
             invalidFuncCallCount > 0;
           if (!shouldStartImmediatePostToolGeneration) {
             const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({

@@ -1,12 +1,13 @@
 import {
   toAskerCourseNumber,
-  toAssignmentCourseNumber,
-  toAssignmentGenerationSeqNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
   toCallSiteGenseqNo,
+  toDialogCourseNumber,
   toRootGenerationAnchor,
   type AskerCourseNumber,
+  type AssignmentCourseNumber,
+  type AssignmentGenerationSeqNumber,
   type PendingSideDialogStateRecord,
   type TellaskAnchorRecord,
   type TellaskReplyResolutionRecord,
@@ -155,11 +156,17 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
   return false;
 }
 
-export async function resolveLatestAssignmentAnchorRef(args: {
+async function resolveLatestAssignmentAnchorRef(args: {
   calleeDialogId: DialogID;
   callId: string;
   status: DialogPersistenceStatus;
-}): Promise<{ course: number; genseq: number } | undefined> {
+}): Promise<
+  | {
+      course: AssignmentCourseNumber;
+      genseq: AssignmentGenerationSeqNumber;
+    }
+  | undefined
+> {
   const normalizedCallId = args.callId.trim();
   if (normalizedCallId === '') {
     return undefined;
@@ -169,33 +176,14 @@ export async function resolveLatestAssignmentAnchorRef(args: {
   if (!latest) {
     return undefined;
   }
-
-  const maxCourse = Math.floor(latest.currentCourse);
-  for (let course = maxCourse; course >= 1; course -= 1) {
-    const courseEvents = await DialogPersistence.loadCourseEvents(
-      args.calleeDialogId,
-      course,
-      args.status,
-    );
-    for (let i = courseEvents.length - 1; i >= 0; i -= 1) {
-      const event = courseEvents[i];
-      if (event.type !== 'tellask_anchor_record') {
-        continue;
-      }
-      if (event.anchorRole !== 'assignment') {
-        continue;
-      }
-      if (event.callId.trim() !== normalizedCallId) {
-        continue;
-      }
-      if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
-        continue;
-      }
-      return { course, genseq: Math.floor(event.genseq) };
-    }
+  const latestAssignmentAnchor = latest.latestAssignmentAnchor;
+  if (latestAssignmentAnchor?.callId !== normalizedCallId) {
+    return undefined;
   }
-
-  return undefined;
+  return {
+    course: latestAssignmentAnchor.assignmentCourse,
+    genseq: latestAssignmentAnchor.assignmentGenseq,
+  };
 }
 
 export async function supplyResponseToAskerDialog(args: {
@@ -391,8 +379,8 @@ export async function supplyResponseToAskerDialog(args: {
     const carryoverCallSiteCourse = result.callSiteCourse;
     let assignmentRef:
       | {
-          course: number;
-          genseq: number;
+          course: AssignmentCourseNumber;
+          genseq: AssignmentGenerationSeqNumber;
         }
       | undefined;
     const carryoverContent =
@@ -412,7 +400,8 @@ export async function supplyResponseToAskerDialog(args: {
           })
         : undefined;
     if (resolvedCallId !== '' && calleeResponseRef) {
-      if (result.askerCourse === undefined) {
+      const askerCourse = result.askerCourse;
+      if (askerCourse === undefined) {
         throw new Error(
           `tellask response anchor invariant violation: missing askerCourse ` +
             `(parentId=${parentDialog.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${resolvedCallId})`,
@@ -512,19 +501,31 @@ export async function supplyResponseToAskerDialog(args: {
               ? (parentDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
               : (parentDialog.activeGenSeqOrUndefined ?? 0),
         }),
-        assignmentCourse:
-          assignmentRef !== undefined ? toAssignmentCourseNumber(assignmentRef.course) : undefined,
-        assignmentGenseq:
-          assignmentRef !== undefined
-            ? toAssignmentGenerationSeqNumber(assignmentRef.genseq)
-            : undefined,
+        assignmentCourse: assignmentRef?.course,
+        assignmentGenseq: assignmentRef?.genseq,
         askerDialogId: parentDialog.id.selfId,
-        askerCourse: result.askerCourse,
+        askerCourse,
       };
       await DialogPersistence.appendEvent(
         sideDialogId,
         calleeResponseRef.course,
         anchorRecord,
+        parentDialog.status,
+      );
+      await DialogPersistence.mutateDialogLatest(
+        sideDialogId,
+        () => ({
+          kind: 'patch',
+          patch: {
+            sideDialogFinalResponse: {
+              callId: resolvedCallId,
+              responseCourse: toDialogCourseNumber(calleeResponseRef.course),
+              responseGenseq: toCalleeGenerationSeqNumber(calleeResponseRef.genseq),
+              askerDialogId: parentDialog.id.selfId,
+              askerCourse,
+            },
+          },
+        }),
         parentDialog.status,
       );
     }

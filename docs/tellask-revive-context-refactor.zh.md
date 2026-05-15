@@ -6,9 +6,9 @@
 
 ## 1. 背景
 
-当前 `tellask*` / `replyTellask*` 机制已经能完成跨对话诉请、支线回贴、pending sideDialog 恢复等主流程，但在“多诉请并发 + 延迟回复 + course 切换”的场景里，现有模型暴露出两个核心问题：
+当前 `tellask*` / `replyTellask*` 机制已经能完成跨对话诉请、callee 回贴、pending sideDialog 恢复等主流程，但在“多诉请并发 + 延迟回复 + course 切换”的场景里，现有模型暴露出两个核心问题：
 
-1. **revive 粒度过粗**：owner dialog 只要仍有任意 pending sideDialog，就整体不继续；这会让不同生成轮次发出的诉请互相阻塞。
+1. **result-arrival 粒度过粗**：owner dialog 只要仍有任意 pending sideDialog，就整体不处理已到达结果；这会让不同生成轮次发出的诉请互相牵连。
 2. **原位补真实结果割裂现实时间线**：延迟回复到达后，系统把真实结果补回原 tool call 位置，导致 LLM 上下文看起来像“当时已经看到回复”。这和真实运行时序相反，也会让后续判断变得难以解释。
 
 本重构的目标不是做局部补丁，而是重新梳理三条必须同时成立的语义：
@@ -367,14 +367,14 @@ preflight 不应使用简单的 `allowPendingSideDialogs: true`。
 
 ### 6.3 Display state
 
-auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owner dialog 已经没有 pending sideDialogs。
+result-arrival handling 能因为某个 dispatch batch 齐活而继续 drive，并不等于 owner dialog 已经没有 pending sideDialogs。
 
 因此：
 
 - drive 中途可以继续；
-- 如果 LLM 停下而其它 wait-group 仍 pending，display state 应回到 `waiting_for_sideDialogs`；
-- pending tellask reminder 仍应保留其它未完成 group；
-- UI 不应把“这组已齐活”误显示成“所有支线已完成”。
+- 如果 LLM 停下而其它 dispatch batch 仍 pending，display state 应回到普通 idle/proceeding 投影，而不是 `waiting_for_sideDialogs`；
+- pending tellask reminder / 后台被诉请者 badge 仍应保留其它未完成 batch；
+- UI 不应把“这组已齐活”误显示成“所有 callee 已完成”。
 
 ## 7. Race 与一致性风险
 
@@ -406,7 +406,7 @@ auto-revive 能因为某个 wait-group 齐活而继续 drive，并不等于 owne
 replace pending 不是 silent overwrite，也不是 failed-result fallback。它是显式栈操作：
 
 - 定位旧 frame 的匹配键必须稳定，倾向使用 `askerDialogId + targetCallId` / `ownerDialogId + callId`，具体以 pending record 与 reply directive 对齐后的字段为准；
-- 每个 `tellask` call-site 的 `callId` 最终都必须在诉请者对话历史里有同 `callId` 的呼应点；被替换时，这个呼应点就是替代通知 / carryover result，而不是等支线对话后续回复时才补；
+- 每个 `tellask` call-site 的 `callId` 最终都必须在诉请者对话历史里有同 `callId` 的呼应点；被替换时，这个呼应点就是替代通知 / carryover result，而不是等 callee 后续回复时才补；
 - 如果 replace 找不到旧 frame，必须 loud fail，不允许降级成普通 push；
 - 因为持久文件采用 append/truncate-only JSONL，replace 的落盘算法是：
   1. 读取 stack frames 与每行 byte offset；
@@ -422,10 +422,10 @@ replace pending 不是 silent overwrite，也不是 failed-result fallback。它
 
 - `registered_assignment_update` 的 up-next 队列是运行时调度状态，不是严格持久化 redo log。不要为了让“更新气泡”即时可重放，把这条队列升级成新的持久事务日志。
 - 诉请者侧反馈必须区分两种事实：
-  - **更新已登记 / 已排队**：pending record 与 asker stack 已按新诉请更新，支线后续应按最新 assignment 推进；这只说明运行时接受了更新。
-  - **目标支线已实际收到并开始处理更新**：支线 driver 已消费 up-next，写入可见的更新 assignment 气泡与 assignment anchor；只有这个事实才能支撑“目标支线已经收到/正在按新要求处理”的主线反馈。
-- 如果支线正忙，更新 prompt 可以留在内存 up-next 中等待安全边界异步消费。主线不应在消费前渲染“已送达目标支线”语义的气泡；最多表达“旧轮已被新诉请登记替换，目标支线尚待消费更新”。
-- 后端进程意外退出时，不追求技术角度严格自愈不丢 up-next。业务自愈边界是：LLM 能看到足够事实（pending reminder、asker stack 最新 assignment、旧 call 是否缺少终态、目标支线是否缺少 assignment anchor），从而自主判断是否需要重发/修正/继续等待。
+  - **更新已登记 / 已排队**：pending record 与 asker stack 已按新诉请更新，callee 后续应按最新 assignment 推进；这只说明运行时接受了更新。
+  - **目标 callee 已实际收到并开始处理更新**：callee driver 已消费 up-next，写入可见的更新 assignment 气泡与 assignment anchor；只有这个事实才能支撑“目标 callee 已经收到/正在按新要求处理”的 caller 反馈。
+- 如果 callee 正忙，更新 prompt 可以留在内存 up-next 中等待安全边界异步消费。caller 不应在消费前渲染“已送达目标 callee”语义的气泡；最多表达“旧轮已被新诉请登记替换，目标 callee 尚待消费更新”。
+- 后端进程意外退出时，不追求技术角度严格自愈不丢 up-next。业务自愈边界是：LLM 能看到足够事实（pending reminder、asker stack 最新 assignment、旧 call 是否缺少终态、目标 callee 是否缺少 assignment anchor），从而自主判断是否需要重发/修正/继续观察后台事实。
 - 因此，维护者修复这类时序问题时，优先做真实状态反馈与 loud diagnostics，不要把 up-next 队列泛化成持久化 redo log。
 
 ### 7.3 Reply tool 与 direct fallback
@@ -502,7 +502,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 
 - `DialogID.rootId` 仍是结构性 storage anchor，可后续单独评估是否改成 `mainId`。本轮优先改 dialog 类名、reply obligation 语义名、运行时字段名、测试名与文档术语。
 - wire/storage 事件名若仍带旧 `subdialog_*`，本轮应一并评估并尽量升级；如果某个外部协议字段暂不改，必须在最后汇报为明确遗留，而不是默默保留。
-- 用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”；不暴露 `askerDialog` 这类实现字段名。
+- 用户可见文案在生命周期、导航、归档、差遣牒职责语境继续使用“主线对话 / 支线对话”；在诉请链路、等待/回贴、结果到达、继续推进语境使用“诉请者 / 被诉请者”或 caller/callee；不暴露 `askerDialog` 这类实现字段名。
 
 ### 7.7 术语升级补充：tellasker/tellaskee、asker、responder、caller 分层
 
@@ -586,7 +586,7 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
   - replace pending 从 stack 中抽调旧 frame，再把新 obligation 压栈顶；
   - 原 call site 只出现 pointer，不出现真实回复正文；
   - Type B registered update 压栈、先回复新诉请、再恢复旧诉请；
-  - Type B registered update 在支线消费更新前，主线不得宣称目标支线已收到/正在处理更新；
+  - Type B registered update 在 callee 消费更新前，caller 不得宣称目标 callee 已收到/正在处理更新；
   - 重启恢复后 pending 与 arrival fact 一致。
 
 ## 9. 已定案问题
@@ -600,5 +600,5 @@ Dominds 不做同 course 内 context window 裁剪。上下文规则是：
 5. 旧 pending record 缺少 `callSiteCourse` / `callSiteGenseq` 不迁移、不隔离兼容、不 fallback。旧 `.dialogs/` 可丢弃；新 validator 直接要求必填，缺失即 loud fail / quarantine。
 6. reply obligation 是栈，不是槽。root 与 side dialog 统一使用 `asker-stack.jsonl` 持久化 `AskerDialogStackFrame`，文件只允许 append/truncate。LLM context 从栈顶注入当前义务，而不是扫描历史 JSONL 对话。
 7. replace pending 是特殊栈操作：抽调旧 frame，再把新 obligation 压到栈顶；找不到旧 frame 必须 loud fail，不能静默 fallback 成普通 push。
-8. Type B registered update 的 up-next 队列保持运行态内存调度，不升级为持久化 redo log；主线反馈必须等目标支线实际消费更新并写入 assignment anchor 后，才表达“目标支线已收到/开始处理更新”。
-9. 实现术语升级为 `MainDialog` / `SideDialog` / `askerDialog` / `assignmentFromAsker` / `askerStack`。旧 `supdialog` 术语退出实现代码与文档；用户可见文案继续使用“主线对话 / 支线对话、诉请者 / 被诉请者”。
+8. Type B registered update 的 up-next 队列保持运行态内存调度，不升级为持久化 redo log；caller 反馈必须等目标 callee 实际消费更新并写入 assignment anchor 后，才表达“目标 callee 已收到/开始处理更新”。
+9. 实现术语升级为 `MainDialog` / `SideDialog` / `askerDialog` / `assignmentFromAsker` / `askerStack`。旧 `supdialog` 术语退出实现代码与文档；用户可见文案在生命周期、导航、归档、差遣牒职责语境继续使用“主线对话 / 支线对话”，在诉请链路语境使用“诉请者 / 被诉请者”或 caller/callee。

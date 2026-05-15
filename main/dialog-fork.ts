@@ -40,7 +40,6 @@ type ForkDialogAction =
   | Readonly<{
       kind: 'restore_pending';
       pendingQ4H: boolean;
-      pendingSideDialogs: boolean;
     }>
   | Readonly<{
       kind: 'auto_continue';
@@ -427,21 +426,13 @@ function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
 function computeRootForkDisplayState(args: {
   action: ForkDialogAction;
   questions: readonly HumanQuestion[];
-  pendingSideDialogs: readonly PendingSideDialogStateRecord[];
 }): DialogDisplayState {
   if (args.action.kind === 'draft_user_text') {
     return { kind: 'idle_waiting_user' };
   }
   const hasQ4H = args.questions.length > 0;
-  const hasSideDialogs = args.pendingSideDialogs.length > 0;
-  if (hasQ4H && hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input_and_sideDialogs' } };
-  }
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (hasSideDialogs) {
-    return { kind: 'blocked', reason: { kind: 'waiting_for_sideDialogs' } };
   }
   return { kind: 'stopped', reason: { kind: 'fork_continue_ready' }, continueEnabled: true };
 }
@@ -839,7 +830,6 @@ async function persistForkPlan(args: {
       ? computeRootForkDisplayState({
           action: args.action,
           questions: plan.questions,
-          pendingSideDialogs: plan.pendingSideDialogs,
         })
       : { kind: 'idle_waiting_user' as const };
 
@@ -951,11 +941,10 @@ export async function forkMainDialogTreeAtGeneration(args: {
   const action: ForkDialogAction =
     draftUserText !== null
       ? { kind: 'draft_user_text', userText: draftUserText }
-      : rootPlan.questions.length > 0 || rootPlan.pendingSideDialogs.length > 0
+      : rootPlan.questions.length > 0
         ? {
             kind: 'restore_pending',
             pendingQ4H: rootPlan.questions.length > 0,
-            pendingSideDialogs: rootPlan.pendingSideDialogs.length > 0,
           }
         : { kind: 'auto_continue' };
 

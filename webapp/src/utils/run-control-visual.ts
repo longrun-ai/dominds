@@ -8,31 +8,19 @@ export type RunControlVisualState =
   | { kind: 'proceeding' }
   | { kind: 'proceeding_stop_requested' }
   | { kind: 'stopped' }
-  | { kind: 'blocked_q4h' }
-  | { kind: 'blocked_sideDialogs' }
-  | { kind: 'blocked_both' };
+  | { kind: 'blocked_q4h' };
 
 export type DisplayStateClassSuffix =
   | ''
   | 'state-proceeding'
   | 'state-proceeding-stop'
   | 'state-stopped'
-  | 'state-blocked-q4h'
-  | 'state-blocked-sideDialogs'
-  | 'state-blocked-both';
+  | 'state-blocked-q4h';
 
 function blockedReasonToVisualState(reason: DialogBlockedReason): RunControlVisualState {
   switch (reason.kind) {
     case 'needs_human_input':
       return { kind: 'blocked_q4h' };
-    case 'waiting_for_sideDialogs':
-      return { kind: 'blocked_sideDialogs' };
-    case 'needs_human_input_and_sideDialogs':
-      return { kind: 'blocked_both' };
-    default: {
-      const _exhaustive: never = reason;
-      return { kind: 'none' };
-    }
   }
 }
 
@@ -74,10 +62,6 @@ export function displayStateClassSuffixFromDisplayState(
       return 'state-stopped';
     case 'blocked_q4h':
       return 'state-blocked-q4h';
-    case 'blocked_sideDialogs':
-      return 'state-blocked-sideDialogs';
-    case 'blocked_both':
-      return 'state-blocked-both';
     default: {
       const _exhaustive: never = visual;
       return _exhaustive;

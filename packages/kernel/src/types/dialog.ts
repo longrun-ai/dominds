@@ -66,6 +66,8 @@ export interface SideDialogEvent extends DialogEventBase {
   mentionList?: string[];
   tellaskContent: string;
   rootSideDialogCount: number;
+  parentBackgroundCalleeDialogCount: number;
+  parentBackgroundFreshBootsReasoningCalleeCount: number;
   sideDialogNode: {
     selfId: string;
     rootId: string;
@@ -79,6 +81,8 @@ export interface SideDialogEvent extends DialogEventBase {
     displayState?: DialogDisplayState;
     sessionSlug?: string;
     assignmentFromAsker?: SideDialogAssignmentFromAsker;
+    backgroundCalleeDialogCount?: number;
+    backgroundFreshBootsReasoningCalleeCount?: number;
   };
   genseq?: number;
 }

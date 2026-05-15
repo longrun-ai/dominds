@@ -2601,18 +2601,23 @@ export class DomindsApp extends HTMLElement {
     return this.visibleSideDialogsByRoot.get(rootId) ?? [];
   }
 
-  private isDialogWaitingForFreshBootsReasoning(rootId: string, selfId: string): boolean {
+  private getDialogBackgroundFreshBootsReasoningCalleeCount(
+    rootId: string,
+    selfId: string,
+  ): number {
     const target =
       selfId === rootId
         ? this.getMainDialog(rootId)
         : this.findDisplayedDialogByIds(rootId, selfId);
-    return target?.waitingForFreshBootsReasoning === true;
+    const count = target?.backgroundFreshBootsReasoningCalleeCount;
+    return typeof count === 'number' && Number.isInteger(count) && count > 0 ? count : 0;
   }
 
-  private setDialogWaitingForFreshBootsReasoning(
+  private setDialogBackgroundCalleeCounts(
     rootId: string,
     selfId: string,
-    waitingForFreshBootsReasoning: boolean,
+    backgroundCalleeDialogCount: number,
+    backgroundFreshBootsReasoningCalleeCount: number,
   ): void {
     const status = this.lookupVisibleDialogStatusByIds(rootId, selfId);
     if (!status) return;
@@ -2621,27 +2626,48 @@ export class DomindsApp extends HTMLElement {
       const mainDialog = this.getMainDialog(rootId);
       if (
         mainDialog &&
-        mainDialog.waitingForFreshBootsReasoning !== waitingForFreshBootsReasoning
+        (mainDialog.backgroundCalleeDialogCount !== backgroundCalleeDialogCount ||
+          mainDialog.backgroundFreshBootsReasoningCalleeCount !==
+            backgroundFreshBootsReasoningCalleeCount)
       ) {
-        this.upsertMainDialogSnapshot({ ...mainDialog, waitingForFreshBootsReasoning });
+        this.upsertMainDialogSnapshot({
+          ...mainDialog,
+          backgroundCalleeDialogCount,
+          backgroundFreshBootsReasoningCalleeCount,
+        });
       }
     } else if (this.visibleSideDialogsByRoot.has(rootId)) {
       const sideDialogs = this.getVisibleSideDialogsForRoot(rootId);
       let changed = false;
       const updated = sideDialogs.map((sideDialog) => {
         if (sideDialog.selfId !== selfId) return sideDialog;
-        if (sideDialog.waitingForFreshBootsReasoning === waitingForFreshBootsReasoning) {
+        if (
+          sideDialog.backgroundCalleeDialogCount === backgroundCalleeDialogCount &&
+          sideDialog.backgroundFreshBootsReasoningCalleeCount ===
+            backgroundFreshBootsReasoningCalleeCount
+        ) {
           return sideDialog;
         }
         changed = true;
-        return { ...sideDialog, waitingForFreshBootsReasoning };
+        return {
+          ...sideDialog,
+          backgroundCalleeDialogCount,
+          backgroundFreshBootsReasoningCalleeCount,
+        };
       });
       if (changed) {
         this.setVisibleSideDialogsForRoot(rootId, updated);
       }
     }
 
-    this.patchDialogListEntry(status, { rootId, selfId }, { waitingForFreshBootsReasoning });
+    this.patchDialogListEntry(
+      status,
+      { rootId, selfId },
+      {
+        backgroundCalleeDialogCount,
+        backgroundFreshBootsReasoningCalleeCount,
+      },
+    );
   }
 
   private setVisibleSideDialogsForRoot(rootId: string, sideDialogs: ApiMainDialogResponse[]): void {
@@ -2819,7 +2845,9 @@ export class DomindsApp extends HTMLElement {
         askerDialogId: this.resolveAskerDialogIdForSideDialog(node),
         sessionSlug: node.sessionSlug,
         assignmentFromAsker: node.assignmentFromAsker,
-        waitingForFreshBootsReasoning: node.waitingForFreshBootsReasoning === true,
+        backgroundCalleeDialogCount: node.backgroundCalleeDialogCount ?? 0,
+        backgroundFreshBootsReasoningCalleeCount:
+          node.backgroundFreshBootsReasoningCalleeCount ?? 0,
       };
 
       const existing = this.getVisibleSideDialogsForRoot(rootId);
@@ -9039,7 +9067,9 @@ export class DomindsApp extends HTMLElement {
           askerDialogId: this.resolveAskerDialogIdForSideDialog(sideDialog),
           sessionSlug: sideDialog.sessionSlug,
           assignmentFromAsker: sideDialog.assignmentFromAsker,
-          waitingForFreshBootsReasoning: sideDialog.waitingForFreshBootsReasoning === true,
+          backgroundCalleeDialogCount: sideDialog.backgroundCalleeDialogCount ?? 0,
+          backgroundFreshBootsReasoningCalleeCount:
+            sideDialog.backgroundFreshBootsReasoningCalleeCount ?? 0,
         });
       }
       const mergedSideDialogs = this.mergeVisibleSideDialogsForMainFromHierarchy(
@@ -9061,7 +9091,9 @@ export class DomindsApp extends HTMLElement {
         createdAt: h.root.createdAt,
         lastModified: h.root.lastModified,
         displayState: rootDisplayState ?? rootEntry?.displayState,
-        waitingForFreshBootsReasoning: h.root.waitingForFreshBootsReasoning === true,
+        backgroundCalleeDialogCount: h.root.backgroundCalleeDialogCount ?? 0,
+        backgroundFreshBootsReasoningCalleeCount:
+          h.root.backgroundFreshBootsReasoningCalleeCount ?? 0,
         sideDialogCount: h.root.sideDialogCount,
       };
 
@@ -9487,12 +9519,8 @@ export class DomindsApp extends HTMLElement {
   ): string {
     const t = getUiStrings(this.uiLanguage);
     switch (reason) {
-      case 'waiting_for_sideDialogs':
-        return t.resumeRejectedResumptionPanelWaitingSideDialogs;
       case 'needs_human_input':
         return t.resumeRejectedResumptionPanelNeedsHumanInput;
-      case 'needs_human_input_and_sideDialogs':
-        return t.resumeRejectedResumptionPanelNeedsHumanInputAndSideDialogs;
       case 'idle_waiting_user':
         return t.resumeRejectedResumptionPanelIdleWaitingUser;
       case 'already_running':
@@ -9574,8 +9602,8 @@ export class DomindsApp extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
-      case 'pending_course_start':
-        return t.pendingCourseStartReady;
+      case 'pending_runtime_prompt':
+        return t.pendingRuntimePromptReady;
       case 'pending_reply_obligation':
         return t.pendingReplyObligation;
       case 'fork_continue_ready':
@@ -11686,14 +11714,17 @@ export class DomindsApp extends HTMLElement {
             askerDialogId: node.askerDialogId,
             sessionSlug: node.sessionSlug,
             assignmentFromAsker: node.assignmentFromAsker,
-            waitingForFreshBootsReasoning: false,
+            backgroundCalleeDialogCount: node.backgroundCalleeDialogCount ?? 0,
+            backgroundFreshBootsReasoningCalleeCount:
+              node.backgroundFreshBootsReasoningCalleeCount ?? 0,
           };
 
           if (sideDialogEvent.callName === 'freshBootsReasoning') {
-            this.setDialogWaitingForFreshBootsReasoning(
+            this.setDialogBackgroundCalleeCounts(
               sideDialogEvent.parentDialog.rootId,
               sideDialogEvent.parentDialog.selfId,
-              true,
+              sideDialogEvent.parentBackgroundCalleeDialogCount,
+              sideDialogEvent.parentBackgroundFreshBootsReasoningCalleeCount,
             );
           }
 
@@ -11859,10 +11890,10 @@ export class DomindsApp extends HTMLElement {
           }
 
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
-          const tellaskOwnerIsWaitingForFreshBootsReasoning =
-            this.isDialogWaitingForFreshBootsReasoning(dialog.rootId, dialog.selfId);
+          const tellaskOwnerBackgroundFreshBootsReasoningCalleeCount =
+            this.getDialogBackgroundFreshBootsReasoningCalleeCount(dialog.rootId, dialog.selfId);
           if (
-            tellaskOwnerIsWaitingForFreshBootsReasoning &&
+            tellaskOwnerBackgroundFreshBootsReasoningCalleeCount > 0 &&
             this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId) === 'running'
           ) {
             this.refreshMainHierarchyAfterTellask(dialog.rootId);
@@ -11892,11 +11923,6 @@ export class DomindsApp extends HTMLElement {
           const rootId = dialog.rootId;
           const key = this.dialogKey(rootId, selfId);
           const typedDisplayState = displayState as DialogDisplayState;
-          const shouldClearWaitingForFreshBootsReasoning =
-            this.isDialogWaitingForFreshBootsReasoning(rootId, selfId) &&
-            (typedDisplayState.kind !== 'blocked' ||
-              (typedDisplayState.reason.kind !== 'waiting_for_sideDialogs' &&
-                typedDisplayState.reason.kind !== 'needs_human_input_and_sideDialogs'));
           this.dialogDisplayStatesByKey.set(key, typedDisplayState);
 
           // Update currently rendered snapshot entry if present.
@@ -11935,8 +11961,7 @@ export class DomindsApp extends HTMLElement {
           // to persisted state even if a transient event was missed.
           if (
             typedDisplayState.kind === 'blocked' &&
-            (typedDisplayState.reason.kind === 'needs_human_input' ||
-              typedDisplayState.reason.kind === 'needs_human_input_and_sideDialogs')
+            typedDisplayState.reason.kind === 'needs_human_input'
           ) {
             this.wsManager.sendRaw({ type: 'get_q4h_state' });
           }
@@ -11947,9 +11972,6 @@ export class DomindsApp extends HTMLElement {
             if (runningList instanceof RunningDialogList) {
               runningList.updateDialogEntry(rootId, selfId, { displayState: typedDisplayState });
             }
-          }
-          if (shouldClearWaitingForFreshBootsReasoning) {
-            this.setDialogWaitingForFreshBootsReasoning(rootId, selfId, false);
           }
           const ts = (message as TypedDialogEvent).timestamp;
           this.bumpDialogLastModified(

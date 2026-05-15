@@ -5594,8 +5594,8 @@ export class DomindsDialogContainer extends HTMLElement {
         return t.stoppedByEmergencyStop;
       case 'server_restart':
         return t.interruptedByServerRestart;
-      case 'pending_course_start':
-        return t.pendingCourseStartReady;
+      case 'pending_runtime_prompt':
+        return t.pendingRuntimePromptReady;
       case 'pending_reply_obligation':
         return t.pendingReplyObligation;
       case 'fork_continue_ready':

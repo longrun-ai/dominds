@@ -41,38 +41,38 @@ async function main(): Promise<void> {
     await root.startNewCourse(queuedPrompt);
     globalDialogRegistry.markNeedsDrive(root.id.rootId, {
       source: 'kernel_driver_test',
-      reason: 'root_pending_course_start_should_not_require_explicit_resume',
+      reason: 'root_pending_runtime_prompt_should_not_require_explicit_resume',
     });
 
     await waitFor(
       async () => lastAssistantSaying(root) === finalReply,
       3_000,
-      'backend loop to drive the root pending-course-start prompt without an explicit resume request',
+      'backend loop to drive the root pending runtime prompt without an explicit resume request',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
-      latest?.pendingCourseStartPrompt,
+      latest?.pendingRuntimePrompt,
       undefined,
-      'backend loop should consume the durable pending root course-start prompt',
+      'backend loop should consume the durable pending root runtime prompt',
     );
     assert.equal(
       latest?.needsDrive,
       false,
-      'backend loop should clear needsDrive after consuming the root pending course-start prompt',
+      'backend loop should clear needsDrive after consuming the root pending runtime prompt',
     );
   });
 
   console.log(
-    'kernel-driver root-pending-course-start-backend-loop-drives-without-explicit-resume: PASS',
+    'kernel-driver root-pending-runtime-prompt-backend-loop-drives-without-explicit-resume: PASS',
   );
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver root-pending-course-start-backend-loop-drives-without-explicit-resume: FAIL\n${message}`,
+    `kernel-driver root-pending-runtime-prompt-backend-loop-drives-without-explicit-resume: FAIL\n${message}`,
   );
   process.exit(1);
 });

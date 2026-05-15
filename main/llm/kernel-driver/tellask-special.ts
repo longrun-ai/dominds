@@ -1396,9 +1396,7 @@ async function reviveDialogIfUnblocked(
   callbacks: KernelDriverDriveCallbacks,
   reason: 'reply_tellask_back_delivered' | 'replaced_pending_sideDialog_reply',
 ): Promise<void> {
-  const suspension = await dialog.getSuspensionStatus({
-    allowPendingSideDialogs: true,
-  });
+  const suspension = await dialog.getSuspensionStatus();
   if (!suspension.canDrive) {
     return;
   }
@@ -3051,6 +3049,7 @@ export type TellaskFunctionRoundResult = Readonly<{
   toolOutputs: readonly ChatMessage[];
   handledCallIds: readonly string[];
   hasInvalidTellaskCalls: boolean;
+  hasImmediateTellaskOutputs: boolean;
   shouldStopAfterReplyTool: boolean;
 }>;
 
@@ -3262,17 +3261,20 @@ export async function processTellaskFunctionRound(args: {
   const tellaskFuncResults: FuncResultMsg[] = [];
   const tellaskFuncResultByCallId = new Map<string, FuncResultMsg>();
   const tellaskToolOutputs: ChatMessage[] = [];
+  let hasImmediateTellaskOutputs = false;
   for (const output of tellaskExecution.toolOutputs) {
     if (output.type === 'func_result_msg') {
       const result: FuncResultMsg = output;
       tellaskFuncResultByCallId.set(result.id, result);
       tellaskFuncResults.push(result);
+      hasImmediateTellaskOutputs = true;
       continue;
     }
     if (output.type === 'tellask_result_msg') {
       const callId = typeof output.callId === 'string' ? output.callId : '';
       if (callId === '') {
         tellaskToolOutputs.push(output);
+        hasImmediateTellaskOutputs = true;
         continue;
       }
       const originatingCall = specialCallById.get(callId);
@@ -3293,10 +3295,12 @@ export async function processTellaskFunctionRound(args: {
         };
         tellaskFuncResultByCallId.set(callId, result);
         tellaskFuncResults.push(result);
+        hasImmediateTellaskOutputs = true;
       }
       continue;
     }
     tellaskToolOutputs.push(output);
+    hasImmediateTellaskOutputs = true;
   }
 
   for (const { call } of orderedValidCalls) {
@@ -3329,6 +3333,7 @@ export async function processTellaskFunctionRound(args: {
     toolOutputs: tellaskToolOutputs,
     handledCallIds: orderedValidCalls.map(({ call }) => call.callId),
     hasInvalidTellaskCalls: orderedInvalidCalls.length > 0,
+    hasImmediateTellaskOutputs,
     shouldStopAfterReplyTool:
       orderedInvalidCalls.length === 0 && tellaskExecution.successfulReplyCallIds.length > 0,
   };

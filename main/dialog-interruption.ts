@@ -23,7 +23,7 @@ export function isInterruptionReasonManualResumeEligible(
     case 'user_stop':
     case 'emergency_stop':
     case 'server_restart':
-    case 'pending_course_start':
+    case 'pending_runtime_prompt':
     case 'pending_reply_obligation':
     case 'fork_continue_ready':
     case 'system_stop':
@@ -40,7 +40,7 @@ export function doesInterruptionReasonRequireExplicitResume(
   reason: DialogInterruptionReason,
 ): boolean {
   switch (reason.kind) {
-    case 'pending_course_start':
+    case 'pending_runtime_prompt':
     case 'pending_reply_obligation':
       return false;
     case 'user_stop':

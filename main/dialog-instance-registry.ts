@@ -25,32 +25,28 @@ function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
   return Math.max(0, Math.floor(value));
 }
 
-async function resolvePendingCourseStartPromptForRestore(args: {
+async function resolvePendingRuntimePromptForRestore(args: {
   dialogId: DialogID;
   status: DialogPersistenceStatus;
   messages: Dialog['msgs'];
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
 }): Promise<{
-  pendingCourseStartPrompt: DialogRuntimePrompt | undefined;
+  pendingRuntimePrompt: DialogRuntimePrompt | undefined;
 }> {
-  const pending = args.latest?.pendingCourseStartPrompt;
+  const pending = args.latest?.pendingRuntimePrompt;
   if (!pending) {
-    return { pendingCourseStartPrompt: undefined };
+    return { pendingRuntimePrompt: undefined };
   }
   const alreadyPersisted = args.messages.some((message) => {
     return message.type === 'prompting_msg' && message.msgId === pending.msgId;
   });
   if (alreadyPersisted) {
     if (args.status === 'running') {
-      await DialogPersistence.clearPendingCourseStartPrompt(
-        args.dialogId,
-        pending.msgId,
-        args.status,
-      );
+      await DialogPersistence.clearPendingRuntimePrompt(args.dialogId, pending.msgId, args.status);
     }
-    return { pendingCourseStartPrompt: undefined };
+    return { pendingRuntimePrompt: undefined };
   }
-  return { pendingCourseStartPrompt: pending };
+  return { pendingRuntimePrompt: pending };
 }
 
 export async function getOrRestoreMainDialog(
@@ -71,7 +67,7 @@ export async function getOrRestoreMainDialog(
   const rootMetadata = rootState.metadata;
 
   const latest = await DialogPersistence.loadDialogLatest(mainDialogId, status);
-  const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
+  const { pendingRuntimePrompt } = await resolvePendingRuntimePromptForRestore({
     dialogId: mainDialogId,
     status,
     messages: rootState.messages,
@@ -99,7 +95,7 @@ export async function getOrRestoreMainDialog(
       reminders: rootState.reminders,
       currentCourse: rootState.currentCourse,
       contextHealth: rootState.contextHealth,
-      pendingCourseStartPrompt,
+      pendingRuntimePrompt,
     },
   );
   const persistedDisableDiligencePush =
@@ -173,7 +169,7 @@ export async function ensureDialogLoaded(
   if (!state) return undefined;
 
   const latest = await DialogPersistence.loadDialogLatest(targetId, status);
-  const { pendingCourseStartPrompt } = await resolvePendingCourseStartPromptForRestore({
+  const { pendingRuntimePrompt } = await resolvePendingRuntimePromptForRestore({
     dialogId: targetId,
     status,
     messages: state.messages,
@@ -220,7 +216,7 @@ export async function ensureDialogLoaded(
       reminders: state.reminders,
       currentCourse: state.currentCourse,
       contextHealth: state.contextHealth,
-      pendingCourseStartPrompt,
+      pendingRuntimePrompt,
     },
   );
   sideDialog.disableDiligencePush =

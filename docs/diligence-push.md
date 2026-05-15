@@ -8,17 +8,14 @@ Dominds main dialogs are intended for long-run operation. A main dialog "stoppin
 is often not what operators want: they want the agent to keep pushing forward until it either:
 
 - legitimately suspends for a human decision (Q4H), or
-- legitimately suspends waiting for Side Dialogs (tellask/backfill).
+- has no local work to do while retaining background callee facts (pending tellask/backfill).
 
 This document specifies two related runtime controls:
 
 - **Auto-continue injection**: for **main dialogs only**, whenever the driver would otherwise stop,
   runtime auto-sends a short diligence prompt (rendered as a normal user bubble) and continues
-  generation, except when the dialog is legitimately suspended (Q4H or pending Side Dialogs).
-- **Side Dialog quirk recovery push**: when a provider/API quirk explicitly requests a one-time
-  `diligence_push_once` recovery, a Side Dialog may receive a built-in runtime template, but only
-  when it currently has an active reply obligation; the template must name the one `replyTellask*`
-  tool confirmed by runtime.
+  generation, except when the dialog is waiting for real user input such as Q4H. Pending tellask is
+  Diligence context, not a suspension reason.
 - **Required tool-use control**: for ordinary main and side dialog rounds, the Diligence Push
   checkbox controls whether the provider request must end through a Dominds tool call. When checked,
   the model is expected to call a tool such as `askHuman`, `tellask*`, `replyTellask*`, or another
@@ -28,7 +25,7 @@ This document specifies two related runtime controls:
 
 ## Goals
 
-- Prevent main dialogs from stopping except for legitimate suspension states (Q4H / Side Dialogs).
+- Prevent main dialogs from stopping except for Q4H or a natural boundary with no local work.
 - Keep behavior predictable and bounded (no infinite loops).
 - Make the Diligence Push text configurable per rtws (runtime workspace) and language.
 - Provide a clear, user-controlled "disable" mechanism.
@@ -36,9 +33,9 @@ This document specifies two related runtime controls:
 ## Non-goals
 
 - Auto-completing / auto-marking a dialog as done.
-- Auto-injecting ordinary Diligence Push prompts into Side Dialogs (Side Dialogs remain scoped and
-  should report back to their tellasker; only the provider-quirk recovery exception may use the Side
-  Dialog template).
+- Auto-injecting Diligence Push prompts into Side Dialogs. Side Dialogs remain scoped and should
+  either continue from ordinary business facts or report back to their tellasker; direct-reply
+  fallback and caller-side judgment handle unintended plain-text stops.
 
 ## Definitions
 
@@ -62,30 +59,19 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
 
 ### Trigger conditions (must all hold)
 
-- Dialog is the **Main Dialog**; Side Dialogs only use the provider deadlock recovery exception
-  below.
+- Dialog is the **Main Dialog**.
 - Dialog is **not suspended**:
-  - no pending Q4H, and
-  - no pending Side Dialogs (waiting for backfill).
+  - no pending Q4H.
 - The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
-### Exception: provider deadlock recovery
+### Provider deadlock recovery
 
 Some provider/API quirk handlers may request a one-time Diligence Push recovery after Dominds stops
 same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
-idle" path. In that recovery-only case, pending sideDialogs do not veto the single Diligence Push
-injection, because the deadlock may happen in a function-result-driven generation round right after
-the main dialog has already registered an in-flight tellask/sideDialog.
-
-Side Dialogs may also use this recovery path, but only for provider/API retry-stopped deadlock
-recovery while an active reply obligation still exists. This is not a general mechanism for keeping
-Side Dialogs active. Normal Side Dialog continuation must come from ordinary business state: tool
-results, Q4H, downstream Side Dialog blockers, or queued runtime/user prompts. If no active reply
-obligation exists, runtime does not inject a push and leaves the retry-stopped state for a human to
-handle. The Side Dialog recovery template does not read rtws diligence files; it uses a built-in
-bilingual template containing the current time, the current Tellask goal, and the single
-runtime-confirmed `replyTellask*` tool (for example `replyTellaskSessionless({ replyContent })`).
-The LLM must not guess the reply variant. Q4H remains a hard blocker.
+idle" path. Diligence recovery injection is still main-dialog-only. Pending sideDialogs do not veto
+the single Diligence Push injection; ordinary Diligence also treats pending sideDialogs as context,
+not as a veto. Side Dialog retry-stopped recovery does not inject a Diligence prompt; ordinary
+business facts, direct-reply fallback, or the caller's next judgment decide how work proceeds.
 
 ### Action
 
@@ -176,14 +162,12 @@ Rules:
 Implemented in the kernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
 post-iteration check:
 
-1. If the dialog is suspended, stop (Q4H / sideDialog pending), except for the deadlock-recovery
-   special case described above where one recovery-only Diligence Push may ignore pending
-   sideDialogs.
+1. If the dialog is waiting for Q4H, stop. Pending sideDialogs are background callee facts and may
+   be included in Diligence prompt context.
 2. If there is any tool feedback, continue normally.
 3. Otherwise, attempt diligence-push auto-continue:
    - Main Dialog: resolve the rtws diligence file or built-in fallback text.
-   - Side Dialog: only for provider-quirk recovery with an active reply obligation; otherwise do
-     not inject.
+   - Side Dialog: do not inject Diligence Push.
    - If disabled → stop normally.
    - If budget exhausted → emit an informational UI notice and stop further automatic Diligence
      Pushes for the current budget.
@@ -218,10 +202,8 @@ Regression tests should cover:
 - Main dialog: tool-only output → diligence injection → continued response
 - Main dialog: empty assistant output → diligence injection → continued response
 - SideDialog: ordinary idle path has no diligence injection
-- SideDialog: provider quirk recovery + active reply obligation → inject the Side Dialog template in
-  the work language, include the current Tellask goal, and name the exact active `replyTellask*`
-- SideDialog: provider quirk recovery + no active reply obligation → no injection; leave the
-  stopped/give-up state for human handling
+- SideDialog: provider quirk recovery has no Diligence injection; direct-reply fallback or caller
+  judgment handles the next business move
 - rtws config:
   - `.minds/diligence.md` is honored when lang-specific file is absent
   - empty diligence file disables diligence-push

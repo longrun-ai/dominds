@@ -415,16 +415,16 @@ async function main(): Promise<void> {
       firstThinkingOnlySideDialog.status,
     );
     assert.equal(
-      firstThinkingOnlyLatest?.pendingCourseStartPrompt?.msgId,
+      firstThinkingOnlyLatest?.pendingRuntimePrompt?.msgId,
       firstThinkingOnlyQueuedReminder.msgId,
       'durable reply reminder should survive restore through latest.yaml',
     );
     assert.equal(
-      firstThinkingOnlyLatest.pendingCourseStartPrompt?.content,
+      firstThinkingOnlyLatest.pendingRuntimePrompt?.content,
       firstThinkingOnlyReplyReminder,
     );
     assert.equal(
-      firstThinkingOnlyLatest.pendingCourseStartPrompt?.sideDialogReplyTarget?.callId,
+      firstThinkingOnlyLatest.pendingRuntimePrompt?.sideDialogReplyTarget?.callId,
       firstThinkingOnlyCallId,
     );
     globalDialogRegistry.unregister(root.id.rootId);
@@ -485,7 +485,7 @@ async function main(): Promise<void> {
       restoredFirstThinkingOnlySideDialog.status,
     );
     assert.equal(
-      firstThinkingOnlyLatestAfterFallback?.pendingCourseStartPrompt,
+      firstThinkingOnlyLatestAfterFallback?.pendingRuntimePrompt,
       undefined,
       'consumed durable reply reminder must be cleared after fallback',
     );
