@@ -67,11 +67,11 @@ class GlobalDialogRegistry {
     });
     void (async () => {
       try {
-        const needsDrive = await DialogPersistence.getNeedsDrive(mainDialog.id);
-        if (needsDrive) {
+        const hasNextStepTriggers = await DialogPersistence.hasNextStepTriggers(mainDialog.id);
+        if (hasNextStepTriggers) {
           this.markNeedsDrive(mainDialog.id.rootId, {
             source: 'dialog_registry_hydration',
-            reason: 'persisted_needs_drive_true',
+            reason: 'persisted_next_step_triggers',
           });
         }
       } catch {

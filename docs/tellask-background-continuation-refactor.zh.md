@@ -875,7 +875,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，但 registry 与 trigger 消费还没有完全统一。
+- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`，但 registry 仍是内存唤醒投影，trigger 的逐项消费语义还没有完全统一。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - dispatch batch 仍主要通过 pending sideDialog records 表达，没有独立 dispatch-batch state 文件；crash recovery 尚未完整覆盖 batch member resolved/final 状态。
 - `generationRunState` 目前只记录 open/closed 的 course/genseq/timestamp，尚未记录 phase、lastToolRoundKind、finishRecordId。

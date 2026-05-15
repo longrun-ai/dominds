@@ -374,9 +374,9 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
   if (dialog.hasUpNext() || !suspension.canDrive) {
     return;
   }
-  const persistedNeedsDrive = await DialogPersistence.getNeedsDrive(dialog.id);
+  const persistedNextStepTriggers = await DialogPersistence.hasNextStepTriggers(dialog.id);
   const registryNeedsDrive = globalDialogRegistry.isMarkedNeedingDrive(dialog.id.rootId);
-  if (!registryNeedsDrive && !persistedNeedsDrive) {
+  if (!registryNeedsDrive && !persistedNextStepTriggers) {
     return;
   }
   try {

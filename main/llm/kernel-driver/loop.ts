@@ -28,6 +28,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
   for (const mainDialog of dialogsToDrive) {
     try {
       const latest = await DialogPersistence.loadDialogLatest(mainDialog.id, 'running');
+      const hasNextStepTriggers = (latest?.nextStep?.triggers.length ?? 0) > 0;
       const executionMarker = latest?.executionMarker;
       const stopRequested = getStopRequestedReason(mainDialog.id);
       const interruptedRequiresExplicitResume =
@@ -65,6 +66,19 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       }
 
       const resumeInProgressGeneration = getRecoverableGenerationRunState(latest) !== undefined;
+      if (!resumeInProgressGeneration && !hasNextStepTriggers) {
+        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
+          source: 'kernel_driver_backend_loop',
+          reason: 'missing_next_step_triggers',
+        });
+        await DialogPersistence.setBackendQueueDrive(
+          mainDialog.id,
+          false,
+          'missing_next_step_triggers',
+          mainDialog.status,
+        );
+        continue;
+      }
       if (!resumeInProgressGeneration && !(await mainDialog.canDrive())) {
         continue;
       }

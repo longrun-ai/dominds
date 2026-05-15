@@ -9301,6 +9301,14 @@ export class DialogPersistence {
     return latest?.needsDrive === true;
   }
 
+  static async hasNextStepTriggers(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<boolean> {
+    const latest = await this.loadDialogLatest(dialogId, status);
+    return (latest?.nextStep?.triggers.length ?? 0) > 0;
+  }
+
   static async clearPendingRuntimePrompt(
     dialogId: DialogID,
     msgId: string,
