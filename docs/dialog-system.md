@@ -119,7 +119,7 @@ Backend coroutines drive dialogs using the following pattern:
 5. Release the mutex
 6. Persist all state changes to storage
 
-The driving loop continues until a dialog naturally idles, reaches Q4H, or completes. Pending sideDialogs are background callee work; they do not suspend the caller by themselves. When a user answers Q4H or a callee result arrives, the backend records that concrete fact and drives the affected dialog only from that fact.
+The driving loop continues until a dialog naturally idles, reaches Q4H, or completes. Pending sideDialogs are background callee work; they do not suspend the caller by themselves. However, when the only remaining fact is a pending active callee dispatch and there is no other concrete drive source, the caller should naturally idle rather than keep the mainline spinning through Diligence Push. When a user answers Q4H or a callee result arrives, the backend records that concrete fact and drives the affected dialog only from that fact.
 
 ### Frontend Integration
 
@@ -309,7 +309,7 @@ headline text is ignored for tellaskSession parsing.
 3. **If not exists**: Create NEW sideDialog AND register it with key `agentId!sessionSlug`
 4. Tellasker records a background callee fact; active callee dispatches do not suspend the tellasker by themselves
 5. SideDialog response flows back to the tellasker as a result-arrival fact
-6. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push, or another explicit driving source
+6. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push when no active callee is pending, or another explicit driving source
 
 **Current Tellasker Tracking (important for reuse):**
 
@@ -388,7 +388,7 @@ Result (second call):
    - For general Type C, the sideDialog is full-fledged (TellaskBack, teammate Tellasks, tools per config).
    - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; no Tellasks).
 4. SideDialog response flows back to the tellasker as a result-arrival fact
-5. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push, or another explicit driving source
+5. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push when no active callee is pending, or another explicit driving source
 
 **Key Characteristics**:
 

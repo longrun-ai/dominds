@@ -802,7 +802,7 @@ UI 业务状态投影结论：
 4. `active-callees.json` 存在 resolved-but-unconsumed batch / 未消费 `result_arrival` trigger：通常是瞬时状态，不加长期 badge；它通过第 3 类可调度状态体现。
 5. `replyDelivery` pending / delivered-but-tool-result-not-recorded：通常是瞬时交付过程，不加长期 badge；必要信息留在 call bubble / 日志 / 当前 dialog 上下文中。
 6. `generationRunState.kind === 'open'` 或 recovery trigger 存在：通常是瞬时恢复过程，不加长期 badge；恢复中可沿用 running/proceeding 视觉。
-7. 只有 active callee open batch、没有 runnable trigger、没有 userWait：这不是独立状态，而是普通 idle + 第 2 类后台 badge。典型路径是当前 generation 只发出后台 tellask 后闭合；callee 还未回贴，所以没有 `result_arrival`，也没有其它 next-step trigger。主线是否被 Diligence Push 保活只看 budget；支线自然 idle。
+7. 只有 active callee open batch、没有 runnable trigger、没有 userWait：这不是独立状态，而是普通 idle + 第 2 类后台 badge。典型路径是当前 generation 只发出后台 tellask 后闭合；callee 还未回贴，所以没有 `result_arrival`，也没有其它 next-step trigger。主线不应仅因 Diligence Push 预算存在而继续空转；active callee 仍 pending 时，主线自然 idle，等待结果到达或其它具体驱动来源。支线自然 idle。
 8. 元信息缺失、冲突或解析失败：移入 `malformed/` 后技术上相当于当前运行视图不存在；UI 从普通列表撤掉，不显示 badge。需要排查时从归档/诊断入口或文件系统查看 `malformed/`。
 
 ## 测试计划
@@ -823,9 +823,9 @@ UI 业务状态投影结论：
    - 期望：active reply obligation 不参与“是否可以开始下一步”的判定；完成判定仍要求最终 reply/direct-fallback 收口。
 
 4. pending tellask + Diligence Push enabled。
-   - 期望：进入 idle 边界后 Diligence 可按预算注入 prompt。
-   - 期望：状态快照产生 `mainline_diligence` trigger，trigger 携带 pending tellask context。
-   - prompt 包含 pending tellask 上下文。
+   - 期望：进入 idle 边界后 Diligence 不按预算注入 prompt。
+   - 期望：不产生 `mainline_diligence` trigger；不消耗 Diligence 预算。
+   - 期望：只保留 active callee / pending tellask 可观察状态，等待结果到达、用户输入、queued prompt 或其它具体驱动来源。
 
 5. pending tellask + Diligence Push disabled。
    - 期望：不自动继续，不产生 next-step trigger，只保留 observability。
@@ -970,7 +970,7 @@ UI 业务状态投影结论：
 - `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 和 registry hydration 已优先读取 durable `nextStep.triggers`。trigger 已有 dialog-local `seq/nextSeq` 到达顺序；generation start 会把已正式交给本轮上下文的 trigger 写入 `generationRunState.open.acceptedTriggerIds` 并消费 trigger，不保留 consumed tombstone。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - `followup` trigger 已落地为 `nextStep` 变体：普通 immediate tool result、invalid tool recovery、有效 tellask/reply 结果会写入最小原因集合，不另开 `followup.json`；下一轮 gen start durable handoff 后消费。
-- `mainline_diligence` trigger 已在 Diligence prompt 注入前写入；Diligence 仍只作用于主线，触发条件只看预算，pending tellask 只作为 prompt context 数量。
+- `mainline_diligence` trigger 已在 Diligence prompt 注入前写入；Diligence 仍只作用于主线，但 pending active callee dispatch 会否决普通 Diligence 注入，避免主线仅因后台被诉请者事实空转。
 - `active-callees.json` 已作为运行判定源：tellask 派发时写入 batch/callee，callee 回贴时按 batch 完整性生成 `result_arrival` trigger；direct-fallback 作为 callee completion memo 进入同一 batch，不新增独立 trigger。后台 callee 数量、Diligence pending 计数和 pending-tellask reminder 已改读 active-callees；运行时代码已移除 pending-sideDialogs 持久化源和旧 `hasPendingSideDialogs()` helper，后续主要收尾测试/文档命名。
 - `generationRunState` 已记录 open/closed 的 course/genseq/timestamp、open phase 与 `acceptedTriggerIds`；`finishRecordId` 和 last-tool-round 分类不进入 `generationRunState`，由 event log 与 `followup` trigger 分别承载。
 - restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底。`generating=true` 但缺少 `generationRunState` 的 dialog 已进入 `malformed/`，不再静默停成 server_restart；generation recovery decision 仍需补齐结构化诊断返回。
@@ -1005,7 +1005,7 @@ UI 业务状态投影结论：
 ### 风险
 
 - 一些旧测试把 pending sideDialog 当暂停原因；重构后需要明确它们测试的是“后台进行中”还是“等待用户/等待 runtime prompt”。
-- 主线 Diligence Push 文案如果过强，可能又把 pending tellask 表达成必须继续。
+- 主线 Diligence Push 文案或 gate 如果过强，可能又把 pending tellask 表达成必须继续，重新引入后台等待期间的主线空转。
 - restart recovery 如果过保守，可能导致真实 open generation 崩溃后不恢复。
 - result-arrival handling 如果过弱，可能导致回贴到了但等待方 dialog 不处理。
 - active callee batch identity 如果不 durable，崩溃恢复后可能出现部分回贴误触发、整组回贴不触发，或不同批次互相等待。

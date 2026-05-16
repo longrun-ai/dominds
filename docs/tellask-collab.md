@@ -55,7 +55,7 @@ For teammate Tellasks, the runtime lifecycle is:
 1. Tellask is emitted.
 2. The callee Side Dialog runs as background work; the caller may naturally idle or keep working from other concrete triggers.
 3. When the callee response is supplied back, that response becomes a new fact for the caller.
-4. The caller resumes only from that result-arrival fact, a queued prompt, user input, Diligence Push, or another explicit drive source.
+4. The caller resumes only from that result-arrival fact, a queued prompt, user input, Diligence Push when no active callee is pending, or another explicit drive source.
 
 Critical operational fact:
 
@@ -66,7 +66,7 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 ### 2.4 Diligence Push boundary
 
-- Diligence Push helps Main Dialogs avoid going idle.
+- Diligence Push helps Main Dialogs avoid going idle when they have not reached a natural idle boundary such as a pending active callee.
 - It does not send teammate Tellasks on the agent’s behalf.
 - It is a pressure mechanism, not an execution orchestrator.
 

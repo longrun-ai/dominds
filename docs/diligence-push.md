@@ -12,10 +12,12 @@ is often not what operators want: they want the agent to keep pushing forward un
 
 This document specifies two related runtime controls:
 
-- **Auto-continue injection**: for **main dialogs only**, whenever the driver would otherwise stop,
-  runtime auto-sends a short diligence prompt (rendered as a normal user bubble) and continues
-  generation, except when the dialog is waiting for real user input such as Q4H. Pending tellask is
-  Diligence context, not a suspension reason.
+- **Auto-continue injection**: for **main dialogs only**, whenever the driver would otherwise stop
+  and there is no Q4H or pending active callee dispatch, runtime auto-sends a short diligence prompt
+  (rendered as a normal user bubble) and continues generation. Pending tellask is a background
+  callee fact, not a blocking state; but when no other concrete drive source exists, it means the
+  main dialog has reached an idleable background-wait boundary and must not be kept spinning by a
+  Diligence Push prompt.
 - **Required tool-use control**: for ordinary main and side dialog rounds, the Diligence Push
   checkbox controls whether the provider request must end through a Dominds tool call. When checked,
   the model is expected to call a tool such as `askHuman`, `tellask*`, `replyTellask*`, or another
@@ -60,17 +62,20 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
 ### Trigger conditions (must all hold)
 
 - Dialog is the **Main Dialog**.
-- Dialog is **not suspended**:
+- Dialog has no wait fact that should legitimately stop auto-continuation:
   - no pending Q4H.
+- no pending active callee dispatch.
 - The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
 ### Provider deadlock recovery
 
 Some provider/API quirk handlers may request a one-time Diligence Push recovery after Dominds stops
 same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
-idle" path. Diligence recovery injection is still main-dialog-only. Pending sideDialogs do not veto
-the single Diligence Push injection; ordinary Diligence also treats active callee dispatches as context,
-not as a veto. Side Dialog retry-stopped recovery does not inject a Diligence prompt; ordinary
+idle" path, but it still follows the same background-wait boundary. Diligence recovery injection is
+main-dialog-only, and a pending active callee dispatch vetoes the one-time Diligence Push injection.
+Active callee dispatch is a background callee fact, not a caller blocking state: the caller may keep
+working from other concrete facts, but active callee dispatch alone is not a reason to keep driving
+the mainline. Side Dialog retry-stopped recovery does not inject a Diligence prompt; ordinary
 business facts, direct-reply fallback, or the caller's next judgment decide how work proceeds.
 
 ### Action
@@ -162,8 +167,9 @@ Rules:
 Implemented in the kernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
 post-iteration check:
 
-1. If the dialog is waiting for Q4H, stop. Pending sideDialogs are background callee facts and may
-   be included in Diligence prompt context.
+1. If the dialog is waiting for Q4H or still has a pending active callee dispatch, stop. Active
+   callee dispatch is a background callee fact, not a caller blocking state; but without another
+   concrete drive source it is a natural idle boundary and must not trigger Diligence injection.
 2. If there is any tool feedback, continue normally.
 3. Otherwise, attempt diligence-push auto-continue:
    - Main Dialog: resolve the rtws diligence file or built-in fallback text.
@@ -201,6 +207,8 @@ Regression tests should cover:
 
 - Main dialog: tool-only output → diligence injection → continued response
 - Main dialog: empty assistant output → diligence injection → continued response
+- Main dialog: only pending tellask / active callee dispatch → no Diligence injection; retain the
+  background state and naturally idle
 - SideDialog: ordinary idle path has no diligence injection
 - SideDialog: provider quirk recovery has no Diligence injection; direct-reply fallback or caller
   judgment handles the next business move

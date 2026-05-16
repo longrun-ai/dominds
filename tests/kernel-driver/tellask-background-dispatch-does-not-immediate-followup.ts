@@ -39,13 +39,14 @@ async function main(): Promise<void> {
     ]);
 
     const root = await createMainDialog('tester');
-    root.disableDiligencePush = true;
+    root.disableDiligencePush = false;
+    root.diligencePushRemainingBudget = 1;
 
     await driveDialogStream(
       root,
       makeUserPrompt(prompt, 'kernel-driver-tellask-background-dispatch'),
       true,
-      makeDriveOptions({ suppressDiligencePush: true }),
+      makeDriveOptions(),
     );
 
     await waitFor(
@@ -82,7 +83,12 @@ async function main(): Promise<void> {
     assert.equal(
       genStartCount,
       1,
-      'single pending tellask dispatch ack must not start an immediate follow-up generation',
+      'single pending tellask dispatch ack must not start an immediate follow-up or Diligence Push generation',
+    );
+    assert.equal(
+      root.diligencePushRemainingBudget,
+      1,
+      'pending active callee dispatch must not consume Diligence Push budget',
     );
     assert.ok(
       events.some(
@@ -92,6 +98,13 @@ async function main(): Promise<void> {
           event.id === 'background-dispatch-only',
       ),
       'pending tellask dispatch ack should still be persisted as a function result',
+    );
+    assert.equal(
+      events.some(
+        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+      ),
+      false,
+      'pending active callee dispatch must not insert a Diligence Push prompt',
     );
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);

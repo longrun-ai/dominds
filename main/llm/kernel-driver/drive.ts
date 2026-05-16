@@ -1908,6 +1908,10 @@ async function maybeContinueWithDiligencePrompt(args: {
     return { kind: 'break' };
   }
 
+  if (dlg instanceof MainDialog && suspension.backgroundCalleeDialogs) {
+    return { kind: 'break' };
+  }
+
   const prepared = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
     remainingBudget: dlg.diligencePushRemainingBudget,

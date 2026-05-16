@@ -55,7 +55,7 @@
 1. 发出 `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." }) ...`。
 2. 被诉请者所在支线作为后台工作推进；诉请者可自然 idle，也可因其它明确驱动事实继续工作。
 3. 被诉请者完成本轮驱动并回贴结果；这条回贴成为诉请者的新事实。
-4. 诉请者只会因结果到达、queued prompt、用户输入、Diligence Push 或其它显式驱动源继续。
+4. 诉请者只会因结果到达、queued prompt、用户输入、无 pending active callee 时的 Diligence Push 或其它显式驱动源继续。
 
 关键事实（与停滞问题直接相关）：
 
@@ -64,7 +64,7 @@
 
 ### 2.4 Diligence Push 的边界
 
-- Diligence Push 会鞭策主线对话继续思考和推进。
+- Diligence Push 会在主线没有 pending active callee 等自然 idle 边界时，鞭策主线对话继续思考和推进。
 - 它不负责自动补发队友诉请，也不改变 tellask 的调用生命周期。
 - 所以它能缓解“发呆”，但不能根治“口头安排不落地”的协作停滞。
 
