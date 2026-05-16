@@ -31,8 +31,13 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 
-    await DialogPersistence.setNeedsDrive(root.id, true, root.status);
-    globalDialogRegistry.markNeedsDrive(root.id.rootId, {
+    await DialogPersistence.setBackendQueueDrive(
+      root.id,
+      true,
+      'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
+      root.status,
+    );
+    globalDialogRegistry.wakeDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
     });

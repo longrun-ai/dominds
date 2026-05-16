@@ -9586,19 +9586,6 @@ export class DialogPersistence {
     }
   }
 
-  static async setNeedsDrive(
-    dialogId: DialogID,
-    needsDrive: boolean,
-    status: DialogStatusKind = 'running',
-  ): Promise<void> {
-    await this.setBackendQueueDrive(
-      dialogId,
-      needsDrive,
-      needsDrive ? 'legacy_set_needs_drive' : 'legacy_clear_needs_drive',
-      status,
-    );
-  }
-
   static async setBackendQueueDrive(
     dialogId: DialogID,
     queued: boolean,
@@ -9683,15 +9670,7 @@ export class DialogPersistence {
     );
   }
 
-  static async getNeedsDrive(
-    dialogId: DialogID,
-    status: DialogStatusKind = 'running',
-  ): Promise<boolean> {
-    const latest = await this.loadDialogLatest(dialogId, status);
-    return latest?.needsDrive === true;
-  }
-
-  static async hasNextStepTriggers(
+  static async hasPendingNextStepTriggers(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<boolean> {

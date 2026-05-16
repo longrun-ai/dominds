@@ -15,8 +15,8 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
     action: trigger.action,
     rootId: trigger.rootId,
     entryFound: trigger.entryFound,
-    previousNeedsDrive: trigger.previousNeedsDrive,
-    nextNeedsDrive: trigger.nextNeedsDrive,
+    previousWakeQueued: trigger.previousWakeQueued,
+    nextWakeQueued: trigger.nextWakeQueued,
     source: trigger.source,
     reason: trigger.reason,
     emittedAtMs: trigger.emittedAtMs,
@@ -27,7 +27,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
   Array<{
     mainDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
     latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
-    hasNextStepTriggers: boolean;
+    hasPendingNextStepTriggers: boolean;
     resumeInProgressGeneration: boolean;
   }>
 > {
@@ -35,21 +35,21 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
   const queued: Array<{
     mainDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
     latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
-    hasNextStepTriggers: boolean;
+    hasPendingNextStepTriggers: boolean;
     resumeInProgressGeneration: boolean;
   }> = [];
 
   for (const mainDialog of liveDialogs) {
     const latest = await DialogPersistence.loadDialogLatest(mainDialog.id, 'running');
-    const hasNextStepTriggers = (latest?.nextStep?.triggers.length ?? 0) > 0;
+    const hasPendingNextStepTriggers = (latest?.nextStep?.triggers.length ?? 0) > 0;
     const resumeInProgressGeneration = getRecoverableGenerationRunState(latest) !== undefined;
-    if (!hasNextStepTriggers && !resumeInProgressGeneration) {
+    if (!hasPendingNextStepTriggers && !resumeInProgressGeneration) {
       continue;
     }
     queued.push({
       mainDialog,
       latest,
-      hasNextStepTriggers,
+      hasPendingNextStepTriggers,
       resumeInProgressGeneration,
     });
   }
@@ -62,7 +62,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
   for (const {
     mainDialog,
     latest,
-    hasNextStepTriggers,
+    hasPendingNextStepTriggers,
     resumeInProgressGeneration,
   } of dialogsToDrive) {
     try {
@@ -72,7 +72,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         executionMarker?.kind === 'interrupted' &&
         doesInterruptionReasonRequireExplicitResume(executionMarker.reason);
       if (interruptedRequiresExplicitResume || stopRequested !== undefined) {
-        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
+        globalDialogRegistry.clearDriveWake(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: interruptedRequiresExplicitResume
             ? 'execution_marker_blocked:interrupted'
@@ -102,8 +102,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      if (!resumeInProgressGeneration && !hasNextStepTriggers) {
-        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
+      if (!resumeInProgressGeneration && !hasPendingNextStepTriggers) {
+        globalDialogRegistry.clearDriveWake(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: 'missing_next_step_triggers',
         });
@@ -128,7 +128,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       const status = await mainDialog.getSuspensionStatus();
       const shouldStayQueued = mainDialog.hasUpNext() || !status.canDrive;
       if (shouldStayQueued) {
-        globalDialogRegistry.markNeedsDrive(mainDialog.id.rootId, {
+        globalDialogRegistry.wakeDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: mainDialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_suspended',
         });
@@ -139,7 +139,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           mainDialog.status,
         );
       } else {
-        globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
+        globalDialogRegistry.clearDriveWake(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
           reason: 'post_drive_idle',
         });
@@ -167,8 +167,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousNeedsDrive: lastTrigger.previousNeedsDrive,
-                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+                previousWakeQueued: lastTrigger.previousWakeQueued,
+                nextWakeQueued: lastTrigger.nextWakeQueued,
               }
             : null,
         });
@@ -187,8 +187,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousNeedsDrive: lastTrigger.previousNeedsDrive,
-                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+                previousWakeQueued: lastTrigger.previousWakeQueued,
+                nextWakeQueued: lastTrigger.nextWakeQueued,
               }
             : null,
         });

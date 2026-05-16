@@ -712,7 +712,7 @@ async function main(): Promise<void> {
     const recoveredA = globalDialogRegistry.get(aRoot);
     assert.ok(recoveredA, 'restart recovery should restore dlg-a root');
     assert.equal(
-      globalDialogRegistry.isMarkedNeedingDrive(aRoot),
+      globalDialogRegistry.isDriveWakeQueued(aRoot),
       true,
       'restart recovery should enqueue dlg-a for backend drive',
     );
@@ -753,7 +753,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(sideRoot, 3_000);
     await waitFor(
-      () => globalDialogRegistry.isMarkedNeedingDrive(kRoot) === false,
+      () => globalDialogRegistry.isDriveWakeQueued(kRoot) === false,
       3_000,
       'pending-reply-obligation sideDialog restart recovery should drain before cwd restore',
     );

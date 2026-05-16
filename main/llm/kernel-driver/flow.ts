@@ -376,7 +376,7 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
   if (dialog.hasUpNext() || !suspension.canDrive) {
     return;
   }
-  const persistedNextStepTriggers = await DialogPersistence.hasNextStepTriggers(dialog.id);
+  const persistedNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(dialog.id);
   if (!persistedNextStepTriggers) {
     return;
   }
@@ -395,7 +395,7 @@ async function clearConsumedDeferredRootQueueIfIdle(dialog: Dialog): Promise<voi
     });
     return;
   }
-  globalDialogRegistry.markNotNeedingDrive(dialog.id.rootId, {
+  globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
     source: 'kernel_driver_flow_tail',
     reason: 'root_idle_after_consuming_deferred_queue',
   });
@@ -441,7 +441,7 @@ async function restoreAcceptedRootBackendQueueAfterDriveFailure(args: {
   }
   const reason = `${args.reason}_requeue:${args.driveOptions?.reason ?? 'unknown'}`;
   await DialogPersistence.setBackendQueueDrive(args.dialog.id, true, reason, args.dialog.status);
-  globalDialogRegistry.markNeedsDrive(args.dialog.id.rootId, {
+  globalDialogRegistry.wakeDrive(args.dialog.id.rootId, {
     source: 'kernel_driver_flow_tail',
     reason,
   });
@@ -462,7 +462,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
 }): Promise<{
   cleared: boolean;
   previousGenerating: boolean | null;
-  previousNeedsDrive: boolean | null;
+  previousWakeQueued: boolean | null;
 }> {
   const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
   if (
@@ -477,7 +477,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     return {
       cleared: false,
       previousGenerating: latest?.generating ?? null,
-      previousNeedsDrive: latest?.needsDrive ?? null,
+      previousWakeQueued: latest?.needsDrive ?? null,
     };
   }
 
@@ -497,7 +497,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
   return {
     cleared: true,
     previousGenerating: latest.generating ?? null,
-    previousNeedsDrive: latest.needsDrive ?? null,
+    previousWakeQueued: latest.needsDrive ?? null,
   };
 }
 
@@ -955,7 +955,7 @@ export async function executeDriveRound(args: {
               sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
               clearedStaleRunControl: cleanup.cleared,
               previousGenerating: cleanup.previousGenerating,
-              previousNeedsDrive: cleanup.previousNeedsDrive,
+              previousWakeQueued: cleanup.previousWakeQueued,
               waitInQue,
             },
           );
@@ -1103,8 +1103,8 @@ export async function executeDriveRound(args: {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousNeedsDrive: lastTrigger.previousNeedsDrive,
-                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+                previousWakeQueued: lastTrigger.previousWakeQueued,
+                nextWakeQueued: lastTrigger.nextWakeQueued,
               }
             : null,
           source: driveSource,

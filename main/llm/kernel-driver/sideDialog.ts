@@ -670,7 +670,7 @@ export async function supplyResponseToAskerDialog(args: {
       );
 
       if (isRoot) {
-        globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId, {
+        globalDialogRegistry.wakeDrive(parentDialog.id.rootId, {
           source: 'kernel_driver_supply_response',
           reason: `all_active_callees_resolved:type_${callType}`,
         });

@@ -63,8 +63,13 @@ async function main(): Promise<void> {
       },
     );
 
-    await DialogPersistence.setNeedsDrive(root.id, true, root.status);
-    globalDialogRegistry.markNeedsDrive(root.id.rootId, {
+    await DialogPersistence.setBackendQueueDrive(
+      root.id,
+      true,
+      'seed_deferred_root_queue_before_cross_trigger_tail_test',
+      root.status,
+    );
+    globalDialogRegistry.wakeDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'seed_deferred_root_queue_before_cross_trigger_tail_test',
     });
@@ -99,7 +104,7 @@ async function main(): Promise<void> {
           return;
         }
         injectedUnrelatedTrigger = true;
-        globalDialogRegistry.markNeedsDrive('synthetic-unrelated-root-trigger', {
+        globalDialogRegistry.wakeDrive('synthetic-unrelated-root-trigger', {
           source: 'kernel_driver_test',
           reason: 'unrelated_root_trigger_while_root_tail_is_still_running',
         });

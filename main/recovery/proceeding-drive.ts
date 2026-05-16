@@ -40,7 +40,7 @@ async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
     },
     dialog.status,
   );
-  globalDialogRegistry.markNeedsDrive(dialog.id.rootId, {
+  globalDialogRegistry.wakeDrive(dialog.id.rootId, {
     source: 'restart_recovery',
     reason: 'persisted_drive_in_progress',
   });

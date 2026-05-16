@@ -680,7 +680,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     responseCallId: finalResponseClosure.callId,
     clearedReplyObligation,
     previousGenerating: args.latest.generating ?? null,
-    previousNeedsDrive: args.latest.needsDrive ?? null,
+    previousWakeQueued: args.latest.needsDrive ?? null,
     previousDisplayState: args.latest.displayState ?? null,
     previousExecutionMarker: args.latest.executionMarker ?? null,
   });

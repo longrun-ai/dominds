@@ -87,7 +87,7 @@ async function wakeRootDialogDrive(
   meta: { source: string; reason: string },
 ): Promise<void> {
   const { globalDialogRegistry } = await import('./dialog-global-registry');
-  globalDialogRegistry.markNeedsDrive(rootId, meta);
+  globalDialogRegistry.wakeDrive(rootId, meta);
 }
 
 export class InvalidReminderIndexError extends Error {
