@@ -10,7 +10,7 @@ import { DialogPersistence } from './persistence';
 
 type RegistryEntry = {
   mainDialog: MainDialog;
-  needsDrive: boolean;
+  wakeQueued: boolean;
   activeRunClearedWakePending: boolean;
 };
 
@@ -62,7 +62,7 @@ class GlobalDialogRegistry {
     }
     this.entries.set(mainDialog.id.rootId, {
       mainDialog,
-      needsDrive: false,
+      wakeQueued: false,
       activeRunClearedWakePending: false,
     });
     void (async () => {
@@ -124,9 +124,9 @@ class GlobalDialogRegistry {
       reason: 'unspecified',
     };
     const entry = this.entries.get(rootId);
-    const previousNeedsDrive = entry ? entry.needsDrive : null;
+    const previousNeedsDrive = entry ? entry.wakeQueued : null;
     if (entry) {
-      entry.needsDrive = true;
+      entry.wakeQueued = true;
       // A fresh queueing trigger supersedes any earlier "wake me once active run clears" debt.
       entry.activeRunClearedWakePending = false;
     }
@@ -146,9 +146,9 @@ class GlobalDialogRegistry {
       reason: 'unspecified',
     };
     const entry = this.entries.get(rootId);
-    const previousNeedsDrive = entry ? entry.needsDrive : null;
+    const previousNeedsDrive = entry ? entry.wakeQueued : null;
     if (entry) {
-      entry.needsDrive = false;
+      entry.wakeQueued = false;
       entry.activeRunClearedWakePending = false;
     }
     this.publishDriveTrigger({
@@ -170,25 +170,25 @@ class GlobalDialogRegistry {
     if (!entry) {
       return;
     }
-    if (!entry.activeRunClearedWakePending || !entry.needsDrive) {
+    if (!entry.activeRunClearedWakePending || !entry.wakeQueued) {
       entry.activeRunClearedWakePending = false;
       return;
     }
-    const currentNeedsDrive = entry ? entry.needsDrive : null;
+    const currentNeedsDrive = entry ? entry.wakeQueued : null;
     entry.activeRunClearedWakePending = false;
     this.publishDriveTrigger({
       action: 'active_run_cleared',
       rootId,
       entryFound: true,
       previousNeedsDrive: currentNeedsDrive,
-      nextNeedsDrive: entry.needsDrive,
+      nextNeedsDrive: entry.wakeQueued,
       meta: triggerMeta,
     });
   }
 
   noteActiveRunBlockedQueuedDrive(rootId: string): void {
     const entry = this.entries.get(rootId);
-    if (!entry || !entry.needsDrive) {
+    if (!entry || !entry.wakeQueued) {
       return;
     }
     entry.activeRunClearedWakePending = true;
@@ -199,13 +199,7 @@ class GlobalDialogRegistry {
   }
 
   isMarkedNeedingDrive(rootId: string): boolean {
-    return this.entries.get(rootId)?.needsDrive === true;
-  }
-
-  getDialogsNeedingDrive(): MainDialog[] {
-    return Array.from(this.entries.values())
-      .filter((entry) => entry.needsDrive)
-      .map((entry) => entry.mainDialog);
+    return this.entries.get(rootId)?.wakeQueued === true;
   }
 
   getLastDriveTrigger(rootId: string): DriveTriggerEvent | undefined {

@@ -965,10 +965,11 @@ UI 业务状态投影结论：
 - `replyDelivery` 已落地：有效的 `replyTellask*` 工具调用会记录 pending delivery 的 reply callId、genseq、content、target dialog/callId；成功交付后标记 delivered，工具结果回写后标记 `toolResultStatus=recorded` 并移除 recovery trigger。
 - `reply-special` restart recovery 已改为读取 `latest.replyDelivery`，不再扫描当前 course events 查找 call-without-result。
 - restart open-generation recovery 已收敛为读取 `generationRunState.kind === 'open'`；`generating=true` 但缺少 `generationRunState` 的 dialog 会进入 `malformed/`，不再静默停成 `server_restart` 或回扫历史补猜。
+- backend loop 已改为扫描 live root dialog 的 durable `nextStep.triggers` / open `generationRunState`；`globalDialogRegistry` 的 `needsDrive` 语义降级为 wake signal，不再决定“哪些 dialog 需要驱动”。pending runtime prompt / new course 写入 durable trigger 后会主动发 wake；root backend_queue 若在 generation start 被 accepted 后遇到 core/tail failure，会重新写回 durable queue，避免失败收尾误清队列。
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 boolean / registry 双投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 已优先读取 durable `nextStep.triggers`，但全局队列仍依赖 `globalDialogRegistry` 与 `needsDrive` 兼容层，不能说已完全变成纯 projection。
+- `needsDrive` 仍保留 latest.yaml boolean 投影；`setNeedsDrive()` 已降级为 `backend_queue` trigger bridge，backend loop 不再把 `globalDialogRegistry` 当运行源。但 `backend_queue` bridge、wake signal 命名和少量测试/日志字段仍沿用 `needsDrive` 历史术语，尚未完全清理成纯 next-step projection API。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - malformed 边界仍未覆盖所有目标状态机元信息：已覆盖 malformed persistence、`generating=true` 且缺少 `generationRunState` 等高风险恢复路径；但 `nextStep` 缺失仍会按需要初始化，`backend_queue` bridge 仍会为旧调用补 trigger，因此“缺少必要状态机元信息一律转 malformed”尚未完全成立。
 - runtime 读路径仍存在少量历史事件读取（例如普通上下文/去重/回贴指导等）。这些不再是 active callee 或 reply recovery 的运行源，但后续仍应继续把常态业务判定压到状态快照和显式 pending records。

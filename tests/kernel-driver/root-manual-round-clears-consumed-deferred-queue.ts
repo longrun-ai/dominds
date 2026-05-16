@@ -74,11 +74,10 @@ async function main(): Promise<void> {
       false,
       'idle foreground root round should not leave a deferred wake marker behind',
     );
-    const lastTrigger = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);
     assert.equal(
-      lastTrigger?.action,
-      'mark_not_needing_drive',
-      'idle foreground root round should clear the stale queue instead of emitting active_run_cleared',
+      globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+      false,
+      'idle foreground root round should not leave a deferred wake marker behind after durable queue cleanup',
     );
   });
 

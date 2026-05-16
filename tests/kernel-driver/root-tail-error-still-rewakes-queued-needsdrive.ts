@@ -132,13 +132,13 @@ async function main(): Promise<void> {
     const lastTrigger = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);
     assert.equal(
       lastTrigger?.action,
-      'active_run_cleared',
-      'tail failure should still emit an active_run_cleared wake event for the deferred queued root',
+      'mark_needs_drive',
+      'tail failure should requeue and wake the deferred root drive',
     );
-    assert.equal(
-      lastTrigger?.previousNeedsDrive,
-      true,
-      'wake event should preserve the already-queued registry state',
+    assert.match(
+      lastTrigger?.reason ?? '',
+      /^core_stopped_requeue:/u,
+      'wake event should describe the drive-failure requeue',
     );
     assert.equal(
       lastTrigger?.nextNeedsDrive,

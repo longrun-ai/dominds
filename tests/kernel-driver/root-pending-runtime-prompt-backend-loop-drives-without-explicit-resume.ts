@@ -39,15 +39,11 @@ async function main(): Promise<void> {
     void runBackendDriver();
 
     await root.startNewCourse(queuedPrompt);
-    globalDialogRegistry.markNeedsDrive(root.id.rootId, {
-      source: 'kernel_driver_test',
-      reason: 'root_pending_runtime_prompt_should_not_require_explicit_resume',
-    });
 
     await waitFor(
       async () => lastAssistantSaying(root) === finalReply,
       3_000,
-      'backend loop to drive the root pending runtime prompt without an explicit resume request',
+      'backend loop to drive the durable root pending runtime prompt without registry needsDrive',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 

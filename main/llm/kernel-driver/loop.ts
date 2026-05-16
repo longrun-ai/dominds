@@ -23,12 +23,49 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
   };
 }
 
+async function listLiveDialogsWithDurableDriveWork(): Promise<
+  Array<{
+    mainDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
+    latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+    hasNextStepTriggers: boolean;
+    resumeInProgressGeneration: boolean;
+  }>
+> {
+  const liveDialogs = globalDialogRegistry.getAll();
+  const queued: Array<{
+    mainDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
+    latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+    hasNextStepTriggers: boolean;
+    resumeInProgressGeneration: boolean;
+  }> = [];
+
+  for (const mainDialog of liveDialogs) {
+    const latest = await DialogPersistence.loadDialogLatest(mainDialog.id, 'running');
+    const hasNextStepTriggers = (latest?.nextStep?.triggers.length ?? 0) > 0;
+    const resumeInProgressGeneration = getRecoverableGenerationRunState(latest) !== undefined;
+    if (!hasNextStepTriggers && !resumeInProgressGeneration) {
+      continue;
+    }
+    queued.push({
+      mainDialog,
+      latest,
+      hasNextStepTriggers,
+      resumeInProgressGeneration,
+    });
+  }
+
+  return queued;
+}
+
 export async function driveQueuedDialogsOnce(): Promise<void> {
-  const dialogsToDrive = globalDialogRegistry.getDialogsNeedingDrive();
-  for (const mainDialog of dialogsToDrive) {
+  const dialogsToDrive = await listLiveDialogsWithDurableDriveWork();
+  for (const {
+    mainDialog,
+    latest,
+    hasNextStepTriggers,
+    resumeInProgressGeneration,
+  } of dialogsToDrive) {
     try {
-      const latest = await DialogPersistence.loadDialogLatest(mainDialog.id, 'running');
-      const hasNextStepTriggers = (latest?.nextStep?.triggers.length ?? 0) > 0;
       const executionMarker = latest?.executionMarker;
       const stopRequested = getStopRequestedReason(mainDialog.id);
       const interruptedRequiresExplicitResume =
@@ -65,7 +102,6 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      const resumeInProgressGeneration = getRecoverableGenerationRunState(latest) !== undefined;
       if (!resumeInProgressGeneration && !hasNextStepTriggers) {
         globalDialogRegistry.markNotNeedingDrive(mainDialog.id.rootId, {
           source: 'kernel_driver_backend_loop',
