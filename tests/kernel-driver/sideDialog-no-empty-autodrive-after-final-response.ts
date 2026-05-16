@@ -314,12 +314,8 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       preservedAfterMismatchedHeal?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      'mismatched active reply obligation should keep the sideDialog resumable',
+      { kind: 'idle_waiting_user' },
+      'mismatched active reply obligation should remain completion state without keeping the sideDialog resumable',
     );
 
     const sessionlessRoot = await createMainDialog('tester');

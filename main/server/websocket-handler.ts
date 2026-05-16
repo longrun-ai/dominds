@@ -65,10 +65,7 @@ import {
   clearMainDialogQuarantiningIfIdle,
   forceStopActiveRunsForMainDialog,
   getRunControlCountsSnapshot,
-  getStopRequestedReason,
-  hasActiveRun,
   isDialogLatestResumable,
-  loadDialogExecutionMarker,
   markMainDialogQuarantining,
   refreshRunControlProjectionFromPersistenceFacts,
   requestEmergencyStopAll,
@@ -86,6 +83,7 @@ import {
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import {
+  evaluateDiligenceAutoContinueGate,
   maybePrepareDiligenceAutoContinuePrompt,
   suspendForKeepGoingBudgetExhausted,
 } from '../llm/kernel-driver/runtime';
@@ -960,19 +958,15 @@ async function maybeTriggerImmediateDiligencePrompt(mainDialog: MainDialog): Pro
       return;
     }
 
-    if (hasActiveRun(mainDialog.id)) {
-      return;
-    }
-    if (getStopRequestedReason(mainDialog.id) !== undefined) {
-      return;
-    }
-    const executionMarker = await loadDialogExecutionMarker(mainDialog.id, 'running');
-    if (executionMarker?.kind === 'interrupted' || executionMarker?.kind === 'dead') {
-      return;
-    }
-
-    const suspension = await mainDialog.getSuspensionStatus();
-    if (!suspension.canDrive) {
+    const gate = await evaluateDiligenceAutoContinueGate({
+      dlg: mainDialog,
+      requireIdleRunSlot: true,
+    });
+    if (gate.kind === 'blocked') {
+      log.debug('Skipped immediate Diligence Push after enable toggle', undefined, {
+        dialogId: mainDialog.id.valueOf(),
+        reason: gate.reason,
+      });
       return;
     }
 

@@ -113,30 +113,11 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
-function pendingReplyObligationDisplayState(): DialogDisplayState {
-  return {
-    kind: 'stopped',
-    reason: { kind: 'pending_reply_obligation' },
-    continueEnabled: true,
-  };
-}
-
 function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
   return undefined;
-}
-
-async function hasActiveSideDialogReplyObligation(dialogId: DialogID): Promise<boolean> {
-  if (dialogId.selfId === dialogId.rootId) {
-    return false;
-  }
-  const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
-    dialogId,
-    'running',
-  );
-  return activeObligation !== undefined;
 }
 
 type SideDialogFinalResponseClosure =
@@ -191,42 +172,6 @@ async function resolveSideDialogFinalResponseClosure(args: {
     callId: finalResponseAnchor.callId,
     activeReplyObligation,
   };
-}
-
-async function coerceIdleDisplayStateForActiveSideDialogReplyObligation(
-  dialogId: DialogID,
-  displayState: DialogDisplayState,
-): Promise<DialogDisplayState> {
-  if (displayState.kind !== 'idle_waiting_user') {
-    return displayState;
-  }
-  if (!(await hasActiveSideDialogReplyObligation(dialogId))) {
-    return displayState;
-  }
-  const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
-  const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
-  if (finalResponseClosure.kind === 'closed_with_matching_reply_obligation') {
-    await DialogPersistence.setActiveTellaskReplyObligation(dialogId, undefined, 'running');
-    return displayState;
-  }
-  if (finalResponseClosure.kind === 'closed_without_active_reply_obligation') {
-    return displayState;
-  }
-  const q4hSuspension = q4hSuspensionDisplayState(
-    latest?.userWait?.kind === 'awaiting_user_answer',
-  );
-  const healedDisplayState = q4hSuspension ?? pendingReplyObligationDisplayState();
-  log.warn(
-    'Prevented sideDialog with active reply obligation from entering idle display state',
-    new Error('sideDialog idle display-state invariant violation'),
-    {
-      dialogId: dialogId.valueOf(),
-      rootId: dialogId.rootId,
-      selfId: dialogId.selfId,
-      healedDisplayState,
-    },
-  );
-  return healedDisplayState;
 }
 
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
@@ -490,10 +435,6 @@ export async function setDialogDisplayState(
   dialogId: DialogID,
   displayState: DialogDisplayState,
 ): Promise<void> {
-  displayState = await coerceIdleDisplayStateForActiveSideDialogReplyObligation(
-    dialogId,
-    displayState,
-  );
   if (displayState.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
       'Rejecting dead displayState for main dialog (main dialogs must not be dead)',
@@ -640,9 +581,6 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
   ) {
     return { kind: 'idle_waiting_user' };
   }
-  if (await hasActiveSideDialogReplyObligation(dlg.id)) {
-    return pendingReplyObligationDisplayState();
-  }
   return { kind: 'idle_waiting_user' };
 }
 
@@ -691,9 +629,6 @@ async function computeIdleDisplayStateFromPersistence(
     finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
   ) {
     return { kind: 'idle_waiting_user' };
-  }
-  if (await hasActiveSideDialogReplyObligation(dialogId)) {
-    return pendingReplyObligationDisplayState();
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -842,9 +777,6 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
     ) {
       return { kind: 'idle_waiting_user' };
-    }
-    if (await hasActiveSideDialogReplyObligation(dialogId)) {
-      return pendingReplyObligationDisplayState();
     }
     if (
       latest.executionMarker?.kind === 'interrupted' &&

@@ -121,6 +121,7 @@ import {
 } from './guardrails';
 import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
+  evaluateDiligenceAutoContinueGate,
   LlmRequestFailedError,
   LlmRetryStoppedError,
   maybePrepareDiligenceAutoContinuePrompt,
@@ -1900,15 +1901,14 @@ async function maybeContinueWithDiligencePrompt(args: {
 }): Promise<{ kind: 'break' } | { kind: 'continue'; prompt: KernelDriverPrompt }> {
   const { dlg, team, suppressDiligencePushForDrive, ignoreBudgetExhaustion } = args;
 
-  const suspension = await dlg.getSuspensionStatus();
-  if (!suspension.canDrive) {
-    if (suspension.q4h && dlg instanceof MainDialog) {
+  const gate = await evaluateDiligenceAutoContinueGate({
+    dlg,
+    requireIdleRunSlot: false,
+  });
+  if (gate.kind === 'blocked') {
+    if (gate.reason === 'q4h' && dlg instanceof MainDialog) {
       await preserveDiligenceBudgetAcrossQ4H(dlg);
     }
-    return { kind: 'break' };
-  }
-
-  if (dlg instanceof MainDialog && suspension.backgroundCalleeDialogs) {
     return { kind: 'break' };
   }
 

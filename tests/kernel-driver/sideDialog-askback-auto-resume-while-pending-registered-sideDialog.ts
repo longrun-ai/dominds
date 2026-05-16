@@ -196,7 +196,7 @@ async function main(): Promise<void> {
       'auto-resume should not consume the still-pending registered nested side dialog',
     );
     assert.equal(
-      pending[0]?.sideDialogId,
+      pending[0]?.calleeDialogId,
       nested.id.selfId,
       'the still-pending registered side dialog should remain the nested practitioner dialog',
     );
@@ -204,8 +204,8 @@ async function main(): Promise<void> {
     const latest = await DialogPersistence.loadDialogLatest(pangu.id, pangu.status);
     assert.deepEqual(
       latest?.displayState,
-      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
-      'after the auto-resume round, the pending nested side dialog remains background work and the tellasker is only paused by its parent reply obligation',
+      { kind: 'idle_waiting_user' },
+      'after the auto-resume round, the pending nested side dialog remains background work without marking the tellasker resumable',
     );
 
     const events = await DialogPersistence.loadCourseEvents(

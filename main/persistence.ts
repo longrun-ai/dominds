@@ -414,12 +414,12 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   const q4hSuspensionState = q4hSuspensionDisplayState(
     (await DialogPersistence.loadQuestions4HumanState(dialogId, status)).length > 0,
   );
+  if (!q4hSuspensionState) {
+    return latest;
+  }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
-  const healedDisplayState = q4hSuspensionState ?? pendingReplyObligationDisplayState();
-  const healedExecutionMarker =
-    healedDisplayState.kind === 'stopped' ? pendingReplyObligationExecutionMarker() : undefined;
   emitInvariantWarning(
-    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
+    'Dialog latest projection invariant warning: sideDialog awaiting Q4H attempted to enter idle displayState; healing from persistence facts',
     {
       trigger: context.trigger,
       mutationKind: context.mutationKind,
@@ -435,8 +435,8 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
       before: summarizeLatestProjectionState(previous),
       afterBeforeHealing: summarizeLatestProjectionState(latest),
       healedTo: {
-        displayState: healedDisplayState,
-        executionMarker: healedExecutionMarker,
+        displayState: q4hSuspensionState,
+        executionMarker: undefined,
       },
       callStack: captureInvariantWarningStack(),
     },
@@ -444,8 +444,8 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   return {
     ...latest,
     lastModified: formatUnifiedTimestamp(new Date()),
-    displayState: healedDisplayState,
-    executionMarker: healedDisplayState.kind === 'stopped' ? healedExecutionMarker : undefined,
+    displayState: q4hSuspensionState,
+    executionMarker: undefined,
   };
 }
 const quarantiningMainDialogs = new Set<string>();
@@ -851,21 +851,6 @@ function parseDialogInterruptionReason(value: unknown): DialogInterruptionReason
     default:
       return null;
   }
-}
-
-function pendingReplyObligationDisplayState(): Extract<DialogDisplayState, { kind: 'stopped' }> {
-  return {
-    kind: 'stopped',
-    reason: { kind: 'pending_reply_obligation' },
-    continueEnabled: true,
-  } satisfies DialogDisplayState;
-}
-
-function pendingReplyObligationExecutionMarker(): DialogLatestFile['executionMarker'] {
-  return {
-    kind: 'interrupted',
-    reason: { kind: 'pending_reply_obligation' },
-  } satisfies DialogLatestFile['executionMarker'];
 }
 
 function resolveStoppedContinueEnabled(reason: DialogInterruptionReason): boolean {
@@ -2655,7 +2640,9 @@ export class DiskFileDialogStore extends DialogStore {
       },
     };
     await this.appendEvent(askerDialog, parentCourse, sideDialogCreatedRecord);
-    const initialSideDialogDisplayState = pendingReplyObligationDisplayState();
+    const initialSideDialogDisplayState = {
+      kind: 'idle_waiting_user',
+    } satisfies DialogDisplayState;
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
@@ -2668,7 +2655,6 @@ export class DiskFileDialogStore extends DialogStore {
         functionCallCount: 0,
         sideDialogCount: 0,
         displayState: initialSideDialogDisplayState,
-        executionMarker: pendingReplyObligationExecutionMarker(),
         disableDiligencePush: false,
       },
     }));

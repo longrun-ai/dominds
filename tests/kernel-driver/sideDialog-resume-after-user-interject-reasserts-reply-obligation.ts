@@ -195,8 +195,8 @@ async function main(): Promise<void> {
     const countsWhileInterjectionPaused = await getRunControlCountsSnapshot();
     assert.equal(
       countsWhileInterjectionPaused.resumable,
-      2,
-      'interjection-paused parent and pending-reply nested sideDialog should both count as resumable',
+      1,
+      'only the interjection-paused sideDialog should count as resumable; active reply obligation alone is a completion fact',
     );
     await setDialogDisplayState(sideDialog.id, { kind: 'idle_waiting_user' });
     const latestAfterAttemptedIdleWhileNestedPending = await DialogPersistence.loadDialogLatest(
@@ -205,8 +205,8 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       latestAfterAttemptedIdleWhileNestedPending?.displayState,
-      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
-      'active reply obligation should pause the sideDialog while nested pending work remains background state',
+      { kind: 'idle_waiting_user' },
+      'active reply obligation should not project the sideDialog as stopped while nested pending work remains background state',
     );
     const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
       sideDialog.id,
@@ -214,8 +214,8 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       refreshedWhileNestedPending?.displayState,
-      { kind: 'stopped', reason: { kind: 'pending_reply_obligation' }, continueEnabled: true },
-      'run-control refresh should keep pending_reply_obligation ahead of background nested work',
+      { kind: 'idle_waiting_user' },
+      'run-control refresh should keep active reply obligation out of stopped UI projection',
     );
 
     await driveDialogStream(

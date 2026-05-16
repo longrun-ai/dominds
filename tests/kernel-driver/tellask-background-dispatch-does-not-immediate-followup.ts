@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 
+import { type SetDiligencePushRequest } from '@longrun-ai/kernel/types/wire';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
+import { handleWebSocketMessage } from '../../main/server/websocket-handler';
 import {
   createMainDialog,
   makeDriveOptions,
@@ -105,6 +107,64 @@ async function main(): Promise<void> {
       ),
       false,
       'pending active callee dispatch must not insert a Diligence Push prompt',
+    );
+
+    await DialogPersistence.mutateDialogLatest(root.id, () => ({
+      kind: 'patch',
+      patch: {
+        disableDiligencePush: true,
+        diligencePushRemainingBudget: 1,
+      },
+    }));
+    root.disableDiligencePush = true;
+    root.diligencePushRemainingBudget = 1;
+
+    const wsMessages: string[] = [];
+    const ws = {
+      send(data: string) {
+        wsMessages.push(data);
+      },
+    } as unknown as import('ws').WebSocket;
+    const enableDiligencePacket: SetDiligencePushRequest = {
+      type: 'set_diligence_push',
+      dialog: { selfId: root.id.selfId, rootId: root.id.rootId, status: root.status },
+      disableDiligencePush: false,
+    };
+    await handleWebSocketMessage(ws, enableDiligencePacket);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(
+      wsMessages.some((raw) => raw.includes('"type":"diligence_push_updated"')),
+      true,
+      'UI enable toggle should still acknowledge the setting update',
+    );
+    assert.equal(
+      root.diligencePushRemainingBudget,
+      1,
+      'UI enable toggle must not consume Diligence Push budget while active callee dispatch remains pending',
+    );
+    const latestAfterToggle = await DialogPersistence.loadDialogLatest(root.id, root.status);
+    assert.equal(
+      latestAfterToggle?.disableDiligencePush,
+      false,
+      'UI enable toggle should persist Diligence Push as enabled',
+    );
+    assert.equal(
+      latestAfterToggle?.diligencePushRemainingBudget,
+      1,
+      'UI enable toggle must not persist budget consumption while active callee dispatch remains pending',
+    );
+    const eventsAfterToggle = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    assert.equal(
+      eventsAfterToggle.filter(
+        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+      ).length,
+      0,
+      'UI enable toggle must not insert a Diligence Push prompt while active callee dispatch remains pending',
     );
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);

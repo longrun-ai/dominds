@@ -2605,15 +2605,12 @@ export class DomindsApp extends HTMLElement {
     return this.visibleSideDialogsByRoot.get(rootId) ?? [];
   }
 
-  private getDialogBackgroundFreshBootsReasoningCalleeCount(
-    rootId: string,
-    selfId: string,
-  ): number {
+  private getDialogBackgroundCalleeCount(rootId: string, selfId: string): number {
     const target =
       selfId === rootId
         ? this.getMainDialog(rootId)
         : this.findDisplayedDialogByIds(rootId, selfId);
-    const count = target?.backgroundFreshBootsReasoningCalleeCount;
+    const count = target?.backgroundCalleeDialogCount;
     return typeof count === 'number' && Number.isInteger(count) && count > 0 ? count : 0;
   }
 
@@ -11860,11 +11857,13 @@ export class DomindsApp extends HTMLElement {
           }
 
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
-          const tellaskOwnerBackgroundFreshBootsReasoningCalleeCount =
-            this.getDialogBackgroundFreshBootsReasoningCalleeCount(dialog.rootId, dialog.selfId);
+          const tellaskOwnerBackgroundCalleeCount = this.getDialogBackgroundCalleeCount(
+            dialog.rootId,
+            dialog.selfId,
+          );
           if (
             (message as TypedDialogEvent).replay !== true &&
-            tellaskOwnerBackgroundFreshBootsReasoningCalleeCount > 0 &&
+            tellaskOwnerBackgroundCalleeCount > 0 &&
             this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId) === 'running'
           ) {
             this.refreshMainHierarchyAfterTellask(dialog.rootId);

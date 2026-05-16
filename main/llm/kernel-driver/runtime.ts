@@ -12,6 +12,11 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, MainDialog } from '../../dialog';
+import {
+  getStopRequestedReason,
+  hasActiveRun,
+  loadDialogExecutionMarker,
+} from '../../dialog-display-state';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { removeProblem, upsertProblem } from '../../problems';
@@ -90,6 +95,20 @@ type DiligencePromptPreparation =
       nextRemainingBudget: number;
     };
 
+export type DiligenceAutoContinueGateDecision =
+  | { kind: 'allowed' }
+  | {
+      kind: 'blocked';
+      reason:
+        | 'not_main_dialog'
+        | 'active_run'
+        | 'stop_requested'
+        | 'execution_interrupted'
+        | 'execution_dead'
+        | 'q4h'
+        | 'active_callee_dispatches';
+    };
+
 async function resolveRtwsDiligenceConfig(): Promise<RtwsDiligenceResolution> {
   const workLanguage = getWorkLanguage();
   const langSpecificPath = path.resolve(process.cwd(), '.minds', `diligence.${workLanguage}.md`);
@@ -145,6 +164,41 @@ function normalizeDiligenceRemainingBudget(remainingBudget: number): number {
   return typeof remainingBudget === 'number' && Number.isFinite(remainingBudget)
     ? Math.max(0, Math.floor(remainingBudget))
     : 0;
+}
+
+export async function evaluateDiligenceAutoContinueGate(options: {
+  dlg: Dialog;
+  requireIdleRunSlot: boolean;
+}): Promise<DiligenceAutoContinueGateDecision> {
+  if (!(options.dlg instanceof MainDialog)) {
+    return { kind: 'blocked', reason: 'not_main_dialog' };
+  }
+
+  if (options.requireIdleRunSlot) {
+    if (hasActiveRun(options.dlg.id)) {
+      return { kind: 'blocked', reason: 'active_run' };
+    }
+    if (getStopRequestedReason(options.dlg.id) !== undefined) {
+      return { kind: 'blocked', reason: 'stop_requested' };
+    }
+    const executionMarker = await loadDialogExecutionMarker(options.dlg.id, 'running');
+    if (executionMarker?.kind === 'interrupted') {
+      return { kind: 'blocked', reason: 'execution_interrupted' };
+    }
+    if (executionMarker?.kind === 'dead') {
+      return { kind: 'blocked', reason: 'execution_dead' };
+    }
+  }
+
+  const suspension = await options.dlg.getSuspensionStatus();
+  if (!suspension.canDrive) {
+    return { kind: 'blocked', reason: 'q4h' };
+  }
+  if (suspension.backgroundCalleeDialogs) {
+    return { kind: 'blocked', reason: 'active_callee_dispatches' };
+  }
+
+  return { kind: 'allowed' };
 }
 
 export async function maybePrepareDiligenceAutoContinuePrompt(options: {

@@ -607,6 +607,11 @@ async function inspectNoPromptSideDialogDrive(args: {
   const supplyResponseParentReviveAllowed =
     source === 'kernel_driver_supply_response_parent_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
+  const replyObligationFollowUpAllowed =
+    source === 'kernel_driver_follow_up' &&
+    args.driveOptions?.noPromptSideDialogResumeEntitlement?.reason ===
+      'reply_obligation_follow_up' &&
+    hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
   if (sideDialogFinalResponseCallId !== undefined) {
     return {
       shouldReject: true,
@@ -620,7 +625,8 @@ async function inspectNoPromptSideDialogDrive(args: {
   if (
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
-    !supplyResponseParentReviveAllowed
+    !supplyResponseParentReviveAllowed &&
+    !replyObligationFollowUpAllowed
   ) {
     return {
       shouldReject: true,
@@ -1194,6 +1200,11 @@ export async function executeDriveRound(args: {
       replyGuidance.deferredReplyReassertionDirective !== undefined;
     activeTellaskReplyDirective = replyGuidance.activeReplyDirective;
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
+    const activePromptCarriesReplyDirective =
+      effectivePrompt?.tellaskReplyDirective !== undefined &&
+      activeTellaskReplyDirective !== undefined &&
+      effectivePrompt.tellaskReplyDirective.targetCallId ===
+        activeTellaskReplyDirective.targetCallId;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
@@ -1279,7 +1290,11 @@ export async function executeDriveRound(args: {
           } else {
             const hasFollowUp = followUp !== undefined;
             const suspension = await dialog.getSuspensionStatus();
-            if (!suspension.canDrive || hasFollowUp) {
+            const backgroundCalleeBlocksImplicitReply =
+              suspension.backgroundCalleeDialogs &&
+              !activePromptWasReplyToolReminder &&
+              !activePromptCarriesReplyDirective;
+            if (!suspension.canDrive || backgroundCalleeBlocksImplicitReply || hasFollowUp) {
               log.debug(
                 'kernel-driver skip sideDialog response supply while tellaskee is not finalized',
                 undefined,
@@ -1288,11 +1303,12 @@ export async function executeDriveRound(args: {
                   selfId: dialog.id.selfId,
                   waitingQ4H: suspension.q4h,
                   backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
+                  backgroundCalleeBlocksImplicitReply,
                   hasFollowUp,
                 },
               );
             }
-            if (suspension.canDrive && !hasFollowUp) {
+            if (suspension.canDrive && !backgroundCalleeBlocksImplicitReply && !hasFollowUp) {
               if (!activeTellaskReplyDirective) {
                 log.debug(
                   'kernel-driver skip implicit sideDialog reply because no active tellask reply directive is bound to this drive',
@@ -1473,6 +1489,13 @@ export async function executeDriveRound(args: {
             driveOptions: {
               source: 'kernel_driver_follow_up',
               reason: 'follow_up_prompt',
+              noPromptSideDialogResumeEntitlement:
+                dialog instanceof SideDialog
+                  ? {
+                      callerDialogId: dialog.id.selfId,
+                      reason: 'reply_obligation_follow_up',
+                    }
+                  : undefined,
             },
           });
           return driveResult;
